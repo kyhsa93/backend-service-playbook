@@ -1,0 +1,5 @@
+{
+  "name": "layer-dependency",
+  "applicable": true,
+  "expectedFailureRuleIds": ["layer.domain.no-infrastructure-import"]
+}

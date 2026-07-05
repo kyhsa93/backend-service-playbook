@@ -1,0 +1,5 @@
+{
+  "name": "repository-pattern",
+  "applicable": true,
+  "expectedFailureRuleIds": ["repository.interface.must-be-abstract"]
+}

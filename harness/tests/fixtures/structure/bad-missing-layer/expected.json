@@ -1,0 +1,5 @@
+{
+  "name": "structure",
+  "applicable": true,
+  "expectedFailureRuleIds": ["structure.layer.missing", "structure.layer.missing"]
+}
