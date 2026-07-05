@@ -8,10 +8,10 @@ export class AccountEntity {
   @PrimaryColumn({ type: 'char', length: 32 })
   accountId: string
 
-  @Column({ type: 'char', length: 32 })
+  @Column()
   ownerId: string
 
-  @Column('bigint')
+  @Column('int')
   amount: number
 
   @Column({ type: 'char', length: 3 })

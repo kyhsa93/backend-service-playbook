@@ -11,7 +11,7 @@ export class TransactionEntity {
   @Column()
   type: string
 
-  @Column('bigint')
+  @Column('int')
   amount: number
 
   @Column({ type: 'char', length: 3 })
