@@ -112,3 +112,5 @@ export class OrderCommandService {
 
 - [container.md](container.md) — 환경 변수 주입 방법
 - [graceful-shutdown.md](graceful-shutdown.md) — 기동 순서
+- [secret-manager.md](secret-manager.md) — Secrets Manager 조회/캐싱 상세
+- [local-dev.md](local-dev.md) — 로컬 개발 환경 구성

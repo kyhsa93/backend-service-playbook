@@ -157,3 +157,4 @@ public async deleteGroup(groupId: string): Promise<void> {
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계 상세
 - [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향
 - [domain-events.md](domain-events.md) — Repository에서 Domain Event → Outbox 저장
+- [persistence.md](persistence.md) — 트랜잭션 전파, Soft Delete, 마이그레이션
