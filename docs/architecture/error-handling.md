@@ -37,7 +37,21 @@ export enum OrderErrorMessage {
 }
 ```
 
-free-form 문자열을 사용하면 오타나 메시지 수정 시 Interface 레이어의 매핑이 조용히 깨진다. enum으로 정의하면 컴파일 타임에 감지할 수 있다.
+**키와 값을 동일하게 쓰는 이유:**
+
+Interface 레이어는 `error.message`를 enum 값과 비교하여 HTTP 예외로 변환한다.
+
+```typescript
+// Interface 레이어 매핑
+[OrderErrorMessage['주문을 찾을 수 없습니다.'], 404, OrderErrorCode.ORDER_NOT_FOUND]
+//  ↑ enum 키(컴파일 타임 검증)                  ↑ 이 값이 error.message와 런타임 비교됨
+```
+
+키 ≠ 값이면 두 가지 문제가 생긴다:
+1. Aggregate에서 `throw new Error('주문을 찾을 수 없습니다.')`로 값을 직접 쓰면 오타가 생겨도 컴파일 오류 없음
+2. Interface에서 `OrderErrorMessage['주문을 찾을 수 없습니다.']`와 `error.message` 비교가 실패
+
+키 = 값으로 정의하면 `throw new Error(OrderErrorMessage['주문을 찾을 수 없습니다.'])`로 **enum 키를 통해서만** 메시지를 쓰게 되어 오타가 컴파일 타임에 드러난다.
 
 ---
 

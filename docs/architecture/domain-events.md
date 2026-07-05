@@ -124,6 +124,51 @@ export class OrderCancelledIntegrationEventV1 {
 
 ---
 
+---
+
+### 이벤트 핸들러 멱등성
+
+메시지 큐는 **at-least-once delivery**를 보장한다. 즉 같은 이벤트가 두 번 이상 전달될 수 있다. EventHandler는 반드시 멱등하게 구현해야 한다.
+
+**3단계 멱등성 전략:**
+
+| 수준 | 상황 | 구현 방식 |
+|------|------|----------|
+| Level 1 — 본질적 멱등 | 핸들러 로직 자체가 반복 실행되어도 결과가 동일 | 별도 장치 불필요 |
+| Level 2 — Ledger | 부작용이 있는 핸들러 (외부 API 호출, 환불 처리 등) | 처리 기록을 DB에 저장, 중복 수신 시 skip |
+| Level 3 — 강한 원자성 | "성공한 경우에만 기록"이 필요한 경우 | 핸들러 로직과 ledger 저장을 같은 트랜잭션으로 묶음 |
+
+**Level 1 예시 — 본질적 멱등:**
+
+```typescript
+// 상태 기반 처리: 이미 취소된 주문은 cancel()이 내부에서 무시
+public async handle(event: { orderId: string; reason: string }): Promise<void> {
+  const order = await this.orderRepository.findOrders({ orderId: event.orderId, take: 1, page: 0 })
+    .then((r) => r.orders.pop())
+  if (!order) return  // 이미 삭제된 경우 무시
+  if (order.status === 'cancelled') return  // 이미 처리된 경우 무시
+  order.doSomething()
+  await this.orderRepository.saveOrder(order)
+}
+```
+
+**Level 2 예시 — Ledger:**
+
+```typescript
+// eventId를 키로 처리 기록을 남기고, 이미 있으면 skip
+public async handle(event: { eventId: string; orderId: string }): Promise<void> {
+  const alreadyProcessed = await this.eventLedger.check(event.eventId)
+  if (alreadyProcessed) return
+
+  await this.orderCommandService.doSomething({ orderId: event.orderId })
+  await this.eventLedger.record(event.eventId)
+}
+```
+
+**Level 1이 가능한 경우에는 Level 2를 쓰지 않는다.** Ledger 테이블 운영 비용이 발생한다.
+
+---
+
 ### 관련 문서
 
 - [tactical-ddd.md](tactical-ddd.md) — Domain Event 정의
