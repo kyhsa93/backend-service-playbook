@@ -10,7 +10,7 @@
 # 구현체별 추가 harness:
 #   NestJS          : cd implementations/nestjs/harness && npm run evaluate -- <root>
 #   Go              : cd implementations/go/harness && go run . <root>
-#   Spring Boot     : bash implementations/springboot/harness/harness.sh <root>
+#   Spring Boot     : bash implementations/java-springboot/harness/harness.sh <root>
 #   Kotlin S.Boot   : bash implementations/kotlin-springboot/harness/harness.sh <root>
 #   FastAPI         : python3 implementations/fastapi/harness/harness.py <root>
 

@@ -19,7 +19,7 @@ docs/
 implementations/
   nestjs/             NestJS (TypeScript) 구현 가이드 + 예시 + harness
   go/                 Go 구현 가이드 + 예시 + harness
-  springboot/         Spring Boot (Java) 구현 가이드 + 예시 + harness
+  java-springboot/    Spring Boot (Java) 구현 가이드 + 예시 + harness
   kotlin-springboot/  Kotlin Spring Boot 구현 가이드 + 예시 + harness
   fastapi/            FastAPI (Python) 구현 가이드 + 예시 + harness
 
@@ -58,7 +58,7 @@ AGENTS.md           AI 에이전트 작업 가이드 (워크플로우·원칙)
 |--------|-------------|----------------|
 | NestJS | `./harness.sh <root>` | `cd implementations/nestjs/harness && npm run evaluate -- <root>` |
 | Go | `./harness.sh <root>` | `cd implementations/go/harness && go run . <root>` |
-| Spring Boot | `./harness.sh <root>` | `bash implementations/springboot/harness/harness.sh <root>` |
+| Spring Boot | `./harness.sh <root>` | `bash implementations/java-springboot/harness/harness.sh <root>` |
 | Kotlin Spring Boot | `./harness.sh <root>` | `bash implementations/kotlin-springboot/harness/harness.sh <root>` |
 | FastAPI | `./harness.sh <root>` | `python3 implementations/fastapi/harness/harness.py <root>` |
 
