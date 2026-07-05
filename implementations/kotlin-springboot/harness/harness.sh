@@ -200,6 +200,20 @@ for f in "${KT_FILES[@]}"; do
         fail "$rel" "IntegrationEvent는 application/integration-event/ 패키지 안에 있어야 함"
       fi
       ;;
+    *)
+      # 파일명 접미사(EventHandler/IntegrationEvent)와 무관하게, Spring의
+      # ApplicationEventPublisher 기반 동기 인프로세스 이벤트 처리를 나타내는
+      # @EventListener 애노테이션이 있으면 이벤트 핸들링 코드로 간주한다.
+      # (가이드의 domainEvents/pullDomainEvents() 발행 메커니즘을 실제로 소비하는 방식)
+      if grep -q "@EventListener" "$f" 2>/dev/null; then
+        FOUND_EVENT=1
+        if echo "$f" | grep -q "/application/event/"; then
+          pass "$rel (@EventListener)"
+        else
+          fail "$rel" "@EventListener 사용 클래스는 application/event/ 패키지 안에 있어야 함"
+        fi
+      fi
+      ;;
   esac
 done
 [ "$FOUND_EVENT" -eq 0 ] && skip "이벤트 핸들러 없음"
