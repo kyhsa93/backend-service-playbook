@@ -20,6 +20,7 @@ public class GetAccountService {
         return new GetAccountResult(
                 account.getAccountId(),
                 account.getOwnerId(),
+                account.getEmail(),
                 new GetAccountResult.MoneyResult(account.getBalance().amount(), account.getBalance().currency()),
                 account.getStatus().name(),
                 account.getCreatedAt(),

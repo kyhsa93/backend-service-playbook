@@ -1,0 +1,30 @@
+services:
+  database:
+    image: postgres:16-alpine
+    ports: ['5432:5432']
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: app
+    volumes: ['db-data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dev -d app']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:3.0
+    ports: ['4566:4566']
+    environment:
+      SERVICES: ses
+      DEFAULT_REGION: us-east-1
+    volumes: ['./localstack:/etc/localstack/init/ready.d']
+    healthcheck:
+      test: ['CMD-SHELL', 'awslocal ses list-identities']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  db-data:

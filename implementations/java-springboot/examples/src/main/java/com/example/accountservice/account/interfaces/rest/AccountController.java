@@ -6,6 +6,7 @@ import com.example.accountservice.account.application.query.GetAccountService;
 import com.example.accountservice.account.application.query.GetTransactionsResult;
 import com.example.accountservice.account.application.query.GetTransactionsService;
 import com.example.accountservice.account.domain.AccountException;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,9 +30,9 @@ public class AccountController {
     @ResponseStatus(HttpStatus.CREATED)
     public CreateAccountResult createAccount(
             @RequestHeader("X-User-Id") String requesterId,
-            @RequestBody CreateAccountRequest request
+            @Valid @RequestBody CreateAccountRequest request
     ) {
-        return createAccountService.create(new CreateAccountCommand(requesterId, request.currency()));
+        return createAccountService.create(new CreateAccountCommand(requesterId, request.email(), request.currency()));
     }
 
     @PostMapping("/{accountId}/deposit")

@@ -60,24 +60,33 @@ class AccountControllerE2ETest {
     }
 
     private Map<String, Object> createAccount(String ownerId, String currency) {
-        ResponseEntity<Map> response = post("/accounts", ownerId, Map.of("currency", currency));
+        ResponseEntity<Map> response = post(
+                "/accounts", ownerId, Map.of("currency", currency, "email", ownerId + "@example.com"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return response.getBody();
     }
 
     @Test
     void 생성_요청이_유효하면_201과_계좌_정보를_반환한다() {
-        ResponseEntity<Map> response = post("/accounts", OWNER_ID, Map.of("currency", "KRW"));
+        ResponseEntity<Map> response = post(
+                "/accounts", OWNER_ID, Map.of("currency", "KRW", "email", "owner-1@example.com"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         Map<String, Object> body = response.getBody();
         assertThat(body.get("ownerId")).isEqualTo(OWNER_ID);
+        assertThat(body.get("email")).isEqualTo("owner-1@example.com");
         assertThat(body.get("status")).isEqualTo("ACTIVE");
         assertThat(body.get("accountId")).isNotNull();
         assertThat(body.get("createdAt")).isNotNull();
         Map<String, Object> balance = (Map<String, Object>) body.get("balance");
         assertThat(balance.get("amount")).isEqualTo(0);
         assertThat(balance.get("currency")).isEqualTo("KRW");
+    }
+
+    @Test
+    void 생성_요청에_이메일이_없으면_400을_반환한다() {
+        ResponseEntity<Map> response = post("/accounts", OWNER_ID, Map.of("currency", "KRW"));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test

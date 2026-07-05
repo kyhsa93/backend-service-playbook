@@ -21,6 +21,9 @@ public class Account {
     @Column(nullable = false)
     private String ownerId;
 
+    @Column(nullable = false)
+    private String email;
+
     @Embedded
     private Money balance;
 
@@ -45,15 +48,16 @@ public class Account {
 
     protected Account() {}
 
-    public static Account create(String ownerId, String currency) {
+    public static Account create(String ownerId, String email, String currency) {
         Account account = new Account();
         account.accountId = UUID.randomUUID().toString();
         account.ownerId = ownerId;
+        account.email = email;
         account.balance = new Money(0, currency);
         account.status = AccountStatus.ACTIVE;
         account.createdAt = LocalDateTime.now();
         account.updatedAt = account.createdAt;
-        account.domainEvents.add(new AccountCreatedEvent(account.accountId, ownerId, currency, account.createdAt));
+        account.domainEvents.add(new AccountCreatedEvent(account.accountId, ownerId, email, currency, account.createdAt));
         return account;
     }
 
@@ -70,7 +74,7 @@ public class Account {
         Transaction transaction = Transaction.create(this.accountId, TransactionType.DEPOSIT, money);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(new MoneyDepositedEvent(
-                this.accountId, transaction.getTransactionId(), money, this.balance, transaction.getCreatedAt()));
+                this.accountId, this.email, transaction.getTransactionId(), money, this.balance, transaction.getCreatedAt()));
         return transaction;
     }
 
@@ -90,7 +94,7 @@ public class Account {
         Transaction transaction = Transaction.create(this.accountId, TransactionType.WITHDRAWAL, money);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(new MoneyWithdrawnEvent(
-                this.accountId, transaction.getTransactionId(), money, this.balance, transaction.getCreatedAt()));
+                this.accountId, this.email, transaction.getTransactionId(), money, this.balance, transaction.getCreatedAt()));
         return transaction;
     }
 
@@ -100,7 +104,7 @@ public class Account {
         }
         this.status = AccountStatus.SUSPENDED;
         this.updatedAt = LocalDateTime.now();
-        this.domainEvents.add(new AccountSuspendedEvent(this.accountId, this.updatedAt));
+        this.domainEvents.add(new AccountSuspendedEvent(this.accountId, this.email, this.updatedAt));
     }
 
     public void reactivate() {
@@ -109,7 +113,7 @@ public class Account {
         }
         this.status = AccountStatus.ACTIVE;
         this.updatedAt = LocalDateTime.now();
-        this.domainEvents.add(new AccountReactivatedEvent(this.accountId, this.updatedAt));
+        this.domainEvents.add(new AccountReactivatedEvent(this.accountId, this.email, this.updatedAt));
     }
 
     public void close() {
@@ -121,7 +125,7 @@ public class Account {
         }
         this.status = AccountStatus.CLOSED;
         this.updatedAt = LocalDateTime.now();
-        this.domainEvents.add(new AccountClosedEvent(this.accountId, this.updatedAt));
+        this.domainEvents.add(new AccountClosedEvent(this.accountId, this.email, this.updatedAt));
     }
 
     public List<Object> pullDomainEvents() {
@@ -138,6 +142,7 @@ public class Account {
 
     public String getAccountId() { return accountId; }
     public String getOwnerId() { return ownerId; }
+    public String getEmail() { return email; }
     public Money getBalance() { return balance; }
     public AccountStatus getStatus() { return status; }
     public LocalDateTime getCreatedAt() { return createdAt; }

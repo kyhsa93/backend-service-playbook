@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 public record CreateAccountResult(
         String accountId,
         String ownerId,
+        String email,
         MoneyResult balance,
         String status,
         LocalDateTime createdAt
