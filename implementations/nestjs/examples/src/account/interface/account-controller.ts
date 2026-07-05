@@ -3,16 +3,19 @@ import {
   Logger, NotFoundException, Param, Post, Query
 } from '@nestjs/common'
 import { ApiCreatedResponse, ApiHeader, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { CommandBus, QueryBus } from '@nestjs/cqrs'
 
 import { generateErrorResponse } from '@/common/generate-error-response'
-import { AccountCommandService } from '@/account/application/command/account-command-service'
 import { CloseAccountCommand } from '@/account/application/command/close-account-command'
 import { CreateAccountCommand } from '@/account/application/command/create-account-command'
 import { DepositCommand } from '@/account/application/command/deposit-command'
 import { ReactivateAccountCommand } from '@/account/application/command/reactivate-account-command'
 import { SuspendAccountCommand } from '@/account/application/command/suspend-account-command'
 import { WithdrawCommand } from '@/account/application/command/withdraw-command'
-import { AccountQueryService } from '@/account/application/query/account-query-service'
+import { Account } from '@/account/domain/account'
+import { Transaction } from '@/account/domain/transaction'
+import { GetAccountQuery } from '@/account/application/query/get-account-query'
+import { GetTransactionsQuery } from '@/account/application/query/get-transactions-query'
 import { CreateAccountRequestBody } from '@/account/interface/dto/create-account-request-body'
 import { CreateAccountResponseBody } from '@/account/interface/dto/create-account-response-body'
 import { DepositRequestBody } from '@/account/interface/dto/deposit-request-body'
@@ -34,8 +37,8 @@ export class AccountController {
   private readonly logger = new Logger(AccountController.name)
 
   constructor(
-    private readonly accountCommandService: AccountCommandService,
-    private readonly accountQueryService: AccountQueryService
+    private readonly commandBus: CommandBus,
+    private readonly queryBus: QueryBus
   ) {}
 
   @Post('/accounts')
@@ -45,7 +48,7 @@ export class AccountController {
     @Headers('x-user-id') requesterId: string,
     @Body() body: CreateAccountRequestBody
   ): Promise<CreateAccountResponseBody> {
-    return this.accountCommandService.createAccount(new CreateAccountCommand({ ...body, requesterId }))
+    return this.commandBus.execute<CreateAccountCommand, Account>(new CreateAccountCommand({ ...body, requesterId }))
       .then((account) => ({
         accountId: account.accountId,
         ownerId: account.ownerId,
@@ -67,7 +70,7 @@ export class AccountController {
     @Param('accountId') accountId: string,
     @Body() body: DepositRequestBody
   ): Promise<DepositResponseBody> {
-    return this.accountCommandService.deposit(new DepositCommand({ ...body, accountId, requesterId }))
+    return this.commandBus.execute<DepositCommand, Transaction>(new DepositCommand({ ...body, accountId, requesterId }))
       .then((transaction) => ({
         transactionId: transaction.transactionId,
         accountId: transaction.accountId,
@@ -93,7 +96,7 @@ export class AccountController {
     @Param('accountId') accountId: string,
     @Body() body: WithdrawRequestBody
   ): Promise<WithdrawResponseBody> {
-    return this.accountCommandService.withdraw(new WithdrawCommand({ ...body, accountId, requesterId }))
+    return this.commandBus.execute<WithdrawCommand, Transaction>(new WithdrawCommand({ ...body, accountId, requesterId }))
       .then((transaction) => ({
         transactionId: transaction.transactionId,
         accountId: transaction.accountId,
@@ -120,7 +123,7 @@ export class AccountController {
     @Headers('x-user-id') requesterId: string,
     @Param('accountId') accountId: string
   ): Promise<void> {
-    return this.accountCommandService.suspendAccount(new SuspendAccountCommand({ accountId, requesterId }))
+    return this.commandBus.execute(new SuspendAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
@@ -138,7 +141,7 @@ export class AccountController {
     @Headers('x-user-id') requesterId: string,
     @Param('accountId') accountId: string
   ): Promise<void> {
-    return this.accountCommandService.reactivateAccount(new ReactivateAccountCommand({ accountId, requesterId }))
+    return this.commandBus.execute(new ReactivateAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
@@ -156,7 +159,7 @@ export class AccountController {
     @Headers('x-user-id') requesterId: string,
     @Param('accountId') accountId: string
   ): Promise<void> {
-    return this.accountCommandService.closeAccount(new CloseAccountCommand({ accountId, requesterId }))
+    return this.commandBus.execute(new CloseAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
@@ -174,7 +177,7 @@ export class AccountController {
     @Headers('x-user-id') requesterId: string,
     @Param() param: GetAccountRequestParam
   ): Promise<GetAccountResponseBody> {
-    return this.accountQueryService.getAccount({ accountId: param.accountId, requesterId }).catch((error) => {
+    return this.queryBus.execute(new GetAccountQuery({ accountId: param.accountId, requesterId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
         [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
@@ -190,12 +193,9 @@ export class AccountController {
     @Param() param: GetTransactionsRequestParam,
     @Query() querystring: GetTransactionsRequestQuerystring
   ): Promise<GetTransactionsResponseBody> {
-    return this.accountQueryService.getTransactions({
-      accountId: param.accountId,
-      requesterId,
-      page: querystring.page,
-      take: querystring.take
-    }).catch((error) => {
+    return this.queryBus.execute(
+      new GetTransactionsQuery({ ...querystring, accountId: param.accountId, requesterId })
+    ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
         [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
