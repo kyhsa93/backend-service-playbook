@@ -18,7 +18,47 @@ function walkTsFiles(root: string): string[] {
   return out
 }
 
-// 파일에 page와 take 프로퍼티가 모두 선언되어 있는지 확인 (pagination DTO 판별)
+function resolveImportPath(moduleSpecifier: string, fromFile: string, srcRoot: string): string {
+  const withExt = moduleSpecifier.endsWith('.ts') ? moduleSpecifier : `${moduleSpecifier}.ts`
+  if (moduleSpecifier.startsWith('@/')) return path.join(srcRoot, withExt.slice(2))
+  return path.resolve(path.dirname(fromFile), withExt)
+}
+
+function findExtendsBaseName(content: string): string | null {
+  const match = content.match(/class\s+\w+\s+extends\s+(\w+)/)
+  return match ? match[1] : null
+}
+
+function findImportModuleFor(content: string, name: string): string | null {
+  const importRegex = /import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g
+  let m: RegExpExecArray | null
+  while ((m = importRegex.exec(content))) {
+    const names = m[1].split(',').map((s) => s.trim())
+    if (names.includes(name)) return m[2]
+  }
+  return null
+}
+
+// 얇은 `class X extends BaseDto {}` 래퍼는 자기 파일에 page/take 필드·데코레이터가 없고
+// 부모 클래스에서 상속받는다. 상속 체인을 따라가며 실제 선언부까지의 내용을 모아
+// 페이지네이션 필드/데코레이터 검사 대상에 포함시킨다 (최대 3단계).
+function collectContentWithBases(filePath: string, srcRoot: string, depth = 0): string {
+  const content = fs.readFileSync(filePath, 'utf-8')
+  if (depth >= 3) return content
+
+  const baseName = findExtendsBaseName(content)
+  if (!baseName) return content
+
+  const modulePath = findImportModuleFor(content, baseName)
+  if (!modulePath) return content
+
+  const resolved = resolveImportPath(modulePath, filePath, srcRoot)
+  if (!fs.existsSync(resolved)) return content
+
+  return `${content}\n${collectContentWithBases(resolved, srcRoot, depth + 1)}`
+}
+
+// page와 take 프로퍼티가 (상속 포함) 모두 선언되어 있는지 확인 (pagination DTO 판별)
 function isPaginationDto(content: string): boolean {
   return /\bpage\b/.test(content) && /\btake\b/.test(content)
 }
@@ -26,11 +66,18 @@ function isPaginationDto(content: string): boolean {
 export function evaluatePagination(root: string): EvaluatorResult {
   const srcRoot = path.join(root, 'src')
   const files = walkTsFiles(srcRoot)
+  const contentOf = new Map<string, string>()
+  const read = (f: string): string => {
+    let c = contentOf.get(f)
+    if (c === undefined) {
+      c = collectContentWithBases(f, srcRoot)
+      contentOf.set(f, c)
+    }
+    return c
+  }
 
-  // page + take 필드가 있는 DTO 파일을 찾아 gate 조건으로 사용
-  const paginationDtoFiles = files.filter(
-    (f) => f.includes('dto') && isPaginationDto(fs.readFileSync(f, 'utf-8'))
-  )
+  // page + take 필드가 있는 DTO 파일을 찾아 gate 조건으로 사용 (상속 체인 포함)
+  const paginationDtoFiles = files.filter((f) => f.includes('dto') && isPaginationDto(read(f)))
   if (paginationDtoFiles.length === 0) {
     return { name: 'pagination', score: 0, maxScore: 0, failures: [] }
   }
@@ -40,7 +87,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
   const rel = (f: string) => path.relative(root, f)
 
   for (const file of paginationDtoFiles) {
-    const content = fs.readFileSync(file, 'utf-8')
+    const content = read(file)
 
     // page 필드에 @Type(() => Number) + @IsInt() 필요
     const hasPageType = /@Type\s*\(\s*\(\s*\)\s*=>\s*Number\s*\)[\s\S]{0,100}page\b|page\b[\s\S]{0,200}@Type\s*\(\s*\(\s*\)\s*=>\s*Number\s*\)/.test(content)

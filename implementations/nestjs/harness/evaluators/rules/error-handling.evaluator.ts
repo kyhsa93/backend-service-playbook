@@ -27,6 +27,32 @@ function kebabToPascal(kebab: string): string {
     .join('')
 }
 
+// `throw new Error(...)` 중 인자가 <Domain>ErrorMessage enum 참조(PropertyAccess/ElementAccess)가
+// 아닌 경우(raw 문자열 리터럴, 템플릿 리터럴, 인자 없음 등)만 위반으로 잡는다.
+// `throw new Error(ErrorMessage['...'])`는 가이드가 요구하는 정상 패턴이므로 매치되지 않는다.
+function findGenericErrorThrows(filePath: string): number[] {
+  const sf = readSourceFile(filePath)
+  const lines: number[] = []
+  function visit(node: ts.Node) {
+    if (
+      ts.isThrowStatement(node)
+      && node.expression
+      && ts.isNewExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === 'Error'
+    ) {
+      const arg = node.expression.arguments?.[0]
+      const isEnumReference = arg !== undefined && (ts.isPropertyAccessExpression(arg) || ts.isElementAccessExpression(arg))
+      if (!isEnumReference) {
+        lines.push(sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1)
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sf)
+  return lines
+}
+
 function listEnumMemberNames(filePath: string, enumName: string): string[] | null {
   const sf = readSourceFile(filePath)
   let names: string[] | null = null
@@ -95,14 +121,16 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
       score -= 8
     }
 
-    if (file.includes('/application/') && content.includes('throw new Error(')) {
-      failures.push({
-        ruleId: 'checklist.step7.application.no-generic-error',
-        severity: 'medium',
-        message: rel(file),
-        docRef: DOC_REF_BASE
-      })
-      score -= 5
+    if (file.includes('/application/')) {
+      for (const line of findGenericErrorThrows(file)) {
+        failures.push({
+          ruleId: 'checklist.step7.application.no-generic-error',
+          severity: 'medium',
+          message: `${rel(file)}:${line} — throw new Error()의 인자는 <Domain>ErrorMessage enum 참조여야 함 (raw 문자열 금지)`,
+          docRef: DOC_REF_BASE
+        })
+        score -= 5
+      }
     }
   }
 

@@ -1,7 +1,33 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import ts from 'typescript'
 
 import { EvaluatorResult, EvaluatorFailure } from '../shared/types'
+import { parseImports, readSourceFile } from '../shared/ast-utils'
+
+const REPOSITORY_IMPL_NAME = /Repository(Impl)?$/
+
+// application 레이어에서 `new XxxRepository(...)` / `new XxxRepositoryImpl(...)` 형태로
+// 직접 인스턴스화하는지 확인한다. `new Money(...)`, `new Error(...)` 같은 무관한 `new` 표현식은
+// 대상 클래스명이 Repository로 끝나지 않으므로 매치되지 않는다.
+function instantiatesRepositoryDirectly(filePath: string): boolean {
+  const sf = readSourceFile(filePath)
+  let found = false
+  function visit(node: ts.Node) {
+    if (found) return
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && REPOSITORY_IMPL_NAME.test(node.expression.text)) {
+      found = true
+      return
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sf)
+  return found
+}
+
+function importsTypeormDirectly(filePath: string): boolean {
+  return parseImports(filePath).some((spec) => spec === 'typeorm' || spec.startsWith('typeorm/'))
+}
 
 export function evaluateRepositoryPattern(root: string): EvaluatorResult {
   const failures: EvaluatorFailure[] = []
@@ -17,12 +43,11 @@ export function evaluateRepositoryPattern(root: string): EvaluatorResult {
     })
   }
 
-  const files = walk(domainPath)
+  const files = walk(domainPath).filter((f) => f.endsWith('.ts'))
 
   for (const file of files) {
-    const content = fs.readFileSync(file, 'utf-8')
-
     if (file.endsWith('-repository.ts')) {
+      const content = fs.readFileSync(file, 'utf-8')
       if (!content.includes('abstract class')) {
         failures.push({
           ruleId: 'repository.abstract-class',
@@ -33,8 +58,8 @@ export function evaluateRepositoryPattern(root: string): EvaluatorResult {
       }
     }
 
-    if (file.includes('/application/') && content.includes('Repository')) {
-      if (content.includes('new ') || content.includes('typeorm')) {
+    if (file.includes('/application/')) {
+      if (instantiatesRepositoryDirectly(file) || importsTypeormDirectly(file)) {
         failures.push({
           ruleId: 'repository.no-direct-instantiation',
           severity: 'high',
