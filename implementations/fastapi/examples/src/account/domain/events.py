@@ -11,6 +11,7 @@ class AccountCreated:
     account_id: str
     owner_id: str
     currency: str
+    email: str
     created_at: datetime
 
 
@@ -18,6 +19,7 @@ class AccountCreated:
 class MoneyDeposited:
     account_id: str
     transaction_id: str
+    email: str
     amount: Money
     balance_after: Money
     created_at: datetime
@@ -27,6 +29,7 @@ class MoneyDeposited:
 class MoneyWithdrawn:
     account_id: str
     transaction_id: str
+    email: str
     amount: Money
     balance_after: Money
     created_at: datetime
@@ -35,16 +38,19 @@ class MoneyWithdrawn:
 @dataclass(frozen=True)
 class AccountSuspended:
     account_id: str
+    email: str
     suspended_at: datetime
 
 
 @dataclass(frozen=True)
 class AccountReactivated:
     account_id: str
+    email: str
     reactivated_at: datetime
 
 
 @dataclass(frozen=True)
 class AccountClosed:
     account_id: str
+    email: str
     closed_at: datetime

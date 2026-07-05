@@ -10,6 +10,7 @@ from ...application.command.withdraw_handler import WithdrawCommand, WithdrawHan
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ....database import get_session
+from ...infrastructure.notification.notification_service import NotificationService
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from .schemas import (
     CreateAccountRequest,
@@ -28,18 +29,24 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
     return SqlAlchemyAccountRepository(session)
 
 
+def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
+    return NotificationService(session)
+
+
 @router.post("", status_code=201, response_model=CreateAccountResponse)
 async def create_account(
     body: CreateAccountRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
+    notification_service: NotificationService = Depends(_notification_service),
 ) -> CreateAccountResponse:
-    account = await CreateAccountHandler(repo).execute(
-        CreateAccountCommand(requester_id=x_user_id, currency=body.currency)
+    account = await CreateAccountHandler(repo, notification_service).execute(
+        CreateAccountCommand(requester_id=x_user_id, currency=body.currency, email=body.email)
     )
     return CreateAccountResponse(
         account_id=account.account_id,
         owner_id=account.owner_id,
+        email=account.email,
         balance={"amount": account.balance.amount, "currency": account.balance.currency},
         status=account.status.value,
         created_at=account.created_at,
@@ -52,8 +59,9 @@ async def deposit(
     body: DepositRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
+    notification_service: NotificationService = Depends(_notification_service),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo).execute(
+    transaction = await DepositHandler(repo, notification_service).execute(
         DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
     )
     return TransactionResponse(
@@ -71,8 +79,9 @@ async def withdraw(
     body: WithdrawRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
+    notification_service: NotificationService = Depends(_notification_service),
 ) -> TransactionResponse:
-    transaction = await WithdrawHandler(repo).execute(
+    transaction = await WithdrawHandler(repo, notification_service).execute(
         WithdrawCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
     )
     return TransactionResponse(
@@ -89,8 +98,11 @@ async def suspend_account(
     account_id: str,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
+    notification_service: NotificationService = Depends(_notification_service),
 ) -> None:
-    await SuspendAccountHandler(repo).execute(SuspendAccountCommand(account_id=account_id, requester_id=x_user_id))
+    await SuspendAccountHandler(repo, notification_service).execute(
+        SuspendAccountCommand(account_id=account_id, requester_id=x_user_id)
+    )
 
 
 @router.post("/{account_id}/reactivate", status_code=204)
@@ -98,8 +110,9 @@ async def reactivate_account(
     account_id: str,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
+    notification_service: NotificationService = Depends(_notification_service),
 ) -> None:
-    await ReactivateAccountHandler(repo).execute(
+    await ReactivateAccountHandler(repo, notification_service).execute(
         ReactivateAccountCommand(account_id=account_id, requester_id=x_user_id)
     )
 
@@ -109,8 +122,11 @@ async def close_account(
     account_id: str,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
+    notification_service: NotificationService = Depends(_notification_service),
 ) -> None:
-    await CloseAccountHandler(repo).execute(CloseAccountCommand(account_id=account_id, requester_id=x_user_id))
+    await CloseAccountHandler(repo, notification_service).execute(
+        CloseAccountCommand(account_id=account_id, requester_id=x_user_id)
+    )
 
 
 @router.get("/{account_id}", response_model=GetAccountResponse)
@@ -123,6 +139,7 @@ async def get_account(
     return GetAccountResponse(
         account_id=result.account_id,
         owner_id=result.owner_id,
+        email=result.email,
         balance={"amount": result.balance.amount, "currency": result.balance.currency},
         status=result.status,
         created_at=result.created_at,

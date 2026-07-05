@@ -20,6 +20,7 @@ class AccountModel(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)
     owner_id: Mapped[str]
+    email: Mapped[str]
     amount: Mapped[int]
     currency: Mapped[str]
     status: Mapped[str]
@@ -93,6 +94,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
             self._session.add(AccountModel(
                 id=account.account_id,
                 owner_id=account.owner_id,
+                email=account.email,
                 amount=account.balance.amount,
                 currency=account.balance.currency,
                 status=account.status.value,
@@ -137,6 +139,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
         return Account(
             account_id=row.id,
             owner_id=row.owner_id,
+            email=row.email,
             balance=Money(row.amount, row.currency),
             status=AccountStatus(row.status),
             created_at=row.created_at,

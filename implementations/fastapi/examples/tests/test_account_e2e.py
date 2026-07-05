@@ -12,6 +12,7 @@ from src.database import get_session
 
 OWNER_ID = "owner-1"
 OTHER_OWNER_ID = "owner-2"
+OWNER_EMAIL = "owner1@example.com"
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -39,19 +40,24 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
         await engine.dispose()
 
 
-async def create_account(client: AsyncClient, owner_id: str, currency: str) -> dict:
-    response = await client.post("/accounts", json={"currency": currency}, headers={"X-User-Id": owner_id})
+async def create_account(client: AsyncClient, owner_id: str, currency: str, email: str = OWNER_EMAIL) -> dict:
+    response = await client.post(
+        "/accounts", json={"currency": currency, "email": email}, headers={"X-User-Id": owner_id}
+    )
     assert response.status_code == 201
     return response.json()
 
 
 @pytest.mark.asyncio
 async def test_create_account_success(client: AsyncClient) -> None:
-    response = await client.post("/accounts", json={"currency": "KRW"}, headers={"X-User-Id": OWNER_ID})
+    response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers={"X-User-Id": OWNER_ID}
+    )
 
     assert response.status_code == 201
     body = response.json()
     assert body["owner_id"] == OWNER_ID
+    assert body["email"] == OWNER_EMAIL
     assert body["status"] == "ACTIVE"
     assert body["account_id"]
     assert body["created_at"]
@@ -60,7 +66,21 @@ async def test_create_account_success(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_create_account_missing_currency_returns_422(client: AsyncClient) -> None:
-    response = await client.post("/accounts", json={}, headers={"X-User-Id": OWNER_ID})
+    response = await client.post("/accounts", json={"email": OWNER_EMAIL}, headers={"X-User-Id": OWNER_ID})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_account_missing_email_returns_422(client: AsyncClient) -> None:
+    response = await client.post("/accounts", json={"currency": "KRW"}, headers={"X-User-Id": OWNER_ID})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_account_invalid_email_returns_422(client: AsyncClient) -> None:
+    response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": "not-an-email"}, headers={"X-User-Id": OWNER_ID}
+    )
     assert response.status_code == 422
 
 

@@ -2,9 +2,10 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 asyncpg
-pydantic
+pydantic[email]
+aioboto3
 
 pytest
 pytest-asyncio
 httpx
-testcontainers
+testcontainers[localstack]

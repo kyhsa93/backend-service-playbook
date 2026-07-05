@@ -36,6 +36,7 @@ class Account:
         self,
         account_id: str,
         owner_id: str,
+        email: str,
         balance: Money,
         status: AccountStatus,
         created_at: datetime,
@@ -43,6 +44,7 @@ class Account:
     ) -> None:
         self.account_id = account_id
         self.owner_id = owner_id
+        self.email = email
         self.balance = balance
         self.status = status
         self.created_at = created_at
@@ -51,11 +53,12 @@ class Account:
         self._pending_transactions: list[Transaction] = []
 
     @classmethod
-    def create(cls, owner_id: str, currency: str) -> Account:
+    def create(cls, owner_id: str, currency: str, email: str) -> Account:
         now = datetime.utcnow()
         account = cls(
             account_id=str(uuid.uuid4()),
             owner_id=owner_id,
+            email=email,
             balance=Money(0, currency),
             status=AccountStatus.ACTIVE,
             created_at=now,
@@ -65,6 +68,7 @@ class Account:
             account_id=account.account_id,
             owner_id=owner_id,
             currency=currency,
+            email=email,
             created_at=now,
         ))
         return account
@@ -82,6 +86,7 @@ class Account:
         self._events.append(MoneyDeposited(
             account_id=self.account_id,
             transaction_id=transaction.transaction_id,
+            email=self.email,
             amount=money,
             balance_after=self.balance,
             created_at=transaction.created_at,
@@ -103,6 +108,7 @@ class Account:
         self._events.append(MoneyWithdrawn(
             account_id=self.account_id,
             transaction_id=transaction.transaction_id,
+            email=self.email,
             amount=money,
             balance_after=self.balance,
             created_at=transaction.created_at,
@@ -114,14 +120,18 @@ class Account:
             raise SuspendRequiresActiveAccountError()
         self.status = AccountStatus.SUSPENDED
         self.updated_at = datetime.utcnow()
-        self._events.append(AccountSuspended(account_id=self.account_id, suspended_at=self.updated_at))
+        self._events.append(
+            AccountSuspended(account_id=self.account_id, email=self.email, suspended_at=self.updated_at)
+        )
 
     def reactivate(self) -> None:
         if self.status != AccountStatus.SUSPENDED:
             raise ReactivateRequiresSuspendedAccountError()
         self.status = AccountStatus.ACTIVE
         self.updated_at = datetime.utcnow()
-        self._events.append(AccountReactivated(account_id=self.account_id, reactivated_at=self.updated_at))
+        self._events.append(
+            AccountReactivated(account_id=self.account_id, email=self.email, reactivated_at=self.updated_at)
+        )
 
     def close(self) -> None:
         if self.status == AccountStatus.CLOSED:
@@ -130,7 +140,7 @@ class Account:
             raise AccountBalanceNotZeroError()
         self.status = AccountStatus.CLOSED
         self.updated_at = datetime.utcnow()
-        self._events.append(AccountClosed(account_id=self.account_id, closed_at=self.updated_at))
+        self._events.append(AccountClosed(account_id=self.account_id, email=self.email, closed_at=self.updated_at))
 
     def pull_events(self) -> list[AccountDomainEvent]:
         events, self._events = self._events, []

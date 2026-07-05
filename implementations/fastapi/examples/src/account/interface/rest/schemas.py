@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class MoneySchema(BaseModel):
@@ -10,6 +10,7 @@ class MoneySchema(BaseModel):
 
 class CreateAccountRequest(BaseModel):
     currency: str
+    email: EmailStr
 
 
 class DepositRequest(BaseModel):
@@ -23,6 +24,7 @@ class WithdrawRequest(BaseModel):
 class CreateAccountResponse(BaseModel):
     account_id: str
     owner_id: str
+    email: str
     balance: MoneySchema
     status: str
     created_at: datetime
@@ -39,6 +41,7 @@ class TransactionResponse(BaseModel):
 class GetAccountResponse(BaseModel):
     account_id: str
     owner_id: str
+    email: str
     balance: MoneySchema
     status: str
     created_at: datetime

@@ -14,6 +14,7 @@ class MoneyResult:
 class GetAccountResult:
     account_id: str
     owner_id: str
+    email: str
     balance: MoneyResult
     status: str
     created_at: datetime

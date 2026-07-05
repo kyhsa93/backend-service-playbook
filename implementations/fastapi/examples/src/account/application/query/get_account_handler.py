@@ -23,6 +23,7 @@ class GetAccountHandler:
         return GetAccountResult(
             account_id=account.account_id,
             owner_id=account.owner_id,
+            email=account.email,
             balance=MoneyResult(amount=account.balance.amount, currency=account.balance.currency),
             status=account.status.value,
             created_at=account.created_at,
