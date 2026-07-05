@@ -14,6 +14,7 @@ import { AccountReactivatedHandler } from '@/account/application/event/account-r
 import { AccountSuspendedHandler } from '@/account/application/event/account-suspended-handler'
 import { MoneyDepositedHandler } from '@/account/application/event/money-deposited-handler'
 import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdrawn-handler'
+import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { AccountQuery } from '@/account/application/query/account-query'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
@@ -23,9 +24,10 @@ import { TransactionEntity } from '@/account/infrastructure/entity/transaction.e
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
 import { AccountRepositoryImpl } from '@/account/infrastructure/account-repository-impl'
 import { AccountController } from '@/account/interface/account-controller'
+import { NotificationModule } from '@/notification/notification-module'
 
 @Module({
-  imports: [CqrsModule, TypeOrmModule.forFeature([AccountEntity, TransactionEntity])],
+  imports: [CqrsModule, TypeOrmModule.forFeature([AccountEntity, TransactionEntity]), NotificationModule],
   controllers: [AccountController],
   providers: [
     // Command Handlers
@@ -45,6 +47,8 @@ import { AccountController } from '@/account/interface/account-controller'
     AccountSuspendedHandler,
     AccountReactivatedHandler,
     AccountClosedHandler,
+    // Outbox 릴레이 (미처리 outbox 이벤트를 위 핸들러로 전달)
+    OutboxRelay,
     // Repositories
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
     // Query 구현체

@@ -6,13 +6,14 @@ import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { SentEmailEntity } from '@/notification/sent-email.entity'
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      entities: [AccountEntity, TransactionEntity, OutboxEntity],
+      entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity],
       synchronize: true
     }),
     OutboxModule,

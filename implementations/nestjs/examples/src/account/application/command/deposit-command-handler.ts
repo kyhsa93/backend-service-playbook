@@ -1,6 +1,7 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
+import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { DepositCommand } from '@/account/application/command/deposit-command'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { Money } from '@/account/domain/money'
@@ -11,7 +12,8 @@ import { AccountErrorMessage as ErrorMessage } from '@/account/account-error-mes
 export class DepositCommandHandler implements ICommandHandler<DepositCommand, Transaction> {
   constructor(
     private readonly accountRepository: AccountRepository,
-    private readonly transactionManager: TransactionManager
+    private readonly transactionManager: TransactionManager,
+    private readonly outboxRelay: OutboxRelay
   ) {}
 
   public async execute(command: DepositCommand): Promise<Transaction> {
@@ -24,6 +26,7 @@ export class DepositCommandHandler implements ICommandHandler<DepositCommand, Tr
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(account)
     })
+    await this.outboxRelay.processPending()
     return transaction
   }
 }

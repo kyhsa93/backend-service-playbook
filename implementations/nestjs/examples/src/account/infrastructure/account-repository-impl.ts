@@ -43,6 +43,7 @@ export class AccountRepositoryImpl extends AccountRepository {
       accounts: rows.map((row) => new Account({
         accountId: row.accountId,
         ownerId: row.ownerId,
+        email: row.email,
         balance: new Money({ amount: row.amount, currency: row.currency }),
         status: row.status as AccountStatus,
         createdAt: row.createdAt
@@ -56,6 +57,7 @@ export class AccountRepositoryImpl extends AccountRepository {
     await manager.save(AccountEntity, {
       accountId: account.accountId,
       ownerId: account.ownerId,
+      email: account.email,
       amount: account.balance.amount,
       currency: account.balance.currency,
       status: account.status,

@@ -52,6 +52,7 @@ export class AccountController {
       .then((account) => ({
         accountId: account.accountId,
         ownerId: account.ownerId,
+        email: account.email,
         balance: { amount: account.balance.amount, currency: account.balance.currency },
         status: account.status,
         createdAt: account.createdAt

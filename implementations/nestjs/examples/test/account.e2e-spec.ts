@@ -9,6 +9,7 @@ import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { SentEmailEntity } from '@/notification/sent-email.entity'
 
 describe('AccountController (e2e)', () => {
   let container: StartedPostgreSqlContainer
@@ -25,7 +26,7 @@ describe('AccountController (e2e)', () => {
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity],
+          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity],
           synchronize: true
         }),
         OutboxModule,
@@ -50,11 +51,15 @@ describe('AccountController (e2e)', () => {
     await container?.stop()
   })
 
-  async function createAccount(ownerId = OWNER_ID, currency = 'KRW'): Promise<{ accountId: string }> {
+  async function createAccount(
+    ownerId = OWNER_ID,
+    currency = 'KRW',
+    email = 'owner1@example.com'
+  ): Promise<{ accountId: string }> {
     const response = await request(app.getHttpServer())
       .post('/accounts')
       .set('X-User-Id', ownerId)
-      .send({ currency })
+      .send({ currency, email })
     return response.body as { accountId: string }
   }
 
@@ -63,11 +68,12 @@ describe('AccountController (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
         .set('X-User-Id', OWNER_ID)
-        .send({ currency: 'KRW' })
+        .send({ currency: 'KRW', email: 'owner1@example.com' })
 
       expect(response.status).toBe(201)
       expect(response.body).toMatchObject({
         ownerId: OWNER_ID,
+        email: 'owner1@example.com',
         balance: { amount: 0, currency: 'KRW' },
         status: 'ACTIVE'
       })
@@ -79,7 +85,17 @@ describe('AccountController (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
         .set('X-User-Id', OWNER_ID)
-        .send({})
+        .send({ email: 'owner1@example.com' })
+
+      expect(response.status).toBe(400)
+      expect(response.body.code).toBe('VALIDATION_FAILED')
+    })
+
+    it('email이_유효하지_않으면_400과_VALIDATION_FAILED를_반환한다', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/accounts')
+        .set('X-User-Id', OWNER_ID)
+        .send({ currency: 'KRW', email: 'not-an-email' })
 
       expect(response.status).toBe(400)
       expect(response.body.code).toBe('VALIDATION_FAILED')

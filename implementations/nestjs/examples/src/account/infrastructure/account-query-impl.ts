@@ -27,6 +27,7 @@ export class AccountQueryImpl extends AccountQuery {
     return {
       accountId: row.accountId,
       ownerId: row.ownerId,
+      email: row.email,
       balance: { amount: row.amount, currency: row.currency },
       status: row.status,
       createdAt: row.createdAt,

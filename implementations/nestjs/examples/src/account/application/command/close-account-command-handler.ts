@@ -1,6 +1,7 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
+import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { CloseAccountCommand } from '@/account/application/command/close-account-command'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { AccountErrorMessage as ErrorMessage } from '@/account/account-error-message'
@@ -9,7 +10,8 @@ import { AccountErrorMessage as ErrorMessage } from '@/account/account-error-mes
 export class CloseAccountCommandHandler implements ICommandHandler<CloseAccountCommand> {
   constructor(
     private readonly accountRepository: AccountRepository,
-    private readonly transactionManager: TransactionManager
+    private readonly transactionManager: TransactionManager,
+    private readonly outboxRelay: OutboxRelay
   ) {}
 
   public async execute(command: CloseAccountCommand): Promise<void> {
@@ -22,5 +24,6 @@ export class CloseAccountCommandHandler implements ICommandHandler<CloseAccountC
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(account)
     })
+    await this.outboxRelay.processPending()
   }
 }

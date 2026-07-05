@@ -15,6 +15,9 @@ export class GetAccountResult {
   @ApiProperty()
   public readonly ownerId: string
 
+  @ApiProperty()
+  public readonly email: string
+
   @ApiProperty({ type: MoneyResult })
   public readonly balance: MoneyResult
 

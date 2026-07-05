@@ -11,6 +11,9 @@ export class AccountEntity {
   @Column()
   ownerId: string
 
+  @Column()
+  email: string
+
   @Column('int')
   amount: number
 
