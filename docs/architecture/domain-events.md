@@ -126,6 +126,21 @@ export class OrderCancelledIntegrationEventV1 {
 
 ---
 
+### Task Queue vs Domain Event
+
+둘 다 비동기 처리이지만 **용도와 의미 단위**가 다르다.
+
+| | Domain Event | Task Queue |
+|---|---|---|
+| 의미 단위 | 사실(past): "X가 일어났다" | 명령(imperative): "X를 수행하라" |
+| 생산 주체 | Aggregate (도메인 메서드 내부) | Scheduler / Application Service |
+| 핸들러 수 | 1:N (하나의 이벤트를 여러 핸들러가 구독) | 1:1 (taskType당 하나의 핸들러) |
+| 예시 | `OrderCancelled` → 환불·재고 복원·알림 동시 처리 | 만료 주문 정리 배치, 알림 재전송 |
+
+**판단 기준:** "이건 Command 실행의 결과를 관찰하는 것인가?" → Domain Event. "이 작업을 비동기로 실행하고 싶다" → Task Queue.
+
+---
+
 ### 이벤트 핸들러 멱등성
 
 메시지 큐는 **at-least-once delivery**를 보장한다. 즉 같은 이벤트가 두 번 이상 전달될 수 있다. EventHandler는 반드시 멱등하게 구현해야 한다.

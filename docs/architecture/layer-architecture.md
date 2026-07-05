@@ -137,6 +137,43 @@ OrderQuery (abstract)        ←  OrderQueryImpl (구현체)
 
 → 프레임워크별 DI 연결 방법은 `docs/implementations/` 참조
 
+#### 트랜잭션 전파 — AsyncLocalStorage 패턴
+
+여러 Repository에 걸친 쓰기 작업을 하나의 트랜잭션으로 묶을 때, 트랜잭션 클라이언트를 **함수 인자 없이 암묵적으로 전파**하는 패턴이다.
+
+```typescript
+// 개념 — TransactionManager
+const transactionStorage = new AsyncLocalStorage<TxClient>()
+
+class TransactionManager {
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    return db.transaction((txClient) =>
+      transactionStorage.run(txClient, fn)  // 콜백 내부에서 txClient를 ALS로 전파
+    )
+  }
+
+  getClient(): TxClient {
+    return transactionStorage.getStore() ?? db.defaultClient  // ALS에 있으면 tx 클라이언트, 없으면 기본 클라이언트
+  }
+}
+```
+
+```typescript
+// Application Service
+await transactionManager.run(async () => {
+  await paymentRepository.deletePaymentMethods(order.orderId)  // tx 안에서 실행
+  await orderRepository.saveOrder(order)                        // 같은 tx
+})
+
+// Repository 구현체 (인자로 tx를 받지 않아도 됨)
+public async saveOrder(order: Order): Promise<void> {
+  const client = transactionManager.getClient()  // ALS에서 자동으로 tx 클라이언트 획득
+  await client.save(...)
+}
+```
+
+**장점:** Application Service가 트랜잭션 클라이언트를 Repository에 직접 전달하지 않아도 된다. Repository 인터페이스가 트랜잭션 개념에 오염되지 않는다. 트랜잭션 바깥에서 호출하면 기본 클라이언트를 사용하므로 자연스럽게 동작한다.
+
 ---
 
 ### Interface 레이어
