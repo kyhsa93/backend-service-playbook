@@ -21,6 +21,10 @@ class Account protected constructor() {
     var ownerId: String = ""
         private set
 
+    @Column(nullable = false)
+    var email: String = ""
+        private set
+
     @Embedded
     var balance: Money = Money(0, "")
         private set
@@ -49,15 +53,16 @@ class Account protected constructor() {
     private val pendingTransactions: MutableList<Transaction> = mutableListOf()
 
     companion object {
-        fun create(ownerId: String, currency: String): Account =
+        fun create(ownerId: String, currency: String, email: String): Account =
             Account().apply {
                 this.accountId = UUID.randomUUID().toString()
                 this.ownerId = ownerId
+                this.email = email
                 this.balance = Money(0, currency)
                 this.status = AccountStatus.ACTIVE
                 this.createdAt = LocalDateTime.now()
                 this.updatedAt = this.createdAt
-                this.domainEvents += AccountCreatedEvent(this.accountId, ownerId, currency, this.createdAt)
+                this.domainEvents += AccountCreatedEvent(this.accountId, ownerId, email, currency, this.createdAt)
             }
     }
 
@@ -69,7 +74,7 @@ class Account protected constructor() {
         updatedAt = LocalDateTime.now()
         val transaction = Transaction.create(accountId, TransactionType.DEPOSIT, money)
         pendingTransactions += transaction
-        domainEvents += MoneyDepositedEvent(accountId, transaction.transactionId, money, balance, transaction.createdAt)
+        domainEvents += MoneyDepositedEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt)
         return transaction
     }
 
@@ -82,7 +87,7 @@ class Account protected constructor() {
         updatedAt = LocalDateTime.now()
         val transaction = Transaction.create(accountId, TransactionType.WITHDRAWAL, money)
         pendingTransactions += transaction
-        domainEvents += MoneyWithdrawnEvent(accountId, transaction.transactionId, money, balance, transaction.createdAt)
+        domainEvents += MoneyWithdrawnEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt)
         return transaction
     }
 
@@ -90,14 +95,14 @@ class Account protected constructor() {
         if (status != AccountStatus.ACTIVE) throw SuspendRequiresActiveAccountException()
         status = AccountStatus.SUSPENDED
         updatedAt = LocalDateTime.now()
-        domainEvents += AccountSuspendedEvent(accountId, updatedAt)
+        domainEvents += AccountSuspendedEvent(accountId, email, updatedAt)
     }
 
     fun reactivate() {
         if (status != AccountStatus.SUSPENDED) throw ReactivateRequiresSuspendedAccountException()
         status = AccountStatus.ACTIVE
         updatedAt = LocalDateTime.now()
-        domainEvents += AccountReactivatedEvent(accountId, updatedAt)
+        domainEvents += AccountReactivatedEvent(accountId, email, updatedAt)
     }
 
     fun close() {
@@ -105,7 +110,7 @@ class Account protected constructor() {
         if (!balance.isZero()) throw AccountBalanceNotZeroException()
         status = AccountStatus.CLOSED
         updatedAt = LocalDateTime.now()
-        domainEvents += AccountClosedEvent(accountId, updatedAt)
+        domainEvents += AccountClosedEvent(accountId, email, updatedAt)
     }
 
     fun pullDomainEvents(): List<Any> = domainEvents.toList().also { domainEvents.clear() }

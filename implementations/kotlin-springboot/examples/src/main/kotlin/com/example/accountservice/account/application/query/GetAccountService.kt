@@ -15,6 +15,7 @@ class GetAccountService(private val accountRepository: AccountRepository) {
         return GetAccountResult(
             accountId = account.accountId,
             ownerId = account.ownerId,
+            email = account.email,
             balance = GetAccountResult.MoneyResult(account.balance.amount, account.balance.currency),
             status = account.status.name,
             createdAt = account.createdAt,

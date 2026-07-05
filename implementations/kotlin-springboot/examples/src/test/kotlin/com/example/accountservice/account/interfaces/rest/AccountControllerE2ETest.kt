@@ -1,7 +1,10 @@
 package com.example.accountservice.account.interfaces.rest
 
 import com.example.accountservice.AccountServiceApplication
+import com.example.accountservice.notification.SentEmailJpaRepository
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -15,8 +18,19 @@ import org.springframework.http.ResponseEntity
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.containers.localstack.LocalStackContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.ses.SesClient
+import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 
 @Testcontainers
 @SpringBootTest(
@@ -26,9 +40,17 @@ import org.testcontainers.junit.jupiter.Testcontainers
 class AccountControllerE2ETest {
 
     companion object {
+        private const val SENDER_EMAIL = "no-reply@backend-service-playbook.example.com"
+
         @Container
         @JvmStatic
         val postgres = PostgreSQLContainer("postgres:16-alpine")
+
+        @Container
+        @JvmStatic
+        val localstack: LocalStackContainer =
+            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
+                .withServices(LocalStackContainer.Service.SES)
 
         @DynamicPropertySource
         @JvmStatic
@@ -37,6 +59,26 @@ class AccountControllerE2ETest {
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("spring.jpa.hibernate.ddl-auto") { "create-drop" }
+            registry.add("AWS_REGION") { localstack.region }
+            registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
+            registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
+            registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
+        }
+
+        @BeforeAll
+        @JvmStatic
+        fun verifySesSender() {
+            // LocalStack의 SES 에뮬레이터도 실제 SES처럼 발신자 신원 검증을 강제하므로,
+            // 테스트에서 이메일을 보내기 전에 발신 주소를 미리 인증해 둔다.
+            val sesClient = SesClient.builder()
+                .region(Region.of(localstack.region))
+                .credentialsProvider(
+                    StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                )
+                .endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SES))
+                .build()
+            sesClient.verifyEmailIdentity(VerifyEmailIdentityRequest.builder().emailAddress(SENDER_EMAIL).build())
+            sesClient.close()
         }
 
         private const val OWNER_ID = "owner-1"
@@ -45,6 +87,9 @@ class AccountControllerE2ETest {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
+
+    @Autowired
+    private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
 
     private fun headersFor(ownerId: String): HttpHeaders {
         val headers = HttpHeaders()
@@ -59,19 +104,32 @@ class AccountControllerE2ETest {
     private fun get(path: String, ownerId: String): ResponseEntity<Map<*, *>> =
         restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
 
-    private fun createAccount(ownerId: String, currency: String): Map<*, *> {
-        val response = post("/accounts", ownerId, mapOf("currency" to currency))
+    private fun createAccount(ownerId: String, currency: String, email: String = "$ownerId@example.com"): Map<*, *> {
+        val response = post("/accounts", ownerId, mapOf("currency" to currency, "email" to email))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         return response.body!!
     }
 
+    private fun fetchSesMessages(): List<Map<String, Any>> {
+        val endpoint = localstack.getEndpointOverride(LocalStackContainer.Service.SES)
+        val client = HttpClient.newHttpClient()
+        val request = HttpRequest.newBuilder(URI.create("$endpoint/_aws/ses")).GET().build()
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        val mapper = jacksonObjectMapper()
+        @Suppress("UNCHECKED_CAST")
+        val root = mapper.readValue(response.body(), Map::class.java) as Map<String, Any>
+        @Suppress("UNCHECKED_CAST")
+        return root["messages"] as? List<Map<String, Any>> ?: emptyList()
+    }
+
     @Test
     fun `생성 요청이 유효하면 201과 계좌 정보를 반환한다`() {
-        val response = post("/accounts", OWNER_ID, mapOf("currency" to "KRW"))
+        val response = post("/accounts", OWNER_ID, mapOf("currency" to "KRW", "email" to "$OWNER_ID@example.com"))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         val body = response.body!!
         assertThat(body["ownerId"]).isEqualTo(OWNER_ID)
+        assertThat(body["email"]).isEqualTo("$OWNER_ID@example.com")
         assertThat(body["status"]).isEqualTo("ACTIVE")
         assertThat(body["accountId"]).isNotNull()
         assertThat(body["createdAt"]).isNotNull()
@@ -79,6 +137,54 @@ class AccountControllerE2ETest {
         val balance = body["balance"] as Map<String, Any>
         assertThat(balance["amount"]).isEqualTo(0)
         assertThat(balance["currency"]).isEqualTo("KRW")
+    }
+
+    @Test
+    fun `이메일 형식이 올바르지 않으면 400을 반환한다`() {
+        val response = post("/accounts", OWNER_ID, mapOf("currency" to "KRW", "email" to "not-an-email"))
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
+    fun `계좌를 생성하면 알림 이메일이 발송되고 발송 기록이 저장된다`() {
+        val email = "notify-created@example.com"
+
+        val account = createAccount(OWNER_ID, "KRW", email)
+        val accountId = account["accountId"] as String
+
+        val messages = fetchSesMessages()
+        val matched = messages.firstOrNull { message ->
+            @Suppress("UNCHECKED_CAST")
+            val destination = message["Destination"] as Map<String, Any>
+            @Suppress("UNCHECKED_CAST")
+            val toAddresses = destination["ToAddresses"] as List<String>
+            toAddresses.contains(email)
+        }
+        assertThat(matched).isNotNull()
+        val messageId = matched!!["Id"] as String
+
+        val sentEmails = sentEmailJpaRepository.findByAccountId(accountId)
+        assertThat(sentEmails).anySatisfy { sentEmail ->
+            assertThat(sentEmail.eventType).isEqualTo("AccountCreated")
+            assertThat(sentEmail.recipient).isEqualTo(email)
+            assertThat(sentEmail.sesMessageId).isEqualTo(messageId)
+        }
+    }
+
+    @Test
+    fun `입금하면 알림 이메일이 발송되고 발송 기록이 저장된다`() {
+        val email = "notify-deposit@example.com"
+        val account = createAccount(OWNER_ID, "KRW", email)
+        val accountId = account["accountId"] as String
+
+        post("/accounts/$accountId/deposit", OWNER_ID, mapOf("amount" to 10000))
+
+        val sentEmails = sentEmailJpaRepository.findByAccountId(accountId)
+        assertThat(sentEmails).anySatisfy { sentEmail ->
+            assertThat(sentEmail.eventType).isEqualTo("MoneyDeposited")
+            assertThat(sentEmail.recipient).isEqualTo(email)
+            assertThat(sentEmail.sesMessageId).isNotBlank()
+        }
     }
 
     @Test

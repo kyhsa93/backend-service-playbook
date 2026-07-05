@@ -20,6 +20,7 @@ import com.example.accountservice.account.application.query.GetTransactionsResul
 import com.example.accountservice.account.application.query.GetTransactionsService
 import com.example.accountservice.account.domain.AccountException
 import com.example.accountservice.account.domain.AccountNotFoundException
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -41,8 +42,9 @@ class AccountController(
     @ResponseStatus(HttpStatus.CREATED)
     fun createAccount(
         @RequestHeader("X-User-Id") requesterId: String,
-        @RequestBody request: CreateAccountRequest,
-    ): CreateAccountResult = createAccountService.create(CreateAccountCommand(requesterId, request.currency))
+        @Valid @RequestBody request: CreateAccountRequest,
+    ): CreateAccountResult =
+        createAccountService.create(CreateAccountCommand(requesterId, request.currency, request.email))
 
     @PostMapping("/{accountId}/deposit")
     @ResponseStatus(HttpStatus.CREATED)

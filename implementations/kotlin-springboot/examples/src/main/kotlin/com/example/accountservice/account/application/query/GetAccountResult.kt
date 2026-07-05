@@ -5,6 +5,7 @@ import java.time.LocalDateTime
 data class GetAccountResult(
     val accountId: String,
     val ownerId: String,
+    val email: String,
     val balance: MoneyResult,
     val status: String,
     val createdAt: LocalDateTime,
