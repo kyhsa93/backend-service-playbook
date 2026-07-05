@@ -13,17 +13,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ses"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/localstack"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/persistence"
 	httphandler "github.com/example/account-service/internal/interface/http"
 )
 
-var testServer *httptest.Server
+var (
+	testServer     *httptest.Server
+	testDB         *sql.DB
+	localstackHTTP string // LocalStack 컨테이너의 base URL (예: http://localhost:32771)
+)
 
 const (
 	ownerID      = "owner-1"
@@ -37,7 +45,7 @@ func TestMain(m *testing.M) {
 func runTests(m *testing.M) int {
 	ctx := context.Background()
 
-	container, err := postgres.Run(ctx, "postgres:16-alpine",
+	pgContainer, err := postgres.Run(ctx, "postgres:16-alpine",
 		postgres.WithDatabase("account_test"),
 		postgres.WithUsername("test"),
 		postgres.WithPassword("test"),
@@ -48,9 +56,9 @@ func runTests(m *testing.M) int {
 	if err != nil {
 		panic(fmt.Sprintf("failed to start postgres container: %v", err))
 	}
-	defer container.Terminate(ctx)
+	defer pgContainer.Terminate(ctx)
 
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		panic(err)
 	}
@@ -60,21 +68,61 @@ func runTests(m *testing.M) int {
 		panic(err)
 	}
 	defer db.Close()
+	testDB = db
 
 	if err := waitForDB(db, 30, time.Second); err != nil {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	schema, err := os.ReadFile(filepath.Join("..", "migrations", "0001_init.sql"))
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql"} {
+		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
+		if err != nil {
+			panic(err)
+		}
+		if _, err := db.Exec(string(schema)); err != nil {
+			panic(fmt.Sprintf("failed to apply migration %s: %v", migration, err))
+		}
+	}
+
+	// LocalStack로 SES를 에뮬레이션한다. 반드시 3.0(무료 Community 태그)을 고정한다 —
+	// :latest는 유료 라이선스를 요구해 컨테이너가 즉시 종료된다.
+	localstackContainer, err := localstack.Run(ctx, "localstack/localstack:3.0",
+		testcontainers.WithEnv(map[string]string{"SERVICES": "ses"}),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to start localstack container: %v", err))
+	}
+	defer testcontainers.TerminateContainer(localstackContainer)
+
+	host, err := localstackContainer.Host(ctx)
 	if err != nil {
 		panic(err)
 	}
-	if _, err := db.Exec(string(schema)); err != nil {
-		panic(fmt.Sprintf("failed to apply schema: %v", err))
+	port, err := localstackContainer.MappedPort(ctx, "4566/tcp")
+	if err != nil {
+		panic(err)
+	}
+	localstackHTTP = fmt.Sprintf("http://%s:%s", host, port.Port())
+
+	// 프로덕션과 동일한 경로(환경변수 → notification.NewSESClient())로 SES 클라이언트를 만든다.
+	os.Setenv("AWS_ENDPOINT_URL", localstackHTTP)
+	os.Setenv("AWS_REGION", "us-east-1")
+	os.Setenv("AWS_ACCESS_KEY_ID", "test")
+	os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	sesClient := notification.NewSESClient()
+
+	// 실제 SES와 마찬가지로 LocalStack의 SES 에뮬레이터도 발신자 검증을 요구한다 —
+	// 검증하지 않으면 MessageRejected: Email address not verified로 실패한다.
+	if _, err := sesClient.VerifyEmailIdentity(ctx, &ses.VerifyEmailIdentityInput{
+		EmailAddress: aws.String(notification.SenderEmail()),
+	}); err != nil {
+		panic(fmt.Sprintf("failed to verify sender identity: %v", err))
 	}
 
+	notifier := notification.NewService(sesClient, db)
+
 	repo := persistence.NewAccountRepository(db)
-	mux := httphandler.NewRouter(repo)
+	mux := httphandler.NewRouter(repo, notifier)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
@@ -126,24 +174,43 @@ func decodeBody(t *testing.T, resp *http.Response) map[string]any {
 
 func createAccount(t *testing.T, ownerID, currency string) map[string]any {
 	t.Helper()
-	resp := doRequest(t, http.MethodPost, "/accounts", ownerID, map[string]string{"currency": currency})
+	return createAccountWithEmail(t, ownerID, ownerID+"@example.com", currency)
+}
+
+func createAccountWithEmail(t *testing.T, ownerID, email, currency string) map[string]any {
+	t.Helper()
+	resp := doRequest(t, http.MethodPost, "/accounts", ownerID,
+		map[string]string{"email": email, "currency": currency})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	return decodeBody(t, resp)
 }
 
 func TestCreateAccount(t *testing.T) {
 	t.Run("생성_요청이_유효하면_201과_계좌_정보를_반환한다", func(t *testing.T) {
-		resp := doRequest(t, http.MethodPost, "/accounts", ownerID, map[string]string{"currency": "KRW"})
+		resp := doRequest(t, http.MethodPost, "/accounts", ownerID,
+			map[string]string{"email": ownerID + "@example.com", "currency": "KRW"})
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 		body := decodeBody(t, resp)
 		require.Equal(t, ownerID, body["ownerId"])
+		require.Equal(t, ownerID+"@example.com", body["email"])
 		require.Equal(t, "ACTIVE", body["status"])
 		require.NotEmpty(t, body["accountId"])
 		require.NotEmpty(t, body["createdAt"])
 		balance := body["balance"].(map[string]any)
 		require.Equal(t, float64(0), balance["amount"])
 		require.Equal(t, "KRW", balance["currency"])
+	})
+
+	t.Run("email이_비어있으면_400을_반환한다", func(t *testing.T) {
+		resp := doRequest(t, http.MethodPost, "/accounts", ownerID, map[string]string{"currency": "KRW"})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("email_형식이_유효하지_않으면_400을_반환한다", func(t *testing.T) {
+		resp := doRequest(t, http.MethodPost, "/accounts", ownerID,
+			map[string]string{"email": "not-an-email", "currency": "KRW"})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 }
 

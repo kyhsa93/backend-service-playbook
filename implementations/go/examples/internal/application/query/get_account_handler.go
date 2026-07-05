@@ -28,6 +28,7 @@ func (h *GetAccountHandler) Handle(ctx context.Context, q GetAccountQuery) (*Get
 	return &GetAccountResult{
 		AccountID: a.AccountID,
 		OwnerID:   a.OwnerID,
+		Email:     a.Email,
 		Balance:   MoneyResult{Amount: a.Balance.Amount, Currency: a.Balance.Currency},
 		Status:    string(a.Status),
 		CreatedAt: a.CreatedAt,

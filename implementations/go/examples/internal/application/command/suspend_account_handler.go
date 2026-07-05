@@ -13,11 +13,12 @@ type SuspendAccountCommand struct {
 }
 
 type SuspendAccountHandler struct {
-	repo account.Repository
+	repo     account.Repository
+	notifier Notifier
 }
 
-func NewSuspendAccountHandler(repo account.Repository) *SuspendAccountHandler {
-	return &SuspendAccountHandler{repo: repo}
+func NewSuspendAccountHandler(repo account.Repository, notifier Notifier) *SuspendAccountHandler {
+	return &SuspendAccountHandler{repo: repo, notifier: notifier}
 }
 
 func (h *SuspendAccountHandler) Handle(ctx context.Context, cmd SuspendAccountCommand) error {
@@ -28,5 +29,9 @@ func (h *SuspendAccountHandler) Handle(ctx context.Context, cmd SuspendAccountCo
 	if err := a.Suspend(); err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, a)
+	if err := h.repo.Save(ctx, a); err != nil {
+		return err
+	}
+	notify(ctx, h.notifier, a)
+	return nil
 }

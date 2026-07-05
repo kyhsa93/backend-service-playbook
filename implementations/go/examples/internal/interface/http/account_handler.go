@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/query"
@@ -51,8 +52,13 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+	if !isValidEmail(body.Email) {
+		http.Error(w, "email must be a valid, non-empty email address", http.StatusBadRequest)
+		return
+	}
 	a, err := h.createAccount.Handle(r.Context(), command.CreateAccountCommand{
 		RequesterID: requesterID,
+		Email:       body.Email,
 		Currency:    body.Currency,
 	})
 	if err != nil {
@@ -64,10 +70,25 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(CreateAccountResponse{
 		AccountID: a.AccountID,
 		OwnerID:   a.OwnerID,
+		Email:     a.Email,
 		Balance:   MoneyResponse{Amount: a.Balance.Amount, Currency: a.Balance.Currency},
 		Status:    string(a.Status),
 		CreatedAt: a.CreatedAt,
 	})
+}
+
+// isValidEmail은 표준 라이브러리만으로 처리 가능한 최소한의 형식 검증을 한다.
+// 별도 의존성을 추가하지 않기 위한 의도적으로 단순한 체크다.
+func isValidEmail(email string) bool {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false
+	}
+	at := strings.Index(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return false
+	}
+	return strings.Contains(email[at+1:], ".")
 }
 
 func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +201,7 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(GetAccountResponse{
 		AccountID: result.AccountID,
 		OwnerID:   result.OwnerID,
+		Email:     result.Email,
 		Balance:   MoneyResponse{Amount: result.Balance.Amount, Currency: result.Balance.Currency},
 		Status:    result.Status,
 		CreatedAt: result.CreatedAt,

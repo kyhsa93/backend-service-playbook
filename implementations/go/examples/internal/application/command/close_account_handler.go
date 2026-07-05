@@ -13,11 +13,12 @@ type CloseAccountCommand struct {
 }
 
 type CloseAccountHandler struct {
-	repo account.Repository
+	repo     account.Repository
+	notifier Notifier
 }
 
-func NewCloseAccountHandler(repo account.Repository) *CloseAccountHandler {
-	return &CloseAccountHandler{repo: repo}
+func NewCloseAccountHandler(repo account.Repository, notifier Notifier) *CloseAccountHandler {
+	return &CloseAccountHandler{repo: repo, notifier: notifier}
 }
 
 func (h *CloseAccountHandler) Handle(ctx context.Context, cmd CloseAccountCommand) error {
@@ -28,5 +29,9 @@ func (h *CloseAccountHandler) Handle(ctx context.Context, cmd CloseAccountComman
 	if err := a.Close(); err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, a)
+	if err := h.repo.Save(ctx, a); err != nil {
+		return err
+	}
+	notify(ctx, h.notifier, a)
+	return nil
 }

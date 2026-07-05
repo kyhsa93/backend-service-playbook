@@ -23,14 +23,14 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 
 func (r *AccountRepository) FindByID(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, owner_id, amount, currency, status, created_at, updated_at
+		`SELECT id, owner_id, email, amount, currency, status, created_at, updated_at
 		 FROM accounts WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
 		accountID, ownerID,
 	)
-	var id, ownerIDCol, currency, status string
+	var id, ownerIDCol, email, currency, status string
 	var amount int64
 	var createdAt, updatedAt time.Time
-	if err := row.Scan(&id, &ownerIDCol, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&id, &ownerIDCol, &email, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, account.ErrNotFound
 		}
@@ -40,7 +40,7 @@ func (r *AccountRepository) FindByID(ctx context.Context, accountID, ownerID str
 	if err != nil {
 		return nil, err
 	}
-	return account.Reconstitute(id, ownerIDCol, balance, account.Status(status), createdAt, updatedAt), nil
+	return account.Reconstitute(id, ownerIDCol, email, balance, account.Status(status), createdAt, updatedAt), nil
 }
 
 func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
@@ -79,7 +79,7 @@ func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([
 
 	args = append(args, q.Take, q.Page*q.Take)
 	rows, err := r.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT id, owner_id, amount, currency, status, created_at, updated_at
+		fmt.Sprintf(`SELECT id, owner_id, email, amount, currency, status, created_at, updated_at
 		 FROM accounts WHERE %s ORDER BY id DESC LIMIT $%d OFFSET $%d`, whereClause, i, i+1),
 		args...,
 	)
@@ -90,17 +90,17 @@ func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([
 
 	var accounts []*account.Account
 	for rows.Next() {
-		var id, ownerID, currency, status string
+		var id, ownerID, email, currency, status string
 		var amount int64
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&id, &ownerID, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &ownerID, &email, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
 			return nil, 0, err
 		}
 		balance, err := account.NewMoney(amount, currency)
 		if err != nil {
 			return nil, 0, err
 		}
-		accounts = append(accounts, account.Reconstitute(id, ownerID, balance, account.Status(status), createdAt, updatedAt))
+		accounts = append(accounts, account.Reconstitute(id, ownerID, email, balance, account.Status(status), createdAt, updatedAt))
 	}
 	return accounts, total, rows.Err()
 }
@@ -113,10 +113,10 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO accounts (id, owner_id, amount, currency, status, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, NOW())
+		`INSERT INTO accounts (id, owner_id, email, amount, currency, status, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		 ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, status = EXCLUDED.status, updated_at = NOW()`,
-		a.AccountID, a.OwnerID, a.Balance.Amount, a.Balance.Currency, string(a.Status),
+		a.AccountID, a.OwnerID, a.Email, a.Balance.Amount, a.Balance.Currency, string(a.Status),
 	)
 	if err != nil {
 		return fmt.Errorf("save account: %w", err)

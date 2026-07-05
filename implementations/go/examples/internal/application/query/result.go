@@ -10,6 +10,7 @@ type MoneyResult struct {
 type GetAccountResult struct {
 	AccountID string
 	OwnerID   string
+	Email     string
 	Balance   MoneyResult
 	Status    string
 	CreatedAt time.Time

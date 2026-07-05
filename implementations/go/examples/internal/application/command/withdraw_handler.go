@@ -14,11 +14,12 @@ type WithdrawCommand struct {
 }
 
 type WithdrawHandler struct {
-	repo account.Repository
+	repo     account.Repository
+	notifier Notifier
 }
 
-func NewWithdrawHandler(repo account.Repository) *WithdrawHandler {
-	return &WithdrawHandler{repo: repo}
+func NewWithdrawHandler(repo account.Repository, notifier Notifier) *WithdrawHandler {
+	return &WithdrawHandler{repo: repo, notifier: notifier}
 }
 
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*account.Transaction, error) {
@@ -33,5 +34,6 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*acc
 	if err := h.repo.Save(ctx, a); err != nil {
 		return nil, err
 	}
+	notify(ctx, h.notifier, a)
 	return &tx, nil
 }

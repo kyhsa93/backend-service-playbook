@@ -3,6 +3,7 @@ package http
 import "time"
 
 type CreateAccountRequest struct {
+	Email    string `json:"email"`
 	Currency string `json:"currency"`
 }
 
@@ -22,6 +23,7 @@ type MoneyResponse struct {
 type CreateAccountResponse struct {
 	AccountID string        `json:"accountId"`
 	OwnerID   string        `json:"ownerId"`
+	Email     string        `json:"email"`
 	Balance   MoneyResponse `json:"balance"`
 	Status    string        `json:"status"`
 	CreatedAt time.Time     `json:"createdAt"`
@@ -38,6 +40,7 @@ type TransactionResponse struct {
 type GetAccountResponse struct {
 	AccountID string        `json:"accountId"`
 	OwnerID   string        `json:"ownerId"`
+	Email     string        `json:"email"`
 	Balance   MoneyResponse `json:"balance"`
 	Status    string        `json:"status"`
 	CreatedAt time.Time     `json:"createdAt"`

@@ -9,6 +9,7 @@ import (
 type Account struct {
 	AccountID    string
 	OwnerID      string
+	Email        string
 	Balance      Money
 	Status       Status
 	CreatedAt    time.Time
@@ -17,11 +18,12 @@ type Account struct {
 	transactions []Transaction
 }
 
-func New(ownerID, currency string) *Account {
+func New(ownerID, email, currency string) *Account {
 	now := time.Now()
 	a := &Account{
 		AccountID: uuid.NewString(),
 		OwnerID:   ownerID,
+		Email:     email,
 		Balance:   Money{Amount: 0, Currency: currency},
 		Status:    StatusActive,
 		CreatedAt: now,
@@ -30,16 +32,18 @@ func New(ownerID, currency string) *Account {
 	a.events = append(a.events, AccountCreated{
 		AccountID: a.AccountID,
 		OwnerID:   a.OwnerID,
+		Email:     a.Email,
 		Currency:  currency,
 		CreatedAt: now,
 	})
 	return a
 }
 
-func Reconstitute(accountID, ownerID string, balance Money, status Status, createdAt, updatedAt time.Time) *Account {
+func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt time.Time) *Account {
 	return &Account{
 		AccountID: accountID,
 		OwnerID:   ownerID,
+		Email:     email,
 		Balance:   balance,
 		Status:    status,
 		CreatedAt: createdAt,
@@ -67,6 +71,7 @@ func (a *Account) Deposit(amount int64) (Transaction, error) {
 	a.transactions = append(a.transactions, tx)
 	a.events = append(a.events, MoneyDeposited{
 		AccountID:     a.AccountID,
+		Email:         a.Email,
 		TransactionID: tx.TransactionID,
 		Amount:        money,
 		BalanceAfter:  a.Balance,
@@ -98,6 +103,7 @@ func (a *Account) Withdraw(amount int64) (Transaction, error) {
 	a.transactions = append(a.transactions, tx)
 	a.events = append(a.events, MoneyWithdrawn{
 		AccountID:     a.AccountID,
+		Email:         a.Email,
 		TransactionID: tx.TransactionID,
 		Amount:        money,
 		BalanceAfter:  a.Balance,
@@ -111,7 +117,7 @@ func (a *Account) Suspend() error {
 		return ErrSuspendRequiresActiveAccount
 	}
 	a.Status = StatusSuspended
-	a.events = append(a.events, AccountSuspended{AccountID: a.AccountID, SuspendedAt: time.Now()})
+	a.events = append(a.events, AccountSuspended{AccountID: a.AccountID, Email: a.Email, SuspendedAt: time.Now()})
 	return nil
 }
 
@@ -120,7 +126,7 @@ func (a *Account) Reactivate() error {
 		return ErrReactivateRequiresSuspendedAccount
 	}
 	a.Status = StatusActive
-	a.events = append(a.events, AccountReactivated{AccountID: a.AccountID, ReactivatedAt: time.Now()})
+	a.events = append(a.events, AccountReactivated{AccountID: a.AccountID, Email: a.Email, ReactivatedAt: time.Now()})
 	return nil
 }
 
@@ -132,7 +138,7 @@ func (a *Account) Close() error {
 		return ErrBalanceNotZero
 	}
 	a.Status = StatusClosed
-	a.events = append(a.events, AccountClosed{AccountID: a.AccountID, ClosedAt: time.Now()})
+	a.events = append(a.events, AccountClosed{AccountID: a.AccountID, Email: a.Email, ClosedAt: time.Now()})
 	return nil
 }
 

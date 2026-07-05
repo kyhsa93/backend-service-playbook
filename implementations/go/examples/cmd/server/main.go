@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/persistence"
 	httphandler "github.com/example/account-service/internal/interface/http"
 )
@@ -21,7 +22,8 @@ func main() {
 
 	// 의존성 조립 — 프레임워크 없이 생성자 체이닝
 	accountRepo := persistence.NewAccountRepository(db)
-	mux := httphandler.NewRouter(accountRepo)
+	notifier := notification.NewService(notification.NewSESClient(), db)
+	mux := httphandler.NewRouter(accountRepo, notifier)
 
 	addr := ":8080"
 	log.Printf("listening on %s", addr)
