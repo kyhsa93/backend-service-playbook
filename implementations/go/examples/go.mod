@@ -1,3 +1,3 @@
-module github.com/example/order-service
+module github.com/example/account-service
 
 go 1.22
