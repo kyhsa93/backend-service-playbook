@@ -9,6 +9,7 @@ from ...application.command.suspend_account_handler import SuspendAccountCommand
 from ...application.command.withdraw_handler import WithdrawCommand, WithdrawHandler
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
+from ....database import get_session
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from .schemas import (
     CreateAccountRequest,
@@ -23,11 +24,11 @@ from .schemas import (
 router = APIRouter(prefix="/accounts", tags=["Account"])
 
 
-def _repo(session: AsyncSession = Depends(lambda: None)) -> SqlAlchemyAccountRepository:
+def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
     return SqlAlchemyAccountRepository(session)
 
 
-@router.post("/", status_code=201, response_model=CreateAccountResponse)
+@router.post("", status_code=201, response_model=CreateAccountResponse)
 async def create_account(
     body: CreateAccountRequest,
     x_user_id: str = Header(...),

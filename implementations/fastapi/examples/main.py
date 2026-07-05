@@ -1,10 +1,23 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from src.account.domain.errors import AccountError, AccountNotFoundError
+from src.account.infrastructure.persistence.account_repository import Base
 from src.account.interface.rest.account_router import router as account_router
+from src.database import engine
 
-app = FastAPI(title="Account Service")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+
+
+app = FastAPI(title="Account Service", lifespan=lifespan)
 
 app.include_router(account_router)
 
