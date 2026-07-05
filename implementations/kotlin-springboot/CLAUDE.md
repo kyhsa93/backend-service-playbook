@@ -10,7 +10,7 @@ DDD 기반 Kotlin Spring Boot 서비스의 구현 상세를 담는다.
 | 작업 / 키워드 | 읽을 문서 |
 |---------------|----------|
 | 전체 구현 가이드 (data class, open, nullable, sealed class) | `docs/guide.md` |
-| Java Spring Boot와 공통 패턴 | `../springboot/docs/guide.md` |
+| Java Spring Boot와 공통 패턴 | `../java-springboot/docs/guide.md` |
 | 예시 코드 (Order 도메인 전체) | `examples/` |
 
 ## Kotlin Spring Boot 구현 원칙 요약
@@ -26,9 +26,5 @@ DDD 기반 Kotlin Spring Boot 서비스의 구현 상세를 담는다.
 ## 구현 검증
 
 ```bash
-# 언어 무관 기본 검사
-../../harness.sh <projectRoot>
-
-# Kotlin Spring Boot 전용 검사
 ./harness.sh <projectRoot>
 ```

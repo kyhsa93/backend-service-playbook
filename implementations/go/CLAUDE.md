@@ -25,9 +25,5 @@ DDD 기반 Go 백엔드 서비스의 구현 상세를 담는다.
 ## 구현 검증
 
 ```bash
-# 언어 무관 기본 검사
-../../harness.sh <projectRoot>
-
-# Go 전용 검사
-go run ./harness/ <projectRoot>
+./harness.sh <projectRoot>
 ```

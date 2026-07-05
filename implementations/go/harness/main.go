@@ -14,10 +14,7 @@ var (
 	passCount int
 	failCount int
 
-	snakeCase  = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*\.go$`)
-	domainDirs = map[string]bool{
-		"cmd": true, "internal": true, "pkg": true, "api": true,
-	}
+	snakeCase = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*\.go$`)
 )
 
 func pass(name string) {
@@ -48,6 +45,9 @@ func main() {
 	checkDirectoryStructure(root)
 	checkRepositoryPlacement(root)
 	checkHandlerPlacement(root)
+	checkFilePlacement(root)
+	checkSharedInfra(root)
+	checkEventPlacement(root)
 
 	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	if failCount == 0 {
@@ -69,7 +69,6 @@ func checkFileNaming(root string) {
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		// 생성된 파일 (.pb.go, _test.go 등) 제외
 		name := d.Name()
 		if strings.HasSuffix(name, "_test.go") || strings.HasSuffix(name, ".pb.go") {
 			return nil
@@ -88,7 +87,7 @@ func checkFileNaming(root string) {
 	}
 }
 
-// [2] internal/ 디렉토리 구조 검사
+// [2] internal/ 디렉토리 구조 검사 (4레이어 + CQRS)
 func checkDirectoryStructure(root string) {
 	section("directory-structure")
 	internal := filepath.Join(root, "internal")
@@ -96,7 +95,7 @@ func checkDirectoryStructure(root string) {
 		skip("internal/ 디렉토리 없음 — 검사 생략")
 		return
 	}
-	for _, sub := range []string{"domain", "application", "infrastructure"} {
+	for _, sub := range []string{"domain", "application", "infrastructure", "interface"} {
 		dir := filepath.Join(internal, sub)
 		rel, _ := filepath.Rel(root, dir)
 		if _, err := os.Stat(dir); err == nil {
@@ -105,7 +104,6 @@ func checkDirectoryStructure(root string) {
 			fail(rel+"/", "디렉토리 없음")
 		}
 	}
-	// application 하위 command/query 분리
 	for _, sub := range []string{"command", "query"} {
 		dir := filepath.Join(internal, "application", sub)
 		rel, _ := filepath.Rel(root, dir)
@@ -132,7 +130,6 @@ func checkRepositoryPlacement(root string) {
 		rel, _ := filepath.Rel(root, path)
 		src := string(content)
 
-		// interface Repository 정의 파일: domain/ 안에 있어야 함
 		if strings.Contains(src, "type") && strings.Contains(src, "interface") &&
 			strings.Contains(src, "Repository") {
 			found = true
@@ -143,7 +140,6 @@ func checkRepositoryPlacement(root string) {
 			}
 		}
 
-		// var _ XxxRepository = (*Xxx)(nil) 패턴: infrastructure/ 안에 있어야 함
 		if strings.Contains(src, "var _") && strings.Contains(src, "Repository") &&
 			strings.Contains(src, "nil") {
 			found = true
@@ -172,7 +168,8 @@ func checkHandlerPlacement(root string) {
 		rel, _ := filepath.Rel(root, path)
 		pathSlash := filepath.ToSlash(path)
 
-		if strings.HasSuffix(name, "_handler.go") {
+		if strings.HasSuffix(name, "_handler.go") &&
+			!strings.HasSuffix(name, "_event_handler.go") {
 			found = true
 			if strings.Contains(pathSlash, "/application/command/") ||
 				strings.Contains(pathSlash, "/application/query/") {
@@ -185,5 +182,114 @@ func checkHandlerPlacement(root string) {
 	})
 	if !found {
 		skip("handler 파일 없음")
+	}
+}
+
+// [5] 파일명 suffix 기반 레이어 배치 규칙
+func checkFilePlacement(root string) {
+	section("file-placement")
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		name := d.Name()
+		rel, _ := filepath.Rel(root, path)
+		pathSlash := filepath.ToSlash(path)
+
+		switch {
+		case strings.HasSuffix(name, "_task_controller.go"):
+			if strings.Contains(pathSlash, "/interface/") {
+				pass(rel)
+			} else {
+				fail(rel, "task_controller 파일은 interface/ 에 있어야 함")
+			}
+		case strings.HasSuffix(name, "_scheduler.go"):
+			if strings.Contains(pathSlash, "/infrastructure/") {
+				pass(rel)
+			} else {
+				fail(rel, "scheduler 파일은 infrastructure/ 에 있어야 함")
+			}
+		}
+		return nil
+	})
+}
+
+// [6] shared-infra: outbox·task-queue 패턴
+func checkSharedInfra(root string) {
+	section("shared-infra")
+	internal := filepath.Join(root, "internal")
+
+	hasOutboxFile := false
+	hasTaskFile := false
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		pathSlash := filepath.ToSlash(path)
+		if strings.Contains(name, "outbox") && !strings.Contains(pathSlash, "/outbox/") {
+			hasOutboxFile = true
+		}
+		if strings.Contains(name, "task_queue") && !strings.Contains(pathSlash, "/task-queue/") {
+			hasTaskFile = true
+		}
+		return nil
+	})
+
+	if hasOutboxFile {
+		outboxDir := filepath.Join(internal, "outbox")
+		if _, err := os.Stat(outboxDir); err == nil {
+			pass("internal/outbox/")
+		} else {
+			fail("internal/outbox/", "outbox 파일이 있으나 internal/outbox/ 없음")
+		}
+	} else {
+		skip("outbox 패턴 없음")
+	}
+
+	if hasTaskFile {
+		taskDir := filepath.Join(internal, "task-queue")
+		if _, err := os.Stat(taskDir); err == nil {
+			pass("internal/task-queue/")
+		} else {
+			fail("internal/task-queue/", "task 파일이 있으나 internal/task-queue/ 없음")
+		}
+	} else {
+		skip("task-queue 패턴 없음")
+	}
+}
+
+// [7] 이벤트 핸들러·인티그레이션 이벤트 배치
+func checkEventPlacement(root string) {
+	section("event-placement")
+	found := false
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		name := d.Name()
+		rel, _ := filepath.Rel(root, path)
+		pathSlash := filepath.ToSlash(path)
+
+		if strings.HasSuffix(name, "_event_handler.go") {
+			found = true
+			if strings.Contains(pathSlash, "/application/event/") {
+				pass(rel)
+			} else {
+				fail(rel, "이벤트 핸들러는 application/event/ 에 있어야 함")
+			}
+		}
+		if strings.HasSuffix(name, "_integration_event.go") {
+			found = true
+			if strings.Contains(pathSlash, "/application/integration-event/") {
+				pass(rel)
+			} else {
+				fail(rel, "integration event는 application/integration-event/ 에 있어야 함")
+			}
+		}
+		return nil
+	})
+	if !found {
+		skip("이벤트 핸들러 없음")
 	}
 }

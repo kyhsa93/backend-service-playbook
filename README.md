@@ -32,54 +32,12 @@ AGENTS.md           AI 에이전트 작업 가이드 (워크플로우·원칙)
 
 ## 하네스 사용법
 
-설치 불필요. bash/zsh가 있으면 바로 실행된다.
+각 구현체 디렉토리에 harness가 포함된다. 구조·배치·어노테이션 규칙을 모두 검사한다.
 
-```bash
-./harness.sh <projectRoot>
-```
-
-검사 항목:
-
-| 항목 | 설명 |
-|------|------|
-| structure | 도메인별 4레이어 디렉토리 존재 여부 |
-| cqrs-pattern | application/command/, application/query/ 분리 |
-| file-placement | 파일명 suffix 기반 레이어 배치 규칙 |
-| shared-infra | outbox·task-queue 패턴 사용 시 공용 모듈 존재 여부 |
-| event-placement | 이벤트 핸들러·인티그레이션 이벤트 배치 |
-
----
-
-## 구현체별 하네스
-
-각 구현체 디렉토리에는 언어별 추가 harness가 포함된다. `harness.sh` (언어 무관 기본 검사)를 먼저 실행한 뒤 구현체 harness를 이어서 실행한다.
-
-| 구현체 | 기본 harness | 구현체 harness |
-|--------|-------------|----------------|
-| NestJS | `./harness.sh <root>` | `cd implementations/nestjs/harness && npm run evaluate -- <root>` |
-| Go | `./harness.sh <root>` | `cd implementations/go/harness && go run . <root>` |
-| Spring Boot | `./harness.sh <root>` | `bash implementations/java-springboot/harness/harness.sh <root>` |
-| Kotlin Spring Boot | `./harness.sh <root>` | `bash implementations/kotlin-springboot/harness/harness.sh <root>` |
-| FastAPI | `./harness.sh <root>` | `python3 implementations/fastapi/harness/harness.py <root>` |
-
-각 구현체 harness의 상세 사용법은 해당 디렉토리의 README 참조.
-
----
-
-## 프로젝트별 harness 확장
-
-이 플레이북을 참조하는 실제 프로젝트에서 외부에서 harness를 사용하려면:
-
-```bash
-#!/usr/bin/env bash
-# <your-project>/harness-local.sh
-
-ROOT="${1:-.}"
-
-# 1. 언어 무관 기본 검사
-/path/to/backend-service-playbook/harness.sh "$ROOT"
-
-# 2. 언어별 추가 검사 (예: NestJS)
-cd /path/to/backend-service-playbook/implementations/nestjs/harness
-npm run evaluate -- "$ROOT"
-```
+| 구현체 | 실행 방법 | 사전 조건 |
+|--------|-----------|-----------|
+| NestJS | `bash implementations/nestjs/harness.sh <root>` | node |
+| Go | `bash implementations/go/harness.sh <root>` | Go 1.22+ |
+| Spring Boot (Java) | `bash implementations/java-springboot/harness.sh <root>` | 없음 |
+| Kotlin Spring Boot | `bash implementations/kotlin-springboot/harness.sh <root>` | 없음 |
+| FastAPI | `bash implementations/fastapi/harness.sh <root>` | python3 |

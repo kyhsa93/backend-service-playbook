@@ -66,23 +66,21 @@
 
 ### 1. 하네스 실행
 
-`harness.sh`는 언어 무관한 구조·배치 규칙을 검사한다.
+각 구현체 harness가 구조·배치·어노테이션 규칙을 모두 검사한다.
 
 ```bash
-./harness.sh <projectRoot>
+bash implementations/<lang>/harness.sh <projectRoot>
 ```
 
 FAIL 항목이 있으면 해당 파일을 올바른 레이어로 이동한 뒤 재실행.
 
-작업 중인 구현체에 맞춰 언어별 harness도 함께 실행한다.
-
 | 구현체 | 실행 방법 |
 |--------|-----------|
-| NestJS | `cd implementations/nestjs/harness && npm run evaluate -- <root>` |
-| Go | `cd implementations/go/harness && go run . <root>` |
-| Spring Boot | `bash implementations/java-springboot/harness/harness.sh <root>` |
-| Kotlin Spring Boot | `bash implementations/kotlin-springboot/harness/harness.sh <root>` |
-| FastAPI | `python3 implementations/fastapi/harness/harness.py <root>` |
+| NestJS | `bash implementations/nestjs/harness.sh <root>` |
+| Go | `bash implementations/go/harness.sh <root>` |
+| Spring Boot (Java) | `bash implementations/java-springboot/harness.sh <root>` |
+| Kotlin Spring Boot | `bash implementations/kotlin-springboot/harness.sh <root>` |
+| FastAPI | `bash implementations/fastapi/harness.sh <root>` |
 
 ### 2. 체크리스트 검토
 

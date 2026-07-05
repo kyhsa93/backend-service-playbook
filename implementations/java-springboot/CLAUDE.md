@@ -24,9 +24,5 @@ DDD 기반 Spring Boot(Java) 서비스의 구현 상세를 담는다.
 ## 구현 검증
 
 ```bash
-# 언어 무관 기본 검사
-../../harness.sh <projectRoot>
-
-# Spring Boot 전용 검사
 ./harness.sh <projectRoot>
 ```

@@ -28,7 +28,6 @@ else
   for f in "${JAVA_FILES[@]}"; do
     name=$(basename "$f" .java)
     rel="${f#"$ROOT/"}"
-    # PascalCase: 대문자로 시작, 영숫자만
     if echo "$name" | grep -qE '^[A-Z][A-Za-z0-9]*$'; then
       pass "$rel"
     else
@@ -81,7 +80,6 @@ for f in "${JAVA_FILES[@]}"; do
   fi
   FOUND_DOMAIN=1
   rel="${f#"$ROOT/"}"
-  # @Entity, @Embeddable, @Enumerated 는 JPA 매핑 허용 — Spring 어노테이션(@Service 등)만 금지
   if grep -qE "@Service|@Component|@Repository|@Controller|@RestController" "$f" 2>/dev/null; then
     fail "$rel" "domain/ 클래스에 Spring 어노테이션 사용 금지"
   else
@@ -106,6 +104,88 @@ for f in "${JAVA_FILES[@]}"; do
   fi
 done
 [ "$FOUND_CTRL" -eq 0 ] && skip "@RestController 없음"
+
+# ── [6] 패키지 구조 검사 (4레이어 + CQRS) ────────────────────
+section "package-structure"
+
+DOMAIN_DIRS=()
+while IFS= read -r d; do
+  DOMAIN_DIRS+=("$d")
+done < <(find "$ROOT" -type d -name "domain" -not -path "*/test/*" -not -path "*/.git/*" 2>/dev/null | sort)
+
+if [ ${#DOMAIN_DIRS[@]} -eq 0 ]; then
+  skip "domain/ 디렉토리 없음"
+else
+  for domain_dir in "${DOMAIN_DIRS[@]}"; do
+    parent=$(dirname "$domain_dir")
+    rel_parent="${parent#"$ROOT/"}"
+    for layer in application infrastructure interfaces; do
+      if [ -d "$parent/$layer" ]; then
+        pass "$rel_parent/$layer/"
+      else
+        fail "$rel_parent/$layer/" "디렉토리 없음"
+      fi
+    done
+    for sub in command query; do
+      if [ -d "$parent/application/$sub" ]; then
+        pass "$rel_parent/application/$sub/"
+      else
+        fail "$rel_parent/application/$sub/" "CQRS 디렉토리 없음"
+      fi
+    done
+  done
+fi
+
+# ── [7] shared-infra: outbox·task-queue ───────────────────────
+section "shared-infra"
+
+if find "$ROOT" -name "*Outbox*.java" -not -path "*/outbox/*" -not -path "*/test/*" 2>/dev/null | grep -q .; then
+  if find "$ROOT" -type d -name "outbox" -not -path "*/test/*" 2>/dev/null | grep -q .; then
+    pass "outbox 패키지"
+  else
+    fail "outbox 패키지" "Outbox 파일이 있으나 outbox/ 패키지 없음"
+  fi
+else
+  skip "outbox 패턴 없음"
+fi
+
+if find "$ROOT" -name "*TaskQueue*.java" -not -path "*/test/*" 2>/dev/null | grep -q .; then
+  if find "$ROOT" -type d \( -name "task-queue" -o -name "taskqueue" \) -not -path "*/test/*" 2>/dev/null | grep -q .; then
+    pass "task-queue 패키지"
+  else
+    fail "task-queue 패키지" "TaskQueue 파일이 있으나 task-queue/ 패키지 없음"
+  fi
+else
+  skip "task-queue 패턴 없음"
+fi
+
+# ── [8] event-placement ───────────────────────────────────────
+section "event-placement"
+
+FOUND_EVENT=0
+for f in "${JAVA_FILES[@]}"; do
+  name=$(basename "$f" .java)
+  rel="${f#"$ROOT/"}"
+  case "$name" in
+    *EventHandler)
+      FOUND_EVENT=1
+      if echo "$f" | grep -q "/application/event/"; then
+        pass "$rel (EventHandler)"
+      else
+        fail "$rel" "EventHandler는 application/event/ 패키지 안에 있어야 함"
+      fi
+      ;;
+    *IntegrationEvent)
+      FOUND_EVENT=1
+      if echo "$f" | grep -q "/application/integration-event/"; then
+        pass "$rel (IntegrationEvent)"
+      else
+        fail "$rel" "IntegrationEvent는 application/integration-event/ 패키지 안에 있어야 함"
+      fi
+      ;;
+  esac
+done
+[ "$FOUND_EVENT" -eq 0 ] && skip "이벤트 핸들러 없음"
 
 # ── summary ───────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

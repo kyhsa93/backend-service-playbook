@@ -24,9 +24,5 @@ DDD 기반 FastAPI(Python) 서비스의 구현 상세를 담는다.
 ## 구현 검증
 
 ```bash
-# 언어 무관 기본 검사
-../../harness.sh <projectRoot>
-
-# FastAPI 전용 검사
-python implementations/fastapi/harness/harness.py <projectRoot>
+./harness.sh <projectRoot>
 ```
