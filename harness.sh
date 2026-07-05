@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Backend Service Playbook — Harness
+# Backend Service Playbook — Base Harness
 # 설치 불필요. bash/zsh가 있으면 실행된다.
 #
 # Usage: ./harness.sh [projectRoot]
 #
 # 이 스크립트는 언어 무관한 구조·배치 규칙만 검사한다.
-# 실제 프로젝트에서는 언어·프레임워크에 맞는 추가 검사를 별도 스크립트로 구성하고
-# 이 스크립트를 호출한 뒤 이어서 실행해야 한다.
-# 구성 방법: README.md → 프로젝트별 하네스 확장
+# 구현체별 언어 하네스를 함께 실행해야 완전한 검증이 된다.
+#
+# 구현체별 추가 harness:
+#   NestJS     : cd implementations/nestjs/harness && npm run evaluate -- <root>
+#   Go         : cd implementations/go/harness && go run . <root>
+#   Spring Boot: cd implementations/springboot/harness && ./gradlew run --args="<root>"
+#   FastAPI    : cd implementations/fastapi/harness && python harness.py <root>
 
 set -uo pipefail
 

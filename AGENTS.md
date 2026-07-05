@@ -74,9 +74,14 @@
 
 FAIL 항목이 있으면 해당 파일을 올바른 레이어로 이동한 뒤 재실행.
 
-**프로젝트에 언어별 추가 검사가 구성돼 있다면 그것도 함께 실행한다.**
-언어별 추가 검사가 없다면 팀에 요청하거나 직접 구성한다.
-구성 방법은 `README.md` → 프로젝트별 하네스 확장 참조.
+작업 중인 구현체에 맞춰 언어별 harness도 함께 실행한다.
+
+| 구현체 | 실행 방법 |
+|--------|-----------|
+| NestJS | `cd implementations/nestjs/harness && npm run evaluate -- <root>` |
+| Go | `cd implementations/go/harness && go run . <root>` |
+| Spring Boot | `cd implementations/springboot/harness && ./gradlew run --args="<root>"` |
+| FastAPI | `cd implementations/fastapi/harness && python harness.py <root>` |
 
 ### 2. 체크리스트 검토
 
