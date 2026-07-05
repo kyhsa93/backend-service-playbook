@@ -163,12 +163,14 @@ fi
 section "event-placement"
 
 FOUND_EVENT=0
+declare -A EVENT_REPORTED
 for f in "${JAVA_FILES[@]}"; do
   name=$(basename "$f" .java)
   rel="${f#"$ROOT/"}"
   case "$name" in
     *EventHandler)
       FOUND_EVENT=1
+      EVENT_REPORTED["$f"]=1
       if echo "$f" | grep -q "/application/event/"; then
         pass "$rel (EventHandler)"
       else
@@ -177,6 +179,7 @@ for f in "${JAVA_FILES[@]}"; do
       ;;
     *IntegrationEvent)
       FOUND_EVENT=1
+      EVENT_REPORTED["$f"]=1
       if echo "$f" | grep -q "/application/integration-event/"; then
         pass "$rel (IntegrationEvent)"
       else
@@ -185,6 +188,23 @@ for f in "${JAVA_FILES[@]}"; do
       ;;
   esac
 done
+
+# @EventListener — Spring ApplicationEventPublisher 기반 동기 도메인 이벤트 구독 (가이드의 CQRS 패턴 절 참조).
+# 파일명이 *EventHandler/*IntegrationEvent 규칙을 따르지 않더라도 @EventListener 어노테이션이 있으면
+# 실질적인 이벤트 핸들러이므로 동일하게 application/event/ 배치 규칙을 적용한다.
+for f in "${JAVA_FILES[@]}"; do
+  [ -n "${EVENT_REPORTED["$f"]:-}" ] && continue
+  if grep -q "@EventListener" "$f" 2>/dev/null; then
+    FOUND_EVENT=1
+    rel="${f#"$ROOT/"}"
+    if echo "$f" | grep -q "/application/event/"; then
+      pass "$rel (@EventListener)"
+    else
+      fail "$rel" "@EventListener 사용 클래스는 application/event/ 패키지 안에 있어야 함"
+    fi
+  fi
+done
+
 [ "$FOUND_EVENT" -eq 0 ] && skip "이벤트 핸들러 없음"
 
 # ── summary ───────────────────────────────────────────────────
