@@ -1,5 +1,0 @@
-{
-  "name": "cqrs-pattern",
-  "applicable": true,
-  "expectedFailureRuleIds": ["cqrs.command-directory-missing", "cqrs.query-directory-missing"]
-}

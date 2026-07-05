@@ -1,5 +1,0 @@
-{
-  "name": "file-naming",
-  "applicable": true,
-  "expectedFailureRuleIds": ["file-naming.kebab-case"]
-}
