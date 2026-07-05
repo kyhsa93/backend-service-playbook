@@ -17,10 +17,11 @@ docs/
   development-process.md  설계→구현 워크플로우 (8 에이전트 역할)
 
 implementations/
-  nestjs/           NestJS (TypeScript) 구현 가이드 + 예시 + harness
-  go/               Go 구현 가이드 + 예시 + harness
-  springboot/       Spring Boot (Java) 구현 가이드 + 예시 + harness
-  fastapi/          FastAPI (Python) 구현 가이드 + 예시 + harness
+  nestjs/             NestJS (TypeScript) 구현 가이드 + 예시 + harness
+  go/                 Go 구현 가이드 + 예시 + harness
+  springboot/         Spring Boot (Java) 구현 가이드 + 예시 + harness
+  kotlin-springboot/  Kotlin Spring Boot 구현 가이드 + 예시 + harness
+  fastapi/            FastAPI (Python) 구현 가이드 + 예시 + harness
 
 harness.sh          언어 무관 구조·파일 배치 검증 스크립트
 CLAUDE.md           AI 에이전트용 문서 인덱스 (키워드 → 문서)
@@ -57,8 +58,9 @@ AGENTS.md           AI 에이전트 작업 가이드 (워크플로우·원칙)
 |--------|-------------|----------------|
 | NestJS | `./harness.sh <root>` | `cd implementations/nestjs/harness && npm run evaluate -- <root>` |
 | Go | `./harness.sh <root>` | `cd implementations/go/harness && go run . <root>` |
-| Spring Boot | `./harness.sh <root>` | `cd implementations/springboot/harness && ./gradlew run --args="<root>"` |
-| FastAPI | `./harness.sh <root>` | `cd implementations/fastapi/harness && python harness.py <root>` |
+| Spring Boot | `./harness.sh <root>` | `bash implementations/springboot/harness/harness.sh <root>` |
+| Kotlin Spring Boot | `./harness.sh <root>` | `bash implementations/kotlin-springboot/harness/harness.sh <root>` |
+| FastAPI | `./harness.sh <root>` | `python3 implementations/fastapi/harness/harness.py <root>` |
 
 각 구현체 harness의 상세 사용법은 해당 디렉토리의 README 참조.
 
