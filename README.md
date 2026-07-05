@@ -44,6 +44,49 @@ AGENTS.md           AI 에이전트 작업 가이드 (워크플로우·원칙)
 
 ---
 
+## 프로젝트별 하네스 확장
+
+`harness.sh`는 언어 무관한 구조·배치 규칙만 검사한다. 실제 프로젝트에서는 사용하는 언어와 프레임워크에 맞는 추가 검사를 직접 구성해야 한다.
+
+**추가 구성이 필요한 예시:**
+
+| 언어 / 프레임워크 | 추가할 검사 |
+|---|---|
+| TypeScript | 파일명 kebab-case, 클래스명 suffix (`Repository`, `CommandService` 등) |
+| Go | 파일명 snake_case, interface 정의 위치 |
+| Java / Spring | `@Repository`·`@Service` 어노테이션, 패키지명 규칙 |
+| Python | 파일명 snake_case, ABC 기반 추상 클래스 |
+
+**방법:** 프로젝트 레포에 별도 스크립트를 두고 `harness.sh`를 호출한 뒤 언어별 검사를 추가한다.
+
+```bash
+#!/usr/bin/env bash
+# <project>/harness-local.sh
+
+ROOT="${1:-.}"
+
+# 1. 언어 무관 기본 검사
+/path/to/backend-service-playbook/harness.sh "$ROOT"
+
+# 2. 프로젝트 언어에 맞는 추가 검사
+PASS=0; FAIL=0
+pass() { PASS=$((PASS+1)); printf "  PASS  %s\n" "$1"; }
+fail() { FAIL=$((FAIL+1)); printf "  FAIL  %s — %s\n" "$1" "$2"; }
+
+printf "\n[file-naming: TypeScript]\n"
+while IFS= read -r f; do
+  name=$(basename "$f")
+  echo "$name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*\.ts$' \
+    && pass "${f#"$ROOT/"}" \
+    || fail "${f#"$ROOT/"}" "kebab-case 규칙 위반"
+done < <(find "$ROOT/src" -name "*.ts" -type f 2>/dev/null)
+
+printf "\n%d passed, %d failed\n" "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || exit 1
+```
+
+---
+
 ## 관련 레포
 
 - [nestjs-playbook](../nestjs-playbook) — NestJS(TypeScript) 구현 가이드 + 하네스
