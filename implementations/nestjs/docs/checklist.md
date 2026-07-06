@@ -156,7 +156,7 @@
 
 ## STEP 4 — Repository 패턴
 
-**관련 문서**: [architecture/repository-pattern.md](./architecture/repository-pattern.md) · [architecture/database-queries.md](./architecture/database-queries.md)
+**관련 문서**: [architecture/repository-pattern.md](./architecture/repository-pattern.md) · [architecture/persistence.md](./architecture/persistence.md)
 
 ```
 [ ] Repository가 Aggregate Root 단위로 정의되어 있는가? (Entity/테이블 단위 X)
@@ -281,7 +281,7 @@
 
 ## STEP 8 — REST API 엔드포인트
 
-**관련 문서**: [architecture/module-pattern.md](./architecture/module-pattern.md) · [architecture/pagination.md](./architecture/pagination.md) · [architecture/rate-limiting.md](./architecture/rate-limiting.md) · [architecture/authentication.md](./architecture/authentication.md) · [architecture/middleware-interceptor.md](./architecture/middleware-interceptor.md)
+**관련 문서**: [architecture/module-pattern.md](./architecture/module-pattern.md) · [architecture/api-response.md](./architecture/api-response.md) · [architecture/rate-limiting.md](./architecture/rate-limiting.md) · [architecture/authentication.md](./architecture/authentication.md) · [architecture/cross-cutting-concerns.md](./architecture/cross-cutting-concerns.md)
 
 ```
 [ ] URL이 동사가 아닌 복수 명사 리소스로 구성되어 있는가?
@@ -400,7 +400,7 @@
 
 ## STEP 12 — DB / 인프라 패턴
 
-**관련 문서**: [architecture/database-queries.md](./architecture/database-queries.md) · [architecture/config.md](./architecture/config.md) · [architecture/secret-manager.md](./architecture/secret-manager.md) · [architecture/local-dev.md](./architecture/local-dev.md) · [architecture/dockerfile.md](./architecture/dockerfile.md) · [architecture/logging.md](./architecture/logging.md)
+**관련 문서**: [architecture/persistence.md](./architecture/persistence.md) · [architecture/config.md](./architecture/config.md) · [architecture/secret-manager.md](./architecture/secret-manager.md) · [architecture/local-dev.md](./architecture/local-dev.md) · [architecture/container.md](./architecture/container.md) · [architecture/observability.md](./architecture/observability.md)
 
 ```
 [ ] TypeORM Entity가 BaseEntity를 상속하여 createdAt, updatedAt, deletedAt 컬럼을 포함하는가?
@@ -566,7 +566,7 @@ AI Agent는 작업 완료 후 다음 순서로 자기 검토를 수행한다:
 > - STEP 9 Swagger → [conventions.md](conventions.md) 섹션 8
 > - STEP 10 import → [conventions.md](conventions.md) 섹션 7
 > - STEP 11 모듈 데코레이터 → [module-pattern.md](architecture/module-pattern.md)
-> - STEP 12 DB/인프라 → [repository-pattern.md](architecture/repository-pattern.md), [domain-events.md](architecture/domain-events.md), [database-queries.md](architecture/database-queries.md)
+> - STEP 12 DB/인프라 → [repository-pattern.md](architecture/repository-pattern.md), [domain-events.md](architecture/domain-events.md), [persistence.md](architecture/persistence.md)
 > - STEP 13 테스트 패턴 → [conventions.md](conventions.md) 섹션 13
 > - STEP 14 전체 일관성 → 전체 문서 참조
 > - STEP 15 설계 산출물 형태 → [development-process.md](development-process.md) Agent 1~5

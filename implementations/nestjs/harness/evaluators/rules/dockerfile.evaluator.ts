@@ -4,7 +4,7 @@ import * as path from 'node:path'
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 
-const DOC = 'docs/architecture/dockerfile.md'
+const DOC = 'docs/architecture/container.md'
 
 export function evaluateDockerfile(root: string): EvaluatorResult {
   const dockerfilePath = path.join(root, 'Dockerfile')

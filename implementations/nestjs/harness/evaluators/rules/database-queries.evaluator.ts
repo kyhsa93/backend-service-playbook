@@ -4,7 +4,7 @@ import * as path from 'node:path'
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 
-const DOC = 'docs/architecture/database-queries.md'
+const DOC = 'docs/architecture/persistence.md'
 
 function walkTsFiles(root: string): string[] {
   const out: string[] = []

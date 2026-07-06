@@ -26,20 +26,20 @@
 | `aggregate-id.md` | Aggregate ID value object, primitive id 직접 사용 제한 | ✅ | `aggregate-id` | Partial | ID 생성 런타임 동작은 Manual 리뷰 병행 |
 | `cross-domain.md` | 도메인 간 직접 의존 금지, Adapter 경유 | ⚠️ | `import-graph` | Partial | `cross-domain-adapter` evaluator 후보 |
 | `shared-modules.md` | Shared module 범위, 공통 모듈 남용 방지 | ⚠️ | `structure` | Partial | `shared-module` evaluator 후보 |
-| `database-queries.md` | Query/TransactionManager/Migration 규칙 | ✅ | `database-queries`, `layer-dependency`, `repository-pattern` | Partial | 마이그레이션 로직 정확성은 Manual 리뷰 병행 |
+| `persistence.md` | Query/TransactionManager/Migration 규칙 | ✅ | `database-queries`, `layer-dependency`, `repository-pattern` | Partial | 마이그레이션 로직 정확성은 Manual 리뷰 병행 |
 | `error-handling.md` | Domain HttpException 금지, ErrorCode/응답 tuple 규칙 | ✅ | `error-handling` | Covered | - |
 | `authentication.md` | Bearer JWT, Guard, public route 명시 | ✅ | `auth` | Partial | 토큰 유효성 검증 로직은 Manual 리뷰 병행 |
-| `middleware-interceptor.md` | Middleware/Guard/Interceptor/Pipe 위치와 적용 | ⚠️ | `dto-validation`, `bootstrap-healthcheck` | Partial | Guard/Interceptor 레벨 적용 규칙은 Manual 리뷰 병행 |
-| `pagination.md` | Pagination DTO, 공통 응답 포맷, limit 제한 | ✅ | `pagination` | Partial | 정렬 파라미터 유효성은 Manual 리뷰 병행 |
+| `cross-cutting-concerns.md` | Middleware/Guard/Interceptor/Pipe 위치와 적용 | ⚠️ | `dto-validation`, `bootstrap-healthcheck` | Partial | Guard/Interceptor 레벨 적용 규칙은 Manual 리뷰 병행 |
+| `api-response.md` | Pagination DTO, 공통 응답 포맷, limit 제한 | ✅ | `pagination` | Partial | 정렬 파라미터 유효성은 Manual 리뷰 병행 |
 | `rate-limiting.md` | Rate limit guard/interceptor/module 설정 | ✅ | `rate-limiting` | Partial | ttl/limit 적절성은 Manual 리뷰 병행 |
 | `testing.md` | 테스트 존재, 테스트 실행, E2E mock 최소화, nock/testcontainers 사용 | ✅ | `test-presence`, `test-run`, `e2e-quality` | Partial | 계층별 테스트 패턴·testcontainers 설정 품질은 Manual 리뷰 병행 |
-| `logging.md` | Logger 사용, console 금지, observability | ✅ | `logging` | Partial | 로그 메시지 내용·레벨 적절성은 Manual 리뷰 병행 |
+| `observability.md` | Logger 사용, console 금지, observability | ✅ | `logging` | Partial | 로그 메시지 내용·레벨 적절성은 Manual 리뷰 병행 |
 | `config.md` | 환경 변수 validation, ConfigModule 설정, process.env 직접 참조 제한 | ✅ | `config-validation` | Partial | 설정값 비즈니스 적합성은 Manual 리뷰 병행 |
 | `secret-manager.md` | 민감 값 직접 env 사용 방지, SecretService/SecretsManager 사용 | ✅ | `secret-manager` | Partial | secret 사용 경로 fixture 확장 필요 |
 | `bootstrap.md` | ValidationPipe, bootstrap 설정, Swagger, HttpExceptionFilter | ✅ | `bootstrap-healthcheck` | Partial | 설정값 비즈니스 적합성은 Manual 리뷰 병행 |
 | `graceful-shutdown.md` | shutdown hook, health/readiness/liveness | ✅ | `bootstrap-healthcheck` | Partial | 리소스 정리 로직 완전성은 Manual 리뷰 병행 |
 | `local-dev.md` | docker-compose, LocalStack, 로컬 실행 구성 | ✅ | `local-dev` | Partial | LocalStack 초기화 스크립트 로직은 Manual 리뷰 병행 |
-| `dockerfile.md` | Dockerfile 보안/멀티스테이지/빌드 규칙 | ✅ | `dockerfile` | Partial | 이미지 크기 최적화는 Manual 리뷰 병행 |
+| `container.md` | Dockerfile 보안/멀티스테이지/빌드 규칙 | ✅ | `dockerfile` | Partial | 이미지 크기 최적화는 Manual 리뷰 병행 |
 | `scheduling.md` | Cron 위치/try-catch, TaskConsumer 위치/CommandService 주입 | ✅ | `scheduler`, `task-queue` | Covered | - |
 
 ## Non-architecture guide coverage
@@ -63,7 +63,7 @@
 | `cqrs-pattern` | `cqrs-pattern.md` | command/query 분리 검증 |
 | `error-handling` | `error-handling.md` | 예외/에러 코드 규칙 검증 |
 | `test-presence` | `testing.md` | 테스트 파일 존재 검증 |
-| `dto-validation` | `middleware-interceptor.md`, API 관련 문서 | DTO validation decorator 검증 |
+| `dto-validation` | `cross-cutting-concerns.md`, API 관련 문서 | DTO validation decorator 검증 |
 | `task-queue` | `scheduling.md` | TaskConsumer 패턴 검증 |
 | `scheduler` | `scheduling.md` | Cron 위치와 예외 처리 검증 |
 | `deprecated-api` | API 문서/Swagger 규칙 | deprecated API 표시 검증 |
@@ -75,14 +75,14 @@
 | `e2e-quality` | `testing.md` | E2E jest.mock() 금지, nock/testcontainers 사용 검증 |
 | `secret-manager` | `secret-manager.md`, `config.md` | 민감 env 직접 사용 방지 |
 | `config-validation` | `config.md` | ConfigModule validate 옵션, process.env 직접 참조 제한 |
-| `logging` | `logging.md` | console 직접 사용 금지, 빈 catch 블록 감지 |
+| `logging` | `observability.md` | console 직접 사용 금지, 빈 catch 블록 감지 |
 | `auth` | `authentication.md` | @UseGuards/@Public 의도 표시, AuthGuard 존재 검증 |
 | `bootstrap-healthcheck` | `bootstrap.md`, `graceful-shutdown.md` | enableShutdownHooks, ValidationPipe 필수 검증 |
-| `dockerfile` | `dockerfile.md` | 멀티스테이지 빌드, CMD node 직접 실행, .dockerignore |
+| `dockerfile` | `container.md` | 멀티스테이지 빌드, CMD node 직접 실행, .dockerignore |
 | `local-dev` | `local-dev.md` | docker-compose postgres 서비스, healthcheck, env 파일 |
 | `rate-limiting` | `rate-limiting.md` | ThrottlerModule 설정, APP_GUARD ThrottlerGuard 전역 등록 |
-| `pagination` | `pagination.md` | page/take DTO 데코레이터, 범용 응답 키 금지 |
-| `database-queries` | `database-queries.md` | @PrimaryGeneratedColumn 금지, BaseEntity 상속, TransactionManager 존재 |
+| `pagination` | `api-response.md` | page/take DTO 데코레이터, 범용 응답 키 금지 |
+| `database-queries` | `persistence.md` | @PrimaryGeneratedColumn 금지, BaseEntity 상속, TransactionManager 존재 |
 | `domain-service` | `domain-service.md` (루트 공용, `../../docs/architecture/`) | Domain Service에 @Injectable() 금지 |
 | `aggregate-id` | `aggregate-id.md` | @PrimaryGeneratedColumn 금지, char(32) PrimaryColumn, generateId() 존재 |
 

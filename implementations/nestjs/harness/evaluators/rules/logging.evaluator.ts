@@ -1,5 +1,5 @@
 // logging evaluator — 운영 코드에서 console 직접 사용과 에러 삼킴을 검증한다
-// (guide: docs/architecture/logging.md).
+// (guide: docs/architecture/observability.md).
 //
 // Applicability: src/ 하위 TypeScript 소스가 있으면 실행 (maxScore = 15).
 //
@@ -12,7 +12,7 @@ import * as path from 'node:path'
 
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 
-const DOC_REF = 'docs/architecture/logging.md'
+const DOC_REF = 'docs/architecture/observability.md'
 const CONSOLE_PATTERN = /\bconsole\.(log|warn|error|debug|info)\s*\(/g
 const EMPTY_CATCH_PATTERN = /catch\s*\([^)]*\)\s*\{\s*\}/g
 const CATCH_BLOCK_PATTERN = /catch\s*\([^)]*\)\s*\{([\s\S]*?)\}/g

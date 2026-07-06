@@ -17,21 +17,22 @@
 |---|---|
 | [layer-architecture.md](../architecture/layer-architecture.md) | `implementations/nestjs/docs/architecture/layer-architecture.md` — @Injectable, @Module, DI 바인딩 |
 | [repository-pattern.md](../architecture/repository-pattern.md) | `implementations/nestjs/docs/architecture/repository-pattern.md` — TypeORM, @InjectRepository, NestJS DI 연결 |
-| [persistence.md](../architecture/persistence.md) | `implementations/nestjs/docs/architecture/database-queries.md` — TypeORM QueryBuilder, TransactionManager(AsyncLocalStorage), 마이그레이션 |
+| [persistence.md](../architecture/persistence.md) | `implementations/nestjs/docs/architecture/persistence.md` — TypeORM QueryBuilder, TransactionManager(AsyncLocalStorage), 마이그레이션 |
 | [domain-events.md](../architecture/domain-events.md) | `implementations/nestjs/docs/architecture/domain-events.md` — @HandleEvent, OutboxWriter, OutboxRelay, SQS |
 | [cqrs-pattern.md](../architecture/cqrs-pattern.md) | `implementations/nestjs/docs/architecture/cqrs-pattern.md` — @nestjs/cqrs, CommandBus, QueryBus |
 | [error-handling.md](../architecture/error-handling.md) | `implementations/nestjs/docs/architecture/error-handling.md` — generateErrorResponse, HttpExceptionFilter |
-| [api-response.md](../architecture/api-response.md) | `implementations/nestjs/docs/architecture/pagination.md` — page/take DTO, class-validator |
+| [api-response.md](../architecture/api-response.md) | `implementations/nestjs/docs/architecture/api-response.md` — page/take DTO, class-validator |
 | [authentication.md](../architecture/authentication.md) | `implementations/nestjs/docs/architecture/authentication.md` — JWT, AuthGuard |
-| [cross-cutting-concerns.md](../architecture/cross-cutting-concerns.md) | `implementations/nestjs/docs/architecture/middleware-interceptor.md` — Middleware, Guard, Interceptor, Pipe |
+| [cross-cutting-concerns.md](../architecture/cross-cutting-concerns.md) | `implementations/nestjs/docs/architecture/cross-cutting-concerns.md` — Middleware, Guard, Interceptor, Pipe |
 | [scheduling.md](../architecture/scheduling.md) | `implementations/nestjs/docs/architecture/scheduling.md` — @Cron, SQS Task Queue, 멱등성 |
-| [observability.md](../architecture/observability.md) | `implementations/nestjs/docs/architecture/logging.md` — structured log, Correlation ID |
+| [observability.md](../architecture/observability.md) | `implementations/nestjs/docs/architecture/observability.md` — structured log, Correlation ID |
 | [graceful-shutdown.md](../architecture/graceful-shutdown.md) | `implementations/nestjs/docs/architecture/graceful-shutdown.md` — enableShutdownHooks |
-| [container.md](../architecture/container.md) | `implementations/nestjs/docs/architecture/dockerfile.md` — 멀티스테이지 빌드 |
+| [container.md](../architecture/container.md) | `implementations/nestjs/docs/architecture/container.md` — 멀티스테이지 빌드 |
 | [config.md](../architecture/config.md) | `implementations/nestjs/docs/architecture/config.md` — ConfigModule, class-validator 환경변수 검증 |
 | [secret-manager.md](../architecture/secret-manager.md) | `implementations/nestjs/docs/architecture/secret-manager.md` — SecretsManagerClient, TTL 캐시 |
 | [local-dev.md](../architecture/local-dev.md) | `implementations/nestjs/docs/architecture/local-dev.md` — docker-compose, LocalStack |
-| [file-storage.md](../architecture/file-storage.md) | `implementations/nestjs/docs/architecture/module-pattern.md` (Presigned URL 섹션) — StorageService, S3 |
+| [file-storage.md](../architecture/file-storage.md) | `implementations/nestjs/docs/architecture/file-storage.md` — StorageService, Presigned URL, S3 |
+| [tactical-ddd.md](../architecture/tactical-ddd.md) | `implementations/nestjs/docs/architecture/tactical-ddd.md` — Money(Value Object), Account(Aggregate Root) 실제 코드 |
 | [testing.md](../architecture/testing.md) | `implementations/nestjs/docs/architecture/testing.md` — jest, SQLite in-memory / testcontainers E2E |
 | [conventions.md](../conventions.md) | `implementations/nestjs/docs/conventions.md` — 파일 네이밍, import 규칙, TypeScript 타이핑 패턴 |
 | — (NestJS 전용, 대응하는 루트 문서 없음) | `implementations/nestjs/docs/architecture/module-pattern.md` — @Module, providers, exports, 순환 의존 |
