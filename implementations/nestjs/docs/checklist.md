@@ -496,7 +496,7 @@
 
 ## STEP 15 — 설계 산출물 형태 (설계 단계 작업인 경우)
 
-**관련 문서**: [development-process.md](./development-process.md) · [reference.md](./reference.md)
+**관련 문서**: [development-process.md](../../../docs/development-process.md) (루트 공용) · [reference.md](./reference.md)
 
 > 설계 단계(RA, SD, DM, TD) 산출물을 작성한 경우에만 적용한다.
 
@@ -528,7 +528,7 @@
 
 ## STEP 16 — 가이드 수정 작업인 경우
 
-**관련 문서**: [development-process.md](./development-process.md) · [conventions.md](./conventions.md)
+**관련 문서**: [development-process.md](../../../docs/development-process.md) (루트 공용) · [conventions.md](./conventions.md)
 
 > 코드 작업이 아니라 가이드 자체를 수정하는 경우에만 적용한다.
 
@@ -569,5 +569,5 @@ AI Agent는 작업 완료 후 다음 순서로 자기 검토를 수행한다:
 > - STEP 12 DB/인프라 → [repository-pattern.md](architecture/repository-pattern.md), [domain-events.md](architecture/domain-events.md), [persistence.md](architecture/persistence.md)
 > - STEP 13 테스트 패턴 → [conventions.md](conventions.md) 섹션 13
 > - STEP 14 전체 일관성 → 전체 문서 참조
-> - STEP 15 설계 산출물 형태 → [development-process.md](development-process.md) Agent 1~5
+> - STEP 15 설계 산출물 형태 → [development-process.md](../../../docs/development-process.md) (루트 공용) Agent 1~5
 > - STEP 16 가이드 수정 → [README.md](../README.md) 가이드 관리 원칙

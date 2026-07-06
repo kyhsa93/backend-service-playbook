@@ -49,7 +49,7 @@
 | `docs/checklist.md` | 작업 후 자기 검토 체크리스트 중 기계 검증 가능한 항목 | ✅ | `checklist` | Partial | 체크리스트 변경 시 evaluator 동기화 필요 |
 | `docs/conventions.md` | 네이밍, 브랜치, 커밋, 문서 작성 규칙 | ⚠️ | `file-naming`, `controller-path` | Partial | Git/PR 규칙은 CI 또는 리뷰 정책으로 보완 |
 | `docs/reference.md` | Order 예시 기반 템플릿 구조 | ⚠️ | 여러 evaluator | Partial | 예시 전체 일관성은 Manual 리뷰 병행 |
-| `docs/development-process.md` | 에이전트 역할 기반 개발 프로세스 | ❌ | - | Manual | 프로세스 문서는 자동 검증 대상 아님 |
+| `../../../docs/development-process.md` (루트 공용) | 에이전트 역할 기반 개발 프로세스 | ❌ | - | Manual | 프로세스 문서는 자동 검증 대상 아님 |
 
 ## Evaluator coverage summary
 
