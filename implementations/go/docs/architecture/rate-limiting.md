@@ -1,0 +1,194 @@
+# Rate Limiting (Go)
+
+Go 전용 문서 — root에는 대응 문서가 없다(`docs/implementations/go.md`의 conventions.md 감사에서도 "Rate Limiting 섹션은 여전히 대응 내용 없음"으로 지적된 항목). Go 표준 라이브러리에는 NestJS의 `@nestjs/throttler` 같은 내장 rate limiting이 없다 — 이 저장소가 이미 채택 중인 최소 의존성 원칙과 가장 잘 맞는 선택은 Go 팀이 직접 관리하는 `golang.org/x/time/rate`(토큰 버킷)다.
+
+**확인된 사실 — 이 저장소의 `examples/`는 rate limiting을 전혀 구현하지 않는다.** `go.mod`에 `golang.org/x/time`이 없고, `internal/interface/http/`에도 관련 미들웨어가 없다. 아래는 전량 목표(forward-looking) 설계다.
+
+---
+
+## 의존성
+
+```
+go get golang.org/x/time/rate
+```
+
+`x/time`은 Go 팀이 관리하는 준표준 라이브러리다 — 이 저장소가 지금 쓰는 `github.com/google/uuid`, `github.com/lib/pq`와 같은 급의 "최소하고 신뢰할 수 있는 서드파티"로 취급한다.
+
+---
+
+## 전역 미들웨어 — 토큰 버킷
+
+```go
+// internal/interface/http/middleware/rate_limit_middleware.go
+package middleware
+
+import (
+	"net/http"
+
+	"golang.org/x/time/rate"
+)
+
+// RateLimit은 전체 서버에 걸쳐 초당 요청 수를 제한하는 토큰 버킷 미들웨어다.
+// limiter 하나를 모든 요청이 공유하므로, 특정 클라이언트가 아니라 서버 전체의 처리량을 제한한다.
+func RateLimit(limiter *rate.Limiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !limiter.Allow() {
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "too many requests", http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+```
+
+```go
+// main.go 또는 router.go에서 조립 — cross-cutting-concerns.md의 Chain 패턴 그대로 재사용
+limiter := rate.NewLimiter(rate.Limit(100), 20) // 초당 100개 평균, burst 20개까지 순간 허용
+handler := middleware.Chain(mux,
+	middleware.CorrelationID,
+	middleware.RateLimit(limiter), // 인증보다 먼저 — 인증 로직 자체가 부하를 유발하지 않도록
+	middleware.RequireAuth(jwtService),
+	middleware.RequestLogging(logger),
+)
+```
+
+`rate.NewLimiter(r, b)`의 `r`은 초당 채워지는 토큰 수(평균 처리율), `b`는 버킷의 최대 용량(순간 burst 허용치)이다. `limiter.Allow()`는 토큰이 있으면 하나 소비하고 `true`, 없으면 즉시 `false`를 반환한다 — 블로킹하지 않는다.
+
+---
+
+## 클라이언트(IP)별 제한 — limiter map
+
+전역 limiter 하나만 두면 특정 클라이언트가 아니라 서버 전체가 같은 버킷을 나눠 쓰게 된다. 클라이언트별로 제한하려면 IP(또는 인증된 사용자 ID)마다 별도 `*rate.Limiter`를 두고 map으로 관리한다 — `golang.org/x/time/rate` 공식 문서가 권장하는 관용구다.
+
+```go
+// internal/interface/http/middleware/rate_limit_middleware.go
+package middleware
+
+import (
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
+)
+
+type clientLimiter struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+// PerClientRateLimit은 클라이언트(원격 IP)별로 독립된 토큰 버킷을 적용한다.
+type PerClientRateLimit struct {
+	mu       sync.Mutex
+	clients  map[string]*clientLimiter
+	r        rate.Limit
+	b        int
+}
+
+func NewPerClientRateLimit(r rate.Limit, b int) *PerClientRateLimit {
+	rl := &PerClientRateLimit{clients: make(map[string]*clientLimiter), r: r, b: b}
+	go rl.cleanupLoop() // 오래된 클라이언트 항목을 주기적으로 제거 — map이 무한정 커지지 않도록
+	return rl
+}
+
+func (rl *PerClientRateLimit) getLimiter(key string) *rate.Limiter {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	c, ok := rl.clients[key]
+	if !ok {
+		c = &clientLimiter{limiter: rate.NewLimiter(rl.r, rl.b)}
+		rl.clients[key] = c
+	}
+	c.lastSeen = time.Now()
+	return c.limiter
+}
+
+func (rl *PerClientRateLimit) cleanupLoop() {
+	for range time.Tick(time.Minute) {
+		rl.mu.Lock()
+		for key, c := range rl.clients {
+			if time.Since(c.lastSeen) > 3*time.Minute {
+				delete(rl.clients, key)
+			}
+		}
+		rl.mu.Unlock()
+	}
+}
+
+func (rl *PerClientRateLimit) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr
+		}
+		if !rl.getLimiter(host).Allow() {
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+```
+
+`sync.Mutex`로 map 접근을 보호하는 이유는 여러 요청 고루틴이 동시에 `getLimiter`를 호출하기 때문이다 — 이 저장소의 다른 동시성 코드와 동일하게 "공유 상태는 명시적으로 잠근다"는 원칙을 따른다. `cleanupLoop`이 없으면 유니크한 클라이언트가 계속 늘어날 때 map이 무한정 커지는 메모리 누수가 생긴다.
+
+---
+
+## 엔드포인트별 차등 적용
+
+NestJS의 `@Throttle()`/`@SkipThrottle()` 데코레이터에 대응하는 것은, Go에서는 **라우트마다 다른 미들웨어 체인을 조립**하는 것이다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 미들웨어 합성 패턴 참고).
+
+```go
+// 쓰기 엔드포인트(입출금)는 더 엄격하게, 헬스체크는 제외
+writeLimiter := rate.NewLimiter(rate.Limit(5), 2)
+readLimiter := rate.NewLimiter(rate.Limit(50), 10)
+
+mux.Handle("POST /accounts/{id}/deposit",
+	middleware.Chain(http.HandlerFunc(accountHTTP.Deposit), middleware.RateLimit(writeLimiter)))
+mux.Handle("GET /accounts/{id}",
+	middleware.Chain(http.HandlerFunc(accountHTTP.GetAccount), middleware.RateLimit(readLimiter)))
+mux.HandleFunc("GET /health/live", healthHandler.Live) // rate limit 미적용 — 오케스트레이터 프로브 제외
+```
+
+NestJS처럼 "전역 Guard + 데코레이터로 예외 표시" 구조가 아니라, **각 라우트를 등록할 때 원하는 미들웨어만 골라 감싸는** 방식이다 — 데코레이터가 없는 대신 조립이 명시적이라 어떤 라우트가 어떤 제한을 받는지 `router.go` 한 곳만 보면 알 수 있다.
+
+---
+
+## 응답 헤더 — 수동으로 채워야 한다
+
+`@nestjs/throttler`는 `X-RateLimit-*` 헤더를 자동으로 채워주지만, `x/time/rate`는 그런 편의 기능이 없다 — 필요하면 미들웨어에서 직접 채운다.
+
+```go
+if !limiter.Allow() {
+	w.Header().Set("Retry-After", "1")
+	http.Error(w, "too many requests", http.StatusTooManyRequests)
+	return
+}
+```
+
+`limiter.Tokens()`로 남은 토큰 수를 근사치로 노출할 수는 있지만, 정확한 `X-RateLimit-Remaining`/`X-RateLimit-Reset`을 제공하려면 `rate.Limiter` 위에 별도 계측 레이어를 얹어야 한다 — 이 저장소는 아직 여기까지 다루지 않는다. 표준 JSON 에러 응답 스키마(`statusCode`/`code`/`message`)로 429를 감싸는 것은 [error-handling.md](error-handling.md)가 지적하는 "알려진 격차"(현재 `http.Error`의 평문 텍스트)와 동일한 이유로 아직 미구현이다.
+
+---
+
+## 원칙
+
+- **미들웨어 체인의 앞쪽에 배치**한다 — 인증/로깅보다 먼저 걸러야 낭비되는 연산이 적다([cross-cutting-concerns.md](cross-cutting-concerns.md) 파이프라인 순서 참고).
+- **전역 제한과 클라이언트별 제한을 구분**한다 — 서버 보호가 목적이면 전역 limiter, 클라이언트 남용 방지가 목적이면 클라이언트별 map을 쓴다.
+- **클라이언트별 map은 반드시 정리(cleanup)한다** — 그렇지 않으면 메모리 누수가 된다.
+- **쓰기 엔드포인트를 읽기보다 엄격하게** 제한한다.
+- **헬스체크/내부 엔드포인트는 라우트 등록 시 아예 미들웨어를 감싸지 않는 방식으로 제외**한다.
+- **환경 변수로 임계값을 관리**한다([config.md](config.md) 패턴과 동일하게 `RateLimitConfig` 구조체로 분리).
+
+---
+
+### 관련 문서
+
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — 미들웨어 체인 합성 패턴, 파이프라인 순서
+- [error-handling.md](error-handling.md) — 429 응답의 표준 JSON 스키마 격차
+- [config.md](config.md) — 임계값을 환경 변수 기반 설정 구조체로 분리하는 패턴
+- [observability.md](observability.md) — rate limit 거부 발생 시 로깅

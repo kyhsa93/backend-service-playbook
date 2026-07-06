@@ -18,6 +18,10 @@ DDD 기반 Go 백엔드 서비스의 설계/구현 가이드이다.
 | Aggregate Root, Entity, Value Object, Domain Event 모델링, struct + 메서드, 캡슐화 한계 | `docs/architecture/tactical-ddd.md` |
 | Repository interface·구현체 분리, 컴파일 타임 interface 검증 | `docs/architecture/repository-pattern.md` |
 | Aggregate ID 생성 규칙, 32자리 hex | `docs/architecture/aggregate-id.md` |
+| 핵심 설계 원칙 TL;DR, 체크리스트 요약 | `docs/architecture/design-principles.md` |
+| DI 컨테이너 없는 의존성 조립, 패키지 = 모듈 경계, 순환 의존 방지 | `docs/architecture/module-pattern.md` |
+| 크로스 도메인 호출, Adapter 패턴 구현, 다른 Bounded Context 호출 예시 | `docs/architecture/cross-domain.md` |
+| 공유 코드 위치, `internal/common/`, 공용 인프라 배치 | `docs/architecture/shared-modules.md` |
 
 ### 데이터 / 트랜잭션
 
@@ -36,6 +40,7 @@ DDD 기반 Go 백엔드 서비스의 설계/구현 가이드이다.
 | 인증, JWT, Bearer 토큰, 미들웨어 기반 Guard 대체 | `docs/architecture/authentication.md` |
 | Middleware 체인, Correlation ID 주입, 요청 검증 | `docs/architecture/cross-cutting-concerns.md` |
 | 에러 처리, sentinel error, `errors.Is`, HTTP 상태 코드 매핑 | `docs/architecture/error-handling.md` |
+| Rate Limiting, 토큰 버킷, `golang.org/x/time/rate`, 요청 속도 제한 | `docs/architecture/rate-limiting.md` |
 
 ### 운영 / 인프라
 
@@ -45,6 +50,7 @@ DDD 기반 Go 백엔드 서비스의 설계/구현 가이드이다.
 | Secret 관리, AWS Secrets Manager, TTL 캐시 | `docs/architecture/secret-manager.md` |
 | 컨테이너 이미지, Dockerfile, 멀티스테이지 빌드, 단일 정적 바이너리 | `docs/architecture/container.md` |
 | Graceful Shutdown, `signal.NotifyContext`, `http.Server.Shutdown` | `docs/architecture/graceful-shutdown.md` |
+| 앱 진입점, `main.go`, 의존성 조립 순서, 서버 기동 | `docs/architecture/bootstrap.md` |
 | 로컬 개발 환경, docker-compose, LocalStack | `docs/architecture/local-dev.md` |
 | Logging, `log/slog`, 구조화 로그, Correlation ID 전파 | `docs/architecture/observability.md` |
 | 파일 스토리지, Presigned URL, S3 SDK v2 | `docs/architecture/file-storage.md` |
