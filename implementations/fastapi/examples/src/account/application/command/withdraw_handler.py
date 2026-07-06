@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountRepository
 from ...domain.transaction import Transaction
-from ...infrastructure.notification.notification_service import NotificationService
+from ..service.notification_service import NotificationService
 
 
 @dataclass

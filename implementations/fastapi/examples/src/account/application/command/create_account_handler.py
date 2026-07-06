@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from ...domain.account import Account
 from ...domain.repository import AccountRepository
-from ...infrastructure.notification.notification_service import NotificationService
+from ..service.notification_service import NotificationService
 
 
 @dataclass

@@ -7,6 +7,7 @@ import uuid
 import aioboto3
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...application.service.notification_service import NotificationService
 from ...domain.account import AccountDomainEvent
 from ...domain.events import (
     AccountClosed,
@@ -50,7 +51,7 @@ def _render(event: AccountDomainEvent) -> tuple[str, str]:
     raise ValueError(f"알 수 없는 이벤트 타입: {type(event)!r}")
 
 
-class NotificationService:
+class SesNotificationService(NotificationService):
     """Account 도메인 이벤트를 SES 이메일로 발송하고, 발송 내역을 DB에 기록한다.
 
     알림 발송 실패가 계좌 커맨드 자체에 영향을 주지 않도록, 이 서비스의 유일한
