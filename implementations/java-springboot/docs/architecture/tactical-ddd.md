@@ -174,7 +174,7 @@ public List<Object> pullDomainEvents() {
 
 `List<Object>`로 타입을 지우는 대신, 이벤트 개수가 늘어나면 공통 인터페이스(`sealed interface AccountDomainEvent`, Java 17+)로 묶어 `instanceof` 패턴 매칭의 완전성을 어느 정도 확보할 수 있다 — Kotlin의 `sealed interface` + `when` 완전성 검사에 대응하는 Java 방식이다. 다만 Java의 `sealed` + `switch` 패턴 매칭(JDK 21)은 아직 이 저장소에 도입되지 않았다.
 
-Domain Event의 발행 경로(현재: 동기 `ApplicationEventPublisher`, 올바른 패턴: Outbox)는 [domain-events.md](domain-events.md)에서 상세히 다룬다.
+Domain Event의 발행 경로(Outbox 테이블 저장 → `OutboxRelay` 드레인 → `application/event/`의 `OutboxEventHandler` 구현체)는 [domain-events.md](domain-events.md)에서 상세히 다룬다.
 
 ---
 

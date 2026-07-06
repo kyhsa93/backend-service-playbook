@@ -2,23 +2,21 @@ package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountRepository;
+import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class CreateAccountService {
 
     private final AccountRepository accountRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
         accountRepository.save(account);
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent);
+        outboxRelay.processPending();
         return new CreateAccountResult(
                 account.getAccountId(),
                 account.getOwnerId(),

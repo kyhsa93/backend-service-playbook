@@ -5,11 +5,13 @@ import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.AccountStatus;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.outbox.OutboxWriter;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,6 +22,7 @@ public class AccountRepositoryImpl implements AccountRepository {
 
     private final AccountJpaRepository jpaRepository;
     private final TransactionJpaRepository transactionJpaRepository;
+    private final OutboxWriter outboxWriter;
     private final EntityManager em;
 
     @Override
@@ -46,12 +49,16 @@ public class AccountRepositoryImpl implements AccountRepository {
     }
 
     @Override
+    @Transactional
     public void save(Account account) {
         jpaRepository.save(account);
         List<Transaction> pending = account.pullPendingTransactions();
         if (!pending.isEmpty()) {
             transactionJpaRepository.saveAll(pending);
         }
+        // Aggregate 저장과 같은 물리 트랜잭션 안에서 Outbox에 이벤트를 기록한다(domain-events.md 참고).
+        // 이 메서드가 예외 없이 반환되면 Account/Transaction/Outbox 행이 모두 커밋되거나 함께 롤백된다.
+        outboxWriter.saveAll(account.pullDomainEvents());
     }
 
     @Override

@@ -171,10 +171,13 @@ for f in "${JAVA_FILES[@]}"; do
     *EventHandler)
       FOUND_EVENT=1
       EVENT_REPORTED["$f"]=1
-      if echo "$f" | grep -q "/application/event/"; then
+      # Outbox 패턴의 디스패치 계약(OutboxEventHandler 등)은 도메인별 핸들러가 아니라
+      # OutboxRelay와 함께 동작하는 공용 인프라이므로 outbox/ 패키지 배치도 허용한다
+      # (domain-events.md, shared-modules.md 참고).
+      if echo "$f" | grep -qE "/application/event/|/outbox/"; then
         pass "$rel (EventHandler)"
       else
-        fail "$rel" "EventHandler는 application/event/ 패키지 안에 있어야 함"
+        fail "$rel" "EventHandler는 application/event/(도메인별 핸들러) 또는 outbox/(Outbox 디스패치 계약) 패키지 안에 있어야 함"
       fi
       ;;
     *IntegrationEvent)

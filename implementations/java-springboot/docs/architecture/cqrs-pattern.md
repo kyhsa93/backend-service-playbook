@@ -147,9 +147,9 @@ Command/Result 객체를 Java `record`로 표현하면 불변성과 `equals`/`ha
 
 ---
 
-## EventHandler — 현재는 in-process, 정석은 Outbox 경유
+## EventHandler — Outbox 경유로 구현됨
 
-CQRS의 `event/` 패키지 역할은 이 저장소에서 `AccountNotificationListener`(`@EventListener`)가 맡고 있다. 이 부분은 [domain-events.md](domain-events.md)에서 상세히 다룬다 — 요약하면 Outbox 테이블 없이 동기 in-process로 발행되는 현재 상태는 CQRS 자체의 문제라기보다 Domain Event 전달 방식의 별도 gap이다.
+CQRS의 `event/` 패키지 역할은 이 저장소에서 `account/application/event/`의 `*EventHandler`(예: `AccountCreatedEventHandler`)가 맡는다. 이들은 `@EventListener`가 아니라 `outbox/OutboxEventHandler` 인터페이스를 구현하며, `OutboxRelay`가 Outbox 테이블에서 읽은 이벤트를 라우팅해 호출한다. 상세 경로(Repository의 Outbox 저장, Command Service의 `processPending()` 호출 시점)는 [domain-events.md](domain-events.md)를 참고한다.
 
 ---
 

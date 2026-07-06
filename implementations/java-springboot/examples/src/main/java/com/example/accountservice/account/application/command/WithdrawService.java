@@ -4,25 +4,23 @@ import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountException;
 import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class WithdrawService {
 
     private final AccountRepository accountRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxRelay outboxRelay;
 
     public TransactionResult withdraw(WithdrawCommand command) {
         Account account = accountRepository.findByAccountIdAndOwnerId(command.accountId(), command.requesterId())
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         Transaction transaction = account.withdraw(command.amount());
         accountRepository.save(account);
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent);
+        outboxRelay.processPending();
         return new TransactionResult(
                 transaction.getTransactionId(),
                 transaction.getAccountId(),

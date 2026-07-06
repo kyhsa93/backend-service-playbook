@@ -118,13 +118,12 @@ class AccountTest {
 package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.AccountRepository;
+import com.example.accountservice.outbox.OutboxRelay;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -136,13 +135,13 @@ class CreateAccountServiceTest {
     private AccountRepository accountRepository;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private OutboxRelay outboxRelay;
 
     private CreateAccountService service;
 
     @BeforeEach
     void setUp() {
-        service = new CreateAccountService(accountRepository, eventPublisher);
+        service = new CreateAccountService(accountRepository, outboxRelay);
     }
 
     @Test
@@ -154,20 +153,17 @@ class CreateAccountServiceTest {
     }
 
     @Test
-    void 생성된_Account가_발행하는_도메인_이벤트가_eventPublisher로_전달된다() {
+    void 계좌_저장_직후_OutboxRelay가_드레인을_한_번_호출한다() {
         service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
 
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(eventPublisher).publishEvent(captor.capture());
-        assertThat(captor.getValue()).isInstanceOf(
-                com.example.accountservice.account.domain.AccountCreatedEvent.class);
+        verify(outboxRelay).processPending();
     }
 }
 ```
 
 - **`@ExtendWith(MockitoExtension.class)` + `@Mock`**: Mockito가 인터페이스(`AccountRepository`)를 프록시로 mock한다 — Java 인터페이스는 원래 mock이 쉬우므로(Kotlin처럼 `final` 클래스 mock 문제가 없다) 별도 인라인 mock 라이브러리가 필요 없다.
 - **Repository mock은 인터페이스 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지" 원칙이 Java에서는 인터페이스 그대로 대응된다. `AccountRepositoryImpl`(구체 클래스)을 mock하지 않는다.
-- `ArgumentCaptor`로 `publishEvent()`에 전달된 실제 이벤트 객체를 꺼내 타입을 검증한다 — 현재 코드(`ApplicationEventPublisher` 동기 발행)를 그대로 테스트 대상으로 삼았다. [domain-events.md](domain-events.md)의 Outbox 리팩터링 이후에는 `eventPublisher` mock 대신 `OutboxEventJpaRepository` mock으로 교체해야 한다.
+- `AccountRepository.save()`가 Outbox 저장까지 책임지므로(domain-events.md 참고), Command Service 단위 테스트는 `accountRepository.save()` 직후 `outboxRelay.processPending()`이 정확히 한 번 호출되는지만 검증하면 충분하다 — Outbox 행 내용 자체(직렬화된 이벤트 payload)는 `AccountRepositoryImpl`/`OutboxWriter`를 대상으로 한 별도 테스트에서 검증한다.
 - Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
 
 ---
