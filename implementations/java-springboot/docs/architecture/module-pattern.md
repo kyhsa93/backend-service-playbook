@@ -23,7 +23,7 @@ Spring은 `@Component`의 특수화(specialization)로 레이어를 구분한다
 |---|---|---|
 | `@Service` | Application 레이어의 유스케이스 조율 서비스 | `CreateAccountService`, `GetAccountService` 등 |
 | `@Repository` | Infrastructure 레이어의 Repository 구현체 | `AccountRepositoryImpl` |
-| `@Component` | 그 외 일반 빈 (Domain Event 리스너, Technical Service 구현체) | `AccountNotificationListener`, `NotificationServiceImpl` |
+| `@Component` | 그 외 일반 빈 (Outbox 이벤트 핸들러, Technical Service 구현체) | `AccountCreatedEventHandler`, `OutboxRelay`, `NotificationServiceImpl` |
 | `@Configuration` | `@Bean` 팩토리 메서드를 담는 설정 클래스 | `SesConfig` |
 | `@RestController` | HTTP 진입점 | `AccountController` |
 

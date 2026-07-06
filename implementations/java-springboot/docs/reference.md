@@ -55,18 +55,26 @@ com.example.accountservice/
         GetAccountResult.java          ← record
         GetTransactionsResult.java
       event/
-        AccountNotificationListener.java   ← application/event/ EventHandler (Outbox 경유)
+        AccountCreatedEventHandler.java     ← OutboxEventHandler 구현체 (이벤트 타입별로 하나씩)
+        MoneyDepositedEventHandler.java
+        MoneyWithdrawnEventHandler.java
+        AccountSuspendedEventHandler.java
+        AccountReactivatedEventHandler.java
+        AccountClosedEventHandler.java
 
     infrastructure/
       persistence/
         AccountJpaRepository.java      ← JpaRepository<Account, Long> 확장
         TransactionJpaRepository.java
-        AccountRepositoryImpl.java     ← @Repository — AccountRepository 구현체 (Outbox 저장 포함)
+        AccountRepositoryImpl.java     ← @Repository @Transactional — AccountRepository 구현체 (Outbox 저장 포함)
         AccountQueryImpl.java          ← @Repository — AccountQuery 구현체 (projection 쿼리)
-      outbox/
-        OutboxEvent.java               ← @Entity — Outbox 테이블
-        OutboxEventJpaRepository.java
-        OutboxRelay.java               ← @Scheduled — 폴링 후 메시지 큐 발행
+
+  outbox/                              ← 도메인 무관 공유 인프라(shared-modules.md) — Account 전용 아님
+    OutboxEvent.java                   ← @Entity — Outbox 테이블
+    OutboxEventJpaRepository.java
+    OutboxEventHandler.java            ← 이벤트 타입별 Handler가 구현하는 인터페이스
+    OutboxWriter.java                  ← Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
+    OutboxRelay.java                   ← Command Service가 저장 직후 동기 호출 — @Scheduled 폴링 아님(domain-events.md 참고)
 
     interfaces/
       rest/
@@ -510,39 +518,44 @@ public record GetTransactionsResult(List<TransactionSummary> transactions, long 
 }
 ```
 
-### Domain Event Handler — Outbox 경유 (in-process 아님)
+### Domain Event Handler — Outbox 경유 (in-process 이벤트 버스 아님)
+
+Repository의 저장 트랜잭션 안에서 `OutboxWriter`가 도메인 이벤트를 `outbox` 테이블에 함께 적재하고, Command Service가 저장이 끝난 직후 `OutboxRelay.processPending()`을 동기 호출해 미처리 이벤트를 전부 드레인한다. 실제 발송은 이벤트 타입별 Handler가 맡는다 — domain-events.md 참고.
 
 ```java
-// application/event/AccountNotificationListener.java
+// application/event/AccountCreatedEventHandler.java
 package com.example.accountservice.account.application.event;
 
 import com.example.accountservice.account.domain.AccountCreatedEvent;
 import com.example.accountservice.notification.application.service.NotificationService;
+import com.example.accountservice.outbox.OutboxEventHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import static net.logstash.logback.argument.StructuredArguments.kv;
-
-// 메시지 큐(Outbox Relay가 발행)로부터 이벤트를 수신해 처리한다 — domain-events.md 4단계 참고.
-// 현재 examples/는 @EventListener(동기 in-process)로 이 역할을 대신하고 있으나, 이는 알려진 gap이다.
 @Component
 @RequiredArgsConstructor
-public class AccountNotificationListener {
+public class AccountCreatedEventHandler implements OutboxEventHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(AccountNotificationListener.class);
     private final NotificationService notificationService;
+    private final ObjectMapper objectMapper;
 
-    public void handle(String eventId, AccountCreatedEvent event) {
-        try {
-            notificationService.sendEmail(event.accountId(), "AccountCreated", event.email(), "계좌 개설 안내", "계좌가 개설되었습니다.");
-        } catch (Exception e) {
-            log.error("알림 이메일 발송 실패", kv("account_id", event.accountId()), kv("event_type", "AccountCreated"), e);
-        }
+    @Override
+    public String eventType() {
+        return AccountCreatedEvent.class.getSimpleName();
+    }
+
+    @Override
+    public void handle(String payload) throws Exception {
+        AccountCreatedEvent event = objectMapper.readValue(payload, AccountCreatedEvent.class);
+        notificationService.sendEmail(event.accountId(), "AccountCreated", event.email(),
+                "[Account] 계좌가 개설되었습니다",
+                "계좌(" + event.accountId() + ")가 개설되었습니다. 통화: " + event.currency());
     }
 }
 ```
+
+실패 시 로그를 남기고 재시도를 위해 `processed`를 갱신하지 않는 책임은 개별 Handler가 아니라 `outbox/OutboxRelay`가 진다(모든 Handler에 동일한 try-catch를 반복하지 않기 위함) — `outbox/OutboxRelay.java` 참고.
 
 ---
 

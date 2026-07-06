@@ -30,18 +30,28 @@ internal/
       suspend_account_handler.go
       reactivate_account_handler.go
       close_account_handler.go
-      notifier.go                            ← Notifier 인터페이스 (Technical Service 포트)
+      event_relay.go                         ← OutboxRelay 포트 인터페이스 (command 패키지가 필요로 하는 최소 시그니처)
     query/
       get_account_handler.go
       get_transactions_handler.go
       result.go                              ← Result DTO들
+    event/
+      account_created_event_handler.go       ← Outbox가 드레인한 이벤트를 처리해 알림 발송 (domain-events.md 참고)
+      money_deposited_event_handler.go
+      money_withdrawn_event_handler.go
+      account_suspended_event_handler.go
+      account_reactivated_event_handler.go
+      account_closed_event_handler.go
 
   infrastructure/
     persistence/
-      account_repository.go                  ← account.Repository 구현체 (database/sql)
+      account_repository.go                  ← account.Repository 구현체 (같은 트랜잭션에 Outbox 행도 적재)
     notification/
-      service.go                             ← command.Notifier 구현체 (SES + DB 기록)
+      service.go                             ← 이벤트 핸들러가 호출하는 알림 발송 (SES + DB 기록)
       ses_client.go                          ← SES 클라이언트 생성
+    outbox/                                  ← 도메인 무관 공유 인프라 (shared-modules.md 참고)
+      writer.go                              ← Repository.Save 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
+      relay.go                               ← Command Handler가 저장 직후 동기 호출해 드레인
 
   interface/
     http/
@@ -97,7 +107,7 @@ go.mod
 | 공개 함수/메서드 | `PascalCase` | `New`, `Deposit`, `FindByID` |
 | 비공개 함수/메서드 | `camelCase` | `newTransaction`, `describe` |
 | 에러 | `ErrXxx` | `ErrNotFound`, `ErrInsufficientBalance` |
-| 인터페이스 | 명사(동사+er 지양, 역할 이름 우선) | `Repository`, `Notifier`, `SESClient` |
+| 인터페이스 | 명사(동사+er 지양, 역할 이름 우선) | `Repository`, `OutboxRelay`, `SESClient` |
 
 패키지명은 디렉토리명과 일치시킨다(`internal/domain/account/` → `package account`). 여러 단어로 된 개념은 디렉토리를 중첩해 분리한다(`application/command/` → `package command`) — Go 컨벤션상 패키지명에 언더스코어나 캐멀케이스를 쓰지 않는다.
 

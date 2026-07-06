@@ -43,15 +43,13 @@ public class NotificationServiceImpl implements NotificationService {
 }
 ```
 
-**왜 `REQUIRES_NEW`인가**: `AccountNotificationListener`가 이 메서드를 호출하는 시점은 원본 계좌 커맨드(예: `CreateAccountService.create()`)의 트랜잭션 내부다(동기 `@EventListener`이므로). 만약 `sendEmail()`이 원본 트랜잭션을 그대로 이어받았다면(`REQUIRED`, 기본값), SES 호출 실패 시 발생한 예외가 원본 트랜잭션을 **rollback-only**로 표시해버려 계좌 생성 자체가 롤백된다 — 알림 실패가 핵심 비즈니스 트랜잭션을 오염시키는 것이다. `REQUIRES_NEW`는 별도의 물리 트랜잭션을 열어 이 전이를 차단한다.
+**왜 `REQUIRES_NEW`인가**: 이 메서드는 `AccountCreatedEventHandler` 같은 `outbox/OutboxEventHandler` 구현체를 거쳐, `OutboxRelay.processPending()`(그 자체가 `@Transactional`)의 트랜잭션 안에서 호출된다 — 계좌 저장 트랜잭션은 그 시점에 이미 커밋되어 끝난 뒤다([domain-events.md](domain-events.md) 참고). `sendEmail()`이 `processPending()`의 트랜잭션을 그대로 이어받았다면(`REQUIRED`, 기본값), SES 호출 실패 시 발생한 예외가 그 트랜잭션을 **rollback-only**로 표시해버린다 — `OutboxRelay`가 개별 이벤트를 try-catch로 감싸 다음 이벤트 처리를 계속하더라도, Spring은 예외가 프록시 경계를 넘는 순간 트랜잭션을 rollback-only로 표시하므로 이번 배치에서 이미 성공적으로 처리한 다른 이벤트들의 `processed=true` 커밋까지 함께 실패한다. `REQUIRES_NEW`는 별도의 물리 트랜잭션을 열어 이 전이를 차단해, 한 이벤트의 발송 실패가 같은 배치의 다른 이벤트 처리 결과를 오염시키지 않게 한다.
 
 | 전파 속성 | 동작 | 이 저장소에서 사용 위치 |
 |---|---|---|
-| `REQUIRED`(기본값) | 기존 트랜잭션이 있으면 참여, 없으면 새로 시작 | `CreateAccountService`, `DepositService` 등 모든 Command Service |
+| `REQUIRED`(기본값) | 기존 트랜잭션이 있으면 참여, 없으면 새로 시작 | `CreateAccountService`, `DepositService` 등 모든 Command Service, `OutboxRelay.processPending()` |
 | `REQUIRES_NEW` | 항상 새 물리 트랜잭션 시작, 기존 트랜잭션은 일시 중단 | `NotificationServiceImpl.sendEmail()` |
 | `readOnly = true` | dirty checking/flush 생략 (성능 최적화, 전파 속성은 아님) | 모든 Query Service |
-
-**주의 — `REQUIRES_NEW`가 근본 해결책은 아니다**: 이는 "알림 실패가 계좌 생성 트랜잭션을 깨뜨리지 않게" 막을 뿐, 이벤트 발행 자체의 원자성 문제([domain-events.md](domain-events.md)의 Outbox gap)는 해결하지 못한다 — 앱이 이벤트 발행 직후 크래시하면 알림은 여전히 유실된다. `REQUIRES_NEW`와 Outbox는 서로 다른 문제를 다루는 별개의 패턴이다.
 
 ---
 

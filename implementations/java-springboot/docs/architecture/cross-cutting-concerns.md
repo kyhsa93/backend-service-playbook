@@ -117,7 +117,7 @@ public class WebConfig implements WebMvcConfigurer {
 }
 ```
 
-`HandlerInterceptor`는 어떤 Controller 메서드가 매칭되었는지(`handler` 파라미터)까지 알 수 있어, `Filter`보다 세밀한 후처리(예: 특정 엔드포인트만 상세 로깅)가 가능하다. 이 저장소는 현재 요청 단위 로깅이 전혀 없다 — 개별 Service/Listener 내부의 `log.info`/`log.error`(`NotificationServiceImpl`, `AccountNotificationListener`)만 존재한다.
+`HandlerInterceptor`는 어떤 Controller 메서드가 매칭되었는지(`handler` 파라미터)까지 알 수 있어, `Filter`보다 세밀한 후처리(예: 특정 엔드포인트만 상세 로깅)가 가능하다. 이 저장소는 현재 요청 단위 로깅이 전혀 없다 — 개별 Service/Component 내부의 `log.info`/`log.error`(`NotificationServiceImpl`, `outbox.OutboxRelay`)만 존재한다.
 
 ---
 

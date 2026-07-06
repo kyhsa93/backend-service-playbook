@@ -20,7 +20,7 @@
 - Command: `<Verb><Noun>Command.java`, `record` (`application/command/`)
 - Result: `<Verb><Noun>Result.java`, `record` (`application/{command,query}/`)
 - 예외: `<Domain>Exception.java` (`domain/`) — 내부에 `ErrorCode` enum을 중첩 정의
-- Domain Event Handler: 역할이 드러나는 이름 + `Listener`/`Handler` 접미사 (`application/event/`) — 예: `AccountNotificationListener.java`
+- Domain Event Handler: `<DomainEvent>Handler.java`, `outbox.OutboxEventHandler` 구현 (`application/event/`) — 예: `AccountCreatedEventHandler.java`
 - Technical Service 인터페이스: `<Concern>Service.java` (`application/service/`) — 예: `NotificationService.java`
 - Technical Service 구현체: `<Concern>ServiceImpl.java` (`infrastructure/`)
 - Adapter 인터페이스: `<ExternalDomain>Adapter.java` (`application/adapter/`)
@@ -48,7 +48,7 @@
 - Command: `DepositCommand`, `CreateAccountCommand`
 - Result: `CreateAccountResult`, `GetAccountResult`, `TransactionResult`
 - 예외: `AccountException` (내부 `ErrorCode` enum은 `SCREAMING_SNAKE_CASE` 상수 — `ACCOUNT_NOT_FOUND`)
-- Domain Event Handler: `AccountNotificationListener`
+- Domain Event Handler: `AccountCreatedEventHandler`, `MoneyDepositedEventHandler`
 - Technical Service 인터페이스: `NotificationService`, `SecretService`
 - Adapter 인터페이스: `UserAdapter` (외부 BC명 + `Adapter`)
 - HTTP Controller: `AccountController`

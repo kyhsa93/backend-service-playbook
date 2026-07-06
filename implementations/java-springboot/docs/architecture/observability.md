@@ -15,8 +15,8 @@ log.info("이메일 발송됨: accountId={}, eventType={}, recipient={}, sesMess
 ```
 
 ```java
-// account/application/event/AccountNotificationListener.java — 실제 코드
-log.error("알림 이메일 발송 실패: accountId={}, eventType={}", accountId, eventType, e);
+// outbox/OutboxRelay.java — 실제 코드
+log.error("이벤트 처리 실패: eventType={}, eventId={}", event.getEventType(), event.getEventId(), e);
 ```
 
 둘 다 SLF4J의 `{}` 플레이스홀더 문법을 쓰지만, 최종 출력은 사람이 읽기 위한 **평문 문자열**이다 — JSON도 아니고 필드명이 구조화되어 있지도 않다. 로그 수집기(CloudWatch, Datadog 등)가 `accountId`/`eventType`을 개별 필드로 인덱싱할 수 없다 — 문자열 전체를 파싱하거나 grep해야 한다.
@@ -62,7 +62,7 @@ import static net.logstash.logback.argument.StructuredArguments.kv;
 log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", response.messageId()));
 ```
 
-`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. 현재 `NotificationServiceImpl`/`AccountNotificationListener`의 `log.info("...: accountId={}, ...")` 호출을 이 방식으로 교체하는 것이 구조화 로깅 도입의 핵심 변경이다.
+`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. 현재 `NotificationServiceImpl`/`outbox.OutboxRelay`의 `log.info`/`log.error("...: accountId={}, ...")` 호출을 이 방식으로 교체하는 것이 구조화 로깅 도입의 핵심 변경이다.
 
 ---
 
@@ -71,7 +71,7 @@ log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", ev
 | 레이어 | 로깅 대상 | 이 저장소의 현재 상태 |
 |--------|----------|------|
 | Interfaces (Controller) | 요청 에러 | 없음 — `@ExceptionHandler`가 로깅 없이 바로 응답 변환 |
-| Application (Service) | 비즈니스 이벤트, 외부 호출 결과 | 부분적 — `AccountNotificationListener`만 로깅, Command Service들은 로깅 없음 |
+| Application (Service) | 비즈니스 이벤트, 외부 호출 결과 | 부분적 — `outbox.OutboxRelay`만 로깅, Command Service들은 로깅 없음 |
 | Infrastructure | 외부 연동 실패/재시도 | `NotificationServiceImpl`(SES 발송 성공/실패) |
 | Domain | **로깅 금지** | 준수 — `Account`는 로거를 import하지 않는다 |
 

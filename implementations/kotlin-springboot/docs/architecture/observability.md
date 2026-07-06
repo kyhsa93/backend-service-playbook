@@ -15,12 +15,8 @@ logger.info(
 ```
 
 ```kotlin
-// account/application/event/AccountNotificationListener.kt — 실제 코드
-private val logger = LoggerFactory.getLogger(AccountNotificationListener::class.java)
-
-private fun logNotificationFailure(eventType: String, accountId: String, error: Throwable) {
-    logger.error("이메일 발송 실패: eventType={}, accountId={}", eventType, accountId, error)
-}
+// outbox/OutboxRelay.kt — 실제 코드
+.onFailure { logger.error("이벤트 처리 실패: eventType={}, eventId={}", row.eventType, row.eventId, it) }
 ```
 
 파라미터화된 로그(`{}` 플레이스홀더)를 이미 쓰고 있어 문자열 보간(`"...${accountId}..."`)으로 인한 불필요한 문자열 생성은 피하고 있다. 다만 **구조화(JSON/snake_case 필드) 로그는 아니다** — 사람이 읽기 좋은 텍스트 로그이며, `accountId`/`eventType`이 로그 메시지 문자열 안에 파묻혀 있어 모니터링 시스템에서 필드별 검색·집계가 어렵다. Correlation ID 전파도 없다.
@@ -117,7 +113,7 @@ Node의 `AsyncLocalStorage`와 동일한 역할을 JVM 스레드 모델에서는
 | 레이어 | 현재 코드 | 평가 |
 |---|---|---|
 | `account/domain/` | 로깅 없음 | root 원칙과 일치 — Aggregate는 프레임워크 무의존 유지 |
-| `account/application/event/AccountNotificationListener` | `logger.error(...)` (실패 시) | 일치 — Application 레이어에서 에러 로깅 |
+| `outbox/OutboxRelay` | `logger.error(...)` (실패 시) | 일치 — Application 레이어에서 에러 로깅 |
 | `notification/infrastructure/NotificationServiceImpl` | `logger.info(...)` (발송 성공) | 일치 — Infrastructure에서 외부 연동 결과 로깅 |
 | `account/interfaces/rest/AccountController` | 로깅 없음 | HTTP 요청 로깅은 [cross-cutting-concerns.md](cross-cutting-concerns.md)의 `RequestLoggingInterceptor`로 보완 필요 |
 

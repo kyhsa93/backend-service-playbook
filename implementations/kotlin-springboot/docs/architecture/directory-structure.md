@@ -40,8 +40,13 @@ com.example.accountservice/
       query/
         GetAccountService.kt / GetAccountResult.kt
         GetTransactionsService.kt / GetTransactionsResult.kt
-      event/
-        AccountNotificationListener.kt   ← @Component + @EventListener (harness event-placement 검사 대상)
+      event/                            ← Outbox가 드레인한 이벤트를 처리하는 Handler (harness event-placement 검사 대상)
+        AccountCreatedEventHandler.kt
+        MoneyDepositedEventHandler.kt
+        MoneyWithdrawnEventHandler.kt
+        AccountSuspendedEventHandler.kt
+        AccountReactivatedEventHandler.kt
+        AccountClosedEventHandler.kt
 
     infrastructure/
       persistence/
@@ -106,7 +111,7 @@ class NotificationServiceImpl(
 ) : NotificationService { /* ... */ }
 ```
 
-`account/application/event/AccountNotificationListener`가 이 인터페이스만 의존하고, 실제 SES 호출 방식(SDK 버전, 자격 증명 방식)은 전혀 알지 못한다 — Technical Service 패턴이 의도한 대로 Application 레이어가 인프라 세부사항으로부터 격리된다.
+`account/application/event/`의 각 Handler(`AccountCreatedEventHandler` 등)가 이 인터페이스만 의존하고, 실제 SES 호출 방식(SDK 버전, 자격 증명 방식)은 전혀 알지 못한다 — Technical Service 패턴이 의도한 대로 Application 레이어가 인프라 세부사항으로부터 격리된다.
 
 ---
 
@@ -125,7 +130,7 @@ root 문서는 kebab-case 파일명(`order-repository.ts`)을 규정하지만, K
 | Command | `application/command/` | `<Verb><Noun>Command.kt` | `CreateAccountCommand.kt` |
 | Query Service | `application/query/` | `<Verb><Noun>Service.kt` | `GetAccountService.kt` |
 | Result | `application/query/` 또는 `command/` | `<Verb><Noun>Result.kt` | `GetAccountResult.kt` |
-| Event Listener | `application/event/` | `<Domain>NotificationListener.kt` 등 | `AccountNotificationListener.kt` |
+| Event Handler | `application/event/` | `<DomainEvent>Handler.kt` | `AccountCreatedEventHandler.kt` |
 | HTTP Controller | `interfaces/rest/` | `<Domain>Controller.kt` | `AccountController.kt` |
 | 에러 계층 | `domain/` | `<Domain>Exception.kt` (sealed class + 하위 클래스 한 파일) | `AccountException.kt` |
 
