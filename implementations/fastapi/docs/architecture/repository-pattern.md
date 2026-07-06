@@ -1,0 +1,170 @@
+# Repository 패턴
+
+> 프레임워크 무관 원칙: [../../../../docs/architecture/repository-pattern.md](../../../../docs/architecture/repository-pattern.md)
+
+## Aggregate Root 단위 Repository — 이미 올바르게 구조화됨
+
+Account Aggregate에 대해 인터페이스(ABC) 하나, 구현체 하나만 존재한다.
+
+```
+src/account/
+  domain/
+    repository.py             ← AccountRepository(ABC) — 인터페이스
+  infrastructure/
+    persistence/
+      account_repository.py   ← SqlAlchemyAccountRepository(AccountRepository) — 구현체
+```
+
+```python
+# domain/repository.py
+from abc import ABC, abstractmethod
+
+from .account import Account
+from .transaction import Transaction
+
+
+class AccountRepository(ABC):
+    @abstractmethod
+    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+
+    @abstractmethod
+    async def find_all(
+        self, page: int, take: int,
+        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+    ) -> tuple[list[Account], int]: ...
+
+    @abstractmethod
+    async def save(self, account: Account) -> None: ...
+
+    @abstractmethod
+    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
+```
+
+Application Handler는 `AccountRepository` 타입(ABC)으로 주입받는다 — `SqlAlchemyAccountRepository`를 직접 import하지 않는다. DI 바인딩은 FastAPI `Depends` 팩토리가 담당한다: [layer-architecture.md](layer-architecture.md) 참조.
+
+`Transaction`(하위 Entity)은 별도 Repository를 갖지 않는다 — `AccountRepository.find_transactions()`를 통해 Account Aggregate 경계 안에서 조회된다. 이는 root의 "Aggregate 내부 하위 Entity는 Aggregate Root의 Repository를 통해 함께 저장/조회한다" 원칙을 정확히 따른다.
+
+---
+
+## 알려진 격차 — 메서드 네이밍이 root 컨벤션과 다르다
+
+root 원칙은 조회 메서드를 **`find<Noun>s` 하나로 통일**하고, 단건 조회는 `take: 1`로 호출 후 결과를 꺼내는 패턴을 요구한다. 현재 `AccountRepository`는 `find_by_id`와 `find_all`을 별도 메서드로 분리하고 있다.
+
+```python
+# 현재 — 두 메서드로 분리 (root 컨벤션과 다름)
+async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+async def find_all(self, page: int, take: int, account_id: str | None = None, ...) -> tuple[list[Account], int]: ...
+```
+
+이 자체가 코드 품질 문제는 아니다 — `find_by_id`가 단건을 `Account | None`으로 직접 반환하는 편이 호출부(`deposit_handler.py` 등)에서는 더 읽기 쉽다. 다만 root가 요구하는 통일된 컨벤션과는 형태가 다르므로, 이 문서는 두 형태를 모두 제시하고 격차를 명시한다.
+
+### root 컨벤션에 맞춘 형태
+
+```python
+# domain/repository.py — root 컨벤션 적용 시
+class AccountRepository(ABC):
+    @abstractmethod
+    async def find_accounts(
+        self,
+        page: int,
+        take: int,
+        account_id: str | None = None,
+        owner_id: str | None = None,
+        status: list[str] | None = None,
+    ) -> tuple[list[Account], int]: ...
+    # find_by_id는 제거 — 단건 조회는 호출부에서 take=1로 호출
+
+    @abstractmethod
+    async def save(self, account: Account) -> None: ...
+```
+
+```python
+# application/command/deposit_handler.py — 단건 조회 패턴
+async def execute(self, cmd: DepositCommand) -> Transaction:
+    accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+    account = accounts[0] if accounts else None
+    if account is None:
+        raise AccountNotFoundError(cmd.account_id)
+    ...
+```
+
+**두 형태의 트레이드오프:**
+
+| | `find_by_id` + `find_all` (현재) | `find_accounts` 하나만 (root 컨벤션) |
+|---|---|---|
+| 호출부 가독성 | 높음 — `Account \| None`을 바로 받음 | 목록에서 꺼내는 한 줄이 추가로 필요 |
+| 구현 중복 | 낮음 — 두 메서드가 필터 조건을 각자 구성 | 없음 — 조회 경로가 하나로 통일됨 |
+| 동적 필터 확장성 | 두 메서드를 각각 확장해야 함 | 하나만 확장하면 됨 |
+
+이 저장소를 새 컨벤션으로 옮기려면 `find_by_id`를 제거하고 모든 호출부(`deposit_handler.py`, `withdraw_handler.py`, `get_account_handler.py` 등 6곳)를 `find_accounts(..., take=1)` 패턴으로 수정해야 한다 — 아직 반영되지 않았다.
+
+---
+
+## Repository 구현체 — `infrastructure/persistence/account_repository.py`
+
+```python
+class SqlAlchemyAccountRepository(AccountRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, account: Account) -> None:
+        existing = await self._session.get(AccountModel, account.account_id)
+        if existing:
+            existing.amount = account.balance.amount
+            existing.status = account.status.value
+            existing.updated_at = datetime.utcnow()
+        else:
+            self._session.add(AccountModel(id=account.account_id, ...))
+
+        for transaction in account.pull_pending_transactions():
+            self._session.add(TransactionModel(...))
+
+        await self._session.flush()
+```
+
+`save()`가 신규/기존을 판별해 upsert처럼 동작하는 것은 root의 "Repository에 별도 update 메서드를 두지 않는다 — `save<Noun>` 하나로 저장" 원칙과 정확히 일치한다. `pull_pending_transactions()`로 Aggregate가 만든 하위 Entity(`Transaction`)를 함께 저장하는 것도 Aggregate 경계를 지킨 cascade 저장이다.
+
+---
+
+## 동적 필터 패턴 — 이미 올바르게 구현됨
+
+```python
+# infrastructure/persistence/account_repository.py
+async def find_all(self, page: int, take: int, account_id=None, owner_id=None, status=None):
+    stmt = select(AccountModel).where(AccountModel.deleted_at.is_(None))
+    count_stmt = select(func.count()).select_from(AccountModel).where(AccountModel.deleted_at.is_(None))
+
+    if account_id:
+        stmt = stmt.where(AccountModel.id == account_id)
+        count_stmt = count_stmt.where(AccountModel.id == account_id)
+    if owner_id:
+        stmt = stmt.where(AccountModel.owner_id == owner_id)
+        count_stmt = count_stmt.where(AccountModel.owner_id == owner_id)
+    if status:
+        stmt = stmt.where(AccountModel.status.in_(status))
+        count_stmt = count_stmt.where(AccountModel.status.in_(status))
+    ...
+```
+
+각 조건이 값이 있을 때만 적용되고(`if account_id:`), `count_stmt`도 같은 조건을 병행 적용해 정확한 전체 건수를 계산한다 — [api-response.md](api-response.md)가 요구하는 "count는 필터 적용 후 전체 건수" 원칙과 일치한다.
+
+---
+
+## 원칙
+
+- **1 Aggregate Root = 1 Repository ABC + 1 구현체**: 이미 지켜지고 있다.
+- **인터페이스는 domain/, 구현체는 infrastructure/**: 이미 지켜지고 있다.
+- **`save`만 사용, 별도 update 메서드 없음**: 이미 지켜지고 있다.
+- **조회 메서드는 `find<Noun>s` 하나로 통일**: 알려진 격차 — 현재 `find_by_id`/`find_all` 분리.
+- **동적 필터는 값이 있을 때만 적용**: 이미 지켜지고 있다.
+- **삭제는 soft delete**: [persistence.md](persistence.md) 참조.
+
+---
+
+### 관련 문서
+
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계 상세
+- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, DI 바인딩
+- [domain-events.md](domain-events.md) — Repository에서 Domain Event → Outbox 저장
+- [persistence.md](persistence.md) — 트랜잭션, Soft Delete, 마이그레이션
+- [api-response.md](api-response.md) — 목록 조회 응답과 count
