@@ -165,9 +165,9 @@ Bus를 도입해도 Handler 클래스 자체(입력 = `@dataclass` Command/Query
 
 ## EventHandler — Domain Event 후속 처리
 
-현재 `notify()` 호출은 Command Handler 안에서 직접 이루어진다(`for event in account.pull_events(): await self._notification_service.notify(event)`). 유스케이스가 늘어나 여러 종류의 후속 처리(알림 외에 감사 로그, 통계 집계 등)가 필요해지면, Handler 안에서 직접 반복문을 도는 대신 `application/event/<event>_handler.py`로 분리하고 Outbox를 경유하는 것이 root 원칙이다.
+Command Handler는 `notify()`를 직접 호출하지 않는다 — `repo.save()`가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Handler는 그 직후 `OutboxRelay.process_pending()`을 한 번 호출해 Outbox를 드레인할 뿐이다. `event_type`별 후속 처리(현재는 알림 발송, 향후 감사 로그·통계 집계 등이 늘어나도 마찬가지)는 `application/event/<event>_event_handler.py`로 분리되어 있다.
 
-→ 상세 및 현재 구조의 격차는 [domain-events.md](domain-events.md) 참조.
+→ 상세 구현은 [domain-events.md](domain-events.md) 참조.
 
 ---
 

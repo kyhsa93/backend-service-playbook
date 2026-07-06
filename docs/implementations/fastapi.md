@@ -30,7 +30,7 @@
 | [repository-pattern.md](../architecture/repository-pattern.md) | `docs/architecture/repository-pattern.md`, `examples/.../domain/repository.py` + `infrastructure/persistence/account_repository.py` | 완전 | ABC/구현체 배치, `save()` 하나로 upsert, 동적 필터 패턴은 코드와 문서가 일치. **코드 격차 (문서에 명시)**: 조회 메서드가 `find_by_id`/`find_all`로 분리돼 있어 루트의 "`find<Noun>s` 단일 메서드 + `take:1`" 컨벤션과 다르다 — 문서가 두 형태의 트레이드오프와 마이그레이션 방법을 모두 제시 |
 | [persistence.md](../architecture/persistence.md) | `docs/architecture/persistence.md`, `examples/.../infrastructure/persistence/account_repository.py`, `src/database.py` | 완전 | 트랜잭션 경계(`Depends(get_session)` 요청 스코프), soft delete(`deleted_at IS NULL`)는 코드와 문서가 일치. **코드 격차 (문서에 명시)**: Alembic 등 마이그레이션 도구가 없고 `Base.metadata.create_all`로 스키마를 자동 생성 — 문서가 Alembic 도입 절차를 구체적으로 제시 |
 | [domain-service.md](../architecture/domain-service.md) | `docs/architecture/layer-architecture.md`(Technical Service 섹션에 흡수), `examples/.../application/service/notification_service.py` + `infrastructure/notification/notification_service.py` | 부분 | FastAPI 전용 `domain-service.md` 페이지는 만들지 않음(NestJS도 `cross-domain.md`/`design-principles.md`로 대체하는 등 언어별 재량) — 대신 Technical Service 패턴(`NotificationService` ABC + `SesNotificationService` 구현)을 `layer-architecture.md`에서 상세히 다룸. 여러 Aggregate를 조율하는 순수 Domain Service 예시는 여전히 없음(Account 하나만 존재) |
-| [domain-events.md](../architecture/domain-events.md) | `docs/architecture/domain-events.md`, `examples/.../domain/events.py`, `account.py`의 `pull_events()` | 완전 | 이벤트 수집(`_events`/`pull_events()`)은 코드와 문서가 일치. **코드 격차 (문서에 명시, 가장 중요한 격차)**: Outbox 테이블이 없어 `notification_service.notify()`가 `repo.save()` 직후 동기 직접 호출되고, 실패 시 로그만 남기고 재시도하지 않는다 — 프로세스가 저장 직후 죽으면 알림이 영구 유실될 수 있다. 문서가 Outbox 테이블 스키마, Relay 워커, 멱등성(Ledger) 구현까지 구체적으로 제시 |
+| [domain-events.md](../architecture/domain-events.md) | `docs/architecture/domain-events.md`, `examples/src/outbox/`, `examples/.../application/event/*_event_handler.py` | 완전 | 이벤트 수집(`_events`/`pull_events()`), Outbox 적재(`SqlAlchemyAccountRepository.save()`가 같은 세션에서 `OutboxWriter.save_all()` 호출), 드레인(`OutboxRelay.process_pending()`을 6개 Command Handler 모두가 `repo.save()` 직후 동기 호출)까지 코드와 문서가 일치 — dual-write 격차는 해소됨. 남은 항목은 이벤트 핸들러 멱등성(Ledger 기반 중복 발송 방지)뿐이며, 문서가 이를 향후 개선 지점으로 명시 |
 | [cqrs-pattern.md](../architecture/cqrs-pattern.md) | `docs/architecture/cqrs-pattern.md`, `examples/.../application/command|query/*_handler.py` | 완전 | `XxxHandler` + `async def execute()`, `@dataclass` Command/Query는 코드와 문서가 일치(6 Command + 2 Query handler). Bus 도입 기준과 트레이드오프도 문서화. CommandBus/QueryBus 생략은 루트도 선택사항으로 명시하므로 격차 아님 |
 | [error-handling.md](../architecture/error-handling.md) | `docs/architecture/error-handling.md`, `examples/.../domain/errors.py` + `main.py`의 `@app.exception_handler` | 완전 | Domain 예외 → Interface 변환의 레이어 분리는 코드와 문서가 일치. **코드 격차 (문서에 명시)**: 응답 바디가 `{"message": ...}` 뿐이며 루트가 요구하는 `statusCode`/`code`/`message`/`error` 4필드 스키마와 에러 코드 enum이 없다 — 문서가 `AccountErrorCode` enum과 표준 응답 빌더 구현을 구체적으로 제시 |
 | [api-response.md](../architecture/api-response.md) | `docs/architecture/api-response.md`, `examples/.../application/query/get_transactions_handler.py`, `interface/rest/schemas.py` | 완전 | 목록 응답 키(도메인 복수형 + `count`), `page`/`take` 페이지네이션, Result 객체 분리는 코드와 문서가 일치. 단건 조회의 `find_by_id` 분리 격차는 `repository-pattern.md`에서 상세히 다루고 여기서는 API 응답 계층에 미치는 영향만 요약 |
@@ -57,7 +57,7 @@
 - **누락**: 2건 — strategic-ddd, cross-domain-communication (단일 도메인/단일 BC 구조상 FastAPI 전용 예시 성립 불가, NestJS와 동일한 판단)
 - **N/A**: 0건
 
-이전 판(guide.md 기준) 대비 "완전" 판정이 2건 → 21건으로 늘었지만, 이는 **문서 품질과 정확성이 개선된 것**이지 `examples/`의 실제 코드가 21개 원칙을 모두 준수하게 됐다는 뜻이 아니다. 위 표의 "코드 격차 (문서에 명시)" 문구가 붙은 12개 항목(repository-pattern, persistence, domain-events, error-handling, api-response, authentication, cross-cutting-concerns, aggregate-id, container, config, secret-manager, graceful-shutdown, observability, testing — 실제로는 14개)은 코드 변경이 필요한 실질적 후속 작업이다. 각 문서의 "알려진 격차" 섹션이 그 상세 내용이다.
+이전 판(guide.md 기준) 대비 "완전" 판정이 2건 → 21건으로 늘었지만, 이는 **문서 품질과 정확성이 개선된 것**이지 `examples/`의 실제 코드가 21개 원칙을 모두 준수하게 됐다는 뜻이 아니다. 위 표의 "코드 격차 (문서에 명시)" 문구가 붙은 항목(repository-pattern, persistence, error-handling, api-response, authentication, cross-cutting-concerns, aggregate-id, container, config, secret-manager, graceful-shutdown, observability, testing)은 코드 변경이 필요한 실질적 후속 작업이다. 각 문서의 "알려진 격차" 섹션이 그 상세 내용이다. **domain-events는 Outbox 패턴이 실제로 구현되어 이 목록에서 제외되었다** — dual-write로 알림이 유실될 수 있던 이전의 가장 중요한 코드 격차가 해소된 항목이다.
 
 ### harness 검증 범위 참고
 
@@ -75,7 +75,7 @@
 - `implementations/fastapi/docs/architecture/design-principles.md` — 이 저장소 다른 21개 문서를 관통하는 핵심 설계 원칙 13개 요약
 - `implementations/fastapi/docs/architecture/module-pattern.md` — DI 컨테이너/모듈 데코레이터가 없는 FastAPI에서 Python 패키지 트리와 `Depends` 팩토리 함수가 NestJS의 `@Module`/`providers`를 대체하는 방식, 순환 import 해소
 - `implementations/fastapi/docs/architecture/rate-limiting.md` — `slowapi` 기반 Rate Limiting 구현 가이드 (현재 `examples/`에는 미구현, forward-looking)
-- `implementations/fastapi/docs/architecture/shared-modules.md` — 도메인에 속하지 않는 공유 코드(`src/database.py`는 이미 존재, `src/common/`·`src/config/`·`src/auth/`·`src/outbox/`는 두 번째 도메인 추가 시 권장 구조)의 위치 규칙
+- `implementations/fastapi/docs/architecture/shared-modules.md` — 도메인에 속하지 않는 공유 코드(`src/database.py`, `src/outbox/`는 이미 존재, `src/common/`·`src/config/`·`src/auth/`는 두 번째 도메인 추가 시 권장 구조)의 위치 규칙
 
 ---
 

@@ -1,19 +1,26 @@
 # 공유 코드 구조
 
-## 현재 상태 — 도메인이 하나뿐이라 공유 코드가 `src/database.py` 하나다
+## 현재 상태 — 도메인이 하나뿐이지만 공유 코드는 `database.py`와 `outbox/` 둘이다
 
-이 저장소의 `examples/src/` 트리를 실제로 확인하면 `account/` 패키지 바깥에 있는 것은 다음 하나뿐이다.
+이 저장소의 `examples/src/` 트리를 실제로 확인하면 `account/` 패키지 바깥에 있는 것은 다음 둘뿐이다.
 
 ```
 examples/src/
   __init__.py
-  database.py            ← 유일한 공유 인프라: 엔진/세션 팩토리, get_session() 의존성
+  database.py            ← 공유 인프라: 엔진/세션 팩토리, get_session() 의존성
+  outbox/                 ← 공유 인프라: Outbox 패턴 (domain-events.md 참조)
+    outbox_model.py       ← OutboxModel(Base) — account_repository.py의 Base를 그대로 재사용
+    outbox_writer.py       ← OutboxWriter — Repository.save()가 같은 세션에서 호출
+    outbox_relay.py        ← OutboxRelay — Command Handler가 save() 직후 동기 호출
   account/                ← 유일한 도메인 (Bounded Context)
     domain/
     application/
+      event/               ← EventHandler — event_type별로 하나씩, Outbox 페이로드를 역직렬화해 NotificationService 호출
     infrastructure/
     interface/
 ```
+
+`outbox/`는 Account 하나뿐인 지금도 도메인에 속하지 않는 순수 기술적 관심사(Outbox 테이블 관리, 이벤트 드레인)이므로 `account/` 패키지 안이 아니라 이 최상위 공유 위치에 둔다 — "지금 당장 하나만 써도" 기준(아래 판단 기준 절)에 해당하는 사례다.
 
 ```python
 # src/database.py — 실제 코드, 도메인에 속하지 않는 공유 인프라
@@ -40,11 +47,15 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 ## 두 번째 도메인이 추가될 때의 권장 구조
 
-도메인이 둘 이상이 되면 `database.py` 하나로는 부족해지는 지점들이 생긴다 — 여러 도메인이 공유하는 유틸(에러 응답 빌더, ID 생성기), 인증, Outbox가 그 예다. 아래는 이 저장소의 명명 규칙([directory-structure.md](directory-structure.md)의 "파일명·모듈 네이밍" 절)을 그대로 적용한 권장 구조다.
+도메인이 둘 이상이 되면 `database.py`/`outbox/`만으로는 부족해지는 지점들이 생긴다 — 여러 도메인이 공유하는 유틸(에러 응답 빌더, ID 생성기), 인증이 그 예다. 아래는 이 저장소의 명명 규칙([directory-structure.md](directory-structure.md)의 "파일명·모듈 네이밍" 절)을 그대로 적용한 권장 구조다.
 
 ```
 src/
   database.py                        ← 유지 — 도메인이 늘어도 엔진은 하나(연결 풀 공유)라 패키지로 승격할 필요는 낮음
+  outbox/                            ← 이미 존재 — 두 번째 도메인도 같은 Outbox 테이블/Relay를 공유
+    outbox_model.py
+    outbox_writer.py
+    outbox_relay.py
   common/                            ← 신설 제안: 여러 도메인이 공유하는 순수 유틸
     generate_id.py                   ← uuid.uuid4().hex 기반 ID 생성 (aggregate-id.md)
     error_response.py                ← statusCode/code/message/error 표준 응답 빌더 (error-handling.md)
@@ -55,9 +66,6 @@ src/
   auth/                              ← 신설 제안: 여러 도메인이 공유하는 인증 (authentication.md)
     jwt_service.py
     dependencies.py                  ← get_current_user() — Depends로 라우터에서 공유
-  outbox/                            ← 신설 제안: 여러 도메인이 공유하는 Outbox (domain-events.md)
-    outbox_model.py
-    outbox_relay.py
   account/                           ← 도메인 패키지
     domain/ application/ infrastructure/ interface/
   user/                              ← 두 번째 도메인 패키지 (가상)
@@ -90,4 +98,4 @@ from src.database import get_session                   # 이미 존재하는 공
 - [aggregate-id.md](aggregate-id.md) — `common/generate_id.py` 후보
 - [error-handling.md](error-handling.md) — `common/error_response.py` 후보
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — `common/correlation.py` 후보, Domain 레이어 참조 금지 원칙
-- [domain-events.md](domain-events.md) — `outbox/` 공유 패키지 후보
+- [domain-events.md](domain-events.md) — `outbox/` 공유 패키지의 실제 구현(`outbox_model.py`/`outbox_writer.py`/`outbox_relay.py`)

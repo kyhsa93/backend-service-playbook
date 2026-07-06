@@ -43,7 +43,12 @@ class TransactionModel(Base):
 class SqlAlchemyAccountRepository(AccountRepository):
 
     def __init__(self, session: AsyncSession) -> None:
+        # 지연 import — outbox_model.py가 이 모듈의 Base를 import하므로, 모듈 최상단에서
+        # OutboxWriter를 import하면 순환 참조가 발생한다 (module-pattern.md "Python의 순환 참조" 참조).
+        from ....outbox.outbox_writer import OutboxWriter
+
         self._session = session
+        self._outbox_writer = OutboxWriter(session)
 
     async def find_by_id(self, account_id: str, owner_id: str) -> Account | None:
         stmt = select(AccountModel).where(
@@ -109,6 +114,10 @@ class SqlAlchemyAccountRepository(AccountRepository):
                 currency=transaction.amount.currency,
                 created_at=transaction.created_at,
             ))
+
+        events = account.pull_events()
+        if events:
+            await self._outbox_writer.save_all(events)
 
         await self._session.flush()
 

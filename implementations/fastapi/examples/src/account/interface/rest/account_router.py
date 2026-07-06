@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....outbox.outbox_relay import OutboxRelay
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
 from ...application.command.create_account_handler import CreateAccountCommand, CreateAccountHandler
 from ...application.command.deposit_handler import DepositCommand, DepositHandler
 from ...application.command.reactivate_account_handler import ReactivateAccountCommand, ReactivateAccountHandler
 from ...application.command.suspend_account_handler import SuspendAccountCommand, SuspendAccountHandler
 from ...application.command.withdraw_handler import WithdrawCommand, WithdrawHandler
+from ...application.event.account_closed_event_handler import AccountClosedEventHandler
+from ...application.event.account_created_event_handler import AccountCreatedEventHandler
+from ...application.event.account_reactivated_event_handler import AccountReactivatedEventHandler
+from ...application.event.account_suspended_event_handler import AccountSuspendedEventHandler
+from ...application.event.money_deposited_event_handler import MoneyDepositedEventHandler
+from ...application.event.money_withdrawn_event_handler import MoneyWithdrawnEventHandler
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ...application.service.notification_service import NotificationService
@@ -34,14 +41,31 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
     return SesNotificationService(session)
 
 
+def _outbox_relay(
+    session: AsyncSession = Depends(get_session),
+    notification_service: NotificationService = Depends(_notification_service),
+) -> OutboxRelay:
+    return OutboxRelay(
+        session=session,
+        handlers={
+            "AccountCreated": AccountCreatedEventHandler(notification_service).handle,
+            "MoneyDeposited": MoneyDepositedEventHandler(notification_service).handle,
+            "MoneyWithdrawn": MoneyWithdrawnEventHandler(notification_service).handle,
+            "AccountSuspended": AccountSuspendedEventHandler(notification_service).handle,
+            "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
+            "AccountClosed": AccountClosedEventHandler(notification_service).handle,
+        },
+    )
+
+
 @router.post("", status_code=201, response_model=CreateAccountResponse)
 async def create_account(
     body: CreateAccountRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> CreateAccountResponse:
-    account = await CreateAccountHandler(repo, notification_service).execute(
+    account = await CreateAccountHandler(repo, outbox_relay).execute(
         CreateAccountCommand(requester_id=x_user_id, currency=body.currency, email=body.email)
     )
     return CreateAccountResponse(
@@ -60,9 +84,9 @@ async def deposit(
     body: DepositRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, notification_service).execute(
+    transaction = await DepositHandler(repo, outbox_relay).execute(
         DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
     )
     return TransactionResponse(
@@ -80,9 +104,9 @@ async def withdraw(
     body: WithdrawRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await WithdrawHandler(repo, notification_service).execute(
+    transaction = await WithdrawHandler(repo, outbox_relay).execute(
         WithdrawCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
     )
     return TransactionResponse(
@@ -99,9 +123,9 @@ async def suspend_account(
     account_id: str,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
-    await SuspendAccountHandler(repo, notification_service).execute(
+    await SuspendAccountHandler(repo, outbox_relay).execute(
         SuspendAccountCommand(account_id=account_id, requester_id=x_user_id)
     )
 
@@ -111,9 +135,9 @@ async def reactivate_account(
     account_id: str,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
-    await ReactivateAccountHandler(repo, notification_service).execute(
+    await ReactivateAccountHandler(repo, outbox_relay).execute(
         ReactivateAccountCommand(account_id=account_id, requester_id=x_user_id)
     )
 
@@ -123,9 +147,9 @@ async def close_account(
     account_id: str,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
-    await CloseAccountHandler(repo, notification_service).execute(
+    await CloseAccountHandler(repo, outbox_relay).execute(
         CloseAccountCommand(account_id=account_id, requester_id=x_user_id)
     )
 

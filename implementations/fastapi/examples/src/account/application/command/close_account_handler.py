@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
+from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountRepository
-from ..service.notification_service import NotificationService
 
 
 @dataclass
@@ -13,9 +13,9 @@ class CloseAccountCommand:
 
 class CloseAccountHandler:
 
-    def __init__(self, repo: AccountRepository, notification_service: NotificationService) -> None:
+    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
         self._repo = repo
-        self._notification_service = notification_service
+        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: CloseAccountCommand) -> None:
         account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
@@ -23,5 +23,4 @@ class CloseAccountHandler:
             raise AccountNotFoundError(cmd.account_id)
         account.close()
         await self._repo.save(account)
-        for event in account.pull_events():
-            await self._notification_service.notify(event)
+        await self._outbox_relay.process_pending()
