@@ -21,7 +21,7 @@
 | `repository-pattern.md` | Repository abstract class, 직접 인스턴스화 금지 | ✅ | `repository-pattern` | Covered | transaction 관련 규칙은 `transaction` evaluator 후보 |
 | `module-pattern.md` | `@Module` providers 구성, DI 등록 | ✅ | `module-di-ast` | Partial | imports/exports 경계 검증 추가 가능 |
 | `cqrs-pattern.md` | command/query 분리, Query에서 Repository 미사용 | ✅ | `cqrs-pattern` | Covered | handler 단위 CQRS 규칙은 추후 확장 가능 |
-| `domain-service.md` | Domain Service 위치/책임/네이밍 | ✅ | `domain-service` | Partial | 네이밍 의미 검증은 Manual 리뷰 병행 |
+| `../../docs/architecture/domain-service.md` (루트 공용) | Domain Service 위치/책임/네이밍 | ✅ | `domain-service` | Partial | 네이밍 의미 검증은 Manual 리뷰 병행 |
 | `domain-events.md` | Aggregate event, Outbox, handler 위치, EventBus 직접 호출 금지 | ✅ | `domain-event-outbox` | Covered | integration event 세부 정책은 fixture 확장 필요 |
 | `aggregate-id.md` | Aggregate ID value object, primitive id 직접 사용 제한 | ✅ | `aggregate-id` | Partial | ID 생성 런타임 동작은 Manual 리뷰 병행 |
 | `cross-domain.md` | 도메인 간 직접 의존 금지, Adapter 경유 | ⚠️ | `import-graph` | Partial | `cross-domain-adapter` evaluator 후보 |
@@ -83,7 +83,7 @@
 | `rate-limiting` | `rate-limiting.md` | ThrottlerModule 설정, APP_GUARD ThrottlerGuard 전역 등록 |
 | `pagination` | `pagination.md` | page/take DTO 데코레이터, 범용 응답 키 금지 |
 | `database-queries` | `database-queries.md` | @PrimaryGeneratedColumn 금지, BaseEntity 상속, TransactionManager 존재 |
-| `domain-service` | `domain-service.md` | Domain Service에 @Injectable() 금지 |
+| `domain-service` | `domain-service.md` (루트 공용, `../../docs/architecture/`) | Domain Service에 @Injectable() 금지 |
 | `aggregate-id` | `aggregate-id.md` | @PrimaryGeneratedColumn 금지, char(32) PrimaryColumn, generateId() 존재 |
 
 ## Guide-Harness sync policy

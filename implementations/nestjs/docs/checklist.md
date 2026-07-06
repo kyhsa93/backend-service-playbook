@@ -69,7 +69,7 @@
 
 ## STEP 2 — Domain 레이어
 
-**관련 문서**: [architecture/layer-architecture.md](./architecture/layer-architecture.md) · [architecture/design-principles.md](./architecture/design-principles.md) · [architecture/domain-service.md](./architecture/domain-service.md) · [architecture/aggregate-id.md](./architecture/aggregate-id.md)
+**관련 문서**: [architecture/layer-architecture.md](./architecture/layer-architecture.md) · [architecture/design-principles.md](./architecture/design-principles.md) · [domain-service.md](../../../docs/architecture/domain-service.md) (루트 공용) · [architecture/aggregate-id.md](./architecture/aggregate-id.md)
 
 ```
 [ ] domain/ 디렉토리에 Aggregate Root, Entity, Value Object, Domain Event, Repository 인터페이스가 있는가?
@@ -556,7 +556,7 @@ AI Agent는 작업 완료 후 다음 순서로 자기 검토를 수행한다:
 > 체크리스트는 가이드의 규칙을 요약한 것이다.
 > 항목의 의도가 불명확하다면 해당 문서를 참조한다:
 > - STEP 1 파일 구조 및 네이밍 → [conventions.md](conventions.md) 섹션 1-3
-> - STEP 2 Domain 레이어 → [layer-architecture.md](architecture/layer-architecture.md), [domain-service.md](architecture/domain-service.md), [aggregate-id.md](architecture/aggregate-id.md)
+> - STEP 2 Domain 레이어 → [layer-architecture.md](architecture/layer-architecture.md), [domain-service.md](../../../docs/architecture/domain-service.md) (루트 공용), [aggregate-id.md](architecture/aggregate-id.md)
 > - STEP 3 레이어 아키텍처 / 이벤트 → [layer-architecture.md](architecture/layer-architecture.md), [domain-events.md](architecture/domain-events.md), [cqrs-pattern.md](architecture/cqrs-pattern.md) / [conventions.md](conventions.md) 섹션 6
 > - STEP 4 Repository 패턴 → [repository-pattern.md](architecture/repository-pattern.md)
 > - STEP 5 NestJS DI → [repository-pattern.md](architecture/repository-pattern.md), [module-pattern.md](architecture/module-pattern.md)
