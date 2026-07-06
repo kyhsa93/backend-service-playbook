@@ -2,15 +2,13 @@ package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.domain.AccountRepository
-import org.springframework.context.ApplicationEventPublisher
+import com.example.accountservice.outbox.OutboxRelay
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 
 @Service
-@Transactional
 class CloseAccountService(
     private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val outboxRelay: OutboxRelay,
 ) {
 
     fun close(command: CloseAccountCommand) {
@@ -18,6 +16,6 @@ class CloseAccountService(
             ?: throw AccountNotFoundException(command.accountId)
         account.close()
         accountRepository.save(account)
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent)
+        outboxRelay.processPending()
     }
 }

@@ -2,21 +2,19 @@ package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.Account
 import com.example.accountservice.account.domain.AccountRepository
-import org.springframework.context.ApplicationEventPublisher
+import com.example.accountservice.outbox.OutboxRelay
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 
 @Service
-@Transactional
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val outboxRelay: OutboxRelay,
 ) {
 
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
         accountRepository.save(account)
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent)
+        outboxRelay.processPending()
         return CreateAccountResult(
             accountId = account.accountId,
             ownerId = account.ownerId,

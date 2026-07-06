@@ -5,14 +5,17 @@ import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.account.domain.Transaction
+import com.example.accountservice.outbox.OutboxWriter
 import jakarta.persistence.EntityManager
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 
 @Repository
 class AccountRepositoryImpl(
     private val jpaRepository: AccountJpaRepository,
     private val transactionJpaRepository: TransactionJpaRepository,
+    private val outboxWriter: OutboxWriter,
     private val em: EntityManager,
 ) : AccountRepository {
 
@@ -35,10 +38,14 @@ class AccountRepositoryImpl(
             .singleResult
     }
 
+    @Transactional
     override fun save(account: Account) {
         jpaRepository.save(account)
         val pending = account.pullPendingTransactions()
         if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
+        // Aggregate 상태(account/transaction 행)와 Outbox 행을 같은 트랜잭션에 커밋한다 — 이벤트가
+        // Aggregate 상태 없이 저장되거나(dual-write), 반대로 유실되는 경우가 생기지 않는다.
+        outboxWriter.saveAll(account.pullDomainEvents())
     }
 
     override fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction> =

@@ -2,15 +2,13 @@ package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.domain.AccountRepository
-import org.springframework.context.ApplicationEventPublisher
+import com.example.accountservice.outbox.OutboxRelay
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 
 @Service
-@Transactional
 class DepositService(
     private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val outboxRelay: OutboxRelay,
 ) {
 
     fun deposit(command: DepositCommand): TransactionResult {
@@ -18,7 +16,7 @@ class DepositService(
             ?: throw AccountNotFoundException(command.accountId)
         val transaction = account.deposit(command.amount)
         accountRepository.save(account)
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent)
+        outboxRelay.processPending()
         return TransactionResult(
             transactionId = transaction.transactionId,
             accountId = transaction.accountId,
