@@ -61,6 +61,21 @@ Kotlin Spring Boot는 JVM 기반 서버로, Spring의 성숙한 생태계(JPA, D
 
 ---
 
+## Kotlin Spring Boot 전용, 대응 root 문서 없음
+
+NestJS 구현체가 이미 6개의 "NestJS 전용" 문서(`implementations/nestjs/docs/architecture/{bootstrap,cross-domain,design-principles,module-pattern,rate-limiting,shared-modules}.md`, [docs/implementations/nestjs.md](nestjs.md) 참조)를 갖고 있던 것과 대칭을 맞추기 위해, 동일한 6개 주제를 Kotlin/Spring 관용구로 새로 작성했다 — NestJS 문서의 직역이 아니라 `data class`/`sealed class`/null-safety/생성자 주입 등 Kotlin/Spring의 실제 관례에 맞춰 다시 쓴 것이다.
+
+| 원칙 문서 (루트, 공용) | Kotlin Spring Boot 구현 문서 |
+|---|---|
+| — (Kotlin Spring Boot 전용, 대응하는 root 문서 없음) | `implementations/kotlin-springboot/docs/architecture/bootstrap.md` — `AccountServiceApplication.kt`, `runApplication<T>()`, `application.yml` 로딩 순서, Swagger/CORS 도입 가이드 |
+| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/cross-domain.md` — Adapter 패턴 구현 상세(가상 예시, Account BC → User BC), 원칙은 [cross-domain-communication.md](../architecture/cross-domain-communication.md) 참고 |
+| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/design-principles.md` — 핵심 설계 원칙 15개 요약 |
+| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/module-pattern.md` — Spring DI 컨테이너, `@Component`/`@Service`/`@Bean`, 순환 의존 회피 |
+| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/rate-limiting.md` — Resilience4j `RateLimiter` 기반 Filter (현재 `examples/`는 미구현) |
+| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/shared-modules.md` — `common/`/`config/`/`auth/`/`outbox/` 공유 패키지 컨벤션 (현재 `examples/`는 `account/`/`notification/`뿐) |
+
+---
+
 ## Kotlin Spring Boot 선택 이유
 
 - **Null-safety가 타입 시스템에 내장**: `Account?`처럼 nullable 여부가 컴파일 타임에 강제되어, Java의 `Optional<T>` 래핑이나 런타임 `NullPointerException` 방어 코드 없이도 "찾지 못함"을 표현할 수 있다.
