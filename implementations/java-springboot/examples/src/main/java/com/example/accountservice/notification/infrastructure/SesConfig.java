@@ -1,4 +1,4 @@
-package com.example.accountservice.notification;
+package com.example.accountservice.notification.infrastructure;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

@@ -1,6 +1,8 @@
 package com.example.accountservice.notification;
 
 import com.example.accountservice.AccountServiceApplication;
+import com.example.accountservice.notification.infrastructure.persistence.SentEmail;
+import com.example.accountservice.notification.infrastructure.persistence.SentEmailRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeAll;

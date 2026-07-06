@@ -1,4 +1,4 @@
-package com.example.accountservice.notification;
+package com.example.accountservice.notification.infrastructure.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
