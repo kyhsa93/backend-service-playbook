@@ -15,6 +15,11 @@ var (
 	failCount int
 
 	snakeCase = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*\.go$`)
+
+	// 실제 Go interface 타입 선언(예: `type AccountRepository interface {`)만 매칭.
+	// "type"·"interface"·"Repository" 단어가 파일 어딘가에 각각 등장하는 것만으로는
+	// (예: struct 정의, 주석, 문자열, import 경로)는 매칭하지 않는다.
+	repositoryInterfaceDecl = regexp.MustCompile(`(?m)^\s*type\s+\w*Repository\w*\s+interface\b`)
 )
 
 func pass(name string) {
@@ -123,6 +128,9 @@ func checkRepositoryPlacement(root string) {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
+		if strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
 		content, readErr := os.ReadFile(path)
 		if readErr != nil {
 			return nil
@@ -130,8 +138,7 @@ func checkRepositoryPlacement(root string) {
 		rel, _ := filepath.Rel(root, path)
 		src := string(content)
 
-		if strings.Contains(src, "type") && strings.Contains(src, "interface") &&
-			strings.Contains(src, "Repository") {
+		if repositoryInterfaceDecl.MatchString(src) {
 			found = true
 			if strings.Contains(filepath.ToSlash(path), "/domain/") {
 				pass(rel + " (Repository interface)")
@@ -156,7 +163,7 @@ func checkRepositoryPlacement(root string) {
 	}
 }
 
-// [4] Handler 파일 위치: command → application/command/, query → application/query/
+// [4] Handler 파일 위치: CQRS 핸들러 → application/command|query/, HTTP 핸들러 → interface/http/
 func checkHandlerPlacement(root string) {
 	section("handler-placement")
 	found := false
@@ -171,11 +178,16 @@ func checkHandlerPlacement(root string) {
 		if strings.HasSuffix(name, "_handler.go") &&
 			!strings.HasSuffix(name, "_event_handler.go") {
 			found = true
-			if strings.Contains(pathSlash, "/application/command/") ||
-				strings.Contains(pathSlash, "/application/query/") {
+			// guide.md가 문서화한 HTTP 핸들러 위치(interface/http/)에 있으면
+			// CQRS 핸들러(application/command|query/) 규칙 대상에서 제외하고 그대로 통과시킨다.
+			switch {
+			case strings.Contains(pathSlash, "/interface/http/"):
+				pass(rel + " (HTTP handler)")
+			case strings.Contains(pathSlash, "/application/command/"),
+				strings.Contains(pathSlash, "/application/query/"):
 				pass(rel)
-			} else {
-				fail(rel, "handler 파일은 application/command/ 또는 application/query/ 에 있어야 함")
+			default:
+				fail(rel, "handler 파일은 application/command/, application/query/ 또는 interface/http/ 에 있어야 함")
 			}
 		}
 		return nil
