@@ -1,8 +1,11 @@
-package com.example.accountservice.notification
+package com.example.accountservice.notification.infrastructure
 
+import com.example.accountservice.notification.application.service.NotificationService
+import com.example.accountservice.notification.infrastructure.persistence.SentEmail
+import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.stereotype.Service
+import org.springframework.stereotype.Component
 import software.amazon.awssdk.services.ses.SesClient
 import software.amazon.awssdk.services.ses.model.Body
 import software.amazon.awssdk.services.ses.model.Content
@@ -10,15 +13,15 @@ import software.amazon.awssdk.services.ses.model.Destination
 import software.amazon.awssdk.services.ses.model.Message
 import software.amazon.awssdk.services.ses.model.SendEmailRequest
 
-@Service
-class NotificationService(
+@Component
+class NotificationServiceImpl(
     private val sesClient: SesClient,
     private val sentEmailJpaRepository: SentEmailJpaRepository,
     @Value("\${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}") private val senderEmail: String,
-) {
-    private val logger = LoggerFactory.getLogger(NotificationService::class.java)
+) : NotificationService {
+    private val logger = LoggerFactory.getLogger(NotificationServiceImpl::class.java)
 
-    fun sendEmail(accountId: String, eventType: String, recipient: String, subject: String, body: String) {
+    override fun sendEmail(accountId: String, eventType: String, recipient: String, subject: String, body: String) {
         val request = SendEmailRequest.builder()
             .source(senderEmail)
             .destination(Destination.builder().toAddresses(recipient).build())

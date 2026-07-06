@@ -6,7 +6,7 @@ import com.example.accountservice.account.domain.AccountReactivatedEvent
 import com.example.accountservice.account.domain.AccountSuspendedEvent
 import com.example.accountservice.account.domain.MoneyDepositedEvent
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
-import com.example.accountservice.notification.NotificationService
+import com.example.accountservice.notification.application.service.NotificationService
 import org.slf4j.LoggerFactory
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component

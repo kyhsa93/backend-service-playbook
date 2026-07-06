@@ -1,4 +1,4 @@
-package com.example.accountservice.notification
+package com.example.accountservice.notification.infrastructure.persistence
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
