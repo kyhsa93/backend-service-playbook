@@ -20,6 +20,10 @@ DDD 기반 FastAPI(Python) 서버 프로젝트의 설계/구현 가이드이다.
 | Aggregate ID 생성, UUID hex, `.hex` vs 하이픈 | `docs/architecture/aggregate-id.md` |
 | 전략적 설계, Subdomain, Bounded Context, Context Map | `../../docs/architecture/strategic-ddd.md` (루트 공용 문서) |
 | BC 간 통신 패턴 선택, 동기 vs 비동기, ACL | `../../docs/architecture/cross-domain-communication.md` (루트 공용 문서) |
+| 크로스 도메인 호출, Adapter 패턴 구현(ABC + `infrastructure/` 구현체), ACL 예시 코드 | `docs/architecture/cross-domain.md` |
+| 핵심 설계 원칙 요약, 13개 규칙 치트시트 | `docs/architecture/design-principles.md` |
+| DI 컨테이너 없음, `Depends` 팩토리 = 바인딩 지점, Python 패키지 = 모듈, 순환 import 해소 | `docs/architecture/module-pattern.md` |
+| 도메인에 속하지 않는 공유 코드 위치, `src/common/`, `src/config/`, `src/auth/`, `src/outbox/` | `docs/architecture/shared-modules.md` |
 
 ### 데이터 / 트랜잭션
 
@@ -40,6 +44,8 @@ DDD 기반 FastAPI(Python) 서버 프로젝트의 설계/구현 가이드이다.
 | Middleware, Correlation ID, 요청 파이프라인 | `docs/architecture/cross-cutting-concerns.md` |
 | 에러 처리, `domain/errors.py`, `@app.exception_handler`, 에러 응답 형식 | `docs/architecture/error-handling.md` |
 | Presigned URL, 파일 업로드/다운로드, S3/`aioboto3` | `docs/architecture/file-storage.md` |
+| 앱 부트스트랩, `main.py`, `FastAPI(...)` 생성, 라우터/예외 핸들러 등록, Swagger 자동 생성(`/docs`) | `docs/architecture/bootstrap.md` |
+| Rate Limiting, `slowapi`, 요청 속도 제한, 429 | `docs/architecture/rate-limiting.md` |
 
 ### 운영 / 인프라
 

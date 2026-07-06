@@ -48,7 +48,7 @@
 | [observability.md](../architecture/observability.md) | `docs/architecture/observability.md`, `examples/.../infrastructure/notification/notification_service.py` (`logging`) | 완전 | **코드 격차 (문서에 명시)**: 표준 `logging` + `%s` 포맷 문자열만 사용 — 구조화 JSON, Correlation ID가 없다. 문서가 stdlib `logging` + 커스텀 `JsonFormatter`(structlog 대신 선택한 이유 포함) + `contextvars` 기반 Correlation ID를 구체적으로 제시 |
 | [scheduling.md](../architecture/scheduling.md) | `docs/architecture/scheduling.md` | 완전 | 이 저장소에 스케줄링 유스케이스 자체가 없어 코드 대응은 없음(순수 신규 문서) — `BackgroundTasks`/APScheduler/Celery의 트레이드오프를 비교하고 Outbox Relay를 실행하는 예시로 [domain-events.md](../../implementations/fastapi/docs/architecture/domain-events.md)와 연결 |
 | [testing.md](../architecture/testing.md) | `docs/architecture/testing.md`, `examples/tests/test_account_e2e.py`, `test_notification_e2e.py` | 완전 | E2E 테스트(testcontainers, `httpx.ASGITransport`)는 이미 루트 원칙과 정확히 일치(30개 이상 케이스) — 문서가 이를 확인. **코드 격차 (문서에 명시)**: Domain 단위 테스트, Application 단위 테스트(mock 기반)가 하나도 없다 — 문서가 `pytest` + `unittest.mock.AsyncMock` 기반 예시 테스트 코드를 구체적으로 제시 |
-| [conventions.md](../conventions.md) | `docs/architecture/directory-structure.md`(파일명·네이밍 섹션 흡수), `examples/.../interface/rest/account_router.py` | 부분 | REST URL 설계(복수 명사, `POST /accounts/{id}/suspend` 등 하위 리소스 경로)는 코드가 루트 규칙을 정확히 따르고, 파일명·클래스명 네이밍 규칙은 `directory-structure.md`에 통합됨. Rate Limiting 원칙은 여전히 FastAPI 전용 문서·구현 어디에도 없음 |
+| [conventions.md](../conventions.md) | `docs/architecture/directory-structure.md`(파일명·네이밍 섹션 흡수), `docs/architecture/rate-limiting.md`(Rate Limiting 섹션), `examples/.../interface/rest/account_router.py` | 부분 | REST URL 설계(복수 명사, `POST /accounts/{id}/suspend` 등 하위 리소스 경로)는 코드가 루트 규칙을 정확히 따르고, 파일명·클래스명 네이밍 규칙은 `directory-structure.md`에 통합됨. Rate Limiting 원칙은 이제 `rate-limiting.md`(FastAPI 전용 bonus 문서)가 `slowapi` 기반 구현으로 다루지만, `examples/`에는 아직 반영되지 않았다(`requirements.txt`에 관련 패키지 없음) — 문서만 있고 코드가 없다는 의미에서 여전히 "부분" |
 
 ### 커버리지 요약
 
@@ -70,6 +70,12 @@
 - Pydantic `BaseModel`/`EmailStr` 기반 요청·응답 스키마 자동 검증 및 OpenAPI(Swagger) 문서 자동 생성
 - `Depends()` 함수형 DI 그래프 — 클래스 데코레이터 없이 provider 함수 조합으로 의존성을 구성 (`account_router.py`의 `_repo`, `_notification_service`)
 - `app.dependency_overrides`를 이용한 테스트 환경 의존성 치환 (E2E 테스트에서 `get_session`을 testcontainers 세션으로 교체)
+- `implementations/fastapi/docs/architecture/bootstrap.md` — `main.py`의 `FastAPI(...)` 생성, `lifespan`, 라우터/예외 핸들러 등록, FastAPI 자동 OpenAPI(`/docs`)가 NestJS의 명시적 `SwaggerModule.setup()`을 대체하는 방식
+- `implementations/fastapi/docs/architecture/cross-domain.md` — Adapter 패턴(ACL)의 FastAPI 구현 예시(가상 시나리오): `application/adapter/`의 ABC + `infrastructure/`의 구현체 + `Depends` 바인딩 (원칙은 [cross-domain-communication.md](../architecture/cross-domain-communication.md) 참고)
+- `implementations/fastapi/docs/architecture/design-principles.md` — 이 저장소 다른 21개 문서를 관통하는 핵심 설계 원칙 13개 요약
+- `implementations/fastapi/docs/architecture/module-pattern.md` — DI 컨테이너/모듈 데코레이터가 없는 FastAPI에서 Python 패키지 트리와 `Depends` 팩토리 함수가 NestJS의 `@Module`/`providers`를 대체하는 방식, 순환 import 해소
+- `implementations/fastapi/docs/architecture/rate-limiting.md` — `slowapi` 기반 Rate Limiting 구현 가이드 (현재 `examples/`에는 미구현, forward-looking)
+- `implementations/fastapi/docs/architecture/shared-modules.md` — 도메인에 속하지 않는 공유 코드(`src/database.py`는 이미 존재, `src/common/`·`src/config/`·`src/auth/`·`src/outbox/`는 두 번째 도메인 추가 시 권장 구조)의 위치 규칙
 
 ---
 
