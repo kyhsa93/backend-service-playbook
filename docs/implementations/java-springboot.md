@@ -60,6 +60,21 @@
 
 ---
 
+## Java Spring Boot 전용, 대응 root 문서 없음 (NestJS 대비 보너스 문서 6종)
+
+`implementations/nestjs/docs/architecture/`에는 root 21개 주제 어디에도 대응하지 않지만 실무 가치가 있는 보너스 문서 6개(`bootstrap.md`/`cross-domain.md`/`design-principles.md`/`module-pattern.md`/`rate-limiting.md`/`shared-modules.md`)가 있다. 이번 세션에서 동일한 6개 주제를 Java Spring Boot 관용으로 다시 작성해 커버리지 공백을 없앴다 — NestJS 문서를 그대로 옮긴 것이 아니라 Spring 고유 메커니즘(생성자 주입, `@ConfigurationProperties`, `@Bean`/`@Configuration`, Resilience4j 등) 기준으로 새로 썼다.
+
+| 문서 | 내용 |
+|---|---|
+| `docs/architecture/bootstrap.md` | `AccountServiceApplication`의 `@SpringBootApplication`/`SpringApplication.run()` 부트스트랩 순서, `application.yml` 로딩 순서, `@RestControllerAdvice` 전역 예외 처리 배선(error-handling.md 교차 참조), springdoc/CORS/Actuator 도입 가이드(현재 모두 미도입, forward-looking) |
+| `docs/architecture/cross-domain.md` | 도메인 간 동기 호출 Adapter 패턴의 Java/Spring 구현 예시 — `application/adapter/` 인터페이스 + `infrastructure/` 구현체. 이 저장소는 단일 BC 구조라 가상의 User BC를 상정한 예시임을 명시 |
+| `docs/architecture/design-principles.md` | 이 저장소의 핵심 설계 원칙 13개를 압축한 TL;DR 인덱스 + 알려진 gap(도메인/ORM 결합, Query 인터페이스 미분리, 에러 응답 2필드 등) 요약 표 |
+| `docs/architecture/module-pattern.md` | Spring DI 컨테이너 메커니즘(스테레오타입 애노테이션, 생성자 주입, `@Bean`/`@Configuration`, `@Profile`)과 NestJS `@Module`의 근본적 차이(모듈 경계가 컴파일 타임에 강제되지 않음), 순환 의존 시 `@Lazy` vs BC 경계 재설계 |
+| `docs/architecture/rate-limiting.md` | Resilience4j `RateLimiter` 기반 `Filter`/애노테이션 구현 예시. `build.gradle` 확인 결과 현재 rate limiting 의존성이 전혀 없어 이 문서는 전적으로 도입 가이드(forward-looking)임을 명시 |
+| `docs/architecture/shared-modules.md` | `common/`/`config/`/`database/`/`outbox/`/`auth/` 공유 코드 배치 컨벤션. 현재 `account`/`notification` 두 도메인 패키지뿐이라 공유 패키지가 실재하지 않음을 확인하고, 새로 추가할 때의 권장 배치를 제시 |
+
+---
+
 ## harness.sh 검증 범위 — 문서 갱신과 무관하게 여전히 구조 검사에 한정
 
 `implementations/java-springboot/harness/harness.sh`는 여전히 8개 섹션(file-naming, repository-annotation, service-annotation, domain-purity, controller-placement, package-structure, shared-infra, event-placement)으로 구성되며, 파일 배치·어노테이션 위치·디렉토리 존재 여부만 검사한다. 이번 문서화 패스는 `harness/`를 변경하지 않았으므로 다음 한계는 그대로 유지된다:

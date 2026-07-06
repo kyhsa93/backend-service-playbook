@@ -61,6 +61,17 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 | Testing, Domain/Application/E2E 3계층, Mockito, Testcontainers | `docs/architecture/testing.md` |
 | harness 실행, evaluator 규칙 목록 | `harness/README.md` |
 
+### 보너스 문서 — root에 대응 문서 없음 (NestJS 대비 6종)
+
+| 작업 / 키워드 | 읽을 문서 |
+|---------------|----------|
+| `AccountServiceApplication`, `SpringApplication.run()` 부트스트랩 순서, `application.yml` 로딩 순서, springdoc/CORS/Actuator 도입 | `docs/architecture/bootstrap.md` |
+| 도메인 간 호출, Adapter 패턴 구현 예시(`application/adapter/`, `infrastructure/`), ACL | `docs/architecture/cross-domain.md` |
+| 핵심 설계 원칙 13개 요약(TL;DR), 알려진 gap 인덱스 | `docs/architecture/design-principles.md` |
+| `@Component`/`@Service`/`@Repository`/`@Configuration` 스테레오타입, 생성자 주입, `@Bean` 메서드, 순환 의존과 `@Lazy` | `docs/architecture/module-pattern.md` |
+| Rate Limiting, Resilience4j `RateLimiter`, `Filter` 기반 구현 (현재 미구현, forward-looking) | `docs/architecture/rate-limiting.md` |
+| 공유 코드 배치(`common/`, `config/`, `database/`, `outbox/`, `auth/`), 도메인 무관 유틸 | `docs/architecture/shared-modules.md` |
+
 ## 구현 검증
 
 ```bash
