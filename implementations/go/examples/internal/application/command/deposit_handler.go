@@ -14,12 +14,12 @@ type DepositCommand struct {
 }
 
 type DepositHandler struct {
-	repo     account.Repository
-	notifier Notifier
+	repo        account.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewDepositHandler(repo account.Repository, notifier Notifier) *DepositHandler {
-	return &DepositHandler{repo: repo, notifier: notifier}
+func NewDepositHandler(repo account.Repository, outboxRelay OutboxRelay) *DepositHandler {
+	return &DepositHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*account.Transaction, error) {
@@ -34,6 +34,8 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 	if err := h.repo.Save(ctx, a); err != nil {
 		return nil, err
 	}
-	notify(ctx, h.notifier, a)
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
+		return nil, err
+	}
 	return &tx, nil
 }

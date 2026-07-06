@@ -8,17 +8,19 @@ import (
 	"time"
 
 	"github.com/example/account-service/internal/domain/account"
+	"github.com/example/account-service/internal/infrastructure/outbox"
 )
 
 type AccountRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	outboxWriter *outbox.Writer
 }
 
 // 컴파일 타임 interface 충족 검증
 var _ account.Repository = (*AccountRepository)(nil)
 
-func NewAccountRepository(db *sql.DB) *AccountRepository {
-	return &AccountRepository{db: db}
+func NewAccountRepository(db *sql.DB, outboxWriter *outbox.Writer) *AccountRepository {
+	return &AccountRepository{db: db, outboxWriter: outboxWriter}
 }
 
 func (r *AccountRepository) FindByID(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
@@ -133,10 +135,17 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 		}
 	}
 
+	// Outbox row는 계좌/거래 row와 같은 트랜잭션 안에서 적재된다 — 커밋이 원자적이므로
+	// "계좌는 바뀌었는데 이벤트는 유실됨"(dual-write) 실패 모드가 존재하지 않는다.
+	if err := r.outboxWriter.SaveAll(ctx, tx, a.DomainEvents()); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit save account: %w", err)
 	}
 	a.ClearTransactions()
+	a.ClearEvents()
 	return nil
 }
 

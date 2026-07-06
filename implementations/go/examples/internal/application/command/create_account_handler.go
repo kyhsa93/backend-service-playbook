@@ -13,12 +13,12 @@ type CreateAccountCommand struct {
 }
 
 type CreateAccountHandler struct {
-	repo     account.Repository
-	notifier Notifier
+	repo        account.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewCreateAccountHandler(repo account.Repository, notifier Notifier) *CreateAccountHandler {
-	return &CreateAccountHandler{repo: repo, notifier: notifier}
+func NewCreateAccountHandler(repo account.Repository, outboxRelay OutboxRelay) *CreateAccountHandler {
+	return &CreateAccountHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
@@ -26,6 +26,8 @@ func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountComm
 	if err := h.repo.Save(ctx, a); err != nil {
 		return nil, err
 	}
-	notify(ctx, h.notifier, a)
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
+		return nil, err
+	}
 	return a, nil
 }

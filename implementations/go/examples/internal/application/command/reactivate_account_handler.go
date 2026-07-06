@@ -13,12 +13,12 @@ type ReactivateAccountCommand struct {
 }
 
 type ReactivateAccountHandler struct {
-	repo     account.Repository
-	notifier Notifier
+	repo        account.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewReactivateAccountHandler(repo account.Repository, notifier Notifier) *ReactivateAccountHandler {
-	return &ReactivateAccountHandler{repo: repo, notifier: notifier}
+func NewReactivateAccountHandler(repo account.Repository, outboxRelay OutboxRelay) *ReactivateAccountHandler {
+	return &ReactivateAccountHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *ReactivateAccountHandler) Handle(ctx context.Context, cmd ReactivateAccountCommand) error {
@@ -32,6 +32,5 @@ func (h *ReactivateAccountHandler) Handle(ctx context.Context, cmd ReactivateAcc
 	if err := h.repo.Save(ctx, a); err != nil {
 		return err
 	}
-	notify(ctx, h.notifier, a)
-	return nil
+	return h.outboxRelay.ProcessPending(ctx)
 }

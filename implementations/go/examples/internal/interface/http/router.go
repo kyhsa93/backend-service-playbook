@@ -8,13 +8,13 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-func NewRouter(repo account.Repository, notifier command.Notifier) *http.ServeMux {
-	createAccountHandler := command.NewCreateAccountHandler(repo, notifier)
-	depositHandler := command.NewDepositHandler(repo, notifier)
-	withdrawHandler := command.NewWithdrawHandler(repo, notifier)
-	suspendAccountHandler := command.NewSuspendAccountHandler(repo, notifier)
-	reactivateAccountHandler := command.NewReactivateAccountHandler(repo, notifier)
-	closeAccountHandler := command.NewCloseAccountHandler(repo, notifier)
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
+	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
+	depositHandler := command.NewDepositHandler(repo, outboxRelay)
+	withdrawHandler := command.NewWithdrawHandler(repo, outboxRelay)
+	suspendAccountHandler := command.NewSuspendAccountHandler(repo, outboxRelay)
+	reactivateAccountHandler := command.NewReactivateAccountHandler(repo, outboxRelay)
+	closeAccountHandler := command.NewCloseAccountHandler(repo, outboxRelay)
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	getTransactionsHandler := query.NewGetTransactionsHandler(repo)
 

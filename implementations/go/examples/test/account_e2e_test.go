@@ -22,7 +22,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/example/account-service/internal/application/event"
 	"github.com/example/account-service/internal/infrastructure/notification"
+	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
 	httphandler "github.com/example/account-service/internal/interface/http"
 )
@@ -74,7 +76,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -121,8 +123,18 @@ func runTests(m *testing.M) int {
 
 	notifier := notification.NewService(sesClient, db)
 
-	repo := persistence.NewAccountRepository(db)
-	mux := httphandler.NewRouter(repo, notifier)
+	outboxWriter := outbox.NewWriter()
+	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
+		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
+		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
+		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier).Handle,
+		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
+		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
+	})
+
+	repo := persistence.NewAccountRepository(db, outboxWriter)
+	mux := httphandler.NewRouter(repo, outboxRelay)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 

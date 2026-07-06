@@ -227,18 +227,34 @@ func checkFilePlacement(root string) {
 }
 
 // [6] shared-infra: outbox·task-queue 패턴
+//
+// outbox/task-queue 관련 파일이 있다면, 그 코드가 전용 디렉토리(디렉토리명이
+// 정확히 "outbox"/"task-queue")에 모여 있어야 한다. shared-modules.md는 이
+// 디렉토리의 위치를 internal/ 바로 아래로 고정하지 않는다 — 여러 관심사별
+// 하위 패키지(internal/infrastructure/outbox/ 등) 어디에 두어도 되므로,
+// 존재 여부도 파일 스캔과 마찬가지로 internal/ 전체를 재귀적으로 뒤져 확인한다.
 func checkSharedInfra(root string) {
 	section("shared-infra")
-	internal := filepath.Join(root, "internal")
 
 	hasOutboxFile := false
 	hasTaskFile := false
+	hasOutboxDir := false
+	hasTaskDir := false
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
 			return nil
 		}
 		name := d.Name()
 		pathSlash := filepath.ToSlash(path)
+		if d.IsDir() {
+			if name == "outbox" {
+				hasOutboxDir = true
+			}
+			if name == "task-queue" {
+				hasTaskDir = true
+			}
+			return nil
+		}
 		if strings.Contains(name, "outbox") && !strings.Contains(pathSlash, "/outbox/") {
 			hasOutboxFile = true
 		}
@@ -249,22 +265,20 @@ func checkSharedInfra(root string) {
 	})
 
 	if hasOutboxFile {
-		outboxDir := filepath.Join(internal, "outbox")
-		if _, err := os.Stat(outboxDir); err == nil {
-			pass("internal/outbox/")
+		if hasOutboxDir {
+			pass("internal/**/outbox/")
 		} else {
-			fail("internal/outbox/", "outbox 파일이 있으나 internal/outbox/ 없음")
+			fail("internal/**/outbox/", "outbox 파일이 있으나 전용 outbox/ 디렉토리 없음")
 		}
 	} else {
 		skip("outbox 패턴 없음")
 	}
 
 	if hasTaskFile {
-		taskDir := filepath.Join(internal, "task-queue")
-		if _, err := os.Stat(taskDir); err == nil {
-			pass("internal/task-queue/")
+		if hasTaskDir {
+			pass("internal/**/task-queue/")
 		} else {
-			fail("internal/task-queue/", "task 파일이 있으나 internal/task-queue/ 없음")
+			fail("internal/**/task-queue/", "task 파일이 있으나 전용 task-queue/ 디렉토리 없음")
 		}
 	} else {
 		skip("task-queue 패턴 없음")

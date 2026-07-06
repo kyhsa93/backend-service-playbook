@@ -14,12 +14,12 @@ type WithdrawCommand struct {
 }
 
 type WithdrawHandler struct {
-	repo     account.Repository
-	notifier Notifier
+	repo        account.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewWithdrawHandler(repo account.Repository, notifier Notifier) *WithdrawHandler {
-	return &WithdrawHandler{repo: repo, notifier: notifier}
+func NewWithdrawHandler(repo account.Repository, outboxRelay OutboxRelay) *WithdrawHandler {
+	return &WithdrawHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*account.Transaction, error) {
@@ -34,6 +34,8 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*acc
 	if err := h.repo.Save(ctx, a); err != nil {
 		return nil, err
 	}
-	notify(ctx, h.notifier, a)
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
+		return nil, err
+	}
 	return &tx, nil
 }

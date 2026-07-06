@@ -22,8 +22,9 @@ type SESClient interface {
 
 // Service는 Account 도메인 이벤트를 SES 이메일로 발송하고, 발송 내역을 DB에 남긴다.
 //
-// 발송 실패(SES 오류, DB 오류 등)는 커맨드 처리 자체를 실패시키지 않도록 이 서비스
-// 내부에서 로깅 후 삼켜진다. 호출부(커맨드 핸들러)는 반환값을 신경 쓸 필요가 없다.
+// 발송 실패(SES 오류, DB 오류 등)는 에러로 반환된다 — 호출부인 Outbox의 이벤트
+// 핸들러(internal/application/event/)가 이 에러를 받아 로그를 남기고, 해당 이벤트가
+// outbox 테이블에서 미처리 상태로 남도록 두어 다음 Drain 때 재시도되게 한다.
 type Service struct {
 	sesClient SESClient
 	db        *sql.DB
@@ -42,17 +43,18 @@ type emailContent struct {
 }
 
 // Notify는 도메인 이벤트에 대응하는 알림 이메일을 발송하고 발송 내역을 저장한다.
-// 이메일 발송 또는 저장에 실패해도 에러를 반환하지 않고 로그만 남긴다 — 알림은
-// 부가 기능이므로 계좌 커맨드의 성공 여부에 영향을 주면 안 된다.
-func (s *Service) Notify(ctx context.Context, event account.DomainEvent) {
+// 이메일 발송 또는 저장에 실패하면 에러를 반환한다 — 계좌 커맨드 자체는 이미 커밋된
+// 뒤(Outbox 경유)에 호출되므로 이 실패가 계좌 상태 변경에 영향을 주지는 않는다.
+func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	eventType, content, ok := describe(event)
 	if !ok {
-		return
+		return nil
 	}
 
 	if err := s.send(ctx, eventType, content); err != nil {
-		log.Printf("notification: failed to send email for event=%s recipient=%s: %v", eventType, content.recipient, err)
+		return fmt.Errorf("notify %s: %w", eventType, err)
 	}
+	return nil
 }
 
 func (s *Service) send(ctx context.Context, eventType string, content emailContent) error {
