@@ -18,6 +18,8 @@
 // 6. @HandleEvent 보유 파일은 application/event/<domain-event>-handler.ts 위치.
 // 7. @HandleIntegrationEvent 보유 파일은 interface/integration-event/<domain>-integration-event-controller.ts 위치.
 // 8. EventBus.publish() 직접 호출 금지 — @nestjs/cqrs 사용 중에도 Outbox 경로 준수.
+// 9. OutboxRelay의 핸들러 맵이 발행되는 모든 Domain Event 타입을 커버(드레인 경로 검증).
+// 10. OutboxRelay를 참조하는 Command Handler가 save 이후 processPending()을 호출(순서 포함).
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -61,7 +63,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     return { name: 'domain-event-outbox', score: 0, maxScore: 0, failures: [] }
   }
 
-  let score = 15
+  let score = 25
 
   const outboxDir = path.join(srcDir, 'outbox')
   if (aggregatesWithEvents.length > 0 && !fs.existsSync(outboxDir)) {
@@ -198,5 +200,74 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     }
   }
 
-  return { name: 'domain-event-outbox', score: Math.max(score, 0), maxScore: 15, failures }
+  // 9. OutboxRelay의 핸들러 맵이 모든 Domain Event 타입을 커버하는지 검증. 이전까지의
+  //    규칙들은 write(적재) 경로만 봤을 뿐 relay/dispatch(드레인) 경로는 전혀 검증하지
+  //    않았다 — 핸들러 맵에서 항목 하나가 빠져도(예: MoneyDeposited 삭제) 그 이벤트는
+  //    Outbox 테이블에 영원히 processed=false로 남아 조용히 드레인되지 않는다.
+  if (aggregatesWithEvents.length > 0 && eventClassNames.size > 0) {
+    const relayFiles = files.filter((f) => /outbox-relay\.ts$/.test(path.basename(f)))
+    if (relayFiles.length === 0) {
+      failures.push({
+        ruleId: 'domain-event-outbox.relay-missing',
+        severity: 'high',
+        message: `Domain Event가 발행되는데 OutboxRelay(*outbox-relay.ts)를 찾지 못함 — 적재된 이벤트를 드레인할 경로가 없음`,
+        docRef: DOC_REF
+      })
+      score -= 5
+    } else {
+      for (const relayFile of relayFiles) {
+        const content = fs.readFileSync(relayFile, 'utf-8')
+        const missing = [...eventClassNames].filter((name) => !new RegExp(`\\b${name}\\s*:`).test(content))
+        if (missing.length > 0) {
+          failures.push({
+            ruleId: 'domain-event-outbox.relay-handler-map-incomplete',
+            severity: 'high',
+            message: `${rel(relayFile)}의 핸들러 맵이 다음 Domain Event를 다루지 않음: ${missing.join(', ')} — 해당 이벤트는 Outbox에 적재되어도 영원히 드레인되지 않음`,
+            docRef: DOC_REF
+          })
+          score -= 4
+        }
+      }
+    }
+  }
+
+  // 10. Command Handler가 OutboxRelay를 참조한다면, 저장(save) 이후 processPending()을
+  //     호출하는지(순서 포함) 검증. 이게 없으면 dual-write 시절 패턴(직접 알림 호출)으로
+  //     되돌리거나 processPending() 호출을 지워도 다른 어떤 규칙도 이를 잡지 못했다.
+  const commandHandlerFiles = files.filter(
+    (f) => classifyLayer(f) === 'application' && /-command-handler\.ts$/.test(path.basename(f))
+  )
+  for (const f of commandHandlerFiles) {
+    const content = fs.readFileSync(f, 'utf-8')
+    if (!/\bOutboxRelay\b/.test(content)) continue
+    const saveMatch = /\.\w*[Ss]ave\w*\(/.exec(content)
+    const ppMatch = /\.processPending\s*\(/.exec(content)
+    if (!saveMatch) {
+      failures.push({
+        ruleId: 'domain-event-outbox.command-handler.save-missing',
+        severity: 'medium',
+        message: `${rel(f)}가 OutboxRelay를 참조하지만 save 호출을 찾을 수 없음`,
+        docRef: DOC_REF
+      })
+      score -= 2
+    } else if (!ppMatch) {
+      failures.push({
+        ruleId: 'domain-event-outbox.command-handler.process-pending-missing',
+        severity: 'high',
+        message: `${rel(f)}가 OutboxRelay를 참조하지만 processPending() 호출이 없음 — 저장 직후 Outbox 드레인 누락`,
+        docRef: DOC_REF
+      })
+      score -= 4
+    } else if (ppMatch.index < saveMatch.index) {
+      failures.push({
+        ruleId: 'domain-event-outbox.command-handler.process-pending-order',
+        severity: 'high',
+        message: `${rel(f)}의 processPending() 호출이 save 호출보다 먼저 등장함 — 커밋 이후 드레인 순서 위반`,
+        docRef: DOC_REF
+      })
+      score -= 4
+    }
+  }
+
+  return { name: 'domain-event-outbox', score: Math.max(score, 0), maxScore: 25, failures }
 }

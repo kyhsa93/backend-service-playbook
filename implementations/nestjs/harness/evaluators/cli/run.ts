@@ -8,6 +8,7 @@ import { evaluateRepositoryPattern } from '../rules/repository-pattern.evaluator
 import { evaluateControllerPath } from '../rules/controller-path.evaluator'
 import { evaluateChecklist } from '../rules/checklist.evaluator'
 import { evaluateStructure } from '../rules/structure.evaluator'
+import { evaluateFileNaming } from '../rules/file-naming.evaluator'
 import { evaluateCqrsPattern } from '../rules/cqrs-pattern.evaluator'
 import { evaluateErrorHandling } from '../rules/error-handling.evaluator'
 import { evaluateTestPresence } from '../rules/test-presence.evaluator'
@@ -40,6 +41,7 @@ type EvaluatorFn = (root: string) => EvaluatorResult
 
 const EVALUATORS: Record<string, EvaluatorFn> = {
   structure: evaluateStructure,
+  'file-naming': evaluateFileNaming,
   'layer-dependency': evaluateLayerDependency,
   'repository-pattern': evaluateRepositoryPattern,
   'controller-path': evaluateControllerPath,

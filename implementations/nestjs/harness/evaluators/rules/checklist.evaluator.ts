@@ -142,25 +142,31 @@ export function evaluateChecklist(root: string): EvaluatorResult {
         `${stepTitle(steps, 5)} — 한 파일에 @Controller가 ${controllerCount}개: ${rel(file)}`, 3)
     }
 
-    // STEP 7 — Module 파일은 domain root에 위치 (interface/application/infrastructure 안에 있으면 안 됨)
+    // STEP 5 — Module 파일은 domain root에 위치 (interface/application/infrastructure 안에 있으면 안 됨)
     if (/-module\.ts$/.test(file) && (layer === 'application' || layer === 'interface' || layer === 'infrastructure')) {
-      push('checklist.step7.module-placement', 'medium',
-        `${stepTitle(steps, 7)} — Module 파일이 ${layer}/ 내부에 위치 (도메인 루트 권장): ${rel(file)}`, 3)
+      push('checklist.step5.module-placement', 'medium',
+        `${stepTitle(steps, 5)} — Module 파일이 ${layer}/ 내부에 위치 (도메인 루트 권장): ${rel(file)}`, 3)
     }
 
-    // STEP 8 — Entity 파일은 infrastructure/entity/ 에 위치해야 함
-    if (/\.entity\.ts$/.test(file) && !file.includes('/infrastructure/') && !file.includes('/database/')) {
+    // STEP 12 — Entity 파일은 infrastructure/entity/ 에 위치해야 함
+    // 단, 이 규칙은 도메인의 4레이어 구조(domain/application/infrastructure/interface) 안에
+    // 있는 Entity에만 적용된다. outbox/, notification/ 같은 공유·Technical Service 모듈은
+    // 애초에 4레이어 구조를 따르지 않는 flat 패키지이므로(domain-events.md, shared-modules.md
+    // 참고) layer가 'unknown'으로 판정된다 — 이런 모듈의 Entity(outbox.entity.ts,
+    // sent-email.entity.ts 등)까지 infrastructure/ 강제 배치 대상으로 삼으면 가이드를 정확히
+    // 따른 코드를 오탐 FAIL 처리하게 된다.
+    if (/\.entity\.ts$/.test(file) && layer !== 'unknown' && !file.includes('/infrastructure/') && !file.includes('/database/')) {
       // base.entity.ts는 예외 (database/)
       if (path.basename(file) !== 'base.entity.ts') {
-        push('checklist.step8.entity-placement', 'medium',
-          `${stepTitle(steps, 8)} — *.entity.ts가 infrastructure/ 외부에 위치: ${rel(file)}`, 3)
+        push('checklist.step12.entity-placement', 'medium',
+          `${stepTitle(steps, 12)} — *.entity.ts가 infrastructure/ 외부에 위치: ${rel(file)}`, 3)
       }
     }
 
-    // STEP 9 — Query Service에서 Repository 사용 금지 (CQRS — Query 인터페이스만 사용)
+    // STEP 3 — Query Service에서 Repository 사용 금지 (CQRS — Query 인터페이스만 사용)
     if (/-query-service\.ts$/.test(file) && /\bRepository\b/.test(content) && !/\bQuery\b/.test(content)) {
-      push('checklist.step9.query-service-uses-repository', 'medium',
-        `${stepTitle(steps, 9)} — Query Service가 Repository를 사용 (Query 인터페이스 사용 필요): ${rel(file)}`, 4)
+      push('checklist.step3.query-service-uses-repository', 'medium',
+        `${stepTitle(steps, 3)} — Query Service가 Repository를 사용 (Query 인터페이스 사용 필요): ${rel(file)}`, 4)
     }
 
     // STEP 11 — Async Task Controller 메서드는 Promise를 반환
@@ -172,10 +178,10 @@ export function evaluateChecklist(root: string): EvaluatorResult {
         `${stepTitle(steps, 12)} — TypeORM synchronize: true가 조건 없이 설정됨 (production 사고 위험): ${rel(file)}`, 6)
     }
 
-    // STEP 13 — Secret 하드코딩 검출
+    // STEP 12 — Secret 하드코딩 검출
     if (/(?:password|secret|apikey|api_key|token)\s*[:=]\s*['"][A-Za-z0-9_-]{8,}['"]/i.test(content)) {
-      push('checklist.step13.no-hardcoded-secret', 'critical',
-        `${stepTitle(steps, 13)} — 비밀값 하드코딩 의심 (process.env 사용): ${rel(file)}`, 8)
+      push('checklist.step12.no-hardcoded-secret', 'critical',
+        `${stepTitle(steps, 12)} — 비밀값 하드코딩 의심 (process.env 사용): ${rel(file)}`, 8)
     }
 
     // STEP 14 — cleanup (TODO 잔존 금지)
