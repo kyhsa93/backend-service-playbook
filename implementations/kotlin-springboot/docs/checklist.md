@@ -100,12 +100,12 @@
     → 하위 Entity에 별도 Repository를 만들지 않는다
 [ ] Domain Event는 Aggregate 내부 도메인 메서드에서만 수집되는가? (domainEvents 리스트 + pullDomainEvents())
     → Command Service가 직접 이벤트 객체를 생성하지 않는다
-[ ] Domain Event 발행이 ApplicationEventPublisher.publishEvent()에 의한 동기 in-process 방식인가?
-    → 있다면 위반. Repository.save<Noun>() 내부에서 Outbox 테이블에 함께 저장하는 방식으로 교체 (domain-events.md 참조)
+[ ] Domain Event 발행이 ApplicationEventPublisher.publishEvent()에 의한 동기 in-process 방식이 아닌가?
+    → 그 방식이라면 위반. Repository.save<Noun>() 내부에서 Outbox 테이블에 함께 저장하고, Command Service는 저장 직후 OutboxRelay.processPending()만 호출한다 (domain-events.md 참조)
 [ ] Repository 구현체의 save<Noun>() 메서드가 @Transactional로 Aggregate 저장 + Outbox 저장을 하나의 트랜잭션으로 묶는가?
-[ ] Outbox로 저장한 이벤트는 OutboxRelay(@Scheduled)가 폴링해 메시지 큐로 발행하는가? (동기 이벤트 버스 사용 금지)
+[ ] OutboxRelay가 Command Service의 저장 직후 동기 호출로 드레인되는가? (`@Scheduled` 폴링이 아니다 — domain-events.md 참조)
 [ ] 이벤트 타입이 여러 개라면 sealed interface로 묶어 when 분기의 완전성(exhaustiveness)을 컴파일러가 검사하게 했는가?
-[ ] Event Handler(@EventListener 또는 큐 Consumer 라우팅 대상)가 application/event/ 패키지에 위치하는가?
+[ ] Event Handler(`*EventHandler`, outbox가 드레인한 이벤트 처리)가 application/event/ 패키지에 위치하는가?
     → harness의 event-placement 검사 대상
 [ ] 이벤트 핸들러가 멱등하게 구현되어 있는가? (at-least-once 전달 전제 — 이미 처리된 eventId는 skip)
 [ ] 크로스 도메인 호출이 필요한 경우, Adapter 인터페이스(application/adapter/, Kotlin interface)를 통해 호출하는가?

@@ -49,15 +49,14 @@ Java/TypeScript였다면 `Optional<Account>`(Java) 또는 `Account | undefined`(
 ```kotlin
 // application/command/CreateAccountService.kt — 실제 코드
 @Service
-@Transactional
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val outboxRelay: OutboxRelay,
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.save(account)
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent)
+        accountRepository.save(account)      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        outboxRelay.processPending()          // 커밋 직후 동기 드레인 — domain-events.md 참고
         return CreateAccountResult(/* ... */)
     }
 }

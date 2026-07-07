@@ -40,16 +40,15 @@ resilience4j:
 ```kotlin
 // application/command/CreateAccountService.kt — 적용 예시 (제안)
 @Service
-@Transactional
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val outboxRelay: OutboxRelay,
 ) {
     @RateLimiter(name = "createAccount", fallbackMethod = "createRateLimited")
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
         accountRepository.save(account)
-        account.pullDomainEvents().forEach(eventPublisher::publishEvent)
+        outboxRelay.processPending()
         return CreateAccountResult(/* ... */)
     }
 

@@ -21,10 +21,9 @@ harness의 `service-annotation`(`@Service`는 `application/` 안에만), `reposi
 ```kotlin
 // application/command/CreateAccountService.kt — 실제 코드
 @Service
-@Transactional
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val outboxRelay: OutboxRelay,
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult { /* ... */ }
 }

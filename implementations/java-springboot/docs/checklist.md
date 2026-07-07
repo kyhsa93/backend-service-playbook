@@ -219,10 +219,10 @@
     → 부가 작업의 실패가 원본 트랜잭션을 rollback-only로 오염시키지 않아야 한다
 [ ] Domain Event가 Aggregate 내부 도메인 메서드에서만 생성되는가?
     → Command Service가 직접 이벤트를 생성하지 않는다
-[ ] Command Service가 ApplicationEventPublisher.publishEvent()를 직접 호출하는가?
-    → domain-events.md가 명시하는 알려진 gap이다(동기 in-process 발행, Outbox 없음). 새로 작성하는 도메인은 Repository.save() 내부에서 Outbox 테이블에 이벤트를 저장하는 패턴을 따른다 — Command Service에서 publishEvent() 호출을 제거한다
+[ ] Command Service가 ApplicationEventPublisher.publishEvent()를 직접 호출하지 않는가?
+    → 호출한다면 회귀다. Repository.save() 내부에서 Outbox 테이블에 이벤트를 저장하고, Command Service는 저장 직후 OutboxRelay.processPending()만 호출한다 — domain-events.md 참고
 [ ] Repository.save()가 Aggregate 저장과 Outbox 저장을 하나의 @Transactional 안에서 원자적으로 처리하는가?
-[ ] Outbox Relay/Consumer가 @Scheduled로 구현되고 infrastructure/(또는 outbox/) 패키지에 있는가?
+[ ] OutboxRelay가 outbox/ 패키지에 있고, Command Service가 저장 직후 동기 호출하는가? (`@Scheduled` 폴링이 아니다 — domain-events.md 참고)
 [ ] @EnableScheduling이 @SpringBootApplication 클래스에 선언되어 있는가?
     → 없으면 @Scheduled가 조용히 무효화된다
 [ ] @Scheduled 메서드가 예외를 명시적으로 로깅하는가? (조용히 삼켜지지 않도록)

@@ -7,20 +7,24 @@
 root는 언어별 컨텍스트-로컬 저장소(Node `AsyncLocalStorage`, Java/Kotlin `ThreadLocal`)로 트랜잭션 클라이언트를 암묵 전파하라고 규정한다. Spring/JPA에서는 이 메커니즘이 **`@Transactional` + 스레드바운드 커넥션**으로 이미 프레임워크에 내장되어 있어, 별도의 `TransactionManager` 클래스를 직접 구현할 필요가 없다.
 
 ```kotlin
-// application/command/CreateAccountService.kt — 실제 코드
-@Service
-@Transactional
-class CreateAccountService(
-    private val accountRepository: AccountRepository,
-    private val eventPublisher: ApplicationEventPublisher,
-) {
-    fun create(command: CreateAccountCommand): CreateAccountResult {
-        val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.save(account)   // 같은 스레드 = 같은 트랜잭션의 JDBC 커넥션 자동 재사용
-        // ...
+// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
+@Repository
+class AccountRepositoryImpl(
+    private val jpaRepository: AccountJpaRepository,
+    private val transactionJpaRepository: TransactionJpaRepository,
+    private val outboxWriter: OutboxWriter,
+    private val em: EntityManager,
+) : AccountRepository {
+    @Transactional
+    override fun save(account: Account) {
+        jpaRepository.save(/* ... */)                    // Account 저장
+        // ... 하위 Transaction 저장 ...
+        outboxWriter.saveAll(account.pullDomainEvents())  // 같은 스레드 = 같은 트랜잭션의 JDBC 커넥션 자동 재사용
     }
 }
 ```
+
+`@Transactional`은 Command Service가 아니라 `Repository.save()`에 있다 — Account 저장과 Outbox 적재를 하나의 물리 트랜잭션으로 묶는 경계가 바로 여기이기 때문이다([domain-events.md](domain-events.md) 참고).
 
 Spring AOP가 `@Transactional` 메서드 진입 시 트랜잭션을 시작해 현재 스레드에 커넥션을 바인딩하고(`TransactionSynchronizationManager`), 같은 스레드에서 호출되는 모든 Repository 메서드가 자동으로 같은 커넥션/트랜잭션을 사용한다 — root의 `getClient()` 패턴에 해당하는 것을 Spring이 내부적으로 수행한다.
 

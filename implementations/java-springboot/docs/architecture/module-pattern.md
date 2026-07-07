@@ -39,10 +39,9 @@ Spring은 `@Component`의 특수화(specialization)로 레이어를 구분한다
 // account/application/command/CreateAccountService.java — 실제 코드
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class CreateAccountService {
     private final AccountRepository accountRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxRelay outboxRelay;
     // Lombok이 생성자를 자동 생성 — @Autowired 불필요
     // (Spring 4.3+는 생성자가 하나뿐인 클래스에 @Autowired 생략을 허용한다)
 }
@@ -51,7 +50,7 @@ public class CreateAccountService {
 생성자 주입을 쓰는 이유:
 - **`final` 필드 강제** — 의존성이 생성 이후 재할당될 수 없다. 필드 주입은 필드를 `final`로 선언할 수 없다.
 - **불변 의존성 = 순환 의존을 컴파일이 아니라 기동 시점에 즉시 드러낸다** — 아래 참고.
-- **테스트에서 mock 주입이 단순하다** — `new CreateAccountService(mockRepository, mockPublisher)`로 Spring 컨테이너 없이 직접 생성 가능([testing.md](testing.md) 참고).
+- **테스트에서 mock 주입이 단순하다** — `new CreateAccountService(mockRepository, mockOutboxRelay)`로 Spring 컨테이너 없이 직접 생성 가능([testing.md](testing.md) 참고).
 
 ---
 

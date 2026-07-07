@@ -116,19 +116,18 @@ class AccountTest {
 package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.AccountRepository
-import io.mockk.every
+import com.example.accountservice.outbox.OutboxRelay
 import io.mockk.mockk
-import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.springframework.context.ApplicationEventPublisher
 
 class CreateAccountServiceTest {
 
     private val accountRepository = mockk<AccountRepository>(relaxed = true)
-    private val eventPublisher = mockk<ApplicationEventPublisher>(relaxed = true)
-    private val service = CreateAccountService(accountRepository, eventPublisher)
+    private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
+    private val service = CreateAccountService(accountRepository, outboxRelay)
 
     @Test
     fun `계좌 생성 시 저장되고 결과에 초기 잔액 0이 담긴다`() {
@@ -140,19 +139,21 @@ class CreateAccountServiceTest {
     }
 
     @Test
-    fun `생성된 Account가 발행하는 도메인 이벤트가 eventPublisher로 전달된다`() {
-        val eventSlot = slot<Any>()
-        every { eventPublisher.publishEvent(capture(eventSlot)) } returns Unit
-
+    fun `저장 직후 outboxRelay가 드레인된다`() {
         service.create(CreateAccountCommand("owner-1", "KRW", "owner-1@example.com"))
 
-        assertThat(eventSlot.captured).isInstanceOf(com.example.accountservice.account.domain.AccountCreatedEvent::class.java)
+        verifyOrder {
+            accountRepository.save(any())
+            outboxRelay.processPending()
+        }
     }
 }
 ```
 
+이 테스트는 `AccountCreated` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 `Repository.save()` 안에서 Outbox에 적재되는 시점에 이미 끝난다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/AccountCreatedEventHandler` 등을 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
+
 - `mockk<AccountRepository>(relaxed = true)`: `relaxed = true`는 스텁하지 않은 메서드 호출에 기본값(빈 리스트, `Unit` 등)을 자동 반환한다 — `save()`처럼 반환값이 없는 메서드를 매번 `every { } returns Unit`으로 채우지 않아도 된다.
-- `slot<Any>()` + `capture(...)`: MockK의 캡처 기능으로 `publishEvent()`에 전달된 실제 이벤트 객체를 꺼내 타입/필드를 검증한다 — Mockito의 `ArgumentCaptor`에 대응하지만 문법이 더 간결하다.
+- `verifyOrder { ... }`: MockK의 순서 검증 기능으로 `save()`가 `processPending()`보다 먼저 호출되는지 확인한다 — Mockito의 `InOrder`에 대응하지만 문법이 더 간결하다.
 - **Repository mock은 `interface` 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지"가 Kotlin에서는 인터페이스 그대로 대응된다.
 - Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
 

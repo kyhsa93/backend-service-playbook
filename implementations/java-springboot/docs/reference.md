@@ -407,22 +407,24 @@ package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountRepository;
+import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class CreateAccountService {
 
     private final AccountRepository accountRepository;
+    private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
         // 비즈니스 로직은 Aggregate에 위임 — Service는 조율만 한다
         Account account = Account.create(command.ownerId(), command.email(), command.currency());
-        // Repository.save() 내부에서 Account + Outbox를 같은 트랜잭션으로 저장 (domain-events.md)
+        // Repository.save() 내부(@Transactional)에서 Account + Outbox를 같은 트랜잭션으로 저장 (domain-events.md)
         accountRepository.save(account);
+        // 커밋 직후 동기적으로 Outbox를 드레인한다 — @Scheduled 폴링이 아니다
+        outboxRelay.processPending();
         return new CreateAccountResult(account.getAccountId(), account.getOwnerId(), account.getBalance().amount(), account.getBalance().currency());
     }
 }
@@ -430,10 +432,10 @@ public class CreateAccountService {
 // application/command/DepositService.java
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class DepositService {
 
     private final AccountRepository accountRepository;
+    private final OutboxRelay outboxRelay;
 
     public TransactionResult deposit(DepositCommand command) {
         Account account = accountRepository.findByAccountIdAndOwnerId(command.accountId(), command.requesterId())
@@ -441,13 +443,14 @@ public class DepositService {
 
         var transaction = account.deposit(command.amount());
         accountRepository.save(account);
+        outboxRelay.processPending();
 
         return new TransactionResult(transaction.getTransactionId(), transaction.getType().name(), transaction.getAmount().amount(), transaction.getCreatedAt());
     }
 }
 ```
 
-**Command Service가 `ApplicationEventPublisher.publishEvent()`를 호출하지 않는다** — 이 저장소의 `examples/`는 아직 동기 in-process 발행을 쓰지만(알려진 gap, [domain-events.md](architecture/domain-events.md)), 이 템플릿은 목표 상태를 따른다. 이벤트는 `Repository.save()` 내부에서 Outbox로 저장된다(아래 Infrastructure 절 참고).
+**Command Service가 `ApplicationEventPublisher.publishEvent()`를 호출하지 않는다** — `examples/`가 이미 이 패턴을 실제로 구현하고 있다([domain-events.md](architecture/domain-events.md)). 이벤트는 `Repository.save()` 내부에서 Outbox로 저장되고(아래 Infrastructure 절 참고), Command Service는 저장 직후 `outboxRelay.processPending()`을 동기 호출해 드레인한다.
 
 ### Query 인터페이스 — Repository와 별개 (cqrs-pattern.md gap 교정)
 
