@@ -1,17 +1,18 @@
 # 공유 코드 배치 — Kotlin Spring Boot
 
-## 현재 상태 — 공유 패키지가 아직 없다
+## 현재 상태 — `outbox/`는 실제로 존재, 나머지는 아직 없다
 
-`examples/src/main/kotlin/com/example/accountservice/`를 확인한 결과, 현재 트리는 `account/`와 `notification/` 두 패키지뿐이다.
+`examples/src/main/kotlin/com/example/accountservice/`를 확인한 결과, 현재 트리는 `account/`, `notification/`, 그리고 **`outbox/`** 세 패키지다.
 
 ```
 com.example.accountservice/
   AccountServiceApplication.kt
   account/           ← Bounded Context
   notification/      ← Technical Service (Account BC 소속, 별도 BC 아님)
+  outbox/             ← 이미 존재 — OutboxEvent/OutboxWriter/OutboxRelay (domain-events.md)
 ```
 
-`common/`, `config/`, `outbox/`, `auth/` 같은 공유 패키지는 아직 존재하지 않는다 — [directory-structure.md](directory-structure.md)의 "공용 인프라 배치 — 아직 없는 것들" 절이 이미 이 갭을 명시하고 있다. 이 문서는 그 표를 확장해, **도입 시점에 각 공유 코드가 어디에 배치되어야 하는지**를 정리한다.
+`outbox/`는 알림 발송이 유실되면 안 되는 부가효과여서 실제로 필요해져 이미 존재한다. `common/`, `config/`, `auth/` 같은 나머지 공유 패키지는 아직 존재하지 않는다 — [directory-structure.md](directory-structure.md)의 "공용 인프라 배치" 절이 이미 이 현황을 명시하고 있다. 이 문서는 그 표를 확장해, **도입 시점에 각 공유 코드가 어디에 배치되어야 하는지**를 정리한다.
 
 ## 권장 패키지 배치
 
@@ -37,10 +38,11 @@ com.example.accountservice/
     JwtAuthenticationFilter.kt         ← Bearer 토큰 추출 Filter
     SecurityConfig.kt                 ← @Configuration, 화이트리스트 경로
 
-  outbox/                          ← Outbox 패턴 (여러 BC가 이벤트 발행에 공용 사용)
-    OutboxEntry.kt                    ← @Entity (domain-events.md)
-    OutboxWriter.kt
-    OutboxRelay.kt                    ← @Scheduled 폴링 (scheduling.md)
+  outbox/                          ← 이미 존재 — Outbox 패턴 (여러 BC가 이벤트 발행에 공용 사용)
+    OutboxEvent.kt                    ← @Entity (domain-events.md)
+    OutboxEventJpaRepository.kt
+    OutboxWriter.kt                   ← Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
+    OutboxRelay.kt                    ← Command Service가 저장 직후 동기 호출 — @Scheduled 폴링 아님
 
   account/                         ← Bounded Context
     domain/ application/ infrastructure/ interfaces/
@@ -49,7 +51,7 @@ com.example.accountservice/
     application/ infrastructure/
 ```
 
-이 배치는 NestJS 구현(`implementations/nestjs/docs/architecture/shared-modules.md`)이 `src/common/`, `src/database/`, `src/outbox/`, `src/auth/`로 나누는 것과 동일한 발상을 Kotlin 패키지 구조로 옮긴 것이다 — 다만 이 저장소는 아직 단일 BC라 이 패키지들이 실제로 필요해질 시점이 다소 뒤로 미뤄져 있을 뿐, 원칙 자체는 지금 정해 두는 편이 두 번째 BC나 인증 도입 시 혼선을 줄인다.
+이 배치는 NestJS 구현(`implementations/nestjs/docs/architecture/shared-modules.md`)이 `src/common/`, `src/database/`, `src/outbox/`, `src/auth/`로 나누는 것과 동일한 발상을 Kotlin 패키지 구조로 옮긴 것이다. `outbox/`는 이미 이 배치대로 실제로 만들어져 있다 — 알림 발송이 유실되면 안 되는 부가효과여서 dual-write 대신 Outbox가 먼저 필요해졌기 때문이다. 나머지(`common/`, `config/`, `auth/`)는 아직 단일 BC라 실제로 필요해질 시점이 뒤로 미뤄져 있을 뿐, 원칙 자체는 지금 정해 두는 편이 두 번째 BC나 인증 도입 시 혼선을 줄인다.
 
 ## 각 패키지의 판단 기준
 
@@ -72,7 +74,7 @@ NestJS는 `DatabaseModule`/`OutboxModule`을 `@Global()`로 선언해 모든 모
 
 ## 원칙
 
-- **지금은 `common/`/`config/`/`auth/`/`outbox/`가 없다** — 필요해지는 시점(두 번째 BC, 인증 도입, Outbox 전환)에 위 배치를 기준으로 추가한다.
+- **`outbox/`는 이미 있다** — 알림 발송이 유실되면 안 되는 부가효과여서 실제로 필요해져 추가되었다. `common/`/`config/`/`auth/`는 아직 없다 — 필요해지는 시점(두 번째 BC, 인증 도입)에 위 배치를 기준으로 추가한다.
 - **판단 기준은 "재사용 여부"와 "비즈니스 불변식 소유 여부"** — 둘 다 아니면 공유 패키지, 후자면 BC 안에 남긴다.
 - **`@Global` 같은 별도 선언이 필요 없다** — 컴포넌트 스캔 루트 하위면 패키지 위치와 무관하게 주입 가능하다.
 - **BC 소속 Technical Service(`notification/`)를 성급하게 공유 패키지로 승격하지 않는다** — 실제로 두 번째 소비자가 생겼을 때 판단한다.

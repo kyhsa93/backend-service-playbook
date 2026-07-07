@@ -89,7 +89,7 @@ go.mod
 | `<domain>/interface/` | `internal/interface/http/` |
 | `common/` | 필요 시 `internal/common/`(ID 생성 등 프레임워크 무관 순수 함수) — 현재 `examples/`에는 아직 없다([aggregate-id.md](aggregate-id.md) 참고) |
 | `database/`(TransactionManager) | 없음 — 현재 `Save()` 내부 로컬 `db.BeginTx()`만 사용. root가 요구하는 컨텍스트 기반 전파는 미구현([persistence.md](persistence.md) 참고) |
-| `outbox/` | 없음 — Outbox 패턴 자체가 아직 구현되지 않음([domain-events.md](domain-events.md) 참고) |
+| `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Relay` 구현됨([domain-events.md](domain-events.md) 참고) |
 | `task-queue/` | 없음 — 스케줄링/Task Queue 예제 없음([scheduling.md](scheduling.md) 참고) |
 | `config/` | 없음 — `main.go`가 `os.Getenv`를 검증 없이 직접 사용. 새로 만들 때는 `internal/config/`로 분리([config.md](config.md) 참고) |
 
@@ -115,7 +115,7 @@ go.mod
 
 ## 공용 인프라를 아직 추가하지 않은 이유
 
-root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다. 이 저장소의 `examples/`는 Account 도메인 하나뿐이고 위 패턴들이 아직 구현되지 않았으므로 해당 디렉토리들도 없다. 각 패턴을 실제로 추가할 때 참고할 문서를 위 표에 명시했다.
+root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다. `outbox/`는 실제로 필요해져 이미 추가되었다(알림 발송이 유실되면 안 되는 부가효과였기 때문 — [domain-events.md](domain-events.md) 참고). 나머지(`common/`, `database/`, `task-queue/`, `config/`)는 아직 그 필요가 생기지 않아 없다. 각 패턴을 실제로 추가할 때 참고할 문서를 위 표에 명시했다.
 
 ---
 

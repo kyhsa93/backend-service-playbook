@@ -4,7 +4,9 @@
 
 ## 현재 상태 — 미구현
 
-`examples/`에는 `@Scheduled` 작업이 없다. Account 도메인은 배치가 필요한 유스케이스(만료 정리, 정산 등)가 아직 없기 때문이다. 이 문서는 [domain-events.md](domain-events.md)에서 다룬 OutboxRelay/EventConsumer를 실제로 구현할 때 필요한 `@Scheduled` 패턴을 다룬다.
+`examples/`에는 `@Scheduled` 작업이 없다. Account 도메인은 배치가 필요한 유스케이스(만료 정리, 정산 등)가 아직 없기 때문이다.
+
+**주의**: [domain-events.md](domain-events.md)의 `outbox/OutboxRelay.kt`는 이미 실제로 구현되어 있지만, 이 문서가 아래에서 다루는 `@Scheduled(fixedDelay = ...)` + SQS 발행 방식이 **아니다** — Command Service가 저장 직후 동기 호출해 드레인하는 방식을 택했다(domain-events.md의 "OutboxRelay — 커밋 직후 동기 드레인 (구현됨, `@Scheduled` 아님)" 절 참고). 아래 절은 이 저장소에 실제 메시지 큐(SQS 등)를 붙이는 시점에 `OutboxRelay`를 폴링 기반으로 바꾸고 싶다면 참고할 **목표 형태**이지, 지금의 실제 코드가 아니다.
 
 ---
 
@@ -21,7 +23,7 @@ implementation("org.springframework.boot:spring-boot-starter-data-jpa")   // 블
 이 조합에서는 `@Scheduled` 메서드가 **전통적인 스레드 풀 기반**으로 실행되는 것이 자연스럽다 — 코루틴(`suspend fun` + `kotlinx-coroutines`)을 도입해도 JPA 호출 자체가 블로킹이라 별도 디스패처(`Dispatchers.IO`)로 감싸야 하고, 이는 스레드 풀을 코루틴으로 한 번 더 감싸는 셈이라 실익이 적다. **코루틴은 WebFlux(리액티브 스택)나 넌블로킹 I/O(코루틴 기반 HTTP 클라이언트, R2DBC 등)와 결합될 때 진가를 발휘한다** — 이 저장소가 그 스택으로 전환하지 않는 한 도입 이유가 없다.
 
 ```kotlin
-// 전통적인 방식 — 이 저장소가 사용해야 할 패턴
+// 전통적인 방식 — SQS를 실제로 붙이게 될 때의 목표 형태 (현재 OutboxRelay.kt와는 다름, 위 "주의" 참고)
 @Component
 class OutboxRelay(private val outboxJpaRepository: OutboxEventJpaRepository /* ... */) {
 
@@ -68,7 +70,7 @@ class SchedulingConfig {
 root 원칙대로, `@Scheduled` 메서드는 비즈니스 로직을 직접 실행하지 않고 **적재(enqueue)만** 한다. 실제 처리는 별도 Consumer/Command Service가 담당한다.
 
 ```kotlin
-// outbox/OutboxRelay.kt — infrastructure 패키지, Application Service를 호출하지 않음
+// outbox/OutboxRelay.kt — SQS를 실제로 붙이게 될 때의 목표 형태(가상), 현재 실제 코드 아님
 package com.example.accountservice.outbox
 
 @Component
