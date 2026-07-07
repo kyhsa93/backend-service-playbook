@@ -55,10 +55,12 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 	if err != nil {
 		return nil, err
 	}
-	if err := h.repo.Save(ctx, a); err != nil {                     // 3. Repository로 저장
+	if err := h.repo.Save(ctx, a); err != nil {                     // 3. Repository로 저장 (Outbox 행도 같은 트랜잭션)
 		return nil, err
 	}
-	notify(ctx, h.notifier, a)                                      // 4. 부가 효과(알림) — domain-events.md 참고
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {       // 4. 부가 효과(알림) — domain-events.md 참고
+		return nil, err
+	}
 	return &tx, nil
 }
 ```
@@ -118,15 +120,17 @@ root는 "프레임워크별 DI 연결 방법은 `docs/implementations/` 참조"�
 // cmd/server/main.go
 db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 // ...
-accountRepo := persistence.NewAccountRepository(db)              // infrastructure 구현체 생성
 notifier := notification.NewService(notification.NewSESClient(), db)
-mux := httphandler.NewRouter(accountRepo, notifier)               // domain 인터페이스 타입으로 주입
+outboxWriter := outbox.NewWriter()
+outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{ /* ... 이벤트 타입별 핸들러 ... */ })
+accountRepo := persistence.NewAccountRepository(db, outboxWriter) // infrastructure 구현체 생성
+mux := httphandler.NewRouter(accountRepo, outboxRelay)            // domain 인터페이스 타입으로 주입
 ```
 
 ```go
 // internal/interface/http/router.go — 여기서 Application 레이어 조립까지 이어짐
-func NewRouter(repo account.Repository, notifier command.Notifier) *http.ServeMux {
-	depositHandler := command.NewDepositHandler(repo, notifier)
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
+	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	// ...
 }

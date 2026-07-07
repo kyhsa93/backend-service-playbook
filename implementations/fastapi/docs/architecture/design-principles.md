@@ -22,7 +22,7 @@
 
 10. **ID는 Domain 팩토리 classmethod에서 생성, 하이픈 없는 32자리 hex** — `Account.create()`가 유일한 생성 경로다. **알려진 격차**: 현재 `str(uuid.uuid4())`를 사용해 하이픈이 포함된다 — `uuid.uuid4().hex`로 교체해야 한다. ([aggregate-id.md](aggregate-id.md))
 
-11. **Domain Event는 `pull_events()`로 수집, 발행은 Outbox 경유** — 이벤트는 Aggregate 내부에 쌓였다가 Handler가 저장 직후 꺼내 처리한다. **알려진 격차 (가장 중요)**: Outbox 테이블 없이 `notification_service.notify()`를 동기 직접 호출한다 — 저장 직후 프로세스가 죽으면 알림이 유실될 수 있다. ([domain-events.md](domain-events.md))
+11. **Domain Event는 `pull_events()`로 수집, 발행은 Outbox 경유** — `repo.save()`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋하고, Command Handler가 그 직후 `OutboxRelay.process_pending()`을 동기 호출해 드레인한다. `application/event/<event>_event_handler.py`가 이벤트 타입별로 `NotificationService`를 호출한다 — 더 이상 dual-write가 아니다. ([domain-events.md](domain-events.md))
 
 12. **Interface DTO(Pydantic)는 얇은 변환만** — `schemas.py`의 `BaseModel`은 요청/응답 형태만 정의하고, `application/query/result.py`의 Result 객체를 감싸는 역할만 한다. 형식 검증(422, Pydantic)과 비즈니스 규칙 위반(400, Domain 예외)을 혼동하지 않는다. ([cross-cutting-concerns.md](cross-cutting-concerns.md), [directory-structure.md](directory-structure.md))
 

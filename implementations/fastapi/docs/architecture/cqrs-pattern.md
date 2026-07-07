@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountRepository
 from ...domain.transaction import Transaction
-from ..service.notification_service import NotificationService
+from ....outbox.outbox_relay import OutboxRelay
 
 
 @dataclass
@@ -46,22 +46,21 @@ class DepositCommand:
 
 
 class DepositHandler:
-    def __init__(self, repo: AccountRepository, notification_service: NotificationService) -> None:
+    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
         self._repo = repo
-        self._notification_service = notification_service
+        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
         account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
-        await self._repo.save(account)
-        for event in account.pull_events():
-            await self._notification_service.notify(event)
+        await self._repo.save(account)          # Aggregate 저장 + Outbox 적재를 같은 트랜잭션으로 커밋
+        await self._outbox_relay.process_pending()  # 커밋 직후 동기적으로 Outbox 드레인
         return transaction
 ```
 
-**흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출(`account.deposit()`) → Repository로 저장 → 수집된 Domain Event 처리. Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](layer-architecture.md) 참조.
+**흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출(`account.deposit()`) → Repository로 저장(Aggregate 상태 + Outbox 행을 한 트랜잭션에 커밋) → 저장 직후 `OutboxRelay.process_pending()`으로 드레인. Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](layer-architecture.md), [domain-events.md](domain-events.md) 참조.
 
 ### Query + QueryHandler
 
@@ -117,9 +116,9 @@ async def deposit(
     body: DepositRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, notification_service).execute(
+    transaction = await DepositHandler(repo, outbox_relay).execute(
         DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
     )
     return TransactionResponse(...)

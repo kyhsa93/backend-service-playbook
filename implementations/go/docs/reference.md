@@ -2,7 +2,7 @@
 
 전체 도메인 하나(`Order`)를 본 아키텍처로 구현한 예시다. 새 도메인을 추가할 때 이 템플릿을 복사해서 시작한다. 이 저장소의 `examples/`(Account 도메인)도 동일한 구조를 실제로 쓰고 있으니 함께 참고한다.
 
-> 이 템플릿은 [aggregate-id.md](architecture/aggregate-id.md)가 규정하는 올바른 ID 형식(하이픈 제거 32자리 hex)과 [error-handling.md](architecture/error-handling.md)의 sentinel error 패턴을 그대로 따르는 **목표 상태(target-state)** 코드다. `examples/`의 Account 도메인 코드 자체에는 몇 가지 알려진 격차(uuid 하이픈 미제거, Outbox 미구현 등)가 있는데, 이 문서는 그 격차를 재현하지 않는다 — 각 격차와 이유는 해당 `architecture/*.md` 문서에 명시되어 있다.
+> 이 템플릿은 [aggregate-id.md](architecture/aggregate-id.md)가 규정하는 올바른 ID 형식(하이픈 제거 32자리 hex)과 [error-handling.md](architecture/error-handling.md)의 sentinel error 패턴을 그대로 따르는 **목표 상태(target-state)** 코드다. `examples/`의 Account 도메인 코드 자체에는 몇 가지 알려진 격차(uuid 하이픈 미제거 등)가 있는데, 이 문서는 그 격차를 재현하지 않는다 — 각 격차와 이유는 해당 `architecture/*.md` 문서에 명시되어 있다. Outbox 기반 이벤트 발행(아래 참고)은 더 이상 격차가 아니다 — `examples/`가 이미 이 패턴을 실제로 구현하고 있으며, 이 템플릿은 그 실제 구조를 `Order` 도메인으로 옮긴 것이다.
 
 ---
 
@@ -30,17 +30,23 @@ internal/
     command/
       create_order_handler.go         ← CreateOrderCommand + CreateOrderHandler
       cancel_order_handler.go         ← CancelOrderCommand + CancelOrderHandler
-      notifier.go                     ← Notifier 인터페이스 (Technical Service 포트)
+      event_relay.go                  ← OutboxRelay 인터페이스 (command 패키지가 필요로 하는 최소 시그니처)
     query/
       get_order_handler.go            ← GetOrderQuery + GetOrderHandler
       get_orders_handler.go           ← GetOrdersQuery + GetOrdersHandler
       result.go                       ← Result 구조체들
+    event/
+      order_placed_handler.go         ← Outbox가 드레인한 OrderPlaced를 처리해 알림 발송
+      order_cancelled_handler.go
 
   infrastructure/
     persistence/
-      order_repository.go             ← order.Repository 구현체 (database/sql)
+      order_repository.go             ← order.Repository 구현체 (Save 트랜잭션 안에서 Outbox 행도 적재)
     notification/
-      service.go                      ← command.Notifier 구현체
+      service.go                      ← 이벤트 핸들러가 호출하는 알림 발송(로그/이메일 등)
+    outbox/
+      writer.go                       ← Repository.Save 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
+      relay.go                        ← Command Handler가 저장 직후 동기 호출해 드레인 (domain-events.md 참고)
 
   interface/
     http/
@@ -294,22 +300,23 @@ func NewID() string {
 
 ## Application 레이어
 
-### Technical Service 포트 — Notifier
+### Outbox 포트 — OutboxRelay
 
 ```go
-// internal/application/command/notifier.go
+// internal/application/command/event_relay.go
 package command
 
-import (
-	"context"
+import "context"
 
-	"github.com/example/order-service/internal/domain/order"
-)
-
-// Notifier는 Order 도메인 이벤트에 대응하는 알림을 보내는 Technical Service 포트다.
-// 인터페이스는 사용하는 쪽(command 패키지)에 두고, 구현체는 infrastructure에 둔다.
-type Notifier interface {
-	Notify(ctx context.Context, event order.DomainEvent)
+// OutboxRelay는 저장 트랜잭션이 커밋된 직후 outbox에 쌓인 미처리 도메인 이벤트를
+// 모두 드레인하는 포트다. 인터페이스는 사용하는 쪽(command 패키지)에 두고,
+// 구현체(outbox.Relay)는 infrastructure에 둔다.
+//
+// 개별 이벤트 처리 실패는 구현체 내부에서 로깅 후 다음 호출 때 재시도되도록 남겨둔다 —
+// 여기서 반환되는 에러는 그런 개별 실패가 아니라 outbox 테이블 자체를 읽지 못하는 등의
+// 시스템 레벨 실패다.
+type OutboxRelay interface {
+	ProcessPending(ctx context.Context) error
 }
 ```
 
@@ -339,12 +346,12 @@ type CreateOrderCommand struct {
 }
 
 type CreateOrderHandler struct {
-	repo     order.Repository
-	notifier Notifier
+	repo        order.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewCreateOrderHandler(repo order.Repository, notifier Notifier) *CreateOrderHandler {
-	return &CreateOrderHandler{repo: repo, notifier: notifier}
+func NewCreateOrderHandler(repo order.Repository, outboxRelay OutboxRelay) *CreateOrderHandler {
+	return &CreateOrderHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *CreateOrderHandler) Handle(ctx context.Context, cmd CreateOrderCommand) (*order.Order, error) {
@@ -361,21 +368,16 @@ func (h *CreateOrderHandler) Handle(ctx context.Context, cmd CreateOrderCommand)
 	if err != nil {
 		return nil, err
 	}
+	// Repository.Save가 order/order_item 행과 Outbox 행을 같은 트랜잭션으로 커밋한다
+	// (domain-events.md 참고) — "주문은 생겼는데 이벤트는 유실됨" 실패 모드가 없다.
 	if err := h.repo.Save(ctx, o); err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
-	notify(ctx, h.notifier, o)
-	return o, nil
-}
-
-// notify는 Aggregate가 수집한 이벤트를 Notifier로 전달하고 비운다.
-// 현재는 Repository 저장 직후 동기 호출한다 — Outbox로 전환하는 목표 패턴은
-// domain-events.md 참고(이벤트가 유실되면 안 되는 중요한 부가효과라면 반드시 전환한다).
-func notify(ctx context.Context, notifier Notifier, o *order.Order) {
-	for _, event := range o.DomainEvents() {
-		notifier.Notify(ctx, event)
+	// 저장 트랜잭션이 커밋된 직후 Outbox를 동기적으로 드레인한다 — 폴링/스케줄러 없음.
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
+		return nil, fmt.Errorf("create order: %w", err)
 	}
-	o.ClearEvents()
+	return o, nil
 }
 ```
 
@@ -397,12 +399,12 @@ type CancelOrderCommand struct {
 }
 
 type CancelOrderHandler struct {
-	repo     order.Repository
-	notifier Notifier
+	repo        order.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewCancelOrderHandler(repo order.Repository, notifier Notifier) *CancelOrderHandler {
-	return &CancelOrderHandler{repo: repo, notifier: notifier}
+func NewCancelOrderHandler(repo order.Repository, outboxRelay OutboxRelay) *CancelOrderHandler {
+	return &CancelOrderHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *CancelOrderHandler) Handle(ctx context.Context, cmd CancelOrderCommand) error {
@@ -417,13 +419,15 @@ func (h *CancelOrderHandler) Handle(ctx context.Context, cmd CancelOrderCommand)
 		return err
 	}
 
-	// 3. Repository로 저장
+	// 3. Repository로 저장 — order 행과 Outbox 행이 같은 트랜잭션으로 커밋된다
 	if err := h.repo.Save(ctx, o); err != nil {
 		return fmt.Errorf("cancel order: %w", err)
 	}
 
-	// 4. 부가 효과(알림)
-	notify(ctx, h.notifier, o)
+	// 4. 저장 트랜잭션이 끝난 직후 Outbox를 동기적으로 드레인해 부가 효과(알림)를 처리한다
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
+		return fmt.Errorf("cancel order: %w", err)
+	}
 	return nil
 }
 ```
@@ -582,14 +586,16 @@ import (
 	"time"
 
 	"github.com/example/order-service/internal/domain/order"
+	"github.com/example/order-service/internal/infrastructure/outbox"
 )
 
 type OrderRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	outboxWriter *outbox.Writer
 }
 
-func NewOrderRepository(db *sql.DB) *OrderRepository {
-	return &OrderRepository{db: db}
+func NewOrderRepository(db *sql.DB, outboxWriter *outbox.Writer) *OrderRepository {
+	return &OrderRepository{db: db, outboxWriter: outboxWriter}
 }
 
 // 컴파일 타임 인터페이스 충족 검증 — 메서드 시그니처가 하나라도 어긋나면 여기서 컴파일이 실패한다.
@@ -700,9 +706,16 @@ func (r *OrderRepository) Save(ctx context.Context, o *order.Order) error {
 		}
 	}
 
+	// Outbox row는 order/order_item row와 같은 트랜잭션 안에서 적재된다 — 커밋이
+	// 원자적이므로 "주문은 바뀌었는데 이벤트는 유실됨"(dual-write) 실패 모드가 없다.
+	if err := r.outboxWriter.SaveAll(ctx, tx, o.DomainEvents()); err != nil {
+		return fmt.Errorf("save outbox events: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit save order: %w", err)
 	}
+	o.ClearEvents()
 	return nil
 }
 
@@ -726,7 +739,154 @@ func (r *OrderRepository) findItems(ctx context.Context, orderID string) ([]orde
 }
 ```
 
-### Technical Service 구현체 — Notifier
+### Outbox 구현체 — Writer / Relay
+
+```go
+// internal/infrastructure/outbox/writer.go
+package outbox
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"reflect"
+
+	"github.com/google/uuid"
+
+	"github.com/example/order-service/internal/domain/order"
+)
+
+// Writer는 Aggregate가 도메인 메서드 실행 중 쌓아둔 Domain Event를 outbox 테이블에
+// 적재한다. Repository의 저장 트랜잭션 내부(같은 *sql.Tx)에서 호출되어야
+// 주문 상태 변경과 이벤트 적재가 원자적으로 커밋된다(dual-write 회피).
+type Writer struct{}
+
+func NewWriter() *Writer { return &Writer{} }
+
+// SaveAll은 주어진 트랜잭션 안에서 이벤트들을 outbox 테이블에 insert 한다.
+// 호출부(Repository)가 트랜잭션을 커밋/롤백할 책임을 진다 — 이 메서드는 커밋하지 않는다.
+func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []order.DomainEvent) error {
+	for _, event := range events {
+		payload, err := json.Marshal(event)
+		if err != nil {
+			return fmt.Errorf("marshal domain event: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)`,
+			uuid.NewString(), reflect.TypeOf(event).Name(), payload,
+		); err != nil {
+			return fmt.Errorf("save outbox event: %w", err)
+		}
+	}
+	return nil
+}
+```
+
+```go
+// internal/infrastructure/outbox/relay.go
+package outbox
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
+)
+
+// Handler는 하나의 event_type을 처리하는 함수다. payload는 Writer.SaveAll이 저장한
+// JSON 원문 그대로 전달된다(역직렬화는 Handler 구현체의 책임).
+type Handler func(ctx context.Context, payload []byte) error
+
+// Relay는 outbox 테이블에서 미처리(processed = false) 행을 모두 읽어 event_type에
+// 매핑된 Handler를 실행한다. Command Handler가 저장(Save) 직후 동기적으로
+// ProcessPending을 호출하는 방식이므로 별도 폴링 goroutine/스케줄러가 없다.
+//
+// 개별 행 처리가 실패하면 로그만 남기고 processed를 true로 표시하지 않는다 — 그 행은
+// 다음 커맨드가 트리거하는 다음 ProcessPending 호출에서 다시 시도된다(at-least-once).
+type Relay struct {
+	db       *sql.DB
+	handlers map[string]Handler
+}
+
+func NewRelay(db *sql.DB, handlers map[string]Handler) *Relay { return &Relay{db: db, handlers: handlers} }
+
+func (r *Relay) ProcessPending(ctx context.Context) error {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT event_id, event_type, payload FROM outbox WHERE processed = false ORDER BY created_at`)
+	if err != nil {
+		return fmt.Errorf("query pending outbox rows: %w", err)
+	}
+	defer rows.Close()
+
+	type outboxRow struct {
+		eventID, eventType string
+		payload            []byte
+	}
+	var pending []outboxRow
+	for rows.Next() {
+		var row outboxRow
+		if err := rows.Scan(&row.eventID, &row.eventType, &row.payload); err != nil {
+			return fmt.Errorf("scan outbox row: %w", err)
+		}
+		pending = append(pending, row)
+	}
+
+	for _, row := range pending {
+		if handler, ok := r.handlers[row.eventType]; ok {
+			if err := handler(ctx, row.payload); err != nil {
+				log.Printf("outbox: failed to process event_type=%s event_id=%s: %v", row.eventType, row.eventID, err)
+				continue
+			}
+		}
+		if _, err := r.db.ExecContext(ctx, `UPDATE outbox SET processed = true WHERE event_id = $1`, row.eventID); err != nil {
+			log.Printf("outbox: failed to mark processed event_id=%s: %v", row.eventID, err)
+		}
+	}
+	return nil
+}
+```
+
+### Domain Event Handler — Outbox가 드레인한 이벤트를 알림으로 변환
+
+```go
+// internal/application/event/order_placed_handler.go
+package event
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/example/order-service/internal/domain/order"
+)
+
+// Notifier는 이 핸들러가 알림 발송에 필요로 하는 최소 포트다 — 사용하는 쪽(event 패키지)에
+// 정의하고, 실제 구현(notification.Service)은 이 인터페이스의 존재조차 몰라도 된다.
+type Notifier interface {
+	Notify(ctx context.Context, event order.DomainEvent) error
+}
+
+type OrderPlacedHandler struct {
+	notifier Notifier
+}
+
+func NewOrderPlacedHandler(notifier Notifier) *OrderPlacedHandler {
+	return &OrderPlacedHandler{notifier: notifier}
+}
+
+// Handle은 outbox.Handler 시그니처를 만족한다 — Relay가 event_type="OrderPlaced" 행을
+// 만날 때마다 호출한다.
+func (h *OrderPlacedHandler) Handle(ctx context.Context, payload []byte) error {
+	var evt order.OrderPlaced
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		return fmt.Errorf("unmarshal OrderPlaced: %w", err)
+	}
+	return h.notifier.Notify(ctx, evt)
+}
+```
+
+`order_cancelled_handler.go`의 `OrderCancelledHandler`도 동일한 모양이다 — `order.OrderCancelled`를 역직렬화해 같은 `Notifier`로 전달할 뿐이다.
 
 ```go
 // internal/infrastructure/notification/service.go
@@ -736,29 +896,24 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/example/order-service/internal/application/command"
 	"github.com/example/order-service/internal/domain/order"
 )
 
 type Service struct{}
 
-func NewService() *Service {
-	return &Service{}
-}
-
-var _ command.Notifier = (*Service)(nil)
+func NewService() *Service { return &Service{} }
 
 // Notify는 도메인 이벤트에 대응하는 알림을 처리한다. 이 템플릿은 구조화 로깅만 하는
 // 최소 구현이다 — 실제 이메일/SMS 발송이 필요하면 이 저장소의 SES 클라이언트 관용구
-// (notification/ses_client.go)를 참고하고, 실패해도 되는 부가 기능이 아니라면
-// domain-events.md의 Outbox 패턴으로 전환해 dual-write를 피한다.
-func (s *Service) Notify(ctx context.Context, event order.DomainEvent) {
+// (notification/ses_client.go)를 참고한다.
+func (s *Service) Notify(ctx context.Context, event order.DomainEvent) error {
 	switch e := event.(type) {
 	case order.OrderPlaced:
 		slog.InfoContext(ctx, "order placed", "order_id", e.OrderID, "total_amount", e.TotalAmount)
 	case order.OrderCancelled:
 		slog.InfoContext(ctx, "order cancelled", "order_id", e.OrderID, "reason", e.Reason)
 	}
+	return nil
 }
 ```
 
@@ -1001,9 +1156,9 @@ import (
 	"github.com/example/order-service/internal/domain/order"
 )
 
-func NewRouter(repo order.Repository, notifier command.Notifier) *http.ServeMux {
-	createOrderHandler := command.NewCreateOrderHandler(repo, notifier)
-	cancelOrderHandler := command.NewCancelOrderHandler(repo, notifier)
+func NewRouter(repo order.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
+	createOrderHandler := command.NewCreateOrderHandler(repo, outboxRelay)
+	cancelOrderHandler := command.NewCancelOrderHandler(repo, outboxRelay)
 	getOrderHandler := query.NewGetOrderHandler(repo)
 	getOrdersHandler := query.NewGetOrdersHandler(repo)
 
@@ -1041,7 +1196,9 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/example/order-service/internal/application/event"
 	"github.com/example/order-service/internal/infrastructure/notification"
+	"github.com/example/order-service/internal/infrastructure/outbox"
 	"github.com/example/order-service/internal/infrastructure/persistence"
 	httphandler "github.com/example/order-service/internal/interface/http"
 )
@@ -1061,11 +1218,16 @@ func main() {
 	defer db.Close()
 
 	// 3. Infrastructure 조립 — DI 컨테이너 없이 생성자 체이닝 (module-pattern.md)
-	orderRepo := persistence.NewOrderRepository(db)
 	notifier := notification.NewService()
+	outboxWriter := outbox.NewWriter()
+	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+		"OrderPlaced":    event.NewOrderPlacedHandler(notifier).Handle,
+		"OrderCancelled": event.NewOrderCancelledHandler(notifier).Handle,
+	})
+	orderRepo := persistence.NewOrderRepository(db, outboxWriter)
 
 	// 4. Interface 조립
-	mux := httphandler.NewRouter(orderRepo, notifier)
+	mux := httphandler.NewRouter(orderRepo, outboxRelay)
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
 	// 5. 시그널 기반 graceful shutdown (graceful-shutdown.md)
@@ -1091,7 +1253,7 @@ func main() {
 }
 ```
 
-의존성 조립 순서는 의존 방향과 정확히 일치한다: `db`(가장 하위) → `orderRepo`/`notifier`(Infrastructure) → `mux`(Interface, 내부에서 Application Handler까지 조립) → `srv`(서버). 어느 한 단계라도 순서를 바꾸면 아직 선언되지 않은 변수를 참조하게 되어 컴파일 자체가 실패한다 — Go 컴파일러가 조립 순서를 강제하는 셈이다.
+의존성 조립 순서는 의존 방향과 정확히 일치한다: `db`(가장 하위) → `notifier`/`outboxWriter`/`outboxRelay`/`orderRepo`(Infrastructure) → `mux`(Interface, 내부에서 Application Handler까지 조립) → `srv`(서버). 어느 한 단계라도 순서를 바꾸면 아직 선언되지 않은 변수를 참조하게 되어 컴파일 자체가 실패한다 — Go 컴파일러가 조립 순서를 강제하는 셈이다.
 
 ---
 

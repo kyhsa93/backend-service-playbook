@@ -59,7 +59,7 @@ internal/
 
 ## AuthService — 토큰 발급 및 검증
 
-Go 표준 라이브러리에는 JWT 구현이 없으므로 `github.com/golang-jwt/jwt/v5` 같은 최소 의존성을 사용한다. 인터페이스는 Application 레이어의 다른 Technical Service(예: [domain-events.md](domain-events.md)의 `Notifier`)와 동일하게, **인터페이스는 사용하는 레이어 근처에 두고 구현체는 infrastructure에 둔다**.
+Go 표준 라이브러리에는 JWT 구현이 없으므로 `github.com/golang-jwt/jwt/v5` 같은 최소 의존성을 사용한다. 인터페이스는 Application 레이어의 다른 Technical Service(예: [domain-events.md](domain-events.md)의 `OutboxRelay`)와 동일하게, **인터페이스는 사용하는 레이어 근처에 두고 구현체는 infrastructure에 둔다**.
 
 ```go
 // internal/infrastructure/auth/jwt_service.go
@@ -174,7 +174,7 @@ func UserIDFromContext(ctx context.Context) (string, bool) {
 root는 "Guard는 Controller 클래스 레벨에 적용, 메서드 레벨은 누락 위험"이라고 규정한다. Go에는 클래스가 없으므로, **라우트 그룹 전체를 미들웨어로 감싸는 것**으로 동일한 효과를 낸다. `internal/interface/http/router.go`를 확장하면:
 
 ```go
-func NewRouter(repo account.Repository, notifier command.Notifier, jwtService *auth.JWTService) http.Handler {
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService) http.Handler {
 	accountHTTP := NewAccountHandler( /* ... */ )
 
 	protected := http.NewServeMux()

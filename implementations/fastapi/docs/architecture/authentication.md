@@ -66,9 +66,9 @@ async def deposit(
     body: DepositRequest,
     current_user: CurrentUser = Depends(get_current_user),   # 검증 완료된 사용자만 도달
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, notification_service).execute(
+    transaction = await DepositHandler(repo, outbox_relay).execute(
         DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     ...
@@ -184,9 +184,9 @@ async def deposit(
     body: DepositRequest,
     current_user: CurrentUser = Depends(get_current_user),   # X-User-Id Header(...) 대체
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, notification_service).execute(
+    transaction = await DepositHandler(repo, outbox_relay).execute(
         DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     ...

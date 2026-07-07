@@ -56,16 +56,16 @@ root는 "Application Service는 abstract class 타입으로 Repository를 주입
 ```go
 // internal/application/command/deposit_handler.go
 type DepositHandler struct {
-	repo     account.Repository  // 구체 타입이 아니라 인터페이스 타입
-	notifier Notifier
+	repo        account.Repository  // 구체 타입이 아니라 인터페이스 타입
+	outboxRelay OutboxRelay
 }
 
-func NewDepositHandler(repo account.Repository, notifier Notifier) *DepositHandler {
-	return &DepositHandler{repo: repo, notifier: notifier}
+func NewDepositHandler(repo account.Repository, outboxRelay OutboxRelay) *DepositHandler {
+	return &DepositHandler{repo: repo, outboxRelay: outboxRelay}
 }
 ```
 
-`main.go`에서 `persistence.NewAccountRepository(db)`(구체 타입 `*persistence.AccountRepository`)를 넘기면, Go 컴파일러가 구조적 타이핑으로 `account.Repository` 인터페이스 만족 여부를 그 호출 지점에서 검사한다. NestJS의 `@Inject(OrderRepository)` 토큰 등록, providers 배열 같은 개념 자체가 필요 없다.
+`main.go`에서 `persistence.NewAccountRepository(db, outboxWriter)`(구체 타입 `*persistence.AccountRepository`)를 넘기면, Go 컴파일러가 구조적 타이핑으로 `account.Repository` 인터페이스 만족 여부를 그 호출 지점에서 검사한다. NestJS의 `@Inject(OrderRepository)` 토큰 등록, providers 배열 같은 개념 자체가 필요 없다.
 
 ---
 
@@ -135,5 +135,5 @@ func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계와 Repository의 관계
 - [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, 인터페이스 위치
 - [persistence.md](persistence.md) — 트랜잭션, Soft Delete, 마이그레이션
-- [domain-events.md](domain-events.md) — Repository에서 이벤트를 Outbox에 저장하는 지점(현재 미구현)
+- [domain-events.md](domain-events.md) — Repository의 `Save`가 이벤트를 Outbox에 같은 트랜잭션으로 저장하는 지점
 - [aggregate-id.md](aggregate-id.md) — Repository가 ID를 새로 발급하지 않는 원칙

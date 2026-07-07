@@ -55,22 +55,21 @@ class AccountRepository(ABC):
 ```python
 # application/command/deposit_handler.py
 class DepositHandler:
-    def __init__(self, repo: AccountRepository, notification_service: NotificationService) -> None:
+    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
         self._repo = repo
-        self._notification_service = notification_service
+        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
         account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)   # 비즈니스 로직은 Aggregate에 위임
-        await self._repo.save(account)
-        for event in account.pull_events():
-            await self._notification_service.notify(event)
+        await self._repo.save(account)               # Aggregate 저장 + Outbox 적재, 한 트랜잭션
+        await self._outbox_relay.process_pending()    # 커밋 직후 동기 드레인 — domain-events.md 참고
         return transaction
 ```
 
-Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`, `NotificationService`)를 타입으로 받는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다.
+Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`, `OutboxRelay`)를 타입으로 받는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다. `NotificationService`는 더 이상 Command Handler가 직접 의존하지 않는다 — Outbox가 드레인한 이벤트를 처리하는 `application/event/<event>_event_handler.py`가 대신 의존한다([domain-events.md](domain-events.md) 참고).
 
 → Command/Query Handler 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
@@ -136,7 +135,7 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
     return SesNotificationService(session)        # NotificationService(ABC) ← SesNotificationService(구현체)
 ```
 
-라우트 함수의 파라미터 타입은 ABC(`AccountRepository`, `NotificationService`)로 선언되지만, 실제로 주입되는 것은 팩토리가 반환하는 구현체다.
+라우트 함수의 파라미터 타입은 ABC(`AccountRepository`, `OutboxRelay`)로 선언되지만, 실제로 주입되는 것은 팩토리가 반환하는 구현체다. `NotificationService`는 라우트가 직접 받지 않는다 — `_outbox_relay()` 팩토리 내부에서만 조립되어 이벤트 핸들러에 전달된다([domain-events.md](domain-events.md) 참고).
 
 ---
 
@@ -156,9 +155,9 @@ async def deposit(
     body: DepositRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, notification_service).execute(
+    transaction = await DepositHandler(repo, outbox_relay).execute(
         DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
     )
     return TransactionResponse(...)

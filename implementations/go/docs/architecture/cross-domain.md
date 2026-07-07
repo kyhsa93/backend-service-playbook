@@ -98,12 +98,12 @@ var _ query.UserAdapter = (*Adapter)(nil) // 컴파일 타임 검증
 // internal/application/command/create_account_handler.go — 가상 확장
 type CreateAccountHandler struct {
 	repo        account.Repository
-	notifier    Notifier
+	outboxRelay OutboxRelay
 	userAdapter query.UserAdapter // 다른 도메인 호출은 Adapter를 통해서만
 }
 
-func NewCreateAccountHandler(repo account.Repository, notifier Notifier, userAdapter query.UserAdapter) *CreateAccountHandler {
-	return &CreateAccountHandler{repo: repo, notifier: notifier, userAdapter: userAdapter}
+func NewCreateAccountHandler(repo account.Repository, outboxRelay OutboxRelay, userAdapter query.UserAdapter) *CreateAccountHandler {
+	return &CreateAccountHandler{repo: repo, outboxRelay: outboxRelay, userAdapter: userAdapter}
 }
 
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
@@ -131,9 +131,11 @@ Repository 조회와 마찬가지로 `context.Context`가 첫 인자로 전파�
 userRepo := userpersistence.NewRepository(db)      // 가상의 User 도메인 Repository 구현체
 userAdapter := user.NewAdapter(userRepo)            // Account 쪽 Adapter
 
-accountRepo := persistence.NewAccountRepository(db)
 notifier := notification.NewService(notification.NewSESClient(), db)
-createAccountHandler := command.NewCreateAccountHandler(accountRepo, notifier, userAdapter)
+outboxWriter := outbox.NewWriter()
+outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{ /* ... 이벤트 타입별 핸들러 ... */ })
+accountRepo := persistence.NewAccountRepository(db, outboxWriter)
+createAccountHandler := command.NewCreateAccountHandler(accountRepo, outboxRelay, userAdapter)
 ```
 
 NestJS는 `OrderModule.imports = [UserModule]` + DI 컨테이너가 이 배선을 런타임에 풀어주지만, Go는 `main.go`(또는 `router.go`)에서 생성자 인자로 명시적으로 전달하는 것이 배선의 전부다. 상세는 [module-pattern.md](module-pattern.md) 참고.

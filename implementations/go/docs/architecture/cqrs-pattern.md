@@ -30,11 +30,18 @@ internal/
       suspend_account_handler.go
       reactivate_account_handler.go
       close_account_handler.go
-      notifier.go                   ← Notifier 인터페이스 (Technical Service)
+      event_relay.go                ← OutboxRelay 인터페이스 (Technical Service)
     query/
       get_account_handler.go        ← GetAccountQuery + GetAccountHandler
       get_transactions_handler.go
       result.go                     ← Result 구조체
+    event/
+      account_created_event_handler.go   ← Outbox가 드레인한 이벤트를 처리 (domain-events.md 참고)
+      money_deposited_event_handler.go
+      money_withdrawn_event_handler.go
+      account_suspended_event_handler.go
+      account_reactivated_event_handler.go
+      account_closed_event_handler.go
   interface/
     http/
       account_handler.go            ← HTTP 진입점 — Command/Query Handler를 직접 호출
@@ -45,7 +52,7 @@ internal/
 
 ## Command와 CommandHandler
 
-Command는 쓰기 요청을 나타내는 불변 데이터 구조체다. CommandHandler는 Repository(와 필요하면 Notifier 같은 Technical Service)를 의존성으로 갖고 `Handle` 메서드 하나로 유스케이스를 완결한다.
+Command는 쓰기 요청을 나타내는 불변 데이터 구조체다. CommandHandler는 Repository(와 필요하면 OutboxRelay 같은 Technical Service)를 의존성으로 갖고 `Handle` 메서드 하나로 유스케이스를 완결한다.
 
 ```go
 // internal/application/command/create_account_handler.go
@@ -56,20 +63,22 @@ type CreateAccountCommand struct {
 }
 
 type CreateAccountHandler struct {
-	repo     account.Repository
-	notifier Notifier
+	repo        account.Repository
+	outboxRelay OutboxRelay
 }
 
-func NewCreateAccountHandler(repo account.Repository, notifier Notifier) *CreateAccountHandler {
-	return &CreateAccountHandler{repo: repo, notifier: notifier}
+func NewCreateAccountHandler(repo account.Repository, outboxRelay OutboxRelay) *CreateAccountHandler {
+	return &CreateAccountHandler{repo: repo, outboxRelay: outboxRelay}
 }
 
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
 	a := account.New(cmd.RequesterID, cmd.Email, cmd.Currency) // 비즈니스 로직은 Aggregate에 위임
-	if err := h.repo.Save(ctx, a); err != nil {
+	if err := h.repo.Save(ctx, a); err != nil {                // Aggregate 저장 + Outbox 적재, 한 트랜잭션
 		return nil, err
 	}
-	notify(ctx, h.notifier, a)
+	if err := h.outboxRelay.ProcessPending(ctx); err != nil {  // 커밋 직후 동기적으로 Outbox 드레인
+		return nil, err
+	}
 	return a, nil
 }
 ```
@@ -151,9 +160,9 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 
 ```go
 // internal/interface/http/router.go
-func NewRouter(repo account.Repository, notifier command.Notifier) *http.ServeMux {
-	createAccountHandler := command.NewCreateAccountHandler(repo, notifier)
-	depositHandler := command.NewDepositHandler(repo, notifier)
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
+	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
+	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	// ...
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	// ...
@@ -167,15 +176,16 @@ func NewRouter(repo account.Repository, notifier command.Notifier) *http.ServeMu
 
 ## EventHandler — Domain Event 후속 처리
 
-이 저장소는 root가 요구하는 Outbox 기반 EventHandler 대신, Command 처리 직후 동기 호출로 Notifier를 실행한다. 올바른 Outbox 패턴과 현재 코드의 편차는 [domain-events.md](domain-events.md)에서 자세히 다룬다.
+이 저장소는 root가 요구하는 Outbox 기반 EventHandler를 그대로 구현한다: `internal/infrastructure/persistence/account_repository.go`의 `Save`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋하고, Command Handler는 그 직후 `OutboxRelay.ProcessPending(ctx)`를 동기 호출해 드레인한다. `event_type`별 후속 처리는 `internal/application/event/*_event_handler.go`가 맡는다. 상세는 [domain-events.md](domain-events.md)에서 다룬다.
 
 ```go
-// internal/application/command/notifier.go
-func notify(ctx context.Context, notifier Notifier, a *account.Account) {
-	for _, event := range a.DomainEvents() {
-		notifier.Notify(ctx, event) // 현재는 동기 호출 — 목표는 Outbox 경유
+// internal/application/event/account_created_event_handler.go
+func (h *AccountCreatedEventHandler) Handle(ctx context.Context, payload []byte) error {
+	var evt account.AccountCreated
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		return fmt.Errorf("unmarshal AccountCreated: %w", err)
 	}
-	a.ClearEvents()
+	return h.notifier.Notify(ctx, evt) // outbox.Relay가 이 Handle을 event_type="AccountCreated" 행마다 호출한다
 }
 ```
 

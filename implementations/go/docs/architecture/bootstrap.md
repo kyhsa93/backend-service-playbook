@@ -17,7 +17,9 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/example/account-service/internal/application/event"
 	"github.com/example/account-service/internal/infrastructure/notification"
+	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
 	httphandler "github.com/example/account-service/internal/interface/http"
 )
@@ -30,9 +32,20 @@ func main() {
 	defer db.Close()
 
 	// 의존성 조립 — 프레임워크 없이 생성자 체이닝
-	accountRepo := persistence.NewAccountRepository(db)
 	notifier := notification.NewService(notification.NewSESClient(), db)
-	mux := httphandler.NewRouter(accountRepo, notifier)
+
+	outboxWriter := outbox.NewWriter()
+	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
+		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
+		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
+		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier).Handle,
+		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
+		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
+	})
+
+	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
+	mux := httphandler.NewRouter(accountRepo, outboxRelay)
 
 	addr := ":8080"
 	log.Printf("listening on %s", addr)
@@ -51,11 +64,11 @@ func main() {
 | 단계 | 코드 | 역할 |
 |---|---|---|
 | 1. 인프라 연결 | `sql.Open("postgres", os.Getenv("DATABASE_URL"))` | DB 커넥션 풀 생성(실제 연결은 lazy). `defer db.Close()`로 `main()` 종료 시 정리 예약 |
-| 2. Infrastructure 조립 | `persistence.NewAccountRepository(db)`, `notification.NewService(notification.NewSESClient(), db)` | `db` 하나를 여러 Infrastructure 구현체에 주입 — NestJS의 `@Global` DatabaseModule과 달리 그냥 변수를 함수 인자로 넘기는 것뿐이다 |
-| 3. 라우터/Handler 조립 | `httphandler.NewRouter(accountRepo, notifier)` | Repository/Notifier를 받아 내부에서 Command/Query Handler와 `AccountHandler`를 생성자 체이닝으로 조립([router.go](#핵심--routergo가-di-컨테이너-역할을-대신한다) 참고) |
+| 2. Infrastructure 조립 | `notification.NewService(...)`, `outbox.NewWriter()`, `outbox.NewRelay(db, handlers)`, `persistence.NewAccountRepository(db, outboxWriter)` | `db` 하나를 여러 Infrastructure 구현체에 주입 — NestJS의 `@Global` DatabaseModule과 달리 그냥 변수를 함수 인자로 넘기는 것뿐이다 |
+| 3. 라우터/Handler 조립 | `httphandler.NewRouter(accountRepo, outboxRelay)` | Repository/OutboxRelay를 받아 내부에서 Command/Query Handler와 `AccountHandler`를 생성자 체이닝으로 조립([router.go](#핵심--routergo가-di-컨테이너-역할을-대신한다) 참고) |
 | 4. 서버 시작 | `http.ListenAndServe(addr, mux)` | 블로킹 호출. 반환되면(에러 포함) 프로세스가 종료 단계로 넘어간다 |
 
-의존성 조립 순서는 **의존 방향과 정확히 일치**한다 — `db`(가장 하위) → Repository/Notifier(Infrastructure) → Handler(Application, `router.go` 내부) → `mux`(Interface) → `http.Server`. 어느 한 단계라도 순서를 바꾸면 컴파일이 실패한다(아직 만들어지지 않은 변수를 참조하게 되므로) — Go 컴파일러가 조립 순서 자체를 강제하는 셈이다.
+의존성 조립 순서는 **의존 방향과 정확히 일치**한다 — `db`(가장 하위) → `notifier`/`outboxWriter`/`outboxRelay`/Repository(Infrastructure) → Handler(Application, `router.go` 내부) → `mux`(Interface) → `http.Server`. 어느 한 단계라도 순서를 바꾸면 컴파일이 실패한다(아직 만들어지지 않은 변수를 참조하게 되므로) — Go 컴파일러가 조립 순서 자체를 강제하는 셈이다.
 
 ---
 
@@ -63,9 +76,9 @@ func main() {
 
 ```go
 // internal/interface/http/router.go
-func NewRouter(repo account.Repository, notifier command.Notifier) *http.ServeMux {
-	createAccountHandler := command.NewCreateAccountHandler(repo, notifier)
-	depositHandler := command.NewDepositHandler(repo, notifier)
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
+	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
+	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	// ... 나머지 Command/Query Handler도 동일하게 생성자 호출
 
 	accountHTTP := NewAccountHandler(createAccountHandler, depositHandler, /* ... */)
@@ -77,7 +90,7 @@ func NewRouter(repo account.Repository, notifier command.Notifier) *http.ServeMu
 }
 ```
 
-NestJS라면 `@Module({ providers: [...] })`가 이 배선을 선언적으로 대신하고 Nest의 DI 컨테이너가 런타임에 그래프를 풀어낸다. Go는 그런 컨테이너가 없으므로 **`NewRouter`가 곧 배선 코드 그 자체**다 — "이 Handler는 이 Repository와 이 Notifier로 만든다"를 코드로 직접 나열한다. 배선 로직이 커지면(도메인이 늘어나면) `main.go`에서 `NewRouter`로, 다시 `router.go` 내부의 개별 생성자 호출들로 책임이 계층적으로 위임되지만, 그 어디에도 컨테이너·리플렉션·데코레이터는 없다 — 전부 평범한 함수 호출이다. 상세는 [module-pattern.md](module-pattern.md) 참고.
+NestJS라면 `@Module({ providers: [...] })`가 이 배선을 선언적으로 대신하고 Nest의 DI 컨테이너가 런타임에 그래프를 풀어낸다. Go는 그런 컨테이너가 없으므로 **`NewRouter`가 곧 배선 코드 그 자체**다 — "이 Handler는 이 Repository와 이 OutboxRelay로 만든다"를 코드로 직접 나열한다. 배선 로직이 커지면(도메인이 늘어나면) `main.go`에서 `NewRouter`로, 다시 `router.go` 내부의 개별 생성자 호출들로 책임이 계층적으로 위임되지만, 그 어디에도 컨테이너·리플렉션·데코레이터는 없다 — 전부 평범한 함수 호출이다. 상세는 [module-pattern.md](module-pattern.md) 참고.
 
 ---
 
@@ -101,12 +114,14 @@ func main() {
 	defer db.Close()
 
 	// 3. Infrastructure 조립
-	accountRepo := persistence.NewAccountRepository(db)
 	notifier := notification.NewService(notification.NewSESClient(), db)
+	outboxWriter := outbox.NewWriter()
+	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{ /* ... 이벤트 타입별 핸들러 ... */ })
+	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
 
 	// 4. Interface 조립 — 미들웨어 체인으로 감싼다 (cross-cutting-concerns.md)
 	health := httphandler.NewHealthHandler()
-	router := httphandler.NewRouter(accountRepo, notifier, health)
+	router := httphandler.NewRouter(accountRepo, outboxRelay, health)
 	handler := middleware.Chain(router,
 		middleware.CorrelationID,
 		middleware.RequireAuth(jwtService),

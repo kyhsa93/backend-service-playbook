@@ -29,7 +29,7 @@
     → create_account_handler.go, get_transactions_handler.go
 [ ] Result DTO들이 application/query/result.go(또는 유사 파일)에 모여 있는가?
 [ ] Technical Service 인터페이스(알림, 시크릿, 스토리지 등)가 사용하는 쪽 application 패키지에 정의되어 있는가?
-    → command.Notifier, command.SecretService, command.StorageService
+    → command.OutboxRelay, command.SecretService, command.StorageService
 [ ] Infrastructure 레이어 파일이 internal/infrastructure/<concern>/<aggregate>_repository.go 형식으로 배치되어 있는가?
     → persistence/account_repository.go, notification/service.go
 [ ] Interface 레이어 파일이 internal/interface/http/<domain>_handler.go, dto.go, router.go로 배치되어 있는가?
@@ -39,7 +39,7 @@
     → 도메인 전용 코드를 공유 패키지로 옮기지 않았는가
 [ ] 타입명이 PascalCase, 공개 함수/메서드가 PascalCase, 비공개 함수/메서드가 camelCase인가?
 [ ] 에러 변수명이 ErrXxx 형식인가? (ErrNotFound, ErrInsufficientBalance 등)
-[ ] 인터페이스명이 동사+er보다 역할 명사를 우선하는가? (Repository, Notifier — Fetcher/Sender류 지양)
+[ ] 인터페이스명이 동사+er보다 역할 명사를 우선하는가? (Repository, OutboxRelay — Fetcher/Sender류 지양)
 [ ] Repository 구현체에 컴파일 타임 인터페이스 검증(`var _ <domain>.Repository = (*XRepository)(nil)`)이 있는가?
 ```
 

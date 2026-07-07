@@ -103,7 +103,7 @@ def test_close_잔액이_0이_아니면_종료할_수_없다() -> None:
 
 **위치 제안**: `tests/unit/application/test_deposit_handler.py`
 
-Handler 생성자가 ABC(`AccountRepository`, `NotificationService`) 타입을 받으므로, `unittest.mock`으로 만든 mock 객체를 그대로 주입할 수 있다 — 실제 DB/SES 없이 조율 로직만 검증한다.
+Handler 생성자가 ABC(`AccountRepository`, `OutboxRelay`) 타입을 받으므로, `unittest.mock`으로 만든 mock 객체를 그대로 주입할 수 있다 — 실제 DB/SES 없이 조율 로직만 검증한다.
 
 ```python
 # tests/unit/application/test_deposit_handler.py
@@ -122,36 +122,38 @@ def repo() -> AsyncMock:
 
 
 @pytest.fixture
-def notification_service() -> AsyncMock:
+def outbox_relay() -> AsyncMock:
     return AsyncMock()
 
 
 @pytest.mark.asyncio
-async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(repo, notification_service) -> None:
+async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(repo, outbox_relay) -> None:
     repo.find_by_id.return_value = None
-    handler = DepositHandler(repo, notification_service)
+    handler = DepositHandler(repo, outbox_relay)
 
     with pytest.raises(AccountNotFoundError):
         await handler.execute(DepositCommand(account_id="non-existent", requester_id="owner-1", amount=1000))
 
-    notification_service.notify.assert_not_called()   # 조회 실패 시 알림도 발송되지 않아야 한다
+    outbox_relay.process_pending.assert_not_called()   # 조회 실패 시 Outbox 드레인도 호출되지 않아야 한다
 
 
 @pytest.mark.asyncio
-async def test_execute_입금_성공_시_save와_notify가_호출된다(repo, notification_service) -> None:
+async def test_execute_입금_성공_시_save와_outbox_드레인이_호출된다(repo, outbox_relay) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     account.pull_events()   # 생성 이벤트 소진 — deposit 이벤트만 남긴다
     repo.find_by_id.return_value = account
-    handler = DepositHandler(repo, notification_service)
+    handler = DepositHandler(repo, outbox_relay)
 
     transaction = await handler.execute(
         DepositCommand(account_id=account.account_id, requester_id="owner-1", amount=10000)
     )
 
     assert transaction.type == "DEPOSIT"
-    repo.save.assert_awaited_once_with(account)
-    notification_service.notify.assert_awaited_once()   # MoneyDeposited 이벤트가 notify로 전달됨
+    repo.save.assert_awaited_once_with(account)          # Aggregate 저장 + Outbox 적재는 save() 안에서 한 트랜잭션으로 처리됨
+    outbox_relay.process_pending.assert_awaited_once()   # 저장 직후 Outbox 드레인 호출 확인
 ```
+
+이 테스트는 `MoneyDeposited` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 Outbox 적재 시점에 이미 커밋되었다는 것과, 드레인 호출 여부만 확인) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/money_deposited_event_handler.py`를 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
 
 **원칙:**
 - `unittest.mock.AsyncMock`(표준 라이브러리, Python 3.8+)이 `async def` 메서드를 자동으로 mock한다 — 별도 `pytest-mock` 없이도 충분하지만, fixture 조합이 많아지면 `pytest-mock`의 `mocker` fixture로 정리해도 좋다.

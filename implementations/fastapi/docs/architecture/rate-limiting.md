@@ -77,7 +77,7 @@ async def withdraw(
     body: WithdrawRequest,
     x_user_id: str = Header(...),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    notification_service: NotificationService = Depends(_notification_service),
+    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
     ...
 

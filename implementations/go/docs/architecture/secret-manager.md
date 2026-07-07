@@ -6,7 +6,7 @@
 
 ## SecretService — Technical Service 인터페이스
 
-root의 Technical Service 패턴([domain-service.md](../../../../docs/architecture/domain-service.md))을 그대로 적용한다: Application 레이어에 인터페이스, Infrastructure 레이어에 구현체. 이 저장소가 이미 쓰고 있는 패턴(`command.Notifier` ← `notification.Service`)과 동일한 구조다.
+root의 Technical Service 패턴([domain-service.md](../../../../docs/architecture/domain-service.md))을 그대로 적용한다: Application 레이어에 인터페이스, Infrastructure 레이어에 구현체. 이 저장소가 이미 쓰고 있는 패턴(`command.OutboxRelay` ← `outbox.Relay`)과 동일한 구조다.
 
 ```go
 // internal/application/command/secret_service.go — 목표 형태 (인터페이스는 사용하는 쪽 패키지에 정의)
