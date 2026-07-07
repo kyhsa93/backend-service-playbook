@@ -95,7 +95,7 @@
 [ ] Application Service가 HTTP 관련 타입(HttpStatus, ResponseEntity 등)을 참조하는가?
     → 있다면 제거. HTTP 변환은 Interfaces 레이어(@ExceptionHandler)에서만 수행
 [ ] 쓰기 유스케이스가 application/command/에, 읽기 유스케이스가 application/query/에 있는가?
-[ ] Command Service에 @Service + @RequiredArgsConstructor + @Transactional이 있는가?
+[ ] Command Service에 @Service + @RequiredArgsConstructor가 있는가? (@Transactional은 없어야 한다 — 트랜잭션 경계는 Repository.save()로 이관됨, STEP 8 참고)
 [ ] Query Service에 @Service + @RequiredArgsConstructor + @Transactional(readOnly = true)가 있는가?
 [ ] Query Service가 쓰기용 Repository(<Aggregate>Repository)를 직접 사용하는가?
     → cqrs-pattern.md가 명시하는 알려진 gap이다. 새로 작성하는 도메인은 이 gap을 반복하지 말고 별도 <Aggregate>Query 인터페이스(application/query/)를 도입해 Query Service가 이 인터페이스만 사용하도록 한다
@@ -212,9 +212,9 @@
 **관련 문서**: [architecture/persistence.md](./architecture/persistence.md) · [architecture/domain-events.md](./architecture/domain-events.md) · [architecture/scheduling.md](./architecture/scheduling.md)
 
 ```
-[ ] Command Service 메서드에 @Transactional이 있는가? (Domain/Infrastructure에는 붙이지 않는다)
+[ ] Command Service 메서드에 @Transactional이 없는가? (트랜잭션 경계는 Repository.save() 쪽에 있어야 한다 — Command Service에 있으면 회귀)
 [ ] Query Service 메서드에 @Transactional(readOnly = true)가 있는가?
-[ ] 여러 Repository에 걸친 쓰기가 하나의 @Transactional 메서드 안에서 이루어지는가?
+[ ] Repository.save()에 @Transactional이 있고, 여러 Repository에 걸친 쓰기가 하나의 @Transactional 메서드 안에서 이루어지는가?
 [ ] 원본 트랜잭션과 격리해야 하는 부가 작업(알림 발송 등)에 Propagation.REQUIRES_NEW를 사용하는가?
     → 부가 작업의 실패가 원본 트랜잭션을 rollback-only로 오염시키지 않아야 한다
 [ ] Domain Event가 Aggregate 내부 도메인 메서드에서만 생성되는가?

@@ -137,13 +137,40 @@ else
 fi
 
 # ── [7] shared-infra: outbox·task-queue ───────────────────────
+# outbox 트리거는 "OutboxRelay를 실제로 참조하는 코드가 있는가"로 판단한다 — 이전에는
+# "*Outbox*.java 파일이 outbox/ 밖에 있는가"로 판단했는데, 실제 Outbox 파일들이 이미
+# 전부 outbox/ 안에 있어서 이 조건이 항상 거짓이 되어 SKIP만 하고 outbox 패키지를
+# 실질적으로 검증한 적이 없었다.
 section "shared-infra"
 
-if find "$ROOT" -name "*Outbox*.java" -not -path "*/outbox/*" -not -path "*/test/*" 2>/dev/null | grep -q .; then
-  if find "$ROOT" -type d -name "outbox" -not -path "*/test/*" 2>/dev/null | grep -q .; then
-    pass "outbox 패키지"
+USES_OUTBOX_RELAY=0
+for f in "${JAVA_FILES[@]}"; do
+  if grep -q "OutboxRelay" "$f" 2>/dev/null; then
+    USES_OUTBOX_RELAY=1
+    break
+  fi
+done
+
+if [ "$USES_OUTBOX_RELAY" -eq 1 ]; then
+  OUTBOX_DIRS=()
+  while IFS= read -r d; do
+    OUTBOX_DIRS+=("$d")
+  done < <(find "$ROOT" -type d -name "outbox" -not -path "*/test/*" 2>/dev/null)
+
+  if [ ${#OUTBOX_DIRS[@]} -eq 0 ]; then
+    fail "outbox 패키지" "OutboxRelay를 참조하지만 outbox/ 패키지가 없음"
   else
-    fail "outbox 패키지" "Outbox 파일이 있으나 outbox/ 패키지 없음"
+    HAS_WRITER=0
+    HAS_RELAY=0
+    for d in "${OUTBOX_DIRS[@]}"; do
+      [ -f "$d/OutboxWriter.java" ] && HAS_WRITER=1
+      [ -f "$d/OutboxRelay.java" ] && HAS_RELAY=1
+    done
+    if [ "$HAS_WRITER" -eq 1 ] && [ "$HAS_RELAY" -eq 1 ]; then
+      pass "outbox 패키지 (OutboxWriter/OutboxRelay 구현 확인)"
+    else
+      fail "outbox 패키지" "outbox/ 패키지는 있으나 OutboxWriter.java/OutboxRelay.java를 찾을 수 없음"
+    fi
   fi
 else
   skip "outbox 패턴 없음"
@@ -209,6 +236,87 @@ for f in "${JAVA_FILES[@]}"; do
 done
 
 [ "$FOUND_EVENT" -eq 0 ] && skip "이벤트 핸들러 없음"
+
+# ── [9] Command Service는 Outbox 경유만 허용 — ApplicationEventPublisher/
+#        @EventListener/publishEvent() 직접 사용 금지 (domain-events.md) ────
+section "no-event-publisher-in-command"
+
+FOUND_CMD=0
+for f in "${JAVA_FILES[@]}"; do
+  if ! echo "$f" | grep -q "/application/command/"; then
+    continue
+  fi
+  FOUND_CMD=1
+  rel="${f#"$ROOT/"}"
+  if grep -qE "ApplicationEventPublisher|@EventListener|\.publishEvent\(" "$f" 2>/dev/null; then
+    fail "$rel" "Command Service는 ApplicationEventPublisher/@EventListener/publishEvent()를 쓰지 않아야 함 — Outbox 경유(domain-events.md)"
+  else
+    pass "$rel (Outbox 경유 확인)"
+  fi
+done
+[ "$FOUND_CMD" -eq 0 ] && skip "Command Service 없음"
+
+# ── [10] 트랜잭션 경계 — Command Service에는 없고 Repository.save()에 있어야 함 ──
+section "transaction-boundary"
+
+FOUND_TXN=0
+for f in "${JAVA_FILES[@]}"; do
+  if ! echo "$f" | grep -q "/application/command/"; then
+    continue
+  fi
+  FOUND_TXN=1
+  rel="${f#"$ROOT/"}"
+  if grep -q "@Transactional" "$f" 2>/dev/null; then
+    fail "$rel" "Command Service에 @Transactional이 있으면 안 됨 — 트랜잭션 경계는 Repository.save()로 이관됨(domain-events.md, persistence.md)"
+  else
+    pass "$rel (트랜잭션 경계 미보유 확인)"
+  fi
+done
+
+for f in "${JAVA_FILES[@]}"; do
+  name=$(basename "$f" .java)
+  case "$name" in
+    *RepositoryImpl)
+      if grep -q "Outbox" "$f" 2>/dev/null; then
+        FOUND_TXN=1
+        rel="${f#"$ROOT/"}"
+        if grep -q "@Transactional" "$f" 2>/dev/null; then
+          pass "$rel (Repository.save() 트랜잭션 경계 확인)"
+        else
+          fail "$rel" "Outbox를 저장하는 Repository 구현체에 @Transactional이 없음 — Aggregate 저장과 Outbox 적재가 원자적이지 않을 수 있음"
+        fi
+      fi
+      ;;
+  esac
+done
+[ "$FOUND_TXN" -eq 0 ] && skip "Command Service/Outbox 연동 Repository 구현체 없음"
+
+# ── [11] Outbox 드레인 순서 — save() 호출 뒤에 processPending() 호출 (domain-events.md) ──
+section "outbox-drain-order"
+
+FOUND_ORDER=0
+for f in "${JAVA_FILES[@]}"; do
+  if ! echo "$f" | grep -q "/application/command/"; then
+    continue
+  fi
+  if ! grep -q "OutboxRelay" "$f" 2>/dev/null; then
+    continue
+  fi
+  FOUND_ORDER=1
+  rel="${f#"$ROOT/"}"
+  save_line=$(grep -n "\.save(" "$f" | head -1 | cut -d: -f1)
+  pp_line=$(grep -n "\.processPending(" "$f" | head -1 | cut -d: -f1)
+  if [ -z "$save_line" ]; then
+    fail "$rel" "OutboxRelay를 참조하지만 save(...) 호출을 찾을 수 없음"
+  elif [ -z "$pp_line" ]; then
+    fail "$rel" "OutboxRelay를 참조하지만 processPending() 호출이 없음 — 저장 직후 Outbox 드레인 누락(domain-events.md)"
+  elif [ "$pp_line" -lt "$save_line" ]; then
+    fail "$rel" "processPending() 호출이 save(...) 호출보다 먼저 등장함 — 커밋 이후 드레인 순서 위반"
+  else
+    pass "$rel (save → processPending 순서 확인)"
+  fi
+done
+[ "$FOUND_ORDER" -eq 0 ] && skip "OutboxRelay를 사용하는 Command Service 없음"
 
 # ── summary ───────────────────────────────────────────────────
 printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
