@@ -3,6 +3,10 @@
 `docs/`의 가이드 규칙 중 **기계 검증 가능한 항목**을 외부 NestJS 프로젝트에 적용하는 정적 분석 도구.
 각 evaluator는 TypeScript AST·파일 경로·정규식을 조합해 규칙 위반을 검출한다.
 
+## 설계 원칙
+
+harness 전체(5개 언어 공통)의 설계 원칙은 루트 [`../../../docs/harness.md`](../../../docs/harness.md)를 따른다 — 요약하면: **harness는 아키텍처 규칙 준수 능력을 평가하지, 비즈니스 로직의 정답 여부를 평가하지 않는다.** `examples/`의 Account 도메인은 설명용 샘플일 뿐이며, 어떤 evaluator도 특정 업무 도메인 지식(계좌 정지/재개 규칙 등)을 필수 전제로 삼으면 안 된다. 새 evaluator를 추가하기 전에 반드시 그 문서를 먼저 읽는다.
+
 ## Coverage
 
 하네스가 어떤 가이드 규칙을 자동 검증하는지는 [`COVERAGE.md`](./COVERAGE.md)를 참고한다.

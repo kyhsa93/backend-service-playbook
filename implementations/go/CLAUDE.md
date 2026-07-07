@@ -67,6 +67,7 @@ DDD 기반 Go 백엔드 서비스의 설계/구현 가이드이다.
 |---------------|----------|
 | Testing, table-driven test, Domain/Application/E2E 3단계, testcontainers-go | `docs/architecture/testing.md` |
 | harness 실행, evaluator 규칙 목록 | `harness/main.go` |
+| harness 설계 원칙(비즈니스 도메인 지식이 아닌 아키텍처 규칙만 평가) | `../../docs/harness.md` (루트 공용 문서) |
 
 ## 구현 검증
 
