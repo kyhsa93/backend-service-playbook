@@ -88,7 +88,7 @@
     → 있다면 Service 또는 Aggregate로 이동
 [ ] Application Service(Command/Query)가 비즈니스 로직을 직접 수행하는가? (상태 변경 조건 검사, 금액 계산 등)
     → 있다면 Aggregate의 도메인 메서드로 이동
-[ ] Command Service에 @Service + @Transactional이 붙어 있는가?
+[ ] Command Service에 @Service가 붙어 있는가? (@Transactional은 없어야 한다 — 트랜잭션 경계는 Repository.save()로 이관됨, 아래 STEP 8 참고)
 [ ] Query Service에 @Service + @Transactional(readOnly = true)가 붙어 있는가?
 [ ] Command Service가 Repository만, Query Service가 (분리했다면) Query 인터페이스만 사용하는가?
     → Query Service가 Repository를 직접 사용 중이라면, 읽기 전용 프로젝션이 필요한 시점인지 판단 (cqrs-pattern.md의 "알려진 차이" 참조 — 조회량이 적고 읽기 모델이 Aggregate와 거의 같다면 실용적 단순화로 허용)
@@ -288,8 +288,8 @@
 **관련 문서**: [architecture/persistence.md](./architecture/persistence.md) · [architecture/config.md](./architecture/config.md) · [architecture/secret-manager.md](./architecture/secret-manager.md) · [architecture/local-dev.md](./architecture/local-dev.md) · [architecture/container.md](./architecture/container.md) · [architecture/graceful-shutdown.md](./architecture/graceful-shutdown.md) · [architecture/observability.md](./architecture/observability.md)
 
 ```
-[ ] Command Service 메서드에 @Transactional이, Query Service 메서드에 @Transactional(readOnly = true)가 붙어 있는가?
-[ ] 여러 Repository에 걸친 쓰기 작업이 하나의 @Transactional 메서드 안에서 실행되는가?
+[ ] Command Service 메서드에 @Transactional이 없는가? (트랜잭션 경계는 Repository.save() 쪽에 있어야 한다), Query Service 메서드에 @Transactional(readOnly = true)가 붙어 있는가?
+[ ] Repository.save()에 @Transactional이 있고, 여러 Repository에 걸친 쓰기 작업이 하나의 @Transactional 메서드 안에서 실행되는가?
 [ ] Entity 공통 컬럼(createdAt/updatedAt/deletedAt)이 @MappedSuperclass BaseEntity로 추출되어 있는가? (Entity가 2개를 넘어가는 시점부터)
 [ ] soft delete가 실제로 배선되어 있는가? (deletedAt 컬럼만 있고 delete<Noun>() 실행 경로가 없는 죽은 컬럼이 아닌가)
 [ ] 프로덕션 프로파일이 ddl-auto: update/create-drop이 아니라 validate로 설정되어 있는가?
