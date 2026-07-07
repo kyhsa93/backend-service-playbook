@@ -71,7 +71,7 @@ DDD 기반 FastAPI(Python) 서버 프로젝트의 설계/구현 가이드이다.
 |---------------|----------|
 | 테스트 전략, Domain 단위, Application mock 테스트(`unittest.mock`), E2E(testcontainers) | `docs/architecture/testing.md` |
 | `pytest-asyncio`, `httpx.ASGITransport`, `dependency_overrides` | `docs/architecture/testing.md` |
-| harness 실행, 검사 규칙 목록 | `harness/harness.py` |
+| harness 실행, 검사 규칙 목록 | `harness/README.md` |
 | harness 설계 원칙(비즈니스 도메인 지식이 아닌 아키텍처 규칙만 평가) | `../../docs/harness.md` (루트 공용 문서) |
 
 ## FastAPI 구현 원칙 요약
