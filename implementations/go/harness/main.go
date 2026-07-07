@@ -20,6 +20,11 @@ var (
 	// "type"·"interface"·"Repository" 단어가 파일 어딘가에 각각 등장하는 것만으로는
 	// (예: struct 정의, 주석, 문자열, import 경로)는 매칭하지 않는다.
 	repositoryInterfaceDecl = regexp.MustCompile(`(?m)^\s*type\s+\w*Repository\w*\s+interface\b`)
+
+	// 실제 컴파일 타임 인터페이스 검증 선언(예: `var _ account.Repository = (*AccountRepository)(nil)`)만
+	// 매칭. "var _"·"Repository"·"nil" 세 문자열이 파일 어딘가에 각각 등장하는 것만으로는
+	// (예: 무관한 변수 선언, 주석, 다른 종류의 검증문) 매칭하지 않는다.
+	repositoryImplAssertion = regexp.MustCompile(`(?m)^\s*var\s+_\s+\w+\.\w*Repository\w*\s*=\s*\(\*\w+\)\(nil\)`)
 )
 
 func pass(name string) {
@@ -53,6 +58,7 @@ func main() {
 	checkFilePlacement(root)
 	checkSharedInfra(root)
 	checkEventPlacement(root)
+	checkOutboxDrainOrder(root)
 
 	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	if failCount == 0 {
@@ -147,8 +153,7 @@ func checkRepositoryPlacement(root string) {
 			}
 		}
 
-		if strings.Contains(src, "var _") && strings.Contains(src, "Repository") &&
-			strings.Contains(src, "nil") {
+		if repositoryImplAssertion.MatchString(src) {
 			found = true
 			if strings.Contains(filepath.ToSlash(path), "/infrastructure/") {
 				pass(rel + " (Repository impl 검증)")
@@ -228,17 +233,96 @@ func checkFilePlacement(root string) {
 
 // [6] shared-infra: outbox·task-queue 패턴
 //
-// outbox/task-queue 관련 파일이 있다면, 그 코드가 전용 디렉토리(디렉토리명이
-// 정확히 "outbox"/"task-queue")에 모여 있어야 한다. shared-modules.md는 이
-// 디렉토리의 위치를 internal/ 바로 아래로 고정하지 않는다 — 여러 관심사별
-// 하위 패키지(internal/infrastructure/outbox/ 등) 어디에 두어도 되므로,
-// 존재 여부도 파일 스캔과 마찬가지로 internal/ 전체를 재귀적으로 뒤져 확인한다.
+// outbox/task-queue 관련 코드가 있다면, 그 코드가 전용 디렉토리(디렉토리명이
+// 정확히 "outbox"/"task-queue")에 모여 있고, 그 디렉토리가 실제로 해당 패턴의
+// 핵심 타입을 구현하고 있어야 한다. shared-modules.md는 이 디렉토리의 위치를
+// internal/ 바로 아래로 고정하지 않는다 — 여러 관심사별 하위 패키지
+// (internal/infrastructure/outbox/ 등) 어디에 두어도 되므로, internal/ 전체를
+// 재귀적으로 뒤져 확인한다.
+//
+// "outbox 패턴이 쓰이고 있는가"는 domain-events.md가 command 패키지의 이벤트
+// 드레인 포트로 규정하는 OutboxRelay 인터페이스(internal/application/command/)의
+// 실제 참조 여부로 판단한다 — 파일명에 우연히 "outbox" 문자열이 들어간 무관한
+// 파일(예: migrations/000X_add_outbox.sql)에 낚이지 않기 위함이다.
 func checkSharedInfra(root string) {
 	section("shared-infra")
+	checkOutboxPattern(root)
+	checkTaskQueuePattern(root)
+}
 
-	hasOutboxFile := false
+func checkOutboxPattern(root string) {
+	usesOutboxRelay := false
+	var outboxDirs []string
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == "outbox" {
+				outboxDirs = append(outboxDirs, path)
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		if strings.Contains(string(content), "OutboxRelay") {
+			usesOutboxRelay = true
+		}
+		return nil
+	})
+
+	if !usesOutboxRelay {
+		skip("outbox 패턴 없음")
+		return
+	}
+
+	if len(outboxDirs) == 0 {
+		fail("internal/**/outbox/", "OutboxRelay를 참조하지만 전용 outbox/ 디렉토리가 없음")
+		return
+	}
+
+	hasWriter, hasRelay := false, false
+	for _, dir := range outboxDirs {
+		filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			content, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return nil
+			}
+			src := string(content)
+			if regexp.MustCompile(`(?m)^type\s+Writer\s+struct\b`).MatchString(src) {
+				hasWriter = true
+			}
+			if regexp.MustCompile(`(?m)^type\s+Relay\s+struct\b`).MatchString(src) {
+				hasRelay = true
+			}
+			return nil
+		})
+	}
+
+	if hasWriter && hasRelay {
+		pass("internal/**/outbox/ (Writer/Relay 구현 확인)")
+		return
+	}
+	var missing []string
+	if !hasWriter {
+		missing = append(missing, "Writer")
+	}
+	if !hasRelay {
+		missing = append(missing, "Relay")
+	}
+	fail("internal/**/outbox/", "outbox/ 디렉토리는 있으나 "+strings.Join(missing, ", ")+" 타입 선언을 찾을 수 없음")
+}
+
+func checkTaskQueuePattern(root string) {
 	hasTaskFile := false
-	hasOutboxDir := false
 	hasTaskDir := false
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -247,32 +331,16 @@ func checkSharedInfra(root string) {
 		name := d.Name()
 		pathSlash := filepath.ToSlash(path)
 		if d.IsDir() {
-			if name == "outbox" {
-				hasOutboxDir = true
-			}
 			if name == "task-queue" {
 				hasTaskDir = true
 			}
 			return nil
-		}
-		if strings.Contains(name, "outbox") && !strings.Contains(pathSlash, "/outbox/") {
-			hasOutboxFile = true
 		}
 		if strings.Contains(name, "task_queue") && !strings.Contains(pathSlash, "/task-queue/") {
 			hasTaskFile = true
 		}
 		return nil
 	})
-
-	if hasOutboxFile {
-		if hasOutboxDir {
-			pass("internal/**/outbox/")
-		} else {
-			fail("internal/**/outbox/", "outbox 파일이 있으나 전용 outbox/ 디렉토리 없음")
-		}
-	} else {
-		skip("outbox 패턴 없음")
-	}
 
 	if hasTaskFile {
 		if hasTaskDir {
@@ -317,5 +385,64 @@ func checkEventPlacement(root string) {
 	})
 	if !found {
 		skip("이벤트 핸들러 없음")
+	}
+}
+
+// [8] Outbox 드레인 순서 검증 — domain-events.md의 핵심 불변식
+//
+// OutboxRelay를 의존성으로 갖는 Command Handler는 저장(Save) 커밋 이후
+// 반드시 ProcessPending을 호출해 Outbox를 드레인해야 한다(domain-events.md).
+// 이 검사는 파일명·배치가 아니라 실제 메서드 본문을 본다 — Save() 호출 뒤에
+// ProcessPending() 호출이 텍스트 순서상 등장하는지 확인한다(AST는 아니지만,
+// 같은 함수 본문 안에서 두 호출의 상대적 순서를 근사적으로 검증하기에는
+// 충분하다). 이 규칙이 없으면 dual-write 시절 패턴으로 회귀해도
+// (ProcessPending 호출 삭제, 또는 알림을 직접 호출하는 것으로 되돌려도)
+// 다른 어떤 규칙도 이를 잡아내지 못한다.
+var (
+	saveCall           = regexp.MustCompile(`\.Save\(`)
+	processPendingCall = regexp.MustCompile(`\.ProcessPending\(`)
+)
+
+func checkOutboxDrainOrder(root string) {
+	section("outbox-drain-order")
+	found := false
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		name := d.Name()
+		if strings.HasSuffix(name, "_test.go") ||
+			!strings.HasSuffix(name, "_handler.go") ||
+			strings.HasSuffix(name, "_event_handler.go") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		src := string(content)
+		if !strings.Contains(src, "OutboxRelay") {
+			// 이 핸들러는 OutboxRelay를 의존성으로 갖지 않음 — 대상 아님(예: 조회 전용 핸들러가 이 디렉토리에 있는 경우 등)
+			return nil
+		}
+		found = true
+		rel, _ := filepath.Rel(root, path)
+
+		saveLoc := saveCall.FindStringIndex(src)
+		ppLoc := processPendingCall.FindStringIndex(src)
+		switch {
+		case saveLoc == nil:
+			fail(rel, "OutboxRelay를 참조하지만 Save(...) 호출을 찾을 수 없음")
+		case ppLoc == nil:
+			fail(rel, "OutboxRelay를 참조하지만 ProcessPending(...) 호출이 없음 — 저장 직후 Outbox 드레인 누락(domain-events.md)")
+		case ppLoc[0] < saveLoc[0]:
+			fail(rel, "ProcessPending(...) 호출이 Save(...) 호출보다 먼저 등장함 — 커밋 이후 드레인 순서 위반")
+		default:
+			pass(rel + " (Save → ProcessPending 순서 확인)")
+		}
+		return nil
+	})
+	if !found {
+		skip("OutboxRelay를 사용하는 Command Handler 없음")
 	}
 }
