@@ -26,7 +26,7 @@ services:
     image: localstack/localstack:3.0
     ports: ['4566:4566']
     environment:
-      SERVICES: ses
+      SERVICES: ses,secretsmanager
       DEFAULT_REGION: us-east-1
     volumes: ['./localstack:/etc/localstack/init/ready.d']
     healthcheck:
@@ -35,6 +35,23 @@ services:
       timeout: 3s
       retries: 5
 
+  app:
+    build: .
+    ports: ['8080:8080']
+    env_file:
+      - .env.development
+    environment:
+      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      DATABASE_URL: postgres://dev:dev@database:5432/app?sslmode=disable
+      AWS_ENDPOINT_URL: http://localstack:4566
+    depends_on:
+      database:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    profiles:
+      - app
+
 volumes:
   db-data:
 ```
@@ -42,7 +59,7 @@ volumes:
 root 원칙과 대조하면:
 - **LocalStack 이미지 버전 고정** — `localstack/localstack:3.0`(`:latest` 아님). root가 명시한 "최신 태그가 예고 없이 동작을 바꿀 수 있다"는 이유를 그대로 반영.
 - **healthcheck가 실제 서비스 API를 호출** — `awslocal ses list-identities`(LocalStack 프로세스가 떠 있어도 SES 서브시스템 초기화가 끝나지 않은 상태를 걸러낸다). `database`도 `pg_isready`로 동일하게 처리.
-- **알려진 격차**: `app` 서비스가 `profiles: [app]`으로 분리되어 있지 않다 — 이 compose 파일은 인프라만 정의하고, Go 앱 자체는 항상 `go run ./cmd/server`로 호스트에서 직접 실행하는 것을 전제로 한다. 앱을 컨테이너로도 실행하고 싶다면 root 패턴대로 Dockerfile([container.md](container.md) 참고)을 만들고 `app` 서비스 + `profiles: [app]`을 추가해야 한다.
+- **적용 완료**: `app` 서비스가 `profiles: [app]`으로 분리되어 있다. 기본 실행(`docker compose up -d`)은 인프라(database/localstack)만 띄우고, 앱까지 컨테이너로 실행하려면 `docker compose --profile app up -d --build`를 쓴다. `app` 서비스는 컨테이너 네트워크 안에서 `database`/`localstack` 서비스명으로 연결해야 하므로 `DATABASE_URL`/`AWS_ENDPOINT_URL`을 `environment:`로 오버라이드한다(`env_file`보다 우선 적용됨).
 
 ---
 
@@ -57,7 +74,7 @@ awslocal ses verify-email-identity --email-address no-reply@backend-service-play
 
 `docker-compose.yml`의 `volumes: ['./localstack:/etc/localstack/init/ready.d']`가 이 스크립트를 LocalStack 컨테이너 기동 완료 시점에 자동 실행되도록 마운트한다. root 문서가 강조하듯 **SES는 발신자 이메일을 검증하지 않으면 발송 자체를 거부**한다 — LocalStack의 SES 에뮬레이터도 이 동작을 그대로 재현하므로, 이 검증 스크립트가 없으면 `test/notification_e2e_test.go`의 이메일 발송 테스트가 전부 실패한다.
 
-새 AWS 서비스(S3, Secrets Manager 등)를 추가할 때는 같은 패턴을 따른다: `docker-compose.yml`의 `SERVICES` 목록에 추가하고, `localstack/init-<service>.sh` 스크립트를 새로 만든다.
+새 AWS 서비스를 추가할 때는 같은 패턴을 따른다: `docker-compose.yml`의 `SERVICES` 목록에 추가하고, `localstack/init-<service>.sh` 스크립트를 새로 만든다. Secrets Manager가 이 패턴으로 이미 추가되어 있다(`SERVICES: ses,secretsmanager`, `localstack/init-secrets.sh`가 `app/jwt` 시크릿을 생성 — [secret-manager.md](secret-manager.md) 참고).
 
 ---
 
@@ -103,9 +120,11 @@ AWS_ENDPOINT_URL=http://localhost:4566
 AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
+JWT_SECRET=local-dev-secret
+APP_ENV=development
 ```
 
-`main.go`는 현재 이 값들을 `.env` 파일로 관리하지 않고 실행 시점 환경 변수로만 읽는다 — `.env.development`/`.env.docker` 파일 분리는 아직 없다([config.md](config.md)에서 다루는 fail-fast 검증과 함께 도입을 검토할 부분).
+**적용 완료** — `.env.example`(커밋됨)과 `.env.development`(`.gitignore`에 포함, `.env.example`을 복사해서 만듦)가 이미 있다. Go 표준 라이브러리는 `.env` 파일을 자동으로 읽지 않으므로, `export $(cat .env.development | xargs) && go run ./cmd/server`처럼 셸에 로드하거나 direnv 등을 쓴다.
 
 ---
 
@@ -119,9 +138,15 @@ docker compose up -d
 # 2. 마이그레이션 실행 (현재 별도 마이그레이션 도구 없음 — psql로 직접 적용하거나 E2E 테스트가 자동 실행)
 psql "$DATABASE_URL" -f migrations/0001_init.sql
 psql "$DATABASE_URL" -f migrations/0002_add_email_and_sent_emails.sql
+psql "$DATABASE_URL" -f migrations/0003_add_outbox.sql
 
 # 3. 앱 실행 (호스트에서 직접)
-go run ./cmd/server
+export $(cat .env.development | xargs) && go run ./cmd/server
+
+# --- 또는 ---
+
+# 전체 컨테이너 기동 (앱 포함)
+docker compose --profile app up -d --build
 
 # 로그 확인
 docker compose logs -f localstack

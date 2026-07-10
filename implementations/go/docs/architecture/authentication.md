@@ -4,19 +4,9 @@
 
 ---
 
-## 알려진 편차 — 현재 예제는 인증을 생략한 자리표시자를 쓴다
+## 적용 완료 — JWT/Bearer 인증
 
-`internal/interface/http/account_handler.go`는 현재 다음과 같이 **검증되지 않은** `X-User-Id` 헤더를 그대로 신뢰한다.
-
-```go
-// 현재 코드 — 인증이 아니라 인증 생략 자리표시자
-func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
-	// ... requesterID를 그대로 RequesterID로 사용
-}
-```
-
-누구나 임의의 `X-User-Id` 값을 보내 다른 사용자로 위장할 수 있다 — 이것은 인증이 아니다. 아래는 root가 요구하는 **올바른 JWT/Bearer 패턴**이다. 이번 문서화 패스에서는 `examples/`의 실제 코드를 고치지 않으므로, 아래 내용은 "이렇게 구현해야 한다"는 목표 상태이고 현재 코드는 이 목표에 도달하기 전 단계임을 분명히 한다.
+아래 패턴은 이미 `examples/`에 그대로 구현되어 있다(더 이상 gap 아님) — `internal/infrastructure/auth/jwt_service.go`(JWT 발급/검증), `internal/interface/http/middleware/auth_middleware.go`(Bearer 토큰 검증 미들웨어), `internal/interface/http/router.go`(라우트 그룹 단위 미들웨어 적용)가 이 문서가 서술하는 목표 상태 그대로다. `account_handler.go`는 `middleware.UserIDFromContext(r.Context())`로 인증된 사용자 ID를 꺼내며, 더 이상 `X-User-Id` 헤더를 신뢰하지 않는다.
 
 ---
 
@@ -185,11 +175,12 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtServ
 	mux := http.NewServeMux()
 	mux.Handle("/accounts", middleware.RequireAuth(jwtService)(protected)) // 인증 필요 — 그룹 전체
 	mux.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
-	mux.HandleFunc("POST /auth/sign-in", authHandler.SignIn) // 인증 불필요
-	mux.HandleFunc("GET /health/live", healthHandler.Live)   // 인증 불필요
-	return mux
+	mux.HandleFunc("POST /auth/sign-in", authHTTP.SignIn) // 인증 불필요
+	return middleware.CorrelationID(mux) // Correlation ID는 인증보다 먼저 적용 — observability.md 참고
 }
 ```
+
+(`GET /health/live` 같은 헬스체크 엔드포인트는 아직 없다 — [graceful-shutdown.md](graceful-shutdown.md) 참고.)
 
 - 인증이 필요한 라우트를 **하나의 `http.ServeMux`로 묶고 미들웨어로 감싸는 것**이 "메서드별로 미들웨어를 따로 붙이는 실수"를 방지하는 Go식 방법이다. 새 엔드포인트를 이 서브 mux에 추가하기만 하면 자동으로 인증이 적용된다.
 - 인증 불필요 엔드포인트(`/auth/sign-in`, `/health/*`)는 별도의 미들웨어 없는 mux에 등록한다.

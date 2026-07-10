@@ -1,21 +1,21 @@
 # 테스트 전략 (Go)
 
-원칙은 루트 [testing.md](../../../../docs/architecture/testing.md)를 따른다: Domain 단위 테스트, Application 단위 테스트(Repository mock), E2E 테스트 3단계로 구성한다. **현재 `examples/`에는 E2E 테스트만 있다** — 이 문서는 나머지 두 계층을 Go 표준 라이브러리 `testing` 패키지와 table-driven test 관용구로 어떻게 채워야 하는지 구체적으로 제시한다.
+원칙은 루트 [testing.md](../../../../docs/architecture/testing.md)를 따른다: Domain 단위 테스트, Application 단위 테스트(Repository mock), E2E 테스트 3단계로 구성한다. **적용 완료** — 3단계 모두 `examples/`에 구현되어 있다(더 이상 gap 아님). 이 문서는 Go 표준 라이브러리 `testing` 패키지와 table-driven test 관용구로 각 계층을 어떻게 작성했는지 제시한다.
 
 | 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
 |---|---|---|---|
-| Domain 단위 테스트 | Aggregate, Value Object | 프레임워크 없음, 순수 함수 호출 | **없음** — 아래 목표 예시 참고 |
-| Application 단위 테스트 | Command/Query Handler | Repository를 mock(수동 구현 또는 `testify/mock`) | **없음** — 아래 목표 예시 참고 |
+| Domain 단위 테스트 | Aggregate, Value Object | 프레임워크 없음, 순수 함수 호출 | **있음** — `internal/domain/account/account_test.go`, `money_test.go` |
+| Application 단위 테스트 | Command/Query Handler | Repository를 수동 stub으로 대체(`stub_test.go`) | **있음** — `create_account_handler_test.go`, `deposit_handler_test.go` |
 | E2E 테스트 | HTTP → Handler → Repository → 실제 DB | testcontainers-go (Postgres + LocalStack) | **있음** — `test/account_e2e_test.go`, `test/notification_e2e_test.go` |
 
 ---
 
-## Domain 단위 테스트 — 목표 예시 (아직 없음)
+## Domain 단위 테스트 — 실제 코드
 
 Go 표준 컨벤션대로 소스 옆에 `_test.go`로 둔다(`internal/domain/account/account_test.go`). 외부 의존성이 없으므로 `go test ./internal/domain/...`만으로 밀리초 단위로 끝난다. **table-driven test**가 Go의 표준 스타일이다 — `describe`/`it` 대신 `[]struct{...}` 슬라이스 + `for` 루프 + `t.Run` 서브테스트를 쓴다.
 
 ```go
-// internal/domain/account/account_test.go — 목표 예시
+// internal/domain/account/account_test.go — 실제 코드
 package account_test
 
 import (
@@ -88,12 +88,12 @@ func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 
 ---
 
-## Application 단위 테스트 — 목표 예시 (아직 없음)
+## Application 단위 테스트 — 실제 코드
 
-Repository를 mock으로 대체해 Handler의 조율 로직(에러 전파, Save 호출 여부, notify 호출 여부)만 검증한다. Go에는 mocking 프레임워크가 필수는 아니다 — `account.Repository` 인터페이스를 구현하는 최소 stub 구조체를 직접 작성하는 것으로 충분하다.
+Repository를 mock으로 대체해 Handler의 조율 로직(에러 전파, Save 호출 여부, notify 호출 여부)만 검증한다. Go에는 mocking 프레임워크가 필수는 아니다 — `account.Repository` 인터페이스를 구현하는 최소 stub 구조체(`stub_test.go`)를 직접 작성하는 것으로 충분하다.
 
 ```go
-// internal/application/command/deposit_handler_test.go — 목표 예시
+// internal/application/command/deposit_handler_test.go — 실제 코드
 package command_test
 
 import (

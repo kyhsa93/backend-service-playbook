@@ -10,24 +10,38 @@ Go 전용 문서 — root에는 대응 문서가 없다(NestJS의 `main.ts`/`Nes
 package main
 
 import (
+	"context"
 	"database/sql"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 
 	"github.com/example/account-service/internal/application/event"
+	"github.com/example/account-service/internal/config"
+	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
+	"github.com/example/account-service/internal/infrastructure/secret"
 	httphandler "github.com/example/account-service/internal/interface/http"
 )
 
 func main() {
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	dbConfig, err := config.LoadDatabaseConfig()
 	if err != nil {
-		log.Fatalf("failed to connect to db: %v", err)
+		slog.Error("config error", "error", err)
+		os.Exit(1)
+	}
+
+	db, err := sql.Open("postgres", dbConfig.URL)
+	if err != nil {
+		slog.Error("failed to connect to db", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -44,13 +58,22 @@ func main() {
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
 	})
 
+	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
+	jwtSecret, err := config.LoadJWTSecret(context.Background(), secretService, os.Getenv("APP_ENV"))
+	if err != nil {
+		slog.Error("failed to load jwt secret", "error", err)
+		os.Exit(1)
+	}
+	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
+
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-	mux := httphandler.NewRouter(accountRepo, outboxRelay)
+	mux := httphandler.NewRouter(accountRepo, outboxRelay, jwtService)
 
 	addr := ":8080"
-	log.Printf("listening on %s", addr)
+	slog.Info("listening", "addr", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server error: %v", err)
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
 }
 ```
@@ -63,95 +86,74 @@ func main() {
 
 | 단계 | 코드 | 역할 |
 |---|---|---|
-| 1. 인프라 연결 | `sql.Open("postgres", os.Getenv("DATABASE_URL"))` | DB 커넥션 풀 생성(실제 연결은 lazy). `defer db.Close()`로 `main()` 종료 시 정리 예약 |
-| 2. Infrastructure 조립 | `notification.NewService(...)`, `outbox.NewWriter()`, `outbox.NewRelay(db, handlers)`, `persistence.NewAccountRepository(db, outboxWriter)` | `db` 하나를 여러 Infrastructure 구현체에 주입 — NestJS의 `@Global` DatabaseModule과 달리 그냥 변수를 함수 인자로 넘기는 것뿐이다 |
-| 3. 라우터/Handler 조립 | `httphandler.NewRouter(accountRepo, outboxRelay)` | Repository/OutboxRelay를 받아 내부에서 Command/Query Handler와 `AccountHandler`를 생성자 체이닝으로 조립([router.go](#핵심--routergo가-di-컨테이너-역할을-대신한다) 참고) |
-| 4. 서버 시작 | `http.ListenAndServe(addr, mux)` | 블로킹 호출. 반환되면(에러 포함) 프로세스가 종료 단계로 넘어간다 |
+| 0. 로깅/설정 준비 | `slog.SetDefault(...)`, `config.LoadDatabaseConfig()` | JSON 구조화 로거를 가장 먼저 설정하고, 필수 환경 변수를 검증해 실패 시 `os.Exit(1)`([config.md](config.md), [observability.md](observability.md) 참고) |
+| 1. 인프라 연결 | `sql.Open("postgres", dbConfig.URL)` | DB 커넥션 풀 생성(실제 연결은 lazy). `defer db.Close()`로 `main()` 종료 시 정리 예약 |
+| 2. Infrastructure 조립 | `notification.NewService(...)`, `outbox.NewWriter()`, `outbox.NewRelay(db, handlers)`, `secret.NewService(...)`, `auth.NewJWTService(...)`, `persistence.NewAccountRepository(db, outboxWriter)` | `db` 하나를 여러 Infrastructure 구현체에 주입 — NestJS의 `@Global` DatabaseModule과 달리 그냥 변수를 함수 인자로 넘기는 것뿐이다. JWT secret은 `config.LoadJWTSecret`이 환경(APP_ENV)에 따라 환경 변수 또는 Secrets Manager에서 가져온다([secret-manager.md](secret-manager.md) 참고) |
+| 3. 라우터/Handler 조립 | `httphandler.NewRouter(accountRepo, outboxRelay, jwtService)` | Repository/OutboxRelay/JWTService를 받아 내부에서 Command/Query Handler, `AccountHandler`, 인증·Correlation ID 미들웨어를 조립([router.go](#핵심--routergo가-di-컨테이너-역할을-대신한다) 참고) |
+| 4. 서버 시작 | `http.ListenAndServe(addr, mux)` | 블로킹 호출. 반환되면(에러 포함) 프로세스가 종료 단계로 넘어간다 — graceful shutdown은 아직 미구현([graceful-shutdown.md](graceful-shutdown.md) 참고) |
 
-의존성 조립 순서는 **의존 방향과 정확히 일치**한다 — `db`(가장 하위) → `notifier`/`outboxWriter`/`outboxRelay`/Repository(Infrastructure) → Handler(Application, `router.go` 내부) → `mux`(Interface) → `http.Server`. 어느 한 단계라도 순서를 바꾸면 컴파일이 실패한다(아직 만들어지지 않은 변수를 참조하게 되므로) — Go 컴파일러가 조립 순서 자체를 강제하는 셈이다.
+의존성 조립 순서는 **의존 방향과 정확히 일치**한다 — `db`(가장 하위) → `notifier`/`outboxWriter`/`outboxRelay`/`secretService`/`jwtService`/Repository(Infrastructure) → Handler(Application, `router.go` 내부) → `mux`(Interface) → `http.Server`. 어느 한 단계라도 순서를 바꾸면 컴파일이 실패한다(아직 만들어지지 않은 변수를 참조하게 되므로) — Go 컴파일러가 조립 순서 자체를 강제하는 셈이다.
 
 ---
 
 ## 핵심 — `router.go`가 DI 컨테이너 역할을 대신한다
 
 ```go
-// internal/interface/http/router.go
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
+// internal/interface/http/router.go — 실제 코드(요약)
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService) http.Handler {
 	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
 	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	// ... 나머지 Command/Query Handler도 동일하게 생성자 호출
 
 	accountHTTP := NewAccountHandler(createAccountHandler, depositHandler, /* ... */)
+	authHTTP := NewAuthHandler(jwtService)
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("POST /accounts", accountHTTP.CreateAccount)
+	// ... 인증이 필요한 나머지 엔드포인트
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /accounts", accountHTTP.CreateAccount)
-	// ...
-	return mux
+	mux.Handle("/accounts", middleware.RequireAuth(jwtService)(protected))
+	mux.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
+	mux.HandleFunc("POST /auth/sign-in", authHTTP.SignIn) // 인증 불필요
+	return middleware.CorrelationID(mux) // 가장 바깥에서 감싸 인증 실패 응답에도 포함
 }
 ```
+
+반환 타입이 `*http.ServeMux`가 아니라 `http.Handler`인 이유는 `middleware.CorrelationID`가 `http.Handler`를 반환하기 때문이다 — 호출부(`main.go`, e2e 테스트의 `httptest.NewServer`)는 인터페이스로만 이 값을 쓰므로 영향이 없다. 인증/Correlation ID 미들웨어 상세는 [authentication.md](authentication.md), [cross-cutting-concerns.md](cross-cutting-concerns.md) 참고.
 
 NestJS라면 `@Module({ providers: [...] })`가 이 배선을 선언적으로 대신하고 Nest의 DI 컨테이너가 런타임에 그래프를 풀어낸다. Go는 그런 컨테이너가 없으므로 **`NewRouter`가 곧 배선 코드 그 자체**다 — "이 Handler는 이 Repository와 이 OutboxRelay로 만든다"를 코드로 직접 나열한다. 배선 로직이 커지면(도메인이 늘어나면) `main.go`에서 `NewRouter`로, 다시 `router.go` 내부의 개별 생성자 호출들로 책임이 계층적으로 위임되지만, 그 어디에도 컨테이너·리플렉션·데코레이터는 없다 — 전부 평범한 함수 호출이다. 상세는 [module-pattern.md](module-pattern.md) 참고.
 
 ---
 
-## 목표 형태 — 다른 문서들의 개선을 통합한 `main()`
+## 남은 개선 — Graceful Shutdown
 
-아래는 [config.md](config.md)(fail-fast 환경 변수 검증), [cross-cutting-concerns.md](cross-cutting-concerns.md)(미들웨어 체인), [graceful-shutdown.md](graceful-shutdown.md)(`signal.NotifyContext` + `Shutdown(ctx)`)가 각자 제시하는 목표 구현을 하나의 `main()`으로 합친 모습이다. 각 조각의 상세 근거와 코드는 해당 문서를 참고 — 이 문서는 "합쳤을 때 순서가 어떻게 되는가"에 집중한다.
+config(fail-fast 검증), auth(JWT), secret(Secrets Manager), observability(구조화 로깅), Correlation ID는 위 "현재 코드"에 이미 반영되어 있다. 유일하게 남은 조각은 [graceful-shutdown.md](graceful-shutdown.md)가 제시하는 `signal.NotifyContext` + `Shutdown(ctx)`다 — 현재 `http.ListenAndServe(addr, mux)`는 블로킹 호출로, SIGTERM을 받아도 진행 중인 요청을 기다리지 않고 즉시 종료된다.
 
 ```go
-func main() {
-	// 1. 설정 로드 + fail-fast 검증 (config.md)
-	dbConfig, err := config.LoadDatabaseConfig()
-	if err != nil {
-		log.Fatalf("config: %v", err)
+// 목표 형태 — graceful-shutdown.md 참고
+srv := &http.Server{Addr: addr, Handler: mux}
+
+ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+defer stop()
+
+go func() {
+	slog.Info("listening", "addr", addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
+}()
 
-	// 2. 인프라 연결
-	db, err := sql.Open("postgres", dbConfig.URL)
-	if err != nil {
-		log.Fatalf("failed to connect to db: %v", err)
-	}
-	defer db.Close()
-
-	// 3. Infrastructure 조립
-	notifier := notification.NewService(notification.NewSESClient(), db)
-	outboxWriter := outbox.NewWriter()
-	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{ /* ... 이벤트 타입별 핸들러 ... */ })
-	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-
-	// 4. Interface 조립 — 미들웨어 체인으로 감싼다 (cross-cutting-concerns.md)
-	health := httphandler.NewHealthHandler()
-	router := httphandler.NewRouter(accountRepo, outboxRelay, health)
-	handler := middleware.Chain(router,
-		middleware.CorrelationID,
-		middleware.RequireAuth(jwtService),
-		middleware.RequestLogging(logger),
-	)
-
-	srv := &http.Server{Addr: ":8080", Handler: handler}
-
-	// 5. 시그널 기반 graceful shutdown (graceful-shutdown.md)
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
-
-	go func() {
-		log.Printf("listening on %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
-
-	<-ctx.Done()
-	health.StartShutdown() // readiness를 503으로 먼저 전환
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
-	}
+<-ctx.Done()
+shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+if err := srv.Shutdown(shutdownCtx); err != nil {
+	slog.Error("graceful shutdown failed", "error", err)
 }
 ```
 
-**이 저장소의 현재 `examples/`는 위 1·4·5단계를 아직 구현하지 않았다** — 실제 코드는 문서 맨 위의 "현재 코드" 그대로다(`os.Getenv` 직접 사용, 미들웨어 체인 없음, `ListenAndServe` 블로킹 호출 그대로). 각 개선을 실제로 적용할 때는 해당 항목의 문서(config.md/cross-cutting-concerns.md/graceful-shutdown.md)를 먼저 읽는다 — 이 문서는 그 조각들이 최종적으로 어떤 순서로 `main()`에 모이는지 보여주는 통합 지도 역할만 한다.
+이 개선을 실제로 적용할 때는 [graceful-shutdown.md](graceful-shutdown.md)를 먼저 읽는다 — 이 문서는 그 조각이 `main()`의 다른 부분과 어떤 순서로 맞물리는지만 보여준다.
 
 ---
 

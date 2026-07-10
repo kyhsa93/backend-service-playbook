@@ -2,26 +2,14 @@
 
 원칙은 루트 [observability.md](../../../../docs/architecture/observability.md)를 따른다: JSON 구조화 로그, snake_case 필드명, 레이어별 로깅 기준(Domain은 로깅하지 않음), Correlation ID를 모든 로그에 포함. Go 1.21+ 표준 라이브러리 `log/slog`가 구조화 로깅을 기본 제공하므로 별도 로깅 프레임워크(Winston, Pino 상당)가 필요 없다.
 
-**현재 코드는 이 원칙을 거의 따르지 않는다** — `main.go`와 `notification/service.go` 모두 `log.Printf`로 평문 문자열만 남긴다. 이 문서는 `log/slog` 기반 목표 구현을 제시한다.
+**적용 완료** — `main.go`와 `notification/service.go`가 `log/slog` 기반 구조화 로깅을 쓴다(더 이상 gap 아님).
 
 ---
 
-## 현재 코드 — 알려진 격차
+## `log/slog` — 실제 구현
 
 ```go
-// internal/infrastructure/notification/service.go — 현재
-log.Printf("notification: failed to send email for event=%s recipient=%s: %v", eventType, content.recipient, err)
-log.Printf("notification: email sent event=%s recipient=%s ses_message_id=%s", eventType, content.recipient, messageID)
-```
-
-`log.Printf`는 평문 텍스트만 남기고, 구조화 필드가 없어 로그 집계 시스템(CloudWatch, Datadog 등)에서 `event_type`이나 `recipient`로 검색/필터링할 수 없다. 로그 레벨 구분도 없다(모두 같은 스트림).
-
----
-
-## 목표 구현 — `log/slog`
-
-```go
-// internal/infrastructure/notification/service.go — 목표 형태
+// internal/infrastructure/notification/service.go — 실제 코드
 import "log/slog"
 
 func (s *Service) send(ctx context.Context, eventType string, content emailContent) error {
@@ -43,29 +31,35 @@ func (s *Service) send(ctx context.Context, eventType string, content emailConte
 	return nil
 }
 
-func (s *Service) Notify(ctx context.Context, event account.DomainEvent) {
+// Notify는 발송 실패를 로그가 아니라 에러로 반환한다 — 호출부인 outbox/relay.go의
+// Drain 루프가 이 에러를 받아 slog.ErrorContext로 로그를 남기고, 해당 이벤트를
+// outbox 테이블에 미처리 상태로 남겨 다음 Drain 때 재시도한다(domain-events.md 참고).
+func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	eventType, content, ok := describe(event)
 	if !ok {
-		return
+		return nil
 	}
 	if err := s.send(ctx, eventType, content); err != nil {
-		slog.ErrorContext(ctx, "notification email failed",
-			"event_type", eventType,
-			"recipient", content.recipient,
-			"error", err,
-		)
+		return fmt.Errorf("notify %s: %w", eventType, err)
 	}
+	return nil
 }
+```
+
+```go
+// internal/infrastructure/outbox/relay.go — 실제 코드, Notify()가 반환한 에러를 여기서 로깅
+slog.ErrorContext(ctx, "outbox event processing failed",
+	"event_type", row.eventType,
+	"event_id", row.eventID,
+	"error", err,
+)
 ```
 
 `slog.InfoContext`/`slog.ErrorContext`는 `ctx`를 받는다 — 아래 Correlation ID 전파와 자연스럽게 연결된다. 필드는 key-value 쌍으로 넘기며, `slog`가 기본 `TextHandler` 또는 `JSONHandler`로 렌더링한다. 운영 환경에서는 `JSONHandler`를 쓴다:
 
 ```go
-// cmd/server/main.go — 목표 형태, 기동 초기에 한 번 설정
-logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-	Level: slog.LevelInfo, // 프로덕션: Info 이상만. 개발: slog.LevelDebug
-}))
-slog.SetDefault(logger)
+// cmd/server/main.go — 실제 코드, 기동 초기에 한 번 설정
+slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 ```
 
 출력 예시(JSON, snake_case 필드):
@@ -98,12 +92,13 @@ slog.SetDefault(logger)
 |---|---|---|
 | `internal/domain/account/` | **로깅하지 않음** | 실제로 로깅 코드 없음 — 원칙 준수. `import "log"`가 없다 |
 | `internal/application/command,query/` | 비즈니스 이벤트, 외부 호출 결과 | 현재 로깅 없음 — Handler에 `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)` 같은 로그를 추가할 여지 있음 |
-| `internal/infrastructure/` | 외부 연동 실패/재시도 | `notification/service.go`만 `log.Printf` 사용 중(위 목표 구현으로 교체 대상) |
-| `internal/interface/http/` | 요청 에러 | `writeAccountError`가 `http.Error`로 클라이언트에는 응답하지만 서버 로그는 남기지 않음 — 알려진 격차, 아래 참고 |
+| `internal/infrastructure/` | 외부 연동 실패/재시도 | `notification/service.go`(발송 성공 로그), `outbox/relay.go`(처리 실패 로그) 모두 `slog` 사용 |
+| `internal/interface/http/` | 요청 에러 | `writeAccountError`가 500 에러 시 서버 측 로그도 남긴다(아래 참고) |
 
-`account_handler.go`의 `writeAccountError`가 500 에러를 클라이언트에 반환할 때 서버 측 로그를 남기지 않는 것도 격차다. 목표 패턴:
+`account_handler.go`의 `writeAccountError`는 500 에러를 클라이언트에 반환할 때 서버 측 로그도 남긴다(적용 완료):
 
 ```go
+// internal/interface/http/account_handler.go — 실제 코드
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, account.ErrNotFound):
@@ -120,10 +115,10 @@ func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 
 ## Correlation ID — `context.Context`로 전파
 
-root는 AsyncLocalStorage(Node)/ThreadLocal(Java) 상당의 컨텍스트-로컬 저장소로 전파하라고 한다. Go의 답은 그 자체가 목적인 표준 메커니즘, `context.Context` 값 전파다 — 별도 라이브러리가 필요 없다.
+root는 AsyncLocalStorage(Node)/ThreadLocal(Java) 상당의 컨텍스트-로컬 저장소로 전파하라고 한다. Go의 답은 그 자체가 목적인 표준 메커니즘, `context.Context` 값 전파다 — 별도 라이브러리가 필요 없다. **적용 완료** — 아래는 실제 코드다.
 
 ```go
-// internal/interface/http/middleware.go — 목표 형태 (cross-cutting-concerns.md와 공유)
+// internal/interface/http/middleware/correlation_id_middleware.go — 실제 코드 (cross-cutting-concerns.md와 공유)
 type correlationIDKey struct{}
 
 func CorrelationID(next http.Handler) http.Handler {
@@ -155,7 +150,7 @@ slog.InfoContext(ctx, "account created",
 )
 ```
 
-더 나아가 `slog.Handler`를 감싸서 `ctx`에 correlation ID가 있으면 **모든 로그 호출에 자동으로 필드를 추가**하는 커스텀 핸들러를 만들 수도 있다 — 매 로그 호출마다 `"correlation_id", ...`를 반복하지 않아도 된다. 현재 이 저장소에는 미들웨어 체인 자체가 없으므로([cross-cutting-concerns.md](cross-cutting-concerns.md) 참고) 이 부분은 통째로 미구현 상태다.
+더 나아가 `slog.Handler`를 감싸서 `ctx`에 correlation ID가 있으면 **모든 로그 호출에 자동으로 필드를 추가**하는 커스텀 핸들러를 만들 수도 있다 — 매 로그 호출마다 `"correlation_id", ...`를 반복하지 않아도 된다. 이 저장소는 아직 이 커스텀 핸들러까지는 만들지 않았다(각 로그 호출부에서 명시적으로 `CorrelationIDFromContext(ctx)`를 넘기는 방식) — 유일하게 남은 부분적 gap이다.
 
 ---
 

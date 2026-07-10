@@ -1,6 +1,6 @@
 # Secret 관리 (Go)
 
-원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md)를 따른다: 민감값은 환경 변수에 직접 두지 않고 AWS Secrets Manager 등에서 런타임에 조회하며, TTL 캐시로 반복 호출을 줄인다. **현재 `examples/`는 이 패턴을 전혀 쓰지 않는다** — SES 자격증명도 `os.Getenv`로 직접 읽는다(`ses_client.go`). 이 문서는 Go의 AWS SDK v2로 Secrets Manager + TTL 캐시를 어떻게 구현하는지 목표 형태로 제시한다.
+원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md)를 따른다: 민감값은 환경 변수에 직접 두지 않고 AWS Secrets Manager 등에서 런타임에 조회하며, TTL 캐시로 반복 호출을 줄인다. **적용 완료** — JWT secret이 이 패턴으로 구현되어 있다(더 이상 gap 아님). SES 자격증명은 여전히 `os.Getenv`로 직접 읽는다(`ses_client.go`) — SES는 민감값이 아니라 리전/자격증명 자체(운영에서는 IAM 역할로 대체 가능)이므로 이 문서의 대상이 아니다.
 
 ---
 
@@ -9,11 +9,13 @@
 root의 Technical Service 패턴([domain-service.md](../../../../docs/architecture/domain-service.md))을 그대로 적용한다: Application 레이어에 인터페이스, Infrastructure 레이어에 구현체. 이 저장소가 이미 쓰고 있는 패턴(`command.OutboxRelay` ← `outbox.Relay`)과 동일한 구조다.
 
 ```go
-// internal/application/command/secret_service.go — 목표 형태 (인터페이스는 사용하는 쪽 패키지에 정의)
-package command
+// internal/config/secret_service.go — 실제 코드 (인터페이스는 사용하는 쪽 패키지에 정의)
+package config
 
 import "context"
 
+// SecretService는 이 패키지(설정 로딩)가 사용하는 관점에서 정의한 인터페이스다 —
+// 구현체는 internal/infrastructure/secret에 있다.
 type SecretService interface {
 	GetSecret(ctx context.Context, secretID string) (string, error)
 }
@@ -24,7 +26,7 @@ type SecretService interface {
 ## Infrastructure 구현체 — AWS Secrets Manager + TTL 캐시
 
 ```go
-// internal/infrastructure/secret/service.go — 목표 형태
+// internal/infrastructure/secret/service.go — 실제 코드
 package secret
 
 import (

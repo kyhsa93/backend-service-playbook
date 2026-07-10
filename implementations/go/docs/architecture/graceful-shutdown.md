@@ -8,12 +8,15 @@
 
 ## 현재 코드 — 알려진 격차
 
+`cmd/server/main.go`는 config 검증, JWT/Secrets Manager, 구조화 로깅(`slog`)을 이미 갖췄다([bootstrap.md](bootstrap.md) 참고) — 이 문서가 다루는 부분만 아직 없다:
+
 ```go
-// cmd/server/main.go — 현재
+// cmd/server/main.go — 현재 (마지막 부분만 발췌)
 addr := ":8080"
-log.Printf("listening on %s", addr)
+slog.Info("listening", "addr", addr)
 if err := http.ListenAndServe(addr, mux); err != nil {
-	log.Fatalf("server error: %v", err)
+	slog.Error("server error", "error", err)
+	os.Exit(1)
 }
 ```
 
@@ -23,66 +26,37 @@ if err := http.ListenAndServe(addr, mux); err != nil {
 
 ## 목표 구현 — `signal.NotifyContext` + `Shutdown(ctx)`
 
+`main()`의 나머지 조립(config 검증, DB, Infrastructure, `NewRouter(accountRepo, outboxRelay, jwtService)` 등)은 [bootstrap.md](bootstrap.md)의 "현재 코드" 그대로 두고, 서버 시작/종료 부분만 아래로 교체한다:
+
 ```go
-// cmd/server/main.go — 목표 형태
-package main
+// cmd/server/main.go — 목표 형태 (마지막 부분만 교체)
+srv := &http.Server{Addr: ":8080", Handler: mux}
 
-import (
-	"context"
-	"database/sql"
-	"errors"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+// SIGTERM/SIGINT를 받으면 ctx가 취소된다.
+ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+defer stop()
 
-	_ "github.com/lib/pq"
-
-	"github.com/example/account-service/internal/infrastructure/notification"
-	"github.com/example/account-service/internal/infrastructure/persistence"
-	httphandler "github.com/example/account-service/internal/interface/http"
-)
-
-func main() {
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatalf("failed to connect to db: %v", err)
+go func() {
+	slog.Info("listening", "addr", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
-	defer db.Close()
+}()
 
-	accountRepo := persistence.NewAccountRepository(db)
-	notifier := notification.NewService(notification.NewSESClient(), db)
-	mux := httphandler.NewRouter(accountRepo, notifier)
+<-ctx.Done() // SIGTERM 수신까지 블록
+slog.Info("shutdown signal received")
 
-	srv := &http.Server{Addr: ":8080", Handler: mux}
+// terminationGracePeriodSeconds에 맞춰 여유 있게 설정 (예: 오케스트레이터 설정과 동일하게 30초)
+shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
 
-	// SIGTERM/SIGINT를 받으면 ctx가 취소된다.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
-
-	go func() {
-		log.Printf("listening on %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
-
-	<-ctx.Done() // SIGTERM 수신까지 블록
-	log.Println("shutdown signal received")
-
-	// terminationGracePeriodSeconds에 맞춰 여유 있게 설정 (예: 오케스트레이터 설정과 동일하게 30초)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// 진행 중인 요청이 끝날 때까지 대기하며 새 연결은 거부한다.
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
-	}
-	log.Println("server stopped")
-	// defer db.Close()가 이 시점 이후에 실행됨 — HTTP 서버가 완전히 닫힌 뒤 DB 연결 정리
+// 진행 중인 요청이 끝날 때까지 대기하며 새 연결은 거부한다.
+if err := srv.Shutdown(shutdownCtx); err != nil {
+	slog.Error("graceful shutdown failed", "error", err)
 }
+slog.Info("server stopped")
+// defer db.Close()가 이 시점 이후에 실행됨 — HTTP 서버가 완전히 닫힌 뒤 DB 연결 정리
 ```
 
 **흐름과 root 원칙의 대응:**

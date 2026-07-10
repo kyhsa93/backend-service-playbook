@@ -14,76 +14,62 @@ Go 미들웨어는 `http.Handler`를 감싸는 함수를 연쇄적으로 합성(
 
 | 단계 | 역할 | Go 구현 위치 |
 |------|------|------|
-| 1. Correlation ID | 모든 요청에 추적 ID 주입 | `interface/http/middleware/correlation_middleware.go` |
+| 1. Correlation ID | 모든 요청에 추적 ID 주입 | `interface/http/middleware/correlation_id_middleware.go` |
 | 2. 인증 | 요청 허용/거부, `context`에 사용자 정보 주입 | `interface/http/middleware/auth_middleware.go` ([authentication.md](authentication.md)) |
 | 3. 입력 검증 | JSON 디코딩, 필수 필드 확인 | Handler 진입부 (Go는 별도 Pipe 계층이 없음 — 아래 참조) |
 | 4. Handler | Command/Query Handler 호출 | `interface/http/account_handler.go` |
-| 5. 응답 로깅 | 요청 메서드/경로/소요 시간 로깅 | `interface/http/middleware/logging_middleware.go` ([observability.md](observability.md)) |
+| 5. 응답 로깅 | 요청 메서드/경로/소요 시간 로깅 | 아직 미구현 — 개별 이벤트 로깅([observability.md](observability.md))만 있다 |
 
 ---
 
-## 미들웨어 합성 패턴
+## 미들웨어 합성 패턴 — 중첩 함수 호출
 
-Go 표준 라이브러리에는 미들웨어 체이닝 헬퍼가 없으므로, 여러 미들웨어를 감싸는 순서를 명시적인 함수 합성으로 표현한다.
-
-```go
-// internal/interface/http/middleware/chain.go
-package middleware
-
-import "net/http"
-
-// Chain은 미들웨어를 나열된 순서대로 적용한다.
-// Chain(h, A, B, C) => A(B(C(h))) — 요청은 A→B→C→h 순으로 통과한다.
-func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
-	for i := len(mws) - 1; i >= 0; i-- {
-		h = mws[i](h)
-	}
-	return h
-}
-```
+Go 표준 라이브러리에는 미들웨어 체이닝 헬퍼가 없다. 이 저장소는 별도의 `Chain()` 헬퍼를 두지 않고, `router.go`에서 미들웨어를 직접 중첩 호출하는 방식을 쓴다(`A(B(h))` 형태):
 
 ```go
-// internal/interface/http/router.go에서 사용
-protected := middleware.Chain(
-	accountMux,
-	middleware.CorrelationID,             // 1. 전처리
-	middleware.RequireAuth(jwtService),   // 2. 인증
-	middleware.RequestLogging(logger),    // 5. 로깅 (바깥에서 감싸 전체 처리 시간을 측정)
-)
+// internal/interface/http/router.go — 실제 코드(요약)
+mux := http.NewServeMux()
+mux.Handle("/accounts", middleware.RequireAuth(jwtService)(protected)) // 2. 인증
+mux.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)                 // 인증 불필요
+return middleware.CorrelationID(mux)                                   // 1. 전처리(가장 바깥)
 ```
+
+미들웨어가 2개뿐이라 이 정도 중첩으로도 가독성에 문제가 없다 — 개수가 늘어나면 이 문서 이전 버전이 제시했던 `Chain(h, A, B, C)` 형태의 합성 헬퍼 도입을 검토한다.
 
 ---
 
 ## Correlation ID 주입 (전처리 단계)
 
 ```go
-// internal/interface/http/middleware/correlation_middleware.go
+// internal/interface/http/middleware/correlation_id_middleware.go — 실제 코드
 package middleware
 
 import (
 	"context"
 	"net/http"
 
-	"github.com/example/account-service/internal/common"
+	"github.com/google/uuid"
 )
 
-type correlationKey struct{}
+type correlationIDKey struct{}
 
 func CorrelationID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Correlation-Id")
-		if id == "" {
-			id = common.NewID() // 클라이언트가 안 보내면 서버가 생성
+		correlationID := r.Header.Get("X-Correlation-Id")
+		if correlationID == "" {
+			correlationID = uuid.NewString() // 클라이언트가 안 보내면 서버가 생성
 		}
-		w.Header().Set("X-Correlation-Id", id)
-		ctx := context.WithValue(r.Context(), correlationKey{}, id)
+		ctx := context.WithValue(r.Context(), correlationIDKey{}, correlationID)
+		w.Header().Set("X-Correlation-Id", correlationID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func CorrelationIDFromContext(ctx context.Context) string {
-	id, _ := ctx.Value(correlationKey{}).(string)
-	return id
+	if id, ok := ctx.Value(correlationIDKey{}).(string); ok {
+		return id
+	}
+	return ""
 }
 ```
 
@@ -125,10 +111,12 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-## HTTP 요청 로깅 (응답 후처리 단계)
+## HTTP 요청 로깅 (응답 후처리 단계) — 아직 미구현
+
+이 저장소는 개별 도메인 이벤트 로깅(`notification/service.go`의 발송 성공, `outbox/relay.go`의 처리 실패 — [observability.md](observability.md) 참고)은 갖췄지만, 모든 요청에 대해 일관되게 메서드/경로/소요 시간을 남기는 별도의 응답 로깅 미들웨어는 아직 없다. 추가한다면 아래 형태가 된다:
 
 ```go
-// internal/interface/http/middleware/logging_middleware.go
+// internal/interface/http/middleware/logging_middleware.go — 제안, 현재 없음
 package middleware
 
 import (

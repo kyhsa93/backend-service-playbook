@@ -4,25 +4,18 @@
 
 ---
 
-## 알려진 편차 — 현재 예제는 검증 없이 `os.Getenv`를 직접 사용
+## 적용 완료 — `DATABASE_URL` fail-fast 검증
 
-`cmd/server/main.go`는 현재 다음과 같이 환경 변수를 검증 없이 바로 사용한다.
-
-```go
-// 현재 코드 — fail-fast 검증 없음
-db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
-```
-
-`DATABASE_URL`이 비어 있어도 `sql.Open` 자체는 에러를 내지 않는다(드라이버가 실제 연결을 시도할 때까지 지연 평가되는 `database/sql`의 특성 때문). 즉 잘못된 설정이 기동 시점이 아니라 첫 쿼리 시점에야 발견된다 — root가 경계하는 "런타임에 예상치 못한 방식으로 실패"하는 사례 그 자체다. 아래는 이 문제를 해결하는 목표 패턴이다.
+`cmd/server/main.go`가 `sql.Open`을 호출하기 전에 `config.LoadDatabaseConfig()`로 `DATABASE_URL` 존재를 검증한다(더 이상 gap 아님). `sql.Open` 자체는 DSN이 비어 있어도 에러를 내지 않는다(드라이버가 실제 연결을 시도할 때까지 지연 평가되는 `database/sql`의 특성 때문) — 그래서 기동 시점에 별도로 검증해야 한다.
 
 ---
 
 ## Config 구조체 — 관심사별 분리
 
-Go에는 `@nestjs/config`의 `ConfigModule` 같은 프레임워크가 없다. 대신 관심사별 **plain struct**를 정의하고, 각 구조체의 생성자 함수(`Load...Config`)에서 환경 변수를 읽고 검증한다.
+Go에는 `@nestjs/config`의 `ConfigModule` 같은 프레임워크가 없다. 대신 관심사별 **plain struct**를 정의하고, 각 구조체의 생성자 함수(`Load...`)에서 환경 변수를 읽고 검증한다.
 
 ```go
-// internal/infrastructure/config/database_config.go
+// internal/config/database.go — 실제 코드
 package config
 
 import (
@@ -43,124 +36,61 @@ func LoadDatabaseConfig() (DatabaseConfig, error) {
 }
 ```
 
+JWT secret은 별도의 `JWTConfig` 구조체가 아니라, Secrets Manager 분기까지 포함한 함수로 구현되어 있다([secret-manager.md](secret-manager.md) 참고):
+
 ```go
-// internal/infrastructure/config/jwt_config.go
-package config
-
-import (
-	"fmt"
-	"os"
-	"time"
-)
-
-type JWTConfig struct {
-	Secret string
-	TTL    time.Duration
-}
-
-func LoadJWTConfig() (JWTConfig, error) {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return JWTConfig{}, fmt.Errorf("config: JWT_SECRET is required")
+// internal/config/jwt.go — 실제 코드
+func LoadJWTSecret(ctx context.Context, secretService SecretService, env string) (string, error) {
+	if env != "production" {
+		if v := os.Getenv("JWT_SECRET"); v != "" {
+			return v, nil
+		}
+		return "dev-secret", nil
 	}
-	return JWTConfig{Secret: secret, TTL: time.Hour}, nil
+	// production: Secrets Manager(app/jwt)에서 조회
+	// ...
 }
 ```
 
-```go
-// internal/infrastructure/config/aws_config.go — 기본값이 허용되는 로컬 개발용 값
-package config
-
-import "os"
-
-type AWSConfig struct {
-	Region          string
-	EndpointURL     string // 비어 있으면 실제 AWS, 있으면 LocalStack
-	AccessKeyID     string
-	SecretAccessKey string
-}
-
-func LoadAWSConfig() AWSConfig {
-	return AWSConfig{
-		Region:          getEnvOr("AWS_REGION", "us-east-1"),
-		EndpointURL:     os.Getenv("AWS_ENDPOINT_URL"),
-		AccessKeyID:     getEnvOr("AWS_ACCESS_KEY_ID", "test"),
-		SecretAccessKey: getEnvOr("AWS_SECRET_ACCESS_KEY", "test"),
-	}
-}
-
-func getEnvOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-```
-
-`internal/infrastructure/notification/ses_client.go`의 `NewSESClient()`가 이미 이 "환경 변수 + 기본값" 패턴을 인라인으로 구현하고 있다 — 위 `AWSConfig`는 이 로직을 재사용 가능한 구조체로 추출한 것이다.
+AWS 리전/엔드포인트/자격증명은 별도 `AWSConfig` 구조체로 추출하지 않았다 — `internal/infrastructure/notification/ses_client.go`의 `NewSESClient()`와 `internal/infrastructure/secret/service.go`의 `NewSecretsManagerClient()`가 각각 "환경 변수 + 기본값" 패턴(`AWS_REGION` 기본값 `us-east-1`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` 기본값 `test`, `AWS_ENDPOINT_URL`은 기본값 없이 비어 있으면 실제 AWS)을 인라인으로 반복 구현하고 있다. 두 곳의 로직이 완전히 동일하므로, 세 번째 소비자가 생기면 공용 `AWSConfig`로 추출을 검토한다(YAGNI).
 
 ---
 
-## Fail-Fast — 기동 시 전체 검증 후 즉시 종료
+## Fail-Fast — 기동 시 검증 후 즉시 종료
 
-각 `Load...Config` 함수가 개별 에러를 반환하면, `main.go`에서 이를 모아 하나라도 실패하면 `log.Fatal`로 즉시 종료한다. `log.Fatal`은 내부적으로 `os.Exit(1)`을 호출하므로 root의 "검증 실패 시 즉시 종료" 요구사항과 정확히 일치한다.
+`Load...` 함수가 에러를 반환하면 `main.go`에서 구조화 로그(`slog.Error`)를 남기고 `os.Exit(1)`로 즉시 종료한다.
 
 ```go
-// cmd/server/main.go — 목표 상태
-package main
-
-import (
-	"log"
-
-	"github.com/example/account-service/internal/infrastructure/config"
-)
-
+// cmd/server/main.go — 실제 코드
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	dbConfig, err := config.LoadDatabaseConfig()
 	if err != nil {
-		log.Fatalf("config error: %v", err) // 즉시 종료 — os.Exit(1)
+		slog.Error("config error", "error", err)
+		os.Exit(1)
 	}
-	jwtConfig, err := config.LoadJWTConfig()
+	db, err := sql.Open("postgres", dbConfig.URL)
+	// ...
+
+	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
+	jwtSecret, err := config.LoadJWTSecret(context.Background(), secretService, os.Getenv("APP_ENV"))
 	if err != nil {
-		log.Fatalf("config error: %v", err)
-	}
-	awsConfig := config.LoadAWSConfig() // 기본값이 있으므로 에러 반환 없음
-
-	// ... 검증을 모두 통과한 뒤에만 DB 연결, 서버 시작 등을 진행
-}
-```
-
-**여러 설정 에러를 한 번에 보여주고 싶다면** `errors.Join`으로 모아서 한 번에 출력할 수 있다:
-
-```go
-func loadAllConfig() (dbCfg config.DatabaseConfig, jwtCfg config.JWTConfig, err error) {
-	var errs []error
-	dbCfg, dbErr := config.LoadDatabaseConfig()
-	if dbErr != nil {
-		errs = append(errs, dbErr)
-	}
-	jwtCfg, jwtErr := config.LoadJWTConfig()
-	if jwtErr != nil {
-		errs = append(errs, jwtErr)
-	}
-	return dbCfg, jwtCfg, errors.Join(errs...) // nil이면 join 결과도 nil
-}
-
-func main() {
-	dbCfg, jwtCfg, err := loadAllConfig()
-	if err != nil {
-		log.Fatalf("config validation failed:\n%v", err) // 누락된 변수를 모두 한 번에 출력
+		slog.Error("failed to load jwt secret", "error", err)
+		os.Exit(1)
 	}
 	// ...
 }
 ```
 
+`log.Fatalf` 대신 `slog.Error` + `os.Exit(1)`을 쓰는 이유는 [observability.md](observability.md)의 구조화 로깅 원칙과 일치시키기 위해서다 — 종료 동작 자체(`os.Exit(1)`)는 동일하다.
+
 ---
 
 ## 기본값 설정 원칙
 
-- 로컬 개발에서 안전하게 쓸 수 있는 기본값(`AWS_REGION=us-east-1`, `AWS_ACCESS_KEY_ID=test`)은 `getEnvOr`처럼 fallback을 허용한다.
-- 프로덕션에서 비어 있으면 안 되는 값(`DATABASE_URL`, `JWT_SECRET`)은 기본값을 두지 않고 빈 문자열이면 에러를 반환한다.
+- 로컬 개발에서 안전하게 쓸 수 있는 기본값(`AWS_REGION=us-east-1`, `AWS_ACCESS_KEY_ID=test`)은 fallback을 허용한다.
+- 프로덕션에서 비어 있으면 안 되는 값(`DATABASE_URL`)은 기본값을 두지 않고 빈 문자열이면 에러를 반환한다. `JWT_SECRET`은 프로덕션에서는 환경 변수가 아니라 Secrets Manager로 대체되므로 이 원칙의 적용 대상에서 빠진다([secret-manager.md](secret-manager.md) 참고).
 
 ---
 
