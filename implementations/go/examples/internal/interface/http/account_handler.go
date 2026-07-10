@@ -10,6 +10,7 @@ import (
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/query"
 	"github.com/example/account-service/internal/domain/account"
+	"github.com/example/account-service/internal/interface/http/middleware"
 )
 
 type AccountHandler struct {
@@ -46,7 +47,7 @@ func NewAccountHandler(
 }
 
 func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	var body CreateAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -92,7 +93,7 @@ func isValidEmail(email string) bool {
 }
 
 func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	var body DepositRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -120,7 +121,7 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	var body WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -148,7 +149,7 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) SuspendAccount(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	if err := h.suspendAccount.Handle(r.Context(), command.SuspendAccountCommand{
 		AccountID:   accountID,
@@ -161,7 +162,7 @@ func (h *AccountHandler) SuspendAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AccountHandler) ReactivateAccount(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	if err := h.reactivateAccount.Handle(r.Context(), command.ReactivateAccountCommand{
 		AccountID:   accountID,
@@ -174,7 +175,7 @@ func (h *AccountHandler) ReactivateAccount(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *AccountHandler) CloseAccount(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	if err := h.closeAccount.Handle(r.Context(), command.CloseAccountCommand{
 		AccountID:   accountID,
@@ -187,7 +188,7 @@ func (h *AccountHandler) CloseAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	result, err := h.getAccount.Handle(r.Context(), query.GetAccountQuery{
 		AccountID:   accountID,
@@ -210,7 +211,7 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
-	requesterID := r.Header.Get("X-User-Id")
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	page, take := parsePagination(r)
 	result, err := h.getTransactions.Handle(r.Context(), query.GetTransactionsQuery{

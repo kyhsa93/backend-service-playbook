@@ -5,10 +5,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 
 	"github.com/example/account-service/internal/application/event"
+	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -35,8 +37,14 @@ func main() {
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
 	})
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "dev-secret"
+	}
+	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
+
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-	mux := httphandler.NewRouter(accountRepo, outboxRelay)
+	mux := httphandler.NewRouter(accountRepo, outboxRelay, jwtService)
 
 	addr := ":8080"
 	log.Printf("listening on %s", addr)

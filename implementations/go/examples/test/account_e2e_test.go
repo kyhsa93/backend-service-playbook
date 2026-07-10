@@ -23,6 +23,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/example/account-service/internal/application/event"
+	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -33,6 +34,7 @@ var (
 	testServer     *httptest.Server
 	testDB         *sql.DB
 	localstackHTTP string // LocalStack 컨테이너의 base URL (예: http://localhost:32771)
+	testJWTService *auth.JWTService
 )
 
 const (
@@ -133,8 +135,10 @@ func runTests(m *testing.M) int {
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
 	})
 
+	testJWTService = auth.NewJWTService("test-secret", time.Hour)
+
 	repo := persistence.NewAccountRepository(db, outboxWriter)
-	mux := httphandler.NewRouter(repo, outboxRelay)
+	mux := httphandler.NewRouter(repo, outboxRelay, testJWTService)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
@@ -167,7 +171,9 @@ func doRequest(t *testing.T, method, path, userID string, body any) *http.Respon
 	req, err := http.NewRequest(method, testServer.URL+path, reqBody)
 	require.NoError(t, err)
 	if userID != "" {
-		req.Header.Set("X-User-Id", userID)
+		token, err := testJWTService.Sign(userID)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -195,6 +201,45 @@ func createAccountWithEmail(t *testing.T, ownerID, email, currency string) map[s
 		map[string]string{"email": email, "currency": currency})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	return decodeBody(t, resp)
+}
+
+func TestAuth(t *testing.T) {
+	t.Run("sign-in으로_발급받은_토큰으로_보호된_엔드포인트에_접근할_수_있다", func(t *testing.T) {
+		resp := doRequest(t, http.MethodPost, "/auth/sign-in", "", map[string]string{"userId": ownerID})
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		body := decodeBody(t, resp)
+		require.NotEmpty(t, body["accessToken"])
+
+		req, err := http.NewRequest(http.MethodPost, testServer.URL+"/accounts", bytes.NewReader(
+			[]byte(`{"email":"`+ownerID+`@example.com","currency":"KRW"}`)))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+body["accessToken"].(string))
+		req.Header.Set("Content-Type", "application/json")
+		created, err := testServer.Client().Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, created.StatusCode)
+	})
+
+	t.Run("Authorization_헤더가_없으면_401을_반환한다", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodPost, testServer.URL+"/accounts", bytes.NewReader(
+			[]byte(`{"email":"no-auth@example.com","currency":"KRW"}`)))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := testServer.Client().Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
+	t.Run("유효하지_않은_토큰이면_401을_반환한다", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodPost, testServer.URL+"/accounts", bytes.NewReader(
+			[]byte(`{"email":"bad-token@example.com","currency":"KRW"}`)))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer not-a-real-token")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := testServer.Client().Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
 }
 
 func TestCreateAccount(t *testing.T) {
