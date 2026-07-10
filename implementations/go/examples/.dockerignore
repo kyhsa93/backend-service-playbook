@@ -1,0 +1,7 @@
+.git
+*_test.go
+test/
+docker-compose.yml
+localstack/
+.env*
+*.md
