@@ -21,6 +21,7 @@ import com.example.accountservice.account.application.query.GetTransactionsServi
 import com.example.accountservice.account.domain.AccountException
 import com.example.accountservice.account.domain.AccountNotFoundException
 import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -38,6 +39,7 @@ class AccountController(
     private val getAccountService: GetAccountService,
     private val getTransactionsService: GetTransactionsService,
 ) {
+    private val logger = LoggerFactory.getLogger(AccountController::class.java)
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -94,10 +96,14 @@ class AccountController(
     ): GetTransactionsResult = getTransactionsService.getTransactions(accountId, authentication.name, page, take)
 
     @ExceptionHandler(AccountNotFoundException::class)
-    fun handleNotFound(e: AccountNotFoundException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(e.message ?: ""))
+    fun handleNotFound(e: AccountNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("계좌를 찾을 수 없음: {}", e.message)
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse(e.message ?: ""))
+    }
 
     @ExceptionHandler(AccountException::class)
-    fun handleAccountException(e: AccountException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(e.message ?: ""))
+    fun handleAccountException(e: AccountException): ResponseEntity<ErrorResponse> {
+        logger.warn("계좌 요청 실패: {}", e.message)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(e.message ?: ""))
+    }
 }

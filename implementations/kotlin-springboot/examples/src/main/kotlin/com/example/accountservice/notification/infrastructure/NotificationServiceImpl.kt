@@ -45,12 +45,11 @@ class NotificationServiceImpl(
             ),
         )
 
-        logger.info(
-            "이메일 발송됨: accountId={}, eventType={}, recipient={}, sesMessageId={}",
-            accountId,
-            eventType,
-            recipient,
-            result.messageId(),
-        )
+        logger.atInfo()
+            .addKeyValue("account_id", accountId)
+            .addKeyValue("event_type", eventType)
+            .addKeyValue("recipient", recipient)
+            .addKeyValue("ses_message_id", result.messageId())
+            .log("이메일 발송됨")
     }
 }

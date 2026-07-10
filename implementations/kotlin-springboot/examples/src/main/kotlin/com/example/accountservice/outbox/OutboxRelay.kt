@@ -48,7 +48,13 @@ class OutboxRelay(
         for (row in pending) {
             runCatching { dispatch(row.eventType, row.payload) }
                 .onSuccess { row.markProcessed() }
-                .onFailure { logger.error("이벤트 처리 실패: eventType={}, eventId={}", row.eventType, row.eventId, it) }
+                .onFailure {
+                    logger.atError()
+                        .addKeyValue("event_type", row.eventType)
+                        .addKeyValue("event_id", row.eventId)
+                        .setCause(it)
+                        .log("이벤트 처리 실패")
+                }
         }
     }
 
