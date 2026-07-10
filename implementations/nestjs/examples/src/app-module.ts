@@ -1,9 +1,10 @@
-import { Module } from '@nestjs/common'
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
 import { AccountModule } from '@/account/account-module'
 import { AuthModule } from '@/auth/auth-module'
+import { CorrelationIdMiddleware } from '@/common/correlation-id.middleware'
 import { jwtConfig } from '@/config/jwt.config'
 import { AppDataSource } from '@/database/data-source'
 import { OutboxModule } from '@/outbox/outbox-module'
@@ -21,4 +22,8 @@ import { OutboxModule } from '@/outbox/outbox-module'
     AccountModule
   ]
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*')
+  }
+}
