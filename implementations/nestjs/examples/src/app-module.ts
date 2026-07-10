@@ -7,13 +7,14 @@ import { AuthModule } from '@/auth/auth-module'
 import { SecretService } from '@/common/application/service/secret-service'
 import { CorrelationIdMiddleware } from '@/common/correlation-id.middleware'
 import { SecretServiceImpl } from '@/common/infrastructure/secret-service-impl'
+import { validateConfig } from '@/config/validation.config'
 import { jwtConfig } from '@/config/jwt.config'
 import { AppDataSource } from '@/database/data-source'
 import { OutboxModule } from '@/outbox/outbox-module'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
+    ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig], validate: validateConfig }),
     TypeOrmModule.forRoot({
       ...AppDataSource.options,
       autoLoadEntities: false,

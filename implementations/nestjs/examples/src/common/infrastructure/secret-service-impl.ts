@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager'
 
 import { SecretService } from '@/common/application/service/secret-service'
+import { getAwsEndpoint } from '@/config/aws.config'
 
 @Injectable()
 export class SecretServiceImpl extends SecretService {
   private readonly client = new SecretsManagerClient({
-    ...(process.env.AWS_ENDPOINT ? { endpoint: process.env.AWS_ENDPOINT } : {})
+    ...(getAwsEndpoint() ? { endpoint: getAwsEndpoint() } : {})
   })
 
   private readonly cache = new Map<string, { value: string; expiresAt: number }>()

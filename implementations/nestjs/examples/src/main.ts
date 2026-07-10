@@ -3,10 +3,11 @@ import { NestFactory } from '@nestjs/core'
 
 import { AppModule } from '@/app-module'
 import { LoggingInterceptor } from '@/common/logging.interceptor'
+import { getPort, isProduction } from '@/config/app.config'
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
-    logger: process.env.NODE_ENV === 'production'
+    logger: isProduction()
       ? ['error', 'warn', 'log']
       : ['error', 'warn', 'log', 'debug', 'verbose']
   })
@@ -19,7 +20,7 @@ async function bootstrap(): Promise<void> {
     }
   }))
   app.useGlobalInterceptors(new LoggingInterceptor())
-  await app.listen(process.env.PORT ?? 3000)
+  await app.listen(getPort())
 }
 
 bootstrap()

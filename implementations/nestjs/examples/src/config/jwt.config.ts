@@ -1,3 +1,5 @@
+import { getAwsEndpoint } from '@/config/aws.config'
+
 export const jwtConfig = async () => {
   // 운영(production)에서만 Secrets Manager를 호출한다 — 그 외(development/test 등)는
   // 네트워크 호출 없이 환경 변수만 사용한다. jest는 NODE_ENV를 자동으로 'test'로
@@ -14,7 +16,7 @@ export const jwtConfig = async () => {
 
   const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager')
   const client = new SecretsManagerClient({
-    ...(process.env.AWS_ENDPOINT ? { endpoint: process.env.AWS_ENDPOINT } : {})
+    ...(getAwsEndpoint() ? { endpoint: getAwsEndpoint() } : {})
   })
   const result = await client.send(new GetSecretValueCommand({ SecretId: 'app/jwt' }))
   const secret = JSON.parse(result.SecretString ?? '{}')

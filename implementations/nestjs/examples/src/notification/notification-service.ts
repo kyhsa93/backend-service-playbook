@@ -2,11 +2,10 @@ import { SendEmailCommand, SESClient } from '@aws-sdk/client-ses'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
 import { generateId } from '@/common/generate-id'
+import { getSesSenderEmail } from '@/config/notification.config'
 import { TransactionManager } from '@/database/transaction-manager'
 import { SentEmailEntity } from '@/notification/sent-email.entity'
 import { SES_CLIENT } from '@/notification/ses-client-provider'
-
-const DEFAULT_SENDER = 'no-reply@backend-service-playbook.example.com'
 
 @Injectable()
 export class NotificationService {
@@ -25,7 +24,7 @@ export class NotificationService {
     body: string
   }): Promise<void> {
     const result = await this.sesClient.send(new SendEmailCommand({
-      Source: process.env.SES_SENDER_EMAIL ?? DEFAULT_SENDER,
+      Source: getSesSenderEmail(),
       Destination: { ToAddresses: [params.recipient] },
       Message: {
         Subject: { Data: params.subject, Charset: 'UTF-8' },
