@@ -1,12 +1,12 @@
 <configuration>
-    <springProfile name="local">
+    <springProfile name="!prod">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder><pattern>%d{HH:mm:ss} %-5level %logger{36} - %msg%n</pattern></encoder>
         </appender>
         <root level="INFO"><appender-ref ref="CONSOLE"/></root>
     </springProfile>
 
-    <springProfile name="!local">
+    <springProfile name="prod">
         <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeMdcKeyName>correlation_id</includeMdcKeyName>

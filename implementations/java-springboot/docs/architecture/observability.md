@@ -38,14 +38,14 @@ implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 ```xml
 <!-- src/main/resources/logback-spring.xml — 실제 코드 -->
 <configuration>
-    <springProfile name="local">
+    <springProfile name="!prod">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder><pattern>%d{HH:mm:ss} %-5level %logger{36} - %msg%n</pattern></encoder>
         </appender>
         <root level="INFO"><appender-ref ref="CONSOLE"/></root>
     </springProfile>
 
-    <springProfile name="!local">
+    <springProfile name="prod">
         <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeMdcKeyName>correlation_id</includeMdcKeyName>
@@ -56,7 +56,7 @@ implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 </configuration>
 ```
 
-**로컬은 사람이 읽기 쉬운 평문, 운영은 JSON** — `springProfile`로 분기한다. JSON 인코더가 MDC의 `correlation_id`를 자동으로 로그 필드에 포함시킨다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter` 참고).
+**로컬은 사람이 읽기 쉬운 평문, 운영은 JSON** — `springProfile`로 분기한다. JSON 인코더가 MDC의 `correlation_id`를 자동으로 로그 필드에 포함시킨다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter` 참고). 게이팅 프로필은 `prod`/`!prod`다 — [secret-manager.md](secret-manager.md)의 `SecretsEnvironmentPostProcessor`와 같은 프로필명·극성을 쓴다(이전에는 이 파일만 `local`/`!local`을 썼는데, 어디서도 `local` 프로필을 활성화하지 않아 실제로는 항상 JSON 인코더가 적용되는 잠재 버그였다 — `prod`/`!prod`로 통일해 활성 프로필이 없는 로컬 실행에서도 `!prod`가 매칭되어 평문 로깅이 기본값이 되도록 고쳤다).
 
 ### 필드 네이밍 — snake_case로 구조화 인자 전달 (이미 적용됨)
 

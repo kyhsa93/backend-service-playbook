@@ -126,6 +126,8 @@ class SecretsEnvironmentPostProcessor : EnvironmentPostProcessor {
 
 `prod` 프로파일에서만 동작해 로컬/테스트 기동 속도와 네트워크 의존성에 영향을 주지 않는다. `EnvironmentPostProcessor`는 `SecretService`(위 `SecretServiceImpl`)를 거치지 않고 `SecretsManagerClient`를 직접 만들어 쓴다 — 이 시점에는 아직 Spring `ApplicationContext`가 존재하지 않아 `@Component`로 등록된 `SecretServiceImpl`을 DI로 주입받을 수 없기 때문이다(`SecretService`는 Bean이 이미 뜬 이후 애플리케이션 코드에서 시크릿을 조회할 때 쓰는 별도 경로다).
 
+**언어 간 차이 — 게이팅 메커니즘 자체가 다르다**: 이 저장소는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다 — java-springboot도 동일한 메커니즘(`Profiles.of("prod")`)을 쓴다. nestjs(`NODE_ENV !== 'production'`), go(`APP_ENV != "production"`), fastapi(`APP_ENV == "production"`)는 환경 변수 값으로 게이팅하며, 그중 fastapi는 나머지 둘과 극성이 반대다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+
 이 `EnvironmentPostProcessor`를 Spring Boot가 기동 시점에 인식하게 하려면 `META-INF/spring.factories`에 등록해야 한다:
 
 ```

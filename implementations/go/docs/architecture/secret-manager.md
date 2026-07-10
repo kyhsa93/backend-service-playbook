@@ -141,9 +141,9 @@ if err := json.Unmarshal([]byte(raw), &dbSecret); err != nil {
 [config.md](config.md)에서 다루는 설정 구조체 생성 시점에 한 번만 조회한다.
 
 ```go
-// internal/config/database.go — 목표 형태
+// internal/config/database.go — 목표 형태. 실제 LoadJWTSecret(config/jwt.go)과 같은 극성(env != "production")을 쓴다.
 func LoadDatabaseConfig(ctx context.Context, secretService SecretService, env string) (DatabaseConfig, error) {
-	if env == "development" {
+	if env != "production" {
 		return DatabaseConfig{
 			Host: mustEnv("DATABASE_HOST"), Port: 5432,
 			Username: mustEnv("DATABASE_USER"), Password: mustEnv("DATABASE_PASSWORD"),
@@ -161,6 +161,8 @@ func LoadDatabaseConfig(ctx context.Context, secretService SecretService, env st
 	return DatabaseConfig{Host: secret.Host, Port: secret.Port, Username: secret.Username, Password: secret.Password}, nil
 }
 ```
+
+**언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소(및 실제 `LoadJWTSecret`)는 `env != "production"`(변수 `APP_ENV`, "production이 아니면 로컬")로 게이팅한다. nestjs는 변수명이 다르지만(`NODE_ENV`) 극성은 동일하다. fastapi는 변수명이 이 저장소와 같은 `APP_ENV`이지만 **극성이 반대**(`== "production"`, "production이면 클라우드"). kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
 
 ---
 

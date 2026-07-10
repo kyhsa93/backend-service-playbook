@@ -113,6 +113,8 @@ export const jwtConfig = async () => {
 
 DB 접속 정보처럼 여러 값을 하나의 시크릿에 JSON으로 묶어 관리하고 싶다면(예: `app/database`), 위 패턴을 그대로 재사용해 `database.config.ts`에도 같은 분기를 추가할 수 있다 — 아직 이 저장소에는 적용하지 않았다(DB 비밀번호까지 Secrets Manager로 옮기는 것은 향후 확장 지점).
 
+**언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소는 `NODE_ENV !== 'production'`(변수 `NODE_ENV`, "production이 아니면 로컬")로 게이팅한다. go는 `APP_ENV != "production"`(변수명이 다르지만 극성은 동일), fastapi는 `APP_ENV == "production"`(변수명은 go와 같지만 **극성이 반대** — "production이면 클라우드"), kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+
 ### Module 등록
 
 ```typescript

@@ -6,6 +6,8 @@
 
 `src/common/secret_service.py`(ABC)와 `src/common/aws_secret_service.py`(TTL 캐시를 가진 Secrets Manager 구현체)가 이미 실제 코드로 존재한다. `main.py`의 `lifespan`이 `APP_ENV == "production"`일 때만 `AwsSecretService().get_secret("app/jwt")`를 호출해 JWT secret을 조회하고 `set_jwt_secret()`으로 주입한다.
 
+**언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소는 `APP_ENV == "production"`("production이면 클라우드")으로 게이팅한다. go도 변수명은 같은 `APP_ENV`를 쓰지만 **극성이 반대**(`env != "production"`, "production이 아니면 로컬"). nestjs는 `NODE_ENV !== 'production'`(go와 같은 극성, 변수명만 다름). kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+
 다만 **DB 자격 증명과 AWS 자격 증명 자체는 여전히 Secrets Manager를 거치지 않는다.**
 
 ```python

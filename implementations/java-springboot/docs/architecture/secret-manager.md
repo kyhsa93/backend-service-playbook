@@ -131,6 +131,8 @@ org.springframework.boot.env.EnvironmentPostProcessor=com.example.accountservice
 
 `EnvironmentPostProcessor`는 `ApplicationContext`가 완전히 준비되기 전, 가장 이른 시점에 실행되므로 이후 `SecurityConfig`의 `@Value("${jwt.secret}")` 바인딩([authentication.md](authentication.md) 참고)이 이 값을 그대로 사용한다 — **운영 프로필에서만 실행**하도록 분기해 로컬/테스트 기동 속도에 영향을 주지 않는다. 조회 실패 시 `IllegalStateException`을 던져 애플리케이션 기동 자체를 중단시킨다 — JWT secret 없이는 서비스가 뜨지 않는 것이 올바른 fail-fast다.
 
+**언어 간 차이 — 게이팅 메커니즘 자체가 다르다**: 이 저장소는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다 — `logback-spring.xml`([observability.md](observability.md) 참고)도 같은 `prod`/`!prod` 프로필로 통일되어 있다. kotlin-springboot도 동일한 메커니즘(`Profiles.of("prod")`)을 쓴다. nestjs(`NODE_ENV !== 'production'`), go(`APP_ENV != "production"`), fastapi(`APP_ENV == "production"`)는 환경 변수 값으로 게이팅하며, 그중 fastapi는 나머지 둘과 극성이 반대다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+
 DB 접속 정보(`spring.datasource.username`/`password`)를 Secrets Manager로 옮기고 싶다면, 이 클래스의 패턴을 그대로 확장해 `secretId`만 `account-service/database`로 바꾸고 `props`에 `spring.datasource.*` 키를 추가하면 된다 — 현재는 도입되지 않았다.
 
 ---
