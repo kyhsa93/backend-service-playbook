@@ -6,7 +6,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "ts-node -r tsconfig-paths/register src/main.ts",
     "test": "jest --config jest.config.ts",
-    "test:e2e": "jest --config jest.e2e.config.ts --runInBand"
+    "test:e2e": "jest --config jest.e2e.config.ts --runInBand",
+    "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
+    "migration:generate": "npm run typeorm -- migration:generate -d src/database/data-source.ts",
+    "migration:run": "npm run typeorm -- migration:run -d src/database/data-source.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.716.0",
