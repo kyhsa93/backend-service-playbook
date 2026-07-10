@@ -1,3 +1,5 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
+.env.development
+.env.docker
