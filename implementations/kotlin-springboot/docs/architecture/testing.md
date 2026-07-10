@@ -2,21 +2,21 @@
 
 > 프레임워크 무관 원칙은 [root testing.md](../../../../docs/architecture/testing.md) 참조.
 
-## 알려진 갭 — 현재는 E2E 레이어만 존재한다
+## 적용 완료 — 3계층(Domain/Application/E2E) 모두 존재한다
 
-`examples/`의 유일한 테스트는 `src/test/kotlin/.../AccountControllerE2ETest.kt`다 — Testcontainers(Postgres + LocalStack SES)로 실제 HTTP 요청과 이메일 발송까지 검증하는 훌륭한 E2E 테스트이지만, root가 요구하는 3계층 중 **Domain 단위 테스트**와 **Application 단위 테스트**가 하나도 없다. 테스트 피라미드가 최상위 계층(가장 느리고 비싼 테스트)에만 존재하는 역피라미드 상태다. 아래에서 3계층 모두를 Kotlin 관용으로 정의한다.
+`examples/`는 root가 요구하는 3계층 테스트를 모두 갖췄다: `AccountTest.kt`(Domain 단위), `CreateAccountServiceTest.kt`/`DepositServiceTest.kt`(Application 단위, MockK), `AccountControllerE2ETest.kt`(Testcontainers 기반 E2E, Postgres + LocalStack SES). 아래에서 3계층 모두를 Kotlin 관용으로 정의하고, 실제 코드와 대조한다.
 
 | 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
 |--------|----------|------------|----------|
-| Domain 단위 테스트 | `Account`, `Money`, `Transaction` 불변식 | 프레임워크 없음 | **없음** |
-| Application 단위 테스트 | `CreateAccountService` 등 조율 로직 | `AccountRepository`를 mock | **없음** |
-| E2E 테스트 | Controller → Service → DB 전체 경로 | Testcontainers | 있음 (`AccountControllerE2ETest.kt`) |
+| Domain 단위 테스트 | `Account` 불변식 (16개 테스트 케이스) | 프레임워크 없음 | **있음** (`AccountTest.kt`) |
+| Application 단위 테스트 | `CreateAccountService`/`DepositService` 조율 로직 | `AccountRepository`/`OutboxRelay`를 MockK로 mock | **있음** (`CreateAccountServiceTest.kt`, `DepositServiceTest.kt`) |
+| E2E 테스트 | Controller → Service → DB 전체 경로 | Testcontainers | 있음 (`AccountControllerE2ETest.kt`, `NotificationE2ETest.kt`) |
 
 ---
 
-## 테스트 프레임워크 선택 — JUnit 5 + MockK
+## 테스트 프레임워크 선택 — JUnit 5 + MockK (적용 완료)
 
-이 저장소는 아직 어떤 테스트에서도 mocking 라이브러리를 쓰지 않는다(`build.gradle.kts`에 Mockito/MockK 모두 없음, E2E 테스트는 Testcontainers 실제 인스턴스만 사용). 신규로 Application 단위 테스트를 추가할 때 무엇을 쓸지 정해야 한다.
+`build.gradle.kts`에 이미 `io.mockk:mockk`가 있고, Application 단위 테스트(`CreateAccountServiceTest.kt` 등)가 이를 사용한다. E2E 테스트는 여전히 Testcontainers 실제 인스턴스만 사용한다(mock 없음). 아래는 MockK를 택한 근거다.
 
 | | Mockito(-Kotlin) | **MockK (권장)** |
 |---|---|---|
@@ -28,16 +28,16 @@
 **MockK를 권장하는 이유**: Kotlin 클래스는 기본 `final`이라(`kotlin("plugin.spring")`이 `@Component` 계열만 자동으로 `open` 처리하고, `AccountRepository`는 `interface`라 문제없지만 구체 클래스를 mock해야 하는 경우 Mockito는 추가 설정이 필요하다) MockK가 Kotlin 프로젝트의 사실상 표준이다. 이 저장소는 Repository를 `interface`로 정의하므로 두 라이브러리 모두 동작은 하지만, `every { }`/`verify { }` DSL이 `data class` Command/Result와 자연스럽게 어우러지고 코드 전체가 Kotlin 관용으로 통일된다는 점에서 MockK를 선택한다.
 
 ```kotlin
-// build.gradle.kts — 추가 필요
+// build.gradle.kts — 실제 코드
 testImplementation("io.mockk:mockk:1.13.13")
 ```
 
 ---
 
-## Domain 단위 테스트 — 프레임워크 없이 순수 Kotlin
+## Domain 단위 테스트 — 프레임워크 없이 순수 Kotlin (적용 완료)
 
 ```kotlin
-// src/test/kotlin/.../account/domain/AccountTest.kt — 제안
+// src/test/kotlin/.../account/domain/AccountTest.kt — 실제 코드(일부 발췌, 전체 16개 테스트 케이스 중)
 package com.example.accountservice.account.domain
 
 import org.assertj.core.api.Assertions.assertThat
@@ -56,6 +56,13 @@ class AccountTest {
         assertThat(account.balance.amount).isEqualTo(0)
         assertThat(account.status).isEqualTo(AccountStatus.ACTIVE)
         assertThat(account.pullDomainEvents()).hasSize(1).first().isInstanceOf(AccountCreatedEvent::class.java)
+    }
+
+    @Test
+    fun `계좌 ID는 하이픈 없는 32자리 hex 문자열이다`() {
+        val account = createAccount()
+
+        assertThat(account.accountId).matches("^[0-9a-f]{32}$")
     }
 
     @Test
@@ -100,6 +107,8 @@ class AccountTest {
         assertThat(events).hasSize(1)
         assertThat((events.first() as MoneyDepositedEvent).amount.amount).isEqualTo(5000)
     }
+
+    // ... 정지/재개/종료 상태 전이, pullPendingTransactions() 등 나머지 케이스는 AccountTest.kt 전체 참고
 }
 ```
 
@@ -109,10 +118,10 @@ class AccountTest {
 
 ---
 
-## Application 단위 테스트 — MockK로 Repository 대체
+## Application 단위 테스트 — MockK로 Repository 대체 (적용 완료)
 
 ```kotlin
-// src/test/kotlin/.../account/application/command/CreateAccountServiceTest.kt — 제안
+// src/test/kotlin/.../account/application/command/CreateAccountServiceTest.kt — 실제 코드
 package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.AccountRepository
@@ -156,6 +165,7 @@ class CreateAccountServiceTest {
 - `verifyOrder { ... }`: MockK의 순서 검증 기능으로 `save()`가 `processPending()`보다 먼저 호출되는지 확인한다 — Mockito의 `InOrder`에 대응하지만 문법이 더 간결하다.
 - **Repository mock은 `interface` 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지"가 Kotlin에서는 인터페이스 그대로 대응된다.
 - Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
+- `DepositServiceTest.kt`도 동일한 패턴(MockK Repository/OutboxRelay mock)을 따른다 — Command Service마다 Application 단위 테스트를 추가할 때의 템플릿으로 이 두 파일을 그대로 재사용한다.
 
 ---
 

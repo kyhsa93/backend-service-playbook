@@ -68,9 +68,9 @@ Node의 `AsyncLocalStorage`에 해당하는 것이 SLF4J의 **MDC**(Mapped Diagn
 
 ---
 
-## 인증 — Spring Security Filter
+## 인증 — Spring Security Filter (적용 완료)
 
-인증은 별도의 `JwtAuthenticationFilter`(Correlation ID 다음, 컨트롤러 이전)에서 처리한다. 상세는 [authentication.md](authentication.md) 참조. **현재 `examples/`는 이 단계 자체가 없다** — `AccountController`가 `@RequestHeader("X-User-Id")`로 클라이언트가 보낸 값을 검증 없이 신뢰한다. 이는 root의 "Handler는 순수하게, 인증은 Guard/Filter 단계에서" 원칙을 위반하는 알려진 갭이다.
+인증은 별도의 `JwtAuthenticationFilter`(Correlation ID 다음, 컨트롤러 이전)에서 처리한다 — `SecurityConfig`의 `addFilterBefore<UsernamePasswordAuthenticationFilter>(jwtAuthenticationFilter)`로 필터 체인에 배선되어 있다. `AccountController`는 `Authentication` 파라미터로 `JwtAuthenticationFilter`가 채운 `SecurityContext`에서 인증된 사용자 ID(`authentication.name`)만 꺼내 쓴다 — 클라이언트가 보낸 헤더를 신뢰하지 않는다. 상세는 [authentication.md](authentication.md) 참조.
 
 ---
 

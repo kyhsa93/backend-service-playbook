@@ -2,16 +2,18 @@
 
 > 프레임워크 무관 원칙은 [root observability.md](../../../../docs/architecture/observability.md) 참조.
 
-## 현재 로깅 — SLF4J 직접 사용
+## 현재 로깅 — SLF4J 직접 사용 + 구조화 로그(fluent API) 병행
 
 ```kotlin
 // notification/infrastructure/NotificationServiceImpl.kt — 실제 코드
 private val logger = LoggerFactory.getLogger(NotificationServiceImpl::class.java)
 
-logger.info(
-    "이메일 발송됨: accountId={}, eventType={}, recipient={}, sesMessageId={}",
-    accountId, eventType, recipient, result.messageId(),
-)
+logger.atInfo()
+    .addKeyValue("account_id", accountId)
+    .addKeyValue("event_type", eventType)
+    .addKeyValue("recipient", recipient)
+    .addKeyValue("ses_message_id", result.messageId())
+    .log("이메일 발송됨")
 ```
 
 ```kotlin
@@ -19,7 +21,12 @@ logger.info(
 .onFailure { logger.error("이벤트 처리 실패: eventType={}, eventId={}", row.eventType, row.eventId, it) }
 ```
 
-파라미터화된 로그(`{}` 플레이스홀더)를 이미 쓰고 있어 문자열 보간(`"...${accountId}..."`)으로 인한 불필요한 문자열 생성은 피하고 있다. 다만 **구조화(JSON/snake_case 필드) 로그는 아니다** — 사람이 읽기 좋은 텍스트 로그이며, `accountId`/`eventType`이 로그 메시지 문자열 안에 파묻혀 있어 모니터링 시스템에서 필드별 검색·집계가 어렵다. Correlation ID 전파도 없다.
+```kotlin
+// account/interfaces/rest/AccountController.kt — 실제 코드
+logger.warn("계좌를 찾을 수 없음: {}", e.message)
+```
+
+`notification/infrastructure/NotificationServiceImpl`은 SLF4J 2.x fluent API(`atInfo().addKeyValue(...)`)로 이미 **snake_case 필드 기반 구조화 로그**를 남긴다 — `account_id`/`event_type` 등이 메시지 문자열에 파묻히지 않고 별도 key-value로 분리되어 있어 모니터링 시스템에서 필드별 검색·집계가 가능하다. `OutboxRelay`/`AccountController`는 아직 파라미터화된 텍스트 로그(`{}` 플레이스홀더)만 쓴다 — 문자열 보간(`"...${accountId}..."`)으로 인한 불필요한 문자열 생성은 피하지만, key-value 구조화까지는 하지 않았다. Correlation ID는 아래에서 다루는 `CorrelationIdFilter`가 MDC로 전파한다.
 
 ---
 
@@ -52,17 +59,17 @@ logger.info { "이메일 발송됨: accountId=$accountId, eventType=$eventType" 
 
 ---
 
-## 구조화된 로깅 — JSON + snake_case (logstash-logback-encoder)
+## 구조화된 로깅 — JSON + snake_case (logstash-logback-encoder, 적용 완료)
 
-프로덕션에서 CloudWatch/Datadog 연동을 고려한다면 `logback-spring.xml`에 JSON 인코더를 추가한다.
+`build.gradle.kts`와 `logback-spring.xml` 모두 이미 JSON 인코더를 갖추고 있다 — prod 프로파일에서는 CloudWatch/Datadog 등으로 그대로 수집 가능한 JSON 로그를, 로컬/테스트에서는 사람이 읽기 좋은 텍스트 로그를 낸다.
 
 ```kotlin
-// build.gradle.kts
+// build.gradle.kts — 실제 코드
 implementation("net.logstash.logback:logstash-logback-encoder:7.4")
 ```
 
 ```xml
-<!-- logback-spring.xml -->
+<!-- logback-spring.xml — 실제 코드 -->
 <configuration>
   <springProfile name="prod">
     <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
@@ -81,22 +88,13 @@ implementation("net.logstash.logback:logstash-logback-encoder:7.4")
 </configuration>
 ```
 
-구조화 로그를 남길 때는 `Marker` 또는 key-value 쌍을 사용한다 — SLF4J 2.x부터는 fluent API로 필드를 명시적으로 붙일 수 있다.
-
-```kotlin
-logger.atInfo()
-    .addKeyValue("account_id", accountId)
-    .addKeyValue("event_type", eventType)
-    .log("이메일 발송됨")
-```
-
-**필드명은 root 원칙대로 snake_case**(`account_id`, `event_type`)를 사용한다 — Kotlin 프로퍼티명은 camelCase(`accountId`)이지만, 로그 필드는 모니터링 플랫폼 관례에 맞춘다.
+구조화 로그를 남길 때는 `Marker` 또는 key-value 쌍을 사용한다 — SLF4J 2.x부터는 fluent API로 필드를 명시적으로 붙일 수 있고, `NotificationServiceImpl`이 실제로 이 패턴을 쓴다(위 "현재 로깅" 절 참고). **필드명은 root 원칙대로 snake_case**(`account_id`, `event_type`)를 사용한다 — Kotlin 프로퍼티명은 camelCase(`accountId`)이지만, 로그 필드는 모니터링 플랫폼 관례에 맞춘다. `OutboxRelay`/`AccountController`처럼 아직 `{}` 플레이스홀더만 쓰는 로그는 필요에 따라 같은 fluent API로 승격할 수 있다(남은 개선 여지, 필수 갭은 아니다).
 
 ---
 
-## Correlation ID — MDC 전파
+## Correlation ID — MDC 전파 (적용 완료)
 
-[cross-cutting-concerns.md](cross-cutting-concerns.md)에서 다룬 `CorrelationIdFilter`가 요청 진입 시 MDC에 값을 넣는다. 이후 애플리케이션 어디서든 `MDC.get("correlationId")`로 접근 가능하고, `logstash-logback-encoder`의 `includeMdcKeyName`이 자동으로 로그 필드에 포함시킨다 — 각 로그 호출에서 correlationId를 인자로 넘길 필요가 없다.
+[cross-cutting-concerns.md](cross-cutting-concerns.md)에서 다룬 `CorrelationIdFilter`(실제 코드, `common/CorrelationIdFilter.kt`)가 요청 진입 시 MDC에 값을 넣는다. 이후 애플리케이션 어디서든 `MDC.get("correlationId")`로 접근 가능하고, `logstash-logback-encoder`의 `includeMdcKeyName`이 자동으로 로그 필드에 포함시킨다 — 각 로그 호출에서 correlationId를 인자로 넘길 필요가 없다.
 
 ```kotlin
 // 서비스 로직 — correlationId를 파라미터로 넘기지 않아도 로그에 자동 포함
@@ -115,16 +113,16 @@ Node의 `AsyncLocalStorage`와 동일한 역할을 JVM 스레드 모델에서는
 | `account/domain/` | 로깅 없음 | root 원칙과 일치 — Aggregate는 프레임워크 무의존 유지 |
 | `outbox/OutboxRelay` | `logger.error(...)` (실패 시) | 일치 — Application 레이어에서 에러 로깅 |
 | `notification/infrastructure/NotificationServiceImpl` | `logger.info(...)` (발송 성공) | 일치 — Infrastructure에서 외부 연동 결과 로깅 |
-| `account/interfaces/rest/AccountController` | 로깅 없음 | HTTP 요청 로깅은 [cross-cutting-concerns.md](cross-cutting-concerns.md)의 `RequestLoggingInterceptor`로 보완 필요 |
+| `account/interfaces/rest/AccountController` | `logger.warn(...)` (`@ExceptionHandler`에서 실패 로깅) | 일치 — HTTP 요청/응답 자체의 로깅은 [cross-cutting-concerns.md](cross-cutting-concerns.md)의 `RequestLoggingInterceptor`(실제 코드, `common/RequestLoggingInterceptor.kt`)가 담당 |
 
 ---
 
 ## 원칙 요약
 
 - **Domain 레이어에서 로깅 금지**: `Account`, `Money`, `Transaction`은 로거를 import하지 않는다.
-- **파라미터화된 로그를 구조화 로그로 승격**: 현재의 `{}` 플레이스홀더 로그를 JSON + snake_case 필드로 전환하면 모니터링 연동이 쉬워진다.
-- **`kotlin-logging` 도입 검토**: 지연 평가 + `::class.java` 보일러플레이트 제거.
-- **MDC로 Correlation ID 전파**: 요청 진입점에서 설정하면 이후 모든 로그에 자동 포함.
+- **구조화 로그는 `NotificationServiceImpl`에 이미 적용됨**: `logger.atInfo().addKeyValue(...)`로 snake_case 필드를 남긴다. `OutboxRelay`/`AccountController`의 `{}` 플레이스홀더 로그를 같은 방식으로 승격하는 것은 남은 개선 여지다.
+- **`kotlin-logging` 도입 검토**: 지연 평가 + `::class.java` 보일러플레이트 제거 — 아직 도입하지 않았다.
+- **MDC로 Correlation ID 전파(적용 완료)**: `CorrelationIdFilter`가 요청 진입점에서 설정하면 이후 모든 로그에 자동 포함.
 
 ### 관련 문서
 

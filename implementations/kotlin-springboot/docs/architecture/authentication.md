@@ -2,23 +2,23 @@
 
 > 프레임워크 무관 원칙은 [root authentication.md](../../../../docs/architecture/authentication.md) 참조.
 
-## 알려진 갭 — 현재 예제는 인증을 하지 않는다
+## 적용 완료 — JWT/Bearer + Spring Security
 
-`examples/.../account/interfaces/rest/AccountController.kt`의 모든 엔드포인트는 클라이언트가 보낸 헤더를 검증 없이 그대로 신뢰한다:
+`examples/.../account/interfaces/rest/AccountController.kt`의 모든 엔드포인트는 `Authentication` 파라미터에서 인증된 사용자 ID를 꺼내 쓴다 — 클라이언트가 보낸 헤더를 신뢰하지 않는다:
 
 ```kotlin
-// 현재 코드 — 절대 프로덕션에 반영하면 안 되는 패턴
+// 실제 코드
 @PostMapping
 fun createAccount(
-    @RequestHeader("X-User-Id") requesterId: String,   // ← 클라이언트가 임의로 지정 가능
+    authentication: Authentication,
     @Valid @RequestBody request: CreateAccountRequest,
 ): CreateAccountResult =
-    createAccountService.create(CreateAccountCommand(requesterId, request.currency, request.email))
+    createAccountService.create(CreateAccountCommand(authentication.name, request.currency, request.email))
 ```
 
-누구든 `X-User-Id: owner-2` 헤더만 붙이면 다른 사용자의 계좌를 조회·조작할 수 있다. 아래는 root 원칙에 맞는 올바른 JWT/Bearer + Spring Security 패턴이다. **`examples/`에는 아직 반영되어 있지 않다.**
+`authentication.name`은 `JwtAuthenticationFilter`가 검증한 JWT의 `subject`(userId)다 — 클라이언트가 임의로 지정할 수 없다. 아래는 root 원칙에 맞는 JWT/Bearer + Spring Security 패턴이며, `auth/` 패키지(`AuthService`, `JwtAuthenticationFilter`, `SecurityConfig`)로 실제 구현되어 있다.
 
-아래 예시를 실제로 적용하려면 `build.gradle.kts`에 `spring-boot-starter-security`와 JWT 라이브러리(`io.jsonwebtoken:jjwt-api`/`jjwt-impl`/`jjwt-jackson` 등)를 추가해야 한다. 현재 `examples/build.gradle.kts`에는 두 의존성 모두 없다.
+`build.gradle.kts`에는 이미 `spring-boot-starter-security`와 JWT 라이브러리(`io.jsonwebtoken:jjwt-api`/`jjwt-impl`/`jjwt-jackson`)가 포함되어 있다.
 
 ---
 
@@ -165,6 +165,12 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
             authorizeHttpRequests {
                 authorize("/auth/sign-in", permitAll)
                 authorize("/health/**", permitAll)
+                // STATELESS 세션 + OncePerRequestFilter 조합에서는 요청 처리 중 발생한 예외가
+                // 컨테이너의 /error 재전달(forward)로 이어지는데, JwtAuthenticationFilter는
+                // 기본적으로 error dispatch에서 재실행되지 않아 SecurityContext가 비어 401/400
+                // 대신 403으로 응답이 뒤바뀐다 — /error도 permitAll로 열어 원래 상태 코드가 그대로
+                // 전달되게 한다.
+                authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)   // 그 외 모든 도메인 API는 인증 필요
             }
             addFilterBefore<UsernamePasswordAuthenticationFilter>(jwtAuthenticationFilter)
@@ -174,7 +180,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
 }
 ```
 
-`anyRequest, authenticated`를 기본값으로 두고 화이트리스트만 명시적으로 열어주는 것이 root의 "메서드 레벨 적용은 누락 위험이 있다" 경고를 Spring Security 관용구로 구현한 것이다 — 새 엔드포인트를 추가할 때 실수로 인증을 빼먹을 수 없다.
+`anyRequest, authenticated`를 기본값으로 두고 화이트리스트만 명시적으로 열어주는 것이 root의 "메서드 레벨 적용은 누락 위험이 있다" 경고를 Spring Security 관용구로 구현한 것이다 — 새 엔드포인트를 추가할 때 실수로 인증을 빼먹을 수 없다. `/error`를 화이트리스트에 넣지 않으면, 인증 없이(또는 잘못된 토큰으로) 접근했을 때 컨테이너의 에러 재전달 과정에서 401/400이 403으로 뒤바뀌는 문제가 생긴다 — Spring Security STATELESS 모드에서 흔히 놓치는 함정이다.
 
 ---
 
