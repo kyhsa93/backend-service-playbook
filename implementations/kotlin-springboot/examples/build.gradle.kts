@@ -42,6 +42,7 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:localstack")
+    testImplementation("io.mockk:mockk:1.13.13")
 }
 
 kotlin {
