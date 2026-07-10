@@ -35,6 +35,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("software.amazon.awssdk:ses:2.29.52")
+    implementation("software.amazon.awssdk:secretsmanager:2.29.52")
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
     implementation("net.logstash.logback:logstash-logback-encoder:7.4")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
