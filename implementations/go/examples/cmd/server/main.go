@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -10,10 +11,12 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/example/account-service/internal/application/event"
+	"github.com/example/account-service/internal/config"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
+	"github.com/example/account-service/internal/infrastructure/secret"
 	httphandler "github.com/example/account-service/internal/interface/http"
 )
 
@@ -40,9 +43,11 @@ func main() {
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
 	})
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "dev-secret"
+	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
+	jwtSecret, err := config.LoadJWTSecret(context.Background(), secretService, os.Getenv("APP_ENV"))
+	if err != nil {
+		slog.Error("failed to load jwt secret", "error", err)
+		os.Exit(1)
 	}
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
 
