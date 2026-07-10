@@ -6,22 +6,37 @@ root는 3개 레이어(Domain 단위, Application 단위, E2E)를 요구한다.
 
 | 레이어 | 검증 범위 | 의존성 전략 | 이 저장소의 현재 상태 |
 |--------|----------|------------|----------------------|
-| Domain 단위 테스트 | Aggregate, Value Object | 프레임워크 없음 | **없음 — 격차** |
-| Application 단위 테스트 | Handler의 조율 로직 | Repository/Service를 mock | **없음 — 격차** |
+| Domain 단위 테스트 | Aggregate, Value Object | 프레임워크 없음 | `tests/unit/domain/` — 이미 구현됨 |
+| Application 단위 테스트 | Handler의 조율 로직 | Repository/Service를 mock | `tests/unit/application/` — 이미 구현됨 |
 | E2E 테스트 | Interface→Application→Infrastructure 전체 | 실제 DB(testcontainers) | `tests/test_account_e2e.py`, `tests/test_notification_e2e.py` — 잘 구현됨 |
 
-## 알려진 격차 — Domain/Application 단위 테스트가 없다
+## 현재 구현 — Domain/Application 단위 테스트가 이미 존재한다
 
-`tests/`에는 E2E 테스트 두 개뿐이다. E2E는 testcontainers로 실제 Postgres/LocalStack까지 띄우므로 실행이 느리고(컨테이너 기동 시간), `Account.deposit()`의 불변식 하나를 검증하려고 매번 HTTP 요청 + DB 왕복을 거쳐야 한다. 이 문서 작성 시점 기준 이 격차는 코드에 남아 있다. 아래는 pytest 기반으로 이 저장소에 추가해야 할 나머지 두 레이어다.
+`tests/unit/domain/test_account.py`, `tests/unit/domain/test_money.py`, `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py`가 이미 존재하며, 아래 두 절이 보여주는 패턴(Domain은 mock 없이 직접 인스턴스화, Application은 `AsyncMock`으로 Repository/Outbox를 mock)을 그대로 따르고 있다.
+
+`tests/conftest.py`는 테스트 실행 시 `main.py`가 임포트되는 시점에 [config.md](config.md)의 `validate_env()`를 통과시키기 위해, `DATABASE_URL`이 설정되어 있지 않으면 `os.environ.setdefault("DATABASE_URL", ...)`로 더미 값을 채워 넣는다.
+
+```python
+# tests/conftest.py — 실제 코드
+import os
+
+# 테스트는 main.py import 시점에 validate_env()를 통과해야 한다 — 실제 접속 대상은
+# 각 e2e 테스트가 testcontainers로 띄운 뒤 fixture에서 dependency_overrides로 교체한다.
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/account"
+)
+```
+
+이 `setdefault`는 fail-fast 자체를 우회하는 게 아니라, "테스트 프로세스가 뜨는 동안은 어떤 값이든 있어야 `validate_env()`가 통과한다"는 조건을 충족시키기 위한 테스트 전용 장치다 — 실제 DB 연결은 각 E2E 테스트가 `app.dependency_overrides[get_session]`로 testcontainers 세션으로 교체한다.
 
 ---
 
 ## Domain 단위 테스트 — 프레임워크 없이 `Account` 자체를 검증
 
-**위치 제안**: `tests/unit/domain/test_account.py` (또는 root 컨벤션처럼 소스 옆에 `src/account/domain/test_account.py`)
+**위치**: `tests/unit/domain/test_account.py`, `tests/unit/domain/test_money.py` — 이미 존재한다. 아래는 그 발췌(실제 파일은 정지/재개/종료 등 더 많은 케이스를 포함한다).
 
 ```python
-# tests/unit/domain/test_account.py
+# tests/unit/domain/test_account.py — 실제 코드(발췌)
 import pytest
 
 from src.account.domain.account import Account
@@ -101,12 +116,12 @@ def test_close_잔액이_0이_아니면_종료할_수_없다() -> None:
 
 ## Application 단위 테스트 — Repository/Service를 mock
 
-**위치 제안**: `tests/unit/application/test_deposit_handler.py`
+**위치**: `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py` — 이미 존재한다.
 
 Handler 생성자가 ABC(`AccountRepository`, `OutboxRelay`) 타입을 받으므로, `unittest.mock`으로 만든 mock 객체를 그대로 주입할 수 있다 — 실제 DB/SES 없이 조율 로직만 검증한다.
 
 ```python
-# tests/unit/application/test_deposit_handler.py
+# tests/unit/application/test_deposit_handler.py — 실제 코드(발췌)
 from unittest.mock import AsyncMock
 
 import pytest
@@ -192,7 +207,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 ---
 
-## 테스트 파일 배치 (확장 후)
+## 테스트 파일 배치 (실제)
 
 ```
 implementations/fastapi/examples/
@@ -201,13 +216,16 @@ implementations/fastapi/examples/
       domain/
         account.py
   tests/
+    conftest.py                       ← DATABASE_URL setdefault (fail-fast 우회용, 위 절 참조)
     unit/
       domain/
-        test_account.py               ← Domain 단위 테스트 (신설 제안)
+        test_account.py               ← Domain 단위 테스트
+        test_money.py
       application/
-        test_deposit_handler.py       ← Application 단위 테스트 (신설 제안)
-    test_account_e2e.py               ← E2E (기존)
-    test_notification_e2e.py          ← E2E (기존)
+        test_create_account_handler.py ← Application 단위 테스트
+        test_deposit_handler.py
+    test_account_e2e.py               ← E2E
+    test_notification_e2e.py          ← E2E
 ```
 
 ---

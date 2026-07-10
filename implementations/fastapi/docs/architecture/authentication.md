@@ -2,22 +2,11 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/authentication.md](../../../../docs/architecture/authentication.md)
 
-## 알려진 격차 — 현재 examples/는 인증을 하지 않는다
+## 현재 구현 — JWT Bearer 인증이 이미 적용되어 있다
 
-`src/account/interface/rest/account_router.py`의 모든 엔드포인트는 `x_user_id: str = Header(...)`로 `X-User-Id` 헤더 값을 **검증 없이** 요청자 식별자로 그대로 신뢰한다.
+`src/account/interface/rest/account_router.py`의 라우터는 `APIRouter(..., dependencies=[Depends(get_current_user)])`로 선언되어 있어, `/accounts` 하위 모든 엔드포인트가 JWT 검증을 거친다. 각 라우트 함수도 `current_user: CurrentUser = Depends(get_current_user)`를 파라미터로 받아 검증된 `user_id`를 Command/Query에 실어 전달한다. 과거에 쓰였던 `x_user_id: str = Header(...)` 같은 무검증 헤더 신뢰 패턴은 더 이상 존재하지 않는다.
 
-```python
-# 현재 examples/ 코드 — 인증이 아니라 신뢰 기반 헤더 전달
-@router.post("/{account_id}/deposit", ...)
-async def deposit(
-    account_id: str,
-    body: DepositRequest,
-    x_user_id: str = Header(...),   # ← 클라이언트가 임의로 지정 가능. 서명도 검증도 없음
-    ...
-): ...
-```
-
-누구든 `X-User-Id: owner-1` 헤더만 실어 보내면 다른 사용자의 계좌에 접근할 수 있다. 아래는 올바른 JWT/Bearer 패턴이며, 이 문서 작성 시점에는 아직 `examples/`에 반영되지 않았다.
+아래는 이 인증 흐름의 상세와, 실제 구현체(`src/auth/`)가 따르는 레이어 배치 원칙이다.
 
 ---
 
@@ -112,7 +101,7 @@ class AuthService(ABC):
 ```
 
 ```python
-# src/auth/infrastructure/jwt_auth_service.py — 구현체
+# src/auth/infrastructure/jwt_auth_service.py — 실제 코드
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -121,9 +110,17 @@ from jose import JWTError, jwt
 from ..application.service.auth_service import AuthService
 from ..domain.errors import InvalidTokenError
 
-JWT_SECRET = os.environ["JWT_SECRET"]     # config.md — fail-fast 검증된 값
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL = timedelta(hours=1)
+
+# 프로덕션에서는 main.py의 lifespan 기동 시 Secrets Manager에서 조회한 값으로
+# set_jwt_secret()이 이 값을 채운다. 그 전까지(로컬/테스트 기본값)는 환경 변수를 쓴다.
+_jwt_secret: str = os.getenv("JWT_SECRET", "dev-secret")
+
+
+def set_jwt_secret(secret: str) -> None:
+    global _jwt_secret
+    _jwt_secret = secret
 
 
 class JwtAuthService(AuthService):
@@ -133,15 +130,17 @@ class JwtAuthService(AuthService):
             "user_id": user_id,
             "exp": datetime.now(timezone.utc) + ACCESS_TOKEN_TTL,
         }
-        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        return jwt.encode(payload, _jwt_secret, algorithm=JWT_ALGORITHM)
 
     def verify_token(self, token: str) -> str:
         try:
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            payload = jwt.decode(token, _jwt_secret, algorithms=[JWT_ALGORITHM])
         except JWTError as exc:
             raise InvalidTokenError() from exc
         return payload["user_id"]
 ```
+
+**`JWT_SECRET`은 아직 fail-fast 검증되지 않는다 — 알려진 격차.** `os.getenv("JWT_SECRET", "dev-secret")`는 값이 없어도 조용히 기본값으로 대체된다. [config.md](config.md)의 `validate_env()`는 현재 `DatabaseConfig`만 검증하며, `JWT_SECRET`을 위한 설정 클래스는 아직 존재하지 않는다 — 이 부분은 별도로 추적 중인 격차이며 이 문서에서 해결 완료로 표시하지 않는다.
 
 ### FastAPI `Depends` 기반 인증 의존성
 
@@ -175,14 +174,14 @@ def get_current_user(
 ### 라우터에 적용
 
 ```python
-# src/account/interface/rest/account_router.py — 적용 후 모습
-from src.auth.interface.rest.dependencies import CurrentUser, get_current_user
+# src/account/interface/rest/account_router.py — 실제 코드
+from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 
 @router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
 async def deposit(
     account_id: str,
     body: DepositRequest,
-    current_user: CurrentUser = Depends(get_current_user),   # X-User-Id Header(...) 대체
+    current_user: CurrentUser = Depends(get_current_user),   # 검증 완료된 사용자만 도달
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
@@ -237,4 +236,4 @@ app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=OWNER_I
 
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — 요청 파이프라인에서 인증 위치
 - [layer-architecture.md](layer-architecture.md) — Interface 레이어 역할
-- [config.md](config.md) — `JWT_SECRET` fail-fast 검증
+- [config.md](config.md) — 환경 변수 관리, `JWT_SECRET` fail-fast 검증(아직 미구현 — 알려진 격차)

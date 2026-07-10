@@ -8,14 +8,57 @@
 
 ```
 implementations/fastapi/examples/
-  main.py                              ← FastAPI 앱 생성, lifespan, 라우터 등록, exception_handler
+  main.py                              ← FastAPI 앱 생성, validate_env(), lifespan, 라우터 등록,
+                                          correlation_id_middleware, exception_handler
   requirements.txt
   pytest.ini
-  docker-compose.yml                   ← 로컬 인프라 (Postgres + LocalStack)
+  alembic.ini                          ← Alembic 마이그레이션 설정
+  Dockerfile                           ← 멀티스테이지 빌드 (container.md)
+  .dockerignore
+  docker-compose.yml                   ← 로컬 인프라 (Postgres + LocalStack(SES, Secrets Manager) + app profile)
+  .env.example                         ← 커밋되는 환경 변수 템플릿
+  .gitignore                           ← .env* 등 로컬 전용 파일 제외
   localstack/
     init-ses.sh                        ← LocalStack SES 초기화 스크립트
+    init-secrets.sh                    ← LocalStack Secrets Manager 초기화 스크립트 (app/jwt)
+  migrations/                          ← Alembic 마이그레이션
+    env.py
+    script.py.mako
+    versions/
+      110ed0152981_create_initial_tables.py
   src/
-    database.py                        ← 엔진/세션 팩토리, get_session() 의존성
+    database.py                        ← 엔진/세션 팩토리, get_session() 의존성 (DatabaseConfig 사용)
+
+    common/                            ← 도메인에 속하지 않는 공유 유틸/인프라 (shared-modules.md)
+      generate_id.py                   ← generate_id() — UUID hex ID 생성
+      logging_config.py                ← JsonFormatter, configure_logging()
+      correlation.py                   ← contextvars 기반 Correlation ID
+      secret_service.py                ← SecretService ABC
+      aws_secret_service.py            ← AwsSecretService(SecretService) — TTL 캐시
+
+    config/                            ← 관심사별 설정 클래스, fail-fast 검증 (config.md)
+      database_config.py               ← DatabaseConfig(BaseSettings) — DATABASE_URL 필수값
+      validator.py                     ← validate_env()
+
+    auth/                              ← 공유 인증 (authentication.md) — account/와 동일한 4레이어 구조
+      domain/
+        errors.py                      ← InvalidTokenError
+        token.py                       ← TokenPayload
+      application/
+        service/
+          auth_service.py               ← AuthService ABC (Technical Service 인터페이스)
+      infrastructure/
+        jwt_auth_service.py             ← JwtAuthService(AuthService), set_jwt_secret()
+      interface/
+        rest/
+          auth_router.py                ← POST /auth/sign-in
+          dependencies.py                ← get_current_user(), CurrentUser
+          schemas.py
+
+    outbox/                            ← 공유 Outbox 패턴 (domain-events.md)
+      outbox_model.py                  ← OutboxModel(Base)
+      outbox_writer.py                  ← OutboxWriter — Repository.save()가 같은 세션에서 호출
+      outbox_relay.py                   ← OutboxRelay — Command Handler가 save() 직후 동기 호출
 
     account/                           ← Bounded Context (도메인) 단위 패키지
       domain/                          ← 프레임워크 무의존
@@ -35,6 +78,13 @@ implementations/fastapi/examples/
           suspend_account_handler.py
           reactivate_account_handler.py
           close_account_handler.py
+        event/                         ← EventHandler — event_type별로 하나씩, Outbox 페이로드를 역직렬화
+          account_created_event_handler.py
+          account_closed_event_handler.py
+          account_reactivated_event_handler.py
+          account_suspended_event_handler.py
+          money_deposited_event_handler.py
+          money_withdrawn_event_handler.py
         query/
           get_account_handler.py       ← GetAccountQuery + GetAccountHandler
           get_transactions_handler.py
@@ -52,10 +102,18 @@ implementations/fastapi/examples/
 
       interface/
         rest/
-          account_router.py             ← APIRouter, Depends 조립, Handler 호출
+          account_router.py             ← APIRouter(dependencies=[Depends(get_current_user)]), Depends 조립, Handler 호출
           schemas.py                    ← Pydantic 요청/응답 모델
 
   tests/
+    conftest.py                        ← DATABASE_URL setdefault (validate_env() fail-fast 우회용)
+    unit/
+      domain/
+        test_account.py                ← Domain 단위 테스트
+        test_money.py
+      application/
+        test_create_account_handler.py ← Application 단위 테스트 (mock 기반)
+        test_deposit_handler.py
     test_account_e2e.py                ← E2E (testcontainers Postgres)
     test_notification_e2e.py           ← E2E (testcontainers Postgres + LocalStack SES)
 ```
@@ -154,12 +212,14 @@ class SesNotificationService(NotificationService):
 
 ## 공용 인프라 배치 기준
 
-현재 저장소에는 아직 `common/`, `config/` 등 공용 디렉토리가 없다 — 도메인이 `account` 하나뿐이기 때문이다. 두 번째 도메인을 추가하거나 [aggregate-id.md](aggregate-id.md)/[config.md](config.md)의 유틸을 도입할 때는 아래 위치를 따른다.
+`common/`, `config/`, `auth/`, `outbox/`는 도메인이 `account` 하나뿐인 지금도 이미 존재한다 — 순수 기술적/횡단적 관심사는 도메인 수와 무관하게 도메인 패키지 바깥에 둔다는 원칙을 처음부터 적용했기 때문이다. 두 번째 도메인을 추가할 때도 이 위치는 그대로 재사용한다.
 
 | 디렉토리 | 포함 내용 |
 |---------|----------|
-| `src/common/` | 순수 유틸 함수 — `generate_id.py`([aggregate-id.md](aggregate-id.md) 참조) 등 |
-| `src/config/` | 관심사별 설정 클래스, fail-fast 검증 ([config.md](config.md) 참조) |
+| `src/common/` | 순수 유틸/인프라 — `generate_id.py`([aggregate-id.md](aggregate-id.md)), `logging_config.py`/`correlation.py`([observability.md](observability.md)), `secret_service.py`/`aws_secret_service.py`([secret-manager.md](secret-manager.md)) |
+| `src/config/` | 관심사별 설정 클래스, fail-fast 검증 — `database_config.py`, `validator.py` ([config.md](config.md) 참조). `jwt_config.py`/`aws_config.py`는 아직 없다 |
+| `src/auth/` | 공유 인증 — `account/`와 동일한 4레이어 구조 ([authentication.md](authentication.md) 참조) |
+| `src/outbox/` | 공유 Outbox 패턴 ([domain-events.md](domain-events.md) 참조) |
 | `src/database.py` | DB 엔진/세션 팩토리 — 현재 위치 유지 (도메인이 하나뿐인 동안은 모듈 파일로 충분) |
 
 ---

@@ -2,32 +2,39 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/observability.md](../../../../docs/architecture/observability.md)
 
-## 알려진 격차 — 구조화 로깅과 Correlation ID가 없다
+## 현재 구현 — 구조화 로깅과 Correlation ID가 이미 적용되어 있다
 
-현재 유일한 로깅은 `infrastructure/notification/notification_service.py`의 표준 `logging` 모듈이며, `%s` 스타일의 문자열 보간을 쓴다.
+`src/common/logging_config.py`의 `JsonFormatter`/`configure_logging()`, `src/common/correlation.py`의 `contextvars` 기반 Correlation ID, `main.py`의 `correlation_id_middleware`가 모두 실제 코드로 존재한다. `infrastructure/notification/notification_service.py`도 더 이상 `%s` 문자열 보간을 쓰지 않고, `extra={...}`로 구조화된 필드(`event_type`, `account_id`, `recipient`, `ses_message_id`)를 전달한다.
 
 ```python
-# 현재 examples/ 코드
+# infrastructure/notification/notification_service.py — 실제 코드
 logger.info(
-    "알림 이메일 발송됨: event_type=%s account_id=%s recipient=%s ses_message_id=%s",
-    event_type, event.account_id, recipient, ses_message_id,
+    "알림 이메일 발송됨",
+    extra={
+        "event_type": event_type,
+        "account_id": event.account_id,
+        "recipient": recipient,
+        "ses_message_id": ses_message_id,
+    },
 )
 ```
 
-이 로그는 사람이 읽기엔 괜찮지만, JSON 구조가 아니므로 CloudWatch/Datadog 등에서 `account_id`나 `event_type`으로 필터링/집계하려면 로그 메시지 문자열을 파싱해야 한다. Correlation ID도 어디에도 없어 하나의 HTTP 요청이 만든 여러 로그 라인(요청 로그, 알림 발송 로그)을 서로 연결할 수 없다. 이 문서 작성 시점 기준 이 격차는 코드에 남아 있다.
+아래는 이 실제 구현의 상세다.
 
 ---
 
-## 올바른 패턴 — 구조화 로깅 선택: stdlib `logging` + JSON 포매터
+## 구조화 로깅 선택: stdlib `logging` + JSON 포매터
 
 `structlog`는 강력하지만 별도 의존성과 학습 비용이 추가된다. 이 프로젝트는 이미 표준 `logging` 모듈(`getLogger(__name__)`)을 쓰고 있고 로그 양이 많지 않으므로, **stdlib `logging`에 커스텀 JSON `Formatter`를 얹는 방식**을 권장한다 — 새 의존성 없이 필드명 규칙(snake_case)과 Correlation ID만 강제하면 충분하다. 로그량이 크게 늘거나 컨텍스트 바인딩(`logger.bind(...)`)이 필요해지면 그때 `structlog`로 전환을 검토한다.
 
 ```python
-# src/common/logging_config.py (신설 제안)
+# src/common/logging_config.py — 실제 코드
 import json
 import logging
 
 from .correlation import get_correlation_id
+
+_BASE_RECORD_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
 
 class JsonFormatter(logging.Formatter):
@@ -40,7 +47,7 @@ class JsonFormatter(logging.Formatter):
         }
         # extra={...}로 전달된 필드를 병합한다 (예: account_id, duration_ms)
         for key, value in record.__dict__.items():
-            if key not in logging.LogRecord("", 0, "", 0, "", (), None).__dict__ and key != "message":
+            if key not in _BASE_RECORD_KEYS and key != "message":
                 payload[key] = value
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
@@ -63,7 +70,7 @@ configure_logging()
 ### 필드 네이밍 — snake_case, `extra=`로 구조화 필드 전달
 
 ```python
-# infrastructure/notification/notification_service.py — 수정 제안
+# infrastructure/notification/notification_service.py — 실제 코드
 logger.info(
     "알림 이메일 발송됨",
     extra={

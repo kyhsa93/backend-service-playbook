@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/container.md](../../../../docs/architecture/container.md)
 
-## 알려진 격차 — `implementations/fastapi/examples/`에 Dockerfile이 없다
+## 현재 구현 — `implementations/fastapi/examples/Dockerfile`가 이미 존재한다
 
-`examples/` 디렉토리에는 `docker-compose.yml`(로컬 인프라)과 `main.py`/`requirements.txt`만 있고, 애플리케이션 자체를 컨테이너화하는 Dockerfile이 없다. 아래는 이 프로젝트 구조(`main.py`, `src/`, `requirements.txt`)를 기준으로 한 올바른 멀티스테이지 Dockerfile이며, 이 문서 작성 시점에는 아직 추가되지 않았다.
+`examples/Dockerfile`, `examples/.dockerignore`가 실제로 존재하며, 아래 멀티스테이지 빌드를 그대로 구현하고 있다.
 
 ---
 
@@ -102,7 +102,7 @@ ENV DATABASE_URL=postgresql+asyncpg://prod-user:realpassword@prod-db/account
 COPY .env .env
 ```
 
-`docker-compose.yml`이나 오케스트레이터(ECS Task Definition, Kubernetes Secret 등)를 통해 실행 시점에 주입한다. `src/database.py`의 `DATABASE_URL = os.getenv("DATABASE_URL", ...)` 패턴 자체는 올바르지만([config.md](config.md) 참조), 값 자체는 이미지 밖에서 와야 한다.
+`docker-compose.yml`이나 오케스트레이터(ECS Task Definition, Kubernetes Secret 등)를 통해 실행 시점에 주입한다. `src/config/database_config.py`의 `DatabaseConfig`(`pydantic_settings.BaseSettings`, `DATABASE_` 환경 변수 접두사)가 환경 변수에서 값을 읽는 패턴 자체는 올바르지만([config.md](config.md) 참조), 값 자체는 이미지 밖에서 와야 한다.
 
 ```bash
 docker run --env-file .env.docker myapp
