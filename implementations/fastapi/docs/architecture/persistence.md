@@ -102,31 +102,26 @@ async def delete_account(self, account_id: str) -> None:
 
 ---
 
-## 알려진 격차 — 스키마 관리에 Alembic이 없다
+## 마이그레이션 — Alembic으로 관리 (더 이상 격차 아님)
 
-`main.py`의 `lifespan`이 기동할 때마다 `Base.metadata.create_all`을 호출한다.
-
-```python
-# main.py — 현재
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-```
-
-`create_all`은 **테이블이 없을 때만 생성**하며, 기존 테이블의 컬럼 추가/변경/삭제는 감지하지 못한다. 로컬 개발과 `tests/`의 testcontainers 환경(매번 새 컨테이너)에서는 문제없이 동작하지만, 프로덕션에서 스키마를 변경해야 할 때(컬럼 추가, 인덱스 추가 등) 이 방식으로는 반영할 방법이 없다 — root 문서가 명시적으로 경고하는 "자동 스키마 동기화를 운영에 쓰지 않는다"는 원칙을 위반한다. 이 문서 작성 시점 기준 이 격차는 코드에 남아 있다.
-
-### 올바른 패턴 — Alembic 마이그레이션
+`create_all`은 **테이블이 없을 때만 생성**하며, 기존 테이블의 컬럼 추가/변경/삭제는 감지하지 못한다 — 프로덕션에서 스키마를 변경해야 할 때(컬럼 추가, 인덱스 추가 등) 이 방식으로는 반영할 방법이 없다. 이 예제는 Alembic을 도입해 이 문제를 해결한다.
 
 ```bash
 pip install alembic
-alembic init migrations
+alembic init -t async migrations   # 비동기 엔진(create_async_engine)용 템플릿
 ```
 
 ```python
-# migrations/env.py — target_metadata를 프로젝트의 Base로 연결
+# migrations/env.py — target_metadata를 프로젝트의 Base로 연결(outbox/sent_email 모델도 import해
+# 같은 Base 메타데이터에 등록되게 한다), DATABASE_URL 환경 변수를 alembic.ini보다 우선한다
 from src.account.infrastructure.persistence.account_repository import Base
+import src.account.infrastructure.notification.sent_email_model  # noqa: F401
+import src.outbox.outbox_model  # noqa: F401
+
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
+
 target_metadata = Base.metadata
 ```
 
@@ -143,19 +138,11 @@ alembic downgrade -1
 
 ```python
 # main.py — lifespan에서 create_all 제거, 마이그레이션은 배포 파이프라인에서 실행
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    # Base.metadata.create_all 호출 제거 — 스키마는 `alembic upgrade head`로 배포 시점에 적용
-    yield
+app = FastAPI(title="Account Service")
+# Base.metadata.create_all 호출 없음 — 스키마는 `alembic upgrade head`로 배포 시점에 적용
 ```
 
-`create_all`은 로컬 개발·테스트 환경(매번 새 DB, 스키마 검증이 목적이 아님)에서는 계속 사용해도 무방하다 — `tests/test_account_e2e.py`가 testcontainers Postgres에 대해 매번 `create_all`을 호출하는 것은 적절하다. 문제는 **운영 환경 기동 경로에서도 동일한 코드(`main.py`의 `lifespan`)를 공유한다는 점**이다. 마이그레이션 도입 시 `create_all` 호출을 프로덕션 기동 경로에서 제거하고, 테스트 fixture에서만 유지한다.
-
-```
-migrations/versions/
-  20260101_000000_create_accounts.py
-  20260201_000000_add_sent_emails.py
-```
+`create_all`은 로컬 개발·테스트 환경(매번 새 DB, 스키마 검증이 목적이 아님)에서는 계속 사용한다 — `tests/test_account_e2e.py`/`tests/test_notification_e2e.py`는 각자의 testcontainers 픽스처 안에서 독립적으로 `create_all`을 호출하므로(`main.py`의 lifespan에 의존하지 않음) 이번 변경의 영향을 받지 않는다. 실제로 빈 DB에 대해 `alembic revision --autogenerate`가 4개 테이블을 정확히 감지하고, `alembic upgrade head` 적용 후 `alembic check`가 "추가로 감지된 변경 없음"을 확인하는 것까지 검증함.
 
 ---
 

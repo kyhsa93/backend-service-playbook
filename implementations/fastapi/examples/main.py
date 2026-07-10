@@ -1,24 +1,13 @@
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from src.account.domain.errors import AccountError, AccountNotFoundError
-from src.account.infrastructure.persistence.account_repository import Base
 from src.account.interface.rest.account_router import router as account_router
 from src.auth.interface.rest.auth_router import router as auth_router
-from src.database import engine
 
-
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-
-
-app = FastAPI(title="Account Service", lifespan=lifespan)
+# 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
+# Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
+app = FastAPI(title="Account Service")
 
 app.include_router(auth_router)
 app.include_router(account_router)

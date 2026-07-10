@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import os
 
-SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules"}
+SKIP_DIRS = {
+    ".git", "__pycache__", ".venv", "venv", "node_modules",
+    # Alembic이 관리하는 디렉토리 — revision 파일명은 Alembic의 hex revision ID
+    # 접두어 관례(예: 110ed0152981_create_initial_tables.py)를 따르므로 이
+    # 저장소의 snake_case 파일명 규칙 대상이 아니다.
+    "migrations",
+}
 SKIP_FILES = {"__init__.py", "conftest.py"}
 
 

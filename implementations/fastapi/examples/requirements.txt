@@ -5,6 +5,7 @@ asyncpg
 pydantic[email]
 aioboto3
 python-jose[cryptography]
+alembic
 
 pytest
 pytest-asyncio
