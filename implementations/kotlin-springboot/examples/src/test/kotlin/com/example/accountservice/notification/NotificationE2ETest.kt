@@ -98,9 +98,14 @@ class NotificationE2ETest {
     @Autowired
     private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
 
+    private fun tokenFor(userId: String): String {
+        val response = restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId), Map::class.java)
+        return response.body!!["accessToken"] as String
+    }
+
     private fun headersFor(ownerId: String): HttpHeaders {
         val headers = HttpHeaders()
-        headers.set("X-User-Id", ownerId)
+        headers.setBearerAuth(tokenFor(ownerId))
         headers.contentType = MediaType.APPLICATION_JSON
         return headers
     }

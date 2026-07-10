@@ -23,6 +23,7 @@ import com.example.accountservice.account.domain.AccountNotFoundException
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -41,56 +42,56 @@ class AccountController(
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun createAccount(
-        @RequestHeader("X-User-Id") requesterId: String,
+        authentication: Authentication,
         @Valid @RequestBody request: CreateAccountRequest,
     ): CreateAccountResult =
-        createAccountService.create(CreateAccountCommand(requesterId, request.currency, request.email))
+        createAccountService.create(CreateAccountCommand(authentication.name, request.currency, request.email))
 
     @PostMapping("/{accountId}/deposit")
     @ResponseStatus(HttpStatus.CREATED)
     fun deposit(
-        @RequestHeader("X-User-Id") requesterId: String,
+        authentication: Authentication,
         @PathVariable accountId: String,
         @RequestBody request: DepositRequest,
-    ): TransactionResult = depositService.deposit(DepositCommand(accountId, requesterId, request.amount))
+    ): TransactionResult = depositService.deposit(DepositCommand(accountId, authentication.name, request.amount))
 
     @PostMapping("/{accountId}/withdraw")
     @ResponseStatus(HttpStatus.CREATED)
     fun withdraw(
-        @RequestHeader("X-User-Id") requesterId: String,
+        authentication: Authentication,
         @PathVariable accountId: String,
         @RequestBody request: WithdrawRequest,
-    ): TransactionResult = withdrawService.withdraw(WithdrawCommand(accountId, requesterId, request.amount))
+    ): TransactionResult = withdrawService.withdraw(WithdrawCommand(accountId, authentication.name, request.amount))
 
     @PostMapping("/{accountId}/suspend")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun suspendAccount(@RequestHeader("X-User-Id") requesterId: String, @PathVariable accountId: String) {
-        suspendAccountService.suspend(SuspendAccountCommand(accountId, requesterId))
+    fun suspendAccount(authentication: Authentication, @PathVariable accountId: String) {
+        suspendAccountService.suspend(SuspendAccountCommand(accountId, authentication.name))
     }
 
     @PostMapping("/{accountId}/reactivate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun reactivateAccount(@RequestHeader("X-User-Id") requesterId: String, @PathVariable accountId: String) {
-        reactivateAccountService.reactivate(ReactivateAccountCommand(accountId, requesterId))
+    fun reactivateAccount(authentication: Authentication, @PathVariable accountId: String) {
+        reactivateAccountService.reactivate(ReactivateAccountCommand(accountId, authentication.name))
     }
 
     @PostMapping("/{accountId}/close")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun closeAccount(@RequestHeader("X-User-Id") requesterId: String, @PathVariable accountId: String) {
-        closeAccountService.close(CloseAccountCommand(accountId, requesterId))
+    fun closeAccount(authentication: Authentication, @PathVariable accountId: String) {
+        closeAccountService.close(CloseAccountCommand(accountId, authentication.name))
     }
 
     @GetMapping("/{accountId}")
-    fun getAccount(@RequestHeader("X-User-Id") requesterId: String, @PathVariable accountId: String): GetAccountResult =
-        getAccountService.getAccount(accountId, requesterId)
+    fun getAccount(authentication: Authentication, @PathVariable accountId: String): GetAccountResult =
+        getAccountService.getAccount(accountId, authentication.name)
 
     @GetMapping("/{accountId}/transactions")
     fun getTransactions(
-        @RequestHeader("X-User-Id") requesterId: String,
+        authentication: Authentication,
         @PathVariable accountId: String,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") take: Int,
-    ): GetTransactionsResult = getTransactionsService.getTransactions(accountId, requesterId, page, take)
+    ): GetTransactionsResult = getTransactionsService.getTransactions(accountId, authentication.name, page, take)
 
     @ExceptionHandler(AccountNotFoundException::class)
     fun handleNotFound(e: AccountNotFoundException): ResponseEntity<ErrorResponse> =

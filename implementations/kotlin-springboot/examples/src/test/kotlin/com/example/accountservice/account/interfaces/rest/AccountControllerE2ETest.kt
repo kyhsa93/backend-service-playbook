@@ -91,9 +91,16 @@ class AccountControllerE2ETest {
     @Autowired
     private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
 
+    private val tokenCache = mutableMapOf<String, String>()
+
+    private fun tokenFor(userId: String): String = tokenCache.getOrPut(userId) {
+        val response = restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId), Map::class.java)
+        response.body!!["accessToken"] as String
+    }
+
     private fun headersFor(ownerId: String): HttpHeaders {
         val headers = HttpHeaders()
-        headers.set("X-User-Id", ownerId)
+        headers.setBearerAuth(tokenFor(ownerId))
         headers.contentType = MediaType.APPLICATION_JSON
         return headers
     }
