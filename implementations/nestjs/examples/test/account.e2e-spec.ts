@@ -1,4 +1,5 @@
 import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
@@ -7,6 +8,8 @@ import request from 'supertest'
 import { AccountModule } from '@/account/account-module'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
+import { AuthModule } from '@/auth/auth-module'
+import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
 import { SentEmailEntity } from '@/notification/sent-email.entity'
@@ -17,12 +20,23 @@ describe('AccountController (e2e)', () => {
 
   const OWNER_ID = 'owner-1'
   const OTHER_OWNER_ID = 'owner-2'
+  const tokens: Record<string, string> = {}
+
+  async function signIn(userId: string): Promise<string> {
+    const response = await request(app.getHttpServer()).post('/auth/sign-in').send({ userId })
+    return (response.body as { accessToken: string }).accessToken
+  }
+
+  function authHeader(userId: string): string {
+    return `Bearer ${tokens[userId]}`
+  }
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start()
 
     const moduleRef = await Test.createTestingModule({
       imports: [
+        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
@@ -30,6 +44,7 @@ describe('AccountController (e2e)', () => {
           synchronize: true
         }),
         OutboxModule,
+        AuthModule,
         AccountModule
       ]
     }).compile()
@@ -44,6 +59,9 @@ describe('AccountController (e2e)', () => {
       }
     }))
     await app.init()
+
+    tokens[OWNER_ID] = await signIn(OWNER_ID)
+    tokens[OTHER_OWNER_ID] = await signIn(OTHER_OWNER_ID)
   }, 120000)
 
   afterAll(async () => {
@@ -58,7 +76,7 @@ describe('AccountController (e2e)', () => {
   ): Promise<{ accountId: string }> {
     const response = await request(app.getHttpServer())
       .post('/accounts')
-      .set('X-User-Id', ownerId)
+      .set('Authorization', authHeader(ownerId))
       .send({ currency, email })
     return response.body as { accountId: string }
   }
@@ -67,7 +85,7 @@ describe('AccountController (e2e)', () => {
     it('생성_요청이_유효하면_201과_계좌_정보를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ currency: 'KRW', email: 'owner1@example.com' })
 
       expect(response.status).toBe(201)
@@ -84,7 +102,7 @@ describe('AccountController (e2e)', () => {
     it('currency가_없으면_400과_VALIDATION_FAILED를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ email: 'owner1@example.com' })
 
       expect(response.status).toBe(400)
@@ -94,7 +112,7 @@ describe('AccountController (e2e)', () => {
     it('email이_유효하지_않으면_400과_VALIDATION_FAILED를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ currency: 'KRW', email: 'not-an-email' })
 
       expect(response.status).toBe(400)
@@ -108,7 +126,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 10000 })
 
       expect(response.status).toBe(201)
@@ -123,7 +141,7 @@ describe('AccountController (e2e)', () => {
     it('존재하지_않는_계좌면_404와_ACCOUNT_NOT_FOUND를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/deposit')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 10000 })
 
       expect(response.status).toBe(404)
@@ -135,7 +153,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OTHER_OWNER_ID)
+        .set('Authorization', authHeader(OTHER_OWNER_ID))
         .send({ amount: 10000 })
 
       expect(response.status).toBe(404)
@@ -146,7 +164,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 0 })
 
       expect(response.status).toBe(400)
@@ -156,11 +174,11 @@ describe('AccountController (e2e)', () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 10000 })
 
       expect(response.status).toBe(400)
@@ -173,12 +191,12 @@ describe('AccountController (e2e)', () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 10000 })
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/withdraw`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 4000 })
 
       expect(response.status).toBe(201)
@@ -192,7 +210,7 @@ describe('AccountController (e2e)', () => {
     it('존재하지_않는_계좌면_404를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/withdraw')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 1000 })
 
       expect(response.status).toBe(404)
@@ -203,7 +221,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/withdraw`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 1000 })
 
       expect(response.status).toBe(400)
@@ -214,11 +232,11 @@ describe('AccountController (e2e)', () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/withdraw`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 1000 })
 
       expect(response.status).toBe(400)
@@ -230,7 +248,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/withdraw`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: -1 })
 
       expect(response.status).toBe(400)
@@ -243,31 +261,31 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(204)
 
       const getResponse = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
       expect(getResponse.body.status).toBe('SUSPENDED')
     })
 
     it('존재하지_않는_계좌면_404를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/suspend')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(404)
     })
 
     it('이미_정지된_계좌면_400과_SUSPEND_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
       const account = await createAccount()
-      await request(app.getHttpServer()).post(`/accounts/${account.accountId}/suspend`).set('X-User-Id', OWNER_ID)
+      await request(app.getHttpServer()).post(`/accounts/${account.accountId}/suspend`).set('Authorization', authHeader(OWNER_ID))
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(400)
       expect(response.body.code).toBe('SUSPEND_REQUIRES_ACTIVE_ACCOUNT')
@@ -277,24 +295,24 @@ describe('AccountController (e2e)', () => {
   describe('POST /accounts/:accountId/reactivate', () => {
     it('정지된_계좌를_재개하면_204를_반환한다', async () => {
       const account = await createAccount()
-      await request(app.getHttpServer()).post(`/accounts/${account.accountId}/suspend`).set('X-User-Id', OWNER_ID)
+      await request(app.getHttpServer()).post(`/accounts/${account.accountId}/suspend`).set('Authorization', authHeader(OWNER_ID))
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/reactivate`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(204)
 
       const getResponse = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
       expect(getResponse.body.status).toBe('ACTIVE')
     })
 
     it('존재하지_않는_계좌면_404를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/reactivate')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(404)
     })
@@ -304,7 +322,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/reactivate`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(400)
       expect(response.body.code).toBe('REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT')
@@ -317,20 +335,20 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/close`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(204)
 
       const getResponse = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
       expect(getResponse.body.status).toBe('CLOSED')
     })
 
     it('존재하지_않는_계좌면_404를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/close')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(404)
     })
@@ -339,12 +357,12 @@ describe('AccountController (e2e)', () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 5000 })
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/close`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(400)
       expect(response.body.code).toBe('ACCOUNT_BALANCE_NOT_ZERO')
@@ -352,11 +370,11 @@ describe('AccountController (e2e)', () => {
 
     it('이미_종료된_계좌면_400과_ACCOUNT_ALREADY_CLOSED를_반환한다', async () => {
       const account = await createAccount()
-      await request(app.getHttpServer()).post(`/accounts/${account.accountId}/close`).set('X-User-Id', OWNER_ID)
+      await request(app.getHttpServer()).post(`/accounts/${account.accountId}/close`).set('Authorization', authHeader(OWNER_ID))
 
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/close`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(400)
       expect(response.body.code).toBe('ACCOUNT_ALREADY_CLOSED')
@@ -369,7 +387,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(200)
       expect(response.body).toMatchObject({
@@ -384,7 +402,7 @@ describe('AccountController (e2e)', () => {
     it('존재하지_않는_계좌면_404를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .get('/accounts/non-existent')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(404)
       expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
@@ -395,7 +413,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}`)
-        .set('X-User-Id', OTHER_OWNER_ID)
+        .set('Authorization', authHeader(OTHER_OWNER_ID))
 
       expect(response.status).toBe(404)
     })
@@ -406,16 +424,16 @@ describe('AccountController (e2e)', () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 10000 })
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/withdraw`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 3000 })
 
       const response = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}/transactions`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .query({ page: 0, take: 20 })
 
       expect(response.status).toBe(200)
@@ -429,7 +447,7 @@ describe('AccountController (e2e)', () => {
     it('존재하지_않는_계좌면_404를_반환한다', async () => {
       const response = await request(app.getHttpServer())
         .get('/accounts/non-existent/transactions')
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
 
       expect(response.status).toBe(404)
     })
@@ -439,7 +457,7 @@ describe('AccountController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/accounts/${account.accountId}/transactions`)
-        .set('X-User-Id', OWNER_ID)
+        .set('Authorization', authHeader(OWNER_ID))
         .query({ page: 5, take: 20 })
 
       expect(response.status).toBe(200)

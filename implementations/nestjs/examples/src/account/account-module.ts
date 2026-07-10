@@ -24,10 +24,11 @@ import { TransactionEntity } from '@/account/infrastructure/entity/transaction.e
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
 import { AccountRepositoryImpl } from '@/account/infrastructure/account-repository-impl'
 import { AccountController } from '@/account/interface/account-controller'
+import { AuthModule } from '@/auth/auth-module'
 import { NotificationModule } from '@/notification/notification-module'
 
 @Module({
-  imports: [CqrsModule, TypeOrmModule.forFeature([AccountEntity, TransactionEntity]), NotificationModule],
+  imports: [CqrsModule, TypeOrmModule.forFeature([AccountEntity, TransactionEntity]), NotificationModule, AuthModule],
   controllers: [AccountController],
   providers: [
     // Command Handlers

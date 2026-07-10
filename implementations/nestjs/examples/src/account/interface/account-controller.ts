@@ -1,9 +1,10 @@
 import {
-  BadRequestException, Body, Controller, Get, Headers, HttpCode,
-  Logger, NotFoundException, Param, Post, Query
+  BadRequestException, Body, Controller, Get, HttpCode,
+  Logger, NotFoundException, Param, Post, Query, Req, UseGuards
 } from '@nestjs/common'
-import { ApiCreatedResponse, ApiHeader, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
+import { Request } from 'express'
 
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { CloseAccountCommand } from '@/account/application/command/close-account-command'
@@ -29,10 +30,14 @@ import { WithdrawRequestBody } from '@/account/interface/dto/withdraw-request-bo
 import { WithdrawResponseBody } from '@/account/interface/dto/withdraw-response-body'
 import { AccountErrorCode as ErrorCode } from '@/account/account-error-code'
 import { AccountErrorMessage } from '@/account/account-error-message'
+import { AuthGuard } from '@/auth/auth.guard'
+
+type AuthenticatedRequest = Request & { user: { userId: string } }
 
 @Controller()
 @ApiTags('Account')
-@ApiHeader({ name: 'X-User-Id', required: true })
+@ApiBearerAuth('token')
+@UseGuards(AuthGuard)
 export class AccountController {
   private readonly logger = new Logger(AccountController.name)
 
@@ -45,9 +50,10 @@ export class AccountController {
   @ApiOperation({ operationId: 'createAccount' })
   @ApiCreatedResponse({ type: CreateAccountResponseBody })
   public async createAccount(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Body() body: CreateAccountRequestBody
   ): Promise<CreateAccountResponseBody> {
+    const requesterId = req.user.userId
     return this.commandBus.execute<CreateAccountCommand, Account>(new CreateAccountCommand({ ...body, requesterId }))
       .then((account) => ({
         accountId: account.accountId,
@@ -67,10 +73,11 @@ export class AccountController {
   @ApiOperation({ operationId: 'deposit' })
   @ApiCreatedResponse({ type: DepositResponseBody })
   public async deposit(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
     @Body() body: DepositRequestBody
   ): Promise<DepositResponseBody> {
+    const requesterId = req.user.userId
     return this.commandBus.execute<DepositCommand, Transaction>(new DepositCommand({ ...body, accountId, requesterId }))
       .then((transaction) => ({
         transactionId: transaction.transactionId,
@@ -93,10 +100,11 @@ export class AccountController {
   @ApiOperation({ operationId: 'withdraw' })
   @ApiCreatedResponse({ type: WithdrawResponseBody })
   public async withdraw(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
     @Body() body: WithdrawRequestBody
   ): Promise<WithdrawResponseBody> {
+    const requesterId = req.user.userId
     return this.commandBus.execute<WithdrawCommand, Transaction>(new WithdrawCommand({ ...body, accountId, requesterId }))
       .then((transaction) => ({
         transactionId: transaction.transactionId,
@@ -121,9 +129,10 @@ export class AccountController {
   @ApiOperation({ operationId: 'suspendAccount' })
   @ApiNoContentResponse()
   public async suspendAccount(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
   ): Promise<void> {
+    const requesterId = req.user.userId
     return this.commandBus.execute(new SuspendAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -139,9 +148,10 @@ export class AccountController {
   @ApiOperation({ operationId: 'reactivateAccount' })
   @ApiNoContentResponse()
   public async reactivateAccount(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
   ): Promise<void> {
+    const requesterId = req.user.userId
     return this.commandBus.execute(new ReactivateAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -157,9 +167,10 @@ export class AccountController {
   @ApiOperation({ operationId: 'closeAccount' })
   @ApiNoContentResponse()
   public async closeAccount(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
   ): Promise<void> {
+    const requesterId = req.user.userId
     return this.commandBus.execute(new CloseAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -175,9 +186,10 @@ export class AccountController {
   @ApiOperation({ operationId: 'getAccount' })
   @ApiOkResponse({ type: GetAccountResponseBody })
   public async getAccount(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param() param: GetAccountRequestParam
   ): Promise<GetAccountResponseBody> {
+    const requesterId = req.user.userId
     return this.queryBus.execute(new GetAccountQuery({ accountId: param.accountId, requesterId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
@@ -190,10 +202,11 @@ export class AccountController {
   @ApiOperation({ operationId: 'getTransactions' })
   @ApiOkResponse({ type: GetTransactionsResponseBody })
   public async getTransactions(
-    @Headers('x-user-id') requesterId: string,
+    @Req() req: AuthenticatedRequest,
     @Param() param: GetTransactionsRequestParam,
     @Query() querystring: GetTransactionsRequestQuerystring
   ): Promise<GetTransactionsResponseBody> {
+    const requesterId = req.user.userId
     return this.queryBus.execute(
       new GetTransactionsQuery({ ...querystring, accountId: param.accountId, requesterId })
     ).catch((error) => {

@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
@@ -10,6 +11,8 @@ import { DataSource } from 'typeorm'
 import { AccountModule } from '@/account/account-module'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
+import { AuthModule } from '@/auth/auth-module'
+import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
 import { SentEmailEntity } from '@/notification/sent-email.entity'
@@ -36,6 +39,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
 
   const OWNER_ID = 'owner-1'
   const RECIPIENT_EMAIL = 'owner1@example.com'
+  let ownerToken: string
 
   beforeAll(async () => {
     postgres = await new PostgreSqlContainer('postgres:16-alpine').start()
@@ -59,6 +63,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
 
     const moduleRef = await Test.createTestingModule({
       imports: [
+        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: postgres.getConnectionUri(),
@@ -66,6 +71,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
           synchronize: true
         }),
         OutboxModule,
+        AuthModule,
         AccountModule
       ]
     }).compile()
@@ -73,6 +79,9 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     app = moduleRef.createNestApplication()
     await app.init()
     dataSource = moduleRef.get(DataSource)
+
+    const signInResponse = await request(app.getHttpServer()).post('/auth/sign-in').send({ userId: OWNER_ID })
+    ownerToken = (signInResponse.body as { accessToken: string }).accessToken
   }, 180000)
 
   afterAll(async () => {
@@ -89,7 +98,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
   it('계좌_생성시_SES로_이메일이_발송되고_발송_내역이_DB와_localstack에_기록된다', async () => {
     const response = await request(app.getHttpServer())
       .post('/accounts')
-      .set('X-User-Id', OWNER_ID)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({ currency: 'KRW', email: RECIPIENT_EMAIL })
 
     expect(response.status).toBe(201)
@@ -112,13 +121,13 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
   it('입금시_SES로_이메일이_발송되고_발송_내역이_DB에_기록된다', async () => {
     const createResponse = await request(app.getHttpServer())
       .post('/accounts')
-      .set('X-User-Id', OWNER_ID)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({ currency: 'KRW', email: RECIPIENT_EMAIL })
     const accountId = createResponse.body.accountId as string
 
     const depositResponse = await request(app.getHttpServer())
       .post(`/accounts/${accountId}/deposit`)
-      .set('X-User-Id', OWNER_ID)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({ amount: 10000 })
 
     expect(depositResponse.status).toBe(201)
