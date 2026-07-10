@@ -8,10 +8,14 @@
 // AccountServiceApplication.java — 실제 코드 전체
 package com.example.accountservice;
 
+import com.example.accountservice.config.AwsProperties;
+import com.example.accountservice.config.SesProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
+@EnableConfigurationProperties({AwsProperties.class, SesProperties.class})
 public class AccountServiceApplication {
 
     public static void main(String[] args) {
@@ -20,7 +24,7 @@ public class AccountServiceApplication {
 }
 ```
 
-NestJS의 `main.ts`(수 줄에 걸쳐 `NestFactory.create()` 후 파이프/필터/CORS/Swagger를 명령형으로 하나씩 `app.use*()`하는 구조)와 달리, Spring Boot는 `@SpringBootApplication` 애노테이션 하나 + `SpringApplication.run()` 한 줄로 끝난다. 이는 기능이 없어서가 아니라, Spring Boot가 애노테이션 기반 자동 설정(auto-configuration)으로 같은 관심사를 분산 배치하기 때문이다 — 아래에서 이 차이를 항목별로 대응시킨다.
+NestJS의 `main.ts`(수 줄에 걸쳐 `NestFactory.create()` 후 파이프/필터/CORS/Swagger를 명령형으로 하나씩 `app.use*()`하는 구조)와 달리, Spring Boot는 `@SpringBootApplication` + `@EnableConfigurationProperties` 애노테이션과 `SpringApplication.run()` 한 줄로 끝난다. 이는 기능이 없어서가 아니라, Spring Boot가 애노테이션 기반 자동 설정(auto-configuration)으로 같은 관심사를 분산 배치하기 때문이다 — 아래에서 이 차이를 항목별로 대응시킨다. `@EnableConfigurationProperties({AwsProperties.class, SesProperties.class})`가 [config.md](config.md)가 설명하는 fail-fast 검증 대상 빈들을 명시적으로 등록한다.
 
 ---
 
@@ -63,7 +67,7 @@ public class AccountServiceApplication { ... }
 4. 커맨드라인 인자 (--server.port=9090 등)
 ```
 
-이 저장소의 현재 `application.yml`은 프로필 분리 없이 단일 파일이다 — 관심사별 분리와 프로필 전략은 [config.md](config.md) "관심사별 설정 파일 분리"에서 상세히 다룬다. 여기서는 로딩 순서 자체가 부트스트랩 1단계에 속한다는 점만 짚는다.
+이 저장소는 현재 `application.yml` + `application-prod.yml`(운영 프로필 오버라이드, 기본값 없음) 두 파일을 갖는다 — `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`처럼 세분화된 `spring.config.import` 구성은 아직 제안 단계다. 관심사별 분리와 프로필 전략은 [config.md](config.md) "관심사별 설정 파일 분리"에서 상세히 다룬다. 여기서는 로딩 순서 자체가 부트스트랩 1단계에 속한다는 점만 짚는다.
 
 ---
 
@@ -113,17 +117,25 @@ public class OpenApiConfig {
 
 ---
 
-## CORS 설정 — 현재 미도입
+## CORS 설정 — 현재 미도입, 기존 `WebConfig`를 확장한다
 
-`WebMvcConfigurer`를 구현하는 `@Configuration` 빈 하나로 전역 CORS를 설정한다. NestJS의 `app.enableCors({ origin: ... })`처럼 `main()`에 있는 것이 아니라 별도 설정 클래스로 분리되는 것이 Spring Boot의 관례다.
+`config/WebConfig.java`가 이미 실재한다 — `RequestLoggingInterceptor`를 등록하는 `WebMvcConfigurer` 구현체다([cross-cutting-concerns.md](cross-cutting-concerns.md) 참고). CORS를 도입할 때는 **새 클래스를 만들지 않고 이 기존 `WebConfig`에 `addCorsMappings(...)`를 추가**한다 — `common/config/WebConfig.java`라는 이름/위치로 별도 클래스를 새로 만들면 실제 `config/WebConfig.java`와 이름이 충돌한다.
 
 ```java
-// common/config/WebConfig.java — 도입 시 제안
+// config/WebConfig.java — 실제 코드에 CORS 추가 시 (제안, addCorsMappings만 신규)
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+
+    private final RequestLoggingInterceptor requestLoggingInterceptor;
 
     @Value("${cors.allowed-origins:}")
     private String allowedOrigins;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(requestLoggingInterceptor);
+    }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
@@ -135,7 +147,7 @@ public class WebConfig implements WebMvcConfigurer {
 }
 ```
 
-Spring Security를 도입하면([authentication.md](authentication.md) 참고) CORS는 `SecurityFilterChain`의 `.cors(...)` 설정으로 옮겨야 한다 — `WebMvcConfigurer`와 `SecurityFilterChain` 양쪽에 중복 설정하면 필터 순서에 따라 예기치 않게 하나만 적용된다.
+Spring Security가 이미 도입되어 있으므로([authentication.md](authentication.md) 참고) CORS는 `WebMvcConfigurer.addCorsMappings(...)` 대신 `SecurityConfig`의 `SecurityFilterChain`에 `.cors(...)` 설정으로 추가하는 편이 낫다 — `WebMvcConfigurer`와 `SecurityFilterChain` 양쪽에 중복 설정하면 필터 순서에 따라 예기치 않게 하나만 적용된다. 이 저장소는 Spring Security를 이미 쓰므로 CORS 도입 시 `SecurityConfig` 쪽에 두는 것을 권장하고, 위 `WebConfig.addCorsMappings(...)` 예시는 Spring Security 없이 최소로 도입할 경우의 참고용이다.
 
 ---
 
@@ -153,7 +165,7 @@ Spring Security를 도입하면([authentication.md](authentication.md) 참고) C
 | `app.enableShutdownHooks()` | 기본 활성 (`server.shutdown: graceful` 설정만 추가) | `application.yml` |
 | `app.useGlobalPipes(new ValidationPipe())` | `@Valid` + `spring-boot-starter-validation` (이미 적용됨) | 각 Controller 메서드 파라미터 |
 | `app.useGlobalFilters(new HttpExceptionFilter())` | `@RestControllerAdvice` 클래스 (현재 미도입) | `common/web/GlobalExceptionHandler.java` |
-| `app.enableCors({...})` | `WebMvcConfigurer.addCorsMappings()` (현재 미도입) | `common/config/WebConfig.java` |
+| `app.enableCors({...})` | `WebMvcConfigurer.addCorsMappings()` (현재 미도입) | `config/WebConfig.java`(기존 파일에 추가 — 새 클래스를 만들지 않는다) |
 | `SwaggerModule.setup('api', app, document)` | `springdoc-openapi` 의존성 추가만으로 자동 노출 (현재 미도입) | `build.gradle` + 선택적 `OpenApiConfig` |
 | `app.listen(process.env.PORT ?? 3000)` | `server.port` (기본 8080) | `application.yml` |
 

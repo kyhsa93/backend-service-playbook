@@ -24,7 +24,7 @@
 
 11. **Interface DTO는 Application 객체의 thin wrapper다** — `record` 필드를 그대로 옮겨 담는 한 줄 변환(`new DepositCommand(accountId, requesterId, request.amount())`)으로 충분하다. MapStruct 같은 매핑 라이브러리는 필드 수가 많아지기 전까지 불필요하다. ([layer-architecture.md](layer-architecture.md))
 
-12. **설정 접근은 Infrastructure 레이어로 한정한다** — `@Value`/`@ConfigurationProperties` 주입 대상은 `@Configuration`/`@Component` 클래스로 한정하고, Application Service와 Domain은 설정값을 직접 참조하지 않는다. `@ConfigurationProperties` + `@Validated`로 기동 시 fail-fast 검증을 한다(현재 미도입, 알려진 gap). ([config.md](config.md))
+12. **설정 접근은 Infrastructure 레이어로 한정한다** — `@Value`/`@ConfigurationProperties` 주입 대상은 `@Configuration`/`@Component` 클래스로 한정하고, Application Service와 Domain은 설정값을 직접 참조하지 않는다. `@ConfigurationProperties` + `@Validated`로 기동 시 fail-fast 검증을 한다 — `AwsProperties`/`SesProperties`로 이미 적용됨. ([config.md](config.md))
 
 13. **크로스 BC 호출은 Adapter(동기) 아니면 Integration Event(비동기)뿐이다** — 다른 BC의 Service/Repository를 Application 레이어에서 직접 주입하지 않는다. 조회는 `application/adapter/`의 인터페이스 + `infrastructure/`의 구현체로, 상태 변경은 Outbox 기반 Integration Event로만 전파한다. ([cross-domain.md](cross-domain.md), [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md))
 
@@ -39,7 +39,7 @@
 | 2. Domain 프레임워크 무의존 | 위반 — `@Entity`/`@Embeddable` 직접 사용 |
 | 8. Query는 별도 인터페이스 | 위반 — Query Service가 쓰기용 Repository 사용 |
 | 10. 에러 응답 4필드 | 위반 — 현재 2필드 |
-| 12. Fail-fast 설정 검증 | 미도입 — `@ConfigurationProperties`/`@Validated` 없음 |
+| 12. Fail-fast 설정 검증 | 적용됨 — `AwsProperties`/`SesProperties`(`@ConfigurationProperties` + `@Validated`), 단 `accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니고 `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다([config.md](config.md) 참고) |
 
 전체 gap 목록은 [docs/implementations/java-springboot.md](../../../../docs/implementations/java-springboot.md)의 커버리지 표를 참고한다.
 

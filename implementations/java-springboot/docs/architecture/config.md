@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 루트 [config.md](../../../../docs/architecture/config.md) 참고.
 
-## 현재 예제의 상태 — 알려진 gap
+## 현재 예제의 상태 — 대부분 적용 완료
 
 `examples/src/main/resources/application.yml` 전체:
 
@@ -31,39 +31,40 @@ jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 ```
 
-(`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 이제 Flyway로 관리되어 이 항목은 더 이상 gap이 아니다. 아래 나머지 항목은 여전히 남아있는 gap이다.)
+(`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 이제 Flyway로 관리되어 이 항목은 더 이상 gap이 아니다.)
 
-- 모든 설정이 단일 파일에 있다 (관심사별 분리 없음).
-- `aws.access-key-id`/`aws.secret-access-key`가 `test`/`test`를 기본값으로 가져, 운영 환경 변수 주입을 잊어도 기동은 되어버린다 — fail-fast가 아니라 조용한 오설정이다.
-- 기동 시점의 필수값 검증이 전혀 없다. `SesConfig`/`NotificationServiceImpl`이 `@Value("${...:기본값}")`로 값을 개별적으로 주입받을 뿐, 앱 전체 차원의 "필수 설정 누락 시 즉시 종료" 로직이 없다.
+`config/AwsProperties.java`/`config/SesProperties.java`(`@ConfigurationProperties` + `@Validated`)가 이미 도입되어 기동 시점 검증이 실제로 동작하고, `application-prod.yml`이 운영 프로필에서 AWS 자격증명 기본값을 제거해 fail-fast를 강제한다 — 아래에서 실제 코드를 그대로 보여준다. 다만 두 가지는 아직 남은 gap이다:
+
+- **관심사별 설정 파일 분리는 부분적이다**: `application-prod.yml` 하나만 실제로 존재하고, 아래 "관심사별 설정 파일 분리" 절이 제안하는 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`처럼 세분화된 `spring.config.import` 구성은 아직 도입되지 않았다.
+- **`AwsProperties.accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니다**: 아래 실제 코드가 보여주듯 `@NotBlank`는 `region`에만 붙어 있다. 로컬 기본값(`test`/`test`)이 운영에서도 조용히 통과하는 것을 막는 역할은 `AwsProperties`의 Bean Validation이 아니라 `application-prod.yml`이 해당 플레이스홀더에 기본값을 두지 않는 것(아래 참고)이 담당한다 — 두 메커니즘이 같은 목표를 다른 층에서 나눠 맡고 있다는 점에 주의한다.
 
 ---
 
-## `@ConfigurationProperties` + `@Validated` — Fail-fast 검증
+## `@ConfigurationProperties` + `@Validated` — Fail-fast 검증 (이미 적용됨)
 
 개별 `@Value`를 여러 클래스에 흩어놓는 대신, 관심사별 `@ConfigurationProperties` 클래스로 묶고 Bean Validation으로 기동 시 검증한다.
 
 ```java
-// config/AwsProperties.java
+// config/AwsProperties.java — 실제 코드
 @ConfigurationProperties(prefix = "aws")
 @Validated
 public record AwsProperties(
         @NotBlank String region,
         String endpointUrl,             // 로컬 전용 — 운영에서는 비워둠
-        @NotBlank String accessKeyId,
-        @NotBlank String secretAccessKey
+        String accessKeyId,             // Bean Validation 대상 아님 — 아래 "현재 예제의 상태" 참고
+        String secretAccessKey          // 마찬가지
 ) {}
 ```
 
 ```java
-// config/SesProperties.java
+// config/SesProperties.java — 실제 코드
 @ConfigurationProperties(prefix = "ses")
 @Validated
 public record SesProperties(@NotBlank @Email String senderEmail) {}
 ```
 
 ```java
-// AccountServiceApplication.java
+// AccountServiceApplication.java — 실제 코드
 @SpringBootApplication
 @EnableConfigurationProperties({AwsProperties.class, SesProperties.class})
 public class AccountServiceApplication {
@@ -73,10 +74,10 @@ public class AccountServiceApplication {
 }
 ```
 
-`@ConfigurationProperties`를 `record`로 선언하면(Spring Boot 3.x 지원) 불변 객체로 주입되고, `@NotBlank`/`@Email` 등 Bean Validation 애노테이션이 **애플리케이션 컨텍스트 로딩 시점**에 검증된다. 값이 비어 있으면 `BindValidationException`이 발생하며 `ApplicationContext` 초기화가 실패하고 프로세스가 즉시 종료된다 — Node의 `process.exit(1)`에 해당하는 Spring식 fail-fast다.
+`@ConfigurationProperties`를 `record`로 선언하면(Spring Boot 3.x 지원) 불변 객체로 주입되고, `@NotBlank`/`@Email` 등 Bean Validation 애노테이션이 **애플리케이션 컨텍스트 로딩 시점**에 검증된다. 값이 비어 있으면 `BindValidationException`이 발생하며 `ApplicationContext` 초기화가 실패하고 프로세스가 즉시 종료된다 — Node의 `process.exit(1)`에 해당하는 Spring식 fail-fast다. `region`/`senderEmail`은 이 메커니즘으로 직접 검증되고, `accessKeyId`/`secretAccessKey`는 아래 `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다(신규로 `@NotBlank`를 추가해 검증을 이중화하는 것도 가능하다).
 
 ```java
-// 사용 — Infrastructure 레이어에서만 주입받는다
+// notification/infrastructure/SesConfig.java — 실제 코드, Infrastructure 레이어에서만 주입받는다
 @Configuration
 @RequiredArgsConstructor
 public class SesConfig {
@@ -97,26 +98,37 @@ public class SesConfig {
 }
 ```
 
-**주의 — 로컬 기본값과 fail-fast의 균형:** 현재 예제처럼 `${AWS_ACCESS_KEY_ID:test}`로 LocalStack용 기본값을 두는 것 자체는 로컬 개발 편의상 합리적이다. 문제는 **운영/개발 환경을 구분하지 않고 항상 같은 기본값을 허용**하는 것이다. `@Profile`로 분기하여 운영 프로필에서는 기본값을 제거한다(아래 참고).
+**로컬 기본값과 fail-fast의 균형:** `application.yml`처럼 `${AWS_ACCESS_KEY_ID:test}`로 LocalStack용 기본값을 두는 것 자체는 로컬 개발 편의상 합리적이다. **운영/개발 환경을 구분하지 않고 항상 같은 기본값을 허용**하는 것이 문제인데, 이 저장소는 아래 `application-prod.yml`로 운영 프로필에서만 기본값을 제거해 이를 해결한다.
 
 ---
 
-## 관심사별 설정 파일 분리
+## 관심사별 설정 파일 분리 — 부분 적용 (운영 프로필 오버라이드만 실재)
 
-단일 `application.yml` 대신 관심사별로 나누고, `spring.config.import`로 조합한다.
+이 저장소는 현재 `application.yml` + `application-prod.yml` 두 파일만 갖는다 — 아래는 실제 코드다:
+
+```yaml
+# application-prod.yml — 실제 코드, 운영 전용, 기본값 없이 환경 변수 강제
+aws:
+  access-key-id: ${AWS_ACCESS_KEY_ID}
+  secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+```
+
+운영 프로필(`application-prod.yml`)에서는 `${AWS_ACCESS_KEY_ID}`처럼 **기본값을 생략**한다. Spring은 플레이스홀더에 대응하는 환경 변수가 없으면 `PlaceholderResolutionException`을 던지며 기동을 실패시킨다 — 이것이 Spring Boot의 자연스러운 fail-fast 메커니즘이며, `AwsProperties.accessKeyId`/`secretAccessKey`에 Bean Validation이 없어도 이 경로로 fail-fast가 성립하는 이유다.
+
+**아직 도입되지 않은 것**: `spring.config.import` 기반의 세분화된 관심사별 분리(`application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`)는 여전히 제안 단계다 — 규모가 커지면 아래 구조로 확장한다.
 
 ```
 src/main/resources/
   application.yml              # 공통 (spring.application.name 등) + 하위 파일 import
-  application-database.yml     # DB 연결
-  application-aws.yml          # AWS(SES/S3/Secrets Manager) 설정
-  application-jwt.yml          # JWT 설정 (authentication.md 참고)
-  application-local.yml        # 로컬 전용 오버라이드 (profile: local)
-  application-prod.yml         # 운영 전용 오버라이드 (profile: prod, 기본값 없음)
+  application-database.yml     # DB 연결 (제안, 아직 없음)
+  application-aws.yml          # AWS(SES/S3/Secrets Manager) 설정 (제안, 아직 없음)
+  application-jwt.yml          # JWT 설정 (제안, 아직 없음 — authentication.md 참고)
+  application-local.yml        # 로컬 전용 오버라이드 (제안, 아직 없음)
+  application-prod.yml         # 운영 전용 오버라이드 (실제 존재, 위 참고)
 ```
 
 ```yaml
-# application.yml
+# application.yml — 세분화된 spring.config.import 도입 시 (제안)
 spring:
   application:
     name: account-service
@@ -128,16 +140,6 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
 ```
-
-```yaml
-# application-prod.yml — 운영 전용, 기본값 없이 환경 변수 강제
-aws:
-  region: ${AWS_REGION}
-  access-key-id: ${AWS_ACCESS_KEY_ID}
-  secret-access-key: ${AWS_SECRET_ACCESS_KEY}
-```
-
-운영 프로필(`application-prod.yml`)에서는 `${AWS_ACCESS_KEY_ID}`처럼 **기본값을 생략**한다. Spring은 플레이스홀더에 대응하는 환경 변수가 없으면 `PlaceholderResolutionException`을 던지며 기동을 실패시킨다 — 이것이 Spring Boot의 자연스러운 fail-fast 메커니즘이다.
 
 ---
 
@@ -177,9 +179,9 @@ public class CreateAccountService {
 
 ## 원칙
 
-- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
-- **관심사별 분리**: `spring.config.import`로 설정 파일을 나눈다.
-- **운영 프로필은 기본값을 생략**한다: `${VAR}` (기본값 없음)로 강제 검증.
+- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다 — `AwsProperties`/`SesProperties`로 이미 적용됨. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
+- **관심사별 분리**: `spring.config.import`로 설정 파일을 나눈다 — 운영 프로필 오버라이드(`application-prod.yml`)만 실재하고, 나머지 세분화는 아직 제안 단계(위 참고).
+- **운영 프로필은 기본값을 생략**한다: `${VAR}` (기본값 없음)로 강제 검증 — `application-prod.yml`이 이미 이 패턴을 따른다.
 - **민감값은 Secrets Manager**: [secret-manager.md](secret-manager.md) 참고.
 - **설정 접근은 Infrastructure 레이어**: `@Value`/`@ConfigurationProperties` 주입 대상은 Infrastructure의 `@Configuration`/`@Component` 클래스로 한정한다.
 
