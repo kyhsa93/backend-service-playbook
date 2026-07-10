@@ -12,8 +12,11 @@ spring:
     name: account-service
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 aws:
   region: ${AWS_REGION:us-east-1}
@@ -23,7 +26,12 @@ aws:
 
 ses:
   sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
+
+jwt:
+  secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 ```
+
+(`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 이제 Flyway로 관리되어 이 항목은 더 이상 gap이 아니다. 아래 나머지 항목은 여전히 남아있는 gap이다.)
 
 - 모든 설정이 단일 파일에 있다 (관심사별 분리 없음).
 - `aws.access-key-id`/`aws.secret-access-key`가 `test`/`test`를 기본값으로 가져, 운영 환경 변수 주입을 잊어도 기동은 되어버린다 — fail-fast가 아니라 조용한 오설정이다.
