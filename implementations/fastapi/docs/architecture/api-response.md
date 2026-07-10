@@ -22,10 +22,11 @@ GET /accounts/{account_id}/transactions?page=0&take=20
 `src/account/interface/rest/account_router.py`의 `get_transactions`가 실제 구현이다.
 
 ```python
+# 실제 코드
 @router.get("/{account_id}/transactions", response_model=GetTransactionsResponse)
 async def get_transactions(
     account_id: str,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     page: int = 0,
     take: int = 20,
     repo: SqlAlchemyAccountRepository = Depends(_repo),
@@ -116,7 +117,7 @@ class GetAccountResult:
 라우터(`account_router.py`)가 이 `GetAccountResult`를 Pydantic 응답 모델(`GetAccountResponse`)로 다시 감싼다.
 
 ```python
-result = await GetAccountHandler(repo).execute(GetAccountQuery(account_id=account_id, requester_id=x_user_id))
+result = await GetAccountHandler(repo).execute(GetAccountQuery(account_id=account_id, requester_id=current_user.user_id))
 return GetAccountResponse(
     account_id=result.account_id,
     owner_id=result.owner_id,

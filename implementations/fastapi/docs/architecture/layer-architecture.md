@@ -148,20 +148,22 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
 3. 에러는 `main.py`의 `@app.exception_handler`가 캐치하여 HTTP 응답으로 변환 (Router 자체는 캐치하지 않는다)
 
 ```python
-# interface/rest/account_router.py
+# interface/rest/account_router.py — 실제 코드
 @router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
 async def deposit(
     account_id: str,
     body: DepositRequest,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
     transaction = await DepositHandler(repo, outbox_relay).execute(
-        DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
+        DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     return TransactionResponse(...)
 ```
+
+`current_user`는 JWT 검증을 통과한 사용자 정보다([authentication.md](authentication.md) 참고) — 클라이언트가 임의로 넣을 수 있는 헤더 값이 아니다.
 
 ### Interface DTO는 얇은 변환만
 

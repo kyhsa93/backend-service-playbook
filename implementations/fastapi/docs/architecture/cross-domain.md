@@ -118,7 +118,8 @@ class CreateAccountHandler:
 FastAPI에는 NestJS의 `{ provide: UserAdapter, useClass: UserAdapterImpl }` 같은 모듈 선언이 없다. 바인딩은 라우터의 `Depends` 팩토리 함수 하나로 대체된다 — [module-pattern.md](module-pattern.md) 참조.
 
 ```python
-# src/account/interface/rest/account_router.py
+# src/account/interface/rest/account_router.py — user_adapter 인자는 가상의 예시(이 저장소는 단일 BC라 UserAdapter가 없다),
+# 나머지 시그니처(current_user, repo)는 실제 create_account와 동일하다
 def _user_adapter(session: AsyncSession = Depends(get_session)) -> UserAdapter:
     return InProcessUserAdapter(GetUserHandler(...))  # 또는 HttpUserAdapter(...)
 
@@ -126,12 +127,12 @@ def _user_adapter(session: AsyncSession = Depends(get_session)) -> UserAdapter:
 @router.post("", status_code=201, response_model=CreateAccountResponse)
 async def create_account(
     body: CreateAccountRequest,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     user_adapter: UserAdapter = Depends(_user_adapter),
 ) -> CreateAccountResponse:
     account = await CreateAccountHandler(repo, user_adapter).execute(
-        CreateAccountCommand(requester_id=x_user_id, currency=body.currency, email=body.email)
+        CreateAccountCommand(requester_id=current_user.user_id, currency=body.currency, email=body.email)
     )
     ...
 ```

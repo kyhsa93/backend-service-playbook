@@ -105,7 +105,7 @@ QueryHandler는 도메인 Aggregate를 직접 반환하지 않고 `GetAccountRes
 현재는 Command/Query Bus가 없다. `interface/rest/account_router.py`의 Depends 팩토리가 Handler를 직접 인스턴스화한다.
 
 ```python
-# src/account/interface/rest/account_router.py
+# src/account/interface/rest/account_router.py — 실제 코드
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
     return SqlAlchemyAccountRepository(session)
 
@@ -114,12 +114,12 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
 async def deposit(
     account_id: str,
     body: DepositRequest,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
     transaction = await DepositHandler(repo, outbox_relay).execute(
-        DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
+        DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     return TransactionResponse(...)
 ```
