@@ -1,5 +1,7 @@
 package com.example.accountservice.notification.infrastructure;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 import com.example.accountservice.notification.application.service.NotificationService;
 import com.example.accountservice.notification.infrastructure.persistence.SentEmail;
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailRepository;
@@ -56,7 +58,7 @@ public class NotificationServiceImpl implements NotificationService {
         SentEmail sentEmail = SentEmail.create(accountId, eventType, recipient, subject, response.messageId());
         sentEmailRepository.save(sentEmail);
 
-        log.info("이메일 발송됨: accountId={}, eventType={}, recipient={}, sesMessageId={}",
-                accountId, eventType, recipient, response.messageId());
+        log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType),
+                kv("recipient", recipient), kv("ses_message_id", response.messageId()));
     }
 }

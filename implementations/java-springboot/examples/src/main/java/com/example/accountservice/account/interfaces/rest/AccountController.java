@@ -8,15 +8,21 @@ import com.example.accountservice.account.application.query.GetTransactionsServi
 import com.example.accountservice.account.domain.AccountException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 @RestController
 @RequestMapping("/accounts")
 @RequiredArgsConstructor
 public class AccountController {
+
+    private static final Logger log = LoggerFactory.getLogger(AccountController.class);
 
     private final CreateAccountService createAccountService;
     private final DepositService depositService;
@@ -97,6 +103,7 @@ public class AccountController {
         HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
                 ? HttpStatus.NOT_FOUND
                 : HttpStatus.BAD_REQUEST;
+        log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
         return ResponseEntity.status(status).body(new ErrorResponse(e.code().name(), e.getMessage()));
     }
 }

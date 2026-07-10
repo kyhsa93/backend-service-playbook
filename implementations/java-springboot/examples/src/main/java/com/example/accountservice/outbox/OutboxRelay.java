@@ -1,5 +1,7 @@
 package com.example.accountservice.outbox;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +49,7 @@ public class OutboxRelay {
                 event.markProcessed();
                 outboxJpaRepository.save(event);
             } catch (Exception e) {
-                log.error("이벤트 처리 실패: eventType={}, eventId={}", event.getEventType(), event.getEventId(), e);
+                log.error("이벤트 처리 실패", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
             }
         }
     }
