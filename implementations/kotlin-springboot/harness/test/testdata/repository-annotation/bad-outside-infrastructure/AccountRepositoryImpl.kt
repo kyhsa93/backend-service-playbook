@@ -1,0 +1,2 @@
+@Repository
+class AccountRepositoryImpl
