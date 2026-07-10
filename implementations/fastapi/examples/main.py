@@ -1,9 +1,17 @@
+import logging
+import time
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from src.account.domain.errors import AccountError, AccountNotFoundError
 from src.account.interface.rest.account_router import router as account_router
 from src.auth.interface.rest.auth_router import router as auth_router
+from src.common.correlation import generate_correlation_id, set_correlation_id
+from src.common.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 # 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
 # Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
@@ -11,6 +19,29 @@ app = FastAPI(title="Account Service")
 
 app.include_router(auth_router)
 app.include_router(account_router)
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    correlation_id = request.headers.get("x-correlation-id") or generate_correlation_id()
+    set_correlation_id(correlation_id)
+
+    start = time.monotonic()
+    response = await call_next(request)
+    duration_ms = (time.monotonic() - start) * 1000
+
+    response.headers["x-correlation-id"] = correlation_id
+    logger.info(
+        "%s %s",
+        request.method,
+        request.url.path,
+        extra={
+            "status_code": response.status_code,
+            "duration_ms": round(duration_ms, 1),
+            "correlation_id": correlation_id,
+        },
+    )
+    return response
 
 
 @app.exception_handler(AccountNotFoundError)

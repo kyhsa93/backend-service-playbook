@@ -67,9 +67,8 @@ class SesNotificationService(NotificationService):
             await self._send_and_record(event)
         except Exception:  # noqa: BLE001 - 알림 실패는 커맨드 처리에 영향을 주면 안 된다
             logger.exception(
-                "알림 이메일 발송 실패: event_type=%s account_id=%s",
-                type(event).__name__,
-                event.account_id,
+                "알림 이메일 발송 실패",
+                extra={"event_type": type(event).__name__, "account_id": event.account_id},
             )
 
     async def _send_and_record(self, event: AccountDomainEvent) -> None:
@@ -106,9 +105,11 @@ class SesNotificationService(NotificationService):
         await self._session.flush()
 
         logger.info(
-            "알림 이메일 발송됨: event_type=%s account_id=%s recipient=%s ses_message_id=%s",
-            event_type,
-            event.account_id,
-            recipient,
-            ses_message_id,
+            "알림 이메일 발송됨",
+            extra={
+                "event_type": event_type,
+                "account_id": event.account_id,
+                "recipient": recipient,
+                "ses_message_id": ses_message_id,
+            },
         )
