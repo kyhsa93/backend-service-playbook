@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/google/uuid"
-
+	"github.com/example/account-service/internal/common"
 	"github.com/example/account-service/internal/domain/account"
 )
 
@@ -31,7 +30,7 @@ func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []account.Domai
 		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)`,
-			uuid.NewString(), eventTypeName(event), payload,
+			common.NewID(), eventTypeName(event), payload,
 		); err != nil {
 			return fmt.Errorf("save outbox event: %w", err)
 		}

@@ -3,7 +3,7 @@ package account
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/example/account-service/internal/common"
 )
 
 type TransactionType string
@@ -23,7 +23,7 @@ type Transaction struct {
 
 func newTransaction(accountID string, txType TransactionType, amount Money) Transaction {
 	return Transaction{
-		TransactionID: uuid.NewString(),
+		TransactionID: common.NewID(),
 		AccountID:     accountID,
 		Type:          txType,
 		Amount:        amount,

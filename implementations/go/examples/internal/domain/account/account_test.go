@@ -2,10 +2,13 @@ package account_test
 
 import (
 	"errors"
+	"regexp"
 	"testing"
 
 	"github.com/example/account-service/internal/domain/account"
 )
+
+var hex32 = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func TestNew(t *testing.T) {
 	a := account.New("owner-1", "owner1@example.com", "KRW")
@@ -15,6 +18,9 @@ func TestNew(t *testing.T) {
 	}
 	if a.Balance.Amount != 0 {
 		t.Fatalf("Balance.Amount = %d, want 0", a.Balance.Amount)
+	}
+	if !hex32.MatchString(a.AccountID) {
+		t.Fatalf("AccountID = %q, want 32-char hex string without hyphens", a.AccountID)
 	}
 	events := a.DomainEvents()
 	if len(events) != 1 {
@@ -71,8 +77,12 @@ func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
 	a.ClearEvents()
 
-	if _, err := a.Deposit(1000); err != nil {
+	tx, err := a.Deposit(1000)
+	if err != nil {
 		t.Fatalf("Deposit() unexpected error: %v", err)
+	}
+	if !hex32.MatchString(tx.TransactionID) {
+		t.Fatalf("TransactionID = %q, want 32-char hex string without hyphens", tx.TransactionID)
 	}
 
 	events := a.DomainEvents()

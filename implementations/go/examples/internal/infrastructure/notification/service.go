@@ -9,8 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ses"
 	"github.com/aws/aws-sdk-go-v2/service/ses/types"
-	"github.com/google/uuid"
 
+	"github.com/example/account-service/internal/common"
 	"github.com/example/account-service/internal/domain/account"
 )
 
@@ -77,7 +77,7 @@ func (s *Service) send(ctx context.Context, eventType string, content emailConte
 	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO sent_emails (id, account_id, event_type, recipient, subject, ses_message_id)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		uuid.NewString(), accountID, eventType, content.recipient, content.subject, messageID,
+		common.NewID(), accountID, eventType, content.recipient, content.subject, messageID,
 	)
 	if err != nil {
 		return fmt.Errorf("save sent email record: %w", err)

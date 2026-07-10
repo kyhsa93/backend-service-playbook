@@ -3,7 +3,7 @@ package account
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/example/account-service/internal/common"
 )
 
 type Account struct {
@@ -21,7 +21,7 @@ type Account struct {
 func New(ownerID, email, currency string) *Account {
 	now := time.Now()
 	a := &Account{
-		AccountID: uuid.NewString(),
+		AccountID: common.NewID(),
 		OwnerID:   ownerID,
 		Email:     email,
 		Balance:   Money{Amount: 0, Currency: currency},

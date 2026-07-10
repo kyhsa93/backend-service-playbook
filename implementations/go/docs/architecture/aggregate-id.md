@@ -32,22 +32,11 @@ func NewID() string {
 
 ---
 
-## 현재 예제의 알려진 편차 — `uuid.NewString()`을 하이픈 포함 그대로 사용
+## `common.NewID()` 적용 완료 (더 이상 편차 아님)
 
-`internal/domain/account/account.go`의 `New()`와 `internal/domain/account/transaction.go`의 `newTransaction()`은 현재 `uuid.NewString()`을 하이픈 제거 없이 그대로 사용한다.
+`internal/domain/account/account.go`의 `New()`, `internal/domain/account/transaction.go`의 `newTransaction()`, 그리고 `internal/infrastructure/outbox/writer.go`/`internal/infrastructure/notification/service.go`가 발급하는 outbox/sent_email ID까지 전부 `common.NewID()`(하이픈 제거 32자리 hex)를 사용한다 — 예전에는 `uuid.NewString()`을 하이픈 제거 없이 그대로 썼다.
 
-```go
-// internal/domain/account/account.go — 현재 코드 (편차)
-func New(ownerID, email, currency string) *Account {
-	now := time.Now()
-	a := &Account{
-		AccountID: uuid.NewString(),  // "550e8400-e29b-41d4-a716-446655440000" — 하이픈 포함
-		...
-	}
-}
-```
-
-이는 루트 문서가 명시적으로 금지하는 "하이픈 포함 UUID" 형식이다. 새 도메인을 작성할 때는 이 문서의 `common.NewID()` 패턴(하이픈 제거 32자리 hex)을 따르고, `account.go`/`transaction.go`를 손대는 리팩터링을 할 기회가 생기면 `uuid.NewString()` 호출을 `common.NewID()`로 교체해 루트 규칙에 맞춘다. 이 문서는 가이드이며 이번 패스에서 `examples/` 코드 자체는 수정하지 않는다.
+컬럼 타입(`VARCHAR(36)`)은 32자리든 36자리(하이픈 포함)든 모두 담을 수 있으므로 이 변경에 마이그레이션은 필요 없었다.
 
 ---
 
