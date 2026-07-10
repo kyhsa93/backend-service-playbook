@@ -8,11 +8,17 @@ from testcontainers.postgres import PostgresContainer
 
 from main import app
 from src.account.infrastructure.persistence.account_repository import Base
+from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.database import get_session
 
 OWNER_ID = "owner-1"
 OTHER_OWNER_ID = "owner-2"
 OWNER_EMAIL = "owner1@example.com"
+
+
+def auth_headers(user_id: str) -> dict:
+    token = JwtAuthService().issue_token(user_id)
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -42,7 +48,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 async def create_account(client: AsyncClient, owner_id: str, currency: str, email: str = OWNER_EMAIL) -> dict:
     response = await client.post(
-        "/accounts", json={"currency": currency, "email": email}, headers={"X-User-Id": owner_id}
+        "/accounts", json={"currency": currency, "email": email}, headers=auth_headers(owner_id)
     )
     assert response.status_code == 201
     return response.json()
@@ -51,7 +57,7 @@ async def create_account(client: AsyncClient, owner_id: str, currency: str, emai
 @pytest.mark.asyncio
 async def test_create_account_success(client: AsyncClient) -> None:
     response = await client.post(
-        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers={"X-User-Id": OWNER_ID}
+        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 201
@@ -66,20 +72,20 @@ async def test_create_account_success(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_create_account_missing_currency_returns_422(client: AsyncClient) -> None:
-    response = await client.post("/accounts", json={"email": OWNER_EMAIL}, headers={"X-User-Id": OWNER_ID})
+    response = await client.post("/accounts", json={"email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID))
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_create_account_missing_email_returns_422(client: AsyncClient) -> None:
-    response = await client.post("/accounts", json={"currency": "KRW"}, headers={"X-User-Id": OWNER_ID})
+    response = await client.post("/accounts", json={"currency": "KRW"}, headers=auth_headers(OWNER_ID))
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_create_account_invalid_email_returns_422(client: AsyncClient) -> None:
     response = await client.post(
-        "/accounts", json={"currency": "KRW", "email": "not-an-email"}, headers={"X-User-Id": OWNER_ID}
+        "/accounts", json={"currency": "KRW", "email": "not-an-email"}, headers=auth_headers(OWNER_ID)
     )
     assert response.status_code == 422
 
@@ -89,7 +95,7 @@ async def test_deposit_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 
     response = await client.post(
-        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 201
@@ -102,7 +108,7 @@ async def test_deposit_success(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_deposit_account_not_found_returns_404(client: AsyncClient) -> None:
     response = await client.post(
-        "/accounts/non-existent/deposit", json={"amount": 10000}, headers={"X-User-Id": OWNER_ID}
+        "/accounts/non-existent/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
     assert response.status_code == 404
 
@@ -114,7 +120,7 @@ async def test_deposit_other_owner_returns_404(client: AsyncClient) -> None:
     response = await client.post(
         f"/accounts/{account['account_id']}/deposit",
         json={"amount": 10000},
-        headers={"X-User-Id": OTHER_OWNER_ID},
+        headers=auth_headers(OTHER_OWNER_ID),
     )
 
     assert response.status_code == 404
@@ -125,7 +131,7 @@ async def test_deposit_non_positive_amount_returns_400(client: AsyncClient) -> N
     account = await create_account(client, OWNER_ID, "KRW")
 
     response = await client.post(
-        f"/accounts/{account['account_id']}/deposit", json={"amount": 0}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 0}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 400
@@ -134,10 +140,10 @@ async def test_deposit_non_positive_amount_returns_400(client: AsyncClient) -> N
 @pytest.mark.asyncio
 async def test_deposit_suspended_account_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
-    await client.post(f"/accounts/{account['account_id']}/suspend", headers={"X-User-Id": OWNER_ID})
+    await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 
     response = await client.post(
-        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 400
@@ -147,11 +153,11 @@ async def test_deposit_suspended_account_returns_400(client: AsyncClient) -> Non
 async def test_withdraw_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
     await client.post(
-        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
 
     response = await client.post(
-        f"/accounts/{account['account_id']}/withdraw", json={"amount": 4000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/withdraw", json={"amount": 4000}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 201
@@ -161,7 +167,7 @@ async def test_withdraw_success(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_withdraw_account_not_found_returns_404(client: AsyncClient) -> None:
     response = await client.post(
-        "/accounts/non-existent/withdraw", json={"amount": 1000}, headers={"X-User-Id": OWNER_ID}
+        "/accounts/non-existent/withdraw", json={"amount": 1000}, headers=auth_headers(OWNER_ID)
     )
     assert response.status_code == 404
 
@@ -171,7 +177,7 @@ async def test_withdraw_insufficient_balance_returns_400(client: AsyncClient) ->
     account = await create_account(client, OWNER_ID, "KRW")
 
     response = await client.post(
-        f"/accounts/{account['account_id']}/withdraw", json={"amount": 1000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/withdraw", json={"amount": 1000}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 400
@@ -180,10 +186,10 @@ async def test_withdraw_insufficient_balance_returns_400(client: AsyncClient) ->
 @pytest.mark.asyncio
 async def test_withdraw_suspended_account_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
-    await client.post(f"/accounts/{account['account_id']}/suspend", headers={"X-User-Id": OWNER_ID})
+    await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 
     response = await client.post(
-        f"/accounts/{account['account_id']}/withdraw", json={"amount": 1000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/withdraw", json={"amount": 1000}, headers=auth_headers(OWNER_ID)
     )
 
     assert response.status_code == 400
@@ -193,25 +199,25 @@ async def test_withdraw_suspended_account_returns_400(client: AsyncClient) -> No
 async def test_suspend_account_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 
-    response = await client.post(f"/accounts/{account['account_id']}/suspend", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
     assert response.status_code == 204
 
-    get_response = await client.get(f"/accounts/{account['account_id']}", headers={"X-User-Id": OWNER_ID})
+    get_response = await client.get(f"/accounts/{account['account_id']}", headers=auth_headers(OWNER_ID))
     assert get_response.json()["status"] == "SUSPENDED"
 
 
 @pytest.mark.asyncio
 async def test_suspend_account_not_found_returns_404(client: AsyncClient) -> None:
-    response = await client.post("/accounts/non-existent/suspend", headers={"X-User-Id": OWNER_ID})
+    response = await client.post("/accounts/non-existent/suspend", headers=auth_headers(OWNER_ID))
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_suspend_already_suspended_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
-    await client.post(f"/accounts/{account['account_id']}/suspend", headers={"X-User-Id": OWNER_ID})
+    await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 
-    response = await client.post(f"/accounts/{account['account_id']}/suspend", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 
     assert response.status_code == 400
 
@@ -219,18 +225,18 @@ async def test_suspend_already_suspended_returns_400(client: AsyncClient) -> Non
 @pytest.mark.asyncio
 async def test_reactivate_account_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
-    await client.post(f"/accounts/{account['account_id']}/suspend", headers={"X-User-Id": OWNER_ID})
+    await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 
-    response = await client.post(f"/accounts/{account['account_id']}/reactivate", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/reactivate", headers=auth_headers(OWNER_ID))
     assert response.status_code == 204
 
-    get_response = await client.get(f"/accounts/{account['account_id']}", headers={"X-User-Id": OWNER_ID})
+    get_response = await client.get(f"/accounts/{account['account_id']}", headers=auth_headers(OWNER_ID))
     assert get_response.json()["status"] == "ACTIVE"
 
 
 @pytest.mark.asyncio
 async def test_reactivate_account_not_found_returns_404(client: AsyncClient) -> None:
-    response = await client.post("/accounts/non-existent/reactivate", headers={"X-User-Id": OWNER_ID})
+    response = await client.post("/accounts/non-existent/reactivate", headers=auth_headers(OWNER_ID))
     assert response.status_code == 404
 
 
@@ -238,7 +244,7 @@ async def test_reactivate_account_not_found_returns_404(client: AsyncClient) -> 
 async def test_reactivate_active_account_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 
-    response = await client.post(f"/accounts/{account['account_id']}/reactivate", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/reactivate", headers=auth_headers(OWNER_ID))
 
     assert response.status_code == 400
 
@@ -247,16 +253,16 @@ async def test_reactivate_active_account_returns_400(client: AsyncClient) -> Non
 async def test_close_account_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 
-    response = await client.post(f"/accounts/{account['account_id']}/close", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/close", headers=auth_headers(OWNER_ID))
     assert response.status_code == 204
 
-    get_response = await client.get(f"/accounts/{account['account_id']}", headers={"X-User-Id": OWNER_ID})
+    get_response = await client.get(f"/accounts/{account['account_id']}", headers=auth_headers(OWNER_ID))
     assert get_response.json()["status"] == "CLOSED"
 
 
 @pytest.mark.asyncio
 async def test_close_account_not_found_returns_404(client: AsyncClient) -> None:
-    response = await client.post("/accounts/non-existent/close", headers={"X-User-Id": OWNER_ID})
+    response = await client.post("/accounts/non-existent/close", headers=auth_headers(OWNER_ID))
     assert response.status_code == 404
 
 
@@ -264,10 +270,10 @@ async def test_close_account_not_found_returns_404(client: AsyncClient) -> None:
 async def test_close_account_balance_not_zero_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
     await client.post(
-        f"/accounts/{account['account_id']}/deposit", json={"amount": 5000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 5000}, headers=auth_headers(OWNER_ID)
     )
 
-    response = await client.post(f"/accounts/{account['account_id']}/close", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/close", headers=auth_headers(OWNER_ID))
 
     assert response.status_code == 400
 
@@ -275,9 +281,9 @@ async def test_close_account_balance_not_zero_returns_400(client: AsyncClient) -
 @pytest.mark.asyncio
 async def test_close_already_closed_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
-    await client.post(f"/accounts/{account['account_id']}/close", headers={"X-User-Id": OWNER_ID})
+    await client.post(f"/accounts/{account['account_id']}/close", headers=auth_headers(OWNER_ID))
 
-    response = await client.post(f"/accounts/{account['account_id']}/close", headers={"X-User-Id": OWNER_ID})
+    response = await client.post(f"/accounts/{account['account_id']}/close", headers=auth_headers(OWNER_ID))
 
     assert response.status_code == 400
 
@@ -286,7 +292,7 @@ async def test_close_already_closed_returns_400(client: AsyncClient) -> None:
 async def test_get_account_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 
-    response = await client.get(f"/accounts/{account['account_id']}", headers={"X-User-Id": OWNER_ID})
+    response = await client.get(f"/accounts/{account['account_id']}", headers=auth_headers(OWNER_ID))
 
     assert response.status_code == 200
     body = response.json()
@@ -297,7 +303,7 @@ async def test_get_account_success(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_get_account_not_found_returns_404(client: AsyncClient) -> None:
-    response = await client.get("/accounts/non-existent", headers={"X-User-Id": OWNER_ID})
+    response = await client.get("/accounts/non-existent", headers=auth_headers(OWNER_ID))
     assert response.status_code == 404
 
 
@@ -305,7 +311,7 @@ async def test_get_account_not_found_returns_404(client: AsyncClient) -> None:
 async def test_get_account_other_owner_returns_404(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 
-    response = await client.get(f"/accounts/{account['account_id']}", headers={"X-User-Id": OTHER_OWNER_ID})
+    response = await client.get(f"/accounts/{account['account_id']}", headers=auth_headers(OTHER_OWNER_ID))
 
     assert response.status_code == 404
 
@@ -314,16 +320,16 @@ async def test_get_account_other_owner_returns_404(client: AsyncClient) -> None:
 async def test_get_transactions_with_pagination(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
     await client.post(
-        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
     await client.post(
-        f"/accounts/{account['account_id']}/withdraw", json={"amount": 3000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account['account_id']}/withdraw", json={"amount": 3000}, headers=auth_headers(OWNER_ID)
     )
 
     response = await client.get(
         f"/accounts/{account['account_id']}/transactions",
         params={"page": 0, "take": 20},
-        headers={"X-User-Id": OWNER_ID},
+        headers=auth_headers(OWNER_ID),
     )
 
     assert response.status_code == 200
@@ -334,7 +340,7 @@ async def test_get_transactions_with_pagination(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_get_transactions_account_not_found_returns_404(client: AsyncClient) -> None:
-    response = await client.get("/accounts/non-existent/transactions", headers={"X-User-Id": OWNER_ID})
+    response = await client.get("/accounts/non-existent/transactions", headers=auth_headers(OWNER_ID))
     assert response.status_code == 404
 
 
@@ -345,7 +351,7 @@ async def test_get_transactions_beyond_last_page_returns_empty(client: AsyncClie
     response = await client.get(
         f"/accounts/{account['account_id']}/transactions",
         params={"page": 5, "take": 20},
-        headers={"X-User-Id": OWNER_ID},
+        headers=auth_headers(OWNER_ID),
     )
 
     assert response.status_code == 200

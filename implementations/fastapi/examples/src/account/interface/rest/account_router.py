@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 from ....outbox.outbox_relay import OutboxRelay
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
 from ...application.command.create_account_handler import CreateAccountCommand, CreateAccountHandler
@@ -30,7 +31,7 @@ from .schemas import (
     WithdrawRequest,
 )
 
-router = APIRouter(prefix="/accounts", tags=["Account"])
+router = APIRouter(prefix="/accounts", tags=["Account"], dependencies=[Depends(get_current_user)])
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
@@ -61,12 +62,12 @@ def _outbox_relay(
 @router.post("", status_code=201, response_model=CreateAccountResponse)
 async def create_account(
     body: CreateAccountRequest,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> CreateAccountResponse:
     account = await CreateAccountHandler(repo, outbox_relay).execute(
-        CreateAccountCommand(requester_id=x_user_id, currency=body.currency, email=body.email)
+        CreateAccountCommand(requester_id=current_user.user_id, currency=body.currency, email=body.email)
     )
     return CreateAccountResponse(
         account_id=account.account_id,
@@ -82,12 +83,12 @@ async def create_account(
 async def deposit(
     account_id: str,
     body: DepositRequest,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
     transaction = await DepositHandler(repo, outbox_relay).execute(
-        DepositCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
+        DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     return TransactionResponse(
         transaction_id=transaction.transaction_id,
@@ -102,12 +103,12 @@ async def deposit(
 async def withdraw(
     account_id: str,
     body: WithdrawRequest,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
     transaction = await WithdrawHandler(repo, outbox_relay).execute(
-        WithdrawCommand(account_id=account_id, requester_id=x_user_id, amount=body.amount)
+        WithdrawCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     return TransactionResponse(
         transaction_id=transaction.transaction_id,
@@ -121,46 +122,48 @@ async def withdraw(
 @router.post("/{account_id}/suspend", status_code=204)
 async def suspend_account(
     account_id: str,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
     await SuspendAccountHandler(repo, outbox_relay).execute(
-        SuspendAccountCommand(account_id=account_id, requester_id=x_user_id)
+        SuspendAccountCommand(account_id=account_id, requester_id=current_user.user_id)
     )
 
 
 @router.post("/{account_id}/reactivate", status_code=204)
 async def reactivate_account(
     account_id: str,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
     await ReactivateAccountHandler(repo, outbox_relay).execute(
-        ReactivateAccountCommand(account_id=account_id, requester_id=x_user_id)
+        ReactivateAccountCommand(account_id=account_id, requester_id=current_user.user_id)
     )
 
 
 @router.post("/{account_id}/close", status_code=204)
 async def close_account(
     account_id: str,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
     outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
     await CloseAccountHandler(repo, outbox_relay).execute(
-        CloseAccountCommand(account_id=account_id, requester_id=x_user_id)
+        CloseAccountCommand(account_id=account_id, requester_id=current_user.user_id)
     )
 
 
 @router.get("/{account_id}", response_model=GetAccountResponse)
 async def get_account(
     account_id: str,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
 ) -> GetAccountResponse:
-    result = await GetAccountHandler(repo).execute(GetAccountQuery(account_id=account_id, requester_id=x_user_id))
+    result = await GetAccountHandler(repo).execute(
+        GetAccountQuery(account_id=account_id, requester_id=current_user.user_id)
+    )
     return GetAccountResponse(
         account_id=result.account_id,
         owner_id=result.owner_id,
@@ -175,13 +178,13 @@ async def get_account(
 @router.get("/{account_id}/transactions", response_model=GetTransactionsResponse)
 async def get_transactions(
     account_id: str,
-    x_user_id: str = Header(...),
+    current_user: CurrentUser = Depends(get_current_user),
     page: int = 0,
     take: int = 20,
     repo: SqlAlchemyAccountRepository = Depends(_repo),
 ) -> GetTransactionsResponse:
     result = await GetTransactionsHandler(repo).execute(
-        GetTransactionsQuery(account_id=account_id, requester_id=x_user_id, page=page, take=take)
+        GetTransactionsQuery(account_id=account_id, requester_id=current_user.user_id, page=page, take=take)
     )
     return GetTransactionsResponse(
         transactions=[

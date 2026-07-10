@@ -13,11 +13,17 @@ from testcontainers.postgres import PostgresContainer
 from main import app
 from src.account.infrastructure.notification.sent_email_model import SentEmailModel
 from src.account.infrastructure.persistence.account_repository import Base
+from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.database import get_session
 
 OWNER_ID = "owner-1"
 RECIPIENT_EMAIL = "owner1@example.com"
 SENDER_EMAIL = "no-reply@backend-service-playbook.example.com"
+
+
+def auth_headers(user_id: str) -> dict:
+    token = JwtAuthService().issue_token(user_id)
+    return {"Authorization": f"Bearer {token}"}
 
 
 async def _fetch_ses_messages(endpoint: str) -> list[dict]:
@@ -98,7 +104,7 @@ async def test_account_created_sends_ses_email_and_records_it(notification_env: 
     client: AsyncClient = notification_env["client"]
 
     response = await client.post(
-        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers={"X-User-Id": OWNER_ID}
+        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers=auth_headers(OWNER_ID)
     )
     assert response.status_code == 201
     account_id = response.json()["account_id"]
@@ -119,12 +125,12 @@ async def test_deposit_sends_ses_email_and_records_it(notification_env: dict) ->
     client: AsyncClient = notification_env["client"]
 
     create_response = await client.post(
-        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers={"X-User-Id": OWNER_ID}
+        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers=auth_headers(OWNER_ID)
     )
     account_id = create_response.json()["account_id"]
 
     deposit_response = await client.post(
-        f"/accounts/{account_id}/deposit", json={"amount": 10000}, headers={"X-User-Id": OWNER_ID}
+        f"/accounts/{account_id}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
     assert deposit_response.status_code == 201
 

@@ -4,6 +4,7 @@ sqlalchemy
 asyncpg
 pydantic[email]
 aioboto3
+python-jose[cryptography]
 
 pytest
 pytest-asyncio

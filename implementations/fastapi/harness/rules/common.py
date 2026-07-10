@@ -74,3 +74,14 @@ def norm(path: str) -> str:
 
 def is_shared_dir(name: str) -> bool:
     return name in {"common", "database", "outbox", "task-queue", "config"}
+
+
+def is_technical_service_dir(name: str) -> bool:
+    """CQRS(Command/Query) 분리가 필요 없는 Technical Service 모듈.
+
+    domain/application/infrastructure/interface 4레이어는 갖추지만(예: auth의
+    domain/token.py, application/service/auth_service.py), 도메인 커맨드·쿼리가
+    아니라 단일 기술 서비스(토큰 발급/검증 등)만 제공하므로 application/{command,query}/
+    존재를 요구하지 않는다.
+    """
+    return name in {"auth"}

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from src.account.domain.errors import AccountError, AccountNotFoundError
 from src.account.infrastructure.persistence.account_repository import Base
 from src.account.interface.rest.account_router import router as account_router
+from src.auth.interface.rest.auth_router import router as auth_router
 from src.database import engine
 
 
@@ -19,6 +20,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title="Account Service", lifespan=lifespan)
 
+app.include_router(auth_router)
 app.include_router(account_router)
 
 

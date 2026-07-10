@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from .common import RuleResult, failed, is_shared_dir, passed, skipped
+from .common import RuleResult, failed, is_shared_dir, is_technical_service_dir, passed, skipped
 
 
 def check(root: str, py_files: list[str]) -> RuleResult:
@@ -31,6 +31,8 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                 result.add(passed(label))
             else:
                 result.add(failed(label, "디렉토리 없음"))
+        if is_technical_service_dir(domain):
+            continue
         for sub in ("command", "query"):
             d = os.path.join(base, "application", sub)
             label = f"src/{domain}/application/{sub}/"
