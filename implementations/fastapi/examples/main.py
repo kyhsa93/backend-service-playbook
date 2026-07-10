@@ -3,16 +3,20 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from src.config.validator import validate_env
 
-from src.account.domain.errors import AccountError, AccountNotFoundError
-from src.account.interface.rest.account_router import router as account_router
-from src.auth.infrastructure.jwt_auth_service import set_jwt_secret
-from src.auth.interface.rest.auth_router import router as auth_router
-from src.common.aws_secret_service import AwsSecretService
-from src.common.correlation import generate_correlation_id, set_correlation_id
-from src.common.logging_config import configure_logging
+validate_env()  # 실패 시 여기서 프로세스가 종료된다 — 이후 코드는 실행되지 않음
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa: E402
+from src.account.interface.rest.account_router import router as account_router  # noqa: E402
+from src.auth.infrastructure.jwt_auth_service import set_jwt_secret  # noqa: E402
+from src.auth.interface.rest.auth_router import router as auth_router  # noqa: E402
+from src.common.aws_secret_service import AwsSecretService  # noqa: E402
+from src.common.correlation import generate_correlation_id, set_correlation_id  # noqa: E402
+from src.common.logging_config import configure_logging  # noqa: E402
 
 configure_logging()
 logger = logging.getLogger(__name__)
