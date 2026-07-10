@@ -17,21 +17,9 @@
 
 ---
 
-## 알려진 갭 — 현재 예제 코드는 이 규칙을 지키지 않는다
+## `generateId()` 적용 완료 (더 이상 갭 아님)
 
-`examples/src/main/kotlin/com/example/accountservice/account/domain/Account.kt`의 `companion object.create()`:
-
-```kotlin
-companion object {
-    fun create(ownerId: String, currency: String, email: String): Account =
-        Account().apply {
-            this.accountId = UUID.randomUUID().toString()   // ← 하이픈 포함 — root 규칙 위반
-            ...
-        }
-}
-```
-
-`Transaction.kt`의 `Transaction.create()`도 동일하게 `UUID.randomUUID().toString()`을 그대로 사용한다. `toString()`은 `550e8400-e29b-41d4-a716-446655440000` 형태의 하이픈 포함 문자열을 반환하므로, root가 명시적으로 금지하는 형식이다. **이 문서는 올바른 규칙을 아래에 정의하며, `examples/`가 이를 따르도록 고치는 것은 후속 작업으로 남긴다.**
+`Account.create()`, `Transaction.create()`, `notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `generateId()`(하이픈 제거 32자리 hex)를 사용한다.
 
 ---
 

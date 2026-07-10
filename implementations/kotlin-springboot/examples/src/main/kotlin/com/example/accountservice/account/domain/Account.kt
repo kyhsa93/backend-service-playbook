@@ -1,8 +1,8 @@
 package com.example.accountservice.account.domain
 
+import com.example.accountservice.common.generateId
 import jakarta.persistence.*
 import java.time.LocalDateTime
-import java.util.UUID
 
 @Entity
 @Table(name = "accounts")
@@ -55,7 +55,7 @@ class Account protected constructor() {
     companion object {
         fun create(ownerId: String, currency: String, email: String): Account =
             Account().apply {
-                this.accountId = UUID.randomUUID().toString()
+                this.accountId = generateId()
                 this.ownerId = ownerId
                 this.email = email
                 this.balance = Money(0, currency)

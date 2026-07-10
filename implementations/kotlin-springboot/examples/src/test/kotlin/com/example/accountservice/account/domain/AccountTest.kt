@@ -19,6 +19,13 @@ class AccountTest {
     }
 
     @Test
+    fun `계좌 ID는 하이픈 없는 32자리 hex 문자열이다`() {
+        val account = createAccount()
+
+        assertThat(account.accountId).matches("^[0-9a-f]{32}$")
+    }
+
+    @Test
     fun `정지된 계좌에 입금하면 예외를 던진다`() {
         val account = createAccount()
         account.suspend()
@@ -44,6 +51,7 @@ class AccountTest {
         assertThat(events).hasSize(1)
         assertThat((events.first() as MoneyDepositedEvent).amount.amount).isEqualTo(5000)
         assertThat(account.balance.amount).isEqualTo(5000)
+        assertThat(account.pullPendingTransactions().first().transactionId).matches("^[0-9a-f]{32}$")
     }
 
     @Test
