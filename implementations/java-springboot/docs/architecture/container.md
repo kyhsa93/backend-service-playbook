@@ -2,9 +2,11 @@
 
 > 프레임워크 무관 원칙은 루트 [container.md](../../../../docs/architecture/container.md) 참고.
 
-## 현재 상태 — 알려진 gap
+## 현재 상태 — 멀티스테이지 Dockerfile 적용 완료, Actuator 헬스체크는 남은 gap
 
-`examples/`에는 `Dockerfile`/`.dockerignore`가 없다 (build.gradle, docker-compose.yml만 존재). 아래는 이 프로젝트에 실제로 추가할 때 따라야 할 패턴이다.
+`examples/Dockerfile`이 아래 "멀티스테이지 빌드 — Layered JAR" 절과 거의 동일한 3-스테이지(Build/Extract/Runtime) 구조로 이미 존재한다 — Layered JAR 추출, JRE 베이스 런타임(`eclipse-temurin:21-jre-alpine`), non-root `spring` 사용자, `exec form` ENTRYPOINT 모두 적용됨. 아래 섹션들은 그 실제 코드를 그대로 보여준다.
+
+다만 **"헬스체크 엔드포인트 — Spring Boot Actuator" 절은 아직 코드에 반영되지 않았다** — `build.gradle`에 `spring-boot-starter-actuator` 의존성이 없고, `Dockerfile`에도 `HEALTHCHECK`가 없다([graceful-shutdown.md](graceful-shutdown.md)의 Actuator gap과 동일한 원인).
 
 ---
 
@@ -13,6 +15,7 @@
 Spring Boot는 `bootJar`가 생성하는 fat JAR을 레이어별로 분해할 수 있는 기능(`layered jar`)을 기본 제공한다. 의존성 레이어(자주 안 바뀜)와 애플리케이션 코드 레이어(자주 바뀜)를 분리하면 Docker 레이어 캐시 재사용률이 크게 올라간다.
 
 ```dockerfile
+# Dockerfile — 실제 코드
 # ---- Stage 1: Build ----
 FROM gradle:8.10-jdk21-alpine AS build
 
@@ -114,7 +117,7 @@ docker run -e AWS_REGION=us-east-1 -e AWS_ACCESS_KEY_ID=... myapp
 
 ---
 
-## 헬스체크 엔드포인트 — Spring Boot Actuator
+## 헬스체크 엔드포인트 — Spring Boot Actuator (아직 미도입)
 
 ```groovy
 // build.gradle

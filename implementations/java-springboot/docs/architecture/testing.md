@@ -2,14 +2,14 @@
 
 > 프레임워크 무관 원칙은 루트 [testing.md](../../../../docs/architecture/testing.md) 참고.
 
-## 알려진 gap — 현재는 E2E 레이어만 존재한다
+## 적용 완료 — 3계층 테스트 피라미드가 모두 존재한다
 
-`examples/`의 테스트는 `AccountControllerE2ETest.java`와 `NotificationE2ETest.java` 두 개뿐이다 — Testcontainers(Postgres + LocalStack SES)로 실제 HTTP 요청과 이메일 발송까지 검증하는 탄탄한 E2E 테스트이지만, root가 요구하는 3계층 중 **Domain 단위 테스트**와 **Application 단위 테스트**가 하나도 없다. 테스트 피라미드가 최상위 계층(가장 느리고 비싼 테스트)에만 존재하는 역피라미드 상태다.
+`examples/`에는 root가 요구하는 3계층이 모두 있다 — Domain 단위 테스트(`AccountTest`, `MoneyTest`), Application 단위 테스트(`CreateAccountServiceTest`, `DepositServiceTest`), E2E 테스트(`AccountControllerE2ETest`, `NotificationE2ETest`, Testcontainers 기반).
 
 | 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
 |--------|----------|------------|----------|
-| Domain 단위 테스트 | `Account`, `Money`, `Transaction` 불변식 | 프레임워크 없음 | **없음** |
-| Application 단위 테스트 | `CreateAccountService` 등 조율 로직 | `AccountRepository`를 mock | **없음** |
+| Domain 단위 테스트 | `Account`, `Money` 불변식 | 프레임워크 없음 | 있음 (`AccountTest`, `MoneyTest`) |
+| Application 단위 테스트 | `CreateAccountService`/`DepositService` 조율 로직 | `AccountRepository`를 mock(Mockito) | 있음 (`CreateAccountServiceTest`, `DepositServiceTest`) |
 | E2E 테스트 | Controller → Service → DB 전체 경로 | Testcontainers | 있음 (`AccountControllerE2ETest`, `NotificationE2ETest`) |
 
 아래에서 3계층 모두를 Java/Spring 관용으로 정의한다.
@@ -35,7 +35,7 @@ testImplementation 'org.testcontainers:localstack'
 ## Domain 단위 테스트 — 프레임워크 없이 순수 Java
 
 ```java
-// src/test/java/.../account/domain/AccountTest.java — 제안
+// src/test/java/.../account/domain/AccountTest.java — 실제 코드
 package com.example.accountservice.account.domain;
 
 import org.junit.jupiter.api.Test;
@@ -114,7 +114,7 @@ class AccountTest {
 ## Application 단위 테스트 — Mockito로 Repository mock
 
 ```java
-// src/test/java/.../account/application/command/CreateAccountServiceTest.java — 제안
+// src/test/java/.../account/application/command/CreateAccountServiceTest.java — 실제 코드
 package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.AccountRepository;
@@ -126,6 +126,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -149,7 +150,8 @@ class CreateAccountServiceTest {
         CreateAccountResult result = service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
 
         assertThat(result.ownerId()).isEqualTo("owner-1");
-        verify(accountRepository).save(org.mockito.ArgumentMatchers.any());
+        assertThat(result.balance().amount()).isEqualTo(0);
+        verify(accountRepository).save(any());
     }
 
     @Test
