@@ -1,9 +1,9 @@
 package com.example.accountservice.notification.infrastructure.persistence;
 
+import com.example.accountservice.common.IdGenerator;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "sent_email")
@@ -38,7 +38,7 @@ public class SentEmail {
 
     public static SentEmail create(String accountId, String eventType, String recipient, String subject, String sesMessageId) {
         SentEmail sentEmail = new SentEmail();
-        sentEmail.sentEmailId = UUID.randomUUID().toString();
+        sentEmail.sentEmailId = IdGenerator.generate();
         sentEmail.accountId = accountId;
         sentEmail.eventType = eventType;
         sentEmail.recipient = recipient;

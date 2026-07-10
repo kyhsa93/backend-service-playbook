@@ -22,6 +22,13 @@ class AccountTest {
     }
 
     @Test
+    void 계좌_ID는_하이픈_없는_32자리_hex_문자열이다() {
+        Account account = createAccount();
+
+        assertThat(account.getAccountId()).matches("^[0-9a-f]{32}$");
+    }
+
+    @Test
     void 정지된_계좌에_입금하면_예외를_던진다() {
         Account account = createAccount();
         account.suspend();
@@ -53,6 +60,7 @@ class AccountTest {
         assertThat(events).hasSize(1);
         assertThat(((MoneyDepositedEvent) events.get(0)).amount().amount()).isEqualTo(5000);
         assertThat(account.getBalance().amount()).isEqualTo(5000);
+        assertThat(account.pullPendingTransactions().get(0).getTransactionId()).matches("^[0-9a-f]{32}$");
     }
 
     @Test

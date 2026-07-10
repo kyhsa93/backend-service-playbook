@@ -1,9 +1,9 @@
 package com.example.accountservice.account.domain;
 
+import com.example.accountservice.common.IdGenerator;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "transactions")
@@ -33,7 +33,7 @@ public class Transaction {
 
     static Transaction create(String accountId, TransactionType type, Money amount) {
         Transaction transaction = new Transaction();
-        transaction.transactionId = UUID.randomUUID().toString();
+        transaction.transactionId = IdGenerator.generate();
         transaction.accountId = accountId;
         transaction.type = type;
         transaction.amount = amount;

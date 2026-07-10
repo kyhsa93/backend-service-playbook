@@ -1,11 +1,11 @@
 package com.example.accountservice.account.domain;
 
+import com.example.accountservice.common.IdGenerator;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Entity
 @Table(name = "accounts")
@@ -50,7 +50,7 @@ public class Account {
 
     public static Account create(String ownerId, String email, String currency) {
         Account account = new Account();
-        account.accountId = UUID.randomUUID().toString();
+        account.accountId = IdGenerator.generate();
         account.ownerId = ownerId;
         account.email = email;
         account.balance = new Money(0, currency);

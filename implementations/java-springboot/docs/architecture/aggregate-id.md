@@ -16,21 +16,9 @@
 
 ---
 
-## 현재 구현의 문제 — 알려진 gap
+## `IdGenerator` 적용 완료 (더 이상 gap 아님)
 
-`account/domain/Account.java`의 `create()`:
-
-```java
-public static Account create(String ownerId, String email, String currency) {
-    Account account = new Account();
-    account.accountId = UUID.randomUUID().toString();   // 하이픈 포함 — 규칙 위반
-    ...
-}
-```
-
-`UUID.randomUUID().toString()`은 `550e8400-e29b-41d4-a716-446655440000` 형태로 하이픈을 포함한다. 루트 규칙(32자리 hex, 하이픈 없음)과 다르다. `Transaction.create()`의 `transactionId`도 동일한 패턴을 사용해 같은 문제가 있다.
-
-**올바른 구현:**
+`account/domain/Account.java`의 `create()`, `Transaction.create()`, `notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `IdGenerator.generate()`(32자리 hex, 하이픈 없음)를 사용한다.
 
 ```java
 // common/IdGenerator.java — 프레임워크 무의존 순수 유틸
