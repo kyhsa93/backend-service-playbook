@@ -4,7 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 
 import { AccountModule } from '@/account/account-module'
 import { AuthModule } from '@/auth/auth-module'
+import { SecretService } from '@/common/application/service/secret-service'
 import { CorrelationIdMiddleware } from '@/common/correlation-id.middleware'
+import { SecretServiceImpl } from '@/common/infrastructure/secret-service-impl'
 import { jwtConfig } from '@/config/jwt.config'
 import { AppDataSource } from '@/database/data-source'
 import { OutboxModule } from '@/outbox/outbox-module'
@@ -20,7 +22,11 @@ import { OutboxModule } from '@/outbox/outbox-module'
     OutboxModule,
     AuthModule,
     AccountModule
-  ]
+  ],
+  providers: [
+    { provide: SecretService, useClass: SecretServiceImpl }
+  ],
+  exports: [SecretService]
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
