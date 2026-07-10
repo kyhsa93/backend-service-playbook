@@ -26,5 +26,22 @@ services:
       timeout: 3s
       retries: 5
 
+  app:
+    build: .
+    ports: ['8000:8000']
+    env_file:
+      - .env.development
+    environment:
+      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      DATABASE_URL: postgresql+asyncpg://dev:dev@database:5432/app
+      AWS_ENDPOINT_URL: http://localstack:4566
+    depends_on:
+      database:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    profiles:
+      - app
+
 volumes:
   db-data:
