@@ -2,16 +2,17 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/config.md](../../../../docs/architecture/config.md)
 
-## 현재 구현 — `DatabaseConfig`는 fail-fast 검증됨, `JWT_SECRET`/AWS 자격 증명은 아직 격차
+## 현재 구현 — `DatabaseConfig`/`JwtConfig`는 fail-fast 검증됨, AWS 자격 증명은 아직 격차
 
 `src/config/database_config.py`의 `DatabaseConfig`(`pydantic_settings.BaseSettings`)가 `DATABASE_URL`을 필수값으로 검증하고, `src/config/validator.py`의 `validate_env()`가 `main.py` 모듈 임포트 시점에 이를 호출해 누락 시 `sys.exit(1)`로 즉시 종료한다 — 아래 "Fail-Fast" 절이 이 실제 코드를 그대로 보여준다.
 
-다만 이 fail-fast 검증은 **`DatabaseConfig` 하나에만 적용된다.** 다음 두 값은 여전히 검증 없이 하드코딩된 기본값으로 조용히 대체된다.
+`src/config/jwt_config.py`의 `JwtConfig`도 같은 방식으로 검증된다. 다만 `JWT_SECRET`은 **프로덕션에서만 예외**다 — 프로덕션에서는 `main.py`의 `lifespan`이 Secrets Manager(`app/jwt`)에서 조회해 채우므로([secret-manager.md](secret-manager.md) 참고) 환경 변수가 비어 있어도 fail-fast 대상이 아니다. `validate_env()`가 `APP_ENV != "production"`일 때만 `JwtConfig.secret` 누락을 fail-fast로 막는다.
 
-- **`JWT_SECRET`**: `src/auth/infrastructure/jwt_auth_service.py`가 `os.getenv("JWT_SECRET", "dev-secret")`로 읽는다. 값이 없어도 `"dev-secret"`으로 조용히 대체되어 앱이 기동된다 — 이 문서 작성 시점 기준 이 격차는 코드에 남아 있다. 아래 `JwtConfig` 제안은 아직 구현되지 않았다(별도로 추적 중인 격차).
+다음 값은 여전히 검증 없이 하드코딩된 기본값으로 조용히 대체된다.
+
 - **AWS 자격 증명**(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`): `src/common/aws_secret_service.py`, `src/account/infrastructure/notification/notification_service.py`가 각각 `os.getenv(..., "test")`로 산발적으로 읽는다. 관심사별로 묶는 `AwsConfig`/`aws_config.py` 같은 설정 클래스는 아직 존재하지 않는다 — 아래 `AwsConfig` 제안도 마찬가지로 아직 구현되지 않았다(별도로 추적 중인 격차).
 
-아래는 Pydantic `BaseSettings`를 이용한 fail-fast 패턴이다. `DatabaseConfig`는 실제 코드이고, `JwtConfig`/`AwsConfig`는 아직 구현되지 않은 제안이다.
+아래는 Pydantic `BaseSettings`를 이용한 fail-fast 패턴이다. `DatabaseConfig`/`JwtConfig`는 실제 코드이고, `AwsConfig`는 아직 구현되지 않은 제안이다.
 
 ---
 
@@ -35,15 +36,16 @@ class DatabaseConfig(BaseSettings):
 ```
 
 ```python
-# src/config/jwt_config.py (아직 구현되지 않음 — 제안, 별도 추적 중인 격차)
+# src/config/jwt_config.py — 실제 코드
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class JwtConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JWT_")
 
-    secret: str          # 필수값
-    expire_minutes: int = 60
+    # 기본값 없음 — 그러나 프로덕션에서는 Secrets Manager가 대신 채우므로
+    # 타입 자체는 Optional이고, "필수 여부" 판단은 validate_env()가 한다(아래 참고).
+    secret: str | None = None
 ```
 
 ```python
@@ -60,11 +62,12 @@ class AwsConfig(BaseSettings):
     secret_access_key: str = "test"
 ```
 
-현재 `src/config/`에는 `database_config.py`와 `validator.py`만 있다 — `jwt_config.py`, `aws_config.py`는 아직 파일 자체가 존재하지 않는다.
+현재 `src/config/`에는 `database_config.py`, `jwt_config.py`, `validator.py`가 있다 — `aws_config.py`는 아직 파일 자체가 존재하지 않는다.
 
 **기본값 설정 원칙:**
-- 로컬 개발에서 그대로 동작하는 값(`region`, `expire_minutes`)은 기본값을 둔다.
-- 운영에서 빈 값이면 안 되는 항목(`DatabaseConfig.url`, `JwtConfig.secret`)은 **타입에 기본값을 주지 않는다** — Pydantic이 누락 시 `ValidationError`를 던진다.
+- 로컬 개발에서 그대로 동작하는 값(`region`)은 기본값을 둔다.
+- 운영에서 빈 값이면 안 되는 항목(`DatabaseConfig.url`)은 **타입에 기본값을 주지 않는다** — Pydantic이 누락 시 `ValidationError`를 던진다.
+- `JwtConfig.secret`은 예외적으로 타입은 `str | None`이지만, "필수 여부"는 환경(`APP_ENV`)에 따라 달라지므로 Pydantic 타입 시스템이 아니라 `validate_env()`의 명시적 분기로 강제한다 — 프로덕션에서는 Secrets Manager가 값을 채우기 때문에 타입 자체를 필수로 만들 수 없다.
 
 ---
 
@@ -74,22 +77,31 @@ class AwsConfig(BaseSettings):
 
 ```python
 # src/config/validator.py — 실제 코드
+import os
 import sys
 
 from pydantic import ValidationError
 
 from .database_config import DatabaseConfig
+from .jwt_config import JwtConfig
 
 
 def validate_env() -> None:
     try:
         DatabaseConfig()   # type: ignore[call-arg]  — 값은 환경 변수에서 채워짐
+        jwt_config = JwtConfig()   # type: ignore[call-arg]
     except ValidationError as exc:
         print(f"환경 변수 검증 실패:\n{exc}", file=sys.stderr)
         sys.exit(1)   # 즉시 종료
+
+    # 프로덕션은 lifespan 기동 시 Secrets Manager(app/jwt)가 secret을 채우므로
+    # JWT_SECRET 환경 변수가 없어도 된다 — 그 외 환경에서는 명시적으로 필요하다.
+    if os.getenv("APP_ENV") != "production" and not jwt_config.secret:
+        print("환경 변수 검증 실패:\nJWT_SECRET이 설정되어 있지 않습니다.", file=sys.stderr)
+        sys.exit(1)
 ```
 
-**`JwtConfig()`는 아직 여기 추가되지 않았다** — `JWT_SECRET`이 비어 있어도 `validate_env()`는 통과한다(위 "현재 구현" 절 참조). `JwtConfig`가 실제로 구현되면 이 함수에 `JwtConfig()` 호출을 추가하는 것이 올바른 확장 지점이다.
+**`JwtConfig.secret`이 프로덕션에서는 필수가 아닌 이유**: Pydantic 필드 타입만으로는 "환경에 따라 필수 여부가 달라진다"를 표현할 수 없다 — 그래서 `secret: str | None = None`으로 두고, `validate_env()`가 `APP_ENV`를 직접 확인해 프로덕션이 아닐 때만 fail-fast한다.
 
 `main.py`의 `lifespan` 진입 이전, 모듈 임포트 시점에 호출해 앱이 요청을 받기 전에 실패하도록 한다.
 

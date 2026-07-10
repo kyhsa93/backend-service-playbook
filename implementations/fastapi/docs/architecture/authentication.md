@@ -114,8 +114,10 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 
 # 프로덕션에서는 main.py의 lifespan 기동 시 Secrets Manager에서 조회한 값으로
-# set_jwt_secret()이 이 값을 채운다. 그 전까지(로컬/테스트 기본값)는 환경 변수를 쓴다.
-_jwt_secret: str = os.getenv("JWT_SECRET", "dev-secret")
+# set_jwt_secret()이 이 값을 채운다. 그 전까지는 환경 변수를 쓴다 — validate_env()가
+# 프로덕션이 아닌 환경에서 JWT_SECRET 누락을 이미 fail-fast로 막았으므로 조용한
+# 기본값("dev-secret")을 두지 않는다.
+_jwt_secret: str = os.getenv("JWT_SECRET", "")
 
 
 def set_jwt_secret(secret: str) -> None:
@@ -140,7 +142,7 @@ class JwtAuthService(AuthService):
         return payload["user_id"]
 ```
 
-**`JWT_SECRET`은 아직 fail-fast 검증되지 않는다 — 알려진 격차.** `os.getenv("JWT_SECRET", "dev-secret")`는 값이 없어도 조용히 기본값으로 대체된다. [config.md](config.md)의 `validate_env()`는 현재 `DatabaseConfig`만 검증하며, `JWT_SECRET`을 위한 설정 클래스는 아직 존재하지 않는다 — 이 부분은 별도로 추적 중인 격차이며 이 문서에서 해결 완료로 표시하지 않는다.
+**`JWT_SECRET`은 이미 fail-fast 검증된다.** [config.md](config.md)의 `validate_env()`가 `JwtConfig()`를 인스턴스화하고, `APP_ENV != "production"`인데 `secret`이 비어 있으면 `sys.exit(1)`로 즉시 종료한다. 프로덕션에서는 `main.py`의 `lifespan`이 Secrets Manager(`app/jwt`)에서 조회해 `set_jwt_secret()`으로 채우므로([secret-manager.md](secret-manager.md) 참고) `JWT_SECRET` 환경 변수가 없어도 된다 — 그래서 `validate_env()`는 프로덕션에서 이 검증을 건너뛴다.
 
 ### FastAPI `Depends` 기반 인증 의존성
 
