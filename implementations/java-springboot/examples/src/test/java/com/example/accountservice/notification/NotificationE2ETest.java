@@ -90,9 +90,14 @@ class NotificationE2ETest {
     @Autowired
     private SentEmailRepository sentEmailRepository;
 
+    private String tokenFor(String userId) {
+        ResponseEntity<Map> response = restTemplate.postForEntity("/auth/sign-in", Map.of("userId", userId), Map.class);
+        return (String) response.getBody().get("accessToken");
+    }
+
     private HttpHeaders headersFor(String ownerId) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", ownerId);
+        headers.setBearerAuth(tokenFor(ownerId));
         headers.setContentType(MediaType.APPLICATION_JSON);
         return headers;
     }

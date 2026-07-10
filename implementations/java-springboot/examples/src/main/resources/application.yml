@@ -14,3 +14,6 @@ aws:
 
 ses:
   sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
+
+jwt:
+  secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}

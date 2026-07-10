@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -29,63 +30,66 @@ public class AccountController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CreateAccountResult createAccount(
-            @RequestHeader("X-User-Id") String requesterId,
+            Authentication authentication,
             @Valid @RequestBody CreateAccountRequest request
     ) {
+        String requesterId = authentication.getName();
         return createAccountService.create(new CreateAccountCommand(requesterId, request.email(), request.currency()));
     }
 
     @PostMapping("/{accountId}/deposit")
     @ResponseStatus(HttpStatus.CREATED)
     public TransactionResult deposit(
-            @RequestHeader("X-User-Id") String requesterId,
+            Authentication authentication,
             @PathVariable String accountId,
             @RequestBody DepositRequest request
     ) {
+        String requesterId = authentication.getName();
         return depositService.deposit(new DepositCommand(accountId, requesterId, request.amount()));
     }
 
     @PostMapping("/{accountId}/withdraw")
     @ResponseStatus(HttpStatus.CREATED)
     public TransactionResult withdraw(
-            @RequestHeader("X-User-Id") String requesterId,
+            Authentication authentication,
             @PathVariable String accountId,
             @RequestBody WithdrawRequest request
     ) {
+        String requesterId = authentication.getName();
         return withdrawService.withdraw(new WithdrawCommand(accountId, requesterId, request.amount()));
     }
 
     @PostMapping("/{accountId}/suspend")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void suspendAccount(@RequestHeader("X-User-Id") String requesterId, @PathVariable String accountId) {
-        suspendAccountService.suspend(new SuspendAccountCommand(accountId, requesterId));
+    public void suspendAccount(Authentication authentication, @PathVariable String accountId) {
+        suspendAccountService.suspend(new SuspendAccountCommand(accountId, authentication.getName()));
     }
 
     @PostMapping("/{accountId}/reactivate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void reactivateAccount(@RequestHeader("X-User-Id") String requesterId, @PathVariable String accountId) {
-        reactivateAccountService.reactivate(new ReactivateAccountCommand(accountId, requesterId));
+    public void reactivateAccount(Authentication authentication, @PathVariable String accountId) {
+        reactivateAccountService.reactivate(new ReactivateAccountCommand(accountId, authentication.getName()));
     }
 
     @PostMapping("/{accountId}/close")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void closeAccount(@RequestHeader("X-User-Id") String requesterId, @PathVariable String accountId) {
-        closeAccountService.close(new CloseAccountCommand(accountId, requesterId));
+    public void closeAccount(Authentication authentication, @PathVariable String accountId) {
+        closeAccountService.close(new CloseAccountCommand(accountId, authentication.getName()));
     }
 
     @GetMapping("/{accountId}")
-    public GetAccountResult getAccount(@RequestHeader("X-User-Id") String requesterId, @PathVariable String accountId) {
-        return getAccountService.getAccount(accountId, requesterId);
+    public GetAccountResult getAccount(Authentication authentication, @PathVariable String accountId) {
+        return getAccountService.getAccount(accountId, authentication.getName());
     }
 
     @GetMapping("/{accountId}/transactions")
     public GetTransactionsResult getTransactions(
-            @RequestHeader("X-User-Id") String requesterId,
+            Authentication authentication,
             @PathVariable String accountId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int take
     ) {
-        return getTransactionsService.getTransactions(accountId, requesterId, page, take);
+        return getTransactionsService.getTransactions(accountId, authentication.getName(), page, take);
     }
 
     @ExceptionHandler(AccountException.class)

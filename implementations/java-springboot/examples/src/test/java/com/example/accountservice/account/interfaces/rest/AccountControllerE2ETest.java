@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,9 +45,18 @@ class AccountControllerE2ETest {
     private static final String OWNER_ID = "owner-1";
     private static final String OTHER_OWNER_ID = "owner-2";
 
+    private final Map<String, String> tokenCache = new ConcurrentHashMap<>();
+
+    private String tokenFor(String userId) {
+        return tokenCache.computeIfAbsent(userId, id -> {
+            ResponseEntity<Map> response = restTemplate.postForEntity("/auth/sign-in", Map.of("userId", id), Map.class);
+            return (String) response.getBody().get("accessToken");
+        });
+    }
+
     private HttpHeaders headersFor(String ownerId) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", ownerId);
+        headers.setBearerAuth(tokenFor(ownerId));
         headers.setContentType(MediaType.APPLICATION_JSON);
         return headers;
     }
