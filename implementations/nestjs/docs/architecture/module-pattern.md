@@ -23,7 +23,7 @@ src/
     payment-module.ts
   common/                ← 공유 유틸 (모듈 아님)
   database/              ← DatabaseModule — TypeORM DataSource, TransactionManager (@Global)
-  outbox/                ← OutboxModule — OutboxWriter, OutboxRelay, EventConsumer, EventHandlerRegistry (@Global)
+  outbox/                ← OutboxModule — OutboxWriter, EventHandlerRegistry (@Global). OutboxRelay는 도메인별 <domain>/application/event/에 위치, SQS 기반 EventConsumer는 없음(domain-events.md 참고)
   auth/                  ← AuthModule — 인증 공유 모듈
   app-module.ts          ← 루트 모듈: 도메인 모듈 조합
 ```
@@ -42,7 +42,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 
 import { AuthModule } from '@/auth/auth-module'
-import { validateConfig } from '@/config/config-validator'
+import { validateConfig } from '@/config/validation.config'
 import { databaseConfig } from '@/config/database.config'
 import { jwtConfig } from '@/config/jwt.config'
 import { s3Config } from '@/config/s3.config'

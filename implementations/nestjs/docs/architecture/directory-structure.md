@@ -4,18 +4,16 @@
 src/
   common/                              # 공용 유틸
     is-unique-violation.ts             # Postgres unique_violation(23505) 판별
-  database/                            # 데이터베이스 모듈
-    database-module.ts
-    base.entity.ts                     # 공통 컬럼 (createdAt, updatedAt, deletedAt)
-    data-source.ts                     # TypeORM DataSource 설정
+  database/                            # 데이터베이스 공유 코드 (실제 코드에는 별도 @Global 모듈이나 BaseEntity가 없다)
+    data-source.ts                     # TypeORM DataSource 설정 — CLI 마이그레이션과 공유
     transaction-manager.ts             # 트랜잭션 매니저 (AsyncLocalStorage 기반)
-  outbox/                              # Outbox 모듈
+  outbox/                              # Outbox 공유 코드
     outbox-module.ts
     outbox.entity.ts                   # Outbox 테이블 Entity
     outbox-writer.ts                   # 트랜잭션 안에서 이벤트 저장 (Repository에서 호출)
-    outbox-relay.ts                    # Outbox → SQS 전송 (폴링)
-    event-consumer.ts                  # SQS → EventHandler 수신 (폴링)
     event-handler-registry.ts          # eventType → Handler 라우팅
+    # OutboxRelay는 여기 없다 — 도메인마다 <domain>/application/event/outbox-relay.ts에 둔다(아래 참고).
+    # SQS 기반 EventConsumer도 없다 — 저장 직후 같은 프로세스에서 동기 드레인한다(domain-events.md 참고).
   task-queue/                          # Task Queue 모듈 (공용)
     task-queue-module.ts
     task-queue.ts                      # 인터페이스 (abstract class)
@@ -31,7 +29,7 @@ src/
     task-queue-consumer.ts             # SQS → Task Controller 디스패치 (폴링)
   config/
     <concern>.config.ts              # 관심사별 설정 팩토리 (database, jwt 등)
-    config-validator.ts              # 환경 변수 검증
+    validation.config.ts             # 환경 변수 검증 (harness의 *.config.ts 네이밍 규칙을 따름)
   <domain>/
     domain/                          # 도메인 레이어
       <aggregate-root>.ts
@@ -52,6 +50,9 @@ src/
         <domain>-query.ts               # Query 인터페이스 (abstract class)
         <verb>-<noun>-query.ts
         <verb>-<noun>-result.ts
+      event/
+        <domain>-event-handler.ts       # outbox 이벤트 타입별 핸들러
+        outbox-relay.ts                 # 저장 직후 동기 드레인 — domain-events.md 참고
     interface/
       <domain>-controller.ts              # HTTP Controller
       <domain>-task-controller.ts         # Task Controller (@TaskConsumer 메서드 보유)

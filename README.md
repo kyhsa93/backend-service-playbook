@@ -3,7 +3,7 @@
 DDD 기반 백엔드 서비스의 **프레임워크·언어 무관** 설계·구현 원칙을 담은 가이드.
 
 코드 예시는 TypeScript를 사용하지만, 패턴 자체는 Go·Java·Python 등 어떤 언어에도 동일하게 적용된다.
-언어·프레임워크별 구현 상세는 `docs/implementations/` 참조.
+언어·프레임워크별 실제 구현 가이드는 `implementations/<lang>/` 참조. `docs/implementations/`는 루트 원칙과 언어별 문서 간 커버리지 감사 리포트다.
 
 ---
 

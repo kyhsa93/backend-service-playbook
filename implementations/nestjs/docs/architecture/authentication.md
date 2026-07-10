@@ -23,7 +23,6 @@ src/
     auth-module.ts
     auth-service.ts              ← 토큰 발급/검증 (JWT)
     auth.guard.ts                ← Bearer 토큰 추출 및 검증 Guard
-    auth-error-message.ts
     interface/
       auth-controller.ts         ← POST /auth/sign-in 등
       dto/
@@ -66,9 +65,7 @@ export class AuthGuard implements CanActivate {
 // src/auth/auth-service.ts
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { JwtService } from '@nestjs/jwt'
-
-import { AuthErrorMessage as ErrorMessage } from '@/auth/auth-error-message'
+import { JwtService, JwtSignOptions } from '@nestjs/jwt'
 
 @Injectable()
 export class AuthService {
@@ -81,7 +78,7 @@ export class AuthService {
     return this.jwtService.signAsync(payload, {
       secret: this.configService.get<string>('jwt.secret'),
       expiresIn: this.configService.get<string>('jwt.expiresIn')
-    })
+    } as unknown as JwtSignOptions)
   }
 
   public async verify(token: string): Promise<{ userId: string } | null> {

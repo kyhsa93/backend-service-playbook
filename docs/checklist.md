@@ -260,4 +260,4 @@
 5. 모든 체크 완료 후 작업을 마무리한다.
 
 > 항목의 의도가 불명확하다면 관련 문서를 참조한다.
-> 프레임워크별 추가 검증 항목은 `docs/implementations/` 참조.
+> 프레임워크별 추가 검증 항목은 `implementations/<lang>/docs/checklist.md` 참조. (`docs/implementations/`는 루트 원칙과 언어별 문서 간 커버리지 감사 리포트이지 체크리스트 보충 문서가 아니다.)

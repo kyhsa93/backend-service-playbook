@@ -1,47 +1,37 @@
 # 앱 부트스트랩
 
+> 아래는 실제 `src/main.ts`다. Swagger/CORS/전역 예외 필터/Graceful Shutdown 훅은 이 저장소에 아직 없다 — 필요해지면 추가할 확장 지점으로 문서 하단에 남겨둔다.
+
 ```typescript
-// src/main.ts
-import { ValidationPipe } from '@nestjs/common'
+// src/main.ts — 실제 코드
+import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 
-import { HttpExceptionFilter } from '@/common/http-exception.filter'
 import { AppModule } from '@/app-module'
+import { LoggingInterceptor } from '@/common/logging.interceptor'
+import { getPort, isProduction } from '@/config/app.config'
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule)
-
-  // Graceful Shutdown — SIGTERM/SIGINT 수신 시 NestJS 라이프사이클 훅 활성화
-  app.enableShutdownHooks()
-
-  // 전역 ValidationPipe — class-validator 자동 적용
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,           // DTO에 정의되지 않은 필드 제거
-    forbidNonWhitelisted: true, // 정의되지 않은 필드가 있으면 400 에러
-    transform: true             // 요청 데이터를 DTO 클래스 인스턴스로 자동 변환
-  }))
-
-  // 전역 예외 필터
-  app.useGlobalFilters(new HttpExceptionFilter())
-
-  // CORS
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? '*',
-    credentials: true
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(AppModule, {
+    logger: isProduction()
+      ? ['error', 'warn', 'log']
+      : ['error', 'warn', 'log', 'debug', 'verbose']
   })
 
-  // Swagger
-  const document = SwaggerModule.createDocument(app,
-    new DocumentBuilder()
-      .setTitle(process.env.APP_NAME ?? 'API')
-      .setVersion('1.0')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'token')
-      .build()
-  )
-  SwaggerModule.setup('api', app, document)
+  // 전역 ValidationPipe — class-validator 자동 적용, 실패 시 code 포함 응답 구성
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    exceptionFactory: (errors) => {
+      const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
+      return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
+    }
+  }))
 
-  await app.listen(process.env.PORT ?? 3000)
+  // 요청 로깅 인터셉터
+  app.useGlobalInterceptors(new LoggingInterceptor())
+
+  await app.listen(getPort())
 }
 
 bootstrap()
@@ -51,9 +41,12 @@ bootstrap()
 
 | 설정 | 역할 |
 |------|------|
-| `enableShutdownHooks()` | SIGTERM/SIGINT 수신 시 NestJS 종료 라이프사이클 훅 활성화 ([상세](graceful-shutdown.md)) |
-| `ValidationPipe` | class-validator 데코레이터 자동 적용, 미정의 필드 차단 |
-| `HttpExceptionFilter` | 에러 응답 형식 표준화 |
-| `enableCors` | CORS 허용 origin 설정 (환경 변수) |
-| `SwaggerModule` | API 문서 자동 생성, `/api` 경로에서 접근 |
-| `addBearerAuth` | Swagger UI에서 JWT 토큰 입력 지원 |
+| `logger` 옵션 | `isProduction()`이면 debug/verbose 로그 제외 |
+| `ValidationPipe` | class-validator 데코레이터 자동 적용, `exceptionFactory`로 `VALIDATION_FAILED` code 포함 응답 구성 ([error-handling.md](error-handling.md) 참고) |
+| `LoggingInterceptor` | 요청 메서드/경로/처리 시간 로깅 |
+
+### 아직 적용하지 않은 확장 지점
+
+- **Graceful Shutdown**: `enableShutdownHooks()` 미호출, `OnApplicationShutdown` 훅 없음 — 실제 남은 gap([graceful-shutdown.md](graceful-shutdown.md) 참고).
+- **전역 예외 필터**: `HttpExceptionFilter` 없음 — `generateErrorResponse`가 만든 `HttpException`을 NestJS 기본 필터가 그대로 직렬화하므로 현재는 커스텀 필터가 불필요하다([error-handling.md](error-handling.md) 참고).
+- **CORS/Swagger**: 현재 코드에 없음. 필요해지면 `app.enableCors(...)`/`SwaggerModule`을 추가한다.

@@ -33,7 +33,7 @@
 - QueryHandler (`@nestjs/cqrs`): `<verb>-<noun>-query-handler.ts`
 - EventHandler (`@nestjs/cqrs`): `<domain-event>-handler.ts` (`application/event/`에 배치)
 - 설정 파일: `<concern>.config.ts` (`config/`에 배치) — `database.config.ts`, `jwt.config.ts` 등
-- 설정 검증: `config-validator.ts` (`config/`에 배치)
+- 설정 검증: `validation.config.ts` (`config/`에 배치, harness의 `*.config.ts` 네이밍 규칙을 따름)
 
 ---
 

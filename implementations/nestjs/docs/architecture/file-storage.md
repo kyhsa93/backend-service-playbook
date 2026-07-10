@@ -49,8 +49,8 @@ import { StorageService } from '@/order/application/service/storage-service'
 @Injectable()
 export class StorageServiceImpl extends StorageService {
   private readonly s3 = new S3Client({
-    ...(process.env.AWS_ENDPOINT ? {
-      endpoint: process.env.AWS_ENDPOINT,
+    ...(process.env.AWS_ENDPOINT_URL ? {
+      endpoint: process.env.AWS_ENDPOINT_URL,
       forcePathStyle: true
     } : {})
   })

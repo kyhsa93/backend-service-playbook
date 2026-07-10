@@ -11,7 +11,7 @@ src/
   config/
     database.config.ts               ← DB 설정 팩토리
     jwt.config.ts                    ← JWT 설정 팩토리
-    config-validator.ts              ← 환경 변수 검증
+    validation.config.ts             ← 환경 변수 검증
   order/
     domain/
       order.ts                       ← Aggregate Root

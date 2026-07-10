@@ -279,7 +279,7 @@ import { TaskConsumerRegistry } from './task-consumer-registry'
 export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(TaskQueueConsumer.name)
   private readonly sqs = new SQSClient({
-    ...(process.env.AWS_ENDPOINT ? { endpoint: process.env.AWS_ENDPOINT } : {})
+    ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {})
   })
   private readonly queueUrl = process.env.SQS_TASK_QUEUE_URL!
   private running = true
@@ -536,7 +536,7 @@ import { TaskOutboxEntity } from './task-outbox.entity'
 export class TaskOutboxRelay {
   private readonly logger = new Logger(TaskOutboxRelay.name)
   private readonly sqs = new SQSClient({
-    ...(process.env.AWS_ENDPOINT ? { endpoint: process.env.AWS_ENDPOINT } : {})
+    ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {})
   })
   private readonly queueUrl = process.env.SQS_TASK_QUEUE_URL!
 

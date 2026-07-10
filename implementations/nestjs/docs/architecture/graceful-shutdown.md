@@ -2,15 +2,14 @@
 
 컨테이너 오케스트레이션 환경(Kubernetes, ECS 등)에서 SIGTERM 수신 시 진행 중인 요청을 안전하게 처리한 뒤 종료하는 패턴이다.
 
-## main.ts 설정
+> **실제 코드 상태**: 이 문서 전체가 목표 설계다. 실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출하지 않고, `HealthController`/`ShutdownState`/`*Shutdown` 클래스도 존재하지 않는다 — SIGTERM을 받으면 진행 중인 요청 처리를 기다리지 않고 즉시 종료된다. 아래는 Kubernetes/ECS 등으로 운영 환경을 갖출 때 적용할 패턴이다.
+
+## main.ts 설정 (목표)
 
 ```typescript
-// src/main.ts
-import { ValidationPipe } from '@nestjs/common'
+// src/main.ts — 목표 설계, 실제 코드는 bootstrap.md 참고
 import { NestFactory } from '@nestjs/core'
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 
-import { HttpExceptionFilter } from '@/common/http-exception.filter'
 import { AppModule } from '@/app-module'
 
 async function bootstrap() {
@@ -19,27 +18,7 @@ async function bootstrap() {
   // Graceful Shutdown — SIGTERM/SIGINT 수신 시 NestJS 라이프사이클 훅 활성화
   app.enableShutdownHooks()
 
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true
-  }))
-
-  app.useGlobalFilters(new HttpExceptionFilter())
-
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? '*',
-    credentials: true
-  })
-
-  const document = SwaggerModule.createDocument(app,
-    new DocumentBuilder()
-      .setTitle(process.env.APP_NAME ?? 'API')
-      .setVersion('1.0')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'token')
-      .build()
-  )
-  SwaggerModule.setup('api', app, document)
+  // ... 기존 main.ts 설정(ValidationPipe, LoggingInterceptor 등)은 bootstrap.md 참고
 
   await app.listen(process.env.PORT ?? 3000)
 }

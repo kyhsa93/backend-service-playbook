@@ -1,5 +1,7 @@
 # 도메인 이벤트 발행 패턴
 
+> **이 저장소의 실제 `examples/`와의 차이**: 아래 3~6단계(OutboxRelay→SQS 전송, EventConsumer, Integration Event)는 여러 Bounded Context/프로세스로 확장될 때를 대비한 **목표 설계**다. 이 저장소는 Account 단일 BC라 SQS 홉이 필요 없어서, 실제 `account/application/event/outbox-relay.ts`는 커맨드가 저장을 커밋한 직후 **같은 프로세스 안에서 동기적으로** outbox 미처리 행을 읽어 이벤트 타입별 핸들러를 직접 호출한다(SQS/EventConsumer 없음). `EventHandlerRegistry`(`outbox/event-handler-registry.ts`)는 `@HandleEvent(...)` 데코레이터만 제공하고, 실제 `OutboxRelay`는 이 메타데이터를 조회하지 않는 생성자 주입 기반 고정 맵을 쓴다 — 아래 코드 예시에 나오는 `ModuleRef` 기반 동적 라우팅은 구현되어 있지 않다. 1~2단계(Aggregate 이벤트 수집, Repository 트랜잭션 저장)는 실제 코드와 동일하다.
+
 ### 개념 구분 — Domain Event vs Integration Event
 
 **Domain Event**: 같은 Bounded Context 내부 사건. Aggregate 내부 상태 변화의 결과. 구조가 자유롭게 변하며 외부 BC와 결합되지 않는다.
@@ -128,10 +130,8 @@ public async cancelOrder(command: CancelOrderCommand): Promise<void> {
 // outbox/outbox.entity.ts
 import { Entity, PrimaryColumn, Column } from 'typeorm'
 
-import { BaseEntity } from '@/database/base.entity'
-
 @Entity('outbox')
-export class OutboxEntity extends BaseEntity {
+export class OutboxEntity {
   @PrimaryColumn({ type: 'char', length: 32 })
   eventId: string
 
@@ -177,7 +177,9 @@ export class OutboxWriter {
 }
 ```
 
-### 3단계: OutboxRelay — Outbox → SQS 전송
+### 3단계(목표 설계, 다중 프로세스로 확장 시): OutboxRelay — Outbox → SQS 전송
+
+> 이 저장소의 실제 `outbox-relay.ts`는 SQS를 쓰지 않는다 — 커맨드가 트랜잭션을 커밋한 직후 같은 프로세스 안에서 동기적으로 outbox를 드레인한다. 아래는 여러 프로세스/인스턴스로 확장할 때의 목표 설계다.
 
 outbox 테이블에서 미전송 이벤트를 짧은 주기로 폴링하여 SQS 큐로 전송한다.
 
@@ -194,7 +196,7 @@ import { OutboxEntity } from '@/outbox/outbox.entity'
 export class OutboxRelay {
   private readonly logger = new Logger(OutboxRelay.name)
   private readonly sqs = new SQSClient({
-    ...(process.env.AWS_ENDPOINT ? { endpoint: process.env.AWS_ENDPOINT } : {})
+    ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {})
   })
   private readonly queueUrl = process.env.SQS_DOMAIN_EVENT_QUEUE_URL!
 
@@ -235,7 +237,9 @@ export class OutboxRelay {
 }
 ```
 
-### 4단계: EventConsumer — SQS → EventHandler 수신
+### 4단계(목표 설계, 다중 프로세스로 확장 시): EventConsumer — SQS → EventHandler 수신
+
+> 이 저장소에는 `EventConsumer`가 존재하지 않는다 — 3단계와 마찬가지로 별도 프로세스가 SQS를 구독할 필요가 없기 때문이다. 아래는 목표 설계다.
 
 SQS 큐에서 메시지를 폴링하여 eventType에 따라 핸들러를 호출한다.
 
@@ -250,7 +254,7 @@ import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
 export class EventConsumer implements OnModuleInit {
   private readonly logger = new Logger(EventConsumer.name)
   private readonly sqs = new SQSClient({
-    ...(process.env.AWS_ENDPOINT ? { endpoint: process.env.AWS_ENDPOINT } : {})
+    ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {})
   })
   private readonly queueUrl = process.env.SQS_DOMAIN_EVENT_QUEUE_URL!
   private running = true
@@ -295,6 +299,8 @@ export class EventConsumer implements OnModuleInit {
 ### EventHandlerRegistry — 핸들러 라우팅
 
 eventType 문자열을 핸들러에 매핑한다.
+
+> 실제 `outbox/event-handler-registry.ts`는 `@HandleEvent` 데코레이터(`SetMetadata` 래퍼)만 정의하고, 아래의 `HANDLER_MAP`/`ModuleRef` 기반 동적 라우팅은 구현되어 있지 않다 — 데코레이터가 설정한 메타데이터는 어디서도 읽히지 않는다. 실제 라우팅은 각 도메인의 `outbox-relay.ts`가 이벤트 타입별 핸들러를 생성자 주입받아 구성한 고정 맵(`Record<string, ...>`)으로 처리한다.
 
 ```typescript
 // outbox/event-handler-registry.ts

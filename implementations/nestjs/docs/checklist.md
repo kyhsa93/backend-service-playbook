@@ -52,7 +52,7 @@
     → QueryHandler: <verb>-<noun>-query-handler.ts
     → EventHandler: <domain-event>-handler.ts (application/event/)
 [ ] 설정 파일명이 <concern>.config.ts 형식이고 config/ 디렉토리에 위치하는가?
-[ ] 설정 검증 파일이 config-validator.ts 형식이고 config/ 디렉토리에 위치하는가?
+[ ] 설정 검증 파일이 validation.config.ts 형식이고 config/ 디렉토리에 위치하는가?
 [ ] 클래스명이 네이밍 규칙을 따르는가?
     → Aggregate Root: 도메인 명사 (Order, User)
     → Value Object: 도메인 개념 (Money, Address, OrderItem)
@@ -141,7 +141,7 @@
 [ ] Repository 구현체의 save 메서드에서 outbox 저장 후 aggregate.clearEvents()를 호출하는가?
 [ ] Domain EventHandler가 @HandleEvent 데코레이터로 eventType을 지정하고 application/event/에 배치되어 있는가?
 [ ] EventHandler가 도메인 Module providers에 등록되어 있는가?
-    → OutboxWriter, OutboxRelay, EventConsumer 등은 @Global() OutboxModule에서 제공
+    → OutboxWriter는 @Global() OutboxModule에서 제공. OutboxRelay는 도메인별 application/event/outbox-relay.ts에 위치하며 도메인 모듈 providers에 등록한다(domain-events.md 참고)
 [ ] 외부 BC로 알릴 필요가 있는 사건은 Integration Event로 변환해 발행하는가?
     → Domain Event 객체를 그대로 외부로 전달하지 않는다. Application EventHandler가 IntegrationEventV<N>을 구성해 OutboxWriter로 적재
 [ ] Integration Event 클래스가 application/integration-event/<name>-integration-event.ts에 정의되어 있고 버전 접미사(V1 등) 및 eventName 리터럴(`<domain>.<verb-past>.v<N>`)을 포함하는가?
@@ -222,7 +222,7 @@
     → 커스텀 DataSource, Redis, Bull Queue 등을 직접 관리하는 경우 연결 해제 필수
 [ ] ConfigModule.forRoot()이 AppModule에 isGlobal: true로 등록되어 있는가?
 [ ] 환경 변수별 설정이 관심사별 파일(config/<concern>.config.ts)로 분리되어 있는가?
-[ ] config-validator.ts에 class-validator로 필수 환경 변수 검증이 정의되어 있는가?
+[ ] validation.config.ts에 class-validator로 필수 환경 변수 검증이 정의되어 있는가?
 [ ] 검증 실패 시 process.exit(1)로 앱 기동을 중단하는가?
 ```
 
@@ -570,4 +570,4 @@ AI Agent는 작업 완료 후 다음 순서로 자기 검토를 수행한다:
 > - STEP 13 테스트 패턴 → [conventions.md](conventions.md) 섹션 13
 > - STEP 14 전체 일관성 → 전체 문서 참조
 > - STEP 15 설계 산출물 형태 → [development-process.md](../../../docs/development-process.md) (루트 공용) Agent 1~5
-> - STEP 16 가이드 수정 → [README.md](../README.md) 가이드 관리 원칙
+> - STEP 16 가이드 수정 → 본 문서의 [STEP 16](#step-16--가이드-수정-작업인-경우)
