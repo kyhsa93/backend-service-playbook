@@ -1,7 +1,7 @@
 package com.example.accountservice.common.infrastructure;
 
 import com.example.accountservice.common.service.SecretService;
-import org.springframework.beans.factory.annotation.Value;
+import com.example.accountservice.config.AwsProperties;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
@@ -19,13 +19,10 @@ public class SecretServiceImpl implements SecretService {
     private final Map<String, CachedSecret> cache = new ConcurrentHashMap<>();
     private static final Duration TTL = Duration.ofMinutes(5);
 
-    public SecretServiceImpl(
-            @Value("${aws.region:us-east-1}") String region,
-            @Value("${aws.endpoint-url:}") String endpointUrl
-    ) {
-        var builder = SecretsManagerClient.builder().region(Region.of(region));
-        if (endpointUrl != null && !endpointUrl.isBlank()) {
-            builder.endpointOverride(URI.create(endpointUrl));
+    public SecretServiceImpl(AwsProperties awsProperties) {
+        var builder = SecretsManagerClient.builder().region(Region.of(awsProperties.region()));
+        if (awsProperties.endpointUrl() != null && !awsProperties.endpointUrl().isBlank()) {
+            builder.endpointOverride(URI.create(awsProperties.endpointUrl()));
         }
         this.client = builder.build();
     }

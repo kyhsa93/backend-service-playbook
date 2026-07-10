@@ -2,13 +2,13 @@ package com.example.accountservice.notification.infrastructure;
 
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
+import com.example.accountservice.config.SesProperties;
 import com.example.accountservice.notification.application.service.NotificationService;
 import com.example.accountservice.notification.infrastructure.persistence.SentEmail;
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,9 +33,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final SesClient sesClient;
     private final SentEmailRepository sentEmailRepository;
-
-    @Value("${ses.sender-email:no-reply@backend-service-playbook.example.com}")
-    private String senderEmail;
+    private final SesProperties sesProperties;
 
     // 알림 발송 실패가 원본 계좌 커맨드의 트랜잭션까지 rollback-only로 전파되지 않도록
     // 별도의 물리 트랜잭션(REQUIRES_NEW)에서 실행한다.
@@ -43,7 +41,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void sendEmail(String accountId, String eventType, String recipient, String subject, String body) {
         SendEmailRequest request = SendEmailRequest.builder()
-                .source(senderEmail)
+                .source(sesProperties.senderEmail())
                 .destination(Destination.builder().toAddresses(recipient).build())
                 .message(Message.builder()
                         .subject(Content.builder().data(subject).charset("UTF-8").build())

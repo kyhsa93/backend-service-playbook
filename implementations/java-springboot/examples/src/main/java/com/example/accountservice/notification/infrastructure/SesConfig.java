@@ -1,6 +1,7 @@
 package com.example.accountservice.notification.infrastructure;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.example.accountservice.config.AwsProperties;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -17,22 +18,20 @@ import java.net.URI;
  * 항상 정적 credential(StaticCredentialsProvider)을 명시적으로 사용한다.
  */
 @Configuration
+@RequiredArgsConstructor
 public class SesConfig {
 
-    @Bean
-    public SesClient sesClient(
-            @Value("${aws.region:us-east-1}") String region,
-            @Value("${aws.endpoint-url:}") String endpointUrl,
-            @Value("${aws.access-key-id:test}") String accessKeyId,
-            @Value("${aws.secret-access-key:test}") String secretAccessKey
-    ) {
-        SesClientBuilder builder = SesClient.builder()
-                .region(Region.of(region))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKeyId, secretAccessKey)));
+    private final AwsProperties awsProperties;
 
-        if (endpointUrl != null && !endpointUrl.isBlank()) {
-            builder.endpointOverride(URI.create(endpointUrl));
+    @Bean
+    public SesClient sesClient() {
+        SesClientBuilder builder = SesClient.builder()
+                .region(Region.of(awsProperties.region()))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(awsProperties.accessKeyId(), awsProperties.secretAccessKey())));
+
+        if (awsProperties.endpointUrl() != null && !awsProperties.endpointUrl().isBlank()) {
+            builder.endpointOverride(URI.create(awsProperties.endpointUrl()));
         }
 
         return builder.build();
