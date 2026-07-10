@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
-import uuid
 
 import aioboto3
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....common.generate_id import generate_id
 from ...application.service.notification_service import NotificationService
 from ...domain.account import AccountDomainEvent
 from ...domain.events import (
@@ -96,7 +96,7 @@ class SesNotificationService(NotificationService):
         ses_message_id = response["MessageId"]
 
         self._session.add(SentEmailModel(
-            sent_email_id=str(uuid.uuid4()),
+            sent_email_id=generate_id(),
             account_id=event.account_id,
             event_type=event_type,
             recipient=recipient,

@@ -22,25 +22,9 @@
 
 ---
 
-### 알려진 격차 — `examples/`의 현재 구현은 하이픈을 포함한다
+### `generate_id()` 적용 완료 (더 이상 격차 아님)
 
-`src/account/domain/account.py`의 `Account.create()`와 `src/account/domain/transaction.py`의 `Transaction.create()`는 모두 다음과 같이 ID를 생성한다.
-
-```python
-# 현재 examples/ 코드 — 하이픈 포함, 루트 규칙 위반
-account_id=str(uuid.uuid4())
-# 예: "550e8400-e29b-41d4-a716-446655440000"
-```
-
-`str(uuid.uuid4())`는 표준 8-4-4-4-12 하이픈 포맷을 그대로 반환한다. 루트 원칙("하이픈 제거 32자리 hex")을 지키려면 `.hex` 속성을 사용해야 한다.
-
-```python
-# 올바른 방식
->>> uuid.uuid4().hex
-'550e8400e29b41d4a716446655440000'   # 32자리, 하이픈 없음
-```
-
-**이 문서 작성 시점 기준으로 이 격차는 아직 코드에 남아 있다.** 아래는 올바른 구현이며, `account.py`/`transaction.py`를 수정할 때 이 패턴을 따른다.
+`src/account/domain/account.py`의 `Account.create()`, `src/account/domain/transaction.py`의 `Transaction.create()`, `notification_service.py`가 발급하는 sent_email ID 전부 아래 `generate_id()`(하이픈 제거 32자리 hex, `uuid.uuid4().hex`)를 사용한다. `outbox_writer.py`는 이미 `.hex`를 쓰고 있어 그대로 두었다.
 
 ---
 

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from src.account.domain.account import Account
@@ -36,6 +38,12 @@ def test_create_계좌_생성_시_AccountCreated_이벤트가_수집된다() -> 
     assert account.balance.amount == 0
 
 
+def test_create_계좌_ID는_하이픈_없는_32자리_hex_문자열이다() -> None:
+    account = make_active_account()
+
+    assert re.fullmatch(r"[0-9a-f]{32}", account.account_id)
+
+
 def test_deposit_0원_이하_입금_시_InvalidAmountError를_던진다() -> None:
     account = make_active_account()
     account.pull_events()
@@ -61,6 +69,8 @@ def test_deposit_성공_시_잔액이_증가하고_MoneyDeposited_이벤트가_�
     assert account.balance.amount == 10000
     events = account.pull_events()
     assert any(isinstance(e, MoneyDeposited) for e in events)
+    transaction = account.pull_pending_transactions()[0]
+    assert re.fullmatch(r"[0-9a-f]{32}", transaction.transaction_id)
 
 
 def test_withdraw_잔액_부족_시_InsufficientBalanceError를_던진다() -> None:

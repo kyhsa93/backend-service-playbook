@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import Union
 
+from ...common.generate_id import generate_id
 from .account_status import AccountStatus
 from .errors import (
     AccountAlreadyClosedError,
@@ -56,7 +56,7 @@ class Account:
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
         now = datetime.utcnow()
         account = cls(
-            account_id=str(uuid.uuid4()),
+            account_id=generate_id(),
             owner_id=owner_id,
             email=email,
             balance=Money(0, currency),

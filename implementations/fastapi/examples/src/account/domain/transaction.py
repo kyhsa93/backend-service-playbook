@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from ...common.generate_id import generate_id
 from .money import Money
 
 TransactionType = Literal["DEPOSIT", "WITHDRAWAL"]
@@ -21,7 +21,7 @@ class Transaction:
     @classmethod
     def create(cls, account_id: str, type: TransactionType, amount: Money) -> Transaction:
         return cls(
-            transaction_id=str(uuid.uuid4()),
+            transaction_id=generate_id(),
             account_id=account_id,
             type=type,
             amount=amount,
