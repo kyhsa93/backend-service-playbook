@@ -69,6 +69,7 @@ class NotificationE2ETest {
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("spring.jpa.hibernate.ddl-auto") { "create-drop" }
+            registry.add("spring.flyway.enabled") { "false" }
             registry.add("AWS_REGION") { localstack.region }
             registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
             registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }

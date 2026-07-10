@@ -4,7 +4,7 @@
 
 ## 알려진 갭
 
-현재 `examples/src/main/resources/application.yml`은 3줄뿐이다:
+현재 `examples/src/main/resources/application.yml`:
 
 ```yaml
 spring:
@@ -12,9 +12,17 @@ spring:
     name: account-service
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+jwt:
+  secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 ```
+
+(`ddl-auto`/마이그레이션은 [persistence.md](persistence.md) 참고 — Flyway로 이미 해결되어 더 이상 갭이 아니다. 아래는 여전히 남아있는 갭이다.)
 
 관심사별 설정 분리도, 기동 시 Fail-fast 검증도 없다. `SES_SENDER_EMAIL`, `AWS_REGION` 등은 `@Value("\${...:기본값}")`으로 개별 필드에 흩어져 주입되며, 값이 비어 있어도 앱은 정상 기동된다. 아래는 Kotlin/Spring Boot에서 이 갭을 메우는 올바른 패턴이다.
 

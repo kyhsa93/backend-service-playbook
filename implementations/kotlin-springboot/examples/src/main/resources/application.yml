@@ -3,8 +3,11 @@ spring:
     name: account-service
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
