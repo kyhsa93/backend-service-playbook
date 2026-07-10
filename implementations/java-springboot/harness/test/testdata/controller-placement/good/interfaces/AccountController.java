@@ -1,0 +1,3 @@
+@RestController
+class AccountController {
+}

@@ -1,0 +1,3 @@
+@Transactional
+class DepositService {
+}

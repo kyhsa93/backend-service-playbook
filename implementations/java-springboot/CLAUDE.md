@@ -59,7 +59,7 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 | 작업 / 키워드 | 읽을 문서 |
 |---------------|----------|
 | Testing, Domain/Application/E2E 3계층, Mockito, Testcontainers | `docs/architecture/testing.md` |
-| harness 실행, 검사 규칙 목록 | `harness/harness.sh` |
+| harness 실행, 검사 규칙 목록 | `harness/README.md` |
 | harness 설계 원칙(비즈니스 도메인 지식이 아닌 아키텍처 규칙만 평가) | `../../docs/harness.md` (루트 공용 문서) |
 
 ### 보너스 문서 — root에 대응 문서 없음 (NestJS 대비 6종)
