@@ -1,0 +1,8 @@
+build/
+.gradle/
+*.log
+.git
+.env*
+docker-compose.yml
+Dockerfile
+src/test/
