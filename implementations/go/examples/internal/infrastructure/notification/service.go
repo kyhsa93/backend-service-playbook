@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ses"
@@ -83,7 +83,11 @@ func (s *Service) send(ctx context.Context, eventType string, content emailConte
 		return fmt.Errorf("save sent email record: %w", err)
 	}
 
-	log.Printf("notification: email sent event=%s recipient=%s ses_message_id=%s", eventType, content.recipient, messageID)
+	slog.InfoContext(ctx, "notification email sent",
+		"event_type", eventType,
+		"recipient", content.recipient,
+		"ses_message_id", messageID,
+	)
 	return nil
 }
 

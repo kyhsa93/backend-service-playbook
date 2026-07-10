@@ -10,7 +10,7 @@ import (
 	"github.com/example/account-service/internal/interface/http/middleware"
 )
 
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService) *http.ServeMux {
+func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService) http.Handler {
 	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
 	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	withdrawHandler := command.NewWithdrawHandler(repo, outboxRelay)
@@ -46,5 +46,5 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtServ
 	mux.Handle("/accounts", middleware.RequireAuth(jwtService)(protected))
 	mux.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
 	mux.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)
-	return mux
+	return middleware.CorrelationID(mux)
 }

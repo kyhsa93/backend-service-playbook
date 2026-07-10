@@ -2,7 +2,7 @@ package main
 
 import (
 	"database/sql"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -18,9 +18,12 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Fatalf("failed to connect to db: %v", err)
+		slog.Error("failed to connect to db", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -47,8 +50,9 @@ func main() {
 	mux := httphandler.NewRouter(accountRepo, outboxRelay, jwtService)
 
 	addr := ":8080"
-	log.Printf("listening on %s", addr)
+	slog.Info("listening", "addr", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server error: %v", err)
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
 }

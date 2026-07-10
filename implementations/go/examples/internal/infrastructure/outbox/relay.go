@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 )
 
 // Handler는 하나의 event_type을 처리하는 함수다. payload는 Writer.SaveAll이 저장한
@@ -58,7 +58,11 @@ func (r *Relay) ProcessPending(ctx context.Context) error {
 
 	for _, row := range pending {
 		if err := r.processRow(ctx, row); err != nil {
-			log.Printf("outbox: failed to process event_type=%s event_id=%s: %v", row.eventType, row.eventID, err)
+			slog.ErrorContext(ctx, "outbox event processing failed",
+				"event_type", row.eventType,
+				"event_id", row.eventID,
+				"error", err,
+			)
 		}
 	}
 	return nil

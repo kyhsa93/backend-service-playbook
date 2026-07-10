@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -106,7 +107,7 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 		Amount:      body.Amount,
 	})
 	if err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -134,7 +135,7 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		Amount:      body.Amount,
 	})
 	if err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -155,7 +156,7 @@ func (h *AccountHandler) SuspendAccount(w http.ResponseWriter, r *http.Request) 
 		AccountID:   accountID,
 		RequesterID: requesterID,
 	}); err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -168,7 +169,7 @@ func (h *AccountHandler) ReactivateAccount(w http.ResponseWriter, r *http.Reques
 		AccountID:   accountID,
 		RequesterID: requesterID,
 	}); err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -181,7 +182,7 @@ func (h *AccountHandler) CloseAccount(w http.ResponseWriter, r *http.Request) {
 		AccountID:   accountID,
 		RequesterID: requesterID,
 	}); err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -195,7 +196,7 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 		RequesterID: requesterID,
 	})
 	if err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -221,7 +222,7 @@ func (h *AccountHandler) GetTransactions(w http.ResponseWriter, r *http.Request)
 		Take:        take,
 	})
 	if err != nil {
-		writeAccountError(w, err)
+		writeAccountError(w, r, err)
 		return
 	}
 	summaries := make([]TransactionSummaryResponse, len(result.Transactions))
@@ -248,7 +249,7 @@ func parsePagination(r *http.Request) (page, take int) {
 	return page, take
 }
 
-func writeAccountError(w http.ResponseWriter, err error) {
+func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, account.ErrNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -262,6 +263,7 @@ func writeAccountError(w http.ResponseWriter, err error) {
 		errors.Is(err, account.ErrBalanceNotZero):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
+		slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }
