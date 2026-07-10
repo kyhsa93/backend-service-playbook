@@ -23,7 +23,13 @@ import (
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	dbConfig, err := config.LoadDatabaseConfig()
+	if err != nil {
+		slog.Error("config error", "error", err)
+		os.Exit(1)
+	}
+
+	db, err := sql.Open("postgres", dbConfig.URL)
 	if err != nil {
 		slog.Error("failed to connect to db", "error", err)
 		os.Exit(1)
