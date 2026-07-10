@@ -2,17 +2,15 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/config.md](../../../../docs/architecture/config.md)
 
-## 현재 구현 — `DatabaseConfig`/`JwtConfig`는 fail-fast 검증됨, AWS 자격 증명은 아직 격차
+## 현재 구현 — `DatabaseConfig`/`JwtConfig`/`AwsConfig` 모두 실제 코드
 
 `src/config/database_config.py`의 `DatabaseConfig`(`pydantic_settings.BaseSettings`)가 `DATABASE_URL`을 필수값으로 검증하고, `src/config/validator.py`의 `validate_env()`가 `main.py` 모듈 임포트 시점에 이를 호출해 누락 시 `sys.exit(1)`로 즉시 종료한다 — 아래 "Fail-Fast" 절이 이 실제 코드를 그대로 보여준다.
 
 `src/config/jwt_config.py`의 `JwtConfig`도 같은 방식으로 검증된다. 다만 `JWT_SECRET`은 **프로덕션에서만 예외**다 — 프로덕션에서는 `main.py`의 `lifespan`이 Secrets Manager(`app/jwt`)에서 조회해 채우므로([secret-manager.md](secret-manager.md) 참고) 환경 변수가 비어 있어도 fail-fast 대상이 아니다. `validate_env()`가 `APP_ENV != "production"`일 때만 `JwtConfig.secret` 누락을 fail-fast로 막는다.
 
-다음 값은 여전히 검증 없이 하드코딩된 기본값으로 조용히 대체된다.
+**AWS 자격 증명**(`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`)도 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다. `src/common/aws_secret_service.py`와 `src/account/infrastructure/notification/notification_service.py` 모두 `AwsConfig().client_kwargs()`로 boto3 클라이언트를 생성한다 — 더 이상 각자 `os.getenv(..., "test")`를 산발적으로 호출하지 않는다. 단, `AwsConfig`는 모든 필드에 로컬 개발용 기본값(`region="us-east-1"`, `access_key_id="test"` 등)이 있어 **fail-fast 대상은 아니다** — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이라, DB 접속 정보/JWT secret과 달리 "누락 시 종료해야 하는 값"으로 보지 않는다(다른 언어 구현체도 SES/AWS 자격 증명 자체는 fail-fast 대상에서 제외한다).
 
-- **AWS 자격 증명**(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`): `src/common/aws_secret_service.py`, `src/account/infrastructure/notification/notification_service.py`가 각각 `os.getenv(..., "test")`로 산발적으로 읽는다. 관심사별로 묶는 `AwsConfig`/`aws_config.py` 같은 설정 클래스는 아직 존재하지 않는다 — 아래 `AwsConfig` 제안도 마찬가지로 아직 구현되지 않았다(별도로 추적 중인 격차).
-
-아래는 Pydantic `BaseSettings`를 이용한 fail-fast 패턴이다. `DatabaseConfig`/`JwtConfig`는 실제 코드이고, `AwsConfig`는 아직 구현되지 않은 제안이다.
+아래는 Pydantic `BaseSettings`를 이용한 fail-fast 패턴이다. `DatabaseConfig`/`JwtConfig`/`AwsConfig` 모두 실제 코드다.
 
 ---
 
@@ -49,7 +47,7 @@ class JwtConfig(BaseSettings):
 ```
 
 ```python
-# src/config/aws_config.py (아직 구현되지 않음 — 제안, 별도 추적 중인 격차)
+# src/config/aws_config.py — 실제 코드
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,12 +55,22 @@ class AwsConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AWS_")
 
     region: str = "us-east-1"
-    endpoint_url: str | None = None       # LocalStack용 — 미설정 시 실제 클라우드 사용
-    access_key_id: str = "test"           # 로컬 전용 기본값 — 운영은 Secrets Manager로 주입
+    endpoint_url: str | None = None  # LocalStack용 — 미설정 시 실제 클라우드 사용
+    access_key_id: str = "test"  # 로컬 전용 기본값 — 운영은 IAM 역할/Secrets Manager로 대체
     secret_access_key: str = "test"
+
+    def client_kwargs(self) -> dict[str, str | None]:
+        return {
+            "region_name": self.region,
+            "endpoint_url": self.endpoint_url,
+            "aws_access_key_id": self.access_key_id,
+            "aws_secret_access_key": self.secret_access_key,
+        }
 ```
 
-현재 `src/config/`에는 `database_config.py`, `jwt_config.py`, `validator.py`가 있다 — `aws_config.py`는 아직 파일 자체가 존재하지 않는다.
+`client_kwargs()`는 `aioboto3.Session().client(...)`에 그대로 `**`로 펼쳐 넣을 수 있는 형태다 — `src/common/aws_secret_service.py`/`src/account/infrastructure/notification/notification_service.py` 모두 이 메서드로 boto3 클라이언트를 만든다.
+
+현재 `src/config/`에는 `database_config.py`, `jwt_config.py`, `aws_config.py`, `validator.py`가 있다.
 
 **기본값 설정 원칙:**
 - 로컬 개발에서 그대로 동작하는 값(`region`)은 기본값을 둔다.
@@ -149,7 +157,7 @@ class DepositHandler:
         url = os.environ["DATABASE_URL"]   # 금지 — Handler는 설정을 모른다
 ```
 
-`src/account/infrastructure/notification/notification_service.py`가 `os.getenv("AWS_REGION", ...)` 등을 직접 참조하는 것은 위치(Infrastructure) 자체는 원칙과 일치한다. 다만 fail-fast 검증이 없다는 점, 그리고 Technical Service 구현체 내부에서 산발적으로 `os.getenv`를 호출하는 대신 `AwsConfig` 객체를 주입받는 형태로 정리하면 [secret-manager.md](secret-manager.md)의 캐싱 계층과도 자연스럽게 통합된다.
+`src/account/infrastructure/notification/notification_service.py`와 `src/common/aws_secret_service.py`는 각자 `AwsConfig()`를 인스턴스화해 `client_kwargs()`로 boto3 클라이언트를 구성한다 — 위치(Infrastructure)도 올바르고, 더 이상 `os.getenv`를 산발적으로 호출하지 않는다.
 
 ---
 

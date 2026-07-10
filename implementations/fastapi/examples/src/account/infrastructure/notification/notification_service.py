@@ -7,6 +7,7 @@ import aioboto3
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....common.generate_id import generate_id
+from ....config.aws_config import AwsConfig
 from ...application.service.notification_service import NotificationService
 from ...domain.account import AccountDomainEvent
 from ...domain.events import (
@@ -77,11 +78,7 @@ class SesNotificationService(NotificationService):
         recipient = event.email
 
         async with self._boto_session.client(
-            "ses",
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
-            endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+            "ses", **AwsConfig().client_kwargs()  # type: ignore[call-arg]
         ) as ses_client:
             response = await ses_client.send_email(
                 Source=os.getenv("SES_SENDER_EMAIL", DEFAULT_SENDER_EMAIL),

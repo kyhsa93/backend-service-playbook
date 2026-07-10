@@ -8,17 +8,16 @@
 
 **언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소는 `APP_ENV == "production"`("production이면 클라우드")으로 게이팅한다. go도 변수명은 같은 `APP_ENV`를 쓰지만 **극성이 반대**(`env != "production"`, "production이 아니면 로컬"). nestjs는 `NODE_ENV !== 'production'`(go와 같은 극성, 변수명만 다름). kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
 
-다만 **DB 자격 증명과 AWS 자격 증명 자체는 여전히 Secrets Manager를 거치지 않는다.**
+다만 **DB 접속 정보와 AWS 자격 증명 자체는 여전히 Secrets Manager를 거치지 않는다** — 둘 다 로컬 개발용 기본값이 있는 값이라 fail-fast 대상도 아니다.
 
 ```python
-# src/common/aws_secret_service.py — 실제 코드. 이 클라이언트 자체가 AWS 자격 증명을
-# os.getenv(..., "test")로 읽는다 — Secrets Manager를 "호출하기 위한" 자격 증명이
-# 아직 fail-fast 검증되지 않는다는 뜻이다 (config.md 참조, 별도 추적 중인 격차)
-aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
-aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+# src/common/aws_secret_service.py — 실제 코드. AwsConfig(config.md 참고)로 자격 증명을 캡슐화한다
+async with self._boto_session.client(
+    "secretsmanager", **AwsConfig().client_kwargs()
+) as client:
 ```
 
-`"test"` 기본값은 LocalStack에서는 유효하지만(LocalStack은 자격 증명을 검증하지 않는다), 프로덕션에서 환경 변수가 설정되지 않으면 **자격 증명이 조용히 `"test"`가 되어 실제 AWS 호출이 인증 실패로 죽는다** — fail-fast가 아니라 fail-silent에 가깝다. 이 격차는 별도로 추적 중이며(`config.md`의 `AwsConfig`/`aws_config.py` 부재 참조), 이 문서에서 해결 완료로 표시하지 않는다.
+AWS 자격 증명은 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다([config.md](config.md) 참고) — 더 이상 `os.getenv(..., "test")`를 산발적으로 호출하지 않는다. `region`/`access_key_id`/`secret_access_key` 모두 로컬 개발용 기본값을 갖고 있어 fail-fast 대상이 아니다 — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이기 때문이다.
 
 또한 DB 비밀번호(`DatabaseConfig.url` — [config.md](config.md) 참조)는 여전히 환경 변수 하나에 통째로 담겨 있고, Secrets Manager 조회 경로가 없다 — 아래 "DB 설정에 Secrets Manager 적용" 절 참조.
 
@@ -41,10 +40,11 @@ class SecretService(ABC):
 ```python
 # src/common/aws_secret_service.py — 실제 코드. infrastructure/secret/이 아니라 common/에 있다
 import json
-import os
 import time
 
 import aioboto3
+
+from ..config.aws_config import AwsConfig
 
 
 class AwsSecretService(SecretService):
@@ -61,11 +61,7 @@ class AwsSecretService(SecretService):
                 return value
 
         async with self._boto_session.client(
-            "secretsmanager",
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
-            endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,   # 로컬은 LocalStack
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+            "secretsmanager", **AwsConfig().client_kwargs()   # 로컬은 LocalStack
         ) as client:
             response = await client.get_secret_value(SecretId=secret_id)
 
