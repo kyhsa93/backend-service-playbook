@@ -1,6 +1,6 @@
 package com.example.accountservice.notification.infrastructure
 
-import org.springframework.beans.factory.annotation.Value
+import com.example.accountservice.config.AwsProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
@@ -10,25 +10,22 @@ import software.amazon.awssdk.services.ses.SesClient
 import java.net.URI
 
 @Configuration
-class SesConfig {
+class SesConfig(private val awsProperties: AwsProperties) {
 
     @Bean
-    fun sesClient(
-        @Value("\${AWS_REGION:us-east-1}") region: String,
-        @Value("\${AWS_ACCESS_KEY_ID:test}") accessKeyId: String,
-        @Value("\${AWS_SECRET_ACCESS_KEY:test}") secretAccessKey: String,
-        @Value("\${AWS_ENDPOINT_URL:}") endpointUrl: String,
-    ): SesClient {
+    fun sesClient(): SesClient {
         // 자격 증명은 항상 명시적으로 설정한다. DefaultCredentialsProvider(IMDS 등)에 의존하면
         // 자격 증명이 없을 때 탐색 과정에서 응답이 느려질 수 있다.
         val builder = SesClient.builder()
-            .region(Region.of(region))
+            .region(Region.of(awsProperties.region))
             .credentialsProvider(
-                StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey)),
+                StaticCredentialsProvider.create(
+                    AwsBasicCredentials.create(awsProperties.accessKeyId, awsProperties.secretAccessKey),
+                ),
             )
 
-        if (endpointUrl.isNotBlank()) {
-            builder.endpointOverride(URI.create(endpointUrl))
+        if (awsProperties.endpointUrl.isNotBlank()) {
+            builder.endpointOverride(URI.create(awsProperties.endpointUrl))
         }
 
         return builder.build()

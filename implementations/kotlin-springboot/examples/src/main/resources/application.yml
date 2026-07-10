@@ -11,3 +11,12 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:}
+  access-key-id: ${AWS_ACCESS_KEY_ID:test}
+  secret-access-key: ${AWS_SECRET_ACCESS_KEY:test}
+
+ses:
+  sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
