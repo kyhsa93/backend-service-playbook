@@ -21,6 +21,7 @@ harness/
     layer_dependency.py
     no_notification_dependency_in_command.py
     outbox_drain_order.py
+    cqrs_pattern.py
   tests/
     test_rules.py                pytest — 아래 fixtures/를 파라미터화해서 순회
     fixtures/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
@@ -55,6 +56,7 @@ python3 harness.py <projectRoot>
 | `layer-dependency` | `rules/layer_dependency.py` | AST 기반 — `application/`이 `infrastructure/`를 직접 import하면 실패(의존성 역전) |
 | `no-notification-dependency-in-command` | `rules/no_notification_dependency_in_command.py` | Command Handler가 `NotificationService`(ABC 포함)를 직접 의존하면 실패 — Outbox 경유해야 함 |
 | `outbox-drain-order` | `rules/outbox_drain_order.py` | `OutboxRelay`를 참조하는 Command Handler가 `save(...)` 호출 뒤에 `process_pending(...)`을 호출하는지(순서 포함) — domain-events.md의 핵심 불변식 |
+| `cqrs-pattern` | `rules/cqrs_pattern.py` | `application/query/` 하위 파일이 쓰기용 Repository(`Repository` 문자열)를 참조하면 실패 — Query는 읽기 전용 Query 인터페이스에만 의존해야 함(cqrs-pattern.md) |
 
 ## 회귀 테스트
 

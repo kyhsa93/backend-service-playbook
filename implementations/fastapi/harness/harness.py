@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 
 from rules import (
+    cqrs_pattern,
     directory_structure,
     domain_purity,
     event_placement,
@@ -36,6 +37,7 @@ RULES = [
     layer_dependency,
     no_notification_dependency_in_command,
     outbox_drain_order,
+    cqrs_pattern,
 ]
 
 

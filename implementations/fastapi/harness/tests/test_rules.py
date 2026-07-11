@@ -15,6 +15,7 @@ if HARNESS_DIR not in sys.path:
     sys.path.insert(0, HARNESS_DIR)
 
 from rules import (  # noqa: E402
+    cqrs_pattern,
     directory_structure,
     domain_purity,
     event_placement,
@@ -60,6 +61,7 @@ def assert_has_failure(result) -> None:
         (layer_dependency, "layer-dependency/good"),
         (no_notification_dependency_in_command, "no-notification-dependency-in-command/good"),
         (outbox_drain_order, "outbox-drain-order/good"),
+        (cqrs_pattern, "cqrs-pattern/good"),
     ],
 )
 def test_good_fixture_has_no_failures(rule_module, fixture):
@@ -80,6 +82,7 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (no_notification_dependency_in_command, "no-notification-dependency-in-command/bad-has-dependency"),
         (outbox_drain_order, "outbox-drain-order/bad-missing-process-pending"),
         (outbox_drain_order, "outbox-drain-order/bad-wrong-order"),
+        (cqrs_pattern, "cqrs-pattern/bad-imports-repository"),
     ],
 )
 def test_bad_fixture_has_failure(rule_module, fixture):
