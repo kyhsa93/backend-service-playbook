@@ -33,14 +33,21 @@ COPY internal ./internal
 # scratch/distroless에는 libc가 없으므로 필수.
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
 
+# HEALTHCHECK 전용 정적 바이너리 — distroless에는 curl/wget이 없어 직접 컴파일해 포함한다.
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/healthcheck ./cmd/healthcheck
+
 # ---- Stage 2: Production ----
 FROM gcr.io/distroless/static-debian12
 
 COPY --from=build /bin/server /bin/server
+COPY --from=build /bin/healthcheck /bin/healthcheck
 
 EXPOSE 8080
 
 USER nonroot:nonroot
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/bin/healthcheck"]
 
 ENTRYPOINT ["/bin/server"]
 ```
@@ -124,7 +131,39 @@ mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) 
 })
 ```
 
-readiness 상태 토글과 SIGTERM 연동 상세는 [graceful-shutdown.md](graceful-shutdown.md) 참조. `distroless`에는 `curl`이 없으므로 Docker `HEALTHCHECK` 지시어로 HTTP 호출을 실행하려면 별도 헬스체크 바이너리를 빌드하거나, Kubernetes의 `httpGet` 프로브(컨테이너 내부 실행 불필요)를 사용한다.
+readiness 상태 토글과 SIGTERM 연동 상세는 [graceful-shutdown.md](graceful-shutdown.md) 참조.
+
+---
+
+## Dockerfile HEALTHCHECK — 전용 정적 바이너리 (적용 완료)
+
+`gcr.io/distroless/static-debian12`는 셸도 `curl`/`wget`도 없어 다른 언어 구현체처럼 `HEALTHCHECK CMD curl -f ...` 형태를 그대로 쓸 수 없다. 검토한 대안은 세 가지다.
+
+1. **빌드 스테이지에서 전용 헬스체크 바이너리를 컴파일해 최종 이미지에 포함** — 채택
+2. base 이미지를 `distroless/static-debian12:debug`(busybox 셸 포함) 또는 `alpine`으로 교체해 `wget` 사용
+3. HEALTHCHECK 자체를 도입하지 않고 오케스트레이터(K8s liveness/readiness probe)에 위임
+
+**1번을 채택한 이유**: Go 구현체가 이 저장소에서 유일하게 `scratch`/`distroless` 같은 런타임-없는 최소 base 이미지를 쓸 수 있는 이유는 정적 바이너리이기 때문이다(위 "Go의 이점" 절 참조). `:debug`나 `alpine`으로 바꾸면(2번) 이 이점을 스스로 포기하고 공격 표면을 넓히는 셈이라 Go 구현체의 방향성과 맞지 않는다. 3번(오케스트레이터 위임)도 유효한 선택지이고 실제로 `java-springboot`가 이 입장이지만, `docker run`으로 단독 실행하거나 docker-compose로 로컬 통합 테스트를 돌릴 때(→ [local-dev.md](local-dev.md))는 오케스트레이터가 없어 컨테이너 상태를 볼 방법이 없다. Go는 헬스체크 바이너리 하나를 추가로 컴파일하는 비용이 거의 0(추가 의존성 없음, 빌드 시간 수백 ms, 최종 이미지에 수 MB 추가)이라 1번이 다른 두 대안보다 확실히 우월하다.
+
+`cmd/healthcheck/main.go`는 프레임워크나 외부 의존성 없이 표준 라이브러리 `net/http`만으로 작성한다:
+
+```go
+func main() {
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	resp, err := client.Get("http://localhost:8080/health/live")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
+}
+```
+
+`CMD` 문자열을 셸이 파싱해야 하는 shell form(`HEALTHCHECK CMD curl -f ...`)은 애초에 distroless에서 실행 불가능하므로 반드시 exec form(`["/bin/healthcheck"]`) 배열로 작성한다.
 
 ---
 
@@ -135,6 +174,7 @@ readiness 상태 토글과 SIGTERM 연동 상세는 [graceful-shutdown.md](grace
 - **ENTRYPOINT는 exec form**: 셸 래퍼 없이 바이너리를 직접 PID 1로 실행한다.
 - **환경 변수는 이미지 외부에서 주입**한다.
 - **헬스체크 엔드포인트 필수**: liveness + readiness를 `net/http`로 직접 구현한다.
+- **Dockerfile HEALTHCHECK는 전용 정적 바이너리로 구현**: distroless에는 curl/wget이 없으므로 `cmd/healthcheck`를 빌드해 포함하고 exec form으로 실행한다.
 
 ---
 
