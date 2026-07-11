@@ -10,7 +10,7 @@ interfaces/rest (@RestController)  →  application/{command,query} (@Service)  
                                                                         infrastructure/persistence (@Repository, AccountRepositoryImpl)
 ```
 
-`account/domain/`은 Spring 어노테이션 없이 순수 Kotlin(+ JPA 애노테이션, [directory-structure.md](directory-structure.md) 참고)으로 작성되고, `infrastructure/persistence/AccountRepositoryImpl`이 `domain/AccountRepository` 인터페이스를 구현해 의존성을 역전시킨다. harness의 `domain-purity`(도메인에 `@Service`/`@Component`/`@Repository`/`@Controller` 금지), `service-annotation`(`@Service`는 application/ 안에만), `repository-annotation`(`@Repository`는 infrastructure/ 안에만) 검사가 이 의존 방향을 실제로 강제한다.
+`account/domain/`은 Spring 어노테이션도 JPA(`jakarta.persistence`) 애노테이션도 없는 순수 Kotlin으로 작성되고(JPA 매핑은 `infrastructure/persistence/`의 `AccountJpaEntity`/`MoneyEmbeddable` + Mapper가 전담, [directory-structure.md](directory-structure.md) 참고), `infrastructure/persistence/AccountRepositoryImpl`이 `domain/AccountRepository` 인터페이스를 구현해 의존성을 역전시킨다. harness의 `domain-purity`(도메인에 `@Service`/`@Component`/`@Repository`/`@Controller` 및 `jakarta.persistence` import 금지), `service-annotation`(`@Service`는 application/ 안에만), `repository-annotation`(`@Repository`는 infrastructure/ 안에만) 검사가 이 의존 방향을 실제로 강제한다.
 
 ---
 

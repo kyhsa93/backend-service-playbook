@@ -1,36 +1,26 @@
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
-import jakarta.persistence.*
 import java.time.LocalDateTime
 
-@Entity
-@Table(name = "transactions")
-class Transaction protected constructor() {
+/**
+ * Account Aggregate의 하위 Entity — 어떤 프레임워크/ORM에도 의존하지 않는 순수 Kotlin 객체.
+ * 영속성 매핑은 infrastructure/persistence/TransactionJpaEntity + TransactionMapper가 전담한다.
+ */
+class Transaction private constructor() {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = null
-        private set
-
-    @Column(nullable = false, unique = true)
     var transactionId: String = ""
         private set
 
-    @Column(nullable = false)
     var accountId: String = ""
         private set
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     var type: TransactionType = TransactionType.DEPOSIT
         private set
 
-    @Embedded
     var amount: Money = Money(0, "")
         private set
 
-    @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now()
         private set
 
@@ -42,6 +32,24 @@ class Transaction protected constructor() {
                 this.type = type
                 this.amount = amount
                 this.createdAt = LocalDateTime.now()
+            }
+
+        /**
+         * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Transaction을 복원할 때 사용한다.
+         */
+        fun reconstitute(
+            transactionId: String,
+            accountId: String,
+            type: TransactionType,
+            amount: Money,
+            createdAt: LocalDateTime,
+        ): Transaction =
+            Transaction().apply {
+                this.transactionId = transactionId
+                this.accountId = accountId
+                this.type = type
+                this.amount = amount
+                this.createdAt = createdAt
             }
     }
 }

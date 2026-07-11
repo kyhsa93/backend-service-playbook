@@ -1,55 +1,40 @@
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
-import jakarta.persistence.*
 import java.time.LocalDateTime
 
-@Entity
-@Table(name = "accounts")
-class Account protected constructor() {
+/**
+ * Account Aggregate Root — 어떤 프레임워크/ORM에도 의존하지 않는 순수 Kotlin 객체.
+ * 영속성 매핑은 infrastructure/persistence/AccountJpaEntity + AccountMapper가 전담한다.
+ */
+class Account private constructor() {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = null
-        private set
-
-    @Column(nullable = false, unique = true)
     var accountId: String = ""
         private set
 
-    @Column(nullable = false)
     var ownerId: String = ""
         private set
 
-    @Column(nullable = false)
     var email: String = ""
         private set
 
-    @Embedded
     var balance: Money = Money(0, "")
         private set
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     var status: AccountStatus = AccountStatus.ACTIVE
         private set
 
-    @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now()
         private set
 
-    @Column(nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now()
         private set
 
-    @Column
     var deletedAt: LocalDateTime? = null
         private set
 
-    @Transient
     private val domainEvents: MutableList<Any> = mutableListOf()
 
-    @Transient
     private val pendingTransactions: MutableList<Transaction> = mutableListOf()
 
     companion object {
@@ -63,6 +48,31 @@ class Account protected constructor() {
                 this.createdAt = LocalDateTime.now()
                 this.updatedAt = this.createdAt
                 this.domainEvents += AccountCreatedEvent(this.accountId, ownerId, email, currency, this.createdAt)
+            }
+
+        /**
+         * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Account를 복원할 때 사용한다.
+         * create()와 달리 도메인 이벤트를 생성하지 않는다 — 이미 과거에 커밋된 상태를 그대로 재구성하는 것뿐이다.
+         */
+        fun reconstitute(
+            accountId: String,
+            ownerId: String,
+            email: String,
+            balance: Money,
+            status: AccountStatus,
+            createdAt: LocalDateTime,
+            updatedAt: LocalDateTime,
+            deletedAt: LocalDateTime?,
+        ): Account =
+            Account().apply {
+                this.accountId = accountId
+                this.ownerId = ownerId
+                this.email = email
+                this.balance = balance
+                this.status = status
+                this.createdAt = createdAt
+                this.updatedAt = updatedAt
+                this.deletedAt = deletedAt
             }
     }
 

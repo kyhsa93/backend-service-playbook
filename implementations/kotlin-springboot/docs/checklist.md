@@ -60,7 +60,9 @@
 [ ] Aggregate/Entity의 모든 프로퍼티가 private set인가?
     → var 뒤에 private set이 없는 프로퍼티가 있다면, 외부에서 직접 대입 가능한지 확인하고 수정
 [ ] Domain 레이어 파일에 @Service/@Component/@Repository/@Controller/@RestController가 사용되었는가?
-    → 있다면 제거. Domain 레이어는 Spring 무의존 (JPA 애노테이션 @Entity/@Embeddable/@Column 등은 이 저장소의 확립된 관례로 예외 허용, directory-structure.md 참조)
+    → 있다면 제거. Domain 레이어는 Spring 무의존
+[ ] Domain 레이어 파일이 jakarta.persistence(@Entity/@Embeddable/@Column 등)를 import하는가?
+    → 있다면 제거. JPA 매핑은 infrastructure/persistence의 JpaEntity/Embeddable + Mapper로 분리한다 (directory-structure.md 참조). harness domain-purity가 강제
 [ ] Repository 인터페이스가 Kotlin interface로 정의되어 있는가? (abstract class 아님 — Spring은 interface 자체가 DI 토큰)
 [ ] Repository 인터페이스가 domain/ 레이어에 위치하는가?
 [ ] Aggregate 간 직접 참조 없이 ID(String) 참조만 사용하는가?

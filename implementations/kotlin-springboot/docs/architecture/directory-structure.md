@@ -46,10 +46,10 @@ com.example.accountservice/
     OutboxRelay.kt                    ← Command Service가 저장 직후 동기 호출해 드레인
 
   account/
-    domain/                          ← 프레임워크 무의존 (Spring import 없음, harness domain-purity 검사)
-      Account.kt                     ← Aggregate Root (@Entity — JPA는 예외적으로 허용, 아래 참고)
-      Transaction.kt                 ← 하위 Entity (@Entity)
-      Money.kt                       ← Value Object (@Embeddable + data class)
+    domain/                          ← 프레임워크 무의존 (Spring/JPA import 없음, harness domain-purity 검사)
+      Account.kt                     ← Aggregate Root — 순수 Kotlin, JPA 매핑은 AccountJpaEntity가 전담
+      Transaction.kt                 ← 하위 Entity — 순수 Kotlin, JPA 매핑은 TransactionJpaEntity가 전담
+      Money.kt                       ← Value Object — 순수 data class, JPA 매핑은 MoneyEmbeddable이 전담
       AccountStatus.kt               ← enum class
       TransactionType.kt             ← enum class
       AccountException.kt            ← sealed class 에러 계층
@@ -85,9 +85,14 @@ com.example.accountservice/
 
     infrastructure/
       persistence/
-        AccountJpaRepository.kt          ← Spring Data JpaRepository 확장
-        TransactionJpaRepository.kt
-        AccountRepositoryImpl.kt         ← @Repository, AccountRepository 구현체
+        AccountJpaEntity.kt              ← domain.Account의 JPA 매핑 전용 대응물 (@Entity)
+        TransactionJpaEntity.kt          ← domain.Transaction의 JPA 매핑 전용 대응물 (@Entity)
+        MoneyEmbeddable.kt               ← domain.Money의 JPA 매핑 전용 대응물 (@Embeddable + data class)
+        AccountMapper.kt                 ← Account ↔ AccountJpaEntity 변환 전담 (internal object)
+        TransactionMapper.kt             ← Transaction ↔ TransactionJpaEntity 변환 전담 (internal object)
+        AccountJpaRepository.kt          ← JpaRepository&lt;AccountJpaEntity, Long&gt; 확장
+        TransactionJpaRepository.kt      ← JpaRepository&lt;TransactionJpaEntity, Long&gt; 확장
+        AccountRepositoryImpl.kt         ← @Repository, AccountRepository 구현체 (Mapper로 Entity↔Domain 변환)
 
     interfaces/
       rest/
@@ -112,14 +117,27 @@ com.example.accountservice/
 
 | root 레이어 | 이 저장소 패키지 | 비고 |
 |---|---|---|
-| domain/ | `account/domain/` | JPA `@Entity`/`@Embeddable`을 예외적으로 허용 (아래 참고) |
+| domain/ | `account/domain/` | 순수 Kotlin — Spring/JPA import 없음. JPA 매핑은 infrastructure로 분리 (아래 참고) |
 | application/ | `account/application/{command,query,event}/` | root의 `adapter/`, `integration-event/` 서브패키지는 미사용 (단일 BC 구조라 불필요) |
 | interface/ | `account/interfaces/rest/` | root는 `interface/`(단수), 이 저장소는 Java/Kotlin 관례인 `interfaces/`(복수) 사용 |
-| infrastructure/ | `account/infrastructure/persistence/` | Repository 구현체를 `persistence/` 하위 패키지에 배치 (Java Spring 생태계 관례) |
+| infrastructure/ | `account/infrastructure/persistence/` | JpaEntity/Embeddable + Mapper + Repository 구현체를 `persistence/` 하위 패키지에 배치 |
 
-### domain/에 `@Entity`를 두는 것에 대해
+### domain/JPA 분리 — JpaEntity + Mapper
 
-root 원칙은 "domain/은 어떤 프레임워크도 import하지 않는다"이다. 이 저장소는 JPA 애노테이션(`@Entity`, `@Embeddable`, `@Column` 등)을 domain 클래스에 직접 붙인다 — 엄밀히는 원칙과 어긋나지만, Java/Kotlin Spring 생태계에서 굳이 별도의 Entity 클래스와 도메인 클래스를 분리하지 않는 것이 실용적 관례로 굳어져 있다(JPA 자체가 POJO/Kotlin 클래스에 애노테이션만 붙이는 방식이라 별도 프레임워크 SDK 호출이 없다). harness의 `domain-purity` 검사도 `@Service`/`@Component`/`@Repository`/`@Controller`류만 금지하고 JPA 애노테이션은 허용 대상에서 제외한다 — 이 저장소의 확립된 관례로 보면 된다. 완전한 순수성이 필요하다면 domain 클래스와 JPA Entity를 분리하고 매퍼를 두는 방식도 가능하지만, 이 예제 규모에서는 과설계로 판단해 채택하지 않았다.
+root 원칙은 "domain/은 어떤 프레임워크도 import하지 않는다"이다. 이 저장소는 이 원칙을 예외 없이 적용한다: `domain/`의 `Account`/`Transaction`/`Money`는 `jakarta.persistence` 애노테이션을 전혀 붙이지 않는 순수 Kotlin 클래스(`data class`, null-safety)이고, JPA 매핑은 `infrastructure/persistence/`의 전용 대응물이 전담한다.
+
+| domain (순수) | infrastructure/persistence (JPA 매핑) | 역할 |
+|---|---|---|
+| `Account` (Aggregate Root) | `AccountJpaEntity` (`@Entity`) | `@Id`/`@Column`/`@Embedded`/`@Enumerated` 컬럼 매핑 |
+| `Transaction` (하위 Entity) | `TransactionJpaEntity` (`@Entity`) | 상동 (생성 후 불변이라 insert 전용) |
+| `Money` (Value Object) | `MoneyEmbeddable` (`@Embeddable`) | `amount`/`currency` 임베더블 컬럼 매핑 |
+
+- **Mapper가 변환을 전담한다.** `AccountMapper`/`TransactionMapper`(`internal object`)가 Entity ↔ Domain 양방향 변환을 담당하며, `AccountRepositoryImpl` 안에서만 쓰인다. Domain/Application 레이어는 JpaEntity·Mapper의 존재조차 모른다.
+- **복원은 `reconstitute()`로.** Mapper의 `toDomain()`은 도메인 팩토리 `Account.reconstitute(...)`/`Transaction.reconstitute(...)`를 호출한다 — `create()`와 달리 도메인 이벤트를 만들지 않고, 이미 커밋된 상태를 그대로 재구성한다.
+- **저장은 PK 보존.** `AccountMapper.updateEntity(existing, account)`가 기존 행(DB 생성 `id`)의 가변 필드만 덮어써 update로 처리하고, 신규는 `toNewEntity(account)`(PK 없음)로 insert한다. `AccountRepositoryImpl.save()`가 `findByAccountId`로 기존 행 유무를 판별해 둘을 분기한다.
+- **JPQL은 JpaEntity를 대상으로 한다.** `AccountRepositoryImpl`의 동적 조회는 `SELECT a FROM AccountJpaEntity a ...`로 쓰고, 결과를 `AccountMapper::toDomain`으로 매핑해 반환한다.
+
+harness의 `domain-purity` 검사는 이제 Spring 스테레오타입(`@Service`/`@Component`/`@Repository`/`@Controller`)뿐 아니라 `domain/`의 `jakarta.persistence` import까지 FAIL 처리한다 — 과거처럼 JPA 애노테이션을 domain 클래스에 되붙이는 회귀가 자동으로 잡힌다. (이 분리는 java-springboot의 동일 구조 — `AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable` + `AccountMapper`/`TransactionMapper` — 와 정확히 대응한다.)
 
 ---
 

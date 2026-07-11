@@ -50,6 +50,7 @@ val TESTS: List<TestCase> = listOf(
 
     TestCase("domain-purity/good") { checkDomainPurity("testdata/domain-purity/good").assertNoFailures() },
     TestCase("domain-purity/bad-forbidden-annotation") { checkDomainPurity("testdata/domain-purity/bad-forbidden-annotation").assertHasFailure() },
+    TestCase("domain-purity/bad-jpa-annotation") { checkDomainPurity("testdata/domain-purity/bad-jpa-annotation").assertHasFailure() },
 
     TestCase("controller-placement/good") { checkControllerPlacement("testdata/controller-placement/good").assertNoFailures() },
     TestCase("controller-placement/bad-outside-interfaces") { checkControllerPlacement("testdata/controller-placement/bad-outside-interfaces").assertHasFailure() },

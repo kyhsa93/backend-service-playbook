@@ -4,7 +4,7 @@
 
 1. **도메인 우선 디렉토리 구조** — `<domain>/{domain,application,infrastructure,interfaces}/` 4레이어. 레이어가 아니라 Bounded Context가 최상위 패키지 기준이다 ([directory-structure.md](directory-structure.md)).
 
-2. **Domain 레이어는 Spring 무의존, 단 JPA 애노테이션은 예외적으로 허용** — `@Service`/`@Component`/`@Repository`/`@Controller`는 금지, `@Entity`/`@Embeddable`은 이 저장소의 확립된 관례로 허용한다. harness의 `domain-purity` 검사가 전자만 강제한다 ([directory-structure.md](directory-structure.md), [layer-architecture.md](layer-architecture.md)).
+2. **Domain 레이어는 프레임워크 무의존 (Spring·JPA 모두)** — `@Service`/`@Component`/`@Repository`/`@Controller`뿐 아니라 `jakarta.persistence`(`@Entity`/`@Embeddable`/`@Column` 등)도 domain/에서 금지한다. JPA 매핑은 `infrastructure/persistence/`의 `AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable` + `AccountMapper`/`TransactionMapper`가 전담한다. harness의 `domain-purity` 검사가 둘 다(Spring 스테레오타입 + domain/의 `jakarta.persistence` import) 강제한다 ([directory-structure.md](directory-structure.md), [layer-architecture.md](layer-architecture.md)).
 
 3. **Aggregate 생성은 `protected constructor()` + `companion object.create()` 팩토리로 통제** — 외부 코드가 `Account()`로 빈 인스턴스를 만들 수 없고, 유일한 공개 생성 경로가 불변식을 검증한다 ([tactical-ddd.md](tactical-ddd.md)).
 

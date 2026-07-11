@@ -22,14 +22,16 @@ class AccountRepositoryImpl(
 
     override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
         jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+            ?.let(AccountMapper::toDomain)
 
     override fun findAll(query: AccountFindQuery): List<Account> {
         val jpql = buildJpql(query, count = false)
-        return em.createQuery(jpql, Account::class.java)
+        return em.createQuery(jpql, AccountJpaEntity::class.java)
             .setFirstResult(query.page * query.take)
             .setMaxResults(query.take)
             .apply { applyParams(this, query) }
             .resultList
+            .map(AccountMapper::toDomain)
     }
 
     override fun countAll(query: AccountFindQuery): Long {
@@ -41,9 +43,12 @@ class AccountRepositoryImpl(
 
     @Transactional
     override fun save(account: Account) {
-        jpaRepository.save(account)
+        val entity = jpaRepository.findByAccountId(account.accountId)
+            ?.let { AccountMapper.updateEntity(it, account) }
+            ?: AccountMapper.toNewEntity(account)
+        jpaRepository.save(entity)
         val pending = account.pullPendingTransactions()
-        if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
+        if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending.map(TransactionMapper::toNewEntity))
         // Aggregate 상태(account/transaction 행)와 Outbox 행을 같은 트랜잭션에 커밋한다 — 이벤트가
         // Aggregate 상태 없이 저장되거나(dual-write), 반대로 유실되는 경우가 생기지 않는다.
         outboxWriter.saveAll(account.pullDomainEvents())
@@ -51,20 +56,23 @@ class AccountRepositoryImpl(
 
     @Transactional
     override fun deleteAccount(accountId: String) {
-        val account = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
-        account.markDeleted()
-        jpaRepository.save(account)
+        val entity = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
+        val account = AccountMapper.toDomain(entity)
+        account.markDeleted() // 도메인 메서드로 불변식(CLOSED 상태만 삭제 가능) 검증 후 deletedAt 설정
+        AccountMapper.updateEntity(entity, account)
+        jpaRepository.save(entity)
     }
 
     override fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction> =
         transactionJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))
+            .map(TransactionMapper::toDomain)
 
     override fun countTransactions(accountId: String): Long =
         transactionJpaRepository.countByAccountId(accountId)
 
     private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
         val select = if (count) "SELECT COUNT(a)" else "SELECT a"
-        val sb = StringBuilder("$select FROM Account a WHERE a.deletedAt IS NULL")
+        val sb = StringBuilder("$select FROM AccountJpaEntity a WHERE a.deletedAt IS NULL")
         if (!query.accountId.isNullOrBlank()) sb.append(" AND a.accountId = :accountId")
         if (!query.ownerId.isNullOrBlank()) sb.append(" AND a.ownerId = :ownerId")
         if (!query.status.isNullOrEmpty()) sb.append(" AND a.status IN :status")
