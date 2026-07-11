@@ -83,6 +83,8 @@ com.example.accountservice/
         AccountSuspendedEventHandler.kt
         AccountReactivatedEventHandler.kt
         AccountClosedEventHandler.kt
+      service/                          ← 도메인 스코프 Technical Service 인터페이스 (domain-service.md)
+        NotificationService.kt           ← interface (Spring 무의존) — 이메일 발송 추상화
 
     infrastructure/
       persistence/
@@ -95,21 +97,17 @@ com.example.accountservice/
         TransactionJpaRepository.kt      ← JpaRepository&lt;TransactionJpaEntity, Long&gt; 확장
         AccountRepositoryImpl.kt         ← @Repository, AccountRepository 구현체 (Mapper로 Entity↔Domain 변환)
 
+      notification/                    ← Technical Service 구현 (SES 연동) — account 전용, 별도 BC 아님
+        NotificationServiceImpl.kt       ← @Component, SES 연동 구현체
+        SesConfig.kt                     ← @Configuration, SesClient Bean
+        persistence/
+          SentEmail.kt                   ← @Entity (발송 이력)
+          SentEmailJpaRepository.kt
+
     interfaces/
       rest/
         AccountController.kt             ← @RestController
         Schemas.kt                       ← Request/Response data class 모음
-
-  notification/                      ← Technical Service 모듈 (Account BC 소속, 별도 BC 아님)
-    application/
-      service/
-        NotificationService.kt           ← interface (Spring 무의존)
-    infrastructure/
-      NotificationServiceImpl.kt         ← @Component, SES 연동 구현체
-      SesConfig.kt                       ← @Configuration, SesClient Bean
-      persistence/
-        SentEmail.kt                     ← @Entity (발송 이력)
-        SentEmailJpaRepository.kt
 ```
 
 ---
@@ -142,21 +140,21 @@ harness의 `domain-purity` 검사는 이제 Spring 스테레오타입(`@Service`
 
 ---
 
-## notification 모듈 — Technical Service 패턴의 두 번째 예시
+## notification — Account 도메인 내부 Technical Service (별도 최상위 패키지 아님)
 
-`notification/`은 별도 Bounded Context가 아니라, [domain-service.md](../../../../docs/architecture/domain-service.md)가 정의하는 **Technical Service**(암복호화, 파일 스토리지, 이메일 발송 등 기술 인프라 추상화)의 실제 구현이다. Account BC가 "이메일을 보낸다"는 기술적 관심사를 `application/service/` 인터페이스로 추상화하고, 구현은 `infrastructure/`에 둔 것이다.
+이메일 발송은 별도 Bounded Context가 아니라, [domain-service.md](../../../../docs/architecture/domain-service.md)가 정의하는 **Technical Service**(암복호화, 파일 스토리지, 이메일 발송 등 기술 인프라 추상화)의 실제 구현이다. Account BC만 이를 사용하므로, `account/`와 형제인 최상위 `notification/` 패키지가 아니라 **`account/` 내부**에 배치한다 — `application/service/NotificationService.kt`(인터페이스)와 `infrastructure/notification/`(구현체 + 발송 이력)이 그것이다. (java-springboot·nestjs도 동일하게 도메인 내부 배치를 택했다.)
 
-**domain/이 없는 이유**: Technical Service는 비즈니스 불변식을 갖는 Aggregate가 아니라 순수 기술 기능(SES 호출)이므로 Aggregate Root, Repository가 필요 없다. 대신 `SentEmail`(발송 이력)이라는 자체 Entity와 JPA Repository를 `infrastructure/persistence/`에 둔다 — 이 이력은 도메인 규칙이 아니라 감사/디버깅 목적의 기술적 기록이라 domain 레이어로 승격하지 않았다.
+**domain/이 없는 이유**: Technical Service는 비즈니스 불변식을 갖는 Aggregate가 아니라 순수 기술 기능(SES 호출)이므로 Aggregate Root, Repository가 필요 없다. 대신 `SentEmail`(발송 이력)이라는 자체 Entity와 JPA Repository를 `infrastructure/notification/persistence/`에 둔다 — 이 이력은 도메인 규칙이 아니라 감사/디버깅 목적의 기술적 기록이라 domain 레이어로 승격하지 않았다.
 
 ```kotlin
-// notification/application/service/NotificationService.kt — 인터페이스, Spring 무의존
+// account/application/service/NotificationService.kt — 인터페이스, Spring 무의존
 interface NotificationService {
     fun sendEmail(accountId: String, eventType: String, recipient: String, subject: String, body: String)
 }
 ```
 
 ```kotlin
-// notification/infrastructure/NotificationServiceImpl.kt — 구현체, AWS SES SDK 사용
+// account/infrastructure/notification/NotificationServiceImpl.kt — 구현체, AWS SES SDK 사용
 @Component
 class NotificationServiceImpl(
     private val sesClient: SesClient,

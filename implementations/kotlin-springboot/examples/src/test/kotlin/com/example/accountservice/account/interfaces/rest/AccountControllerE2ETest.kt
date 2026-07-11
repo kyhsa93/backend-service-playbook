@@ -1,7 +1,7 @@
 package com.example.accountservice.account.interfaces.rest
 
 import com.example.accountservice.AccountServiceApplication
-import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
+import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailJpaRepository
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll

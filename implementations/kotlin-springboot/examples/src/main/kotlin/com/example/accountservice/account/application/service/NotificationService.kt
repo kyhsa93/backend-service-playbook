@@ -1,4 +1,4 @@
-package com.example.accountservice.notification.application.service
+package com.example.accountservice.account.application.service
 
 /**
  * 이메일 발송을 위한 Technical Service 인터페이스.
