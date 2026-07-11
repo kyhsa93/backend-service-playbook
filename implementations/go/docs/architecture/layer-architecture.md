@@ -65,16 +65,28 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 }
 ```
 
-root는 Command Service와 Query Service를 **서로 다른 인터페이스**(Repository vs Query)로 분리하라고 요구한다. 이 저장소는 그 원칙을 부분적으로만 따른다 — Query Handler(`query/get_account_handler.go`)도 Command과 동일한 `account.Repository`를 그대로 재사용한다:
+root는 Command Service와 Query Service를 **서로 다른 인터페이스**(Repository vs Query)로 분리하라고 요구한다. 이 저장소는 `internal/domain/account/repository.go`에 `Repository`(Command, `Save` 포함)와 `QueryRepository`(Query, 읽기 메서드만)를 별도 인터페이스로 정의해 이 원칙을 따른다 — Query Handler(`query/get_account_handler.go`, `query/get_transactions_handler.go`)는 `QueryRepository`만 의존성으로 받으므로 타입 시스템 수준에서 `Save`를 호출할 수 없다:
 
 ```go
+// internal/domain/account/repository.go
+type QueryRepository interface {
+	FindByID(ctx context.Context, accountID, ownerID string) (*Account, error)
+	FindAll(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
+}
+
+type Repository interface {
+	QueryRepository
+	Save(ctx context.Context, account *Account) error
+}
+
 // internal/application/query/get_account_handler.go
 type GetAccountHandler struct {
-	repo account.Repository  // 알려진 격차: 별도 읽기 전용 인터페이스가 아니라 쓰기와 동일한 Repository
+	repo account.QueryRepository  // 읽기 전용 인터페이스만 의존
 }
 ```
 
-읽기 전용 최적화 쿼리(N+1 회피, 조인, 페이지네이션 전용 SQL)가 필요해지면 root 원칙대로 `internal/application/query/account_query.go`(인터페이스) + `internal/infrastructure/persistence/account_query.go`(구현체)로 분리하는 것을 검토한다. 현재는 `FindByID`/`FindAll`이 이미 단순 조회라 별도 Query 인터페이스 없이도 동작하지만, 이 저장소가 root 원칙을 100% 따르는 것은 아니라는 점은 분명히 해둔다.
+`internal/infrastructure/persistence/account_repository.go`의 `AccountRepository`는 두 인터페이스의 구현체를 따로 둘 필요가 없다 — Go interface는 구조적 타이핑이므로, `Save`를 포함한 4개 메서드를 갖춘 concrete struct 하나가 `Repository`와 `QueryRepository`를 동시에 만족한다. `router.go`는 여전히 단일 `accountRepo` 인스턴스를 조립해 Command Handler에는 `account.Repository`로, Query Handler에는 `account.QueryRepository`로 전달한다 — `Repository`가 `QueryRepository`를 embed하므로 별도 어댑터 없이 넘길 수 있다. 읽기 모델을 별도 저장소(read replica, 캐시, 검색 인덱스 등)로 분리해야 하는 시점이 오면 `QueryRepository`만 구현하는 read-only 구현체를 추가하는 방향으로 확장한다.
 
 ---
 

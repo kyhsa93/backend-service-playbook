@@ -15,10 +15,10 @@ type GetTransactionsQuery struct {
 }
 
 type GetTransactionsHandler struct {
-	repo account.Repository
+	repo account.QueryRepository
 }
 
-func NewGetTransactionsHandler(repo account.Repository) *GetTransactionsHandler {
+func NewGetTransactionsHandler(repo account.QueryRepository) *GetTransactionsHandler {
 	return &GetTransactionsHandler{repo: repo}
 }
 

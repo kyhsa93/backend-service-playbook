@@ -249,21 +249,45 @@ func parsePagination(r *http.Request) (page, take int) {
 	return page, take
 }
 
+// accountErrorMapping은 sentinel error → (HTTP 상태 코드, client-facing 에러 코드) 매핑 테이블이다.
+// root docs/architecture/error-handling.md의 <Domain>ErrorCode enum에 대응하는 Go 관용구 —
+// SCREAMING_SNAKE_CASE 문자열을 sentinel error 옆에 나란히 둔다.
+var accountErrorMapping = []struct {
+	err    error
+	status int
+	code   string
+}{
+	{account.ErrNotFound, http.StatusNotFound, "ACCOUNT_NOT_FOUND"},
+	{account.ErrInvalidAmount, http.StatusBadRequest, "ACCOUNT_INVALID_AMOUNT"},
+	{account.ErrDepositRequiresActiveAccount, http.StatusBadRequest, "ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT"},
+	{account.ErrWithdrawRequiresActiveAccount, http.StatusBadRequest, "ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT"},
+	{account.ErrInsufficientBalance, http.StatusBadRequest, "ACCOUNT_INSUFFICIENT_BALANCE"},
+	{account.ErrSuspendRequiresActiveAccount, http.StatusBadRequest, "ACCOUNT_SUSPEND_REQUIRES_ACTIVE_ACCOUNT"},
+	{account.ErrReactivateRequiresSuspendedAccount, http.StatusBadRequest, "ACCOUNT_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT"},
+	{account.ErrAlreadyClosed, http.StatusBadRequest, "ACCOUNT_ALREADY_CLOSED"},
+	{account.ErrBalanceNotZero, http.StatusBadRequest, "ACCOUNT_BALANCE_NOT_ZERO"},
+}
+
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, account.ErrNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, account.ErrInvalidAmount),
-		errors.Is(err, account.ErrDepositRequiresActiveAccount),
-		errors.Is(err, account.ErrWithdrawRequiresActiveAccount),
-		errors.Is(err, account.ErrInsufficientBalance),
-		errors.Is(err, account.ErrSuspendRequiresActiveAccount),
-		errors.Is(err, account.ErrReactivateRequiresSuspendedAccount),
-		errors.Is(err, account.ErrAlreadyClosed),
-		errors.Is(err, account.ErrBalanceNotZero):
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	for _, m := range accountErrorMapping {
+		if errors.Is(err, m.err) {
+			writeJSONError(w, m.status, m.code, err.Error())
+			return
+		}
 	}
+	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
+	writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+}
+
+// writeJSONError는 root docs/architecture/error-handling.md가 요구하는
+// {statusCode, code, message, error} 표준 JSON 에러 응답을 기록한다.
+func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(ErrorResponse{
+		StatusCode: status,
+		Code:       code,
+		Message:    message,
+		Error:      http.StatusText(status),
+	})
 }

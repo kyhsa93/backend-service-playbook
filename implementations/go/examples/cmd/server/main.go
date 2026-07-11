@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -60,10 +63,31 @@ func main() {
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
 	mux := httphandler.NewRouter(accountRepo, outboxRelay, jwtService)
 
-	addr := ":8080"
-	slog.Info("listening", "addr", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		slog.Error("server error", "error", err)
-		os.Exit(1)
+	srv := &http.Server{Addr: ":8080", Handler: mux}
+
+	// SIGTERM/SIGINT를 받으면 ctx가 취소된다.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	go func() {
+		slog.Info("listening", "addr", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
+	slog.Info("shutdown signal received")
+
+	// terminationGracePeriodSeconds(오케스트레이터 설정)에 맞춰 여유 있게 설정.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// 진행 중인 요청이 끝날 때까지 대기하며 새 연결은 거부한다.
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("graceful shutdown failed", "error", err)
 	}
+	slog.Info("server stopped")
+	// defer db.Close()가 이 시점 이후에 실행됨 — HTTP 서버가 완전히 닫힌 뒤 DB 연결 정리
 }

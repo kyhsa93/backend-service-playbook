@@ -16,8 +16,11 @@ type AccountRepository struct {
 	outboxWriter *outbox.Writer
 }
 
-// 컴파일 타임 interface 충족 검증
+// 컴파일 타임 interface 충족 검증 — AccountRepository는 Repository(Command)와
+// QueryRepository(Query) 양쪽을 모두 만족한다. Go interface는 구조적 타이핑이므로
+// 구현체를 별도로 두 벌 만들 필요 없이 같은 concrete struct가 양쪽 역할을 겸한다.
 var _ account.Repository = (*AccountRepository)(nil)
+var _ account.QueryRepository = (*AccountRepository)(nil)
 
 func NewAccountRepository(db *sql.DB, outboxWriter *outbox.Writer) *AccountRepository {
 	return &AccountRepository{db: db, outboxWriter: outboxWriter}

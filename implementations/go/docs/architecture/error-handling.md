@@ -29,7 +29,7 @@ var (
 )
 ```
 
-이것이 root의 `<Domain>ErrorMessage` enum과 `<Domain>ErrorCode` enum을 합친 역할을 겸한다 — Go에는 "키/값 enum이 실수로 어긋나는" 문제 자체가 없다. `errors.Is(err, account.ErrNotFound)`는 변수의 **아이덴티티**(포인터 동일성)를 비교하므로 문자열 오타로 매핑이 깨질 수 없다. 반대로 root가 요구하는 client-facing `code`(`ORDER_NOT_FOUND` 같은 SCREAMING_SNAKE_CASE 문자열)는 Go 쪽엔 아직 없다 — 아래 "알려진 격차" 참고.
+이것이 root의 `<Domain>ErrorMessage` enum과 `<Domain>ErrorCode` enum을 합친 역할을 겸한다 — Go에는 "키/값 enum이 실수로 어긋나는" 문제 자체가 없다. `errors.Is(err, account.ErrNotFound)`는 변수의 **아이덴티티**(포인터 동일성)를 비교하므로 문자열 오타로 매핑이 깨질 수 없다. root가 요구하는 client-facing `code`(`ACCOUNT_NOT_FOUND` 같은 SCREAMING_SNAKE_CASE 문자열)는 Interface 레이어의 `accountErrorMapping` 테이블이 sentinel error 옆에 나란히 정의한다 — 아래 "표준 에러 응답 JSON 스키마" 참고.
 
 ---
 
@@ -88,43 +88,52 @@ if err != nil {
 
 ## Interface 레이어 — `errors.Is`로 HTTP 상태 코드 매핑
 
-에러를 HTTP 상태 코드로 변환하는 책임은 Interface 레이어에만 있다(`internal/interface/http/account_handler.go`):
+에러를 HTTP 상태 코드로 변환하는 책임은 Interface 레이어에만 있다(`internal/interface/http/account_handler.go`). 상태 코드뿐 아니라 root가 요구하는 client-facing `code`(`ACCOUNT_NOT_FOUND` 같은 SCREAMING_SNAKE_CASE 문자열)도 이 테이블에서 함께 부여한다:
 
 ```go
-func writeAccountError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, account.ErrNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, account.ErrInvalidAmount),
-		errors.Is(err, account.ErrDepositRequiresActiveAccount),
-		errors.Is(err, account.ErrWithdrawRequiresActiveAccount),
-		errors.Is(err, account.ErrInsufficientBalance),
-		errors.Is(err, account.ErrSuspendRequiresActiveAccount),
-		errors.Is(err, account.ErrReactivateRequiresSuspendedAccount),
-		errors.Is(err, account.ErrAlreadyClosed),
-		errors.Is(err, account.ErrBalanceNotZero):
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+// internal/interface/http/account_handler.go
+var accountErrorMapping = []struct {
+	err    error
+	status int
+	code   string
+}{
+	{account.ErrNotFound, http.StatusNotFound, "ACCOUNT_NOT_FOUND"},
+	{account.ErrInvalidAmount, http.StatusBadRequest, "ACCOUNT_INVALID_AMOUNT"},
+	{account.ErrDepositRequiresActiveAccount, http.StatusBadRequest, "ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT"},
+	{account.ErrWithdrawRequiresActiveAccount, http.StatusBadRequest, "ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT"},
+	{account.ErrInsufficientBalance, http.StatusBadRequest, "ACCOUNT_INSUFFICIENT_BALANCE"},
+	{account.ErrSuspendRequiresActiveAccount, http.StatusBadRequest, "ACCOUNT_SUSPEND_REQUIRES_ACTIVE_ACCOUNT"},
+	{account.ErrReactivateRequiresSuspendedAccount, http.StatusBadRequest, "ACCOUNT_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT"},
+	{account.ErrAlreadyClosed, http.StatusBadRequest, "ACCOUNT_ALREADY_CLOSED"},
+	{account.ErrBalanceNotZero, http.StatusBadRequest, "ACCOUNT_BALANCE_NOT_ZERO"},
+}
+
+func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
+	for _, m := range accountErrorMapping {
+		if errors.Is(err, m.err) {
+			writeJSONError(w, m.status, m.code, err.Error())
+			return
+		}
 	}
+	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
+	writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 ```
 
-매핑에 없는 에러(즉 `default` 분기)는 500으로 처리되고, 원본 메시지는 클라이언트에 노출하지 않는다 — 내부 구현 세부사항(DB 컬럼명, 드라이버 에러 문자열 등)이 새어나가는 것을 막는다. `errors.Is`를 쓰기 때문에 Repository가 `fmt.Errorf("find account by id: %w", account.ErrNotFound)`처럼 래핑해서 반환해도 매핑이 깨지지 않는다.
+매핑에 없는 에러(즉 for 루프를 통과하지 못하는 경우)는 500으로 처리되고, 원본 메시지는 클라이언트에 노출하지 않는다 — 내부 구현 세부사항(DB 컬럼명, 드라이버 에러 문자열 등)이 새어나가는 것을 막는다. `errors.Is`를 쓰기 때문에 Repository가 `fmt.Errorf("find account by id: %w", account.ErrNotFound)`처럼 래핑해서 반환해도 매핑이 깨지지 않는다.
 
 ---
 
-## 알려진 격차 — 표준 에러 응답 JSON 스키마 미구현
+## 표준 에러 응답 JSON 스키마 — `writeJSONError`
 
-root는 모든 에러 응답이 아래 형식을 따르도록 요구한다.
+root는 모든 에러 응답이 아래 형식을 따르도록 요구하며, 이 저장소는 이 스키마를 그대로 구현한다.
 
 ```json
 { "statusCode": 404, "code": "ACCOUNT_NOT_FOUND", "message": "account not found", "error": "Not Found" }
 ```
 
-현재 `writeAccountError`는 `http.Error(w, err.Error(), status)`로 **평문 텍스트**만 반환한다(`Content-Type: text/plain`, JSON 구조 없음). `code`(클라이언트 분기용 안정적 문자열)에 해당하는 필드도 없다 — HTTP 상태 코드만으로 원인을 구분해야 한다. 새로 이 영역을 손볼 때는:
-
 ```go
+// internal/interface/http/dto.go
 type ErrorResponse struct {
 	StatusCode int    `json:"statusCode"`
 	Code       string `json:"code"`
@@ -132,6 +141,7 @@ type ErrorResponse struct {
 	Error      string `json:"error"`
 }
 
+// internal/interface/http/account_handler.go
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -144,7 +154,7 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 }
 ```
 
-이렇게 sentinel error마다 `code` 문자열을 매핑하는 테이블을 두는 방향으로 확장한다. 이번 문서화 패스에서는 `examples/` 코드 자체는 바꾸지 않는다 — 위 스니펫은 앞으로 이 영역을 구현할 때의 목표 형태다.
+`writeAccountError`는 sentinel error를 찾으면 `accountErrorMapping` 테이블의 `status`/`code`를 그대로 `writeJSONError`에 넘긴다. `error` 필드는 `http.StatusText(status)`로 채워 HTTP 상태 텍스트("Not Found", "Bad Request" 등)를 그대로 반환한다 — root 스키마의 `error` 필드와 동일한 의미다.
 
 ---
 
