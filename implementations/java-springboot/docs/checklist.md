@@ -175,7 +175,7 @@
 [ ] HTTP 예외 변환이 Interfaces 레이어(@ExceptionHandler 또는 @RestControllerAdvice)에서만 이루어지는가?
     → Domain/Application에서 HttpStatus/ResponseEntity를 참조하는가? 있다면 제거
 [ ] 에러 응답 body가 { statusCode, code, message, error } 4개 필드 형식을 따르는가?
-    → 이 저장소의 현재 ErrorResponse는 2필드(code, message)뿐인 알려진 gap이다. 새로 작성하는 코드는 4필드 형식(ErrorResponse.of(status, code, message))을 따른다
+    → 이 저장소의 ErrorResponse는 이미 4필드(statusCode, code, message, error)를 갖는다. 새로 작성하는 코드도 ErrorResponse.of(status, code, message)로 이 형식을 따른다
 [ ] 도메인이 2개 이상인 경우 MethodArgumentNotValidException 등 도메인 무관 예외를 @RestControllerAdvice 전역 클래스에서 처리하는가?
     → 각 Controller에 중복 정의하지 않는다
 [ ] Validation 실패 응답의 code가 VALIDATION_FAILED 고정값인가?

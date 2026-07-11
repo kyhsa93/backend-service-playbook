@@ -90,7 +90,7 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
             ? HttpStatus.NOT_FOUND
             : HttpStatus.BAD_REQUEST;
     log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
-    return ResponseEntity.status(status).body(new ErrorResponse(e.code().name(), e.getMessage()));
+    return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
 }
 ```
 

@@ -50,7 +50,7 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
     HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
             ? HttpStatus.NOT_FOUND
             : HttpStatus.BAD_REQUEST;
-    return ResponseEntity.status(status).body(new ErrorResponse(e.code().name(), e.getMessage()));
+    return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
 }
 ```
 
@@ -58,30 +58,24 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
 
 ---
 
-## 에러 응답 형식 — 알려진 gap: 2필드뿐
+## 에러 응답 형식 — 4필드, 루트 형식과 일치
 
 루트 원칙: 모든 에러 응답은 `statusCode`/`code`/`message`/`error` 4필드를 갖는다.
 
 ```java
 // interfaces/rest/ErrorResponse.java — 실제 코드
-public record ErrorResponse(String code, String message) {}
-```
-
-`ErrorResponse`는 `code`와 `message`만 갖는다. `statusCode`(HTTP 상태 코드 숫자)와 `error`(HTTP 상태 텍스트, 예: `"Not Found"`)가 응답 바디에 없다 — 클라이언트가 `code`로 분기 처리할 수는 있지만, 응답 바디만 보고 HTTP 상태를 재확인할 방법이 없다(별도로 `response.status`를 봐야 한다).
-
-### 올바른 형식
-
-```java
-// interfaces/rest/ErrorResponse.java — 수정 (제안)
 public record ErrorResponse(int statusCode, String code, String message, String error) {
+
     public static ErrorResponse of(HttpStatus status, String code, String message) {
         return new ErrorResponse(status.value(), code, message, status.getReasonPhrase());
     }
 }
 ```
 
+`statusCode`(HTTP 상태 코드 숫자)와 `error`(HTTP 상태 텍스트, 예: `"Not Found"`)까지 응답 바디에 모두 포함되어, 클라이언트가 응답 바디만 보고도 HTTP 상태를 재확인할 수 있다.
+
 ```java
-// AccountController — 수정된 핸들러
+// AccountController — 실제 코드
 @ExceptionHandler(AccountException.class)
 public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) {
     HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
@@ -102,7 +96,7 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
 }
 ```
 
-`AccountControllerE2ETest`는 현재 `response.getBody().get("code")`만 검증하고 `statusCode`/`error` 필드 존재 여부는 검증하지 않는다 — 필드 추가 시 이 테스트들은 깨지지 않지만, root 형식 준수 여부를 실제로 검증하려면 테스트에 `assertThat(body.get("statusCode")).isEqualTo(404)` 같은 단언을 추가해야 한다.
+**남은 여지**: `AccountControllerE2ETest`는 현재 `response.getBody().get("code")`만 검증하고 `statusCode`/`error` 필드 값은 별도로 단언하지 않는다 — 응답 바디 자체에는 이미 4필드가 모두 채워지므로 회귀는 없지만, root 형식 준수 여부를 테스트로도 명시적으로 고정하려면 `assertThat(body.get("statusCode")).isEqualTo(404)` 같은 단언을 추가할 수 있다.
 
 ---
 

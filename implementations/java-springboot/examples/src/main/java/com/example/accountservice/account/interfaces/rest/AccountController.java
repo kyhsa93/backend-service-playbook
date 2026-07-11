@@ -30,6 +30,7 @@ public class AccountController {
     private final SuspendAccountService suspendAccountService;
     private final ReactivateAccountService reactivateAccountService;
     private final CloseAccountService closeAccountService;
+    private final DeleteAccountService deleteAccountService;
     private final GetAccountService getAccountService;
     private final GetTransactionsService getTransactionsService;
 
@@ -83,6 +84,12 @@ public class AccountController {
         closeAccountService.close(new CloseAccountCommand(accountId, authentication.getName()));
     }
 
+    @DeleteMapping("/{accountId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAccount(Authentication authentication, @PathVariable String accountId) {
+        deleteAccountService.delete(new DeleteAccountCommand(accountId, authentication.getName()));
+    }
+
     @GetMapping("/{accountId}")
     public GetAccountResult getAccount(Authentication authentication, @PathVariable String accountId) {
         return getAccountService.getAccount(accountId, authentication.getName());
@@ -104,6 +111,6 @@ public class AccountController {
                 ? HttpStatus.NOT_FOUND
                 : HttpStatus.BAD_REQUEST;
         log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
-        return ResponseEntity.status(status).body(new ErrorResponse(e.code().name(), e.getMessage()));
+        return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }
 }

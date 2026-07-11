@@ -1,5 +1,6 @@
 package com.example.accountservice.account.infrastructure.persistence;
 
+import com.example.accountservice.account.application.query.AccountQueryRepository;
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
@@ -18,7 +19,7 @@ import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
 
     private final AccountJpaRepository jpaRepository;
     private final TransactionJpaRepository transactionJpaRepository;
@@ -27,17 +28,18 @@ public class AccountRepositoryImpl implements AccountRepository {
 
     @Override
     public Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId) {
-        return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId);
+        return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+                .map(AccountMapper::toDomain);
     }
 
     @Override
     public List<Account> findAll(AccountFindQuery query) {
         String jpql = buildJpql(query, false);
-        var q = em.createQuery(jpql, Account.class)
+        var q = em.createQuery(jpql, AccountJpaEntity.class)
                 .setFirstResult(query.page() * query.take())
                 .setMaxResults(query.take());
         applyParams(q, query);
-        return q.getResultList();
+        return q.getResultList().stream().map(AccountMapper::toDomain).toList();
     }
 
     @Override
@@ -51,10 +53,13 @@ public class AccountRepositoryImpl implements AccountRepository {
     @Override
     @Transactional
     public void save(Account account) {
-        jpaRepository.save(account);
+        AccountJpaEntity entity = jpaRepository.findByAccountId(account.getAccountId())
+                .map(existing -> AccountMapper.updateEntity(existing, account))
+                .orElseGet(() -> AccountMapper.toNewEntity(account));
+        jpaRepository.save(entity);
         List<Transaction> pending = account.pullPendingTransactions();
         if (!pending.isEmpty()) {
-            transactionJpaRepository.saveAll(pending);
+            transactionJpaRepository.saveAll(pending.stream().map(TransactionMapper::toNewEntity).toList());
         }
         // Aggregate 저장과 같은 물리 트랜잭션 안에서 Outbox에 이벤트를 기록한다(domain-events.md 참고).
         // 이 메서드가 예외 없이 반환되면 Account/Transaction/Outbox 행이 모두 커밋되거나 함께 롤백된다.
@@ -62,8 +67,20 @@ public class AccountRepositoryImpl implements AccountRepository {
     }
 
     @Override
+    @Transactional
+    public void delete(String accountId) {
+        jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(entity -> {
+            Account account = AccountMapper.toDomain(entity);
+            account.delete(); // 도메인 메서드로 불변식(CLOSED 상태만 삭제 가능) 검증 후 deletedAt 설정
+            AccountMapper.updateEntity(entity, account);
+            jpaRepository.save(entity);
+        });
+    }
+
+    @Override
     public List<Transaction> findTransactions(String accountId, int page, int take) {
-        return transactionJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take));
+        return transactionJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))
+                .stream().map(TransactionMapper::toDomain).toList();
     }
 
     @Override
@@ -73,8 +90,8 @@ public class AccountRepositoryImpl implements AccountRepository {
 
     private String buildJpql(AccountFindQuery query, boolean count) {
         StringBuilder sb = new StringBuilder(count
-                ? "SELECT COUNT(a) FROM Account a WHERE a.deletedAt IS NULL"
-                : "SELECT a FROM Account a WHERE a.deletedAt IS NULL");
+                ? "SELECT COUNT(a) FROM AccountJpaEntity a WHERE a.deletedAt IS NULL"
+                : "SELECT a FROM AccountJpaEntity a WHERE a.deletedAt IS NULL");
         if (query.accountId() != null && !query.accountId().isBlank()) sb.append(" AND a.accountId = :accountId");
         if (query.ownerId() != null && !query.ownerId().isBlank()) sb.append(" AND a.ownerId = :ownerId");
         if (query.status() != null && !query.status().isEmpty()) sb.append(" AND a.status IN :status");

@@ -1,52 +1,56 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
-import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "accounts")
+/**
+ * Account Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다.
+ * 영속성 매핑은 infrastructure/persistence/AccountJpaEntity + AccountMapper가 전담한다.
+ */
 public class Account {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
     private String accountId;
-
-    @Column(nullable = false)
     private String ownerId;
-
-    @Column(nullable = false)
     private String email;
-
-    @Embedded
     private Money balance;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private AccountStatus status;
-
-    @Column(nullable = false)
     private LocalDateTime createdAt;
-
-    @Column(nullable = false)
     private LocalDateTime updatedAt;
-
-    @Column
     private LocalDateTime deletedAt;
 
-    @Transient
     private final List<Object> domainEvents = new ArrayList<>();
-
-    @Transient
     private final List<Transaction> pendingTransactions = new ArrayList<>();
 
-    protected Account() {}
+    private Account() {}
+
+    /**
+     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Account를 복원할 때 사용한다.
+     * create()와 달리 도메인 이벤트를 생성하지 않는다 — 이미 과거에 커밋된 상태를 그대로 재구성하는 것뿐이다.
+     */
+    public static Account reconstitute(
+            String accountId,
+            String ownerId,
+            String email,
+            Money balance,
+            AccountStatus status,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt,
+            LocalDateTime deletedAt
+    ) {
+        Account account = new Account();
+        account.accountId = accountId;
+        account.ownerId = ownerId;
+        account.email = email;
+        account.balance = balance;
+        account.status = status;
+        account.createdAt = createdAt;
+        account.updatedAt = updatedAt;
+        account.deletedAt = deletedAt;
+        return account;
+    }
 
     public static Account create(String ownerId, String email, String currency) {
         Account account = new Account();
@@ -126,6 +130,21 @@ public class Account {
         this.status = AccountStatus.CLOSED;
         this.updatedAt = LocalDateTime.now();
         this.domainEvents.add(new AccountClosedEvent(this.accountId, this.email, this.updatedAt));
+    }
+
+    /**
+     * 계좌 레코드를 soft delete한다 — deletedAt에 타임스탬프를 기록한다.
+     * "종료"(close, 비즈니스 상태 전이)와 "삭제"(delete, 데이터 생명주기 관리)는 서로 다른 개념이다.
+     * 종료된(CLOSED) 계좌만 삭제할 수 있다.
+     */
+    public void delete() {
+        if (this.status != AccountStatus.CLOSED) {
+            throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "종료된 계좌만 삭제할 수 있습니다.");
+        }
+        if (this.deletedAt != null) {
+            throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED, "이미 삭제된 계좌입니다.");
+        }
+        this.deletedAt = LocalDateTime.now();
     }
 
     public List<Object> pullDomainEvents() {

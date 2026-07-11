@@ -16,102 +16,97 @@ interfaces/rest (@RestController)  →  application/{command,query} (@Service)  
 
 ---
 
-## Domain 레이어 — 알려진 gap: JPA 엔티티가 도메인을 겸함
+## Domain 레이어 — 순수 도메인 + JPA 매핑 분리 (더 이상 gap 아님)
 
 루트 원칙: Domain 레이어는 **어떤 프레임워크에도 의존하지 않는 순수한 코드**로 작성한다 (ORM 포함).
 
-`account/domain/Account.java`의 실제 코드:
+`account/domain/Account.java`의 실제 코드는 `jakarta.persistence.*`를 전혀 import하지 않는다:
 
 ```java
-package com.example.accountservice.account.domain;
-
-import jakarta.persistence.*;   // ← Domain 레이어가 JPA(ORM)에 의존
-
-@Entity
-@Table(name = "accounts")
+// account/domain/Account.java — 실제 코드, 순수 도메인
 public class Account {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
     private String accountId;
-
-    @Embedded
+    private String ownerId;
+    private String email;
     private Money balance;
-
-    @Enumerated(EnumType.STRING)
     private AccountStatus status;
-    // ...
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
+
+    private Account() {}
+
+    public static Account create(String ownerId, String email, String currency) { /* ... */ }
+
+    // Repository 구현체가 영속 데이터로부터 복원할 때 사용 — 도메인 이벤트를 생성하지 않는다
+    public static Account reconstitute(String accountId, String ownerId, String email, Money balance,
+            AccountStatus status, LocalDateTime createdAt, LocalDateTime updatedAt, LocalDateTime deletedAt) { /* ... */ }
+    // ... 도메인 메서드(deposit/withdraw/suspend/reactivate/close/delete)만
 }
 ```
 
-`Account`, `Transaction`(하위 Entity), `Money`(`@Embeddable` record)까지 domain 패키지의 모든 클래스가 JPA 애노테이션을 직접 갖는다. **이것은 root의 "Domain은 프레임워크/ORM 무의존" 규칙을 위반한다** — 이 저장소의 알려진 아키텍처적 긴장(known tension)이며, root가 권장하는 패턴인 척 하지 않고 여기서 트레이드오프를 명확히 설명한다.
-
-### 왜 이렇게 되어 있는가 — 트레이드오프
-
-**장점 (현재 방식 — JPA 엔티티 겸용 도메인):**
-- Aggregate 하나가 영속성 매핑까지 겸하므로 별도의 매핑 계층(도메인 객체 ↔ JPA 엔티티 변환 코드)이 필요 없다. 소규모 도메인에서는 보일러플레이트가 크게 줄어든다.
-- Hibernate의 dirty checking, 지연 로딩(`@ElementCollection`, `@Embedded`) 등 JPA의 편의 기능을 Aggregate 자체가 그대로 활용한다.
-
-**단점 (root가 순수 도메인을 요구하는 이유):**
-- Domain 클래스가 `jakarta.persistence.*`를 import하는 순간, JPA 없이는 Aggregate를 테스트하거나 재사용할 수 없다 — 실제로는 문제되지 않는다(JPA 애노테이션은 런타임에 별도 의존성을 요구하지 않고 메타데이터로만 작동하므로 `new Account()` 형태의 순수 단위 테스트는 여전히 가능하다, [testing.md](testing.md) 참고). 진짜 리스크는 **설계 결합**이다 — `@Id`용 대리키(`Long id`)를 두거나 `protected Account() {}`(JPA가 요구하는 기본 생성자)를 열어두는 등, 영속성 프레임워크의 제약이 도메인 모델의 설계를 침범한다.
-- 향후 영속성 기술을 교체(JPA → JOOQ, 다른 DB 등)해야 하면 Domain 클래스 자체를 건드려야 한다. 순수 도메인이었다면 `infrastructure/` 레이어의 매핑 코드만 바꾸면 됐을 것이다.
-- Aggregate의 불변식을 지키는 메서드(`deposit()`, `withdraw()` 등)와 영속성 관심사(컬럼 매핑)가 한 클래스에 섞여, 파일이 커지고 "이 필드는 비즈니스 규칙용인가 DB 스키마용인가"를 매번 구분해야 한다.
-
-### 올바른 패턴 — 분리했을 경우
+`Account`, `Transaction`(하위 Entity), `Money`(Value Object)까지 domain 패키지의 모든 클래스가 JPA 애노테이션을 갖지 않는다. 영속성 매핑은 `infrastructure/persistence/`에 전담 클래스로 분리되어 있다:
 
 ```java
-// domain/Account.java — 순수 도메인, 어떤 프레임워크도 import하지 않음
-public class Account {
-    private final String accountId;
-    private final String ownerId;
-    private Money balance;
-    private AccountStatus status;
-    // ... 도메인 메서드만
-}
-```
-
-```java
-// infrastructure/persistence/AccountEntity.java — JPA 매핑 전용
+// infrastructure/persistence/AccountJpaEntity.java — JPA 매핑 전용, 실제 코드
 @Entity
 @Table(name = "accounts")
-class AccountEntity {
+public class AccountJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(nullable = false, unique = true)
     private String accountId;
     @Embedded
-    private MoneyEmbeddable balance;
+    private MoneyEmbeddable balance;   // domain.Money의 JPA 매핑 전용 대응물
+    @Enumerated(EnumType.STRING)
+    private AccountStatus status;      // enum 자체는 프레임워크 무의존이라 그대로 재사용
     // ...
-
-    Account toDomain() { /* AccountEntity -> Account 변환 */ }
-    static AccountEntity fromDomain(Account account) { /* Account -> AccountEntity 변환 */ }
 }
 ```
 
 ```java
-// infrastructure/persistence/AccountRepositoryImpl.java
+// infrastructure/persistence/AccountMapper.java — 변환 전담, 실제 코드 (일부)
+final class AccountMapper {
+    static Account toDomain(AccountJpaEntity entity) {
+        return Account.reconstitute(entity.getAccountId(), entity.getOwnerId(), entity.getEmail(),
+                entity.getBalance().toDomain(), entity.getStatus(),
+                entity.getCreatedAt(), entity.getUpdatedAt(), entity.getDeletedAt());
+    }
+
+    static AccountJpaEntity toNewEntity(Account account) { /* insert 대상 — PK 없음 */ }
+    static AccountJpaEntity updateEntity(AccountJpaEntity entity, Account account) { /* update 대상 — PK 보존 */ }
+}
+```
+
+```java
+// infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
     private final AccountJpaRepository jpaRepository;
 
     @Override
     public Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId) {
         return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-                .map(AccountEntity::toDomain);   // 매핑은 여기서만
+                .map(AccountMapper::toDomain);   // 매핑은 여기서만
     }
 
     @Override
+    @Transactional
     public void save(Account account) {
-        jpaRepository.save(AccountEntity.fromDomain(account));
+        AccountJpaEntity entity = jpaRepository.findByAccountId(account.getAccountId())
+                .map(existing -> AccountMapper.updateEntity(existing, account))   // 기존 row는 PK 보존하며 갱신
+                .orElseGet(() -> AccountMapper.toNewEntity(account));             // 신규는 PK 없이 insert
+        jpaRepository.save(entity);
     }
 }
 ```
 
-이 분리는 `AccountEntity`/`toDomain()`/`fromDomain()`이라는 추가 클래스와 변환 코드를 요구한다. **이 저장소는 현재 이 분리 이전 상태이며, 규모(Aggregate 6개 메서드, 필드 8개)를 고려하면 즉각적인 리팩토링이 강제되지는 않는다** — 다만 Aggregate가 복잡해지거나(다형성, 여러 하위 Entity 컬렉션), 영속성 기술 교체 가능성이 커지면 이 분리를 도입해야 한다.
+**PK(대리키) 처리**: 순수 도메인 `Account`는 숫자 PK(옛 `Long id`)를 전혀 갖지 않는다 — `accountId`(비즈니스 키)만 안다. `save()`가 기존 row를 찾을 때 `accountId`로 조회해 PK를 가진 기존 `AccountJpaEntity`를 얻고, 그 위에 `updateEntity()`로 최신 상태만 덮어써 PK를 보존한다. 신규 Account는 PK 없는 엔티티를 만들어 insert한다.
+
+`Transaction`(하위 Entity)도 동일한 패턴으로 분리되어 있다 — `TransactionJpaEntity` + `TransactionMapper`. `Transaction`은 생성 후 변경되지 않으므로 insert 전용 변환(`toNewEntity`)만 존재한다.
+
+이 분리는 `AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable`/`AccountMapper`/`TransactionMapper`라는 추가 클래스와 변환 코드를 요구하지만, Domain 레이어가 어떤 프레임워크도 import하지 않게 되어 root 원칙과 완전히 일치한다.
 
 ---
 
@@ -147,29 +142,29 @@ Query Service는 `@Transactional(readOnly = true)`로 구분한다 — Hibernate
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class GetAccountService {
-    private final AccountRepository accountRepository;   // 알려진 gap — cqrs-pattern.md 참고
+    private final AccountQueryRepository accountQueryRepository;   // 쓰기용 AccountRepository가 아닌 좁은 읽기 전용 인터페이스
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQueryRepository.findByAccountIdAndOwnerId(accountId, requesterId)
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(/* ... */);
     }
 }
 ```
 
-Query Service가 쓰기용 `AccountRepository`를 그대로 사용하는 것은 root의 "Query 인터페이스로 분리" 원칙 위반이다 — 상세와 올바른 패턴은 [cqrs-pattern.md](cqrs-pattern.md) 참고.
+`GetAccountService`는 `save`/`delete`가 없는 `AccountQueryRepository`(application/query, `findByAccountIdAndOwnerId`만 선언)에 의존한다 — `AccountRepositoryImpl`이 `AccountRepository`(domain, 쓰기)와 `AccountQueryRepository`(application, 읽기)를 모두 구현하고, Spring이 각 주입 지점(`AccountRepository` 타입 vs `AccountQueryRepository` 타입)에 같은 빈을 인터페이스별로 바인딩한다. 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참고. `GetTransactionsService`는 아직 이 분리 이전 상태로 쓰기용 `AccountRepository`를 그대로 사용한다 — cqrs-pattern.md에서 남은 gap으로 명시.
 
 ---
 
 ## Infrastructure 레이어
 
-`AccountRepositoryImpl`이 Domain의 `AccountRepository` 인터페이스를 구현한다. `EntityManager`(동적 JPQL)와 `AccountJpaRepository`(Spring Data 파생 쿼리)를 함께 사용하는 것도 이 레이어에서만 허용된다 — Domain/Application은 JPA API를 알지 못한다(단, 위에서 설명한 gap으로 `Account` 자체는 JPA 애노테이션을 갖는다).
+`AccountRepositoryImpl`이 Domain의 `AccountRepository` 인터페이스와 Application의 `AccountQueryRepository` 인터페이스를 함께 구현한다. `EntityManager`(동적 JPQL)와 `AccountJpaRepository`(Spring Data 파생 쿼리)를 함께 사용하는 것도 이 레이어에서만 허용된다 — Domain/Application은 JPA API를 알지 못한다. JPQL은 순수 도메인 `Account`가 아니라 `AccountJpaEntity`(JPA 매핑 전용)를 대상으로 하고, 결과는 `AccountMapper`로 변환한다.
 
 ```java
 // infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
     private final AccountJpaRepository jpaRepository;
     private final TransactionJpaRepository transactionJpaRepository;
     private final EntityManager em;
@@ -177,11 +172,11 @@ public class AccountRepositoryImpl implements AccountRepository {
     @Override
     public List<Account> findAll(AccountFindQuery query) {
         String jpql = buildJpql(query, false);   // 동적 조건 조립, repository-pattern.md 참고
-        var q = em.createQuery(jpql, Account.class)
+        var q = em.createQuery(jpql, AccountJpaEntity.class)
                 .setFirstResult(query.page() * query.take())
                 .setMaxResults(query.take());
         applyParams(q, query);
-        return q.getResultList();
+        return q.getResultList().stream().map(AccountMapper::toDomain).toList();   // JPA 엔티티 -> 순수 도메인
     }
 }
 ```
@@ -239,9 +234,9 @@ depositService.deposit(new DepositCommand(accountId, requesterId, request.amount
 | 원칙 | 이 저장소에서의 표현 | 상태 |
 |---|---|---|
 | 상위 레이어만 하위 레이어에 의존 | 패키지 구조 + `harness.sh`의 `package-structure`/`domain-purity` 검사 | 준수 |
-| Domain은 프레임워크/ORM 무의존 | — | **위반 (알려진 gap, 위 참고)** |
+| Domain은 프레임워크/ORM 무의존 | `Account`/`Transaction`/`Money`는 순수 도메인, JPA 매핑은 `AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable`(infrastructure)로 분리 | 준수 |
 | Repository는 인터페이스/구현 분리 | `interface`(domain) + Spring이 자동 바인딩하는 `@Repository` 구현체(infrastructure) | 준수 |
-| Query Service는 Query 인터페이스만 사용 | `AccountRepository`(쓰기용)를 그대로 사용 | **위반 (알려진 gap, cqrs-pattern.md 참고)** |
+| Query Service는 Query 인터페이스만 사용 | `GetAccountService`는 `AccountQueryRepository`(읽기 전용) 사용 | 준수 (`GetTransactionsService`는 아직 남은 gap — cqrs-pattern.md 참고) |
 | DI | 생성자 주입, Lombok `@RequiredArgsConstructor` | 준수 |
 
 ---
@@ -250,6 +245,6 @@ depositService.deposit(new DepositCommand(accountId, requesterId, request.amount
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate, Entity, Value Object 상세
 - [repository-pattern.md](repository-pattern.md) — Repository 패턴 상세
-- [cqrs-pattern.md](cqrs-pattern.md) — Command/Query 분리, Query 인터페이스 gap
+- [cqrs-pattern.md](cqrs-pattern.md) — Command/Query 분리, Query 인터페이스
 - [domain-events.md](domain-events.md) — Domain Event, Outbox 패턴
 - [persistence.md](persistence.md) — 트랜잭션 전파
