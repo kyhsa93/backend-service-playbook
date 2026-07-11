@@ -2,6 +2,10 @@
 
 `@nestjs/throttler`를 사용하여 API 요청 속도를 제한한다.
 
+## 현재 상태 — 적용 완료
+
+`examples/`에 `@nestjs/throttler`가 설치되어 있고, `src/app-module.ts`가 아래 "전역 설정" 코드 그대로 `ThrottlerModule.forRoot()`에 short(1초 3회)/medium(10초 20회)/long(1분 100회) 3단 제한을 등록하고 `ThrottlerGuard`를 `APP_GUARD`로 바인딩한다 — 모든 엔드포인트에 자동 적용된다. 헬스체크 엔드포인트(`src/common/interface/health-controller.ts`, [graceful-shutdown.md](graceful-shutdown.md) 참고)는 `@SkipThrottle()`로 제한에서 제외했다. 이 문서의 나머지 섹션("엔드포인트별 커스텀 제한", "환경별 설정")은 필요해지면 추가할 확장 패턴으로, 아직 `examples/`에는 적용되지 않았다.
+
 ## 설치
 
 ```bash
@@ -11,7 +15,7 @@ npm install @nestjs/throttler
 ## 전역 설정
 
 ```typescript
-// src/app-module.ts
+// src/app-module.ts — 실제 코드
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 
@@ -34,7 +38,7 @@ export class AppModule {}
 
 `APP_GUARD`로 등록하면 모든 엔드포인트에 자동 적용된다. 여러 throttler를 동시에 등록하여 단기/중기/장기 제한을 중첩할 수 있다.
 
-## 엔드포인트별 커스텀 제한
+## 엔드포인트별 커스텀 제한 (확장 패턴 — 미적용)
 
 특정 엔드포인트에 다른 제한을 적용하려면 `@Throttle()` 데코레이터를 사용한다.
 
@@ -64,7 +68,7 @@ export class OrderController {
 export class InternalController { /* ... */ }
 ```
 
-## 환경별 설정
+## 환경별 설정 (확장 패턴 — 미적용)
 
 ```typescript
 // src/config/throttle.config.ts

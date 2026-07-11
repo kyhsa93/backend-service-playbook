@@ -2,7 +2,9 @@
 
 컨테이너 오케스트레이션 환경(Kubernetes, ECS 등)에서 SIGTERM 수신 시 진행 중인 요청을 안전하게 처리한 뒤 종료하는 패턴이다.
 
-> **실제 코드 상태**: 실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출한다 — SIGTERM 수신 시 `OnApplicationShutdown`/`BeforeApplicationShutdown` 라이프사이클 훅이 동작한다. 다만 `HealthController`/`ShutdownState`/`RedisShutdown`/`QueueShutdown` 등 아래 문서의 나머지 패턴(헬스체크 연동, Redis/큐 연결 정리)은 이 저장소에 Redis·메시지 큐·헬스체크 엔드포인트가 없어 아직 적용되지 않았다 — 필요해지면 추가할 확장 패턴으로 남겨둔다.
+## 현재 상태 — 적용 완료
+
+실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출한다 — SIGTERM 수신 시 `OnApplicationShutdown`/`BeforeApplicationShutdown` 라이프사이클 훅이 동작한다. 아래 "헬스체크 연동" 섹션이 정의하는 `ShutdownState`(`src/common/infrastructure/shutdown-state.ts`)와 `HealthController`(`src/common/interface/health-controller.ts`, `GET /health/live`·`GET /health/ready`)도 문서 그대로 `examples/`에 반영되어 `src/app-module.ts`의 `providers`/`controllers`에 등록되어 있다. `RedisShutdown`/`QueueShutdown` 패턴은 이 저장소에 Redis·메시지 큐 연결 자체가 없어 아직 적용되지 않았다 — 필요해지면 추가할 확장 패턴으로 남겨둔다.
 
 ## main.ts 설정 (실제 코드)
 
@@ -112,32 +114,41 @@ export class QueueShutdown implements OnApplicationShutdown {
 로드밸런서/오케스트레이터가 종료 중인 인스턴스로 새 트래픽을 보내지 않도록 readiness 상태를 전환한다.
 
 ```typescript
-// src/common/interface/health-controller.ts
-import { Controller, Get } from '@nestjs/common'
+// src/common/interface/health-controller.ts — 실제 코드
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common'
+import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger'
+import { SkipThrottle } from '@nestjs/throttler'
 
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
 
 @Controller('health')
+@ApiTags('Health')
+@SkipThrottle()
 export class HealthController {
   constructor(private readonly shutdownState: ShutdownState) {}
 
   @Get('live')
+  @ApiOkResponse({ description: '프로세스가 살아있음 — 종료 중에도 200을 반환한다' })
   live() {
     return { status: 'ok' }
   }
 
   @Get('ready')
+  @ApiOkResponse({ description: '새 요청을 수락할 준비가 됨' })
+  @ApiServiceUnavailableResponse({ description: '종료 절차가 시작되어 새 요청을 받지 않음' })
   ready() {
     if (this.shutdownState.isShuttingDown) {
-      throw new Error('shutting down')
+      throw new ServiceUnavailableException('shutting down')
     }
     return { status: 'ok' }
   }
 }
 ```
 
+`Error`가 아니라 `ServiceUnavailableException`(`@nestjs/common`)을 던진다 — 전역 `HttpExceptionFilter`(`src/common/http-exception.filter.ts`)가 `HttpException`은 그대로, 일반 `Error`는 500으로 변환하기 때문에 readiness 실패를 정확히 503으로 응답하려면 `HttpException` 계열이어야 한다. [rate-limiting.md](rate-limiting.md)가 정의하는 전역 `ThrottlerGuard`가 `/health/*`에도 적용되므로 `@SkipThrottle()`로 헬스체크를 제한 대상에서 제외한다.
+
 ```typescript
-// src/common/infrastructure/shutdown-state.ts
+// src/common/infrastructure/shutdown-state.ts — 실제 코드
 import { BeforeApplicationShutdown, Injectable } from '@nestjs/common'
 
 @Injectable()
@@ -154,7 +165,7 @@ export class ShutdownState implements BeforeApplicationShutdown {
 }
 ```
 
-ShutdownState는 `@Global()` 모듈에 등록하여 어디서든 주입받을 수 있도록 한다.
+[shared-modules.md](shared-modules.md)가 정리하듯 `common/`은 별도 모듈이 아닌 공유 유틸 디렉토리다 — `ShutdownState`를 감싸는 `@Global()` 모듈을 새로 만드는 대신, 기존 `SecretService`와 동일하게 `src/app-module.ts`의 `providers`/`controllers`에 `ShutdownState`/`HealthController`를 직접 등록한다. 다른 도메인 모듈에서도 주입이 필요해지면 그때 `@Global()` 모듈로 승격한다.
 
 ## Dockerfile / 컨테이너 연동
 
