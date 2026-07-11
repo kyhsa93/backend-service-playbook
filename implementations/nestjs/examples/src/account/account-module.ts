@@ -54,6 +54,9 @@ import { NotificationModule } from '@/notification/notification-module'
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
     // Query 구현체
     { provide: AccountQuery, useClass: AccountQueryImpl }
-  ]
+  ],
+  // 다른 BC(Card)가 Adapter(ACL)를 통해 계좌를 동기 조회할 수 있도록 읽기 서비스만 공개한다.
+  // Repository·도메인 객체는 공개하지 않는다.
+  exports: [AccountQuery]
 })
 export class AccountModule {}
