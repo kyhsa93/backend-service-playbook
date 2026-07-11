@@ -2,12 +2,12 @@
 
 컨테이너 오케스트레이션 환경(Kubernetes, ECS 등)에서 SIGTERM 수신 시 진행 중인 요청을 안전하게 처리한 뒤 종료하는 패턴이다.
 
-> **실제 코드 상태**: 이 문서 전체가 목표 설계다. 실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출하지 않고, `HealthController`/`ShutdownState`/`*Shutdown` 클래스도 존재하지 않는다 — SIGTERM을 받으면 진행 중인 요청 처리를 기다리지 않고 즉시 종료된다. 아래는 Kubernetes/ECS 등으로 운영 환경을 갖출 때 적용할 패턴이다.
+> **실제 코드 상태**: 실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출한다 — SIGTERM 수신 시 `OnApplicationShutdown`/`BeforeApplicationShutdown` 라이프사이클 훅이 동작한다. 다만 `HealthController`/`ShutdownState`/`RedisShutdown`/`QueueShutdown` 등 아래 문서의 나머지 패턴(헬스체크 연동, Redis/큐 연결 정리)은 이 저장소에 Redis·메시지 큐·헬스체크 엔드포인트가 없어 아직 적용되지 않았다 — 필요해지면 추가할 확장 패턴으로 남겨둔다.
 
-## main.ts 설정 (목표)
+## main.ts 설정 (실제 코드)
 
 ```typescript
-// src/main.ts — 목표 설계, 실제 코드는 bootstrap.md 참고
+// src/main.ts — 실제 코드 일부, 전체는 bootstrap.md 참고
 import { NestFactory } from '@nestjs/core'
 
 import { AppModule } from '@/app-module'
@@ -15,10 +15,10 @@ import { AppModule } from '@/app-module'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
 
+  // ... ValidationPipe, LoggingInterceptor, HttpExceptionFilter, CORS, Swagger 설정은 bootstrap.md 참고
+
   // Graceful Shutdown — SIGTERM/SIGINT 수신 시 NestJS 라이프사이클 훅 활성화
   app.enableShutdownHooks()
-
-  // ... 기존 main.ts 설정(ValidationPipe, LoggingInterceptor 등)은 bootstrap.md 참고
 
   await app.listen(process.env.PORT ?? 3000)
 }

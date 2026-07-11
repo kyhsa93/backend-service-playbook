@@ -5,3 +5,8 @@ export function getPort(): number {
 export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production'
 }
+
+export function getCorsOrigins(): string[] | boolean {
+  if (!isProduction()) return true
+  return process.env.CORS_ORIGIN?.split(',') ?? []
+}

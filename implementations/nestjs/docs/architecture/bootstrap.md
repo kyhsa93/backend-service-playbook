@@ -1,15 +1,17 @@
 # 앱 부트스트랩
 
-> 아래는 실제 `src/main.ts`다. Swagger/CORS/전역 예외 필터/Graceful Shutdown 훅은 이 저장소에 아직 없다 — 필요해지면 추가할 확장 지점으로 문서 하단에 남겨둔다.
+> 아래는 실제 `src/main.ts`다.
 
 ```typescript
 // src/main.ts — 실제 코드
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 
 import { AppModule } from '@/app-module'
+import { HttpExceptionFilter } from '@/common/http-exception.filter'
 import { LoggingInterceptor } from '@/common/logging.interceptor'
-import { getPort, isProduction } from '@/config/app.config'
+import { getCorsOrigins, getPort, isProduction } from '@/config/app.config'
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
@@ -31,6 +33,29 @@ async function bootstrap(): Promise<void> {
   // 요청 로깅 인터셉터
   app.useGlobalInterceptors(new LoggingInterceptor())
 
+  // 전역 예외 필터 — HttpException이 아닌 미처리 예외도 표준 에러 응답 형식으로 변환
+  app.useGlobalFilters(new HttpExceptionFilter())
+
+  // CORS
+  app.enableCors({
+    origin: getCorsOrigins(),
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true
+  })
+
+  // Swagger
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Account Service API')
+    .setDescription('DDD 기반 Account 도메인 예시 서비스 API 문서')
+    .setVersion('0.1.0')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'token')
+    .build()
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig)
+  SwaggerModule.setup('docs', app, swaggerDocument)
+
+  // Graceful Shutdown — SIGTERM/SIGINT 수신 시 Nest lifecycle 훅(onModuleDestroy 등) 실행
+  app.enableShutdownHooks()
+
   await app.listen(getPort())
 }
 
@@ -44,9 +69,11 @@ bootstrap()
 | `logger` 옵션 | `isProduction()`이면 debug/verbose 로그 제외 |
 | `ValidationPipe` | class-validator 데코레이터 자동 적용, `exceptionFactory`로 `VALIDATION_FAILED` code 포함 응답 구성 ([error-handling.md](error-handling.md) 참고) |
 | `LoggingInterceptor` | 요청 메서드/경로/처리 시간 로깅 |
+| `HttpExceptionFilter` | 전역 예외 필터. `HttpException`은 표준 형식으로 직렬화하고, 그 외 미처리 예외(plain `Error` 등)도 스택트레이스를 그대로 노출하지 않고 `{ statusCode: 500, code: 'INTERNAL_ERROR', message, error }` 형태로 변환한다 ([error-handling.md](error-handling.md) 참고) |
+| `enableCors(...)` | `config/app.config.ts`의 `getCorsOrigins()`가 운영(`isProduction()`)에서는 `CORS_ORIGIN` 환경 변수(콤마 구분)로 허용 출처를 제한하고, 그 외 환경에서는 전체 허용(`true`)을 반환 |
+| `DocumentBuilder` + `SwaggerModule` | `/docs` 경로에 OpenAPI 문서 노출. `addBearerAuth(..., 'token')`은 컨트롤러의 `@ApiBearerAuth('token')`과 짝을 맞춘 이름이다 |
+| `enableShutdownHooks()` | SIGTERM/SIGINT 수신 시 `OnApplicationShutdown` 등 Nest 라이프사이클 훅이 동작하도록 활성화 ([graceful-shutdown.md](graceful-shutdown.md) 참고) |
 
-### 아직 적용하지 않은 확장 지점
+### 확장 지점
 
-- **Graceful Shutdown**: `enableShutdownHooks()` 미호출, `OnApplicationShutdown` 훅 없음 — 실제 남은 gap([graceful-shutdown.md](graceful-shutdown.md) 참고).
-- **전역 예외 필터**: `HttpExceptionFilter` 없음 — `generateErrorResponse`가 만든 `HttpException`을 NestJS 기본 필터가 그대로 직렬화하므로 현재는 커스텀 필터가 불필요하다([error-handling.md](error-handling.md) 참고).
-- **CORS/Swagger**: 현재 코드에 없음. 필요해지면 `app.enableCors(...)`/`SwaggerModule`을 추가한다.
+- **Graceful Shutdown 세부 패턴**: `enableShutdownHooks()`는 호출하지만, `HealthController`/`ShutdownState`/Redis·큐 연결 정리 등 [graceful-shutdown.md](graceful-shutdown.md)에 설명된 나머지 패턴은 이 저장소에 헬스체크 엔드포인트·Redis·메시지 큐가 없어 아직 적용되지 않았다. TypeORM 연결은 Nest/TypeORM이 자체적으로 정리하므로 별도 처리가 불필요하다.
