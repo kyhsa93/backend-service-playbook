@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from src.config.validator import validate_env
@@ -21,19 +22,36 @@ from src.common.aws_secret_service import AwsSecretService  # noqa: E402
 from src.common.correlation import generate_correlation_id, set_correlation_id  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
 from src.common.rate_limit import limiter  # noqa: E402
+from src.database import engine  # noqa: E402
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
+app_state = {"is_shutting_down": False}
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    # --- 기동 (validate_env()는 이미 위에서 모듈 임포트 시점에 실행되었다) ---
     # 프로덕션에서만 Secrets Manager를 호출한다 — 그 외(로컬/테스트 기본값)는
     # 네트워크 호출 없이 환경 변수(JWT_SECRET)만 사용한다.
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
-    yield
+    logger.info("app_started")
+
+    yield  # --- 이 사이에 요청을 처리한다 ---
+
+    # --- 종료 (SIGTERM 수신 → uvicorn이 lifespan의 종료 블록을 실행) ---
+    app_state["is_shutting_down"] = True  # readiness를 즉시 503으로 전환
+    logger.info("shutdown_initiated")
+
+    try:
+        await engine.dispose()  # DB 커넥션 풀 정리
+    except Exception:
+        logger.exception("shutdown_cleanup_failed")  # 정리 실패해도 예외를 다시 던지지 않는다
+
+    logger.info("app_stopped")
 
 
 # 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
@@ -44,6 +62,18 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(auth_router)
 app.include_router(account_router)
+
+
+@app.get("/health/live")
+async def health_live() -> dict:
+    return {"status": "ok"}  # 항상 200 — 종료 중에도 프로세스는 살아있다
+
+
+@app.get("/health/ready")
+async def health_ready() -> JSONResponse:
+    if app_state["is_shutting_down"]:
+        return JSONResponse(status_code=503, content={"status": "shutting_down"})
+    return JSONResponse(status_code=200, content={"status": "ready"})
 
 
 @app.middleware("http")

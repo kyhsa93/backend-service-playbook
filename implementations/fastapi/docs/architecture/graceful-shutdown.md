@@ -2,55 +2,25 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md)
 
-## 현재 구현 — `lifespan`은 프로덕션 전용 Secrets Manager 조회만 하고, 종료 블록은 비어 있다
+## 현재 상태 — 적용 완료
 
-```python
-# main.py — 실제 코드
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 프로덕션에서만 Secrets Manager를 호출한다 — 그 외(로컬/테스트 기본값)는
-    # 네트워크 호출 없이 환경 변수(JWT_SECRET)만 사용한다.
-    if os.getenv("APP_ENV") == "production":
-        secret = await AwsSecretService().get_secret("app/jwt")
-        set_jwt_secret(secret["secret"])
-    yield
-
-
-# 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
-# Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
-app = FastAPI(title="Account Service", lifespan=lifespan)
-```
-
-`Base.metadata.create_all`을 호출하던 예전 구현은 이미 Alembic 마이그레이션으로 대체되었다(persistence.md 참조) — 더 이상 `lifespan`이 스키마를 만들지 않는다. 대신 프로덕션에서 JWT secret을 Secrets Manager에서 조회해 주입하는 로직이 추가되었다(secret-manager.md 참조).
-
-`yield` 이후 종료 블록은 여전히 비어 있다 — SIGTERM 수신 시 DB 엔진(`engine.dispose()`)을 정리하지 않고, 헬스체크 엔드포인트(`/health/live`, `/health/ready`)도 없다. `lifespan`은 FastAPI가 기동/종료 훅을 제공하는 정확한 지점이므로, 이 문서 작성 시점 기준 이 격차는 코드에 남아 있지만 **구조 자체는 올바른 위치를 이미 쓰고 있다** — 종료 로직만 채우면 된다.
+`main.py`의 `lifespan` 종료 블록이 채워졌다: SIGTERM 수신 시 `app_state["is_shutting_down"]`을 리소스 정리보다 먼저 `True`로 전환해 `/health/ready`가 즉시 503을 반환하도록 하고, 그 뒤 `engine.dispose()`로 SQLAlchemy 커넥션 풀을 정리한다. `/health/live`, `/health/ready` 엔드포인트도 함께 추가되었다 — 아래 문서 내용 그대로 실제 코드다.
 
 ---
 
-## 종료 블록 제안 — `validate_env()`는 이미 다른 위치에서 실행되고 있다
+## `lifespan` — 기동과 종료
 
-**`validate_env()`를 `lifespan`의 기동 블록 안에 두는 것은 실제 배치와 다르다.** 실제로는 `main.py` 최상단, 모듈 임포트 시점(즉 `FastAPI(...)` 인스턴스가 만들어지기도 전)에 이미 호출된다 — [config.md](config.md) 참조.
+`Base.metadata.create_all`을 호출하던 예전 구현은 이미 Alembic 마이그레이션으로 대체되었다(persistence.md 참조) — `lifespan`이 스키마를 만들지 않는다. 기동 블록은 프로덕션에서만 Secrets Manager에서 JWT secret을 조회해 주입한다(secret-manager.md 참조). `validate_env()`는 `lifespan`보다 앞선 시점, 즉 `main.py` 최상단의 모듈 임포트 시점(`FastAPI(...)` 인스턴스가 만들어지기도 전)에 이미 호출된다 — [config.md](config.md) 참조.
 
 ```python
-# main.py — 실제 코드. lifespan보다 훨씬 앞선 모듈 임포트 시점에 호출된다
+# main.py — 실제 코드. validate_env()는 lifespan보다 훨씬 앞선 모듈 임포트 시점에 호출된다
 from src.config.validator import validate_env
 
 validate_env()  # 실패 시 여기서 프로세스가 종료된다 — 이후 코드는 실행되지 않음
 
 from fastapi import FastAPI, Request  # noqa: E402
 ...
-```
-
-`lifespan`은 그 뒤에 정의되고, Secrets Manager 조회(위 "현재 구현" 절)만 담당한다. 아래는 종료 블록(`engine.dispose()`, readiness 플래그, 헬스체크 엔드포인트)을 채우는 확장 제안이다 — **이 부분은 아직 구현되지 않았다.**
-
-```python
-# main.py — 종료 블록 확장 제안 (아직 구현되지 않음)
-import logging
-from collections.abc import AsyncGenerator
-
-from src.database import engine
-
-logger = logging.getLogger(__name__)
+from src.database import engine  # noqa: E402
 
 app_state = {"is_shutting_down": False}
 
@@ -63,18 +33,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         set_jwt_secret(secret["secret"])
     logger.info("app_started")
 
-    yield   # --- 이 사이에 요청을 처리한다 ---
+    yield  # --- 이 사이에 요청을 처리한다 ---
 
     # --- 종료 (SIGTERM 수신 → uvicorn이 lifespan의 종료 블록을 실행) ---
-    app_state["is_shutting_down"] = True   # readiness를 즉시 503으로 전환
+    app_state["is_shutting_down"] = True  # readiness를 즉시 503으로 전환
     logger.info("shutdown_initiated")
 
     try:
-        await engine.dispose()   # DB 커넥션 풀 정리
+        await engine.dispose()  # DB 커넥션 풀 정리
     except Exception:
-        logger.exception("shutdown_cleanup_failed")   # 정리 실패해도 예외를 다시 던지지 않는다
+        logger.exception("shutdown_cleanup_failed")  # 정리 실패해도 예외를 다시 던지지 않는다
 
     logger.info("app_stopped")
+
+
+# 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
+# Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
+app = FastAPI(title="Account Service", lifespan=lifespan)
 ```
 
 **순서가 중요한 이유:** `is_shutting_down = True`를 리소스 정리보다 먼저 설정해야, 그 사이에 들어오는 새 요청을 readiness 프로브가 차단할 수 있다. 리소스 정리(`engine.dispose()`)는 진행 중인 요청이 끝난 뒤 안전하게 실행되도록 uvicorn이 마지막에 호출한다.
@@ -84,10 +59,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 ## Liveness / Readiness 엔드포인트
 
 ```python
-# main.py — 헬스체크 라우트 추가
+# main.py — 실제 코드
 @app.get("/health/live")
 async def health_live() -> dict:
-    return {"status": "ok"}   # 항상 200 — 종료 중에도 프로세스는 살아있다
+    return {"status": "ok"}  # 항상 200 — 종료 중에도 프로세스는 살아있다
 
 
 @app.get("/health/ready")
@@ -138,7 +113,7 @@ spec:
 
 ## 원칙
 
-- **`lifespan`은 기동과 종료를 모두 담당한다**: `yield` 이전은 기동, 이후는 종료 — 현재는 종료 블록이 비어 있다.
+- **`lifespan`은 기동과 종료를 모두 담당한다**: `yield` 이전은 기동, 이후는 종료.
 - **readiness 전환이 리소스 정리보다 먼저**: `is_shutting_down` 플래그를 정리 코드보다 앞서 설정한다.
 - **liveness는 항상 200**: 종료 중에도 프로세스가 살아있는 한 200을 반환한다.
 - **정리 코드는 예외를 삼킨다**: `engine.dispose()` 실패가 다른 정리 단계를 막지 않도록 try-except로 감싼다.
