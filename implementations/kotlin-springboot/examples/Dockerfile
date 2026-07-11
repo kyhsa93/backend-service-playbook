@@ -24,4 +24,9 @@ COPY --from=build /app/build/libs/*.jar app.jar
 
 EXPOSE 8080
 
+# Dockerfile에 HEALTHCHECK를 추가할 수도 있으나, 오케스트레이터의 liveness/readiness probe가
+# 이미 이 역할을 하므로 Kubernetes/ECS 환경에서는 중복이다. 단독 docker run 환경에서만 유용하다.
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:8080/actuator/health/liveness || exit 1
+
 CMD ["java", "-jar", "app.jar"]
