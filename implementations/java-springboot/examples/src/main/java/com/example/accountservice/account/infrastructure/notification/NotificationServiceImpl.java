@@ -1,11 +1,11 @@
-package com.example.accountservice.notification.infrastructure;
+package com.example.accountservice.account.infrastructure.notification;
 
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 import com.example.accountservice.config.SesProperties;
-import com.example.accountservice.notification.application.service.NotificationService;
-import com.example.accountservice.notification.infrastructure.persistence.SentEmail;
-import com.example.accountservice.notification.infrastructure.persistence.SentEmailRepository;
+import com.example.accountservice.account.application.service.NotificationService;
+import com.example.accountservice.account.infrastructure.notification.persistence.SentEmail;
+import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -4,7 +4,7 @@
 
 ## 이 저장소의 현재 상태 — 예시가 성립하지 않는 이유
 
-`examples/`는 `account`(Aggregate)와 `notification`(Technical Service, [directory-structure.md](directory-structure.md) 참고)만 있는 **단일 Bounded Context** 구조다. `notification`은 별도 BC가 아니라 `account`가 사용하는 기술 서비스이므로, 실제 코드에는 "BC 간" 호출 예시가 없다. 아래는 **가상의 두 번째 BC(User)를 도입한다면**이라는 전제로 작성한 예시다 — `examples/`에 실재하지 않는 코드임을 분명히 한다.
+`examples/`는 `account`(Aggregate) 하나만 있는 **단일 Bounded Context** 구조다. `notification`(Technical Service, [directory-structure.md](directory-structure.md) 참고)은 별도 BC가 아니라 `account` 내부에 배치된 기술 서비스이므로, 실제 코드에는 "BC 간" 호출 예시가 없다. 아래는 **가상의 두 번째 BC(User)를 도입한다면**이라는 전제로 작성한 예시다 — `examples/`에 실재하지 않는 코드임을 분명히 한다.
 
 ---
 

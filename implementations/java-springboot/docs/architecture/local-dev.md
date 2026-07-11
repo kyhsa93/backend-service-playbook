@@ -102,7 +102,7 @@ Spring Boot는 `.env` 파일을 기본 지원하지 않으므로(Node의 `dotenv
 ## AWS SDK에서 LocalStack 연동 — 이미 구현됨
 
 ```java
-// notification/infrastructure/SesConfig.java — 실제 코드
+// account/infrastructure/notification/SesConfig.java — 실제 코드
 @Bean
 public SesClient sesClient(
         @Value("${aws.region:us-east-1}") String region,

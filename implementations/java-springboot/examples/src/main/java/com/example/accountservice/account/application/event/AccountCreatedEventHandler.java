@@ -1,7 +1,7 @@
 package com.example.accountservice.account.application.event;
 
 import com.example.accountservice.account.domain.AccountCreatedEvent;
-import com.example.accountservice.notification.application.service.NotificationService;
+import com.example.accountservice.account.application.service.NotificationService;
 import com.example.accountservice.outbox.OutboxEventHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

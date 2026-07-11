@@ -7,7 +7,7 @@
 이 저장소의 모든 로깅 호출은 이미 `net.logstash.logback.argument.StructuredArguments.kv(...)`로 필드를 명시적으로 구조화한다:
 
 ```java
-// notification/infrastructure/NotificationServiceImpl.java — 실제 코드
+// account/infrastructure/notification/NotificationServiceImpl.java — 실제 코드
 private static final Logger log = LoggerFactory.getLogger(NotificationServiceImpl.class);
 // ...
 log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType),

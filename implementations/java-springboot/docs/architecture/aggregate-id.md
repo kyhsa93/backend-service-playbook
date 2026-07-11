@@ -18,7 +18,7 @@
 
 ## `IdGenerator` 적용 완료 (더 이상 gap 아님)
 
-`account/domain/Account.java`의 `create()`, `Transaction.create()`, `notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `IdGenerator.generate()`(32자리 hex, 하이픈 없음)를 사용한다.
+`account/domain/Account.java`의 `create()`, `Transaction.create()`, `account/infrastructure/notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `IdGenerator.generate()`(32자리 hex, 하이픈 없음)를 사용한다.
 
 ```java
 // common/IdGenerator.java — 프레임워크 무의존 순수 유틸

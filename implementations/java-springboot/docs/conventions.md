@@ -343,8 +343,7 @@ import com.example.accountservice.account.domain.AccountRepository;
 
 ```
 com.example.accountservice/
-  account/     ← domain/application/infrastructure/interfaces 4레이어 전부 포함
-  notification/
+  account/     ← domain/application/infrastructure/interfaces 4레이어 전부 포함 (notification Technical Service도 이 안에 있다)
   common/      ← 공유 유틸/부품 (shared-modules.md 참고)
   AccountServiceApplication.java
 ```

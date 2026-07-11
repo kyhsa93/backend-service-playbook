@@ -1,4 +1,4 @@
-package com.example.accountservice.notification.infrastructure;
+package com.example.accountservice.account.infrastructure.notification;
 
 import com.example.accountservice.config.AwsProperties;
 import lombok.RequiredArgsConstructor;

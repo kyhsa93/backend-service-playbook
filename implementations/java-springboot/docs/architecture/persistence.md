@@ -23,10 +23,10 @@ public class CreateAccountService {
 
 ## `REQUIRES_NEW` — 알림 발송 트랜잭션 격리 (이미 구현됨)
 
-`notification/infrastructure/NotificationServiceImpl`이 이 저장소에서 유일하게 실제로 사용 중인 전파 속성 커스터마이징이다:
+`account/infrastructure/notification/NotificationServiceImpl`이 이 저장소에서 유일하게 실제로 사용 중인 전파 속성 커스터마이징이다:
 
 ```java
-// notification/infrastructure/NotificationServiceImpl.java — 실제 코드
+// account/infrastructure/notification/NotificationServiceImpl.java — 실제 코드
 @Component
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {

@@ -77,7 +77,7 @@ public class AccountServiceApplication {
 `@ConfigurationProperties`를 `record`로 선언하면(Spring Boot 3.x 지원) 불변 객체로 주입되고, `@NotBlank`/`@Email` 등 Bean Validation 애노테이션이 **애플리케이션 컨텍스트 로딩 시점**에 검증된다. 값이 비어 있으면 `BindValidationException`이 발생하며 `ApplicationContext` 초기화가 실패하고 프로세스가 즉시 종료된다 — Node의 `process.exit(1)`에 해당하는 Spring식 fail-fast다. `region`/`senderEmail`은 이 메커니즘으로 직접 검증되고, `accessKeyId`/`secretAccessKey`는 아래 `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다(신규로 `@NotBlank`를 추가해 검증을 이중화하는 것도 가능하다).
 
 ```java
-// notification/infrastructure/SesConfig.java — 실제 코드, Infrastructure 레이어에서만 주입받는다
+// account/infrastructure/notification/SesConfig.java — 실제 코드, Infrastructure 레이어에서만 주입받는다
 @Configuration
 @RequiredArgsConstructor
 public class SesConfig {

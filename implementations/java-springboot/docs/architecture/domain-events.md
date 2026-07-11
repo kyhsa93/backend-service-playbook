@@ -218,7 +218,7 @@ public class AccountCreatedEventHandler implements OutboxEventHandler {
 
 ## 이벤트 핸들러 멱등성
 
-`processPending()`은 테이블 전체를 재드레인하는 구조이므로, 핸들러 실행 자체는 at-least-once다(예: `processPending()` 도중 handler.handle()은 성공했지만 그 직후 `markProcessed()`/커밋 전에 크래시하면, 다음 호출에서 같은 이벤트가 다시 처리된다). 현재 Handler들은 이미 **Level 1(본질적 멱등)**에 근접한다 — 이메일 재발송이 시스템 상태를 망가뜨리지는 않는다(단, 중복 이메일 발송 자체는 발생할 수 있다). 완전한 멱등성을 원하면 Level 2(Ledger)를 적용한다. 이 저장소는 이미 `notification/infrastructure/persistence/SentEmail`(발송 이력 Entity)을 갖고 있으므로, `eventId` 컬럼만 추가하면 Ledger 역할을 겸할 수 있다:
+`processPending()`은 테이블 전체를 재드레인하는 구조이므로, 핸들러 실행 자체는 at-least-once다(예: `processPending()` 도중 handler.handle()은 성공했지만 그 직후 `markProcessed()`/커밋 전에 크래시하면, 다음 호출에서 같은 이벤트가 다시 처리된다). 현재 Handler들은 이미 **Level 1(본질적 멱등)**에 근접한다 — 이메일 재발송이 시스템 상태를 망가뜨리지는 않는다(단, 중복 이메일 발송 자체는 발생할 수 있다). 완전한 멱등성을 원하면 Level 2(Ledger)를 적용한다. 이 저장소는 이미 `account/infrastructure/notification/persistence/SentEmail`(발송 이력 Entity)을 갖고 있으므로, `eventId` 컬럼만 추가하면 Ledger 역할을 겸할 수 있다:
 
 ```java
 // AccountCreatedEventHandler — Level 2 적용 (제안, 아직 미도입)

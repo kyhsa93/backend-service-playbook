@@ -6,7 +6,7 @@
 
 `common/service/SecretService`(인터페이스) + `common/infrastructure/SecretServiceImpl`(AWS Secrets Manager 구현체 + TTL 캐시)이 이미 구현되어 있다 — 아래 "`SecretService` — Technical Service로 추상화" 절이 실제 코드다. `common/config/SecretsEnvironmentPostProcessor`도 기동 초기에 Secrets Manager 값을 `Environment`에 주입한다(아래 참고).
 
-다만 `notification/infrastructure/SesConfig.java`는 `SecretService`를 거치지 않고 여전히 `AwsProperties`(환경 변수 기반, [config.md](config.md) 참고)로만 AWS 자격증명을 받는다:
+다만 `account/infrastructure/notification/SesConfig.java`는 `SecretService`를 거치지 않고 여전히 `AwsProperties`(환경 변수 기반, [config.md](config.md) 참고)로만 AWS 자격증명을 받는다:
 
 ```java
 // SesConfig.java — 실제 코드
@@ -26,7 +26,7 @@ SES 자격증명 자체는 IAM 정책으로 다루는 것이 일반적이라(SES
 
 ## `SecretService` — Technical Service로 추상화 (이미 구현됨)
 
-`notification/application/service/NotificationService`(인터페이스) + `notification/infrastructure/NotificationServiceImpl`(구현체)가 보여주는 Technical Service 패턴을 Secret 조회에도 동일하게 적용했다.
+`account/application/service/NotificationService`(인터페이스) + `account/infrastructure/notification/NotificationServiceImpl`(구현체)가 보여주는 Technical Service 패턴을 Secret 조회에도 동일하게 적용했다.
 
 ```java
 // common/service/SecretService.java — 실제 코드

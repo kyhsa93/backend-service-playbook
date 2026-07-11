@@ -1,4 +1,4 @@
-package com.example.accountservice.notification.infrastructure.persistence;
+package com.example.accountservice.account.infrastructure.notification.persistence;
 
 import com.example.accountservice.common.IdGenerator;
 import jakarta.persistence.*;

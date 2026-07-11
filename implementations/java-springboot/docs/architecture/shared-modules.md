@@ -4,7 +4,7 @@
 
 ## 현재 실제 상태 — `outbox/`는 실제로 존재, 나머지는 아직 없다
 
-`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`, `notification/`, 그리고 **`outbox/`** 셋이다. `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxRelay`/`OutboxEventHandler`)는 알림 발송이 유실되면 안 되는 부가효과여서 실제로 필요해져 이미 존재한다([domain-events.md](domain-events.md) 참고). `common/`, `database/`, `auth/` 같은 나머지 도메인 무관 공유 패키지는 아직 없다 — `IdGenerator`(아직 `UUID.randomUUID().toString()`을 도메인 코드에 직접 인라인), 트랜잭션 관리, 인증 공유 로직은 이 저장소에는 아직 코드로 존재하지 않는다.
+`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`와 **`outbox/`** 둘뿐이다. `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxRelay`/`OutboxEventHandler`)는 알림 발송이 유실되면 안 되는 부가효과여서 실제로 필요해져 이미 존재한다([domain-events.md](domain-events.md) 참고) — 여러 도메인이 실제로 공유하는 진짜 공용 인프라다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다. `common/`, `database/`, `auth/` 같은 나머지 도메인 무관 공유 패키지는 아직 없다 — `IdGenerator`(아직 `UUID.randomUUID().toString()`을 도메인 코드에 직접 인라인), 트랜잭션 관리, 인증 공유 로직은 이 저장소에는 아직 코드로 존재하지 않는다.
 
 이는 [directory-structure.md](directory-structure.md) "공용 인프라 배치 기준 — 아직 부재" 섹션이 이미 지적한 gap과 정확히 같은 지점이다 — 이 문서는 그 배치 기준을 공유 코드 관점에서 조금 더 구체화한다.
 
@@ -12,7 +12,7 @@
 
 ## 권장 배치 — 새로 추가할 때의 컨벤션
 
-도메인(`account`, `notification`)에 속하지 않는 코드는 `com.example.accountservice`(최상위) 바로 아래, 도메인 패키지와 같은 레벨에 관심사별로 둔다.
+도메인(`account`)에 속하지 않는 코드는 `com.example.accountservice`(최상위) 바로 아래, 도메인 패키지와 같은 레벨에 관심사별로 둔다.
 
 ```
 com.example.accountservice/
@@ -47,8 +47,8 @@ com.example.accountservice/
 
   account/                  # 도메인 패키지 (기존과 동일)
     domain/ application/ infrastructure/ interfaces/
-  notification/             # 도메인 패키지 (기존과 동일)
-    application/ infrastructure/
+    application/service/NotificationService.java        # 도메인 스코프 Technical Service
+    infrastructure/notification/                          # 구현체 — account만 사용, 공유 패키지 아님
 
   AccountServiceApplication.java
 ```
@@ -72,7 +72,7 @@ com.example.accountservice/
 
 ## 공유 코드와 도메인 코드를 나누는 기준
 
-- **두 개 이상의 도메인/Technical Service가 참조하면 공유 코드다.** `IdGenerator`는 `account`(및 향후 다른 Aggregate)가 모두 쓸 유틸이므로 `common/`에 둔다. 반대로 `NotificationServiceImpl`은 `notification` 도메인 하나만 쓰므로 `notification/infrastructure/`에 남는다.
+- **두 개 이상의 도메인/Technical Service가 참조하면 공유 코드다.** `IdGenerator`는 `account`(및 향후 다른 Aggregate)가 모두 쓸 유틸이므로 `common/`에 둔다. 반대로 `NotificationServiceImpl`은 `account` 도메인 하나만 쓰므로 최상위 공유 패키지가 아니라 `account/infrastructure/notification/`에 남는다.
 - **공유 코드도 레이어 규율을 그대로 따른다.** `common/IdGenerator`는 어떤 프레임워크도 import하지 않는 순수 유틸이라 Domain 레이어(`Account.create()`)에서 직접 호출할 수 있다. 반면 `common/web/GlobalExceptionHandler`는 Spring MVC 타입(`ResponseEntity`, `@RestControllerAdvice`)에 의존하므로 Interface 레이어 성격의 공유 코드이고, Domain/Application에서 참조해서는 안 된다.
 - **도메인이 하나뿐인 지금 단계에서 공유 패키지를 미리 만들 필요는 없다.** `IdGenerator`조차 아직 `account/domain/Account.java`에 인라인되어 있다([aggregate-id.md](aggregate-id.md) 참고) — 두 번째 도메인이 추가되어 실제로 코드가 중복되는 시점에 `common/`으로 추출하는 것이 YAGNI 원칙에 맞다. 위 트리는 "그 시점이 오면 어디에 두는가"에 대한 답이지, 지금 당장 빈 패키지를 만들라는 지시가 아니다.
 
