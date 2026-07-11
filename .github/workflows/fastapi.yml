@@ -1,0 +1,37 @@
+name: fastapi
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'implementations/fastapi/**'
+      - '.github/workflows/fastapi.yml'
+  pull_request:
+    paths:
+      - 'implementations/fastapi/**'
+      - '.github/workflows/fastapi.yml'
+
+jobs:
+  fastapi:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: implementations/fastapi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install -r examples/requirements.txt
+
+      # cwd가 examples/여야 `from main import app`, `from src...`가 sys.path로 해석된다
+      # (콘솔 스크립트 pytest는 cwd를 sys.path에 넣지 않으므로 `python -m pytest`를 examples/ 안에서 실행한다).
+      - run: cd examples && python -m pytest tests
+
+      # harness의 directory-structure 규칙이 __pycache__를 phantom 디렉토리로
+      # 오탐할 수 있다 — pytest 실행으로 examples/ 아래 생긴 __pycache__를 harness 실행 전에 정리한다.
+      - run: find examples -iname __pycache__ -exec rm -rf {} +
+
+      - run: bash harness.sh examples
