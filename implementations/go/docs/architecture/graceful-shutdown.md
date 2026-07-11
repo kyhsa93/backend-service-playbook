@@ -2,34 +2,16 @@
 
 원칙은 루트 [graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md)를 따른다: SIGTERM 수신 시 readiness를 먼저 실패로 전환하고, 진행 중인 요청을 마친 뒤, HTTP 서버를 닫고, 그 다음에 리소스를 정리한다. Go 표준 라이브러리는 이 전체 흐름을 프레임워크 없이 `signal.NotifyContext` + `http.Server.Shutdown(ctx)` 두 가지만으로 구현한다.
 
-**현재 `cmd/server/main.go`는 이 패턴을 전혀 쓰지 않는다** — `http.ListenAndServe`를 블로킹 호출하고 끝이다. 이 문서는 root 원칙을 만족하는 목표 구현을 제시한다.
+`cmd/server/main.go`가 실제로 이 패턴을 쓴다 — 아래는 그 실제 코드다.
 
 ---
 
-## 현재 코드 — 알려진 격차
+## 실제 구현 — `signal.NotifyContext` + `Shutdown(ctx)`
 
-`cmd/server/main.go`는 config 검증, JWT/Secrets Manager, 구조화 로깅(`slog`)을 이미 갖췄다([bootstrap.md](bootstrap.md) 참고) — 이 문서가 다루는 부분만 아직 없다:
-
-```go
-// cmd/server/main.go — 현재 (마지막 부분만 발췌)
-addr := ":8080"
-slog.Info("listening", "addr", addr)
-if err := http.ListenAndServe(addr, mux); err != nil {
-	slog.Error("server error", "error", err)
-	os.Exit(1)
-}
-```
-
-`ListenAndServe`는 SIGTERM을 받아도 스스로 종료하지 않는다 — 오케스트레이터가 grace period 이후 SIGKILL을 보내면 진행 중이던 요청이 강제로 끊긴다.
-
----
-
-## 목표 구현 — `signal.NotifyContext` + `Shutdown(ctx)`
-
-`main()`의 나머지 조립(config 검증, DB, Infrastructure, `NewRouter(accountRepo, outboxRelay, jwtService)` 등)은 [bootstrap.md](bootstrap.md)의 "현재 코드" 그대로 두고, 서버 시작/종료 부분만 아래로 교체한다:
+`main()`의 나머지 조립(config 검증, DB, Infrastructure, `NewRouter(accountRepo, outboxRelay, jwtService)` 등)은 [bootstrap.md](bootstrap.md)의 코드 그대로이고, 서버 시작/종료 부분만 아래와 같다:
 
 ```go
-// cmd/server/main.go — 목표 형태 (마지막 부분만 교체)
+// cmd/server/main.go — 실제 코드 (마지막 부분만 발췌)
 srv := &http.Server{Addr: ":8080", Handler: mux}
 
 // SIGTERM/SIGINT를 받으면 ctx가 취소된다.
@@ -74,8 +56,10 @@ slog.Info("server stopped")
 
 ## Liveness / Readiness 엔드포인트
 
+**여전히 남은 격차**: 위 시그널 수신·`Shutdown(ctx)` 흐름은 `cmd/server/main.go`에 실제로 구현되어 있지만, 아래 `HealthHandler`/`/health/live`·`/health/ready` 엔드포인트는 `examples/`에 아직 없다 — `router.go`에 헬스체크 라우트 자체가 없다. 이 절은 여전히 목표 형태다.
+
 ```go
-// internal/interface/http/health_handler.go — 목표 형태
+// internal/interface/http/health_handler.go — 목표 형태 (아직 examples/에 없음)
 type HealthHandler struct {
 	shuttingDown atomic.Bool
 }

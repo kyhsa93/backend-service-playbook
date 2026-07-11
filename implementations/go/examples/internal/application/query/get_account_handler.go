@@ -13,10 +13,10 @@ type GetAccountQuery struct {
 }
 
 type GetAccountHandler struct {
-	repo account.Repository
+	repo account.QueryRepository
 }
 
-func NewGetAccountHandler(repo account.Repository) *GetAccountHandler {
+func NewGetAccountHandler(repo account.QueryRepository) *GetAccountHandler {
 	return &GetAccountHandler{repo: repo}
 }
 

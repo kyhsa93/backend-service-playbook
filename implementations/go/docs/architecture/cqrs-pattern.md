@@ -20,7 +20,7 @@ internal/
   domain/
     account/
       account.go              ← Aggregate Root
-      repository.go            ← Repository interface (Command/Query 공용)
+      repository.go            ← Repository(Command) + QueryRepository(Query) interface
       events.go                ← Domain Event
   application/
     command/
@@ -105,10 +105,10 @@ type GetAccountQuery struct {
 }
 
 type GetAccountHandler struct {
-	repo account.Repository
+	repo account.QueryRepository
 }
 
-func NewGetAccountHandler(repo account.Repository) *GetAccountHandler {
+func NewGetAccountHandler(repo account.QueryRepository) *GetAccountHandler {
 	return &GetAccountHandler{repo: repo}
 }
 
@@ -121,20 +121,27 @@ func (h *GetAccountHandler) Handle(ctx context.Context, q GetAccountQuery) (*Get
 }
 ```
 
-### root와의 편차 — 별도 Query 인터페이스 없이 Repository를 재사용
+### root와의 대응 — 별도 읽기 전용 인터페이스(`account.QueryRepository`)
 
-root [layer-architecture.md](../../../../docs/architecture/layer-architecture.md)는 Query Service가 `OrderQuery`(읽기 전용 abstract class, Aggregate 복원 없이 DB 직접 조회)를 쓰고 Command와는 별도 인터페이스를 두라고 규정한다. 이 저장소의 `GetAccountHandler`/`GetTransactionsHandler`는 **쓰기와 동일한 `account.Repository` 인터페이스**를 그대로 사용한다 — Query 전용 인터페이스(`account.Query`)가 없다.
-
-단일 Aggregate·단일 저장소 규모에서는 이 정도 분리로도 충분하지만, 읽기 모델을 별도 저장소(read replica, 캐시, 검색 인덱스 등)로 분리해야 하는 시점이 오면 `internal/application/query/`에 `Query` interface를 새로 정의하고 `internal/infrastructure/`에 읽기 전용 구현체를 두는 방향으로 확장한다:
+root [layer-architecture.md](../../../../docs/architecture/layer-architecture.md)는 Query Service가 Command와는 별도의 읽기 전용 인터페이스를 쓰라고 규정한다. 이 저장소는 `internal/domain/account/repository.go`에서 이를 두 인터페이스로 표현한다:
 
 ```go
-// 확장 시 도입할 수 있는 패턴 — 현재 examples/에는 없음
-package query
+// internal/domain/account/repository.go
+type QueryRepository interface {
+	FindByID(ctx context.Context, accountID, ownerID string) (*Account, error)
+	FindAll(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
+}
 
-type Query interface {
-	GetAccount(ctx context.Context, accountID string) (*GetAccountResult, error)
+type Repository interface {
+	QueryRepository
+	Save(ctx context.Context, account *Account) error
 }
 ```
+
+`GetAccountHandler`/`GetTransactionsHandler`는 `account.QueryRepository`만 의존성으로 받는다 — 타입 시스템 수준에서 `Save`를 호출할 수 없다. `internal/infrastructure/persistence/account_repository.go`의 `AccountRepository`는 두 인터페이스를 각각 별도로 구현할 필요가 없다: Go의 interface는 구조적 타이핑이므로, `FindByID`/`FindAll`/`FindTransactions`/`Save` 네 메서드를 갖춘 concrete struct 하나가 `Repository`와 `QueryRepository`를 동시에 만족한다(`var _ account.QueryRepository = (*AccountRepository)(nil)` 컴파일 타임 검증도 함께 둔다). `internal/interface/http/router.go`는 여전히 단일 `accountRepo` 인스턴스를 조립해 Command Handler에는 `account.Repository`로, Query Handler에는 `account.QueryRepository`로 전달한다 — `Repository`가 `QueryRepository`를 embed하므로 별도 어댑터 없이 그대로 넘길 수 있다.
+
+읽기 모델을 별도 저장소(read replica, 캐시, 검색 인덱스 등)로 분리해야 하는 시점이 오면, `internal/infrastructure/`에 `QueryRepository`만 구현하는 별도 read-only 구현체를 추가로 두는 방향으로 확장한다 — 인터페이스가 이미 분리되어 있으므로 Query Handler 쪽 코드는 바뀌지 않는다.
 
 ---
 
@@ -199,7 +206,7 @@ func (h *AccountCreatedEventHandler) Handle(ctx context.Context, payload []byte)
 | 읽기 진입점 | `XxxQueryService.method()` | `XxxHandler.Handle(ctx, query)` |
 | 라우팅 | Service 직접 호출 | Handler를 필드로 보유, 직접 호출 (Bus 없음) |
 | 유스케이스 단위 | Service 메서드 | Handler 구조체 (파일 1개 = 유스케이스 1개) |
-| 읽기/쓰기 분리 | Service 클래스 분리 | Handler 분리 + (현재는) Repository 공용 |
+| 읽기/쓰기 분리 | Service 클래스 분리 | Handler 분리 + `Repository`/`QueryRepository` 인터페이스 분리 |
 
 ---
 
