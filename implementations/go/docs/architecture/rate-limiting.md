@@ -1,8 +1,10 @@
 # Rate Limiting (Go)
 
-Go 전용 문서 — root에는 대응 문서가 없다(`docs/implementations/go.md`의 conventions.md 감사에서도 "Rate Limiting 섹션은 여전히 대응 내용 없음"으로 지적된 항목). Go 표준 라이브러리에는 NestJS의 `@nestjs/throttler` 같은 내장 rate limiting이 없다 — 이 저장소가 이미 채택 중인 최소 의존성 원칙과 가장 잘 맞는 선택은 Go 팀이 직접 관리하는 `golang.org/x/time/rate`(토큰 버킷)다.
+Go 전용 문서 — root에는 대응 문서가 없다. Go 표준 라이브러리에는 NestJS의 `@nestjs/throttler` 같은 내장 rate limiting이 없다 — 이 저장소가 이미 채택 중인 최소 의존성 원칙과 가장 잘 맞는 선택은 Go 팀이 직접 관리하는 `golang.org/x/time/rate`(토큰 버킷)다.
 
-**확인된 사실 — 이 저장소의 `examples/`는 rate limiting을 전혀 구현하지 않는다.** `go.mod`에 `golang.org/x/time`이 없고, `internal/interface/http/`에도 관련 미들웨어가 없다. 아래는 전량 목표(forward-looking) 설계다.
+## 현재 상태 — 적용 완료
+
+`go.mod`에 `golang.org/x/time`이 추가되었고, `internal/interface/http/middleware/rate_limit_middleware.go`의 `RateLimit` 미들웨어가 `router.go`에서 `/accounts`·`/auth/sign-in` 등 모든 API 라우트에 전역으로 적용되어 있다. `internal/config/rate_limit.go`의 `RateLimitConfig`가 `RATE_LIMIT_RPS`/`RATE_LIMIT_BURST` 환경 변수(기본값: 초당 100개, burst 20개)로 임계값을 관리하고, `cmd/server/main.go`가 이 값으로 `rate.Limiter`를 조립해 `NewRouter`에 주입한다. `/health/live`·`/health/ready`는 라우트 등록 시 애초에 rate limit 미들웨어로 감싸지 않는 방식으로 제외했다.
 
 ---
 
@@ -19,7 +21,7 @@ go get golang.org/x/time/rate
 ## 전역 미들웨어 — 토큰 버킷
 
 ```go
-// internal/interface/http/middleware/rate_limit_middleware.go
+// internal/interface/http/middleware/rate_limit_middleware.go — 실제 코드
 package middleware
 
 import (
@@ -44,24 +46,65 @@ func RateLimit(limiter *rate.Limiter) func(http.Handler) http.Handler {
 }
 ```
 
+`rate.NewLimiter(r, b)`의 `r`은 초당 채워지는 토큰 수(평균 처리율), `b`는 버킷의 최대 용량(순간 burst 허용치)이다. `limiter.Allow()`는 토큰이 있으면 하나 소비하고 `true`, 없으면 즉시 `false`를 반환한다 — 블로킹하지 않는다.
+
+`limiter *rate.Limiter`는 `NewRouter`가 파라미터로 주입받는다 — [cross-cutting-concerns.md](cross-cutting-concerns.md)가 명시하듯 이 저장소는 별도의 `Chain()` 헬퍼 없이 미들웨어를 직접 중첩 호출하는 방식(`A(B(h))`)을 쓰므로, `router.go`가 `RateLimit(limiter)(mux)` 형태로 직접 감싼다.
+
 ```go
-// main.go 또는 router.go에서 조립 — cross-cutting-concerns.md의 Chain 패턴 그대로 재사용
-limiter := rate.NewLimiter(rate.Limit(100), 20) // 초당 100개 평균, burst 20개까지 순간 허용
-handler := middleware.Chain(mux,
-	middleware.CorrelationID,
-	middleware.RateLimit(limiter), // 인증보다 먼저 — 인증 로직 자체가 부하를 유발하지 않도록
-	middleware.RequireAuth(jwtService),
-	middleware.RequestLogging(logger),
-)
+// internal/config/rate_limit.go — 실제 코드
+type RateLimitConfig struct {
+	RequestsPerSecond float64 // 초당 평균 허용 요청 수
+	Burst             int     // 순간적으로 허용하는 burst 크기
+}
+
+func LoadRateLimitConfig() RateLimitConfig {
+	cfg := RateLimitConfig{RequestsPerSecond: 100, Burst: 20}
+	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.RequestsPerSecond = parsed
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_BURST"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			cfg.Burst = parsed
+		}
+	}
+	return cfg
+}
 ```
 
-`rate.NewLimiter(r, b)`의 `r`은 초당 채워지는 토큰 수(평균 처리율), `b`는 버킷의 최대 용량(순간 burst 허용치)이다. `limiter.Allow()`는 토큰이 있으면 하나 소비하고 `true`, 없으면 즉시 `false`를 반환한다 — 블로킹하지 않는다.
+```go
+// cmd/server/main.go — 실제 코드(발췌)
+rateLimitConfig := config.LoadRateLimitConfig()
+limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
+
+accountRepo := persistence.NewAccountRepository(db, outboxWriter)
+mux, healthHandler := httphandler.NewRouter(accountRepo, outboxRelay, jwtService, limiter)
+```
+
+```go
+// internal/interface/http/router.go — 실제 코드(발췌)
+limited := http.NewServeMux()
+limited.Handle("/accounts", middleware.RequireAuth(jwtService)(protected))
+limited.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
+limited.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)
+
+mux := http.NewServeMux()
+mux.Handle("/", middleware.RateLimit(limiter)(limited))
+// 헬스체크는 오케스트레이터 프로브 전용이므로 rate limit 미들웨어를 감싸지 않는다.
+mux.HandleFunc("GET /health/live", healthHandler.Live)
+mux.HandleFunc("GET /health/ready", healthHandler.Ready)
+
+return middleware.CorrelationID(mux), healthHandler
+```
+
+`limiter`를 `NewRouter`의 파라미터로 받는 이유는 운영값과 테스트값을 분리하기 위해서다 — `main()`은 `LoadRateLimitConfig()`(기본값: 초당 100개, burst 20개)로 만든 limiter를 넘기고, `test/account_e2e_test.go`의 e2e 테스트는 같은 프로세스 안에서 짧은 시간에 수십 개 요청을 보내므로 훨씬 넉넉한 limiter(`rate.NewLimiter(rate.Limit(100_000), 100_000)`)를 직접 만들어 넘긴다. kotlin-springboot(`resilience4j.ratelimiter.instances.http-write.limit-for-period`를 테스트 프로퍼티로 override)·fastapi(`RATE_LIMIT_*` 환경 변수를 테스트 conftest에서 override)와 같은 이유·같은 패턴이다.
 
 ---
 
-## 클라이언트(IP)별 제한 — limiter map
+## 클라이언트(IP)별 제한 — limiter map (아직 미구현, 확장 옵션)
 
-전역 limiter 하나만 두면 특정 클라이언트가 아니라 서버 전체가 같은 버킷을 나눠 쓰게 된다. 클라이언트별로 제한하려면 IP(또는 인증된 사용자 ID)마다 별도 `*rate.Limiter`를 두고 map으로 관리한다 — `golang.org/x/time/rate` 공식 문서가 권장하는 관용구다.
+현재 구현된 전역 limiter 하나만 두면 특정 클라이언트가 아니라 서버 전체가 같은 버킷을 나눠 쓰게 된다. 클라이언트별로 제한하려면 IP(또는 인증된 사용자 ID)마다 별도 `*rate.Limiter`를 두고 map으로 관리한다 — `golang.org/x/time/rate` 공식 문서가 권장하는 관용구다. 아래는 이 저장소가 아직 채택하지 않은 목표(forward-looking) 설계다.
 
 ```go
 // internal/interface/http/middleware/rate_limit_middleware.go
@@ -139,9 +182,9 @@ func (rl *PerClientRateLimit) Middleware(next http.Handler) http.Handler {
 
 ---
 
-## 엔드포인트별 차등 적용
+## 엔드포인트별 차등 적용 (아직 미구현, 확장 옵션)
 
-NestJS의 `@Throttle()`/`@SkipThrottle()` 데코레이터에 대응하는 것은, Go에서는 **라우트마다 다른 미들웨어 체인을 조립**하는 것이다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 미들웨어 합성 패턴 참고).
+현재는 `/accounts`·`/auth/sign-in` 등 모든 API 라우트가 같은 전역 limiter를 공유한다. NestJS의 `@Throttle()`/`@SkipThrottle()` 데코레이터에 대응하는 것은, Go에서는 **라우트마다 다른 미들웨어로 감싸는** 것이다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 미들웨어 합성 패턴 참고) — 아래는 이 저장소가 아직 채택하지 않은 목표 설계다.
 
 ```go
 // 쓰기 엔드포인트(입출금)는 더 엄격하게, 헬스체크는 제외
@@ -149,9 +192,9 @@ writeLimiter := rate.NewLimiter(rate.Limit(5), 2)
 readLimiter := rate.NewLimiter(rate.Limit(50), 10)
 
 mux.Handle("POST /accounts/{id}/deposit",
-	middleware.Chain(http.HandlerFunc(accountHTTP.Deposit), middleware.RateLimit(writeLimiter)))
+	middleware.RateLimit(writeLimiter)(http.HandlerFunc(accountHTTP.Deposit)))
 mux.Handle("GET /accounts/{id}",
-	middleware.Chain(http.HandlerFunc(accountHTTP.GetAccount), middleware.RateLimit(readLimiter)))
+	middleware.RateLimit(readLimiter)(http.HandlerFunc(accountHTTP.GetAccount)))
 mux.HandleFunc("GET /health/live", healthHandler.Live) // rate limit 미적용 — 오케스트레이터 프로브 제외
 ```
 
@@ -177,12 +220,12 @@ if !limiter.Allow() {
 
 ## 원칙
 
-- **미들웨어 체인의 앞쪽에 배치**한다 — 인증/로깅보다 먼저 걸러야 낭비되는 연산이 적다([cross-cutting-concerns.md](cross-cutting-concerns.md) 파이프라인 순서 참고).
-- **전역 제한과 클라이언트별 제한을 구분**한다 — 서버 보호가 목적이면 전역 limiter, 클라이언트 남용 방지가 목적이면 클라이언트별 map을 쓴다.
-- **클라이언트별 map은 반드시 정리(cleanup)한다** — 그렇지 않으면 메모리 누수가 된다.
-- **쓰기 엔드포인트를 읽기보다 엄격하게** 제한한다.
-- **헬스체크/내부 엔드포인트는 라우트 등록 시 아예 미들웨어를 감싸지 않는 방식으로 제외**한다.
-- **환경 변수로 임계값을 관리**한다([config.md](config.md) 패턴과 동일하게 `RateLimitConfig` 구조체로 분리).
+- **미들웨어 체인의 앞쪽에 배치**한다 — 인증보다 먼저 걸러야 낭비되는 연산이 적다([cross-cutting-concerns.md](cross-cutting-concerns.md) 파이프라인 순서 참고). ✅ `router.go`에서 `RequireAuth`보다 바깥쪽에서 `RateLimit`이 적용된다.
+- **헬스체크/내부 엔드포인트는 라우트 등록 시 아예 미들웨어를 감싸지 않는 방식으로 제외**한다. ✅ `/health/live`·`/health/ready`는 `mux`에 직접 등록되고 `RateLimit`으로 감싼 서브 mux 밖에 있다.
+- **환경 변수로 임계값을 관리**한다([config.md](config.md) 패턴과 동일하게 `RateLimitConfig` 구조체로 분리). ✅ `internal/config/rate_limit.go`의 `LoadRateLimitConfig()`가 `RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`를 읽는다. 운영 기본값과 e2e 테스트 값(넉넉한 limiter)을 분리하는 데도 같은 주입 지점을 쓴다.
+- **전역 제한과 클라이언트별 제한을 구분**한다 — 서버 보호가 목적이면 전역 limiter, 클라이언트 남용 방지가 목적이면 클라이언트별 map을 쓴다. 현재는 전역 limiter만 적용되어 있다(위 "클라이언트별 제한" 섹션은 미구현 확장 옵션).
+- **클라이언트별 map을 도입하면 반드시 정리(cleanup)한다** — 그렇지 않으면 메모리 누수가 된다.
+- **쓰기 엔드포인트를 읽기보다 엄격하게 제한**한다 — 위 "엔드포인트별 차등 적용" 섹션은 미구현 확장 옵션이다.
 
 ---
 

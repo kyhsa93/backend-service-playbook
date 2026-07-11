@@ -21,6 +21,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/localstack"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"golang.org/x/time/rate"
 
 	"github.com/example/account-service/internal/application/event"
 	"github.com/example/account-service/internal/infrastructure/auth"
@@ -137,8 +138,14 @@ func runTests(m *testing.M) int {
 
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 
+	// e2e 테스트는 같은 프로세스 안에서 짧은 시간에 수십 개 요청을 보낸다 — 운영 기본값
+	// (초당 100개, burst 20)을 그대로 쓰면 rate limiter가 테스트 도중에도 429를 반환해
+	// 무관한 실패를 만든다. rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
+	// 여기서만 넉넉한 limiter로 override한다.
+	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
+
 	repo := persistence.NewAccountRepository(db, outboxWriter)
-	mux := httphandler.NewRouter(repo, outboxRelay, testJWTService)
+	mux, _ := httphandler.NewRouter(repo, outboxRelay, testJWTService, testLimiter)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 

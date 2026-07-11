@@ -12,6 +12,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"golang.org/x/time/rate"
 
 	"github.com/example/account-service/internal/application/event"
 	"github.com/example/account-service/internal/config"
@@ -60,8 +61,11 @@ func main() {
 	}
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
 
+	rateLimitConfig := config.LoadRateLimitConfig()
+	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
+
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-	mux := httphandler.NewRouter(accountRepo, outboxRelay, jwtService)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, outboxRelay, jwtService, limiter)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
@@ -79,6 +83,11 @@ func main() {
 
 	<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
 	slog.Info("shutdown signal received")
+
+	// srv.Shutdown(ctx)보다 반드시 먼저 호출한다 — readiness가 503으로 바뀐 뒤에야
+	// 오케스트레이터가 새 트래픽을 끊으므로, HTTP 서버가 실제로 멈추기 전에 readiness부터
+	// 실패시켜야 무중단 전환이 된다(graceful-shutdown.md).
+	healthHandler.StartShutdown()
 
 	// terminationGracePeriodSeconds(오케스트레이터 설정)에 맞춰 여유 있게 설정.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

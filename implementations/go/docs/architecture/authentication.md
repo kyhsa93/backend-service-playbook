@@ -180,7 +180,7 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtServ
 }
 ```
 
-(`GET /health/live` 같은 헬스체크 엔드포인트는 아직 없다 — [graceful-shutdown.md](graceful-shutdown.md) 참고.)
+(`GET /health/live`·`GET /health/ready` 같은 헬스체크 엔드포인트는 인증도, rate limit도 걸리지 않은 채 `mux`에 직접 등록된다 — [graceful-shutdown.md](graceful-shutdown.md), [rate-limiting.md](rate-limiting.md) 참고.)
 
 - 인증이 필요한 라우트를 **하나의 `http.ServeMux`로 묶고 미들웨어로 감싸는 것**이 "메서드별로 미들웨어를 따로 붙이는 실수"를 방지하는 Go식 방법이다. 새 엔드포인트를 이 서브 mux에 추가하기만 하면 자동으로 인증이 적용된다.
 - 인증 불필요 엔드포인트(`/auth/sign-in`, `/health/*`)는 별도의 미들웨어 없는 mux에 등록한다.
