@@ -28,6 +28,11 @@ COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
 
+# 오케스트레이터(Kubernetes 등)가 이미 liveness/readiness probe를 담당하는 배포 환경에서는
+# 중복이라 불필요할 수 있다 — 단독 docker run 환경에서 컨테이너 자체 헬스 상태를 확인할 때 유용하다.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://localhost:3000/health/live || exit 1
+
 CMD ["node", "dist/main.js"]
 ```
 
@@ -52,6 +57,7 @@ localstack
 | Build 스테이지 | 전체 의존성 설치 + TypeScript 빌드 |
 | Production 스테이지 | `--omit=dev`로 프로덕션 의존성만 설치, `dist/` 복사 |
 | EXPOSE | 3000 (환경 변수 `PORT`로 변경 가능) |
+| HEALTHCHECK | `wget`(busybox, `node:20-alpine`에 기본 포함)으로 `/health/live` 조회 — [graceful-shutdown.md](graceful-shutdown.md)의 liveness 엔드포인트 |
 | CMD | `node dist/main.js` — `npm run start:prod`보다 프로세스 시그널 처리에 유리 |
 
 ### 원칙
@@ -60,3 +66,4 @@ localstack
 - **.dockerignore 유지**: `node_modules`, `dist`, `.env*`, `.git` 등을 빌드 컨텍스트에서 제외한다.
 - **CMD에 `node`를 직접 사용**: `npm run`은 중간에 npm 프로세스가 끼어 SIGTERM 전달이 지연될 수 있다.
 - **환경 변수는 이미지에 포함하지 않는다**: `.env` 파일은 `.dockerignore`로 제외하고, 실행 시 `--env-file` 또는 오케스트레이션 도구에서 주입한다.
+- **HEALTHCHECK는 `wget` 사용**: `node:20-alpine`은 curl이 기본 설치되어 있지 않다 — busybox에 포함된 `wget`으로 `/health/live`를 조회한다. Kubernetes/ECS처럼 오케스트레이터가 이미 liveness/readiness probe를 담당하는 배포 환경에서는 중복이라 필수는 아니다(java-springboot 구현 참고) — 단독 `docker run`/`docker ps`로 컨테이너 헬스 상태를 바로 확인하고 싶을 때 유용하다.
