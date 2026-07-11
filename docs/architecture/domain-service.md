@@ -89,6 +89,8 @@ export class OrderCommandService {
 - **Adapter**: 다른 Bounded Context의 Service를 호출하기 위한 인터페이스 (도메인 간 통신)
 - **Technical Service**: 기술 인프라 구현을 추상화하기 위한 인터페이스 (기술 관심사 분리, 도메인과 무관)
 
+**배치 원칙 — 도메인 내부가 기본값이다.** Technical Service는 그것을 필요로 하는 도메인 내부(`<domain>/application/service/`, `<domain>/infrastructure/`)에 둔다. 여러 도메인이 **실제로** 같은 구현체를 공유하게 됐을 때만 최상위 공유 모듈로 승격을 검토한다(YAGNI) — "앞으로 다른 도메인도 쓸 수도 있으니"라는 예상만으로 미리 최상위로 분리하지 않는다. 아래 예시가 `[Order 도메인]` 내부에 두는 것도 이 때문이다.
+
 ```
 [Order 도메인]
   application/

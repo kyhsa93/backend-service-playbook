@@ -167,7 +167,7 @@ export class OrderCancelled {
 | 비즈니스 규칙은 Aggregate에 | Application Service는 조율만, 도메인 메서드에 위임 |
 | 트랜잭션 경계 = Aggregate 경계 | 한 트랜잭션에서 하나의 Aggregate만 변경 |
 | 다른 Aggregate는 ID 참조 | 객체 참조 시 결합 발생 — ID만 보관 |
-| Domain/Application은 프레임워크 무의존 | 순수 비즈니스 로직. 프레임워크 데코레이터 사용 금지 |
+| Domain/Application은 프레임워크 무의존 | 순수 비즈니스 로직. 프레임워크 데코레이터 사용 금지 — ORM 애노테이션(`@Entity`, `@Column` 등)도 예외 없이 금지. "이 생태계에서는 관례"라는 이유로 특정 구현체가 예외를 두지 않는다 — 영속성 매핑은 반드시 Infrastructure 레이어의 별도 Entity/Mapper로 분리한다 |
 | 에러 메시지는 타입화 | free-form 문자열 금지 — enum으로 정의 ([error-handling.md](error-handling.md) 참조) |
 
 ---
