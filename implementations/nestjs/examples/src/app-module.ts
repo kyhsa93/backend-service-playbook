@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 
 import { AccountModule } from '@/account/account-module'
 import { AuthModule } from '@/auth/auth-module'
+import { CardModule } from '@/card/card-module'
 import { SecretService } from '@/common/application/service/secret-service'
 import { CorrelationIdMiddleware } from '@/common/correlation-id.middleware'
 import { HealthController } from '@/common/interface/health-controller'
@@ -28,7 +29,8 @@ import { OutboxModule } from '@/outbox/outbox-module'
     }),
     OutboxModule,
     AuthModule,
-    AccountModule
+    AccountModule,
+    CardModule
   ],
   controllers: [HealthController],
   providers: [

@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm'
 
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
+import { CardEntity } from '@/card/infrastructure/entity/card.entity'
 import { getDatabaseUrl } from '@/config/database.config'
 import { SentEmailEntity } from '@/notification/sent-email.entity'
 import { OutboxEntity } from '@/outbox/outbox.entity'
@@ -11,7 +12,7 @@ import { OutboxEntity } from '@/outbox/outbox.entity'
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: getDatabaseUrl(),
-  entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity],
+  entities: [AccountEntity, TransactionEntity, CardEntity, OutboxEntity, SentEmailEntity],
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false
 })
