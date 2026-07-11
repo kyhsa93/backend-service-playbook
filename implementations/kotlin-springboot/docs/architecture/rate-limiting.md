@@ -1,8 +1,8 @@
 # Rate Limiting — Kotlin Spring Boot
 
-## 현재 상태 — 미구현
+## 현재 상태 — 적용 완료
 
-`examples/build.gradle.kts`를 확인한 결과 `resilience4j`, `bucket4j` 등 rate limiting 관련 의존성이 없다. `AccountController`의 어떤 엔드포인트에도 요청 속도 제한이 걸려 있지 않다. 아래는 **향후 도입 시 따를 방향성 문서**이지 이미 구현된 내용의 설명이 아니다 — [conventions.md](../conventions.md)에서도 이 갭을 짚고 있다.
+`examples/build.gradle.kts`에 `resilience4j-spring-boot3` 의존성이 추가되어 있고, `common/RateLimitingFilter.kt`가 실제로 모든 HTTP 요청에 속도 제한을 건다. `application.yml`에 `http-write`(10건/60초)와 `http-read`(100건/60초) 두 개의 `RateLimiter` 인스턴스가 정의되어 있고, 필터가 요청 메서드(`GET`/`HEAD`는 read, 그 외는 write)에 따라 둘 중 하나를 선택한다. 제한 초과 시 429 응답은 root의 4필드(`statusCode`/`code`/`message`/`error`) 에러 형식을 그대로 따른다. 아래는 실제 구현 내용과 그 설계 근거다.
 
 ## 선택지 — Resilience4j vs Bucket4j
 
@@ -13,10 +13,10 @@
 
 이 저장소는 이미 [scheduling.md](scheduling.md), [secret-manager.md](secret-manager.md) 등에서 별도 인프라 도입을 최소화하는 방향을 취하고 있으므로, **단일 인스턴스 기준이면 Resilience4j로 충분**하다. 여러 인스턴스로 수평 확장하며 인스턴스 간 공유된 제한이 필요해지면 Bucket4j + Redis 조합을 검토한다.
 
-## 설치 (도입 시)
+## 설치 — 실제 코드
 
 ```kotlin
-// build.gradle.kts — 추가 필요 (현재 없음)
+// build.gradle.kts — 실제 코드
 dependencies {
     implementation("io.github.resilience4j:resilience4j-spring-boot3:2.2.0")
 }
@@ -61,28 +61,30 @@ class CreateAccountService(
 
 `@RateLimiter`를 Application Service 메서드에 붙이는 것은 root의 계층 분리 원칙과 다소 긴장 관계다 — Application 레이어가 "얼마나 자주 호출되는가"라는 배포/인프라 관심사를 알게 되기 때문이다. 이 저장소의 관례([cross-cutting-concerns.md](cross-cutting-concerns.md)가 Correlation ID/인증/검증을 Filter·Interceptor로 분리하는 것과 동일한 논리)를 따르면, **HTTP 계층에서 걸러내는 편이 더 일관적**이다 — 아래 Filter 방식을 우선 권장한다.
 
-## 권장 — `Filter` 기반 적용 (cross-cutting-concerns.md와 일관)
+## 적용 지점 — `Filter` 기반 적용 (cross-cutting-concerns.md와 일관), 실제 코드
 
 [cross-cutting-concerns.md](cross-cutting-concerns.md)는 Correlation ID를 `OncePerRequestFilter`로 구현한다. Rate limiting도 같은 파이프라인 위치(서블릿 필터 체인)에 배치하는 것이 root의 "역할별 단계 분리" 원칙과 일관적이다 — 인증/검증보다 앞서 걸러내야 불필요한 다운스트림 처리를 막을 수 있다.
 
 ```kotlin
-// common/RateLimitingFilter.kt — 제안
+// common/RateLimitingFilter.kt — 실제 코드
 package com.example.accountservice.common
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry
-import io.github.resilience4j.ratelimiter.RequestNotPermitted
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.core.annotation.Order
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
-@Order(Int.MIN_VALUE + 1)   // CorrelationIdFilter 다음, 인증보다 먼저
+@Order(Int.MIN_VALUE + 1) // CorrelationIdFilter 다음, Spring Security 필터 체인(인증)보다 먼저
 class RateLimitingFilter(
     private val rateLimiterRegistry: RateLimiterRegistry,
+    private val objectMapper: ObjectMapper,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -90,14 +92,26 @@ class RateLimitingFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        val rateLimiter = rateLimiterRegistry.rateLimiter("http-default")
+        if (request.requestURI.startsWith("/actuator/health")) {
+            filterChain.doFilter(request, response)
+            return
+        }
 
-        val permitted = rateLimiter.acquirePermission()
-        if (!permitted) {
+        val isRead = request.method == HttpMethod.GET.name() || request.method == HttpMethod.HEAD.name()
+        val rateLimiter = rateLimiterRegistry.rateLimiter(if (isRead) "http-read" else "http-write")
+
+        if (!rateLimiter.acquirePermission()) {
             response.status = 429
             response.contentType = MediaType.APPLICATION_JSON_VALUE
             response.writer.write(
-                """{"statusCode":429,"code":"TOO_MANY_REQUESTS","message":"요청이 너무 많습니다.","error":"Too Many Requests"}""",
+                objectMapper.writeValueAsString(
+                    mapOf(
+                        "statusCode" to 429,
+                        "code" to "TOO_MANY_REQUESTS",
+                        "message" to "요청이 너무 많습니다.",
+                        "error" to "Too Many Requests",
+                    ),
+                ),
             )
             return
         }
@@ -107,14 +121,14 @@ class RateLimitingFilter(
 }
 ```
 
-`OncePerRequestFilter`를 쓰는 것은 [cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter`와 동일한 관용구다 — 제한 초과 시 `@RestControllerAdvice`([error-handling.md](error-handling.md))까지 요청이 도달하기 전에 필터 체인에서 차단하고, 응답 형식은 root가 요구하는 4필드(`statusCode`/`code`/`message`/`error`) 구조를 그대로 따른다.
+`OncePerRequestFilter`를 쓰는 것은 [cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter`와 동일한 관용구다 — 제한 초과 시 `@RestControllerAdvice`([error-handling.md](error-handling.md))까지 요청이 도달하기 전에 필터 체인에서 차단하고, 응답 형식은 root가 요구하는 4필드(`statusCode`/`code`/`message`/`error`) 구조를 `ObjectMapper`로 직렬화해 그대로 따른다. 헬스체크(`/actuator/health/**`, [graceful-shutdown.md](graceful-shutdown.md) 참조)는 필터 진입 시점에 경로로 걸러 제외한다.
 
-## 엔드포인트별 세분화
+## 엔드포인트별 세분화 — 실제 코드
 
-쓰기 API(계좌 생성, 입출금)는 읽기 API(계좌 조회)보다 강하게 제한하는 것이 일반적이다. Resilience4j는 이름별로 다른 `RateLimiter` 인스턴스를 등록할 수 있다.
+쓰기 API(계좌 생성, 입출금)는 읽기 API(계좌 조회)보다 강하게 제한하는 것이 일반적이다. Resilience4j는 이름별로 다른 `RateLimiter` 인스턴스를 등록할 수 있고, `http-write`/`http-read` 두 인스턴스가 실제로 정의되어 있다.
 
 ```yaml
-# application.yml — 제안
+# application.yml — 실제 코드
 resilience4j:
   ratelimiter:
     instances:
@@ -128,12 +142,12 @@ resilience4j:
         timeout-duration: 0s
 ```
 
-`RateLimitingFilter`에서 `request.method`가 `GET`/`HEAD`인지 여부로 `rateLimiterRegistry.rateLimiter("http-read")` / `rateLimiterRegistry.rateLimiter("http-write")`를 선택하도록 확장하면 된다. 헬스체크(`/actuator/health/**`, [graceful-shutdown.md](graceful-shutdown.md) 참조)는 필터 진입 시점에 경로로 걸러 제외한다.
+`RateLimitingFilter`가 `request.method`로 `GET`/`HEAD`인지 판단해 `rateLimiterRegistry.rateLimiter("http-read")` / `rateLimiterRegistry.rateLimiter("http-write")`를 선택한다. E2E 테스트는 기본 write 한도(10건/60초)보다 훨씬 많은 요청을 짧은 시간에 호출하므로, `AccountControllerE2ETest`/`NotificationE2ETest`는 테스트 컨텍스트에서만 `resilience4j.ratelimiter.instances.http-write.limit-for-period`를 `@DynamicPropertySource`로 넉넉하게 올려 잡는다.
 
 ## 원칙
 
-- **`examples/`에는 아직 구현되어 있지 않다** — 이 문서는 미래 지향적 가이드다.
-- **파이프라인 위치는 인증/검증보다 앞** — 불필요한 다운스트림 처리(DB 조회, 트랜잭션 시작)를 막는다.
+- **`examples/`에 `RateLimitingFilter`로 적용 완료** — `common/RateLimitingFilter.kt` + `resilience4j-spring-boot3` 의존성.
+- **파이프라인 위치는 인증/검증보다 앞** — `@Order(Int.MIN_VALUE + 1)`로 `CorrelationIdFilter` 다음, Spring Security 필터 체인보다 먼저 배치해 불필요한 다운스트림 처리(DB 조회, 트랜잭션 시작)를 막는다.
 - **Filter로 구현해 cross-cutting-concerns.md의 파이프라인 모델과 일관성 유지** — Application Service에 `@RateLimiter` 애노테이션을 흩뿌리는 것보다 계층 분리가 명확하다.
 - **429 응답도 root의 4필드 에러 형식을 따른다** ([error-handling.md](error-handling.md)).
 - **단일 인스턴스는 Resilience4j로 충분, 수평 확장 시 Bucket4j + Redis 검토**.
