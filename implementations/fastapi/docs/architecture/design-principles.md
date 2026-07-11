@@ -30,7 +30,7 @@
 
 ---
 
-위 항목 중 9, 10, 11번은 **문서가 이미 원칙을 정확히 제시하지만 `examples/`의 실제 코드는 아직 그 원칙을 완전히 따르지 않는** 항목이다. 같은 성격의 격차가 이 13개 목록 밖에도 있다 — 인증 부재([authentication.md](authentication.md)), 미들웨어 부재([cross-cutting-concerns.md](cross-cutting-concerns.md)), Rate Limiting 미구현([rate-limiting.md](rate-limiting.md)). 새 도메인을 추가하거나 기존 코드를 수정할 때 이 격차부터 우선 해소한다.
+위 항목 중 9, 10, 11번은 **문서가 이미 원칙을 정확히 제시하지만 `examples/`의 실제 코드는 아직 그 원칙을 완전히 따르지 않는** 항목이다. 새 도메인을 추가하거나 기존 코드를 수정할 때 이 격차부터 우선 해소한다. (Rate Limiting은 `slowapi`로 이미 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.)
 
 ### 관련 문서
 

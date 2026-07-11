@@ -48,16 +48,16 @@
 | [observability.md](../architecture/observability.md) | `docs/architecture/observability.md`, `examples/.../infrastructure/notification/notification_service.py` (`logging`) | 완전 | **코드 격차 (문서에 명시)**: 표준 `logging` + `%s` 포맷 문자열만 사용 — 구조화 JSON, Correlation ID가 없다. 문서가 stdlib `logging` + 커스텀 `JsonFormatter`(structlog 대신 선택한 이유 포함) + `contextvars` 기반 Correlation ID를 구체적으로 제시 |
 | [scheduling.md](../architecture/scheduling.md) | `docs/architecture/scheduling.md` | 완전 | 이 저장소에 스케줄링 유스케이스 자체가 없어 코드 대응은 없음(순수 신규 문서) — `BackgroundTasks`/APScheduler/Celery의 트레이드오프를 비교하고 Outbox Relay를 실행하는 예시로 [domain-events.md](../../implementations/fastapi/docs/architecture/domain-events.md)와 연결 |
 | [testing.md](../architecture/testing.md) | `docs/architecture/testing.md`, `examples/tests/test_account_e2e.py`, `test_notification_e2e.py` | 완전 | E2E 테스트(testcontainers, `httpx.ASGITransport`)는 이미 루트 원칙과 정확히 일치(30개 이상 케이스) — 문서가 이를 확인. **코드 격차 (문서에 명시)**: Domain 단위 테스트, Application 단위 테스트(mock 기반)가 하나도 없다 — 문서가 `pytest` + `unittest.mock.AsyncMock` 기반 예시 테스트 코드를 구체적으로 제시 |
-| [conventions.md](../conventions.md) | `docs/architecture/directory-structure.md`(파일명·네이밍 섹션 흡수), `docs/architecture/rate-limiting.md`(Rate Limiting 섹션), `examples/.../interface/rest/account_router.py` | 부분 | REST URL 설계(복수 명사, `POST /accounts/{id}/suspend` 등 하위 리소스 경로)는 코드가 루트 규칙을 정확히 따르고, 파일명·클래스명 네이밍 규칙은 `directory-structure.md`에 통합됨. Rate Limiting 원칙은 이제 `rate-limiting.md`(FastAPI 전용 bonus 문서)가 `slowapi` 기반 구현으로 다루지만, `examples/`에는 아직 반영되지 않았다(`requirements.txt`에 관련 패키지 없음) — 문서만 있고 코드가 없다는 의미에서 여전히 "부분" |
+| [conventions.md](../conventions.md) | `docs/architecture/directory-structure.md`(파일명·네이밍 섹션 흡수), `docs/architecture/rate-limiting.md`(Rate Limiting 섹션), `examples/.../interface/rest/account_router.py`, `examples/src/common/rate_limit.py` | 완전 | REST URL 설계(복수 명사, `POST /accounts/{id}/suspend` 등 하위 리소스 경로)는 코드가 루트 규칙을 정확히 따르고, 파일명·클래스명 네이밍 규칙은 `directory-structure.md`에 통합됨. Rate Limiting 원칙도 `slowapi` 기반으로 실제 구현되어(전역 `default_limits` + 쓰기 엔드포인트 `@limiter.limit()`) 더 이상 코드 격차가 아니다 |
 
 ### 커버리지 요약
 
-- **완전**: 21건 — tactical-ddd, layer-architecture, repository-pattern, persistence, domain-events, cqrs-pattern, error-handling, api-response, authentication, cross-cutting-concerns, directory-structure, aggregate-id, container, config, secret-manager, local-dev, file-storage, graceful-shutdown, observability, scheduling, testing
-- **부분**: 2건 — domain-service (layer-architecture.md에 흡수), conventions (directory-structure.md에 일부 흡수, Rate Limiting은 미다룸)
+- **완전**: 22건 — tactical-ddd, layer-architecture, repository-pattern, persistence, domain-events, cqrs-pattern, error-handling, api-response, authentication, cross-cutting-concerns, directory-structure, aggregate-id, container, config, secret-manager, local-dev, file-storage, graceful-shutdown, observability, scheduling, testing, conventions
+- **부분**: 1건 — domain-service (layer-architecture.md에 흡수)
 - **누락**: 2건 — strategic-ddd, cross-domain-communication (단일 도메인/단일 BC 구조상 FastAPI 전용 예시 성립 불가, NestJS와 동일한 판단)
 - **N/A**: 0건
 
-이전 판(guide.md 기준) 대비 "완전" 판정이 2건 → 21건으로 늘었지만, 이는 **문서 품질과 정확성이 개선된 것**이지 `examples/`의 실제 코드가 21개 원칙을 모두 준수하게 됐다는 뜻이 아니다. 위 표의 "코드 격차 (문서에 명시)" 문구가 붙은 항목(repository-pattern, persistence, error-handling, api-response, cross-cutting-concerns, aggregate-id, container, graceful-shutdown, observability, testing)은 코드 변경이 필요한 실질적 후속 작업이다. 각 문서의 "알려진 격차" 섹션이 그 상세 내용이다. **domain-events는 Outbox 패턴이, authentication은 JWT 검증이, config/secret-manager는 fail-fast 검증과 자격증명 캡슐화가 실제로 구현되어 이 목록에서 제외되었다** — dual-write 알림 유실, X-User-Id 무검증 신뢰, 자격증명 산발적 하드코딩이라는 이전의 주요 코드 격차가 해소된 항목들이다.
+이전 판(guide.md 기준) 대비 "완전" 판정이 2건 → 22건으로 늘었지만, 이는 **문서 품질과 정확성이 개선된 것**이지 `examples/`의 실제 코드가 21개 원칙을 모두 준수하게 됐다는 뜻이 아니다. 위 표의 "코드 격차 (문서에 명시)" 문구가 붙은 항목(repository-pattern, persistence, error-handling, api-response, cross-cutting-concerns, aggregate-id, container, graceful-shutdown, observability, testing)은 코드 변경이 필요한 실질적 후속 작업이다. 각 문서의 "알려진 격차" 섹션이 그 상세 내용이다. **domain-events는 Outbox 패턴이, authentication은 JWT 검증이, config/secret-manager는 fail-fast 검증과 자격증명 캡슐화가 실제로 구현되어 이 목록에서 제외되었다** — dual-write 알림 유실, X-User-Id 무검증 신뢰, 자격증명 산발적 하드코딩이라는 이전의 주요 코드 격차가 해소된 항목들이다.
 
 ### harness 검증 범위 참고
 
@@ -74,7 +74,7 @@
 - `implementations/fastapi/docs/architecture/cross-domain.md` — Adapter 패턴(ACL)의 FastAPI 구현 예시(가상 시나리오): `application/adapter/`의 ABC + `infrastructure/`의 구현체 + `Depends` 바인딩 (원칙은 [cross-domain-communication.md](../architecture/cross-domain-communication.md) 참고)
 - `implementations/fastapi/docs/architecture/design-principles.md` — 이 저장소 다른 21개 문서를 관통하는 핵심 설계 원칙 13개 요약
 - `implementations/fastapi/docs/architecture/module-pattern.md` — DI 컨테이너/모듈 데코레이터가 없는 FastAPI에서 Python 패키지 트리와 `Depends` 팩토리 함수가 NestJS의 `@Module`/`providers`를 대체하는 방식, 순환 import 해소
-- `implementations/fastapi/docs/architecture/rate-limiting.md` — `slowapi` 기반 Rate Limiting 구현 가이드 (현재 `examples/`에는 미구현, forward-looking)
+- `implementations/fastapi/docs/architecture/rate-limiting.md` — `slowapi` 기반 Rate Limiting 구현 가이드 (`examples/`에 실제 구현됨: 전역 `default_limits` + 쓰기 엔드포인트별 `@limiter.limit()`)
 - `implementations/fastapi/docs/architecture/shared-modules.md` — 도메인에 속하지 않는 공유 코드(`src/database.py`, `src/outbox/`는 이미 존재, `src/common/`·`src/config/`·`src/auth/`는 두 번째 도메인 추가 시 권장 구조)의 위치 규칙
 
 ---

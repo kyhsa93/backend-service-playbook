@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
+from ....common.rate_limit import limiter, rate_limit_config
 from ....outbox.outbox_relay import OutboxRelay
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
 from ...application.command.create_account_handler import CreateAccountCommand, CreateAccountHandler
@@ -60,7 +61,9 @@ def _outbox_relay(
 
 
 @router.post("", status_code=201, response_model=CreateAccountResponse)
+@limiter.limit(rate_limit_config.write_limit)
 async def create_account(
+    request: Request,
     body: CreateAccountRequest,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
@@ -80,7 +83,9 @@ async def create_account(
 
 
 @router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
+@limiter.limit(rate_limit_config.write_limit)
 async def deposit(
+    request: Request,
     account_id: str,
     body: DepositRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -100,7 +105,9 @@ async def deposit(
 
 
 @router.post("/{account_id}/withdraw", status_code=201, response_model=TransactionResponse)
+@limiter.limit(rate_limit_config.write_limit)
 async def withdraw(
+    request: Request,
     account_id: str,
     body: WithdrawRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -120,7 +127,9 @@ async def withdraw(
 
 
 @router.post("/{account_id}/suspend", status_code=204)
+@limiter.limit(rate_limit_config.write_limit)
 async def suspend_account(
+    request: Request,
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
@@ -132,7 +141,9 @@ async def suspend_account(
 
 
 @router.post("/{account_id}/reactivate", status_code=204)
+@limiter.limit(rate_limit_config.write_limit)
 async def reactivate_account(
+    request: Request,
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
@@ -144,7 +155,9 @@ async def reactivate_account(
 
 
 @router.post("/{account_id}/close", status_code=204)
+@limiter.limit(rate_limit_config.write_limit)
 async def close_account(
+    request: Request,
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
