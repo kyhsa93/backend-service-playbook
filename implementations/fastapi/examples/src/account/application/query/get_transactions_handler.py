@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from ...domain.errors import AccountNotFoundError
-from ...domain.repository import AccountRepository
+from ...domain.repository import AccountQuery
 from .result import GetTransactionsResult, MoneyResult, TransactionSummary
 
 
@@ -15,7 +15,7 @@ class GetTransactionsQuery:
 
 class GetTransactionsHandler:
 
-    def __init__(self, repo: AccountRepository) -> None:
+    def __init__(self, repo: AccountQuery) -> None:
         self._repo = repo
 
     async def execute(self, query: GetTransactionsQuery) -> GetTransactionsResult:

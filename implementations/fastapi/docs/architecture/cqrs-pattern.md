@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/cqrs-pattern.md](../../../../docs/architecture/cqrs-pattern.md)
 
-이 저장소의 FastAPI 예시(`examples/src/account/`)는 이미 **Handler 기반 CQRS의 경량 형태**를 적용하고 있다: Command와 Query를 각각 별도 `Handler` 클래스 + `execute()` 메서드로 분리한다. 이 문서는 현재 구조를 설명하고, 유스케이스가 늘어났을 때 Command/Query Bus로 확장하는 경로를 안내한다.
+이 저장소의 FastAPI 예시(`examples/src/account/`)는 이미 **Handler 기반 CQRS의 경량 형태**를 적용하고 있다: Command와 Query를 각각 별도 `Handler` 클래스 + `execute()` 메서드로 분리하고, QueryHandler는 쓰기용 `AccountRepository`가 아니라 읽기 전용 `AccountQuery` 인터페이스에만 의존한다. 이 문서는 현재 구조를 설명하고, 유스케이스가 늘어났을 때 Command/Query Bus로 확장하는 경로를 안내한다.
 
 ---
 
@@ -62,14 +62,49 @@ class DepositHandler:
 
 **흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출(`account.deposit()`) → Repository로 저장(Aggregate 상태 + Outbox 행을 한 트랜잭션에 커밋) → 저장 직후 `OutboxRelay.process_pending()`으로 드레인. Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](layer-architecture.md), [domain-events.md](domain-events.md) 참조.
 
-### Query + QueryHandler
+### Query + QueryHandler — 읽기 전용 `AccountQuery`에만 의존
+
+QueryHandler는 쓰기용 `AccountRepository`(ABC, `save()` 포함)가 아니라 읽기 전용 `AccountQuery` 인터페이스에 의존한다. `AccountQuery`는 `domain/repository.py`에 함께 정의된 별도 ABC로, `find_by_id`/`find_transactions`처럼 QueryHandler가 실제로 호출하는 메서드만 선언하고 `save()`는 노출하지 않는다.
+
+```python
+# src/account/domain/repository.py
+from abc import ABC, abstractmethod
+
+from .account import Account
+from .transaction import Transaction
+
+
+class AccountQuery(ABC):
+    """읽기 전용 인터페이스 — Query Handler 전용. save() 등 쓰기 메서드를 노출하지 않는다."""
+
+    @abstractmethod
+    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+
+    @abstractmethod
+    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
+
+
+class AccountRepository(AccountQuery, ABC):
+    """쓰기 모델 — AccountQuery를 상속해 조회 메서드를 재사용하되 save() 등 쓰기 메서드를 추가한다."""
+
+    @abstractmethod
+    async def find_all(
+        self, page: int, take: int,
+        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+    ) -> tuple[list[Account], int]: ...
+
+    @abstractmethod
+    async def save(self, account: Account) -> None: ...
+```
+
+`AccountRepository`가 `AccountQuery`를 상속하므로, 구현체 `SqlAlchemyAccountRepository(AccountRepository)`는 두 ABC를 모두 만족하는 별도 클래스를 새로 만들 필요 없이 그대로 양쪽 타입으로 주입될 수 있다 — `infrastructure/persistence/account_repository.py`에는 코드 변경이 필요 없다.
 
 ```python
 # src/account/application/query/get_account_handler.py
 from dataclasses import dataclass
 
 from ...domain.errors import AccountNotFoundError
-from ...domain.repository import AccountRepository
+from ...domain.repository import AccountQuery
 from .result import GetAccountResult, MoneyResult
 
 
@@ -80,7 +115,7 @@ class GetAccountQuery:
 
 
 class GetAccountHandler:
-    def __init__(self, repo: AccountRepository) -> None:
+    def __init__(self, repo: AccountQuery) -> None:
         self._repo = repo
 
     async def execute(self, query: GetAccountQuery) -> GetAccountResult:
@@ -98,11 +133,37 @@ class GetAccountHandler:
         )
 ```
 
-QueryHandler는 도메인 Aggregate를 직접 반환하지 않고 `GetAccountResult`(`src/account/application/query/result.py`)로 변환한다 — [api-response.md](api-response.md) 참조.
+`GetTransactionsHandler`도 동일하게 `AccountQuery`에 의존한다. QueryHandler는 도메인 Aggregate를 직접 반환하지 않고 `GetAccountResult`(`src/account/application/query/result.py`)로 변환한다 — [api-response.md](api-response.md) 참조.
+
+`interface/rest/account_router.py`의 Depends 팩토리도 Command/Query 경로별로 분리되어, Query 엔드포인트는 `AccountQuery` 타입만 주입받는다.
+
+```python
+# src/account/interface/rest/account_router.py — 실제 코드
+def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
+    return SqlAlchemyAccountRepository(session)
+
+
+def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
+    return SqlAlchemyAccountRepository(session)
+
+
+@router.get("/{account_id}", response_model=GetAccountResponse)
+async def get_account(
+    account_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    repo: AccountQuery = Depends(_query_repo),
+) -> GetAccountResponse:
+    result = await GetAccountHandler(repo).execute(
+        GetAccountQuery(account_id=account_id, requester_id=current_user.user_id)
+    )
+    ...
+```
+
+런타임에 주입되는 객체는 여전히 `SqlAlchemyAccountRepository`(`save()`도 갖고 있다)지만, `get_account`의 `repo` 파라미터와 `GetAccountHandler.__init__`이 선언한 정적 타입은 `AccountQuery`뿐이므로 Query 경로 코드는 타입 체커 상으로도 `save()`에 접근할 수 없다 — 이것이 CQRS 분리가 실제로 강제되는 지점이다.
 
 ### Interface 레이어 — Bus 없이 직접 조립
 
-현재는 Command/Query Bus가 없다. `interface/rest/account_router.py`의 Depends 팩토리가 Handler를 직접 인스턴스화한다.
+현재는 Command/Query Bus가 없다. `interface/rest/account_router.py`의 Depends 팩토리가 Handler를 직접 인스턴스화한다. Command 경로는 아래처럼 `_repo`(쓰기 타입 `SqlAlchemyAccountRepository`)를 사용하고, Query 경로는 앞서 본 `_query_repo`(읽기 타입 `AccountQuery`)를 사용한다 — 같은 `SqlAlchemyAccountRepository` 인스턴스가 만들어지더라도 라우트 함수 시그니처에 노출되는 정적 타입이 다르다.
 
 ```python
 # src/account/interface/rest/account_router.py — 실제 코드
@@ -173,6 +234,7 @@ Command Handler는 `notify()`를 직접 호출하지 않는다 — `repo.save()`
 ## 원칙
 
 - **Command/Query 분리**: 쓰기는 `application/command/`, 읽기는 `application/query/`.
+- **Query는 쓰기용 Repository를 참조하지 않는다**: QueryHandler는 `AccountRepository`(`save()` 포함)가 아니라 읽기 전용 `AccountQuery`에만 의존한다 — `interface/rest/account_router.py`의 Depends 팩토리도 Query 엔드포인트에는 `AccountQuery` 타입만 노출한다.
 - **Handler는 조율만**: 비즈니스 로직은 Aggregate(`domain/account.py`)에 위임한다.
 - **입력은 불변 `@dataclass`**: `CreateAccountCommand`, `GetAccountQuery` 등.
 - **Query는 Result 객체 반환**: 도메인 Aggregate를 직접 직렬화하지 않는다.

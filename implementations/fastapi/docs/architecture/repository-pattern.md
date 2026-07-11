@@ -4,15 +4,15 @@
 
 ## Aggregate Root 단위 Repository — 이미 올바르게 구조화됨
 
-Account Aggregate에 대해 인터페이스(ABC) 하나, 구현체 하나만 존재한다.
+Account Aggregate에 대해 구현체는 하나(`SqlAlchemyAccountRepository`)뿐이지만, 인터페이스(ABC)는 쓰기 모델 `AccountRepository`와 읽기 전용 `AccountQuery` 두 개로 나뉜다 — CommandHandler는 `AccountRepository`, QueryHandler는 `AccountQuery`에 의존한다. 자세한 배경은 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
 ```
 src/account/
   domain/
-    repository.py             ← AccountRepository(ABC) — 인터페이스
+    repository.py             ← AccountQuery(ABC, 읽기 전용) + AccountRepository(ABC, AccountQuery 상속 + 쓰기) — 인터페이스
   infrastructure/
     persistence/
-      account_repository.py   ← SqlAlchemyAccountRepository(AccountRepository) — 구현체
+      account_repository.py   ← SqlAlchemyAccountRepository(AccountRepository) — 구현체, AccountQuery도 함께 만족
 ```
 
 ```python
@@ -23,9 +23,18 @@ from .account import Account
 from .transaction import Transaction
 
 
-class AccountRepository(ABC):
+class AccountQuery(ABC):
+    """읽기 전용 인터페이스 — Query Handler 전용."""
+
     @abstractmethod
     async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+
+    @abstractmethod
+    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
+
+
+class AccountRepository(AccountQuery, ABC):
+    """쓰기 모델 — AccountQuery를 상속해 조회 메서드를 재사용한다."""
 
     @abstractmethod
     async def find_all(
@@ -35,12 +44,9 @@ class AccountRepository(ABC):
 
     @abstractmethod
     async def save(self, account: Account) -> None: ...
-
-    @abstractmethod
-    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
 ```
 
-Application Handler는 `AccountRepository` 타입(ABC)으로 주입받는다 — `SqlAlchemyAccountRepository`를 직접 import하지 않는다. DI 바인딩은 FastAPI `Depends` 팩토리가 담당한다: [layer-architecture.md](layer-architecture.md) 참조.
+CommandHandler는 `AccountRepository` 타입(ABC), QueryHandler는 `AccountQuery` 타입(ABC)으로 주입받는다 — 어느 쪽도 `SqlAlchemyAccountRepository`를 직접 import하지 않는다. DI 바인딩은 FastAPI `Depends` 팩토리가 담당한다: [layer-architecture.md](layer-architecture.md), [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
 `Transaction`(하위 Entity)은 별도 Repository를 갖지 않는다 — `AccountRepository.find_transactions()`를 통해 Account Aggregate 경계 안에서 조회된다. 이는 root의 "Aggregate 내부 하위 Entity는 Aggregate Root의 Repository를 통해 함께 저장/조회한다" 원칙을 정확히 따른다.
 
@@ -152,7 +158,7 @@ async def find_all(self, page: int, take: int, account_id=None, owner_id=None, s
 
 ## 원칙
 
-- **1 Aggregate Root = 1 Repository ABC + 1 구현체**: 이미 지켜지고 있다.
+- **1 Aggregate Root = 1 구현체, 쓰기/읽기 ABC는 분리 가능**: `SqlAlchemyAccountRepository` 구현체 하나가 쓰기용 `AccountRepository`와 읽기 전용 `AccountQuery` 두 인터페이스를 함께 만족한다 — [cqrs-pattern.md](cqrs-pattern.md) 참조.
 - **인터페이스는 domain/, 구현체는 infrastructure/**: 이미 지켜지고 있다.
 - **`save`만 사용, 별도 update 메서드 없음**: 이미 지켜지고 있다.
 - **조회 메서드는 `find<Noun>s` 하나로 통일**: 알려진 격차 — 현재 `find_by_id`/`find_all` 분리.

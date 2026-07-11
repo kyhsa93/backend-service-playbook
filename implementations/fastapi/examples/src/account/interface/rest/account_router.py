@@ -20,6 +20,7 @@ from ...application.query.get_account_handler import GetAccountHandler, GetAccou
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ...application.service.notification_service import NotificationService
 from ....database import get_session
+from ...domain.repository import AccountQuery
 from ...infrastructure.notification.notification_service import SesNotificationService
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from .schemas import (
@@ -36,6 +37,10 @@ router = APIRouter(prefix="/accounts", tags=["Account"], dependencies=[Depends(g
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
+    return SqlAlchemyAccountRepository(session)
+
+
+def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
     return SqlAlchemyAccountRepository(session)
 
 
@@ -172,7 +177,7 @@ async def close_account(
 async def get_account(
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    repo: SqlAlchemyAccountRepository = Depends(_repo),
+    repo: AccountQuery = Depends(_query_repo),
 ) -> GetAccountResponse:
     result = await GetAccountHandler(repo).execute(
         GetAccountQuery(account_id=account_id, requester_id=current_user.user_id)
@@ -194,7 +199,7 @@ async def get_transactions(
     current_user: CurrentUser = Depends(get_current_user),
     page: int = 0,
     take: int = 20,
-    repo: SqlAlchemyAccountRepository = Depends(_repo),
+    repo: AccountQuery = Depends(_query_repo),
 ) -> GetTransactionsResponse:
     result = await GetTransactionsHandler(repo).execute(
         GetTransactionsQuery(account_id=account_id, requester_id=current_user.user_id, page=page, take=take)
