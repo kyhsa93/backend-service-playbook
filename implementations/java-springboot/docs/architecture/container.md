@@ -2,11 +2,11 @@
 
 > 프레임워크 무관 원칙은 루트 [container.md](../../../../docs/architecture/container.md) 참고.
 
-## 현재 상태 — 멀티스테이지 Dockerfile 적용 완료, Actuator 헬스체크는 남은 gap
+## 현재 상태 — 멀티스테이지 Dockerfile 적용 완료, Dockerfile `HEALTHCHECK`는 남은 gap
 
 `examples/Dockerfile`이 아래 "멀티스테이지 빌드 — Layered JAR" 절과 거의 동일한 3-스테이지(Build/Extract/Runtime) 구조로 이미 존재한다 — Layered JAR 추출, JRE 베이스 런타임(`eclipse-temurin:21-jre-alpine`), non-root `spring` 사용자, `exec form` ENTRYPOINT 모두 적용됨. 아래 섹션들은 그 실제 코드를 그대로 보여준다.
 
-다만 **"헬스체크 엔드포인트 — Spring Boot Actuator" 절은 아직 코드에 반영되지 않았다** — `build.gradle`에 `spring-boot-starter-actuator` 의존성이 없고, `Dockerfile`에도 `HEALTHCHECK`가 없다([graceful-shutdown.md](graceful-shutdown.md)의 Actuator gap과 동일한 원인).
+`build.gradle`에 `spring-boot-starter-actuator` 의존성과 liveness/readiness 프로브 설정은 이미 추가되었다([graceful-shutdown.md](graceful-shutdown.md) 참고) — `/actuator/health/liveness`, `/actuator/health/readiness`가 실제로 동작한다. 다만 **`Dockerfile`에 `HEALTHCHECK` 지시문은 아직 추가되지 않았다** — 오케스트레이터(Kubernetes 등)의 liveness/readiness probe가 이미 이 역할을 대신하므로 필수는 아니지만, 아래 절이 제안하는 대로 추가할 수 있다.
 
 ---
 
@@ -117,15 +117,15 @@ docker run -e AWS_REGION=us-east-1 -e AWS_ACCESS_KEY_ID=... myapp
 
 ---
 
-## 헬스체크 엔드포인트 — Spring Boot Actuator (아직 미도입)
+## 헬스체크 엔드포인트 — Spring Boot Actuator (적용 완료)
 
 ```groovy
-// build.gradle
+// build.gradle — 실제 코드
 implementation 'org.springframework.boot:spring-boot-starter-actuator'
 ```
 
 ```yaml
-# application.yml
+# application.yml — 실제 코드
 management:
   endpoint:
     health:
