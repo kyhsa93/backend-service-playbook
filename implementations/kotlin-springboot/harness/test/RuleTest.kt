@@ -9,6 +9,7 @@ package harness.test
 import harness.Kind
 import harness.RuleResult
 import harness.rules.checkControllerPlacement
+import harness.rules.checkCqrsPattern
 import harness.rules.checkDomainPurity
 import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
@@ -80,7 +81,10 @@ val TESTS: List<TestCase> = listOf(
     TestCase("outbox-drain-order/bad-wrong-order") { checkOutboxDrainOrder("testdata/outbox-drain-order/bad-wrong-order").assertHasFailure() },
 
     TestCase("notification-e2e-test/good") { checkNotificationE2eTest("testdata/notification-e2e-test/good").assertNoFailures() },
-    TestCase("notification-e2e-test/bad-missing") { checkNotificationE2eTest("testdata/notification-e2e-test/bad-missing").assertHasFailure() }
+    TestCase("notification-e2e-test/bad-missing") { checkNotificationE2eTest("testdata/notification-e2e-test/bad-missing").assertHasFailure() },
+
+    TestCase("cqrs-pattern/good") { checkCqrsPattern("testdata/cqrs-pattern/good").assertNoFailures() },
+    TestCase("cqrs-pattern/bad-query-uses-repository") { checkCqrsPattern("testdata/cqrs-pattern/bad-query-uses-repository").assertHasFailure() }
 )
 
 fun main() {

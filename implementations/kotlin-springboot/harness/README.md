@@ -26,6 +26,7 @@ harness/
       NoEventPublisherInCommand.kt
       TransactionBoundary.kt
       OutboxDrainOrder.kt
+      CqrsPattern.kt
       NotificationE2eTest.kt
   test/
     RuleTest.kt                   자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
@@ -61,6 +62,7 @@ bash implementations/kotlin-springboot/harness.sh <projectRoot>
 | `no-event-publisher-in-command` | `NoEventPublisherInCommand.kt` | Command Service가 `ApplicationEventPublisher`/`@EventListener`/`publishEvent()`를 쓰면 실패 — Outbox 경유해야 함 |
 | `transaction-boundary` | `TransactionBoundary.kt` | Command Service에 `@Transactional`이 없고, Outbox를 저장하는 `*RepositoryImpl`에는 있는지 확인 |
 | `outbox-drain-order` | `OutboxDrainOrder.kt` | `OutboxRelay`를 참조하는 Command Service가 `save(...)` 호출 뒤에 `processPending(...)`을 호출하는지(순서 포함) — domain-events.md의 핵심 불변식 |
+| `cqrs-pattern` | `CqrsPattern.kt` | `application/query/` 파일이 쓰기 모델 Repository(`*Repository`)에 의존하면 실패 — 읽기 전용 Query 인터페이스(`AccountQuery` 등)만 사용해야 함 (cqrs-pattern.md). 주석 안의 언급은 제외 |
 | `notification-e2e-test` | `NotificationE2eTest.kt` | `NotificationE2ETest.kt` 존재 확인(다른 규칙은 `test/`를 검사 대상에서 제외하므로 이 회귀 테스트 삭제를 못 잡음) |
 
 ## 회귀 테스트

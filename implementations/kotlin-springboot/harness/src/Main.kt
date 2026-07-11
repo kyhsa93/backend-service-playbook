@@ -8,6 +8,7 @@
 package harness
 
 import harness.rules.checkControllerPlacement
+import harness.rules.checkCqrsPattern
 import harness.rules.checkDomainPurity
 import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
@@ -35,6 +36,7 @@ val RULES: List<Rule> = listOf(
     ::checkNoEventPublisherInCommand,
     ::checkTransactionBoundary,
     ::checkOutboxDrainOrder,
+    ::checkCqrsPattern,
     ::checkNotificationE2eTest
 )
 
