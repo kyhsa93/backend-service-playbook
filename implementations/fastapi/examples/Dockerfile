@@ -27,5 +27,9 @@ USER appuser
 
 EXPOSE 8000
 
+# curl/wget 미설치(slim 이미지) — 별도 패키지 설치 없이 Python 표준 라이브러리로 헬스체크한다.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
+
 # exec form — uvicorn이 PID 1이 되어 SIGTERM을 즉시 수신한다.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

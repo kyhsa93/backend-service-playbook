@@ -42,6 +42,10 @@ USER appuser
 
 EXPOSE 8000
 
+# curl/wget 미설치(slim 이미지) — 별도 패키지 설치 없이 Python 표준 라이브러리로 헬스체크한다.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
+
 # exec form — uvicorn이 PID 1이 되어 SIGTERM을 즉시 수신한다.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
@@ -113,7 +117,7 @@ docker run -e DATABASE_URL=postgresql+asyncpg://... myapp
 
 ## 헬스체크 엔드포인트
 
-오케스트레이터가 인스턴스 상태를 확인할 수 있도록 liveness/readiness 엔드포인트를 제공한다. 현재 `main.py`에는 헬스체크 라우트가 없다 — 아래 두 엔드포인트를 추가한다.
+오케스트레이터가 인스턴스 상태를 확인할 수 있도록 `main.py`가 liveness/readiness 엔드포인트를 제공한다.
 
 ```
 GET /health/live   → 200: 프로세스 생존 확인
@@ -121,6 +125,20 @@ GET /health/ready  → 200: 트래픽 수신 가능 / 503: 종료 중 또는 초
 ```
 
 → 구현 상세와 `lifespan`과의 연동은 [graceful-shutdown.md](graceful-shutdown.md) 참조.
+
+---
+
+## HEALTHCHECK — 컨테이너 자체 헬스 상태
+
+```dockerfile
+# curl/wget 미설치(slim 이미지) — 별도 패키지 설치 없이 Python 표준 라이브러리로 헬스체크한다.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
+```
+
+`python:3.12-slim` 런타임 이미지에는 `curl`/`wget`이 기본 설치되어 있지 않다. `apt-get install curl`로 추가하는 대신 Python 인터프리터(이미 이미지에 존재)와 표준 라이브러리 `urllib.request`만으로 `/health/live`를 호출한다 — 별도 패키지 설치·apt 레이어 없이 최종 이미지 크기와 공격 표면을 그대로 유지한다.
+
+`docker inspect --format='{{.State.Health.Status}}' <container>`로 상태(`starting`/`healthy`/`unhealthy`)를 확인할 수 있다.
 
 ---
 
@@ -132,6 +150,7 @@ GET /health/ready  → 200: 트래픽 수신 가능 / 503: 종료 중 또는 초
 - **CMD는 exec form**: `["uvicorn", ...]` — SIGTERM 즉시 수신.
 - **환경 변수는 이미지 외부에서 주입**: 이미지 자체는 환경 무관하게 동일해야 한다.
 - **헬스체크 엔드포인트 필수**: `/health/live`, `/health/ready`.
+- **HEALTHCHECK는 표준 라이브러리로**: `curl`/`wget` 설치 없이 `python -c "import urllib.request..."`로 이미지 크기·공격 표면을 최소화한다.
 
 ---
 
