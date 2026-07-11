@@ -16,6 +16,8 @@
 | 원칙 문서 (루트, 공용) | NestJS 구현 문서 |
 |---|---|
 | [layer-architecture.md](../architecture/layer-architecture.md) | `implementations/nestjs/docs/architecture/layer-architecture.md` — @Injectable, @Module, DI 바인딩 |
+| [directory-structure.md](../architecture/directory-structure.md) | `implementations/nestjs/docs/architecture/directory-structure.md` — 4계층 디렉토리 배치, 파일 네이밍 |
+| [aggregate-id.md](../architecture/aggregate-id.md) | `implementations/nestjs/docs/architecture/aggregate-id.md` — generateId(), 하이픈 제거 32자리 hex |
 | [repository-pattern.md](../architecture/repository-pattern.md) | `implementations/nestjs/docs/architecture/repository-pattern.md` — TypeORM, @InjectRepository, NestJS DI 연결 |
 | [persistence.md](../architecture/persistence.md) | `implementations/nestjs/docs/architecture/persistence.md` — TypeORM QueryBuilder, TransactionManager(AsyncLocalStorage), 마이그레이션 |
 | [domain-events.md](../architecture/domain-events.md) | `implementations/nestjs/docs/architecture/domain-events.md` — @HandleEvent, OutboxWriter, OutboxRelay, SQS |

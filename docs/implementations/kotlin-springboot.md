@@ -6,7 +6,7 @@ Kotlin Spring Boot는 JVM 기반 서버로, Spring의 성숙한 생태계(JPA, D
 이 플레이북의 원칙을 Kotlin Spring Boot로 구체적으로 구현한 가이드와 실행 가능한 예제는 이 저장소 안의 `implementations/kotlin-springboot/`에 있다.
 
 **→ [implementations/kotlin-springboot/CLAUDE.md](../../implementations/kotlin-springboot/CLAUDE.md)** — Kotlin Spring Boot 구현 상세 가이드 진입점 (키워드 → 문서 인덱스)
-**→ [implementations/kotlin-springboot/docs/architecture/](../../implementations/kotlin-springboot/docs/architecture/)** — root의 21개 아키텍처 주제 각각에 대한 Kotlin 전용 상세 문서 (21개 파일)
+**→ [implementations/kotlin-springboot/docs/architecture/](../../implementations/kotlin-springboot/docs/architecture/)** — root의 21개 아키텍처 주제 각각에 대한 Kotlin 전용 상세 문서 + Kotlin 전용 보너스 문서 6개 (총 27개 파일)
 **→ [implementations/kotlin-springboot/examples/](../../implementations/kotlin-springboot/examples/)** — Account 도메인 전체 구현 예시 (계좌 개설/입출금/정지/재개/종료 + SES 알림)
 **→ [implementations/kotlin-springboot/harness/harness.sh](../../implementations/kotlin-springboot/harness/harness.sh)** — 가이드 준수 여부를 검증하는 자동 evaluator (9개 검사, 구조·네이밍·어노테이션 위치 중심)
 

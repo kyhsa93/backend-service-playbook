@@ -656,10 +656,10 @@ VA = Validator               LA = Legacy Analyzer
 ```
 | 테스트명 | 유형 | 검증 대상 | 기대 결과 |
 |---------|------|----------|----------|
-| createOrder_whenItemsEmpty_thenThrow | 단위 | Order 불변식 | 예외 발생 |
-| cancelOrder_whenAlreadyCancelled_thenThrow | 단위 | Order.cancel() | 예외 발생 |
-| cancelOrder_thenOrderCancelledEventCollected | 단위 | Domain Event 수집 | 이벤트 존재 |
-| getOrders_thenReturnPagedResult | 통합 | OrderQueryImpl | 페이지네이션 결과 |
+| createOrder_when_ItemsEmpty_then_Throw | 단위 | Order 불변식 | 예외 발생 |
+| cancelOrder_when_AlreadyCancelled_then_Throw | 단위 | Order.cancel() | 예외 발생 |
+| cancelOrder_then_OrderCancelledEventCollected | 단위 | Domain Event 수집 | 이벤트 존재 |
+| getOrders_then_ReturnPagedResult | 통합 | OrderQueryImpl | 페이지네이션 결과 |
 | POST /orders → 201 | E2E | 주문 생성 API | 201 Created |
 | POST /orders/:id/cancel → 204 | E2E | 주문 취소 API | 204 No Content |
 ```
@@ -678,7 +678,7 @@ Aggregate, Value Object, Domain Event에 대한 테스트를 작성한다. **프
 ```typescript
 // order/domain/order.spec.ts (개념 — 실제 테스트 프레임워크는 언어별 관례를 따른다)
 describe('Order', () => {
-  it('createOrder_whenItemsEmpty_thenThrow', () => {
+  it('createOrder_when_ItemsEmpty_then_Throw', () => {
     expect(() => new Order({
       userId: 'user-1',
       items: [],
@@ -686,12 +686,12 @@ describe('Order', () => {
     })).toThrow('주문 항목은 최소 1개 이상이어야 합니다.')
   })
 
-  it('cancelOrder_whenAlreadyCancelled_thenThrow', () => {
+  it('cancelOrder_when_AlreadyCancelled_then_Throw', () => {
     const order = createTestOrder({ status: 'cancelled' })
     expect(() => order.cancel('변심')).toThrow('이미 취소된 주문입니다.')
   })
 
-  it('cancelOrder_thenOrderCancelledEventCollected', () => {
+  it('cancelOrder_then_OrderCancelledEventCollected', () => {
     const order = createTestOrder({ status: 'pending' })
     order.cancel('변심')
     expect(order.domainEvents).toHaveLength(1)
@@ -715,7 +715,7 @@ describe('OrderCommandService', () => {
     service = new OrderCommandService(orderRepository)
   })
 
-  it('cancelOrder_whenOrderNotFound_thenThrow', async () => {
+  it('cancelOrder_when_OrderNotFound_then_Throw', async () => {
     orderRepository.findOrders.mockResolvedValue({ orders: [], count: 0 })
     await expect(service.cancelOrder({ orderId: 'non-existent', reason: '변심' }))
       .rejects.toThrow('주문을 찾을 수 없습니다.')
@@ -739,7 +739,7 @@ describe('OrderQueryImpl (integration)', () => {
     queryImpl = await createOrderQueryImplForTest()
   })
 
-  it('getOrders_thenReturnPagedResult', async () => {
+  it('getOrders_then_ReturnPagedResult', async () => {
     // 테스트 데이터 삽입 후 조회 결과 검증
   })
 
