@@ -18,7 +18,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
             sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
             authorizeHttpRequests {
                 authorize("/auth/sign-in", permitAll)
-                authorize("/health/**", permitAll)
+                authorize("/actuator/health/**", permitAll)
                 // STATELESS 세션 + OncePerRequestFilter 조합에서는 요청 처리 중 발생한 예외가
                 // 컨테이너의 /error 재전달(forward)로 이어지는데, JwtAuthenticationFilter는
                 // 기본적으로 error dispatch에서 재실행되지 않아 SecurityContext가 비어 401/400
