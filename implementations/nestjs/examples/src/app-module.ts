@@ -13,19 +13,14 @@ import { SecretServiceImpl } from '@/common/infrastructure/secret-service-impl'
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
 import { validateConfig } from '@/config/validation.config'
 import { jwtConfig } from '@/config/jwt.config'
+import { getThrottlerConfig } from '@/config/throttle.config'
 import { AppDataSource } from '@/database/data-source'
 import { OutboxModule } from '@/outbox/outbox-module'
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig], validate: validateConfig }),
-    ThrottlerModule.forRoot({
-      throttlers: [
-        { name: 'short', ttl: 1000, limit: 3 }, // 1초에 3회
-        { name: 'medium', ttl: 10000, limit: 20 }, // 10초에 20회
-        { name: 'long', ttl: 60000, limit: 100 } // 1분에 100회
-      ]
-    }),
+    ThrottlerModule.forRoot(getThrottlerConfig()), // 기본값: short 1초 3회 / medium 10초 20회 / long 1분 100회 — THROTTLE_* 환경 변수로 override
     TypeOrmModule.forRoot({
       ...AppDataSource.options,
       autoLoadEntities: false,

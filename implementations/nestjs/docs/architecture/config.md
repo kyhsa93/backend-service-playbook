@@ -10,6 +10,7 @@ src/
     database.config.ts     # DATABASE_URL
     jwt.config.ts          # JWT 관련 설정 (Secrets Manager 분기 포함)
     notification.config.ts # SES_SENDER_EMAIL
+    throttle.config.ts     # THROTTLE_{SHORT,MEDIUM,LONG}_{TTL_MS,LIMIT} — rate-limiting.md 참고
     validation.config.ts   # 환경 변수 검증 함수
 ```
 
@@ -72,7 +73,7 @@ export function getAwsCredentials() {
 }
 ```
 
-- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`는 `ConfigModule`을 거치지 않는 **순수 함수**다 — `ConfigService`에서 닷 노테이션으로 접근하는 대신 직접 호출한다. `jwt.config.ts`만 `ConfigModule.forRoot({ load: [jwtConfig] })`에 등록되어 `ConfigService`로 접근한다(아래 참고).
+- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts`는 `ConfigModule`을 거치지 않는 **순수 함수**다 — `ConfigService`에서 닷 노테이션으로 접근하는 대신 직접 호출한다. `jwt.config.ts`만 `ConfigModule.forRoot({ load: [jwtConfig] })`에 등록되어 `ConfigService`로 접근한다(아래 참고).
 
 ### 환경 변수 검증 — class-validator
 
