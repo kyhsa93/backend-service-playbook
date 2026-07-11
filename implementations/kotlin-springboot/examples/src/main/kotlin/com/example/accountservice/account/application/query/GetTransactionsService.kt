@@ -1,20 +1,20 @@
 package com.example.accountservice.account.application.query
 
 import com.example.accountservice.account.domain.AccountNotFoundException
-import com.example.accountservice.account.domain.AccountRepository
+import com.example.accountservice.account.domain.AccountQueryRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 @Transactional(readOnly = true)
-class GetTransactionsService(private val accountRepository: AccountRepository) {
+class GetTransactionsService(private val accountQueryRepository: AccountQueryRepository) {
 
     fun getTransactions(accountId: String, requesterId: String, page: Int, take: Int): GetTransactionsResult {
-        accountRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+        accountQueryRepository.findByAccountIdAndOwnerId(accountId, requesterId)
             ?: throw AccountNotFoundException(accountId)
 
-        val transactions = accountRepository.findTransactions(accountId, page, take)
-        val count = accountRepository.countTransactions(accountId)
+        val transactions = accountQueryRepository.findTransactions(accountId, page, take)
+        val count = accountQueryRepository.countTransactions(accountId)
 
         return GetTransactionsResult(
             transactions = transactions.map {

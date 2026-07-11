@@ -14,4 +14,9 @@ data class DepositRequest(val amount: Long)
 
 data class WithdrawRequest(val amount: Long)
 
-data class ErrorResponse(val message: String)
+data class ErrorResponse(
+    val statusCode: Int,
+    val code: String,
+    val message: String,
+    val error: String,
+)

@@ -150,6 +150,23 @@ class AccountTest {
     }
 
     @Test
+    fun `종료되지 않은 계좌를 삭제하면 예외를 던진다`() {
+        val account = createAccount()
+
+        assertThrows<DeleteRequiresClosedAccountException> { account.markDeleted() }
+    }
+
+    @Test
+    fun `종료된 계좌를 삭제하면 deletedAt이 설정된다`() {
+        val account = createAccount()
+        account.close()
+
+        account.markDeleted()
+
+        assertThat(account.deletedAt).isNotNull()
+    }
+
+    @Test
     fun `pullPendingTransactions 호출하면 대기중인 거래가 반환되고 비워진다`() {
         val account = createAccount()
         account.deposit(1000)

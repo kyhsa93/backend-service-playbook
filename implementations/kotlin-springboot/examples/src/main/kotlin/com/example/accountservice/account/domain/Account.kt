@@ -113,6 +113,12 @@ class Account protected constructor() {
         domainEvents += AccountClosedEvent(accountId, email, updatedAt)
     }
 
+    fun markDeleted() {
+        if (status != AccountStatus.CLOSED) throw DeleteRequiresClosedAccountException()
+        deletedAt = LocalDateTime.now()
+        updatedAt = deletedAt!!
+    }
+
     fun pullDomainEvents(): List<Any> = domainEvents.toList().also { domainEvents.clear() }
 
     fun pullPendingTransactions(): List<Transaction> = pendingTransactions.toList().also { pendingTransactions.clear() }
