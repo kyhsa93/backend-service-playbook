@@ -218,6 +218,10 @@ if !limiter.Allow() {
 
 ---
 
+## 운영값 조정
+
+`RATE_LIMIT_RPS`(초당 평균 허용 요청 수, 기본 100)·`RATE_LIMIT_BURST`(순간 burst 크기, 기본 20) 환경 변수를 배포 환경에 설정하고 프로세스를 재기동하면, 코드 변경·재빌드 없이 임계값을 조정할 수 있다 — `cmd/server/main.go`가 기동 시 `config.LoadRateLimitConfig()`로 이 값을 읽어 `rate.Limiter`를 조립하기 때문이다(위 "전역 미들웨어" 절 참고). 이 저장소의 5개 구현체 중 go가 가장 먼저 이 패턴을 채택했고, nestjs(`THROTTLE_*`)·fastapi(`RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`)도 동일한 방향으로 맞췄다(issue #153) — java/kotlin-springboot는 `application.yml` + Spring profiles 기반으로 사실상 동급의 배포 시점 유연성을 갖는다(각 언어 문서의 "운영값 조정" 절 참고).
+
 ## 원칙
 
 - **미들웨어 체인의 앞쪽에 배치**한다 — 인증보다 먼저 걸러야 낭비되는 연산이 적다([cross-cutting-concerns.md](cross-cutting-concerns.md) 파이프라인 순서 참고). ✅ `router.go`에서 `RequireAuth`보다 바깥쪽에서 `RateLimit`이 적용된다.
