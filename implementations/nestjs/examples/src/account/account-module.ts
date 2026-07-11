@@ -18,17 +18,24 @@ import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { AccountQuery } from '@/account/application/query/account-query'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
+import { NotificationService } from '@/account/application/service/notification-service'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
 import { AccountRepositoryImpl } from '@/account/infrastructure/account-repository-impl'
+import { NotificationServiceImpl } from '@/account/infrastructure/notification/notification-service-impl'
+import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
+import { SesClientProvider } from '@/account/infrastructure/notification/ses-client-provider'
 import { AccountController } from '@/account/interface/account-controller'
 import { AuthModule } from '@/auth/auth-module'
-import { NotificationModule } from '@/notification/notification-module'
 
 @Module({
-  imports: [CqrsModule, TypeOrmModule.forFeature([AccountEntity, TransactionEntity]), NotificationModule, AuthModule],
+  imports: [
+    CqrsModule,
+    TypeOrmModule.forFeature([AccountEntity, TransactionEntity, SentEmailEntity]),
+    AuthModule
+  ],
   controllers: [AccountController],
   providers: [
     // Command Handlers
@@ -53,7 +60,10 @@ import { NotificationModule } from '@/notification/notification-module'
     // Repositories
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
     // Query 구현체
-    { provide: AccountQuery, useClass: AccountQueryImpl }
+    { provide: AccountQuery, useClass: AccountQueryImpl },
+    // Technical Service — SES 이메일 발송 (Account 전용, 다른 도메인이 필요로 하면 그때 공유 여부 재검토)
+    { provide: NotificationService, useClass: NotificationServiceImpl },
+    SesClientProvider
   ],
   // 다른 BC(Card)가 Adapter(ACL)를 통해 계좌를 동기 조회할 수 있도록 읽기 서비스만 공개한다.
   // Repository·도메인 객체는 공개하지 않는다.

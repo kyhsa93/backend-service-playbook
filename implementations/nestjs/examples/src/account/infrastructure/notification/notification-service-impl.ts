@@ -1,20 +1,23 @@
 import { SendEmailCommand, SESClient } from '@aws-sdk/client-ses'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
+import { NotificationService } from '@/account/application/service/notification-service'
+import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
+import { SES_CLIENT } from '@/account/infrastructure/notification/ses-client-provider'
 import { generateId } from '@/common/generate-id'
 import { getSesSenderEmail } from '@/config/notification.config'
 import { TransactionManager } from '@/database/transaction-manager'
-import { SentEmailEntity } from '@/notification/sent-email.entity'
-import { SES_CLIENT } from '@/notification/ses-client-provider'
 
 @Injectable()
-export class NotificationService {
-  private readonly logger = new Logger(NotificationService.name)
+export class NotificationServiceImpl extends NotificationService {
+  private readonly logger = new Logger(NotificationServiceImpl.name)
 
   constructor(
     @Inject(SES_CLIENT) private readonly sesClient: SESClient,
     private readonly transactionManager: TransactionManager
-  ) {}
+  ) {
+    super()
+  }
 
   public async sendEmail(params: {
     accountId: string

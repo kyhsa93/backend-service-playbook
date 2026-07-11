@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { HandleEvent } from '@/outbox/event-handler-registry'
 import { OutboxWriter } from '@/outbox/outbox-writer'
 import { AccountSuspendedIntegrationEventV1 } from '@/account/application/integration-event/account-suspended-integration-event'
-import { NotificationService } from '@/notification/notification-service'
+import { NotificationService } from '@/account/application/service/notification-service'
 
 // 내부 Domain Event(AccountSuspended)를 수신해 후속 처리를 수행하는 Application EventHandler.
 // application/event/의 EventHandler는 OutboxWriter를 직접 사용할 수 있는 유일한 예외로,

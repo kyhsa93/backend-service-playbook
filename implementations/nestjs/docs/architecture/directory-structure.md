@@ -62,6 +62,8 @@ src/
         <verb>-<noun>-request-querystring.ts
         <verb>-<noun>-response-body.ts    # 응답 DTO
     infrastructure/
+      entity/
+        <entity>.entity.ts               # TypeORM Entity
       <aggregate>-repository-impl.ts    # Repository 구현체
       <domain>-query-impl.ts            # Query 구현체 (읽기 전용 DB 접근)
       <external-domain>-adapter-impl.ts # 외부 도메인 Adapter 구현체
@@ -72,3 +74,5 @@ src/
     <domain>-enum.ts
     <domain>-constant.ts
 ```
+
+Technical Service 구현이 구현체 하나로 끝나지 않고 클라이언트 provider·전용 Entity 등 지원 파일이 여러 개 필요하면, `infrastructure/<concern>/` 하위에 묶는다 — `entity/`와 같은 방식이다. 예: Account의 SES 이메일 발송(`NotificationService`, [domain-service.md](../../../../docs/architecture/domain-service.md)의 Technical Service 예시)은 `account/application/service/notification-service.ts`(인터페이스) + `account/infrastructure/notification/{notification-service-impl.ts,ses-client-provider.ts,sent-email.entity.ts}`(구현체·SES 클라이언트 provider·전용 Entity)로 둔다. 다른 도메인이 공유하지 않는 한 최상위 공유 모듈로 빼지 않는다([shared-modules.md](shared-modules.md) 참고).

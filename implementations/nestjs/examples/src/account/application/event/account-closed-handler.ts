@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { HandleEvent } from '@/outbox/event-handler-registry'
 import { OutboxWriter } from '@/outbox/outbox-writer'
 import { AccountClosedIntegrationEventV1 } from '@/account/application/integration-event/account-closed-integration-event'
-import { NotificationService } from '@/notification/notification-service'
+import { NotificationService } from '@/account/application/service/notification-service'
 
 @Injectable()
 export class AccountClosedHandler {

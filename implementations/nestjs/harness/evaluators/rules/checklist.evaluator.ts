@@ -150,11 +150,13 @@ export function evaluateChecklist(root: string): EvaluatorResult {
 
     // STEP 12 — Entity 파일은 infrastructure/entity/ 에 위치해야 함
     // 단, 이 규칙은 도메인의 4레이어 구조(domain/application/infrastructure/interface) 안에
-    // 있는 Entity에만 적용된다. outbox/, notification/ 같은 공유·Technical Service 모듈은
-    // 애초에 4레이어 구조를 따르지 않는 flat 패키지이므로(domain-events.md, shared-modules.md
-    // 참고) layer가 'unknown'으로 판정된다 — 이런 모듈의 Entity(outbox.entity.ts,
-    // sent-email.entity.ts 등)까지 infrastructure/ 강제 배치 대상으로 삼으면 가이드를 정확히
-    // 따른 코드를 오탐 FAIL 처리하게 된다.
+    // 있는 Entity에만 적용된다. outbox/, task-queue/ 같은 공유 모듈은 애초에 4레이어 구조를
+    // 따르지 않는 flat 패키지이므로(domain-events.md, shared-modules.md 참고) layer가
+    // 'unknown'으로 판정된다 — 이런 모듈의 Entity(outbox.entity.ts, task-outbox.entity.ts 등)
+    // 까지 infrastructure/ 강제 배치 대상으로 삼으면 가이드를 정확히 따른 코드를 오탐 FAIL
+    // 처리하게 된다. 도메인 전용 Technical Service의 Entity(예: account의
+    // infrastructure/notification/sent-email.entity.ts)는 4레이어 구조 안에 있으므로 이 예외
+    // 대상이 아니며 정상적으로 infrastructure/ 배치 규칙을 적용받는다.
     if (/\.entity\.ts$/.test(file) && layer !== 'unknown' && !file.includes('/infrastructure/') && !file.includes('/database/')) {
       // base.entity.ts는 예외 (database/)
       if (path.basename(file) !== 'base.entity.ts') {

@@ -160,7 +160,7 @@ export function getAwsEndpoint(): string | undefined {
 ```
 
 ```typescript
-// notification/ses-client-provider.ts — 실제 코드에서 사용
+// account/infrastructure/notification/ses-client-provider.ts — 실제 코드에서 사용
 new SESClient({
   region: getAwsRegion(),
   endpoint: getAwsEndpoint(),

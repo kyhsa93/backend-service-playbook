@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 
 import { HandleEvent } from '@/outbox/event-handler-registry'
-import { NotificationService } from '@/notification/notification-service'
+import { NotificationService } from '@/account/application/service/notification-service'
 
 @Injectable()
 export class AccountReactivatedHandler {

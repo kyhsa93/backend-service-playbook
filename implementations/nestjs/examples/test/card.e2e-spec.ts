@@ -6,14 +6,14 @@ import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers
 import request from 'supertest'
 
 import { AccountModule } from '@/account/account-module'
+import { NotificationService } from '@/account/application/service/notification-service'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
+import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { AuthModule } from '@/auth/auth-module'
 import { CardModule } from '@/card/card-module'
 import { CardEntity } from '@/card/infrastructure/entity/card.entity'
 import { jwtConfig } from '@/config/jwt.config'
-import { NotificationService } from '@/notification/notification-service'
-import { SentEmailEntity } from '@/notification/sent-email.entity'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
 
