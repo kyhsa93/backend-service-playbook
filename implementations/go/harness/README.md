@@ -46,6 +46,7 @@ go run . <projectRoot>
 | `shared-infra` | `shared_infra.go` | `OutboxRelay` 참조 시 `outbox/`에 `Writer`/`Relay` 타입 구현 확인, `*task_queue*` 참조 시 `task-queue/` 배치 확인 |
 | `event-placement` | `event_placement.go` | `*_event_handler.go` → `application/event/`, `*_integration_event.go` → `application/integration-event/` |
 | `outbox-drain-order` | `outbox_drain_order.go` | `OutboxRelay`를 참조하는 Command Handler가 `Save(...)` 호출 뒤에 `ProcessPending(...)`을 호출하는지(순서 포함) — domain-events.md의 핵심 불변식 |
+| `cqrs-pattern` | `cqrs_pattern.go` | `application/command`·`application/query` 디렉토리 존재, `application/query/` 파일이 쓰기 전용 `Repository` 타입을 참조하지 않는지(nestjs의 `cqrs-pattern.evaluator.ts` 이식) |
 
 ## 회귀 테스트
 

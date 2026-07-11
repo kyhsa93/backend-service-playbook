@@ -21,6 +21,7 @@ var rules = []func(string) RuleResult{
 	checkSharedInfra,
 	checkEventPlacement,
 	checkOutboxDrainOrder,
+	checkCQRSPattern,
 }
 
 func main() {
