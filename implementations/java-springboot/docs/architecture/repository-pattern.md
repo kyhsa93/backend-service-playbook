@@ -25,7 +25,7 @@ public interface AccountRepository {
 // account/infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     private final AccountJpaRepository jpaRepository;
     private final TransactionJpaRepository transactionJpaRepository;
     private final EntityManager em;
@@ -198,5 +198,5 @@ public void save(Account account) {
 
 - [layer-architecture.md](layer-architecture.md) — Repository 인터페이스 배치, 레이어 의존 방향
 - [persistence.md](persistence.md) — 트랜잭션 전파, soft delete 배선, 마이그레이션
-- [cqrs-pattern.md](cqrs-pattern.md) — `AccountQueryRepository` 도입, `GetTransactionsService`의 남은 gap
+- [cqrs-pattern.md](cqrs-pattern.md) — `AccountQuery` 도입
 - [domain-events.md](domain-events.md) — Repository에서 Outbox를 함께 저장하는 올바른 패턴

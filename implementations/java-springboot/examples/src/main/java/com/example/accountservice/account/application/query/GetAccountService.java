@@ -11,10 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class GetAccountService {
 
-    private final AccountQueryRepository accountQueryRepository;
+    private final AccountQuery accountQuery;
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQueryRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(
                 account.getAccountId(),

@@ -1,6 +1,6 @@
 package com.example.accountservice.account.infrastructure.persistence;
 
-import com.example.accountservice.account.application.query.AccountQueryRepository;
+import com.example.accountservice.account.application.query.AccountQuery;
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
@@ -19,7 +19,7 @@ import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
 
     private final AccountJpaRepository jpaRepository;
     private final TransactionJpaRepository transactionJpaRepository;

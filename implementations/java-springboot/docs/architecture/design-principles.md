@@ -16,7 +16,7 @@
 
 7. **`@Transactional`은 Application 레이어(Command/Query Service)에만 붙인다** — Domain과 Infrastructure에는 붙이지 않는다. 쓰기는 `@Transactional`, 읽기 전용은 `@Transactional(readOnly = true)`로 구분해 Hibernate dirty checking 오버헤드를 줄인다. 트랜잭션 경계를 원본과 격리해야 하는 부가 작업(알림 발송 등)은 `Propagation.REQUIRES_NEW`로 분리한다. ([persistence.md](persistence.md), [layer-architecture.md](layer-architecture.md))
 
-8. **Command/Query Service는 분리하되, Query는 별도 조회 인터페이스를 써야 한다** — `GetAccountService`는 쓰기용 `AccountRepository`가 아니라 좁은 `AccountQueryRepository`(application/query)에 의존한다. `GetTransactionsService`는 아직 이 전환 이전 상태로 남은 gap이다. ([cqrs-pattern.md](cqrs-pattern.md))
+8. **Command/Query Service는 분리하되, Query는 별도 조회 인터페이스를 써야 한다** — `GetAccountService`/`GetTransactionsService` 모두 쓰기용 `AccountRepository`가 아니라 좁은 `AccountQuery`(application/query)에 의존한다. harness의 `cqrs-query-purity` 규칙이 `application/query/` 하위 파일의 Repository 직접 참조를 자동으로 잡아낸다. ([cqrs-pattern.md](cqrs-pattern.md))
 
 9. **에러는 항상 타입화된 예외 + enum `ErrorCode`로 던진다** — free-form 문자열 금지. `AccountException(ErrorCode, message)`가 Domain 메서드 내부에서 즉시 throw되고, `@ExceptionHandler`가 Interface 레이어(Controller 또는 `@RestControllerAdvice`)에서만 HTTP 응답으로 변환한다. Domain/Application에서 `HttpStatus`/`ResponseEntity`를 참조하지 않는다. ([error-handling.md](error-handling.md))
 
@@ -36,7 +36,6 @@
 
 | 원칙 (위 번호) | 코드 상태 |
 |---|---|
-| 8. Query는 별도 인터페이스 | 부분 위반 — `GetAccountService`는 `AccountQueryRepository` 사용, `GetTransactionsService`는 아직 쓰기용 Repository 사용 |
 | 12. Fail-fast 설정 검증 | 적용됨 — `AwsProperties`/`SesProperties`(`@ConfigurationProperties` + `@Validated`), 단 `accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니고 `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다([config.md](config.md) 참고) |
 
 전체 gap 목록은 [docs/implementations/java-springboot.md](../../../../docs/implementations/java-springboot.md)의 커버리지 표를 참고한다.

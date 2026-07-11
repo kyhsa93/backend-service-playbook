@@ -82,7 +82,7 @@ final class AccountMapper {
 // infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     private final AccountJpaRepository jpaRepository;
 
     @Override
@@ -142,29 +142,29 @@ Query Service는 `@Transactional(readOnly = true)`로 구분한다 — Hibernate
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class GetAccountService {
-    private final AccountQueryRepository accountQueryRepository;   // 쓰기용 AccountRepository가 아닌 좁은 읽기 전용 인터페이스
+    private final AccountQuery accountQuery;   // 쓰기용 AccountRepository가 아닌 좁은 읽기 전용 인터페이스
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQueryRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(/* ... */);
     }
 }
 ```
 
-`GetAccountService`는 `save`/`delete`가 없는 `AccountQueryRepository`(application/query, `findByAccountIdAndOwnerId`만 선언)에 의존한다 — `AccountRepositoryImpl`이 `AccountRepository`(domain, 쓰기)와 `AccountQueryRepository`(application, 읽기)를 모두 구현하고, Spring이 각 주입 지점(`AccountRepository` 타입 vs `AccountQueryRepository` 타입)에 같은 빈을 인터페이스별로 바인딩한다. 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참고. `GetTransactionsService`는 아직 이 분리 이전 상태로 쓰기용 `AccountRepository`를 그대로 사용한다 — cqrs-pattern.md에서 남은 gap으로 명시.
+`GetAccountService`는 `save`/`delete`가 없는 `AccountQuery`(application/query, `findByAccountIdAndOwnerId`/`findTransactions`/`countTransactions`만 선언)에 의존한다 — `AccountRepositoryImpl`이 `AccountRepository`(domain, 쓰기)와 `AccountQuery`(application, 읽기)를 모두 구현하고, Spring이 각 주입 지점(`AccountRepository` 타입 vs `AccountQuery` 타입)에 같은 빈을 인터페이스별로 바인딩한다. 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참고. `GetTransactionsService`도 동일하게 `AccountQuery`에 의존한다.
 
 ---
 
 ## Infrastructure 레이어
 
-`AccountRepositoryImpl`이 Domain의 `AccountRepository` 인터페이스와 Application의 `AccountQueryRepository` 인터페이스를 함께 구현한다. `EntityManager`(동적 JPQL)와 `AccountJpaRepository`(Spring Data 파생 쿼리)를 함께 사용하는 것도 이 레이어에서만 허용된다 — Domain/Application은 JPA API를 알지 못한다. JPQL은 순수 도메인 `Account`가 아니라 `AccountJpaEntity`(JPA 매핑 전용)를 대상으로 하고, 결과는 `AccountMapper`로 변환한다.
+`AccountRepositoryImpl`이 Domain의 `AccountRepository` 인터페이스와 Application의 `AccountQuery` 인터페이스를 함께 구현한다. `EntityManager`(동적 JPQL)와 `AccountJpaRepository`(Spring Data 파생 쿼리)를 함께 사용하는 것도 이 레이어에서만 허용된다 — Domain/Application은 JPA API를 알지 못한다. JPQL은 순수 도메인 `Account`가 아니라 `AccountJpaEntity`(JPA 매핑 전용)를 대상으로 하고, 결과는 `AccountMapper`로 변환한다.
 
 ```java
 // infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
 @Repository
 @RequiredArgsConstructor
-public class AccountRepositoryImpl implements AccountRepository, AccountQueryRepository {
+public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     private final AccountJpaRepository jpaRepository;
     private final TransactionJpaRepository transactionJpaRepository;
     private final EntityManager em;
@@ -236,7 +236,7 @@ depositService.deposit(new DepositCommand(accountId, requesterId, request.amount
 | 상위 레이어만 하위 레이어에 의존 | 패키지 구조 + `harness.sh`의 `package-structure`/`domain-purity` 검사 | 준수 |
 | Domain은 프레임워크/ORM 무의존 | `Account`/`Transaction`/`Money`는 순수 도메인, JPA 매핑은 `AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable`(infrastructure)로 분리 | 준수 |
 | Repository는 인터페이스/구현 분리 | `interface`(domain) + Spring이 자동 바인딩하는 `@Repository` 구현체(infrastructure) | 준수 |
-| Query Service는 Query 인터페이스만 사용 | `GetAccountService`는 `AccountQueryRepository`(읽기 전용) 사용 | 준수 (`GetTransactionsService`는 아직 남은 gap — cqrs-pattern.md 참고) |
+| Query Service는 Query 인터페이스만 사용 | `GetAccountService`/`GetTransactionsService` 모두 `AccountQuery`(읽기 전용) 사용 | 준수 |
 | DI | 생성자 주입, Lombok `@RequiredArgsConstructor` | 준수 |
 
 ---
