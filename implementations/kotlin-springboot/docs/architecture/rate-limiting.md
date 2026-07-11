@@ -144,6 +144,19 @@ resilience4j:
 
 `RateLimitingFilter`가 `request.method`로 `GET`/`HEAD`인지 판단해 `rateLimiterRegistry.rateLimiter("http-read")` / `rateLimiterRegistry.rateLimiter("http-write")`를 선택한다. E2E 테스트는 기본 write 한도(10건/60초)보다 훨씬 많은 요청을 짧은 시간에 호출하므로, `AccountControllerE2ETest`/`NotificationE2ETest`는 테스트 컨텍스트에서만 `resilience4j.ratelimiter.instances.http-write.limit-for-period`를 `@DynamicPropertySource`로 넉넉하게 올려 잡는다.
 
+## 운영값 조정
+
+`http-write`/`http-read` 두 인스턴스 모두 `RateLimitingFilter`가 `RateLimiterRegistry`를 통해 이름으로 조회한다 — `application.yml`에 값을 직접 박아넣는 대신 스프링이 관리하는 레지스트리를 거치므로, Spring Boot의 relaxed binding으로 **코드 변경 없이** 배포 시점에 override할 수 있다. go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`)·nestjs(`THROTTLE_*`)와 동급의 유연성이며, java-springboot의 동급 `RateLimitFilter`(값이 코드에 하드코딩되어 있어 이 방식이 통하지 않는다 — [java-springboot rate-limiting.md](../../../java-springboot/docs/architecture/rate-limiting.md) "운영값 조정" 참고)와 달리 이 구현체는 이미 완전히 유연하다.
+
+| 방법 | 예시 |
+|---|---|
+| 환경 변수 (relaxed binding) | `RESILIENCE4J_RATELIMITER_INSTANCES_HTTP_WRITE_LIMITFORPERIOD=20` |
+| 프로파일별 yml | `application-prod.yml`에 `resilience4j.ratelimiter.instances.http-write.limit-for-period: 20` 추가 후 `SPRING_PROFILES_ACTIVE=prod`로 기동 |
+| 커맨드라인 인자 | `java -jar app.jar --resilience4j.ratelimiter.instances.http-write.limit-for-period=20` |
+| `SPRING_APPLICATION_JSON` | `SPRING_APPLICATION_JSON='{"resilience4j":{"ratelimiter":{"instances":{"http-write":{"limit-for-period":20}}}}}'` |
+
+테스트가 `@DynamicPropertySource`로 `resilience4j.ratelimiter.instances.http-write.limit-for-period`를 override하는 것(위 "엔드포인트별 세분화" 절 참고)도 같은 매커니즘을 쓴다 — 운영값 override와 테스트값 override가 동일한 주입 지점을 공유한다.
+
 ## 원칙
 
 - **`examples/`에 `RateLimitingFilter`로 적용 완료** — `common/RateLimitingFilter.kt` + `resilience4j-spring-boot3` 의존성.
