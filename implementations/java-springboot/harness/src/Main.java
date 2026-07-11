@@ -9,6 +9,7 @@ package harness;
 // (README.md 참고).
 
 import harness.rules.ControllerPlacement;
+import harness.rules.CqrsQueryPurity;
 import harness.rules.DomainPurity;
 import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
@@ -37,7 +38,8 @@ public final class Main {
         EventPlacement::check,
         NoEventPublisherInCommand::check,
         TransactionBoundary::check,
-        OutboxDrainOrder::check
+        OutboxDrainOrder::check,
+        CqrsQueryPurity::check
     );
 
     public static void main(String[] args) {

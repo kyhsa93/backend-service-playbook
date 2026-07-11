@@ -61,6 +61,7 @@ bash implementations/java-springboot/harness.sh <projectRoot>
 | `no-event-publisher-in-command` | `NoEventPublisherInCommand.java` | Command Service가 `ApplicationEventPublisher`/`@EventListener`/`publishEvent()`를 쓰면 실패 — Outbox 경유해야 함 |
 | `transaction-boundary` | `TransactionBoundary.java` | Command Service에 `@Transactional`이 없고, Outbox를 저장하는 `*RepositoryImpl`에는 있는지 확인 |
 | `outbox-drain-order` | `OutboxDrainOrder.java` | `OutboxRelay`를 참조하는 Command Service가 `save(...)` 호출 뒤에 `processPending(...)`을 호출하는지(순서 포함) — domain-events.md의 핵심 불변식 |
+| `cqrs-query-purity` | `CqrsQueryPurity.java` | `application/query/` 하위 파일(주석 제외)이 쓰기용 Repository 타입을 참조하면 실패 — Query Service는 별도 Query 인터페이스(`AccountQuery` 등)만 의존해야 함(cqrs-pattern.md). nestjs harness의 `cqrs-pattern` evaluator를 이식한 규칙 |
 
 ## 회귀 테스트
 

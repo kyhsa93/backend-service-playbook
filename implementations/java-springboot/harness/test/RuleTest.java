@@ -6,6 +6,7 @@
 import harness.Kind;
 import harness.RuleResult;
 import harness.rules.ControllerPlacement;
+import harness.rules.CqrsQueryPurity;
 import harness.rules.DomainPurity;
 import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
@@ -86,7 +87,10 @@ public final class RuleTest {
 
         new TestCase("outbox-drain-order/good", () -> assertNoFailures(OutboxDrainOrder.check("testdata/outbox-drain-order/good"))),
         new TestCase("outbox-drain-order/bad-missing-process-pending", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-missing-process-pending"))),
-        new TestCase("outbox-drain-order/bad-wrong-order", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-wrong-order")))
+        new TestCase("outbox-drain-order/bad-wrong-order", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-wrong-order"))),
+
+        new TestCase("cqrs-query-purity/good", () -> assertNoFailures(CqrsQueryPurity.check("testdata/cqrs-query-purity/good"))),
+        new TestCase("cqrs-query-purity/bad-repository-reference", () -> assertHasFailure(CqrsQueryPurity.check("testdata/cqrs-query-purity/bad-repository-reference")))
     );
 
     public static void main(String[] args) {
