@@ -142,7 +142,7 @@ async def health_live() -> dict:
 요청 → [0. SlowAPIMiddleware — 제한 초과 시 즉시 429] → [1. Correlation ID Middleware] → [2. Depends(인증)] → [3. Pydantic 검증] → [4. 라우트 함수] → 응답
 ```
 
-## 환경별 설정값 관리
+## 운영값 조정
 
 ```python
 # src/config/rate_limit_config.py — 실제 코드. config.md의 관심사별 설정 클래스 패턴을 따름
@@ -155,7 +155,7 @@ class RateLimitConfig:
         self.write_limit = os.getenv("RATE_LIMIT_WRITE", "20/minute")
 ```
 
-하드코딩된 문자열 리터럴 대신 위와 같이 환경 변수로 분리하면 스테이징/프로덕션에서 값을 조정할 수 있다 — [config.md](config.md)의 fail-fast 검증 패턴과 함께 적용한다. `examples/tests/conftest.py`는 e2e 테스트가 같은 프로세스·같은 클라이언트 IP로 짧은 시간에 수십 건을 요청하는 상황을 피하기 위해 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`를 넉넉한 값으로 override한다 — 운영 기본값(`100/minute`/`20/minute`)은 그대로 유지된다.
+하드코딩된 문자열 리터럴 대신 위와 같이 환경 변수로 분리하면 스테이징/프로덕션에서 값을 조정할 수 있다 — [config.md](config.md)의 fail-fast 검증 패턴과 함께 적용한다. `RateLimitConfig()`는 `src/common/rate_limit.py`가 앱 시작 시 한 번 인스턴스화해 `Limiter(default_limits=[...])`와 `@limiter.limit(...)` 데코레이터에 값을 넘기므로, 값을 바꾸려면 코드 변경 없이 배포 환경에서 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE` 환경 변수를 설정하고 프로세스를 재기동하면 된다 — go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`)·nestjs(`THROTTLE_*`, [../../../nestjs/docs/architecture/rate-limiting.md](../../../nestjs/docs/architecture/rate-limiting.md) "운영값 조정" 참고)와 동일하게 배포 시점 설정을 지원한다(issue #153). `examples/tests/conftest.py`는 e2e 테스트가 같은 프로세스·같은 클라이언트 IP로 짧은 시간에 수십 건을 요청하는 상황을 피하기 위해 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`를 넉넉한 값으로 override한다 — 운영 기본값(`100/minute`/`20/minute`)은 그대로 유지된다.
 
 ## 원칙
 
