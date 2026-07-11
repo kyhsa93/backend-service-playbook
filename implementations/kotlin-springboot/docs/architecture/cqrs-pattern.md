@@ -42,40 +42,40 @@ class CreateAccountService(
 // application/query/GetAccountService.kt — 실제 코드
 @Service
 @Transactional(readOnly = true)
-class GetAccountService(private val accountQueryRepository: AccountQueryRepository) {
+class GetAccountService(private val accountQuery: AccountQuery) {
     fun getAccount(accountId: String, requesterId: String): GetAccountResult {
-        val account = accountQueryRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+        val account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
             ?: throw AccountNotFoundException(accountId)
         return GetAccountResult(/* ... */)
     }
 }
 ```
 
-`@Transactional(readOnly = true)`는 Query Service에서만 붙인다 — Hibernate가 dirty checking을 생략하고 읽기 전용 커넥션을 사용해 최적화한다. Kotlin 문법 자체는 Command/Query 어느 쪽이든 동일하며, Query Service는 `AccountRepository`(쓰기 모델)가 아니라 별도의 읽기 전용 `AccountQueryRepository` 인터페이스에 의존한다(아래 참고).
+`@Transactional(readOnly = true)`는 Query Service에서만 붙인다 — Hibernate가 dirty checking을 생략하고 읽기 전용 커넥션을 사용해 최적화한다. Kotlin 문법 자체는 Command/Query 어느 쪽이든 동일하며, Query Service는 `AccountRepository`(쓰기 모델)가 아니라 별도의 읽기 전용 `AccountQuery` 인터페이스에 의존한다(아래 참고).
 
 ---
 
-## 별도 Query 인터페이스 — `AccountQueryRepository`
+## 별도 Query 인터페이스 — `AccountQuery`
 
-root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Query Service가 `save`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다.
+root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Query Service가 `save`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다. 이 인터페이스는 root 컨벤션대로 `application/query/`에 `AccountQuery`라는 이름으로 둔다(쓰기용 `AccountRepository`는 `domain/`에 그대로 유지).
 
 ```kotlin
-// domain/AccountQueryRepository.kt — 실제 코드
-interface AccountQueryRepository {
+// application/query/AccountQuery.kt — 실제 코드
+interface AccountQuery {
     fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
     fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
     fun countTransactions(accountId: String): Long
 }
 ```
 
-`GetAccountService`/`GetTransactionsService`는 `AccountRepository`가 아니라 `AccountQueryRepository`를 생성자로 주입받는다. 구현체는 하나뿐이다 — `AccountRepositoryImpl`이 두 인터페이스를 모두 구현한다.
+`GetAccountService`/`GetTransactionsService`는 `AccountRepository`가 아니라 `AccountQuery`를 생성자로 주입받는다. 구현체는 하나뿐이다 — `AccountRepositoryImpl`이 두 인터페이스를 모두 구현한다.
 
 ```kotlin
 // infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
 @Repository
-class AccountRepositoryImpl(/* ... */) : AccountRepository, AccountQueryRepository {
+class AccountRepositoryImpl(/* ... */) : AccountRepository, AccountQuery {
     // findByAccountIdAndOwnerId / findTransactions / countTransactions 구현이
-    // AccountRepository와 AccountQueryRepository 양쪽 시그니처를 동시에 만족시킨다.
+    // AccountRepository와 AccountQuery 양쪽 시그니처를 동시에 만족시킨다.
 }
 ```
 

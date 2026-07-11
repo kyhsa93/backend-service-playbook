@@ -73,6 +73,7 @@ com.example.accountservice/
         CloseAccountService.kt / CloseAccountCommand.kt
         TransactionResult.kt         ← data class (Deposit/Withdraw 공용 응답)
       query/
+        AccountQuery.kt              ← 읽기 전용 Query 인터페이스 (root cqrs-pattern.md 네이밍/배치)
         GetAccountService.kt / GetAccountResult.kt
         GetTransactionsService.kt / GetTransactionsResult.kt
       event/                            ← Outbox가 드레인한 이벤트를 처리하는 Handler (harness event-placement 검사 대상)

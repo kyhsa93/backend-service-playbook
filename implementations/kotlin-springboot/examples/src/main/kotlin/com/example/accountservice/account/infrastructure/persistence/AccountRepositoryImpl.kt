@@ -1,8 +1,8 @@
 package com.example.accountservice.account.infrastructure.persistence
 
+import com.example.accountservice.account.application.query.AccountQuery
 import com.example.accountservice.account.domain.Account
 import com.example.accountservice.account.domain.AccountFindQuery
-import com.example.accountservice.account.domain.AccountQueryRepository
 import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.account.domain.Transaction
@@ -18,7 +18,7 @@ class AccountRepositoryImpl(
     private val transactionJpaRepository: TransactionJpaRepository,
     private val outboxWriter: OutboxWriter,
     private val em: EntityManager,
-) : AccountRepository, AccountQueryRepository {
+) : AccountRepository, AccountQuery {
 
     override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
         jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
