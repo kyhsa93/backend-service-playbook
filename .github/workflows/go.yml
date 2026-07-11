@@ -1,0 +1,35 @@
+name: Go
+
+on:
+  push:
+    paths:
+      - 'implementations/go/**'
+  pull_request:
+    paths:
+      - 'implementations/go/**'
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: implementations/go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: implementations/go/examples/go.mod
+
+      - name: Build & vet
+        working-directory: implementations/go/examples
+        run: |
+          go build ./...
+          go vet ./...
+
+      - name: Test (Testcontainers 기반 e2e 포함)
+        working-directory: implementations/go/examples
+        run: go test ./...
+
+      - name: Harness
+        run: bash harness.sh examples
