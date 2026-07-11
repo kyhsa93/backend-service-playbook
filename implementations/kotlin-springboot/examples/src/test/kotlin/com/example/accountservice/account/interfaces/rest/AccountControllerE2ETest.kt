@@ -112,6 +112,9 @@ class AccountControllerE2ETest {
     private fun get(path: String, ownerId: String): ResponseEntity<Map<*, *>> =
         restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
 
+    private fun delete(path: String, ownerId: String): ResponseEntity<Map<*, *>> =
+        restTemplate.exchange(path, HttpMethod.DELETE, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
+
     private fun createAccount(ownerId: String, currency: String, email: String = "$ownerId@example.com"): Map<*, *> {
         val response = post("/accounts", ownerId, mapOf("currency" to currency, "email" to email))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
@@ -365,6 +368,33 @@ class AccountControllerE2ETest {
         post("/accounts/${account["accountId"]}/close", OWNER_ID, emptyMap())
 
         val response = post("/accounts/${account["accountId"]}/close", OWNER_ID, emptyMap())
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
+    fun `종료된 계좌를 삭제하면 204를 반환하고 이후 조회 시 404를 반환한다`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/close", OWNER_ID, emptyMap())
+
+        val response = delete("/accounts/${account["accountId"]}", OWNER_ID)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
+
+        val getResponse = get("/accounts/${account["accountId"]}", OWNER_ID)
+        assertThat(getResponse.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+    }
+
+    @Test
+    fun `삭제 시 존재하지 않는 계좌면 404를 반환한다`() {
+        val response = delete("/accounts/non-existent", OWNER_ID)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+    }
+
+    @Test
+    fun `종료되지 않은 계좌를 삭제하면 400을 반환한다`() {
+        val account = createAccount(OWNER_ID, "KRW")
+
+        val response = delete("/accounts/${account["accountId"]}", OWNER_ID)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }

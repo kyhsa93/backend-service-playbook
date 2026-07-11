@@ -2,6 +2,7 @@ package com.example.accountservice.account.infrastructure.persistence
 
 import com.example.accountservice.account.domain.Account
 import com.example.accountservice.account.domain.AccountFindQuery
+import com.example.accountservice.account.domain.AccountQueryRepository
 import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.account.domain.Transaction
@@ -17,7 +18,7 @@ class AccountRepositoryImpl(
     private val transactionJpaRepository: TransactionJpaRepository,
     private val outboxWriter: OutboxWriter,
     private val em: EntityManager,
-) : AccountRepository {
+) : AccountRepository, AccountQueryRepository {
 
     override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
         jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
@@ -46,6 +47,13 @@ class AccountRepositoryImpl(
         // Aggregate 상태(account/transaction 행)와 Outbox 행을 같은 트랜잭션에 커밋한다 — 이벤트가
         // Aggregate 상태 없이 저장되거나(dual-write), 반대로 유실되는 경우가 생기지 않는다.
         outboxWriter.saveAll(account.pullDomainEvents())
+    }
+
+    @Transactional
+    override fun deleteAccount(accountId: String) {
+        val account = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
+        account.markDeleted()
+        jpaRepository.save(account)
     }
 
     override fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction> =

@@ -5,6 +5,7 @@ interface AccountRepository {
     fun findAll(query: AccountFindQuery): List<Account>
     fun countAll(query: AccountFindQuery): Long
     fun save(account: Account)
+    fun deleteAccount(accountId: String)
     fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
     fun countTransactions(accountId: String): Long
 }

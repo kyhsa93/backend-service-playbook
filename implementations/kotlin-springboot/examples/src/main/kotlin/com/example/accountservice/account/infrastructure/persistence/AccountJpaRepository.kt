@@ -5,4 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository
 
 interface AccountJpaRepository : JpaRepository<Account, Long> {
     fun findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId: String, ownerId: String): Account?
+    fun findByAccountIdAndDeletedAtIsNull(accountId: String): Account?
 }

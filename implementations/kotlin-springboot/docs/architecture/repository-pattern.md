@@ -25,7 +25,7 @@ class CreateAccountService(private val accountRepository: AccountRepository)
 
 ---
 
-## 알려진 갭 — 메서드 네이밍이 root 컨벤션과 다르다
+## 알려진 갭 — 조회/저장 메서드 네이밍이 root 컨벤션과 다르다
 
 ```kotlin
 // domain/AccountRepository.kt — 실제 코드
@@ -34,6 +34,7 @@ interface AccountRepository {
     fun findAll(query: AccountFindQuery): List<Account>                          // ← count와 분리
     fun countAll(query: AccountFindQuery): Long
     fun save(account: Account)
+    fun deleteAccount(accountId: String)                                          // ← delete<Noun> 컨벤션 적용됨 (아래 참고)
     fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
     fun countTransactions(accountId: String): Long
 }
@@ -43,22 +44,24 @@ root 컨벤션은 다음 세 가지를 요구한다.
 
 | 목적 | root 패턴 | 현재 코드 |
 |------|--------------|------|
-| 목록 조회 | `find<Noun>s` 하나만, 단건도 `take: 1`로 재사용 | `findByAccountIdAndOwnerId`(단건 전용) + `findAll`(목록) 두 갈래로 분산 |
-| 저장 | `save<Noun>` | `save` — noun 접미사 없음(단일 Aggregate뿐이라 모호하지 않지만 컨벤션 불일치) |
-| 삭제 | `delete<Noun>` | 없음 — [persistence.md](persistence.md)에서 다룬 Soft Delete 배선 갭과 동일한 원인 |
+| 목록 조회 | `find<Noun>s` 하나만, 단건도 `take: 1`로 재사용 | `findByAccountIdAndOwnerId`(단건 전용) + `findAll`(목록) 두 갈래로 분산 — 아직 불일치 |
+| 저장 | `save<Noun>` | `save` — noun 접미사 없음(단일 Aggregate뿐이라 모호하지 않지만 컨벤션 불일치) — 아직 불일치 |
+| 삭제 | `delete<Noun>` | `deleteAccount(accountId)` — root 컨벤션과 일치. Soft Delete 배선 갭([persistence.md](persistence.md))은 이 메서드 추가로 해소됨 |
 
-`findByAccountIdAndOwnerId`처럼 전용 단건 조회 메서드를 두는 것은 root가 명시적으로 금지하는 "findOne 전용 메서드" 패턴이다 — 조회 조건이 하나 늘어날 때마다(`findByAccountIdAndStatus` 등) 메서드가 계속 늘어나는 확장성 문제도 있다.
+`findByAccountIdAndOwnerId`처럼 전용 단건 조회 메서드를 두는 것은 root가 명시적으로 금지하는 "findOne 전용 메서드" 패턴이다 — 조회 조건이 하나 늘어날 때마다(`findByAccountIdAndStatus` 등) 메서드가 계속 늘어나는 확장성 문제도 있다. `findAll`/`save`의 네이밍은 이번 변경 범위에 포함되지 않았고 여전히 남은 갭이다 — 아래 "올바른 형태"는 이 나머지 갭에 대한 제안이다.
 
 ---
 
-## 올바른 형태 — `findAccounts` 하나로 통일
+## 올바른 형태 — `findAccounts` 하나로 통일 (남은 갭)
+
+`deleteAccount`는 이미 실제 코드에 반영되어 아래 제안에서 제외했다 — 실제 시그니처는 위 "알려진 갭" 절 참고. 남은 제안은 `findAll`/`save`의 네이밍뿐이다.
 
 ```kotlin
-// domain/AccountRepository.kt — 제안
+// domain/AccountRepository.kt — 제안 (findAll/save 부분만)
 interface AccountRepository {
     fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>   // 목록 + count를 함께 반환
     fun saveAccount(account: Account)
-    fun deleteAccount(accountId: String)                                   // soft delete — persistence.md 참조
+    fun deleteAccount(accountId: String)                                   // 실제 코드에 이미 존재 — persistence.md 참조
 
     fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
 }
@@ -94,38 +97,36 @@ class GetAccountService(private val accountRepository: AccountRepository) {
 
 ---
 
-## 구현체 — `save<Noun>`/`delete<Noun>`로 리네이밍
+## 구현체 — `deleteAccount`는 실제 코드, `save<Noun>`으로의 리네이밍은 남은 제안
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 제안 (메서드명만 변경)
-@Repository
-class AccountRepositoryImpl(
-    private val jpaRepository: AccountJpaRepository,
-    private val transactionJpaRepository: TransactionJpaRepository,
-    private val em: EntityManager,
-) : AccountRepository {
-
-    override fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long> {
-        val accounts = /* 기존 findAll 로직 재사용 */ emptyList<Account>()
-        val count = /* 기존 countAll 로직 재사용 */ 0L
-        return accounts to count
-    }
-
-    override fun saveAccount(account: Account) {
-        jpaRepository.save(account)
-        val pending = account.pullPendingTransactions()
-        if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
-    }
-
-    override fun deleteAccount(accountId: String) {
-        val account = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
-        account.markDeleted()
-        jpaRepository.save(account)
-    }
+// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드 (deleteAccount)
+@Transactional
+override fun deleteAccount(accountId: String) {
+    val account = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
+    account.markDeleted()   // Account.markDeleted() — CLOSED 상태가 아니면 DeleteRequiresClosedAccountException
+    jpaRepository.save(account)
 }
 ```
 
-**Repository에 update 메서드를 별도로 두지 않는다** — 이 원칙은 이미 지켜지고 있다. `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()` 등 도메인 메서드로 이루어진 뒤 `saveAccount()`로 영속화된다.
+```kotlin
+// infrastructure/persistence/AccountRepositoryImpl.kt — 제안 (findAll/save 이름만 변경, 남은 갭)
+override fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long> {
+    val accounts = /* 기존 findAll 로직 재사용 */ emptyList<Account>()
+    val count = /* 기존 countAll 로직 재사용 */ 0L
+    return accounts to count
+}
+
+override fun saveAccount(account: Account) {
+    jpaRepository.save(account)
+    val pending = account.pullPendingTransactions()
+    if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
+}
+```
+
+**Repository에 update 메서드를 별도로 두지 않는다** — 이 원칙은 이미 지켜지고 있다. `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()`/`markDeleted()` 등 도메인 메서드로 이루어진 뒤 `save()`로 영속화된다.
+
+**`close()`(상태 전환)와 `markDeleted()`(soft delete)는 서로 다른 생명주기 이벤트다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태를 바꿀 뿐 `deletedAt`을 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(계좌 이력 확인 등). `deleteAccount()`는 반대로 `deletedAt`을 설정해 이후 모든 조회(`deletedAt IS NULL` 조건)에서 제외시킨다. `Account.markDeleted()`는 `status != CLOSED`이면 `DeleteRequiresClosedAccountException`을 던져, 활성 계좌가 종료 절차 없이 곧바로 삭제되는 것을 막는다 — 삭제는 항상 "종료 → 삭제" 두 단계를 거친다.
 
 ---
 
@@ -151,9 +152,10 @@ private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
 ## 원칙 요약
 
 - **1 Aggregate = 1 Repository 인터페이스 + 구현체**: 이미 올바름.
-- **`find<Noun>s`/`save<Noun>`/`delete<Noun>` 세 메서드로 통일**: 현재 `findByAccountIdAndOwnerId`/`findAll`/`save`(delete 없음) → `findAccounts`/`saveAccount`/`deleteAccount`로 리네이밍 필요.
-- **단건 조회는 `take: 1` + `firstOrNull()`**: 전용 findOne 메서드를 만들지 않는다.
-- **Repository에 update 메서드 없음**: 이미 올바름 — 상태 변경은 Aggregate 도메인 메서드 + `save<Noun>`.
+- **`delete<Noun>` 추가 완료**: `deleteAccount(accountId)`가 실제 코드에 존재하고 `Account.markDeleted()`를 통해 CLOSED 상태만 삭제 가능하도록 강제한다 — 더 이상 갭 아님.
+- **`find<Noun>s`/`save<Noun>`으로 통일**: 현재 `findByAccountIdAndOwnerId`/`findAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍은 아직 남은 갭이다.
+- **단건 조회는 `take: 1` + `firstOrNull()`**: 전용 findOne 메서드를 만들지 않는다 — 위 리네이밍과 함께 적용될 남은 제안.
+- **Repository에 update 메서드 없음**: 이미 올바름 — 상태 변경은 Aggregate 도메인 메서드 + `save`/`deleteAccount`.
 - **동적 필터, soft-delete 조회 조건**: 이미 올바름.
 
 ### 관련 문서

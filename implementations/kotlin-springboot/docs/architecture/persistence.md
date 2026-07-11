@@ -106,38 +106,38 @@ class Account protected constructor() : BaseEntity() { /* createdAt/updatedAt/de
 
 ---
 
-## 알려진 갭 — Soft Delete가 배선되어 있지 않다
+## Soft Delete — 배선 완료
 
-`deletedAt` 컬럼은 `Account`, `Transaction` 모두에 존재하지만, **`AccountRepository` 인터페이스에 delete 메서드 자체가 없다.**
+`deletedAt` 컬럼은 `Account`, `Transaction` 모두에 존재하고, `AccountRepository.deleteAccount(accountId)`가 실제 실행 경로를 제공한다.
 
 ```kotlin
-// domain/AccountRepository.kt — 실제 코드. delete 메서드 없음
+// domain/AccountRepository.kt — 실제 코드
 interface AccountRepository {
     fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
     fun findAll(query: AccountFindQuery): List<Account>
     fun countAll(query: AccountFindQuery): Long
     fun save(account: Account)
+    fun deleteAccount(accountId: String)
     fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
     fun countTransactions(accountId: String): Long
 }
 ```
 
-계좌 종료(`close()`)는 `AccountStatus.CLOSED`로 상태를 바꿀 뿐 `deletedAt`을 설정하지 않는다 — soft delete 컬럼은 스키마에 존재하지만 실제로 실행되는 경로가 없는, 죽은 컬럼이다. root 원칙에 맞게 배선하려면:
-
 ```kotlin
-// domain/AccountRepository.kt — 제안: delete<Noun> 추가
-interface AccountRepository {
-    // ... 기존 메서드 ...
-    fun deleteAccount(accountId: String)
+// domain/Account.kt — 실제 코드. soft delete는 CLOSED 상태에서만 허용된다
+fun markDeleted() {
+    if (status != AccountStatus.CLOSED) throw DeleteRequiresClosedAccountException()
+    deletedAt = LocalDateTime.now()
+    updatedAt = deletedAt!!
 }
 ```
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 제안
+// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
 @Transactional
 override fun deleteAccount(accountId: String) {
     val account = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
-    account.markDeleted()   // BaseEntity의 soft delete 메서드
+    account.markDeleted()
     jpaRepository.save(account)
 }
 ```
@@ -148,7 +148,9 @@ override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Acco
     jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
 ```
 
-조회 측(`findByAccountIdAndOwnerIdAndDeletedAtIsNull`)은 이미 올바르게 soft-delete를 고려하고 있다 — 삭제 실행 경로만 빠져 있다. 메서드 네이밍을 root 컨벤션(`delete<Noun>`)에 맞추는 것과 함께 다루는 것이 자연스러우므로 상세는 [repository-pattern.md](repository-pattern.md)에서 이어서 다룬다.
+**`close()`(상태 전환)와 soft delete는 서로 다른 생명주기 이벤트로 분리했다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태만 바꾸고 `deletedAt`은 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(모든 조회가 `deletedAt IS NULL`을 조건으로 걸기 때문에, `close()`가 `deletedAt`까지 설정해버리면 종료 직후 계좌를 다시 조회할 방법이 없어진다). 대신 삭제는 `account/application/command/DeleteAccountService.kt`라는 별도 유스케이스(`DELETE /accounts/{accountId}`)로 존재하고, `Account.markDeleted()`가 "이미 CLOSED 상태인 계좌만 삭제 가능"이라는 규칙을 도메인 레벨에서 강제한다 — 활성 계좌를 곧바로 삭제하려 하면 `DeleteRequiresClosedAccountException`(400)을 던진다.
+
+메서드 네이밍(`delete<Noun>`)은 root 컨벤션과 일치한다 — `findAll`/`save`의 네이밍은 아직 남은 갭이며 [repository-pattern.md](repository-pattern.md)에서 다룬다.
 
 ---
 
@@ -204,7 +206,7 @@ CREATE TABLE accounts (
 
 - **트랜잭션은 `@Transactional`로 선언한다** — root의 수동 ThreadLocal 전파를 Spring이 대체한다. Command는 `@Transactional`, Query는 `@Transactional(readOnly = true)`.
 - **공통 컬럼은 `@MappedSuperclass` BaseEntity로 추출**해 중복을 없앤다 — 현재는 Entity마다 반복 선언.
-- **Soft Delete는 컬럼만 있고 배선되어 있지 않다** — `deleteAccount()` 추가 필요 (상세는 [repository-pattern.md](repository-pattern.md)).
+- **Soft Delete 배선 완료** — `AccountRepository.deleteAccount()` + `Account.markDeleted()`(CLOSED 상태만 허용) + `DeleteAccountService`/`DELETE /accounts/{accountId}` (상세는 [repository-pattern.md](repository-pattern.md)).
 - **Flyway 마이그레이션 도입 완료** — `ddl-auto: validate` + `db/migration/`.
 
 ### 관련 문서

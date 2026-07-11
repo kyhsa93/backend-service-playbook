@@ -42,22 +42,44 @@ class CreateAccountService(
 // application/query/GetAccountService.kt — 실제 코드
 @Service
 @Transactional(readOnly = true)
-class GetAccountService(private val accountRepository: AccountRepository) {
+class GetAccountService(private val accountQueryRepository: AccountQueryRepository) {
     fun getAccount(accountId: String, requesterId: String): GetAccountResult {
-        val account = accountRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+        val account = accountQueryRepository.findByAccountIdAndOwnerId(accountId, requesterId)
             ?: throw AccountNotFoundException(accountId)
         return GetAccountResult(/* ... */)
     }
 }
 ```
 
-`@Transactional(readOnly = true)`는 Query Service에서만 붙인다 — Hibernate가 dirty checking을 생략하고 읽기 전용 커넥션을 사용해 최적화한다. Kotlin 문법 자체는 Command/Query 어느 쪽이든 동일하며, `readOnly` 플래그 하나로 root의 "Repository는 Command에서만, Query 인터페이스는 Query에서만"이라는 구분을 대체로 표현한다 — 단, 이 예제는 별도의 읽기 전용 `AccountQuery` 인터페이스를 두지 않고 Query Service도 `AccountRepository`를 그대로 사용한다(아래 참고).
+`@Transactional(readOnly = true)`는 Query Service에서만 붙인다 — Hibernate가 dirty checking을 생략하고 읽기 전용 커넥션을 사용해 최적화한다. Kotlin 문법 자체는 Command/Query 어느 쪽이든 동일하며, Query Service는 `AccountRepository`(쓰기 모델)가 아니라 별도의 읽기 전용 `AccountQueryRepository` 인터페이스에 의존한다(아래 참고).
 
 ---
 
-## 알려진 차이 — 별도 Query 인터페이스 부재
+## 별도 Query 인터페이스 — `AccountQueryRepository`
 
-root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Aggregate 복원 없이 읽기 최적화 쿼리를 실행하기 위해서다. 이 저장소의 `GetAccountService`/`GetTransactionsService`는 `AccountRepository`를 그대로 재사용한다. Account 도메인처럼 읽기 모델이 Aggregate와 거의 동일하고 조회량이 많지 않은 경우 실용적인 단순화이지만, 읽기 전용 프로젝션이 필요해지면 `application/query/AccountQuery.kt`(interface) + `infrastructure/persistence/AccountQueryImpl.kt`로 분리하는 것이 root 원칙에 맞다.
+root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Query Service가 `save`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다.
+
+```kotlin
+// domain/AccountQueryRepository.kt — 실제 코드
+interface AccountQueryRepository {
+    fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
+    fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
+    fun countTransactions(accountId: String): Long
+}
+```
+
+`GetAccountService`/`GetTransactionsService`는 `AccountRepository`가 아니라 `AccountQueryRepository`를 생성자로 주입받는다. 구현체는 하나뿐이다 — `AccountRepositoryImpl`이 두 인터페이스를 모두 구현한다.
+
+```kotlin
+// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
+@Repository
+class AccountRepositoryImpl(/* ... */) : AccountRepository, AccountQueryRepository {
+    // findByAccountIdAndOwnerId / findTransactions / countTransactions 구현이
+    // AccountRepository와 AccountQueryRepository 양쪽 시그니처를 동시에 만족시킨다.
+}
+```
+
+Command Service(`CreateAccountService` 등)는 여전히 `AccountRepository`(쓰기 모델, `save`/`deleteAccount` 포함)를 주입받는다 — 물리적으로는 같은 구현체·같은 테이블이지만, 인터페이스 분리로 각 Service가 자신에게 필요한 메서드에만 접근할 수 있다. Aggregate 복원 없이 프로젝션 전용 쿼리를 실행하는 수준의 완전한 CQRS(별도 읽기 모델/저장소)까지는 아니지만, root가 요구하는 "Query Service는 Repository가 아닌 읽기 전용 인터페이스에 의존"이라는 핵심 원칙은 충족한다.
 
 ---
 
@@ -92,7 +114,7 @@ fun createAccount(
     createAccountService.create(CreateAccountCommand(requesterId, request.currency, request.email))
 ```
 
-Command/Query Bus가 없으므로 Controller가 Service를 생성자로 주입받아 직접 호출한다. 에러 변환은 `@ExceptionHandler`(→ [error-handling.md](error-handling.md))가 담당한다.
+Command/Query Bus가 없으므로 Controller가 Service를 생성자로 주입받아 직접 호출한다. 에러 변환은 Controller가 아니라 전역 `@RestControllerAdvice`(`common/GlobalExceptionHandler.kt`, → [error-handling.md](error-handling.md))가 담당한다.
 
 ---
 
