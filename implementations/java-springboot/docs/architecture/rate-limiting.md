@@ -123,6 +123,19 @@ public ResponseEntity<ErrorResponse> handleRateLimit(RequestNotPermitted e) {
 
 ---
 
+## 운영값 조정
+
+`resilience4j.ratelimiter.instances.createAccount`(위 `@RateLimiter` 애노테이션 값)는 `application.yml`에 있지만, Spring Boot의 relaxed binding 덕분에 **코드 변경·재컴파일 없이** 배포 시점에 override할 수 있다 — go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST` 환경 변수)·nestjs(`THROTTLE_*` 환경 변수)와 사실상 동급의 유연성이다.
+
+| 방법 | 예시 |
+|---|---|
+| 환경 변수 (relaxed binding) | `RESILIENCE4J_RATELIMITER_INSTANCES_CREATEACCOUNT_LIMITFORPERIOD=10` |
+| 프로파일별 yml | `application-prod.yml`에 `resilience4j.ratelimiter.instances.createAccount.limit-for-period: 10` 추가 후 `SPRING_PROFILES_ACTIVE=prod`로 기동 |
+| 커맨드라인 인자 | `java -jar app.jar --resilience4j.ratelimiter.instances.createAccount.limit-for-period=10` |
+| `SPRING_APPLICATION_JSON` | `SPRING_APPLICATION_JSON='{"resilience4j":{"ratelimiter":{"instances":{"createAccount":{"limit-for-period":10}}}}}'` |
+
+**알려진 비대칭 — `RateLimitFilter`의 전역 IP 제한(100건/분)은 위 방식이 통하지 않는다.** `RateLimitFilter`가 `RateLimiterRegistry`(스프링이 `application.yml`에서 조립하는 빈)를 쓰지 않고 `RateLimiterConfig.custom().limitForPeriod(100)...build()`를 필드에 직접 하드코딩하기 때문이다(위 "적용 지점" 코드 참고) — 이 값을 조정하려면 여전히 코드 변경 + 재배포가 필요하다. kotlin-springboot의 동급 필터(`RateLimitingFilter`)는 이미 `rateLimiterRegistry.rateLimiter("http-write"/"http-read")`로 `application.yml`의 named instance를 참조하도록 되어 있어 이 비대칭이 없다 — java 쪽만 `RateLimiterRegistry` 주입으로 전환하면 해소되는 격차이며, 아직 반영되지 않았다(#153에서 발견, 별도 후속 작업 필요).
+
 ## 원칙
 
 - **전역 + 엔드포인트별 이중 방어**: `Filter`로 IP 기준 전역 제한을 걸고, 쓰기 API(계좌 생성 등)처럼 민감한 엔드포인트는 `@RateLimiter` 애노테이션으로 더 엄격한 제한을 추가한다.
