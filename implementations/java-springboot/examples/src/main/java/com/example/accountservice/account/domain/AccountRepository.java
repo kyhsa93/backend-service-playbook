@@ -8,6 +8,7 @@ public interface AccountRepository {
     List<Account> findAll(AccountFindQuery query);
     long countAll(AccountFindQuery query);
     void save(Account account);
+    void delete(String accountId);
     List<Transaction> findTransactions(String accountId, int page, int take);
     long countTransactions(String accountId);
 }

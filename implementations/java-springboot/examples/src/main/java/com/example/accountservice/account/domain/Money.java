@@ -1,8 +1,9 @@
 package com.example.accountservice.account.domain;
 
-import jakarta.persistence.Embeddable;
-
-@Embeddable
+/**
+ * Value Object — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다.
+ * 영속성 매핑은 infrastructure/persistence/MoneyEmbeddable이 전담한다.
+ */
 public record Money(long amount, String currency) {
 
     public Money {

@@ -1,35 +1,22 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
-import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "transactions")
+/**
+ * Account Aggregate의 하위 Entity — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다.
+ * 영속성 매핑은 infrastructure/persistence/TransactionJpaEntity + TransactionMapper가 전담한다.
+ */
 public class Transaction {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
     private String transactionId;
-
-    @Column(nullable = false)
     private String accountId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private TransactionType type;
-
-    @Embedded
     private Money amount;
-
-    @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    protected Transaction() {}
+    private Transaction() {}
 
     static Transaction create(String accountId, TransactionType type, Money amount) {
         Transaction transaction = new Transaction();
@@ -38,6 +25,25 @@ public class Transaction {
         transaction.type = type;
         transaction.amount = amount;
         transaction.createdAt = LocalDateTime.now();
+        return transaction;
+    }
+
+    /**
+     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Transaction을 복원할 때 사용한다.
+     */
+    public static Transaction reconstitute(
+            String transactionId,
+            String accountId,
+            TransactionType type,
+            Money amount,
+            LocalDateTime createdAt
+    ) {
+        Transaction transaction = new Transaction();
+        transaction.transactionId = transactionId;
+        transaction.accountId = accountId;
+        transaction.type = type;
+        transaction.amount = amount;
+        transaction.createdAt = createdAt;
         return transaction;
     }
 

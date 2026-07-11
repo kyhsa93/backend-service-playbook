@@ -11,10 +11,10 @@ com.example.accountservice/
   AccountServiceApplication.java         # @SpringBootApplication 진입점
 
   account/
-    domain/                              # 프레임워크 무의존이어야 하는 레이어 (알려진 gap, layer-architecture.md 참고)
-      Account.java                       # Aggregate Root — 현재 @Entity 겸용
-      Transaction.java                   # 하위 Entity — 현재 @Entity 겸용
-      Money.java                         # Value Object — 현재 @Embeddable record
+    domain/                              # 프레임워크 무의존 순수 도메인 (layer-architecture.md 참고)
+      Account.java                       # Aggregate Root — 순수 객체, JPA 매핑은 AccountJpaEntity가 전담
+      Transaction.java                   # 하위 Entity — 순수 객체, JPA 매핑은 TransactionJpaEntity가 전담
+      Money.java                         # Value Object — 순수 record, JPA 매핑은 MoneyEmbeddable이 전담
       AccountStatus.java                 # 상태 enum
       TransactionType.java               # 거래 유형 enum
       AccountFindQuery.java              # 동적 조회 조건 record
@@ -35,16 +35,19 @@ com.example.accountservice/
         SuspendAccountService.java
         ReactivateAccountService.java
         CloseAccountService.java
+        DeleteAccountService.java        # soft delete — CLOSED 상태 계좌만 삭제
         CreateAccountCommand.java        # record
         DepositCommand.java
         WithdrawCommand.java
         SuspendAccountCommand.java
         ReactivateAccountCommand.java
         CloseAccountCommand.java
+        DeleteAccountCommand.java
         CreateAccountResult.java
         TransactionResult.java
       query/                             # 읽기 유스케이스
-        GetAccountService.java           # @Service @Transactional(readOnly = true)
+        AccountQueryRepository.java      # Query 인터페이스 — 쓰기용 AccountRepository와 별개 (cqrs-pattern.md 참고)
+        GetAccountService.java           # @Service @Transactional(readOnly = true) — AccountQueryRepository 사용
         GetTransactionsService.java
         GetAccountResult.java
         GetTransactionsResult.java
@@ -58,9 +61,14 @@ com.example.accountservice/
 
     infrastructure/
       persistence/
-        AccountJpaRepository.java        # JpaRepository<Account, Long> 확장
-        TransactionJpaRepository.java
-        AccountRepositoryImpl.java       # @Repository @Transactional — AccountRepository 구현체 (Outbox 저장 포함)
+        AccountJpaEntity.java            # domain.Account의 JPA 매핑 전용 대응물 — @Entity
+        TransactionJpaEntity.java        # domain.Transaction의 JPA 매핑 전용 대응물 — @Entity
+        MoneyEmbeddable.java             # domain.Money의 JPA 매핑 전용 대응물 — @Embeddable
+        AccountMapper.java               # Account ↔ AccountJpaEntity 변환 전담 (package-private)
+        TransactionMapper.java           # Transaction ↔ TransactionJpaEntity 변환 전담 (package-private)
+        AccountJpaRepository.java        # JpaRepository<AccountJpaEntity, Long> 확장
+        TransactionJpaRepository.java    # JpaRepository<TransactionJpaEntity, Long> 확장
+        AccountRepositoryImpl.java       # @Repository @Transactional — AccountRepository + AccountQueryRepository 구현체 (Outbox 저장 포함)
 
     interfaces/
       rest/
@@ -68,7 +76,7 @@ com.example.accountservice/
         CreateAccountRequest.java        # record — Interface DTO
         DepositRequest.java
         WithdrawRequest.java
-        ErrorResponse.java                # record — 현재 2필드 (알려진 gap, error-handling.md 참고)
+        ErrorResponse.java                # record — statusCode/code/message/error 4필드 (error-handling.md 참고)
 
   notification/                          # 두 번째 Bounded Context 예시 — Technical Service 패턴
     application/

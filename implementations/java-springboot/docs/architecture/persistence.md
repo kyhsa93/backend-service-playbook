@@ -55,7 +55,7 @@ public class NotificationServiceImpl implements NotificationService {
 
 ## Entity 공통 컬럼 — `createdAt`/`updatedAt`/`deletedAt`
 
-`Account`는 세 컬럼을 모두 갖는다:
+`Account`(domain, 순수 객체)와 이에 대응하는 `AccountJpaEntity`(infrastructure, JPA 매핑)는 세 컬럼을 모두 갖는다:
 
 ```java
 @Column(nullable = false)
@@ -72,7 +72,7 @@ private LocalDateTime deletedAt;
 
 ---
 
-## Soft Delete — 알려진 gap: `deletedAt`이 설정되지 않는다
+## Soft Delete — 실제 배선됨
 
 루트 원칙: 삭제는 hard delete가 아니라 `deletedAt` 타임스탬프를 기록하는 soft delete를 기본으로 사용하며, 조회 시 `deletedAt IS NULL`이 기본 적용되어야 한다.
 
@@ -81,42 +81,66 @@ private LocalDateTime deletedAt;
 ```java
 // AccountRepositoryImpl — 실제 코드, 조회는 올바르게 필터링됨
 Optional<Account> findByAccountIdAndOwnerId(...) {
-    return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId);
+    return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+            .map(AccountMapper::toDomain);
 }
 // buildJpql()도 항상 "WHERE a.deletedAt IS NULL"로 시작
 ```
 
-**하지만 `deletedAt`을 실제로 설정하는 코드가 어디에도 없다.** `Account.close()`는 `status = CLOSED`로 상태만 바꿀 뿐 삭제가 아니다 — "계좌 종료"(비즈니스 상태 전이)와 "레코드 삭제"(관리적 행위)는 서로 다른 개념인데, 후자에 대응하는 도메인 메서드나 Repository 메서드가 존재하지 않는다. `AccountRepository`에 `delete<Noun>` 메서드가 없다는 것은 [repository-pattern.md](repository-pattern.md)에서도 지적한 지점이다.
+**`deletedAt`을 실제로 설정하는 배선이 갖춰져 있다.** `Account.close()`는 `status = CLOSED`로 상태만 바꿀 뿐 삭제가 아니다 — "계좌 종료"(비즈니스 상태 전이)와 "레코드 삭제"(관리적 행위)는 서로 다른 개념이며, 각각 별도의 도메인 메서드/Repository 메서드/유스케이스로 구현되어 있다.
 
-### 올바른 배선 — Aggregate 메서드 + Repository 메서드 추가
+### 배선 — Aggregate 메서드 + Repository 메서드 + Application 유스케이스
 
 ```java
-// domain/Account.java — 추가 필요
+// domain/Account.java — 실제 코드
 public void delete() {
     if (this.status != AccountStatus.CLOSED) {
         throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "종료된 계좌만 삭제할 수 있습니다.");
+    }
+    if (this.deletedAt != null) {
+        throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED, "이미 삭제된 계좌입니다.");
     }
     this.deletedAt = LocalDateTime.now();
 }
 ```
 
 ```java
-// domain/AccountRepository.java — 추가 필요
+// domain/AccountRepository.java — 실제 코드
 void delete(String accountId);
 ```
 
 ```java
-// AccountRepositoryImpl — 추가 필요
+// AccountRepositoryImpl — 실제 코드
 @Override
+@Transactional
 public void delete(String accountId) {
-    jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(account -> {
-        account.delete();          // 도메인 메서드로 불변식 검증 후 deletedAt 설정
-        jpaRepository.save(account);
+    jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(entity -> {
+        Account account = AccountMapper.toDomain(entity);
+        account.delete();                          // 도메인 메서드로 불변식 검증 후 deletedAt 설정
+        AccountMapper.updateEntity(entity, account);
+        jpaRepository.save(entity);
     });
 }
 ```
 
-**하위 Entity도 함께 soft delete**: `Transaction`(하위 Entity)에도 `deletedAt`을 전파해야 한다면, `Account.delete()` 내부에서 `Transaction`들에도 삭제를 반영하거나, Repository가 명시적으로 순서를 처리한다. 현재 `Transaction`은 `deletedAt` 컬럼 자체가 없다 — 계좌 삭제 시 거래 내역까지 숨길지는 감사(audit) 요구사항에 따라 결정한다.
+```java
+// application/command/DeleteAccountService.java — 실제 코드
+@Service
+@RequiredArgsConstructor
+public class DeleteAccountService {
+    private final AccountRepository accountRepository;
+
+    public void delete(DeleteAccountCommand command) {
+        accountRepository.findByAccountIdAndOwnerId(command.accountId(), command.requesterId())
+                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+        accountRepository.delete(command.accountId());
+    }
+}
+```
+
+`AccountController`의 `DELETE /accounts/{accountId}`가 이 유스케이스를 호출한다. 소유권 확인(`findByAccountIdAndOwnerId`)은 Application 레이어에서, "CLOSED 상태만 삭제 가능"이라는 불변식 검증은 Domain 레이어(`Account.delete()`)에서 각각 담당한다.
+
+**하위 Entity도 함께 soft delete**: `Transaction`(하위 Entity)에도 `deletedAt`을 전파해야 한다면, `Account.delete()` 내부에서 `Transaction`들에도 삭제를 반영하거나, Repository가 명시적으로 순서를 처리해야 한다. 현재 `Transaction`은 `deletedAt` 컬럼 자체가 없다 — 계좌 삭제 시 거래 내역까지 숨길지는 감사(audit) 요구사항에 따라 결정할 사항으로, 이 저장소는 아직 거래 내역을 그대로 유지하는 쪽을 택하고 있다.
 
 ---
 
@@ -160,7 +184,7 @@ CREATE TABLE accounts (
 -- V2__create_transactions.sql, V3__create_outbox.sql, V4__create_sent_email.sql — 나머지 3개 테이블도 동일한 방식
 ```
 
-`amount`/`currency` 컬럼명에 `balance_`/`transaction amount` 같은 접두어가 없는 이유: `Account.balance`/`Transaction.amount` 모두 `@Embedded Money`이고 `@AttributeOverride`를 쓰지 않아 Hibernate가 `Money`의 필드명(`amount`, `currency`)을 그대로 컬럼명으로 쓴다. 두 테이블에 각각 있으므로 이름이 겹쳐도 문제는 없지만, 이 마이그레이션은 (아직 고치지 않은) 기존 스키마를 있는 그대로 옮겨 담은 것이다.
+`amount`/`currency` 컬럼명에 `balance_`/`transaction amount` 같은 접두어가 없는 이유: `AccountJpaEntity.balance`/`TransactionJpaEntity.amount`(infrastructure) 모두 `@Embedded MoneyEmbeddable`이고 `@AttributeOverride`를 쓰지 않아 Hibernate가 `MoneyEmbeddable`의 필드명(`amount`, `currency`)을 그대로 컬럼명으로 쓴다. 두 테이블에 각각 있으므로 이름이 겹쳐도 문제는 없다.
 
 `ddl-auto: validate`는 Hibernate가 스키마를 변경하지 않고 엔티티 매핑과 실제 스키마가 일치하는지만 검사한다 — 불일치 시 기동이 실패하므로(fail-fast), 마이그레이션 누락을 배포 전에 잡아낸다. 실제로 빈 DB에 앱을 기동해 Flyway가 4개 마이그레이션을 자동 적용하고 `ddl-auto: validate`가 통과하는 것까지 확인함.
 
@@ -174,12 +198,12 @@ CREATE TABLE accounts (
 |---|---|
 | 트랜잭션은 컨텍스트-로컬로 암묵 전파 | `@Transactional` AOP 프록시로 대체 — 준수 |
 | `REQUIRES_NEW`로 부수 효과 격리 | `NotificationServiceImpl.sendEmail()` — 준수 |
-| 모든 테이블에 `createdAt`/`updatedAt`/`deletedAt` | `Account`는 3컬럼 모두 보유 — 준수 |
-| 삭제는 기본적으로 soft delete | `deletedAt` 컬럼은 있으나 실제로 설정하는 코드 없음 — **위반 (알려진 gap)** |
+| 모든 테이블에 `createdAt`/`updatedAt`/`deletedAt` | `Account`/`AccountJpaEntity`는 3컬럼 모두 보유 — 준수 |
+| 삭제는 기본적으로 soft delete | `Account.delete()` + `AccountRepository.delete()` + `DeleteAccountService`로 배선됨 — 준수 |
 | 스키마 변경은 마이그레이션으로 관리 | Flyway(`db/migration/`) + `ddl-auto: validate` — 준수 |
 
 ### 관련 문서
 
-- [repository-pattern.md](repository-pattern.md) — Repository의 `delete<Noun>` 메서드 부재
+- [repository-pattern.md](repository-pattern.md) — Repository의 `delete<Noun>` 메서드
 - [domain-events.md](domain-events.md) — Outbox 저장도 같은 트랜잭션에서 처리
 - [config.md](config.md) — 환경별 `ddl-auto` 분기

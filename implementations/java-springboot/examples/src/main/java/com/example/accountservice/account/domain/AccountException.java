@@ -13,7 +13,9 @@ public class AccountException extends RuntimeException {
         SUSPEND_REQUIRES_ACTIVE_ACCOUNT,
         REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT,
         ACCOUNT_ALREADY_CLOSED,
-        ACCOUNT_BALANCE_NOT_ZERO
+        ACCOUNT_BALANCE_NOT_ZERO,
+        ACCOUNT_NOT_CLOSABLE_FOR_DELETE,
+        ACCOUNT_ALREADY_DELETED
     }
 
     private final ErrorCode code;
