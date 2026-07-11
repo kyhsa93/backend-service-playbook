@@ -74,6 +74,9 @@ class NotificationE2ETest {
             registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
             registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
+            // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
+            // rate limiting 자체가 아니라 알림 발송 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+            registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
         @BeforeAll

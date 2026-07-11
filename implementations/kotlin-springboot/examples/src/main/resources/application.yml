@@ -36,3 +36,15 @@ aws:
 
 ses:
   sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
+
+resilience4j:
+  ratelimiter:
+    instances:
+      http-write:
+        limit-for-period: 10
+        limit-refresh-period: 60s
+        timeout-duration: 0s
+      http-read:
+        limit-for-period: 100
+        limit-refresh-period: 60s
+        timeout-duration: 0s
