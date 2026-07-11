@@ -1,0 +1,27 @@
+name: nestjs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'implementations/nestjs/**'
+  pull_request:
+    paths:
+      - 'implementations/nestjs/**'
+
+jobs:
+  nestjs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: implementations/nestjs/examples
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:e2e
+      - run: cd ../harness && npm ci && npm run evaluate -- ../examples
