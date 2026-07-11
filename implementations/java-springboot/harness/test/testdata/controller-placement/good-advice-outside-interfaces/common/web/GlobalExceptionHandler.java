@@ -1,0 +1,3 @@
+@RestControllerAdvice
+class GlobalExceptionHandler {
+}

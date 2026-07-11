@@ -36,3 +36,11 @@ ses:
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
+
+resilience4j:
+  ratelimiter:
+    instances:
+      createAccount:
+        limit-for-period: 5
+        limit-refresh-period: 1m
+        timeout-duration: 0

@@ -36,6 +36,7 @@ public class AccountController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @io.github.resilience4j.ratelimiter.annotation.RateLimiter(name = "createAccount")
     public CreateAccountResult createAccount(
             Authentication authentication,
             @Valid @RequestBody CreateAccountRequest request

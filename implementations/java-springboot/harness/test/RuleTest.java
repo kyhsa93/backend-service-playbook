@@ -64,6 +64,7 @@ public final class RuleTest {
 
         new TestCase("controller-placement/good", () -> assertNoFailures(ControllerPlacement.check("testdata/controller-placement/good"))),
         new TestCase("controller-placement/bad-outside-interfaces", () -> assertHasFailure(ControllerPlacement.check("testdata/controller-placement/bad-outside-interfaces"))),
+        new TestCase("controller-placement/good-advice-outside-interfaces", () -> assertNoFailures(ControllerPlacement.check("testdata/controller-placement/good-advice-outside-interfaces"))),
 
         new TestCase("package-structure/good", () -> assertNoFailures(PackageStructure.check("testdata/package-structure/good"))),
         new TestCase("package-structure/bad-missing-layer", () -> assertHasFailure(PackageStructure.check("testdata/package-structure/bad-missing-layer"))),

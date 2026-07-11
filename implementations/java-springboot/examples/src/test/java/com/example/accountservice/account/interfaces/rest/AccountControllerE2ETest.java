@@ -38,6 +38,9 @@ class AccountControllerE2ETest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.flyway.enabled", () -> "false");
+        // 이 테스트는 같은 클라이언트(IP)로 계좌 생성을 반복 호출한다 — 운영값(5/min, rate-limiting.md)을
+        // 그대로 쓰면 rate limiting에 걸려 429가 섞여 나온다. 테스트 목적에 맞게 한도를 완화한다.
+        registry.add("resilience4j.ratelimiter.instances.createAccount.limit-for-period", () -> "1000");
     }
 
     @Autowired
