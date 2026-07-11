@@ -1,20 +1,20 @@
 package com.example.accountservice.auth.infrastructure
 
+import com.example.accountservice.config.JwtProperties
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
-class JwtAuthenticationFilter(@Value("\${jwt.secret}") secret: String) : OncePerRequestFilter() {
+class JwtAuthenticationFilter(jwtProperties: JwtProperties) : OncePerRequestFilter() {
 
-    private val key = Keys.hmacShaKeyFor(secret.toByteArray())
+    private val key = Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray())
 
     override fun doFilterInternal(
         request: HttpServletRequest,
