@@ -57,7 +57,7 @@ bash implementations/java-springboot/harness.sh <projectRoot>
 | `controller-placement` | `ControllerPlacement.java` | `@RestController` → `interfaces/` |
 | `package-structure` | `PackageStructure.java` | `domain/` 형제로 `application/{command,query}`, `infrastructure/`, `interfaces/` 존재 |
 | `shared-infra` | `SharedInfra.java` | `OutboxRelay` 참조 시 `outbox/`에 `OutboxWriter.java`/`OutboxRelay.java` 존재 확인, `*TaskQueue*` 참조 시 `task-queue/` 배치 확인 |
-| `event-placement` | `EventPlacement.java` | `*EventHandler`/`*IntegrationEvent`/`@EventListener` → `application/event/`(또는 integration-event); `outbox/` 안의 `*EventHandler`는 Outbox 디스패치 계약으로 예외 허용 |
+| `event-placement` | `EventPlacement.java` | `*EventHandler`/`@EventListener` → `application/event/`; `*IntegrationEvent`(`V1`/`V2`… 버전 접미사 허용) → `application/integrationevent/`; `outbox/` 안의 `*EventHandler`는 Outbox 디스패치 계약으로 예외 허용 |
 | `no-event-publisher-in-command` | `NoEventPublisherInCommand.java` | Command Service가 `ApplicationEventPublisher`/`@EventListener`/`publishEvent()`를 쓰면 실패 — Outbox 경유해야 함 |
 | `transaction-boundary` | `TransactionBoundary.java` | Command Service에 `@Transactional`이 없고, Outbox를 저장하는 `*RepositoryImpl`에는 있는지 확인 |
 | `outbox-drain-order` | `OutboxDrainOrder.java` | `OutboxRelay`를 참조하는 Command Service가 `save(...)` 호출 뒤에 `processPending(...)`을 호출하는지(순서 포함) — domain-events.md의 핵심 불변식 |

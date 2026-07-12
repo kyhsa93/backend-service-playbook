@@ -77,6 +77,8 @@ public final class RuleTest {
         new TestCase("event-placement/good", () -> assertNoFailures(EventPlacement.check("testdata/event-placement/good"))),
         new TestCase("event-placement/bad-wrong-dir", () -> assertHasFailure(EventPlacement.check("testdata/event-placement/bad-wrong-dir"))),
         new TestCase("event-placement/good-outbox-exempt", () -> assertNoFailures(EventPlacement.check("testdata/event-placement/good-outbox-exempt"))),
+        new TestCase("event-placement/good-integration-event", () -> assertNoFailures(EventPlacement.check("testdata/event-placement/good-integration-event"))),
+        new TestCase("event-placement/bad-integration-event-wrong-dir", () -> assertHasFailure(EventPlacement.check("testdata/event-placement/bad-integration-event-wrong-dir"))),
 
         new TestCase("no-event-publisher-in-command/good", () -> assertNoFailures(NoEventPublisherInCommand.check("testdata/no-event-publisher-in-command/good"))),
         new TestCase("no-event-publisher-in-command/bad-has-publisher", () -> assertHasFailure(NoEventPublisherInCommand.check("testdata/no-event-publisher-in-command/bad-has-publisher"))),

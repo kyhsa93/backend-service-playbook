@@ -38,13 +38,13 @@ public final class EventPlacement {
                 } else {
                     result.add(Finding.fail(rel, "EventHandler는 application/event/(도메인별 핸들러) 또는 outbox/(Outbox 디스패치 계약) 패키지 안에 있어야 함"));
                 }
-            } else if (name.endsWith("IntegrationEvent")) {
+            } else if (name.matches(".*IntegrationEvent(V\\d+)?$")) {
                 found = true;
                 reported.add(f.getPath());
-                if (pathContains(f, "/application/integration-event/")) {
+                if (pathContains(f, "/application/integrationevent/")) {
                     result.add(Finding.pass(rel + " (IntegrationEvent)"));
                 } else {
-                    result.add(Finding.fail(rel, "IntegrationEvent는 application/integration-event/ 패키지 안에 있어야 함"));
+                    result.add(Finding.fail(rel, "IntegrationEvent는 application/integrationevent/ 패키지 안에 있어야 함"));
                 }
             }
         }
