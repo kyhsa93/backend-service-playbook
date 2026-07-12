@@ -1,0 +1,7 @@
+{
+  "name": "database-queries",
+  "applicable": true,
+  "expectedFailureRuleIds": [
+    "database-queries.base-entity-missing"
+  ]
+}

@@ -1,10 +1,9 @@
-import {
-  Column, CreateDateColumn, DeleteDateColumn, Entity,
-  PrimaryColumn, UpdateDateColumn
-} from 'typeorm'
+import { Column, Entity, PrimaryColumn } from 'typeorm'
+
+import { BaseEntity } from '@/database/base.entity'
 
 @Entity('account')
-export class AccountEntity {
+export class AccountEntity extends BaseEntity {
   @PrimaryColumn({ type: 'char', length: 32 })
   accountId: string
 
@@ -22,13 +21,4 @@ export class AccountEntity {
 
   @Column()
   status: string
-
-  @CreateDateColumn()
-  createdAt: Date
-
-  @UpdateDateColumn()
-  updatedAt: Date
-
-  @DeleteDateColumn()
-  deletedAt: Date | null
 }

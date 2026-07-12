@@ -1,19 +1,12 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm'
+import { Column, Entity, PrimaryColumn } from 'typeorm'
+
+import { BaseEntity } from '@/database/base.entity'
 
 @Entity('orders')
-export class OrderEntity {
+export class OrderEntity extends BaseEntity {
   @PrimaryColumn({ type: 'char', length: 32 })
   id: string
 
   @Column()
   userId: string
-
-  @CreateDateColumn()
-  createdAt: Date
-
-  @UpdateDateColumn()
-  updatedAt: Date
-
-  @DeleteDateColumn()
-  deletedAt: Date | null
 }
