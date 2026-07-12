@@ -15,7 +15,7 @@ public class CreateAccountService {
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
-        accountRepository.save(account);
+        accountRepository.saveAccount(account);
         outboxRelay.processPending();
         return new CreateAccountResult(
                 account.getAccountId(),

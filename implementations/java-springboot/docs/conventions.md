@@ -152,18 +152,19 @@ public Account(String accountId, Money balance, AccountStatus status) { ... }
 
 ### `Optional<T>` — 단건 조회의 부재 표현
 
-```java
-// 올바른 방식 — Repository/Query 단건 조회는 Optional로 부재를 표현
-Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId);
+Repository는 단건 전용 메서드를 따로 두지 않는다(repository-pattern.md 참고) — `findAccounts`를 `take: 1`로 호출한 뒤 `Stream.findFirst()`로 `Optional`을 얻는다:
 
-// 호출 측
-Account account = accountRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+```java
+// 올바른 방식 — take:1 + findFirst()로 Optional을 얻어 부재를 표현
+Account account = accountRepository
+        .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+        .accounts().stream().findFirst()
         .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
 ```
 
 ```java
 // 잘못된 방식 — null을 그대로 반환해 호출부마다 null 체크를 반복시킴
-Account findByAccountIdAndOwnerId(String accountId, String ownerId);   // null 반환 가능
+Account findFirstOrNull(AccountFindQuery query);   // null 반환 가능
 ```
 
 ### `var` 사용 범위 — 지역 변수에 한정
@@ -304,10 +305,10 @@ public TransactionResult deposit(
 
 ### Repository 메서드 네이밍
 
-- 조회: `find<Noun>` / `find<Noun>s` / `findAll(<Query>)` — Spring Data 파생 쿼리 관례(`findByAccountIdAndOwnerId`)와 자연스럽게 결합된다.
-- 저장: `save<Noun>` 또는 `save`
+- 조회: `find<Noun>s`(복수형) 하나로 통일 — 단건 조회도 `take: 1` + `Stream.findFirst()`로 이 메서드를 재사용한다(`repository-pattern.md` 참고). Spring Data 파생 쿼리(`findBy...`)는 `AccountJpaRepository`(infrastructure 내부 전용) 레벨에서만 쓴다.
+- 저장: `save<Noun>`(예: `saveAccount`)
 - 삭제: `delete<Noun>` — soft delete로 구현 (`repository-pattern.md` 참고)
-- `update<Noun>` 메서드는 두지 않는다 — 조회 후 Aggregate 도메인 메서드로 상태를 바꾸고 `save`로 저장한다.
+- `update<Noun>` 메서드는 두지 않는다 — 조회 후 Aggregate 도메인 메서드로 상태를 바꾸고 `save<Noun>`으로 저장한다.
 
 ### Aggregate 도메인 메서드
 
@@ -441,7 +442,7 @@ public CreateAccountResult create(CreateAccountCommand command) {
     // Aggregate 생성 (불변식은 생성자/팩토리에서 검증)
     Account account = Account.create(command.ownerId(), command.email(), command.currency());
     // 저장 (Outbox 포함, 같은 트랜잭션)
-    accountRepository.save(account);
+    accountRepository.saveAccount(account);
     return new CreateAccountResult(account.getAccountId(), account.getOwnerId(), account.getBalance().amount(), account.getBalance().currency());
 }
 ```

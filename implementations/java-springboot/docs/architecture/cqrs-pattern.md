@@ -16,7 +16,7 @@ public class CreateAccountService {
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
-        accountRepository.save(account);   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        accountRepository.saveAccount(account);   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
         outboxRelay.processPending();       // 커밋 직후 동기 드레인 — domain-events.md 참고
         return new CreateAccountResult(...);
     }
@@ -32,7 +32,9 @@ public class GetAccountService {
     private final AccountQuery accountQuery;
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQuery
+                .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(...);
     }
@@ -54,9 +56,8 @@ Command Service가 Aggregate에 로직을 위임(`Account.create()`)하고 스�
 ```java
 // application/query/AccountQuery.java — Query 인터페이스, 실제 코드
 public interface AccountQuery {
-    Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId);
-    List<Transaction> findTransactions(String accountId, int page, int take);
-    long countTransactions(String accountId);
+    AccountsWithCount findAccounts(AccountFindQuery query);
+    TransactionsWithCount findTransactions(String accountId, int page, int take);
 }
 ```
 
@@ -69,7 +70,9 @@ public class GetAccountService {
     private final AccountQuery accountQuery;   // 좁은 읽기 전용 인터페이스
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQuery
+                .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(/* ... */);
     }
@@ -85,16 +88,16 @@ public class GetTransactionsService {
     private final AccountQuery accountQuery;   // GetAccountService와 동일한 좁은 인터페이스
 
     public GetTransactionsResult getTransactions(String accountId, String requesterId, int page, int take) {
-        accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+        accountQuery.findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
-        List<Transaction> transactions = accountQuery.findTransactions(accountId, page, take);
-        long count = accountQuery.countTransactions(accountId);
-        return new GetTransactionsResult(/* ... */, count);
+        TransactionsWithCount result = accountQuery.findTransactions(accountId, page, take);
+        return new GetTransactionsResult(/* ... */, result.count());
     }
 }
 ```
 
-`AccountRepositoryImpl`(infrastructure)이 `AccountRepository`(domain, 쓰기)와 `AccountQuery`(application, 읽기)를 **모두** 구현한다 — 별도의 Query 전용 구현 클래스를 새로 만들지 않고, 기존 구현체가 두 인터페이스의 교차점(`findByAccountIdAndOwnerId`/`findTransactions`/`countTransactions`)을 공유한다:
+`AccountRepositoryImpl`(infrastructure)이 `AccountRepository`(domain, 쓰기)와 `AccountQuery`(application, 읽기)를 **모두** 구현한다 — 별도의 Query 전용 구현 클래스를 새로 만들지 않고, 기존 구현체가 두 인터페이스의 교차점(`findAccounts`/`findTransactions`)을 공유한다:
 
 ```java
 // infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
@@ -102,19 +105,18 @@ public class GetTransactionsService {
 @RequiredArgsConstructor
 public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     @Override
-    public Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId) {
-        return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-                .map(AccountMapper::toDomain);
+    public AccountsWithCount findAccounts(AccountFindQuery query) {
+        // buildJpql()로 목록/개수 JPQL을 조립해 실행 — repository-pattern.md "동적 필터 패턴" 참고
     }
-    // ... AccountRepository의 나머지 쓰기 메서드(save/delete 등)
+    // ... AccountRepository의 나머지 쓰기 메서드(saveAccount/delete 등)
 }
 ```
 
-DI는 Spring이 주입 지점의 선언 타입으로 알아서 구분한다 — `GetAccountService`/`GetTransactionsService`가 `AccountQuery` 타입으로 주입받으면, 이 인터페이스를 구현하는 유일한 빈(`AccountRepositoryImpl`)이 연결되지만 `save`/`delete` 같은 쓰기 메서드는 애초에 `AccountQuery` 타입에 노출되지 않으므로 두 Query Service는 컴파일 타임에 그 메서드들을 호출할 수 없다.
+DI는 Spring이 주입 지점의 선언 타입으로 알아서 구분한다 — `GetAccountService`/`GetTransactionsService`가 `AccountQuery` 타입으로 주입받으면, 이 인터페이스를 구현하는 유일한 빈(`AccountRepositoryImpl`)이 연결되지만 `saveAccount`/`delete` 같은 쓰기 메서드는 애초에 `AccountQuery` 타입에 노출되지 않으므로 두 Query Service는 컴파일 타임에 그 메서드들을 호출할 수 없다.
 
 **이렇게 분리하는 이유:**
 - `AccountRepository`(쓰기)에 변경이 생겨도(예: 저장 방식 변경) `AccountQuery`의 계약 자체는 영향받지 않는다 — 결합도 감소.
-- Query Service를 mock 테스트할 때 쓰기 메서드(`save`/`delete`)가 없는 좁은 인터페이스만 mock하면 되어 [testing.md](testing.md)의 Application 단위 테스트가 더 명확해진다.
+- Query Service를 mock 테스트할 때 쓰기 메서드(`saveAccount`/`delete`)가 없는 좁은 인터페이스만 mock하면 되어 [testing.md](testing.md)의 Application 단위 테스트가 더 명확해진다.
 - `harness/src/rules/CqrsQueryPurity.java`(`cqrs-query-purity` 규칙)가 `application/query/` 하위 파일에서 쓰기용 Repository 타입 참조를 자동으로 잡아낸다 — nestjs harness의 `cqrs-pattern` evaluator를 이식한 규칙이다. 그 전에는 harness의 `package-structure` 검사가 `application/query` 디렉토리 존재 여부만 확인해 이 종류의 위반을 스스로 잡아내지 못했다.
 
 ### 확장 패턴 — projection 전용 구현체가 필요해지면
@@ -129,7 +131,7 @@ public class AccountQueryImpl implements AccountQuery {
     private final EntityManager em;
 
     @Override
-    public Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId) {
+    public AccountsWithCount findAccounts(AccountFindQuery query) {
         // projection 쿼리로 필요한 컬럼만 조회 후 Account.reconstitute()로 조립하는 방식도 가능
     }
 }

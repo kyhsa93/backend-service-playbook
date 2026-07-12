@@ -48,6 +48,7 @@ public interface AccountAdapter {
 package com.example.accountservice.card.infrastructure;
 
 import com.example.accountservice.account.application.query.AccountQuery;
+import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountStatus;
 import com.example.accountservice.card.application.adapter.AccountAdapter;
 import lombok.RequiredArgsConstructor;
@@ -63,7 +64,8 @@ public class AccountAdapterImpl implements AccountAdapter {
 
     @Override
     public Optional<AccountView> findAccount(String accountId, String ownerId) {
-        return accountQuery.findByAccountIdAndOwnerId(accountId, ownerId)
+        return accountQuery.findAccounts(new AccountFindQuery(0, 1, accountId, ownerId, null))
+                .accounts().stream().findFirst()
                 .map(account -> new AccountView(account.getAccountId(), account.getStatus() == AccountStatus.ACTIVE));
     }
 }
@@ -106,7 +108,7 @@ public class IssueCardService {
 ### 왜 인터페이스가 필요한가
 
 - **의존 방향 오염 방지**: Card BC의 Application 레이어가 Account BC의 구체 타입을 import하면, Account BC 내부 구조 변경이 Card BC의 컴파일을 깨뜨린다. `AccountAdapter` 인터페이스가 이 결합을 끊는다.
-- **불필요한 노출 차단**: `AccountQuery`가 갖는 메서드 중 Card BC가 필요한 것은 1개(`findByAccountIdAndOwnerId`)뿐이다. Adapter 인터페이스는 그 1개만 노출한다.
+- **불필요한 노출 차단**: `AccountQuery`가 갖는 메서드 중 Card BC가 필요한 것은 1개(`findAccounts`, `take: 1`로 단건 조회)뿐이다. Adapter 인터페이스는 그 1개만 노출한다.
 - **테스트 격리**: `AccountAdapter`를 mock하면 Account BC(및 그 Repository, DB 접근)를 부팅하지 않고도 Card BC 단위 테스트가 가능하다.
 
 ---

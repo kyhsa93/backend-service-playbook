@@ -48,7 +48,7 @@ com.example.accountservice/
       query/                             # 읽기 유스케이스
         AccountQuery.java                # Query 인터페이스 — 쓰기용 AccountRepository와 별개 (cqrs-pattern.md 참고)
         GetAccountService.java           # @Service @Transactional(readOnly = true) — AccountQuery 사용
-        GetTransactionsService.java      # AccountQuery 사용 (findTransactions/countTransactions)
+        GetTransactionsService.java      # AccountQuery 사용 (findTransactions — 목록+개수 병합 반환)
         GetAccountResult.java
         GetTransactionsResult.java
       event/                             # Outbox가 드레인한 이벤트를 처리하는 Handler

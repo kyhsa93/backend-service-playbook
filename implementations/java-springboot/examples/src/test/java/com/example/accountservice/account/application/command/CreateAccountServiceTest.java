@@ -34,7 +34,7 @@ class CreateAccountServiceTest {
 
         assertThat(result.ownerId()).isEqualTo("owner-1");
         assertThat(result.balance().amount()).isEqualTo(0);
-        verify(accountRepository).save(any());
+        verify(accountRepository).saveAccount(any());
     }
 
     @Test

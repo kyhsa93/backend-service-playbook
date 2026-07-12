@@ -1,7 +1,9 @@
 package com.example.accountservice.account.application.query;
 
 import com.example.accountservice.account.domain.AccountException;
+import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.account.domain.TransactionsWithCount;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,11 +18,13 @@ public class GetTransactionsService {
     private final AccountQuery accountQuery;
 
     public GetTransactionsResult getTransactions(String accountId, String requesterId, int page, int take) {
-        accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+        accountQuery.findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
 
-        List<Transaction> transactions = accountQuery.findTransactions(accountId, page, take);
-        long count = accountQuery.countTransactions(accountId);
+        TransactionsWithCount result = accountQuery.findTransactions(accountId, page, take);
+        List<Transaction> transactions = result.transactions();
+        long count = result.count();
 
         List<GetTransactionsResult.TransactionSummary> summaries = transactions.stream()
                 .map(t -> new GetTransactionsResult.TransactionSummary(

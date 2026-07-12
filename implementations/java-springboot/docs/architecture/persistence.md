@@ -80,11 +80,9 @@ private LocalDateTime deletedAt;
 
 ```java
 // AccountRepositoryImpl — 실제 코드, 조회는 올바르게 필터링됨
-Optional<Account> findByAccountIdAndOwnerId(...) {
-    return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-            .map(AccountMapper::toDomain);
+AccountsWithCount findAccounts(AccountFindQuery query) {
+    // buildJpql()이 항상 "WHERE a.deletedAt IS NULL"로 시작 — 단건 조회도 take:1로 이 메서드를 재사용(repository-pattern.md)
 }
-// buildJpql()도 항상 "WHERE a.deletedAt IS NULL"로 시작
 ```
 
 **`deletedAt`을 실제로 설정하는 배선이 갖춰져 있다.** `Account.close()`는 `status = CLOSED`로 상태만 바꿀 뿐 삭제가 아니다 — "계좌 종료"(비즈니스 상태 전이)와 "레코드 삭제"(관리적 행위)는 서로 다른 개념이며, 각각 별도의 도메인 메서드/Repository 메서드/유스케이스로 구현되어 있다.
@@ -131,14 +129,16 @@ public class DeleteAccountService {
     private final AccountRepository accountRepository;
 
     public void delete(DeleteAccountCommand command) {
-        accountRepository.findByAccountIdAndOwnerId(command.accountId(), command.requesterId())
+        accountRepository
+                .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         accountRepository.delete(command.accountId());
     }
 }
 ```
 
-`AccountController`의 `DELETE /accounts/{accountId}`가 이 유스케이스를 호출한다. 소유권 확인(`findByAccountIdAndOwnerId`)은 Application 레이어에서, "CLOSED 상태만 삭제 가능"이라는 불변식 검증은 Domain 레이어(`Account.delete()`)에서 각각 담당한다.
+`AccountController`의 `DELETE /accounts/{accountId}`가 이 유스케이스를 호출한다. 소유권 확인(`findAccounts`를 `take: 1`로 호출)은 Application 레이어에서, "CLOSED 상태만 삭제 가능"이라는 불변식 검증은 Domain 레이어(`Account.delete()`)에서 각각 담당한다.
 
 **하위 Entity도 함께 soft delete**: `Transaction`(하위 Entity)에도 `deletedAt`을 전파해야 한다면, `Account.delete()` 내부에서 `Transaction`들에도 삭제를 반영하거나, Repository가 명시적으로 순서를 처리해야 한다. 현재 `Transaction`은 `deletedAt` 컬럼 자체가 없다 — 계좌 삭제 시 거래 내역까지 숨길지는 감사(audit) 요구사항에 따라 결정할 사항으로, 이 저장소는 아직 거래 내역을 그대로 유지하는 쪽을 택하고 있다.
 

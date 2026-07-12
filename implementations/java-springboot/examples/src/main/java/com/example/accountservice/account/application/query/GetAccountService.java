@@ -2,6 +2,7 @@ package com.example.accountservice.account.application.query;
 
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountException;
+import com.example.accountservice.account.domain.AccountFindQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +15,9 @@ public class GetAccountService {
     private final AccountQuery accountQuery;
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQuery
+                .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(
                 account.getAccountId(),

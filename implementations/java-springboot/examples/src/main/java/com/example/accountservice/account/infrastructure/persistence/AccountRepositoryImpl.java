@@ -5,7 +5,9 @@ import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.AccountStatus;
+import com.example.accountservice.account.domain.AccountsWithCount;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.account.domain.TransactionsWithCount;
 import com.example.accountservice.outbox.OutboxWriter;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -15,7 +17,6 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -27,32 +28,25 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     private final EntityManager em;
 
     @Override
-    public Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId) {
-        return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-                .map(AccountMapper::toDomain);
-    }
-
-    @Override
-    public List<Account> findAll(AccountFindQuery query) {
-        String jpql = buildJpql(query, false);
-        var q = em.createQuery(jpql, AccountJpaEntity.class)
+    public AccountsWithCount findAccounts(AccountFindQuery query) {
+        String listJpql = buildJpql(query, false);
+        var listQuery = em.createQuery(listJpql, AccountJpaEntity.class)
                 .setFirstResult(query.page() * query.take())
                 .setMaxResults(query.take());
-        applyParams(q, query);
-        return q.getResultList().stream().map(AccountMapper::toDomain).toList();
-    }
+        applyParams(listQuery, query);
+        List<Account> accounts = listQuery.getResultList().stream().map(AccountMapper::toDomain).toList();
 
-    @Override
-    public long countAll(AccountFindQuery query) {
-        String jpql = buildJpql(query, true);
-        var q = em.createQuery(jpql, Long.class);
-        applyParams(q, query);
-        return q.getSingleResult();
+        String countJpql = buildJpql(query, true);
+        var countQuery = em.createQuery(countJpql, Long.class);
+        applyParams(countQuery, query);
+        long count = countQuery.getSingleResult();
+
+        return new AccountsWithCount(accounts, count);
     }
 
     @Override
     @Transactional
-    public void save(Account account) {
+    public void saveAccount(Account account) {
         AccountJpaEntity entity = jpaRepository.findByAccountId(account.getAccountId())
                 .map(existing -> AccountMapper.updateEntity(existing, account))
                 .orElseGet(() -> AccountMapper.toNewEntity(account));
@@ -78,14 +72,12 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     }
 
     @Override
-    public List<Transaction> findTransactions(String accountId, int page, int take) {
-        return transactionJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))
+    public TransactionsWithCount findTransactions(String accountId, int page, int take) {
+        List<Transaction> transactions = transactionJpaRepository
+                .findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))
                 .stream().map(TransactionMapper::toDomain).toList();
-    }
-
-    @Override
-    public long countTransactions(String accountId) {
-        return transactionJpaRepository.countByAccountId(accountId);
+        long count = transactionJpaRepository.countByAccountId(accountId);
+        return new TransactionsWithCount(transactions, count);
     }
 
     private String buildJpql(AccountFindQuery query, boolean count) {

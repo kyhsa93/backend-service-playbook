@@ -1,6 +1,7 @@
 package com.example.accountservice.card.infrastructure;
 
 import com.example.accountservice.account.application.query.AccountQuery;
+import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountStatus;
 import com.example.accountservice.card.application.adapter.AccountAdapter;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,8 @@ public class AccountAdapterImpl implements AccountAdapter {
 
     @Override
     public Optional<AccountView> findAccount(String accountId, String ownerId) {
-        return accountQuery.findByAccountIdAndOwnerId(accountId, ownerId)
+        return accountQuery.findAccounts(new AccountFindQuery(0, 1, accountId, ownerId, null))
+                .accounts().stream().findFirst()
                 .map(account -> new AccountView(account.getAccountId(), account.getStatus() == AccountStatus.ACTIVE));
     }
 }

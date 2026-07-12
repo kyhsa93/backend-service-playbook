@@ -2,6 +2,7 @@ package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountException;
+import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
@@ -15,10 +16,12 @@ public class ReactivateAccountService {
     private final OutboxRelay outboxRelay;
 
     public void reactivate(ReactivateAccountCommand command) {
-        Account account = accountRepository.findByAccountIdAndOwnerId(command.accountId(), command.requesterId())
+        Account account = accountRepository
+                .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         account.reactivate();
-        accountRepository.save(account);
+        accountRepository.saveAccount(account);
         outboxRelay.processPending();
     }
 }

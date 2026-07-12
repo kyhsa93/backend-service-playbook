@@ -86,14 +86,13 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     private final AccountJpaRepository jpaRepository;
 
     @Override
-    public Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId) {
-        return jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-                .map(AccountMapper::toDomain);   // 매핑은 여기서만
+    public AccountsWithCount findAccounts(AccountFindQuery query) {
+        // EntityManager로 조립한 JPQL 실행 후 AccountMapper::toDomain으로 매핑 — 매핑은 여기서만
     }
 
     @Override
     @Transactional
-    public void save(Account account) {
+    public void saveAccount(Account account) {
         AccountJpaEntity entity = jpaRepository.findByAccountId(account.getAccountId())
                 .map(existing -> AccountMapper.updateEntity(existing, account))   // 기존 row는 PK 보존하며 갱신
                 .orElseGet(() -> AccountMapper.toNewEntity(account));             // 신규는 PK 없이 insert
@@ -124,7 +123,7 @@ public class CreateAccountService {
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
-        accountRepository.save(account);      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션(persistence.md 참고)
+        accountRepository.saveAccount(account);      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션(persistence.md 참고)
         outboxRelay.processPending();          // 커밋 직후 동기적으로 Outbox 드레인 — domain-events.md 참고
         return new CreateAccountResult(/* ... */);
     }
@@ -145,14 +144,16 @@ public class GetAccountService {
     private final AccountQuery accountQuery;   // 쓰기용 AccountRepository가 아닌 좁은 읽기 전용 인터페이스
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+        Account account = accountQuery
+                .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(/* ... */);
     }
 }
 ```
 
-`GetAccountService`는 `save`/`delete`가 없는 `AccountQuery`(application/query, `findByAccountIdAndOwnerId`/`findTransactions`/`countTransactions`만 선언)에 의존한다 — `AccountRepositoryImpl`이 `AccountRepository`(domain, 쓰기)와 `AccountQuery`(application, 읽기)를 모두 구현하고, Spring이 각 주입 지점(`AccountRepository` 타입 vs `AccountQuery` 타입)에 같은 빈을 인터페이스별로 바인딩한다. 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참고. `GetTransactionsService`도 동일하게 `AccountQuery`에 의존한다.
+`GetAccountService`는 `saveAccount`/`delete`가 없는 `AccountQuery`(application/query, `findAccounts`/`findTransactions`만 선언)에 의존한다 — `AccountRepositoryImpl`이 `AccountRepository`(domain, 쓰기)와 `AccountQuery`(application, 읽기)를 모두 구현하고, Spring이 각 주입 지점(`AccountRepository` 타입 vs `AccountQuery` 타입)에 같은 빈을 인터페이스별로 바인딩한다. 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참고. `GetTransactionsService`도 동일하게 `AccountQuery`에 의존한다.
 
 ---
 
@@ -170,13 +171,15 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     private final EntityManager em;
 
     @Override
-    public List<Account> findAll(AccountFindQuery query) {
+    public AccountsWithCount findAccounts(AccountFindQuery query) {
         String jpql = buildJpql(query, false);   // 동적 조건 조립, repository-pattern.md 참고
         var q = em.createQuery(jpql, AccountJpaEntity.class)
                 .setFirstResult(query.page() * query.take())
                 .setMaxResults(query.take());
         applyParams(q, query);
-        return q.getResultList().stream().map(AccountMapper::toDomain).toList();   // JPA 엔티티 -> 순수 도메인
+        List<Account> accounts = q.getResultList().stream().map(AccountMapper::toDomain).toList();   // JPA 엔티티 -> 순수 도메인
+        long count = /* 동일 조건의 COUNT 쿼리 */ 0;
+        return new AccountsWithCount(accounts, count);
     }
 }
 ```
