@@ -1,13 +1,10 @@
 package com.example.accountservice.account.domain
 
 interface AccountRepository {
-    fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
-    fun findAll(query: AccountFindQuery): List<Account>
-    fun countAll(query: AccountFindQuery): Long
-    fun save(account: Account)
+    fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
+    fun saveAccount(account: Account)
     fun deleteAccount(accountId: String)
-    fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
-    fun countTransactions(accountId: String): Long
+    fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
 }
 
 data class AccountFindQuery(
@@ -16,4 +13,10 @@ data class AccountFindQuery(
     val accountId: String? = null,
     val ownerId: String? = null,
     val status: List<String>? = null,
+)
+
+data class TransactionFindQuery(
+    val accountId: String,
+    val page: Int,
+    val take: Int,
 )

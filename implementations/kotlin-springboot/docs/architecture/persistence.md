@@ -16,7 +16,7 @@ class AccountRepositoryImpl(
     private val em: EntityManager,
 ) : AccountRepository {
     @Transactional
-    override fun save(account: Account) {
+    override fun saveAccount(account: Account) {
         jpaRepository.save(/* ... */)                    // Account 저장
         // ... 하위 Transaction 저장 ...
         outboxWriter.saveAll(account.pullDomainEvents())  // 같은 스레드 = 같은 트랜잭션의 JDBC 커넥션 자동 재사용
@@ -24,7 +24,7 @@ class AccountRepositoryImpl(
 }
 ```
 
-`@Transactional`은 Command Service가 아니라 `Repository.save()`에 있다 — Account 저장과 Outbox 적재를 하나의 물리 트랜잭션으로 묶는 경계가 바로 여기이기 때문이다([domain-events.md](domain-events.md) 참고).
+`@Transactional`은 Command Service가 아니라 `Repository.saveAccount()`에 있다 — Account 저장과 Outbox 적재를 하나의 물리 트랜잭션으로 묶는 경계가 바로 여기이기 때문이다([domain-events.md](domain-events.md) 참고).
 
 Spring AOP가 `@Transactional` 메서드 진입 시 트랜잭션을 시작해 현재 스레드에 커넥션을 바인딩하고(`TransactionSynchronizationManager`), 같은 스레드에서 호출되는 모든 Repository 메서드가 자동으로 같은 커넥션/트랜잭션을 사용한다 — root의 `getClient()` 패턴에 해당하는 것을 Spring이 내부적으로 수행한다.
 
@@ -38,8 +38,8 @@ class TransferService(
 ) {
     fun transfer(command: TransferCommand) {
         // 두 Repository 호출 모두 같은 트랜잭션 안에서 실행 — 하나라도 예외가 나면 전체 롤백
-        accountRepository.save(sourceAccount)
-        ledgerRepository.save(ledgerEntry)
+        accountRepository.saveAccount(sourceAccount)
+        ledgerRepository.saveLedger(ledgerEntry)
     }
 }
 ```
@@ -50,7 +50,7 @@ Query Service는 `@Transactional(readOnly = true)`로 구분한다 — Hibernate
 // application/query/GetAccountService.kt — 실제 코드
 @Service
 @Transactional(readOnly = true)
-class GetAccountService(private val accountRepository: AccountRepository) { /* ... */ }
+class GetAccountService(private val accountQuery: AccountQuery) { /* ... */ }
 ```
 
 ---
@@ -113,13 +113,10 @@ class Account protected constructor() : BaseEntity() { /* createdAt/updatedAt/de
 ```kotlin
 // domain/AccountRepository.kt — 실제 코드
 interface AccountRepository {
-    fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
-    fun findAll(query: AccountFindQuery): List<Account>
-    fun countAll(query: AccountFindQuery): Long
-    fun save(account: Account)
+    fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
+    fun saveAccount(account: Account)
     fun deleteAccount(accountId: String)
-    fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
-    fun countTransactions(accountId: String): Long
+    fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
 }
 ```
 
@@ -143,14 +140,14 @@ override fun deleteAccount(accountId: String) {
 ```
 
 ```kotlin
-// 조회 쿼리는 이미 deletedAt IS NULL 조건을 적용 중 — 실제 코드
+// 조회 쿼리는 이미 deletedAt IS NULL 조건을 적용 중 — 실제 코드 (AccountQuery 읽기 전용 포트 구현)
 override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
     jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
 ```
 
 **`close()`(상태 전환)와 soft delete는 서로 다른 생명주기 이벤트로 분리했다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태만 바꾸고 `deletedAt`은 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(모든 조회가 `deletedAt IS NULL`을 조건으로 걸기 때문에, `close()`가 `deletedAt`까지 설정해버리면 종료 직후 계좌를 다시 조회할 방법이 없어진다). 대신 삭제는 `account/application/command/DeleteAccountService.kt`라는 별도 유스케이스(`DELETE /accounts/{accountId}`)로 존재하고, `Account.markDeleted()`가 "이미 CLOSED 상태인 계좌만 삭제 가능"이라는 규칙을 도메인 레벨에서 강제한다 — 활성 계좌를 곧바로 삭제하려 하면 `DeleteRequiresClosedAccountException`(400)을 던진다.
 
-메서드 네이밍(`delete<Noun>`)은 root 컨벤션과 일치한다 — `findAll`/`save`의 네이밍은 아직 남은 갭이며 [repository-pattern.md](repository-pattern.md)에서 다룬다.
+메서드 네이밍(`delete<Noun>`)은 root 컨벤션과 일치한다 — `findAccounts`/`saveAccount`로의 리네이밍도 완료되어 더 이상 갭이 아니다. 상세는 [repository-pattern.md](repository-pattern.md) 참고.
 
 ---
 

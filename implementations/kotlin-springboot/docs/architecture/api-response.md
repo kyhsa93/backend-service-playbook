@@ -64,25 +64,23 @@ data class GetAccountResult(
 
 ---
 
-## Repository 조회 메서드 반환 형식 — 알려진 갭
+## Repository 조회 메서드 반환 형식 — 통일 완료
 
 root 원칙: 목록 조회 메서드는 항상 `{ <noun>s: List<T>, count: Long }` 형태를 반환해야 하고, 단건 조회 전용 메서드(`findOne`)를 별도로 두지 않는다.
 
-현재 `AccountRepository`는 이 원칙을 두 가지로 어긴다.
+`AccountRepository`(쓰기 모델)가 이 원칙을 그대로 따른다.
 
 ```kotlin
-// domain/AccountRepository.kt — 현재 코드
+// domain/AccountRepository.kt — 실제 코드
 interface AccountRepository {
-    fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?  // ← 단건 전용 메서드
-    fun findAll(query: AccountFindQuery): List<Account>                          // ← count와 분리됨
-    fun countAll(query: AccountFindQuery): Long
-    fun save(account: Account)
-    fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
-    fun countTransactions(accountId: String): Long
+    fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>   // 목록/단건(take=1)/count를 모두 처리
+    fun saveAccount(account: Account)
+    fun deleteAccount(accountId: String)
+    fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
 }
 ```
 
-correct한 형태는 [repository-pattern.md](repository-pattern.md)에서 상세히 다룬다 — 요지는 `findAccounts(query): Pair<List<Account>, Long>` 하나로 통일하고, `CloseAccountService` 등에서 `take = 1`로 호출한 뒤 `.firstOrNull()`로 꺼내는 것이다.
+상세는 [repository-pattern.md](repository-pattern.md)에서 다룬다 — 요지는 `findAccounts(query): Pair<List<Account>, Long>` 하나로 통일하고, `CloseAccountService` 등에서 `take = 1`로 호출한 뒤 `.firstOrNull()`로 꺼내는 것이다.
 
 ---
 
@@ -92,7 +90,7 @@ Query Service는 Aggregate(`Account`)를 직접 반환하지 않고 전용 `data
 
 ```kotlin
 fun getAccount(accountId: String, requesterId: String): GetAccountResult {
-    val account = accountRepository.findByAccountIdAndOwnerId(accountId, requesterId)
+    val account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
         ?: throw AccountNotFoundException(accountId)
     return GetAccountResult(
         accountId = account.accountId,

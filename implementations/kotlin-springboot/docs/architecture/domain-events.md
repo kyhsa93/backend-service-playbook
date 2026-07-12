@@ -14,10 +14,12 @@ class DepositService(
     private val outboxRelay: OutboxRelay,
 ) {
     fun deposit(command: DepositCommand): TransactionResult {
-        val account = accountRepository.findByAccountIdAndOwnerId(command.accountId, command.requesterId)
-            ?: throw AccountNotFoundException(command.accountId)
+        val (accounts, _) = accountRepository.findAccounts(
+            AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
+        )
+        val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
         val transaction = account.deposit(command.amount)
-        accountRepository.save(account)     // ← Aggregate + Outbox 행을 한 트랜잭션에 커밋
+        accountRepository.saveAccount(account)     // ← Aggregate + Outbox 행을 한 트랜잭션에 커밋
         outboxRelay.processPending()        // ← 커밋 후 동기적으로 미처리 이벤트 전체를 드레인
         return TransactionResult(/* ... */)
     }
@@ -109,7 +111,7 @@ class OutboxWriter(
 ```
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 save()
+// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 saveAccount()
 @Repository
 class AccountRepositoryImpl(
     private val jpaRepository: AccountJpaRepository,
@@ -119,7 +121,7 @@ class AccountRepositoryImpl(
 ) : AccountRepository {
 
     @Transactional   // Account/Transaction 저장 + Outbox 저장이 하나의 트랜잭션
-    override fun save(account: Account) {
+    override fun saveAccount(account: Account) {
         jpaRepository.save(account)
         val pending = account.pullPendingTransactions()
         if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
@@ -128,11 +130,11 @@ class AccountRepositoryImpl(
 }
 ```
 
-**Command Service는 `eventPublisher.publishEvent()`를 호출하지 않는다** — Outbox 저장은 Repository 내부 책임이며, `save()` 호출 하나로 Aggregate 상태와 이벤트가 원자적으로 커밋되거나 함께 롤백된다(dual-write 문제 회피).
+**Command Service는 `eventPublisher.publishEvent()`를 호출하지 않는다** — Outbox 저장은 Repository 내부 책임이며, `saveAccount()` 호출 하나로 Aggregate 상태와 이벤트가 원자적으로 커밋되거나 함께 롤백된다(dual-write 문제 회피).
 
-### `@Transactional` 경계 — Command Service가 아니라 `save()`에 있다
+### `@Transactional` 경계 — Command Service가 아니라 `saveAccount()`에 있다
 
-이전 코드는 Command Service 클래스 전체(`@Service @Transactional class DepositService`)가 하나의 트랜잭션이었다. 지금은 그 애노테이션을 Command Service에서 제거하고 `AccountRepositoryImpl.save()`에 옮겼다 — 이렇게 하면 `accountRepository.save(account)` 호출이 자체 트랜잭션 경계가 되어, 이 메서드 호출이 반환하는 시점에 **실제로 커밋이 끝나 있다**. 그다음 줄의 `outboxRelay.processPending()`이 "트랜잭션 커밋 직후"를 문자 그대로 만족하는 이유다 — Spring AOP 프록시가 서로 다른 빈(Command Service → Repository) 사이의 호출을 가로채 트랜잭션 경계를 강제하기 때문에 별도의 `TransactionTemplate`이나 `TransactionSynchronizationManager` 없이도 성립한다.
+이전 코드는 Command Service 클래스 전체(`@Service @Transactional class DepositService`)가 하나의 트랜잭션이었다. 지금은 그 애노테이션을 Command Service에서 제거하고 `AccountRepositoryImpl.saveAccount()`에 옮겼다 — 이렇게 하면 `accountRepository.saveAccount(account)` 호출이 자체 트랜잭션 경계가 되어, 이 메서드 호출이 반환하는 시점에 **실제로 커밋이 끝나 있다**. 그다음 줄의 `outboxRelay.processPending()`이 "트랜잭션 커밋 직후"를 문자 그대로 만족하는 이유다 — Spring AOP 프록시가 서로 다른 빈(Command Service → Repository) 사이의 호출을 가로채 트랜잭션 경계를 강제하기 때문에 별도의 `TransactionTemplate`이나 `TransactionSynchronizationManager` 없이도 성립한다.
 
 ---
 
@@ -172,7 +174,7 @@ class OutboxRelay(
 }
 ```
 
-`@Scheduled` 폴러가 아니다 — 6개 Command Service 각각이 `accountRepository.save()`가 반환한(=커밋된) 직후 `processPending()`을 동기 호출한다. **테이블 전체를 대상으로 드레인**하므로, 이번 커맨드가 남긴 이벤트뿐 아니라 이전 호출에서 실패해 `processed=false`로 남아 있던 이벤트도 이번 호출에서 함께 재시도된다 — 어떤 커맨드든 다음 호출 한 번이 곧 전체 재시도 트리거가 된다.
+`@Scheduled` 폴러가 아니다 — 6개 Command Service 각각이 `accountRepository.saveAccount()`가 반환한(=커밋된) 직후 `processPending()`을 동기 호출한다. **테이블 전체를 대상으로 드레인**하므로, 이번 커맨드가 남긴 이벤트뿐 아니라 이전 호출에서 실패해 `processed=false`로 남아 있던 이벤트도 이번 호출에서 함께 재시도된다 — 어떤 커맨드든 다음 호출 한 번이 곧 전체 재시도 트리거가 된다.
 
 행 하나의 핸들러 실행이 실패해도(`runCatching`) 예외를 전파하지 않는다 — 로그만 남기고 해당 행은 `processed=false`로 남아 다음 호출에서 다시 시도된다(at-least-once 전달). 다른 행의 처리에는 영향을 주지 않는다.
 

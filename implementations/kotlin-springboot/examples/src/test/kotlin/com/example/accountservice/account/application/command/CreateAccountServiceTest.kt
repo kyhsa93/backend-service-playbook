@@ -20,7 +20,7 @@ class CreateAccountServiceTest {
 
         assertThat(result.ownerId).isEqualTo("owner-1")
         assertThat(result.balance.amount).isEqualTo(0)
-        verify(exactly = 1) { accountRepository.save(any()) }
+        verify(exactly = 1) { accountRepository.saveAccount(any()) }
     }
 
     @Test
@@ -28,7 +28,7 @@ class CreateAccountServiceTest {
         service.create(CreateAccountCommand("owner-1", "KRW", "owner-1@example.com"))
 
         verifyOrder {
-            accountRepository.save(any())
+            accountRepository.saveAccount(any())
             outboxRelay.processPending()
         }
     }

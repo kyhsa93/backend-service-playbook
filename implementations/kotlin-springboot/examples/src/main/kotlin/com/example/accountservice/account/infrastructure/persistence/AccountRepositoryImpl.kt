@@ -6,6 +6,7 @@ import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.account.domain.Transaction
+import com.example.accountservice.account.domain.TransactionFindQuery
 import com.example.accountservice.outbox.OutboxWriter
 import jakarta.persistence.EntityManager
 import org.springframework.data.domain.PageRequest
@@ -20,29 +21,24 @@ class AccountRepositoryImpl(
     private val em: EntityManager,
 ) : AccountRepository, AccountQuery {
 
-    override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
-        jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-            ?.let(AccountMapper::toDomain)
-
-    override fun findAll(query: AccountFindQuery): List<Account> {
+    // AccountRepository(쓰기 모델) — findAccounts 하나로 목록/단건(take=1)/count를 모두 처리한다.
+    override fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long> {
         val jpql = buildJpql(query, count = false)
-        return em.createQuery(jpql, AccountJpaEntity::class.java)
+        val accounts = em.createQuery(jpql, AccountJpaEntity::class.java)
             .setFirstResult(query.page * query.take)
             .setMaxResults(query.take)
             .apply { applyParams(this, query) }
             .resultList
             .map(AccountMapper::toDomain)
-    }
-
-    override fun countAll(query: AccountFindQuery): Long {
-        val jpql = buildJpql(query, count = true)
-        return em.createQuery(jpql, Long::class.java)
+        val countJpql = buildJpql(query, count = true)
+        val count = em.createQuery(countJpql, Long::class.java)
             .apply { applyParams(this, query) }
             .singleResult
+        return accounts to count
     }
 
     @Transactional
-    override fun save(account: Account) {
+    override fun saveAccount(account: Account) {
         val entity = jpaRepository.findByAccountId(account.accountId)
             ?.let { AccountMapper.updateEntity(it, account) }
             ?: AccountMapper.toNewEntity(account)
@@ -62,6 +58,21 @@ class AccountRepositoryImpl(
         AccountMapper.updateEntity(entity, account)
         jpaRepository.save(entity)
     }
+
+    override fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long> {
+        val transactions = transactionJpaRepository
+            .findByAccountIdOrderByCreatedAtDesc(query.accountId, PageRequest.of(query.page, query.take))
+            .map(TransactionMapper::toDomain)
+        val count = transactionJpaRepository.countByAccountId(query.accountId)
+        return transactions to count
+    }
+
+    // AccountQuery(읽기 전용 포트) — 시그니처가 AccountRepository와 다르므로 별도 오버로드로 구현한다.
+    // cqrs-pattern.md 참고: Query Service(GetAccountService/GetTransactionsService)는 AccountRepository가
+    // 아니라 이 인터페이스에만 의존한다.
+    override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
+        jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+            ?.let(AccountMapper::toDomain)
 
     override fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction> =
         transactionJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))

@@ -144,7 +144,7 @@ class CreateAccountServiceTest {
 
         assertThat(result.ownerId).isEqualTo("owner-1")
         assertThat(result.balance.amount).isEqualTo(0)
-        verify(exactly = 1) { accountRepository.save(any()) }
+        verify(exactly = 1) { accountRepository.saveAccount(any()) }
     }
 
     @Test
@@ -152,17 +152,17 @@ class CreateAccountServiceTest {
         service.create(CreateAccountCommand("owner-1", "KRW", "owner-1@example.com"))
 
         verifyOrder {
-            accountRepository.save(any())
+            accountRepository.saveAccount(any())
             outboxRelay.processPending()
         }
     }
 }
 ```
 
-이 테스트는 `AccountCreated` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 `Repository.save()` 안에서 Outbox에 적재되는 시점에 이미 끝난다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/AccountCreatedEventHandler` 등을 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
+이 테스트는 `AccountCreated` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 `Repository.saveAccount()` 안에서 Outbox에 적재되는 시점에 이미 끝난다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/AccountCreatedEventHandler` 등을 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
 
-- `mockk<AccountRepository>(relaxed = true)`: `relaxed = true`는 스텁하지 않은 메서드 호출에 기본값(빈 리스트, `Unit` 등)을 자동 반환한다 — `save()`처럼 반환값이 없는 메서드를 매번 `every { } returns Unit`으로 채우지 않아도 된다.
-- `verifyOrder { ... }`: MockK의 순서 검증 기능으로 `save()`가 `processPending()`보다 먼저 호출되는지 확인한다 — Mockito의 `InOrder`에 대응하지만 문법이 더 간결하다.
+- `mockk<AccountRepository>(relaxed = true)`: `relaxed = true`는 스텁하지 않은 메서드 호출에 기본값(빈 리스트, `Unit` 등)을 자동 반환한다 — `saveAccount()`처럼 반환값이 없는 메서드를 매번 `every { } returns Unit`으로 채우지 않아도 된다.
+- `verifyOrder { ... }`: MockK의 순서 검증 기능으로 `saveAccount()`가 `processPending()`보다 먼저 호출되는지 확인한다 — Mockito의 `InOrder`에 대응하지만 문법이 더 간결하다.
 - **Repository mock은 `interface` 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지"가 Kotlin에서는 인터페이스 그대로 대응된다.
 - Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
 - `DepositServiceTest.kt`도 동일한 패턴(MockK Repository/OutboxRelay mock)을 따른다 — Command Service마다 Application 단위 테스트를 추가할 때의 템플릿으로 이 두 파일을 그대로 재사용한다.

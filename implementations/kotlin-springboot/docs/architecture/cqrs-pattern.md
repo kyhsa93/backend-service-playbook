@@ -31,7 +31,7 @@ class CreateAccountService(
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.save(account)   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        accountRepository.saveAccount(account)   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
         outboxRelay.processPending()       // 커밋 직후 동기 드레인 — domain-events.md 참고
         return CreateAccountResult(/* ... */)
     }
@@ -57,7 +57,7 @@ class GetAccountService(private val accountQuery: AccountQuery) {
 
 ## 별도 Query 인터페이스 — `AccountQuery`
 
-root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Query Service가 `save`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다. 이 인터페이스는 root 컨벤션대로 `application/query/`에 `AccountQuery`라는 이름으로 둔다(쓰기용 `AccountRepository`는 `domain/`에 그대로 유지).
+root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다. 이 인터페이스는 root 컨벤션대로 `application/query/`에 `AccountQuery`라는 이름으로 둔다(쓰기용 `AccountRepository`는 `domain/`에 그대로 유지).
 
 ```kotlin
 // application/query/AccountQuery.kt — 실제 코드
@@ -74,12 +74,14 @@ interface AccountQuery {
 // infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
 @Repository
 class AccountRepositoryImpl(/* ... */) : AccountRepository, AccountQuery {
-    // findByAccountIdAndOwnerId / findTransactions / countTransactions 구현이
-    // AccountRepository와 AccountQuery 양쪽 시그니처를 동시에 만족시킨다.
+    // findAccounts/saveAccount/deleteAccount/findTransactions(query)는 AccountRepository(쓰기 모델) 구현이고,
+    // findByAccountIdAndOwnerId/findTransactions(accountId, page, take)/countTransactions는 AccountQuery(읽기 전용)
+    // 구현이다 — 두 인터페이스의 조회 메서드 시그니처가 서로 다르므로(repository-pattern.md 참고)
+    // 오버로드로 나뉘어 있을 뿐, 하나의 구현체가 두 인터페이스를 모두 만족시킨다는 점은 동일하다.
 }
 ```
 
-Command Service(`CreateAccountService` 등)는 여전히 `AccountRepository`(쓰기 모델, `save`/`deleteAccount` 포함)를 주입받는다 — 물리적으로는 같은 구현체·같은 테이블이지만, 인터페이스 분리로 각 Service가 자신에게 필요한 메서드에만 접근할 수 있다. Aggregate 복원 없이 프로젝션 전용 쿼리를 실행하는 수준의 완전한 CQRS(별도 읽기 모델/저장소)까지는 아니지만, root가 요구하는 "Query Service는 Repository가 아닌 읽기 전용 인터페이스에 의존"이라는 핵심 원칙은 충족한다.
+Command Service(`CreateAccountService` 등)는 여전히 `AccountRepository`(쓰기 모델, `saveAccount`/`deleteAccount` 포함)를 주입받는다 — 물리적으로는 같은 구현체·같은 테이블이지만, 인터페이스 분리로 각 Service가 자신에게 필요한 메서드에만 접근할 수 있다. Aggregate 복원 없이 프로젝션 전용 쿼리를 실행하는 수준의 완전한 CQRS(별도 읽기 모델/저장소)까지는 아니지만, root가 요구하는 "Query Service는 Repository가 아닌 읽기 전용 인터페이스에 의존"이라는 핵심 원칙은 충족한다.
 
 ---
 

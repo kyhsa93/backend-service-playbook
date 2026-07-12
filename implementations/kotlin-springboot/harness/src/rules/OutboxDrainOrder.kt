@@ -11,6 +11,10 @@ import java.io.File
  * 실제 텍스트 순서를 본다 — 이게 없으면 dual-write 회귀(processPending 호출 삭제,
  * 또는 알림을 직접 호출하는 것으로 되돌림)를 다른 어떤 규칙도 잡아내지 못한다.
  */
+// root 컨벤션(save<Noun>, repository-pattern.md)에 따라 저장 메서드명이 save()뿐 아니라
+// saveAccount()/saveOrder() 등으로 다양할 수 있으므로 접두사만 고정해 매칭한다.
+private val SAVE_CALL = Regex("""\.save\w*\(""")
+
 fun checkOutboxDrainOrder(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("outbox-drain-order")
@@ -21,7 +25,7 @@ fun checkOutboxDrainOrder(rootPath: String): RuleResult {
         if (!content.contains("OutboxRelay")) continue
         found = true
         val rel = f.relTo(root)
-        val saveIdx = content.indexOf(".save(")
+        val saveIdx = SAVE_CALL.find(content)?.range?.first ?: -1
         val ppIdx = content.indexOf(".processPending(")
         when {
             saveIdx == -1 ->

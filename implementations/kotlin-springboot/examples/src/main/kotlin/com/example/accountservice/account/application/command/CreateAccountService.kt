@@ -13,7 +13,7 @@ class CreateAccountService(
 
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.save(account)
+        accountRepository.saveAccount(account)
         outboxRelay.processPending()
         return CreateAccountResult(
             accountId = account.accountId,

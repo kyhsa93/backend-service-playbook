@@ -19,23 +19,23 @@ interfaces/rest (@RestController)  →  application/{command,query} (@Service)  
 ```kotlin
 // domain/AccountRepository.kt — 실제 코드. Spring 무의존 순수 interface
 interface AccountRepository {
-    fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
-    fun findAll(query: AccountFindQuery): List<Account>
-    fun countAll(query: AccountFindQuery): Long
-    fun save(account: Account)
-    fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
-    fun countTransactions(accountId: String): Long
+    fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
+    fun saveAccount(account: Account)
+    fun deleteAccount(accountId: String)
+    fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
 }
 ```
 
 root는 Repository 인터페이스를 TypeScript `abstract class`로 표현하지만(NestJS DI가 인터페이스를 런타임 토큰으로 쓸 수 없어서), **Kotlin/Spring은 `interface` 자체가 DI 토큰**이 된다 — Spring이 클래스패스에서 `AccountRepository`를 구현하는 유일한 `@Repository` Bean(`AccountRepositoryImpl`)을 찾아 자동 바인딩한다. 별도의 `abstract class` 우회가 필요 없다.
 
-Kotlin의 **null-safety**가 이 레이어에서 하는 역할이 root의 TypeScript 버전과 다르다: `findByAccountIdAndOwnerId(): Account?`는 "찾지 못함"을 타입 시스템에 새긴다. 호출자는 `?:` 엘비스 연산자나 스마트 캐스트 없이는 컴파일이 안 되므로, null 체크를 빠뜨리는 것 자체가 불가능하다.
+Kotlin의 **null-safety**가 이 레이어에서 하는 역할이 root의 TypeScript 버전과 다르다: 전용 단건 조회 메서드를 두지 않고, `findAccounts(...)`가 반환한 `Pair`의 `List<Account>`에 `firstOrNull()`을 호출해 "찾지 못함"을 타입 시스템에 새긴다(repository-pattern.md 참고). 호출자는 `?:` 엘비스 연산자나 스마트 캐스트 없이는 컴파일이 안 되므로, null 체크를 빠뜨리는 것 자체가 불가능하다.
 
 ```kotlin
-// application/query/GetAccountService.kt — 실제 코드
-val account = accountRepository.findByAccountIdAndOwnerId(accountId, requesterId)
-    ?: throw AccountNotFoundException(accountId)
+// application/command/DepositService.kt — 실제 코드
+val (accounts, _) = accountRepository.findAccounts(
+    AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
+)
+val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
 // 이 라인 이후 account는 스마트 캐스트로 Account (non-null) 타입 — Optional.get()이나
 // null 체크 없이 바로 account.email 등에 접근해도 컴파일러가 non-null임을 보장한다
 ```
@@ -55,7 +55,7 @@ class CreateAccountService(
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.save(account)      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        accountRepository.saveAccount(account)      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
         outboxRelay.processPending()          // 커밋 직후 동기 드레인 — domain-events.md 참고
         return CreateAccountResult(/* ... */)
     }
@@ -72,8 +72,10 @@ Query Service는 `@Transactional(readOnly = true)`로 구분한다 — Hibernate
 // application/query/GetAccountService.kt — 실제 코드
 @Service
 @Transactional(readOnly = true)
-class GetAccountService(private val accountRepository: AccountRepository) { /* ... */ }
+class GetAccountService(private val accountQuery: AccountQuery) { /* ... */ }
 ```
+
+Query Service는 쓰기 모델 `AccountRepository`가 아니라 읽기 전용 `AccountQuery`를 주입받는다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
 Command/Query 세분화 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
@@ -88,16 +90,19 @@ class AccountRepositoryImpl(
     private val jpaRepository: AccountJpaRepository,
     private val transactionJpaRepository: TransactionJpaRepository,
     private val em: EntityManager,
-) : AccountRepository {
+) : AccountRepository, AccountQuery {
 
-    override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
-        jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+    override fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long> { /* ... */ }
 
-    override fun save(account: Account) {
+    override fun saveAccount(account: Account) {
         jpaRepository.save(account)
         val pending = account.pullPendingTransactions()
         if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
     }
+
+    // AccountQuery(읽기 전용 포트) — 시그니처가 달라 별도 오버로드로 구현
+    override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
+        jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
 }
 ```
 

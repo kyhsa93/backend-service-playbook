@@ -20,9 +20,9 @@
 
 9. **Repository/Adapter는 `interface`가 곧 DI 토큰** — Java/TypeScript처럼 `abstract class`나 별도 바인딩 문법이 필요 없다. Spring이 클래스패스의 유일한 구현체를 자동 주입한다 ([repository-pattern.md](repository-pattern.md), [cross-domain.md](cross-domain.md)).
 
-10. **Repository 조회는 `find<Noun>s` 하나로 통일, 단건은 `take: 1` + `.firstOrNull()`** — 전용 단건 조회 메서드(`findByAccountIdAndOwnerId` 같은)를 늘리지 않는다. 현재 코드는 이 원칙과 어긋나 있음이 문서에 명시된 갭이다 ([repository-pattern.md](repository-pattern.md)).
+10. **Repository 조회는 `find<Noun>s` 하나로 통일, 단건은 `take: 1` + `.firstOrNull()`** — 전용 단건 조회 메서드(과거의 `findByAccountIdAndOwnerId` 같은)를 늘리지 않는다. `AccountRepository.findAccounts()`가 이 원칙을 실제로 구현한다 ([repository-pattern.md](repository-pattern.md)).
 
-11. **Repository에 update 메서드를 두지 않는다** — 상태 변경은 Aggregate 도메인 메서드로 수행한 뒤 `save<Noun>`으로 영속화한다 ([repository-pattern.md](repository-pattern.md)).
+11. **Repository에 update 메서드를 두지 않는다** — 상태 변경은 Aggregate 도메인 메서드로 수행한 뒤 `saveAccount`(`save<Noun>`)로 영속화한다 ([repository-pattern.md](repository-pattern.md)).
 
 12. **Command/Query Service 분리, Query는 `@Transactional(readOnly = true)`** — Hibernate가 dirty checking을 생략해 읽기 성능을 최적화한다 ([cqrs-pattern.md](cqrs-pattern.md), [layer-architecture.md](layer-architecture.md)).
 
