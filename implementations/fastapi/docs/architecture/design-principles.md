@@ -20,7 +20,7 @@
 
 9. **에러는 예외 클래스 계층 + HTTP 변환은 `main.py`에서만** — `domain/errors.py`는 plain `Exception`만 던지고 HTTP를 모른다. `@app.exception_handler`가 유일한 변환 지점이다. **알려진 격차**: 현재 응답이 `{"message": ...}`뿐이라 root가 요구하는 `statusCode`/`code`/`message`/`error` 4필드와 에러 코드 enum이 없다. ([error-handling.md](error-handling.md))
 
-10. **ID는 Domain 팩토리 classmethod에서 생성, 하이픈 없는 32자리 hex** — `Account.create()`가 유일한 생성 경로다. **알려진 격차**: 현재 `str(uuid.uuid4())`를 사용해 하이픈이 포함된다 — `uuid.uuid4().hex`로 교체해야 한다. ([aggregate-id.md](aggregate-id.md))
+10. **ID는 Domain 팩토리 classmethod에서 생성, 하이픈 없는 32자리 hex** — `Account.create()`가 유일한 생성 경로이며, `common/generate_id.py`가 `uuid.uuid4().hex`(하이픈 없음)를 반환해 전 도메인에서 일관되게 쓰인다. ([aggregate-id.md](aggregate-id.md))
 
 11. **Domain Event는 `pull_events()`로 수집, 발행은 Outbox 경유** — `repo.save()`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋하고, Command Handler가 그 직후 `OutboxRelay.process_pending()`을 동기 호출해 드레인한다. `application/event/<event>_event_handler.py`가 이벤트 타입별로 `NotificationService`를 호출한다 — 더 이상 dual-write가 아니다. ([domain-events.md](domain-events.md))
 
@@ -30,7 +30,7 @@
 
 ---
 
-위 항목 중 9, 10, 11번은 **문서가 이미 원칙을 정확히 제시하지만 `examples/`의 실제 코드는 아직 그 원칙을 완전히 따르지 않는** 항목이다. 새 도메인을 추가하거나 기존 코드를 수정할 때 이 격차부터 우선 해소한다. (Rate Limiting은 `slowapi`로 이미 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.)
+위 항목 중 9번은 **문서가 이미 원칙을 정확히 제시하지만 `examples/`의 실제 코드는 아직 그 원칙을 완전히 따르지 않는** 항목이다. 새 도메인을 추가하거나 기존 코드를 수정할 때 이 격차부터 우선 해소한다. (10, 11번은 이미 해소되었다. Rate Limiting은 `slowapi`로 이미 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.)
 
 ### 관련 문서
 

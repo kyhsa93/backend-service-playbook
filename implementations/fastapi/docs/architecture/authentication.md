@@ -238,4 +238,4 @@ app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=OWNER_I
 
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — 요청 파이프라인에서 인증 위치
 - [layer-architecture.md](layer-architecture.md) — Interface 레이어 역할
-- [config.md](config.md) — 환경 변수 관리, `JWT_SECRET` fail-fast 검증(아직 미구현 — 알려진 격차)
+- [config.md](config.md) — 환경 변수 관리, `JWT_SECRET` fail-fast 검증(적용 완료)
