@@ -180,8 +180,8 @@ export function evaluateChecklist(root: string): EvaluatorResult {
         `${stepTitle(steps, 12)} — TypeORM synchronize: true가 조건 없이 설정됨 (production 사고 위험): ${rel(file)}`, 6)
     }
 
-    // STEP 12 — Secret 하드코딩 검출
-    if (/(?:password|secret|apikey|api_key|token)\s*[:=]\s*['"][A-Za-z0-9_-]{8,}['"]/i.test(content)) {
+    // STEP 12 — Secret 하드코딩 검출 (*.spec.ts는 목/픽스처 값이 실제 값처럼 보여도 제외)
+    if (!file.endsWith('.spec.ts') && /(?:password|secret|apikey|api_key|token)\s*[:=]\s*['"][A-Za-z0-9_-]{8,}['"]/i.test(content)) {
       push('checklist.step12.no-hardcoded-secret', 'critical',
         `${stepTitle(steps, 12)} — 비밀값 하드코딩 의심 (process.env 사용): ${rel(file)}`, 8)
     }

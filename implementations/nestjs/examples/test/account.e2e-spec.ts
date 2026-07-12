@@ -10,6 +10,7 @@ import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { AuthModule } from '@/auth/auth-module'
+import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
@@ -20,10 +21,15 @@ describe('AccountController (e2e)', () => {
 
   const OWNER_ID = 'owner-1'
   const OTHER_OWNER_ID = 'owner-2'
+  const PASSWORD = 'password123!'
   const tokens: Record<string, string> = {}
 
+  async function signUp(userId: string): Promise<void> {
+    await request(app.getHttpServer()).post('/auth/sign-up').send({ userId, password: PASSWORD })
+  }
+
   async function signIn(userId: string): Promise<string> {
-    const response = await request(app.getHttpServer()).post('/auth/sign-in').send({ userId })
+    const response = await request(app.getHttpServer()).post('/auth/sign-in').send({ userId, password: PASSWORD })
     return (response.body as { accessToken: string }).accessToken
   }
 
@@ -40,7 +46,7 @@ describe('AccountController (e2e)', () => {
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity],
+          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity],
           synchronize: true
         }),
         OutboxModule,
@@ -60,6 +66,8 @@ describe('AccountController (e2e)', () => {
     }))
     await app.init()
 
+    await signUp(OWNER_ID)
+    await signUp(OTHER_OWNER_ID)
     tokens[OWNER_ID] = await signIn(OWNER_ID)
     tokens[OTHER_OWNER_ID] = await signIn(OTHER_OWNER_ID)
   }, 120000)

@@ -3,10 +3,12 @@ import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/s
 import { SkipThrottle } from '@nestjs/throttler'
 
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
+import { Public } from '@/auth/public.decorator'
 
 @Controller('health')
 @ApiTags('Health')
 @SkipThrottle()
+@Public()
 export class HealthController {
   constructor(private readonly shutdownState: ShutdownState) {}
 

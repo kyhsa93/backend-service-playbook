@@ -13,6 +13,7 @@ import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { AuthModule } from '@/auth/auth-module'
+import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
@@ -39,6 +40,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
 
   const OWNER_ID = 'owner-1'
   const RECIPIENT_EMAIL = 'owner1@example.com'
+  const PASSWORD = 'password123!'
   let ownerToken: string
 
   beforeAll(async () => {
@@ -67,7 +69,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: postgres.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity],
+          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity],
           synchronize: true
         }),
         OutboxModule,
@@ -80,7 +82,10 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     await app.init()
     dataSource = moduleRef.get(DataSource)
 
-    const signInResponse = await request(app.getHttpServer()).post('/auth/sign-in').send({ userId: OWNER_ID })
+    await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: OWNER_ID, password: PASSWORD })
+    const signInResponse = await request(app.getHttpServer())
+      .post('/auth/sign-in')
+      .send({ userId: OWNER_ID, password: PASSWORD })
     ownerToken = (signInResponse.body as { accessToken: string }).accessToken
   }, 180000)
 

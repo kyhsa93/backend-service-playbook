@@ -1,7 +1,7 @@
 // auth evaluator — Controller route의 보호/공개 의도 명시 여부를 검증한다
 // (guide: docs/architecture/authentication.md).
 //
-// Applicability: *.controller.ts 파일이 있으면 실행 (maxScore = 20).
+// Applicability: *-controller.ts 파일이 있으면 실행 (maxScore = 20).
 //
 // Rules:
 // - Controller 클래스 또는 route method에는 @UseGuards 또는 @Public 같은 공개 의도가 있어야 한다.
@@ -47,7 +47,7 @@ function hasAuthInfrastructure(files: string[]): boolean {
 export function evaluateAuth(root: string): EvaluatorResult {
   const srcRoot = path.join(root, 'src')
   const files = walkFiles(srcRoot)
-  const controllerFiles = files.filter((file) => file.endsWith('.controller.ts'))
+  const controllerFiles = files.filter((file) => file.endsWith('controller.ts'))
 
   if (controllerFiles.length === 0) {
     return { name: 'auth', score: 0, maxScore: 0, failures: [] }
