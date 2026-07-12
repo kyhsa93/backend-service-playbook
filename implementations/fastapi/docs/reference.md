@@ -2,7 +2,7 @@
 
 전체 도메인 하나(Order)를 본 아키텍처로 구현한 예시다. 새 도메인을 추가할 때 이 템플릿을 복사하여 시작한다.
 
-> 이 문서는 **목표 상태(target state)** 를 보여준다. 저장소의 실제 예시(`examples/src/account/`)는 [architecture/*.md](architecture/) 각 문서의 "알려진 격차" 절에 정리된 것처럼 이 목표의 일부(에러 코드, Outbox, 인증, Alembic 등)를 아직 반영하지 않았다 — 새 도메인을 작성할 때는 `examples/`를 그대로 베끼지 말고, 이 문서와 각 architecture 문서의 "올바른 패턴" 절을 기준으로 삼는다.
+> 이 문서는 **목표 상태(target state)** 를 보여준다. 저장소의 실제 예시(`examples/src/account/`)는 [architecture/*.md](architecture/) 각 문서의 "알려진 격차" 절에 정리된 것처럼 이 목표의 일부(Alembic 마이그레이션, Repository 조회 메서드 네이밍 등)를 아직 반영하지 않았다 — 새 도메인을 작성할 때는 `examples/`를 그대로 베끼지 말고, 이 문서와 각 architecture 문서의 "올바른 패턴" 절을 기준으로 삼는다. 에러 코드/Outbox/인증은 이미 `examples/`에 반영되어 있다.
 
 ---
 

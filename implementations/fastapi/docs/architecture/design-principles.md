@@ -1,6 +1,6 @@
 # 핵심 설계 원칙 요약
 
-이 저장소의 다른 21개 문서에서 이미 다루는 원칙 중, FastAPI 구현에서 가장 자주 되짚어야 할 것들을 조합 순서(구조 → 레이어 → 에러/DI → 알려진 격차)로 압축했다. 각 항목은 상세 문서로 연결된다 — 상충하는 규칙을 새로 만들지 않고 기존 문서의 요약본 역할만 한다.
+이 저장소의 다른 21개 문서에서 이미 다루는 원칙 중, FastAPI 구현에서 가장 자주 되짚어야 할 것들을 조합 순서(구조 → 레이어 → 에러/DI → ID/이벤트/DTO/비동기)로 압축했다. 각 항목은 상세 문서로 연결된다 — 상충하는 규칙을 새로 만들지 않고 기존 문서의 요약본 역할만 한다.
 
 1. **도메인 우선 디렉토리 구조** — `src/<domain>/` 하위에 `domain/application/interface/infrastructure` 4개 레이어를 배치한다. 기술 레이어가 아니라 Bounded Context가 패키지 분리 기준이다. ([directory-structure.md](directory-structure.md))
 
@@ -18,7 +18,7 @@
 
 8. **Technical Service는 인터페이스-구현체 분리** — 이메일 발송(`NotificationService`) 같은 기술 인프라 관심사는 `application/service/`에 ABC, `infrastructure/<concern>/`에 구현체를 둔다. 파일 스토리지, Secrets Manager를 추가할 때도 동일한 구조를 따른다. ([layer-architecture.md](layer-architecture.md), [file-storage.md](file-storage.md), [secret-manager.md](secret-manager.md))
 
-9. **에러는 예외 클래스 계층 + HTTP 변환은 `main.py`에서만** — `domain/errors.py`는 plain `Exception`만 던지고 HTTP를 모른다. `@app.exception_handler`가 유일한 변환 지점이다. **알려진 격차**: 현재 응답이 `{"message": ...}`뿐이라 root가 요구하는 `statusCode`/`code`/`message`/`error` 4필드와 에러 코드 enum이 없다. ([error-handling.md](error-handling.md))
+9. **에러는 예외 클래스 계층 + HTTP 변환은 `main.py`에서만** — `domain/errors.py`는 plain `Exception`만 던지고 HTTP를 모른다. `@app.exception_handler`가 유일한 변환 지점이다. 각 예외는 `domain/error_codes.py`의 enum에서 고유 `code`를 가지며, `src/common/error_response.py`의 `build_error_response()`가 root가 요구하는 `statusCode`/`code`/`message`/`error` 4필드 응답을 조립한다. Pydantic 검증 실패(422)도 `code: VALIDATION_FAILED`로 동일한 형식을 따른다. ([error-handling.md](error-handling.md))
 
 10. **ID는 Domain 팩토리 classmethod에서 생성, 하이픈 없는 32자리 hex** — `Account.create()`가 유일한 생성 경로이며, `common/generate_id.py`가 `uuid.uuid4().hex`(하이픈 없음)를 반환해 전 도메인에서 일관되게 쓰인다. ([aggregate-id.md](aggregate-id.md))
 
@@ -30,7 +30,7 @@
 
 ---
 
-위 항목 중 9번은 **문서가 이미 원칙을 정확히 제시하지만 `examples/`의 실제 코드는 아직 그 원칙을 완전히 따르지 않는** 항목이다. 새 도메인을 추가하거나 기존 코드를 수정할 때 이 격차부터 우선 해소한다. (10, 11번은 이미 해소되었다. Rate Limiting은 `slowapi`로 이미 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.)
+위 13개 항목 모두 `examples/`의 실제 코드가 문서의 원칙을 그대로 따른다 — 알려진 격차는 남아있지 않다. Rate Limiting은 `slowapi`로 이미 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.
 
 ### 관련 문서
 

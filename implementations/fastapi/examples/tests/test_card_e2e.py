@@ -95,6 +95,10 @@ async def test_issue_card_linked_account_not_found_returns_404(client: AsyncClie
     )
 
     assert response.status_code == 404
+    body = response.json()
+    assert body["statusCode"] == 404
+    assert body["code"] == "LINKED_ACCOUNT_NOT_FOUND"
+    assert body["error"] == "Not Found"
 
 
 @pytest.mark.asyncio
@@ -122,6 +126,10 @@ async def test_issue_card_suspended_account_returns_400(client: AsyncClient) -> 
     )
 
     assert response.status_code == 400
+    body = response.json()
+    assert body["statusCode"] == 400
+    assert body["code"] == "CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT"
+    assert body["error"] == "Bad Request"
 
 
 @pytest.mark.asyncio
@@ -142,6 +150,10 @@ async def test_get_card_not_found_returns_404(client: AsyncClient) -> None:
     response = await client.get("/cards/non-existent", headers=auth_headers(OWNER_ID))
 
     assert response.status_code == 404
+    body = response.json()
+    assert body["statusCode"] == 404
+    assert body["code"] == "CARD_NOT_FOUND"
+    assert body["error"] == "Not Found"
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from src.config.validator import validate_env
 validate_env()  # 실패 시 여기서 프로세스가 종료된다 — 이후 코드는 실행되지 않음
 
 from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
@@ -22,6 +23,7 @@ from src.card.domain.errors import CardError, CardNotFoundError, LinkedAccountNo
 from src.card.interface.rest.card_router import router as card_router  # noqa: E402
 from src.common.aws_secret_service import AwsSecretService  # noqa: E402
 from src.common.correlation import generate_correlation_id, set_correlation_id  # noqa: E402
+from src.common.error_response import build_error_response  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
 from src.common.rate_limit import limiter  # noqa: E402
 from src.database import engine  # noqa: E402
@@ -110,24 +112,33 @@ app.add_middleware(SlowAPIMiddleware)
 
 @app.exception_handler(AccountNotFoundError)
 async def account_not_found_handler(request: Request, exc: AccountNotFoundError) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"message": str(exc)})
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
 
 
 @app.exception_handler(AccountError)
 async def account_error_handler(request: Request, exc: AccountError) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"message": str(exc)})
+    return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
 
 
 @app.exception_handler(CardNotFoundError)
 async def card_not_found_handler(request: Request, exc: CardNotFoundError) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"message": str(exc)})
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
 
 
 @app.exception_handler(LinkedAccountNotFoundError)
 async def linked_account_not_found_handler(request: Request, exc: LinkedAccountNotFoundError) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"message": str(exc)})
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
 
 
 @app.exception_handler(CardError)
 async def card_error_handler(request: Request, exc: CardError) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"message": str(exc)})
+    return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    messages = [str(e["msg"]) for e in exc.errors()]
+    return JSONResponse(
+        status_code=422,
+        content=build_error_response(422, "VALIDATION_FAILED", "; ".join(messages)),
+    )

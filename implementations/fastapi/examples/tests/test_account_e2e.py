@@ -74,6 +74,10 @@ async def test_create_account_success(client: AsyncClient) -> None:
 async def test_create_account_missing_currency_returns_422(client: AsyncClient) -> None:
     response = await client.post("/accounts", json={"email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID))
     assert response.status_code == 422
+    body = response.json()
+    assert body["statusCode"] == 422
+    assert body["code"] == "VALIDATION_FAILED"
+    assert body["error"] == "Unprocessable Entity"
 
 
 @pytest.mark.asyncio
@@ -111,6 +115,10 @@ async def test_deposit_account_not_found_returns_404(client: AsyncClient) -> Non
         "/accounts/non-existent/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
     )
     assert response.status_code == 404
+    body = response.json()
+    assert body["statusCode"] == 404
+    assert body["code"] == "ACCOUNT_NOT_FOUND"
+    assert body["error"] == "Not Found"
 
 
 @pytest.mark.asyncio
@@ -135,6 +143,10 @@ async def test_deposit_non_positive_amount_returns_400(client: AsyncClient) -> N
     )
 
     assert response.status_code == 400
+    body = response.json()
+    assert body["statusCode"] == 400
+    assert body["code"] == "INVALID_AMOUNT"
+    assert body["error"] == "Bad Request"
 
 
 @pytest.mark.asyncio
