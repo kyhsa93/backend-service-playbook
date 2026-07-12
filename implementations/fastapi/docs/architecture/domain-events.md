@@ -83,9 +83,12 @@ class OutboxWriter:
 
     async def save_all(self, events: Sequence[object]) -> None:
         for event in events:
+            # Integration Event는 버전이 명시된 공개 계약명(event_name, 예: 'account.suspended.v1')을
+            # event_type으로 쓴다. Domain Event는 event_name이 없으므로 클래스명을 그대로 쓴다.
+            event_type = getattr(event, "event_name", None) or type(event).__name__
             self._session.add(OutboxModel(
                 event_id=uuid.uuid4().hex,
-                event_type=type(event).__name__,
+                event_type=event_type,
                 payload=json.dumps(dataclasses.asdict(event), default=str),
                 processed=False,
             ))
@@ -133,6 +136,8 @@ class DepositHandler:
 
 `OutboxRelay.process_pending()`(`src/outbox/outbox_relay.py`)은 자신이 방금 적재한 이벤트뿐 아니라 테이블 전체의 `processed=False` row를 훑는다 — 그래서 어떤 커맨드 처리 중 핸들러가 실패해 row가 미처리로 남아도, **다음에 어떤 종류의 커맨드든 한 번 더 실행되는 순간** 자동으로 재시도된다.
 
+핸들러 실행 도중 새 row가 적재될 수 있다 — 예를 들어 `AccountSuspended` Domain Event 핸들러가 `account.suspended.v1` Integration Event를 같은 세션에 적재하는 경우(Card BC 연동, 아래 참조)다. 이를 한 커맨드 처리 안에서 완결시키기 위해 `process_pending()`은 더 이상 진전이 없을 때까지 여러 패스로 반복 드레인한다(`MAX_PASSES`로 상한).
+
 ```python
 # src/outbox/outbox_relay.py — 실제 코드
 class OutboxRelay:
@@ -141,22 +146,35 @@ class OutboxRelay:
         self._handlers = handlers
 
     async def process_pending(self) -> None:
-        stmt = select(OutboxModel).where(OutboxModel.processed.is_(False))
-        rows = (await self._session.execute(stmt)).scalars().all()
+        failed_in_this_run: set[str] = set()
 
-        for row in rows:
-            handler = self._handlers.get(row.event_type)
-            try:
-                if handler is not None:
-                    await handler(json.loads(row.payload))
-                row.processed = True
-            except Exception:  # noqa: BLE001 - 다음 드레인에서 재시도해야 하므로 여기서 삼킨다
-                logger.exception("이벤트 처리 실패: event_type=%s event_id=%s", row.event_type, row.event_id)
+        for _ in range(MAX_PASSES):
+            stmt = select(OutboxModel).where(OutboxModel.processed.is_(False))
+            rows = [
+                row for row in (await self._session.execute(stmt)).scalars().all()
+                if row.event_id not in failed_in_this_run
+            ]
+            if not rows:
+                return
 
-        await self._session.flush()
+            progressed = 0
+            for row in rows:
+                handler = self._handlers.get(row.event_type)
+                try:
+                    if handler is not None:
+                        await handler(json.loads(row.payload))
+                    row.processed = True
+                    progressed += 1
+                except Exception:  # noqa: BLE001 - 다음 드레인에서 재시도해야 하므로 여기서 삼킨다
+                    failed_in_this_run.add(row.event_id)
+                    logger.exception("이벤트 처리 실패: event_type=%s event_id=%s", row.event_type, row.event_id)
+
+            await self._session.flush()
+            if progressed == 0:  # 이번 패스에서 진전이 없었다면 더 반복해도 소용없다
+                return
 ```
 
-`process_pending()`은 절대 예외를 밖으로 던지지 않는다 — 핸들러가 실패해도 로깅만 하고 다음 row로 넘어가며, 실패한 row는 `processed=False`로 남는다.
+`process_pending()`은 절대 예외를 밖으로 던지지 않는다 — 핸들러가 실패해도 로깅만 하고 다음 row로 넘어가며, 실패한 row는 이번 호출의 다음 패스에서는 재시도하지 않고(`failed_in_this_run`) `processed=False`로 남겨 **다음 `process_pending()` 호출**에서 재시도되게 한다.
 
 ### 3단계: `application/event/`의 EventHandler가 페이로드를 역직렬화해 `NotificationService`를 호출한다
 
@@ -228,7 +246,54 @@ if existing.scalar_one_or_none() is not None:
 
 ## Domain Event vs Integration Event
 
-이 저장소는 단일 Bounded Context(`account`)만 있으므로 아직 Integration Event가 필요 없다. 두 번째 BC(예: `notification` 서비스를 별도 프로세스로 분리)를 추가하게 되면, `AccountCreated` 같은 Domain Event를 그대로 외부로 노출하지 말고 `application/integration-event/`에서 버전이 명시된 별도 계약(`account.created.v1`)으로 변환해야 한다 — root의 [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) 참조.
+`account`와 `card`, 두 번째 Bounded Context가 생기면서 실제로 Integration Event를 쓰게 되었다. `AccountSuspended`/`AccountClosed` 같은 내부 Domain Event를 그대로 외부로 노출하지 않고, `application/integration_event/`에서 버전이 명시된 별도 계약(`account.suspended.v1`, `account.closed.v1`)으로 변환해 발행한다 — root의 [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) 참조. 구체적인 흐름은 [cross-domain.md](cross-domain.md)에 정리되어 있다.
+
+```python
+# src/account/application/integration_event/account_suspended_integration_event.py — 실제 코드
+@dataclass(frozen=True)
+class AccountSuspendedIntegrationEventV1:
+    event_name: ClassVar[str] = "account.suspended.v1"  # asdict() 페이로드에는 포함되지 않음
+    account_id: str
+    suspended_at: str
+```
+
+변환 지점은 항상 `application/event/`의 EventHandler다(Aggregate가 Integration Event를 직접 만들지 않는다). `application/event/`는 `OutboxWriter`를 직접 쓸 수 있는 유일한 예외이며, 여기서 만든 Integration Event를 같은 세션의 Outbox에 적재한다.
+
+```python
+# src/account/application/event/account_suspended_event_handler.py — 실제 코드(발췌)
+class AccountSuspendedEventHandler:
+    def __init__(self, notification_service: NotificationService, outbox_writer: OutboxWriter) -> None:
+        self._notification_service = notification_service
+        self._outbox_writer = outbox_writer
+
+    async def handle(self, payload: dict) -> None:
+        event = AccountSuspended(...)
+        await self._outbox_writer.save_all([
+            AccountSuspendedIntegrationEventV1(account_id=event.account_id, suspended_at=event.suspended_at.isoformat())
+        ])
+        await self._notification_service.notify(event)
+```
+
+수신 측(Card BC)은 `interface/integration_event/card_integration_event_controller.py`가 담당한다 — HTTP Router와 동일한 위치(`interface/`)의 입력 경계이며, 자기 도메인의 Command Handler만 호출한다. 조립은 발행 측(`account`)의 composition root인 `interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 맡는다 — Account 자신의 6개 Domain Event 핸들러와 Card의 두 Integration Event 반응 핸들러를 같은 `handlers` dict에 등록한다(FastAPI에는 NestJS의 `EventHandlerRegistry` 같은 모듈 간 느슨한 등록 메커니즘이 없다).
+
+```python
+# src/account/interface/rest/account_router.py — 실제 코드(발췌)
+def _outbox_relay(..., card_repo: CardRepository = Depends(_card_repo)) -> OutboxRelay:
+    outbox_writer = OutboxWriter(session)
+    card_integration_event_controller = CardIntegrationEventController(card_repo)
+    return OutboxRelay(
+        session=session,
+        handlers={
+            ...,
+            "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
+            "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
+            "account.suspended.v1": card_integration_event_controller.on_account_suspended,
+            "account.closed.v1": card_integration_event_controller.on_account_closed,
+        },
+    )
+```
+
+이 배선 덕에 `POST /accounts/{id}/suspend` 한 요청 안에서 (1) `AccountSuspended` Domain Event가 Outbox에 적재되고 (2) 첫 드레인 패스가 그 이벤트를 처리하며 `account.suspended.v1` Integration Event를 같은 Outbox에 추가로 적재하고 (3) 다음 드레인 패스가 그 Integration Event를 처리해 Card BC의 `SuspendCardsByAccountHandler`가 연결된 모든 ACTIVE 카드를 SUSPENDED로 바꾼다 — 전부 하나의 HTTP 요청, 하나의 트랜잭션 안에서 완결된다.
 
 ---
 
@@ -238,7 +303,8 @@ if existing.scalar_one_or_none() is not None:
 - **저장과 이벤트 적재는 하나의 트랜잭션**: `SqlAlchemyAccountRepository.save()` 안에서 Aggregate 상태와 Outbox row를 함께 적재하고, 요청 스코프 세션이 한 번에 커밋한다.
 - **후속 처리는 Outbox 드레인을 통해서만**: Command Handler는 알림 서비스를 직접 호출하지 않고 `OutboxRelay.process_pending()`만 호출한다.
 - **드레인은 폴링 워커가 아니라 다음 커맨드가 트리거한다**: 배경 작업(APScheduler/Celery) 없이도 매 커맨드가 테이블 전체를 훑어 재시도까지 자연스럽게 처리한다 — e2e 테스트에서 타이밍 대기가 필요 없는 이유이기도 하다.
-- **핸들러는 (아직) 멱등하지 않다**: at-least-once 전달을 전제로 하지만, Ledger(`SentEmailModel`) 기반 중복 스킵은 아직 미적용 — 남은 개선 지점.
+- **드레인은 진전이 없을 때까지 여러 패스를 반복한다**: Domain Event 핸들러가 같은 세션에 새 Integration Event를 적재해도(Card BC 연동 참조) 한 커맨드 처리 안에서 연쇄 반응까지 완결된다 — `MAX_PASSES`로 상한을 둔다.
+- **핸들러는 (아직) 멱등하지 않다**: at-least-once 전달을 전제로 하지만, Ledger(`SentEmailModel`) 기반 중복 스킵은 아직 미적용 — 남은 개선 지점. 단, Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하므로 재수신에 자연히 멱등하다.
 
 ---
 
