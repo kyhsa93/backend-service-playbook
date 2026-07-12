@@ -49,7 +49,9 @@ class OutboxEvent protected constructor() {
         fun from(event: Any, objectMapper: ObjectMapper): OutboxEvent =
             OutboxEvent().apply {
                 this.eventId = UUID.randomUUID().toString().replace("-", "")
-                this.eventType = event::class.simpleName ?: "Unknown"
+                // Integration Event는 버전이 명시된 공개 계약명(eventName, 예: `account.suspended.v1`)을
+                // eventType으로 쓴다. Domain Event는 eventName이 없으므로 클래스명을 그대로 쓴다.
+                this.eventType = (event as? IntegrationEventContract)?.eventName ?: (event::class.simpleName ?: "Unknown")
                 this.payload = objectMapper.writeValueAsString(event)
                 this.createdAt = LocalDateTime.now()
             }

@@ -3,6 +3,9 @@ package com.example.accountservice.common
 import com.example.accountservice.account.domain.AccountException
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.interfaces.rest.ErrorResponse
+import com.example.accountservice.card.domain.CardException
+import com.example.accountservice.card.domain.CardNotFoundException
+import com.example.accountservice.card.domain.LinkedAccountNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -31,6 +34,24 @@ class GlobalExceptionHandler {
     @ExceptionHandler(AccountException::class)
     fun handleAccountException(e: AccountException): ResponseEntity<ErrorResponse> {
         logger.warn("계좌 요청 실패: {}", e.message)
+        return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(CardNotFoundException::class)
+    fun handleCardNotFound(e: CardNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("카드를 찾을 수 없음: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(LinkedAccountNotFoundException::class)
+    fun handleLinkedAccountNotFound(e: LinkedAccountNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("연결할 계좌를 찾을 수 없음: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(CardException::class)
+    fun handleCardException(e: CardException): ResponseEntity<ErrorResponse> {
+        logger.warn("카드 요청 실패: {}", e.message)
         return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
     }
 

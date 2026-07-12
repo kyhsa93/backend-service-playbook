@@ -1,0 +1,10 @@
+package com.example.accountservice.card.domain
+
+enum class CardErrorCode {
+    CARD_NOT_FOUND,
+    LINKED_ACCOUNT_NOT_FOUND,
+    CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT,
+    CANCELLED_CARD_CANNOT_BE_SUSPENDED,
+    CARD_ALREADY_SUSPENDED,
+    CARD_ALREADY_CANCELLED,
+}
