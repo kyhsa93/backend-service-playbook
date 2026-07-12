@@ -21,6 +21,11 @@ internal/
       events.go                              ← DomainEvent 인터페이스 + 이벤트 구조체들
       errors.go                              ← sentinel error (var ErrXxx = errors.New(...))
       repository.go                          ← Repository interface + FindQuery
+    card/                                    ← 두 번째 Bounded Context (cross-domain.md 참고)
+      card.go                                ← Card Aggregate Root (IssueCard/Suspend/Cancel)
+      card_status.go                         ← Status enum
+      errors.go
+      repository.go                          ← Repository/Query interface (CQRS 분리)
 
   application/
     command/
@@ -31,41 +36,59 @@ internal/
       reactivate_account_handler.go
       close_account_handler.go
       event_relay.go                         ← OutboxRelay 포트 인터페이스 (command 패키지가 필요로 하는 최소 시그니처)
+      account_adapter.go                     ← Card→Account 동기 조회 포트(ACL 인터페이스) + AccountView
+      issue_card_handler.go                  ← 카드 발급 (AccountAdapter로 계좌 활성 여부 동기 확인)
+      suspend_cards_by_account_handler.go    ← account.suspended.v1 반응 유스케이스 (멱등)
+      cancel_cards_by_account_handler.go     ← account.closed.v1 반응 유스케이스 (멱등)
     query/
       get_account_handler.go
       get_transactions_handler.go
-      result.go                              ← Result DTO들
+      get_card_handler.go
+      result.go                              ← Account Result DTO들
+      card_result.go                         ← Card Result DTO
     event/
       account_created_event_handler.go       ← Outbox가 드레인한 이벤트를 처리해 알림 발송 (domain-events.md 참고)
       money_deposited_event_handler.go
       money_withdrawn_event_handler.go
-      account_suspended_event_handler.go
+      account_suspended_event_handler.go     ← 알림 발송 + account.suspended.v1 Integration Event 적재
       account_reactivated_event_handler.go
-      account_closed_event_handler.go
+      account_closed_event_handler.go        ← 알림 발송 + account.closed.v1 Integration Event 적재
+      integration_publisher.go               ← IntegrationPublisher 포트 (event 패키지가 필요로 하는 최소 시그니처)
+    integration-event/                       ← Account가 외부 BC에 공개하는 버전 명시 Integration Event 계약
+      account_suspended_integration_event.go
+      account_closed_integration_event.go
 
   infrastructure/
     persistence/
       account_repository.go                  ← account.Repository 구현체 (같은 트랜잭션에 Outbox 행도 적재)
+      card_repository.go                     ← card.Repository 구현체
+    acl/
+      account_adapter.go                     ← command.AccountAdapter 구현체 (Card→Account ACL, cross-domain.md)
     notification/
       service.go                             ← 이벤트 핸들러가 호출하는 알림 발송 (SES + DB 기록)
       ses_client.go                          ← SES 클라이언트 생성
     outbox/                                  ← 도메인 무관 공유 인프라 (shared-modules.md 참고)
-      writer.go                              ← Repository.Save 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
+      writer.go                              ← Repository.Save 트랜잭션 안에서 Domain Event를 Outbox 행으로 적재
+      publisher.go                           ← EventHandler가 Integration Event를 Outbox 행으로 적재
       relay.go                               ← Command Handler가 저장 직후 동기 호출해 드레인
 
   interface/
     http/
       router.go                              ← net/http 라우팅 + 의존성 조립 보조
       account_handler.go                      ← HTTP 핸들러
+      card_handler.go                        ← Card HTTP 핸들러 (POST /cards, GET /cards/{cardId})
       dto.go                                  ← 요청/응답 DTO
 
 migrations/
   0001_init.sql
   0002_add_email_and_sent_emails.sql
+  0003_add_outbox.sql
+  0004_add_card.sql
 
 test/
   account_e2e_test.go
   notification_e2e_test.go
+  card_e2e_test.go                           ← 동기 ACL + 비동기 Integration Event 반응 검증
 
 localstack/
   init-ses.sh
@@ -93,7 +116,7 @@ go.mod
 | `task-queue/` | 없음 — 스케줄링/Task Queue 예제 없음([scheduling.md](scheduling.md) 참고) |
 | `config/` | 없음 — `main.go`가 `os.Getenv`를 검증 없이 직접 사용. 새로 만들 때는 `internal/config/`로 분리([config.md](config.md) 참고) |
 
-여러 도메인이 추가되면 `internal/domain/<domain>/`, `internal/infrastructure/persistence/<domain>_repository.go`처럼 도메인별로 파일이 늘어난다. `internal/application/command/`, `query/`는 도메인이 많아지면 `command/<domain>/`처럼 하위 디렉토리로 나누는 것을 검토한다 — 현재는 Account 하나뿐이라 평평한 구조로 충분하다.
+여러 도메인이 추가되면 `internal/domain/<domain>/`, `internal/infrastructure/persistence/<domain>_repository.go`처럼 도메인별로 파일이 늘어난다. 현재 `examples/`에는 Account와 Card 두 Bounded Context가 있고(파일명 접두사 `card_*`로 구분), `internal/application/command/`·`query/`는 아직 평평한 구조로 두 도메인의 핸들러를 함께 담는다 — 도메인이 더 많아져 파일이 번잡해지면 `command/<domain>/`처럼 하위 디렉토리로 나누는 것을 검토한다. Account↔Card 크로스 도메인 호출 배치는 [cross-domain.md](cross-domain.md)를 참고한다.
 
 ---
 

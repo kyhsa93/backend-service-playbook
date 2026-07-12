@@ -23,7 +23,10 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"golang.org/x/time/rate"
 
+	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/event"
+	integrationevent "github.com/example/account-service/internal/application/integration-event"
+	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
@@ -79,7 +82,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -127,13 +130,35 @@ func runTests(m *testing.M) int {
 	notifier := notification.NewService(sesClient, db)
 
 	outboxWriter := outbox.NewWriter()
+	outboxPublisher := outbox.NewPublisher(db)
+
+	repo := persistence.NewAccountRepository(db, outboxWriter)
+	cardRepo := persistence.NewCardRepository(db)
+	accountAdapter := acl.NewAccountAdapter(repo)
+	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
+	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
+
 	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
 		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
-		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier).Handle,
+		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
 		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
-		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
+		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
+		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.AccountSuspendedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return suspendCardsHandler.Handle(ctx, command.SuspendCardsByAccountCommand{AccountID: e.AccountID})
+		},
+		"account.closed.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.AccountClosedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
+		},
 	})
 
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
@@ -144,8 +169,7 @@ func runTests(m *testing.M) int {
 	// 여기서만 넉넉한 limiter로 override한다.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	repo := persistence.NewAccountRepository(db, outboxWriter)
-	mux, _ := httphandler.NewRouter(repo, outboxRelay, testJWTService, testLimiter)
+	mux, _ := httphandler.NewRouter(repo, cardRepo, accountAdapter, outboxRelay, testJWTService, testLimiter)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
