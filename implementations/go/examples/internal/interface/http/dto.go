@@ -59,6 +59,20 @@ type GetTransactionsResponse struct {
 	Count        int                          `json:"count"`
 }
 
+type IssueCardRequest struct {
+	AccountID string `json:"accountId"`
+	Brand     string `json:"brand"`
+}
+
+type CardResponse struct {
+	CardID    string    `json:"cardId"`
+	AccountID string    `json:"accountId"`
+	OwnerID   string    `json:"ownerId"`
+	Brand     string    `json:"brand"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // ErrorResponse는 root docs/architecture/error-handling.md가 요구하는 표준 에러 응답
 // JSON 스키마다: statusCode/code/message/error 네 필드를 항상 포함한다.
 type ErrorResponse struct {

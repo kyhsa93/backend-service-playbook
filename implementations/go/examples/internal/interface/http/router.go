@@ -8,6 +8,7 @@ import (
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/query"
 	"github.com/example/account-service/internal/domain/account"
+	"github.com/example/account-service/internal/domain/card"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/interface/http/middleware"
 )
@@ -17,7 +18,7 @@ import (
 // limiter는 호출자가 조립한다(main()은 config.LoadRateLimitConfig()로, 테스트는 임계값이
 // 훨씬 높은 limiter로) — rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
 // 운영값과 테스트값을 분리하기 위해서다.
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
+func NewRouter(repo account.Repository, cardRepo card.Repository, accountAdapter command.AccountAdapter, outboxRelay command.OutboxRelay, jwtService *auth.JWTService, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
 	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
 	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	withdrawHandler := command.NewWithdrawHandler(repo, outboxRelay)
@@ -37,6 +38,11 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtServ
 		getAccountHandler,
 		getTransactionsHandler,
 	)
+	// Card BC — 발급 시 accountAdapter(ACL)로 계좌 활성 여부를 동기 확인한다(cross-domain.md).
+	issueCardHandler := command.NewIssueCardHandler(cardRepo, accountAdapter)
+	getCardHandler := query.NewGetCardHandler(cardRepo)
+	cardHTTP := NewCardHandler(issueCardHandler, getCardHandler)
+
 	authHTTP := NewAuthHandler(jwtService)
 	healthHandler := NewHealthHandler()
 
@@ -49,11 +55,15 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtServ
 	protected.HandleFunc("POST /accounts/{id}/close", accountHTTP.CloseAccount)
 	protected.HandleFunc("GET /accounts/{id}", accountHTTP.GetAccount)
 	protected.HandleFunc("GET /accounts/{id}/transactions", accountHTTP.GetTransactions)
+	protected.HandleFunc("POST /cards", cardHTTP.IssueCard)
+	protected.HandleFunc("GET /cards/{cardId}", cardHTTP.GetCard)
 
 	// rate limit 대상 라우트
 	limited := http.NewServeMux()
 	limited.Handle("/accounts", middleware.RequireAuth(jwtService)(protected))
 	limited.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
+	limited.Handle("/cards", middleware.RequireAuth(jwtService)(protected))
+	limited.Handle("/cards/", middleware.RequireAuth(jwtService)(protected))
 	limited.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)
 
 	mux := http.NewServeMux()

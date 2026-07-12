@@ -34,38 +34,61 @@ type outboxRow struct {
 
 // ProcessPending은 테이블 전체의 미처리 행을 순서대로 처리한다 — 자신이 방금 적재한
 // 이벤트만이 아니라 다른 커맨드가 남겨둔 미처리 행까지 함께 드레인한다.
+//
+// 한 번의 패스에서 처리한 이벤트 핸들러가 다시 새 Outbox 행을 적재할 수 있으므로
+// (예: AccountSuspended 핸들러가 account.suspended.v1 Integration Event를 적재) —
+// 이 새 행을 같은 요청 안에서 이어서 드레인하기 위해 "진전이 있는 한" 패스를 반복한다.
+// 어떤 패스도 새로 처리(processed=true로 마킹)한 행이 없으면(빈 테이블이거나 남은 행이
+// 모두 실패 중이면) 멈춘다 — 지속 실패 행 때문에 무한 루프에 빠지지 않는다(at-least-once,
+// 실패 행은 다음 커맨드의 ProcessPending에서 다시 시도된다).
 func (r *Relay) ProcessPending(ctx context.Context) error {
+	for {
+		pending, err := r.fetchPending(ctx)
+		if err != nil {
+			return err
+		}
+		if len(pending) == 0 {
+			return nil
+		}
+
+		progressed := 0
+		for _, row := range pending {
+			if err := r.processRow(ctx, row); err != nil {
+				slog.ErrorContext(ctx, "outbox event processing failed",
+					"event_type", row.eventType,
+					"event_id", row.eventID,
+					"error", err,
+				)
+				continue
+			}
+			progressed++
+		}
+		if progressed == 0 {
+			return nil
+		}
+	}
+}
+
+func (r *Relay) fetchPending(ctx context.Context) ([]outboxRow, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT event_id, event_type, payload FROM outbox WHERE processed = false ORDER BY created_at`)
 	if err != nil {
-		return fmt.Errorf("query pending outbox rows: %w", err)
+		return nil, fmt.Errorf("query pending outbox rows: %w", err)
 	}
+	defer rows.Close()
 
 	var pending []outboxRow
 	for rows.Next() {
 		var row outboxRow
 		if err := rows.Scan(&row.eventID, &row.eventType, &row.payload); err != nil {
-			rows.Close()
-			return fmt.Errorf("scan outbox row: %w", err)
+			return nil, fmt.Errorf("scan outbox row: %w", err)
 		}
 		pending = append(pending, row)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
-		return fmt.Errorf("iterate outbox rows: %w", err)
+		return nil, fmt.Errorf("iterate outbox rows: %w", err)
 	}
-	rows.Close()
-
-	for _, row := range pending {
-		if err := r.processRow(ctx, row); err != nil {
-			slog.ErrorContext(ctx, "outbox event processing failed",
-				"event_type", row.eventType,
-				"event_id", row.eventID,
-				"error", err,
-			)
-		}
-	}
-	return nil
+	return pending, nil
 }
 
 func (r *Relay) processRow(ctx context.Context, row outboxRow) error {

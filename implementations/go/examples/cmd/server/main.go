@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -14,8 +15,11 @@ import (
 	_ "github.com/lib/pq"
 	"golang.org/x/time/rate"
 
+	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/event"
+	integrationevent "github.com/example/account-service/internal/application/integration-event"
 	"github.com/example/account-service/internal/config"
+	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
@@ -44,13 +48,40 @@ func main() {
 	notifier := notification.NewService(notification.NewSESClient(), db)
 
 	outboxWriter := outbox.NewWriter()
+	outboxPublisher := outbox.NewPublisher(db)
+
+	// Card BC 의존성. 합성 루트(main)만 Account와 Card 양쪽을 알고, 두 BC는 서로를
+	// import하지 않는다 — Account는 Outbox에 Integration Event를 문자열 event_type으로
+	// 적재하고, Card는 아래 handler map에서 그 문자열을 구독한다(cross-domain.md).
+	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
+	cardRepo := persistence.NewCardRepository(db)
+	accountAdapter := acl.NewAccountAdapter(accountRepo)
+	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
+	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
+
 	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
 		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
-		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier).Handle,
+		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
 		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
-		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
+		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
+		// Card BC가 Account의 Integration Event에 반응한다(비동기). 언마샬 글루만 여기 두고
+		// 실제 유스케이스는 Card Application 핸들러에 위임한다.
+		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.AccountSuspendedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return suspendCardsHandler.Handle(ctx, command.SuspendCardsByAccountCommand{AccountID: e.AccountID})
+		},
+		"account.closed.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.AccountClosedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
+		},
 	})
 
 	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
@@ -64,8 +95,7 @@ func main() {
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-	mux, healthHandler := httphandler.NewRouter(accountRepo, outboxRelay, jwtService, limiter)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, accountAdapter, outboxRelay, jwtService, limiter)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
