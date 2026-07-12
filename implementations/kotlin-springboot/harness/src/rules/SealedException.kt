@@ -3,7 +3,7 @@ package harness.rules
 import harness.*
 import java.io.File
 
-private val SEALED_EXCEPTION = Regex("sealed class.*Exception|sealed class.*Error")
+private val SEALED_EXCEPTION = Regex("(?m)^\\s*(public |internal |private )?sealed class.*(Exception|Error)")
 
 /** [6] sealed class 에러 — domain/ 에 위치 */
 fun checkSealedException(rootPath: String): RuleResult {

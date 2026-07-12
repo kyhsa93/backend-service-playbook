@@ -55,9 +55,11 @@ val TESTS: List<TestCase> = listOf(
 
     TestCase("controller-placement/good") { checkControllerPlacement("testdata/controller-placement/good").assertNoFailures() },
     TestCase("controller-placement/bad-outside-interfaces") { checkControllerPlacement("testdata/controller-placement/bad-outside-interfaces").assertHasFailure() },
+    TestCase("controller-placement/good-restcontrolleradvice-outside-interfaces") { checkControllerPlacement("testdata/controller-placement/good-restcontrolleradvice-outside-interfaces").assertNoFailures() },
 
     TestCase("sealed-exception/good") { checkSealedException("testdata/sealed-exception/good").assertNoFailures() },
     TestCase("sealed-exception/bad-outside-domain") { checkSealedException("testdata/sealed-exception/bad-outside-domain").assertHasFailure() },
+    TestCase("sealed-exception/good-comment-mentions-sealed-class") { checkSealedException("testdata/sealed-exception/good-comment-mentions-sealed-class").assertNoFailures() },
 
     TestCase("package-structure/good") { checkPackageStructure("testdata/package-structure/good").assertNoFailures() },
     TestCase("package-structure/bad-missing-layer") { checkPackageStructure("testdata/package-structure/bad-missing-layer").assertHasFailure() },

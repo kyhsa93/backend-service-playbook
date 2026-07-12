@@ -3,6 +3,8 @@ package harness.rules
 import harness.*
 import java.io.File
 
+private val REST_CONTROLLER = Regex("@RestController\\b")
+
 /** [5] @RestController — interfaces/ 에만 허용 */
 fun checkControllerPlacement(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -10,7 +12,7 @@ fun checkControllerPlacement(rootPath: String): RuleResult {
     var found = false
     for (f in collectKtFiles(root)) {
         val content = f.readText()
-        if (!content.contains("@RestController")) continue
+        if (!REST_CONTROLLER.containsMatchIn(content)) continue
         found = true
         val rel = f.relTo(root)
         if (f.pathContains("/interfaces/")) {
