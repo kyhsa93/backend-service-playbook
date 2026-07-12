@@ -78,6 +78,7 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (domain_purity, "domain-purity/bad-forbidden-import"),
         (directory_structure, "directory-structure/bad-missing-layer"),
         (event_placement, "event-placement/bad-wrong-dir"),
+        (event_placement, "event-placement/bad-wrong-consumer-dir"),
         (layer_dependency, "layer-dependency/bad-imports-infra"),
         (no_notification_dependency_in_command, "no-notification-dependency-in-command/bad-has-dependency"),
         (outbox_drain_order, "outbox-drain-order/bad-missing-process-pending"),

@@ -31,6 +31,15 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             else:
                 result.add(failed(r, "integration event는 application/integration_event/ 에 있어야 함"))
 
+        if name.endswith("_integration_event_controller.py"):
+            found = True
+            # 외부 BC가 발행한 Integration Event를 수신하는 소비자 측 어댑터. HTTP Router와
+            # 동일한 위치(interface/)의 입력 경계이므로 interface/integration_event/ 에 있어야 함.
+            if "/interface/integration_event/" in fn:
+                result.add(passed(r))
+            else:
+                result.add(failed(r, "integration event controller는 interface/integration_event/ 에 있어야 함"))
+
     if not found:
         result.add(skipped("이벤트 핸들러 없음"))
     return result
