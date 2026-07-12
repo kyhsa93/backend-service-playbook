@@ -44,3 +44,11 @@ resilience4j:
         limit-for-period: 5
         limit-refresh-period: 1m
         timeout-duration: 0
+      http-write:
+        limit-for-period: 10
+        limit-refresh-period: 60s
+        timeout-duration: 0s
+      http-read:
+        limit-for-period: 100
+        limit-refresh-period: 60s
+        timeout-duration: 0s

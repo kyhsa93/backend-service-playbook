@@ -41,6 +41,9 @@ class AccountControllerE2ETest {
         // 이 테스트는 같은 클라이언트(IP)로 계좌 생성을 반복 호출한다 — 운영값(5/min, rate-limiting.md)을
         // 그대로 쓰면 rate limiting에 걸려 429가 섞여 나온다. 테스트 목적에 맞게 한도를 완화한다.
         registry.add("resilience4j.ratelimiter.instances.createAccount.limit-for-period", () -> "1000");
+        // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
+        // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+        registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }
 
     @Autowired
