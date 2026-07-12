@@ -1,0 +1,59 @@
+from unittest.mock import AsyncMock
+
+import pytest
+
+from src.card.application.adapter.account_adapter import AccountView
+from src.card.application.command.issue_card_handler import IssueCardCommand, IssueCardHandler
+from src.card.domain.card_status import CardStatus
+from src.card.domain.errors import (
+    CardIssueRequiresActiveAccountError,
+    LinkedAccountNotFoundError,
+)
+
+
+@pytest.fixture
+def repo() -> AsyncMock:
+    return AsyncMock()
+
+
+@pytest.fixture
+def account_adapter() -> AsyncMock:
+    return AsyncMock()
+
+
+@pytest.mark.asyncio
+async def test_execute_활성_계좌면_카드가_발급되고_저장된다(repo, account_adapter) -> None:
+    account_adapter.find_account.return_value = AccountView(account_id="account-1", active=True)
+    handler = IssueCardHandler(repo, account_adapter)
+
+    card = await handler.execute(
+        IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA")
+    )
+
+    assert card.account_id == "account-1"
+    assert card.owner_id == "owner-1"
+    assert card.status == CardStatus.ACTIVE
+    account_adapter.find_account.assert_awaited_once_with("account-1", "owner-1")
+    repo.save.assert_awaited_once_with(card)
+
+
+@pytest.mark.asyncio
+async def test_execute_연결할_계좌가_없으면_LinkedAccountNotFoundError(repo, account_adapter) -> None:
+    account_adapter.find_account.return_value = None
+    handler = IssueCardHandler(repo, account_adapter)
+
+    with pytest.raises(LinkedAccountNotFoundError):
+        await handler.execute(IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA"))
+
+    repo.save.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_비활성_계좌면_CardIssueRequiresActiveAccountError(repo, account_adapter) -> None:
+    account_adapter.find_account.return_value = AccountView(account_id="account-1", active=False)
+    handler = IssueCardHandler(repo, account_adapter)
+
+    with pytest.raises(CardIssueRequiresActiveAccountError):
+        await handler.execute(IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA"))
+
+    repo.save.assert_not_awaited()

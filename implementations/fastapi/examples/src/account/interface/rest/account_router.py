@@ -2,8 +2,12 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
+from ....card.domain.repository import CardRepository
+from ....card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
+from ....card.interface.integration_event.card_integration_event_controller import CardIntegrationEventController
 from ....common.rate_limit import limiter, rate_limit_config
 from ....outbox.outbox_relay import OutboxRelay
+from ....outbox.outbox_writer import OutboxWriter
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
 from ...application.command.create_account_handler import CreateAccountCommand, CreateAccountHandler
 from ...application.command.deposit_handler import DepositCommand, DepositHandler
@@ -48,19 +52,33 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
     return SesNotificationService(session)
 
 
+def _card_repo(session: AsyncSession = Depends(get_session)) -> CardRepository:
+    return SqlAlchemyCardRepository(session)
+
+
 def _outbox_relay(
     session: AsyncSession = Depends(get_session),
     notification_service: NotificationService = Depends(_notification_service),
+    card_repo: CardRepository = Depends(_card_repo),
 ) -> OutboxRelay:
+    # 이 dict가 프로세스 전체의 단일 조립 지점이다 — Account 자신의 Domain Event 핸들러뿐
+    # 아니라, Account가 발행하는 Integration Event(account.suspended.v1/account.closed.v1)를
+    # 구독하는 외부 BC(Card)의 반응 핸들러도 같은 OutboxRelay/같은 dict에 등록한다. FastAPI에는
+    # NestJS의 EventHandlerRegistry 같은 모듈 간 느슨한 등록 메커니즘이 없으므로, 이 팩토리가
+    # 곧 두 BC의 이벤트 배선을 조립하는 composition root다.
+    outbox_writer = OutboxWriter(session)
+    card_integration_event_controller = CardIntegrationEventController(card_repo)
     return OutboxRelay(
         session=session,
         handlers={
             "AccountCreated": AccountCreatedEventHandler(notification_service).handle,
             "MoneyDeposited": MoneyDepositedEventHandler(notification_service).handle,
             "MoneyWithdrawn": MoneyWithdrawnEventHandler(notification_service).handle,
-            "AccountSuspended": AccountSuspendedEventHandler(notification_service).handle,
+            "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
             "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
-            "AccountClosed": AccountClosedEventHandler(notification_service).handle,
+            "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
+            "account.suspended.v1": card_integration_event_controller.on_account_suspended,
+            "account.closed.v1": card_integration_event_controller.on_account_closed,
         },
     )
 

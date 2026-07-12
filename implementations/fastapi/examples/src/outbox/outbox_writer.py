@@ -22,9 +22,12 @@ class OutboxWriter:
 
     async def save_all(self, events: Sequence[object]) -> None:
         for event in events:
+            # Integration Event는 버전이 명시된 공개 계약명(event_name, 예: 'account.suspended.v1')을
+            # event_type으로 쓴다. Domain Event는 event_name이 없으므로 클래스명을 그대로 쓴다.
+            event_type = getattr(event, "event_name", None) or type(event).__name__
             self._session.add(OutboxModel(
                 event_id=uuid.uuid4().hex,
-                event_type=type(event).__name__,
+                event_type=event_type,
                 payload=json.dumps(dataclasses.asdict(event), default=str),
                 processed=False,
             ))

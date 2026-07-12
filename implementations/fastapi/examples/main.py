@@ -18,6 +18,8 @@ from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
 from src.auth.infrastructure.jwt_auth_service import set_jwt_secret  # noqa: E402
 from src.auth.interface.rest.auth_router import router as auth_router  # noqa: E402
+from src.card.domain.errors import CardError, CardNotFoundError, LinkedAccountNotFoundError  # noqa: E402
+from src.card.interface.rest.card_router import router as card_router  # noqa: E402
 from src.common.aws_secret_service import AwsSecretService  # noqa: E402
 from src.common.correlation import generate_correlation_id, set_correlation_id  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
@@ -62,6 +64,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(card_router)
 
 
 @app.get("/health/live")
@@ -112,4 +115,19 @@ async def account_not_found_handler(request: Request, exc: AccountNotFoundError)
 
 @app.exception_handler(AccountError)
 async def account_error_handler(request: Request, exc: AccountError) -> JSONResponse:
+    return JSONResponse(status_code=400, content={"message": str(exc)})
+
+
+@app.exception_handler(CardNotFoundError)
+async def card_not_found_handler(request: Request, exc: CardNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"message": str(exc)})
+
+
+@app.exception_handler(LinkedAccountNotFoundError)
+async def linked_account_not_found_handler(request: Request, exc: LinkedAccountNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"message": str(exc)})
+
+
+@app.exception_handler(CardError)
+async def card_error_handler(request: Request, exc: CardError) -> JSONResponse:
     return JSONResponse(status_code=400, content={"message": str(exc)})
