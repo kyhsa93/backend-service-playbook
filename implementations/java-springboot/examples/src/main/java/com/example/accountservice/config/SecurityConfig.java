@@ -29,7 +29,12 @@ public class SecurityConfig {
                 .csrf(CsrfConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/health/**", "/actuator/health/**", "/auth/sign-in").permitAll()
+                        // /error: 인증 없이 호출 가능한 엔드포인트(예: /auth/sign-up)에서 Bean Validation이
+                        // 실패하면 서블릿 컨테이너가 /error로 재디스패치한다. Spring Boot는 기본적으로 이
+                        // 재디스패치에도 Security 필터 체인을 다시 적용하므로, /error를 permitAll에 포함하지
+                        // 않으면 원래 401이 아니어야 할 응답(예: 400 VALIDATION_FAILED)이 401로 뒤바뀐다.
+                        .requestMatchers("/health/**", "/actuator/health/**", "/error", "/auth/sign-in", "/auth/sign-up")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(jwtDecoder)))
                 .build();

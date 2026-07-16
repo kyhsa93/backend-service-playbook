@@ -60,12 +60,15 @@ class CardControllerE2ETest {
 
     private static final String OWNER_ID = "card-owner-1";
     private static final String OTHER_OWNER_ID = "card-owner-2";
+    private static final String PASSWORD = "password123!";
 
     private final Map<String, String> tokenCache = new ConcurrentHashMap<>();
 
     private String tokenFor(String userId) {
         return tokenCache.computeIfAbsent(userId, id -> {
-            ResponseEntity<Map> response = restTemplate.postForEntity("/auth/sign-in", Map.of("userId", id), Map.class);
+            restTemplate.postForEntity("/auth/sign-up", Map.of("userId", id, "password", PASSWORD), Map.class);
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    "/auth/sign-in", Map.of("userId", id, "password", PASSWORD), Map.class);
             return (String) response.getBody().get("accessToken");
         });
     }

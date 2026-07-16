@@ -46,6 +46,7 @@ class NotificationE2ETest {
     private static final String SENDER_EMAIL = "no-reply@backend-service-playbook.example.com";
     private static final String OWNER_ID = "owner-1";
     private static final String RECIPIENT_EMAIL = "owner1@example.com";
+    private static final String PASSWORD = "password123!";
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -95,7 +96,9 @@ class NotificationE2ETest {
     private SentEmailRepository sentEmailRepository;
 
     private String tokenFor(String userId) {
-        ResponseEntity<Map> response = restTemplate.postForEntity("/auth/sign-in", Map.of("userId", userId), Map.class);
+        restTemplate.postForEntity("/auth/sign-up", Map.of("userId", userId, "password", PASSWORD), Map.class);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "/auth/sign-in", Map.of("userId", userId, "password", PASSWORD), Map.class);
         return (String) response.getBody().get("accessToken");
     }
 

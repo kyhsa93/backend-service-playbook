@@ -45,6 +45,10 @@ dependencies {
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
     testImplementation 'org.testcontainers:localstack'
+    // AuthControllerE2ETest가 sign-in 실패(401) 응답을 검증한다 — 기본 TestRestTemplate
+    // 요청 팩토리(JDK HttpURLConnection 기반)는 POST 요청에 401이 오면 "cannot retry due to
+    // server authentication" 예외를 던지는 알려진 제약이 있어, 이 문제가 없는 httpclient5로 교체한다.
+    testImplementation 'org.apache.httpcomponents.client5:httpclient5'
 }
 
 tasks.named('test') {
