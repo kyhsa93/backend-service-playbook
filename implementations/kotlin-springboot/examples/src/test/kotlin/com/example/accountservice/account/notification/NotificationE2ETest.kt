@@ -51,6 +51,7 @@ class NotificationE2ETest {
 
     companion object {
         private const val SENDER_EMAIL = "no-reply@backend-service-playbook.example.com"
+        private const val TEST_PASSWORD = "password123!"
 
         @Container
         @JvmStatic
@@ -102,9 +103,16 @@ class NotificationE2ETest {
     @Autowired
     private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
 
-    private fun tokenFor(userId: String): String {
-        val response = restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId), Map::class.java)
-        return response.body!!["accessToken"] as String
+    private val tokenCache = mutableMapOf<String, String>()
+
+    private fun tokenFor(userId: String): String = tokenCache.getOrPut(userId) {
+        restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
+        val response = restTemplate.postForEntity(
+            "/auth/sign-in",
+            mapOf("userId" to userId, "password" to TEST_PASSWORD),
+            Map::class.java,
+        )
+        response.body!!["accessToken"] as String
     }
 
     private fun headersFor(ownerId: String): HttpHeaders {

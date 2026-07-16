@@ -9,7 +9,7 @@ com.example.accountservice/
   AccountServiceApplication.kt
   common/            ← 이미 존재 — CorrelationIdFilter/RequestLoggingInterceptor/WebConfig/GenerateId (cross-cutting-concerns.md, aggregate-id.md)
   config/            ← 이미 존재 — AwsProperties/SesProperties (config.md)
-  auth/               ← 이미 존재 — AuthService/JwtAuthenticationFilter/SecurityConfig (authentication.md)
+  auth/               ← 이미 존재 — AuthService/JwtAuthenticationFilter/SecurityConfig + Credential Aggregate (authentication.md)
   secret/             ← 이미 존재 — SecretService/SecretServiceImpl/SecretsEnvironmentPostProcessor (secret-manager.md)
   outbox/             ← 이미 존재 — OutboxEvent/OutboxWriter/OutboxRelay (domain-events.md)
   account/           ← Bounded Context
@@ -36,9 +36,16 @@ com.example.accountservice/
 
   auth/                            ← 인증 공유 모듈 (여러 BC가 함께 사용) — 실제 코드
     application/AuthService.kt        ← 토큰 발급 (authentication.md)
+    application/command/SignUpService.kt / SignInService.kt   ← 가입/로그인 유스케이스
+    application/query/CredentialQuery.kt        ← Credential 읽기 전용 포트
+    application/service/PasswordHasher.kt       ← Technical Service interface
+    domain/Credential.kt                        ← Aggregate — 유일하게 자체 domain/을 가진 공유 패키지
+    domain/CredentialRepository.kt              ← Credential 쓰기 전용 포트
     infrastructure/JwtAuthenticationFilter.kt   ← Bearer 토큰 검증 Filter
     infrastructure/SecurityConfig.kt            ← @Configuration, 화이트리스트 경로
-    interfaces/rest/AuthController.kt           ← 로그인 엔드포인트
+    infrastructure/BCryptPasswordHasher.kt      ← PasswordHasher 구현체
+    infrastructure/CredentialRepositoryImpl.kt  ← CredentialRepository + CredentialQuery 구현체
+    interfaces/rest/AuthController.kt           ← 가입/로그인 엔드포인트
 
   secret/                          ← Secrets Manager 연동 — 실제 코드
     application/service/SecretService.kt        ← interface (secret-manager.md)

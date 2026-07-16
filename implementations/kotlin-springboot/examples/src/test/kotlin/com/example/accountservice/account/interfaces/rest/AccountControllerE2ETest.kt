@@ -87,6 +87,7 @@ class AccountControllerE2ETest {
 
         private const val OWNER_ID = "owner-1"
         private const val OTHER_OWNER_ID = "owner-2"
+        private const val TEST_PASSWORD = "password123!"
     }
 
     @Autowired
@@ -98,7 +99,12 @@ class AccountControllerE2ETest {
     private val tokenCache = mutableMapOf<String, String>()
 
     private fun tokenFor(userId: String): String = tokenCache.getOrPut(userId) {
-        val response = restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId), Map::class.java)
+        restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
+        val response = restTemplate.postForEntity(
+            "/auth/sign-in",
+            mapOf("userId" to userId, "password" to TEST_PASSWORD),
+            Map::class.java,
+        )
         response.body!!["accessToken"] as String
     }
 

@@ -18,6 +18,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
             sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
             authorizeHttpRequests {
                 authorize("/auth/sign-in", permitAll)
+                authorize("/auth/sign-up", permitAll)
                 authorize("/actuator/health/**", permitAll)
                 // STATELESS 세션 + OncePerRequestFilter 조합에서는 요청 처리 중 발생한 예외가
                 // 컨테이너의 /error 재전달(forward)로 이어지는데, JwtAuthenticationFilter는
