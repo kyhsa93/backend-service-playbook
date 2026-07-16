@@ -2,6 +2,20 @@ package http
 
 import "time"
 
+type SignUpRequest struct {
+	UserID   string `json:"userId"`
+	Password string `json:"password"`
+}
+
+type SignInRequest struct {
+	UserID   string `json:"userId"`
+	Password string `json:"password"`
+}
+
+type SignInResponse struct {
+	AccessToken string `json:"accessToken"`
+}
+
 type CreateAccountRequest struct {
 	Email    string `json:"email"`
 	Currency string `json:"currency"`

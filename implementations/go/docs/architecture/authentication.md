@@ -4,25 +4,36 @@
 
 ---
 
-## 적용 완료 — JWT/Bearer 인증
+## 적용 완료 — JWT/Bearer 인증 + 실제 비밀번호 검증
 
 아래 패턴은 이미 `examples/`에 그대로 구현되어 있다(더 이상 gap 아님) — `internal/infrastructure/auth/jwt_service.go`(JWT 발급/검증), `internal/interface/http/middleware/auth_middleware.go`(Bearer 토큰 검증 미들웨어), `internal/interface/http/router.go`(라우트 그룹 단위 미들웨어 적용)가 이 문서가 서술하는 목표 상태 그대로다. `account_handler.go`는 `middleware.UserIDFromContext(r.Context())`로 인증된 사용자 ID를 꺼내며, 더 이상 `X-User-Id` 헤더를 신뢰하지 않는다.
+
+> **#188 수정 이력**: 과거 `POST /auth/sign-in`은 `{ "userId": "..." }`만 받아 비밀번호 확인 없이 JWT를 발급했다 — 다른 사용자의 userId만 알면 누구든 그 사용자로 로그인할 수 있는 CRITICAL 취약점이었다(5개 언어 구현 공통 발견 사항, nestjs가 `06f8b69`에서 먼저 수정). 이제 `internal/domain/credential/` Credential Aggregate + `PasswordHasher` Technical Service(bcrypt)로 저장된 해시와 비교한 뒤에만 토큰을 발급한다. 아래 내용은 이 수정 이후의 최종 상태를 서술한다.
 
 ---
 
 ## 인증 흐름
 
 ```
+[가입]
+클라이언트 → POST /auth/sign-up { userId, password }
+          → SignUpHandler: 아이디 중복 확인 → PasswordHasher.Hash() → CredentialRepository.Save()
+          → 클라이언트: 201
+
 [토큰 발급]
-클라이언트 → POST /auth/sign-in (credentials)
-           → AuthService.Sign(userID) → JWT 발급
+클라이언트 → POST /auth/sign-in { userId, password }
+           → SignInHandler: CredentialRepository.FindByUserID()로 저장된 해시 조회
+                           → PasswordHasher.Verify()로 비밀번호 검증
+                           → 검증 성공 시 TokenIssuer.Sign(userID) → JWT 발급
            → 클라이언트: { "accessToken": "..." }
 
 [인증 요청]
 클라이언트 → Authorization: Bearer <access_token> 헤더 포함
-          → AuthMiddleware: 헤더에서 토큰 추출 → AuthService.Verify(token)
+          → AuthMiddleware: 헤더에서 토큰 추출 → JWTService.Verify(token)
           → context.Context에 사용자 정보 주입 → 다음 핸들러로 전달
 ```
+
+**아이디 미존재와 비밀번호 불일치는 동일한 에러(`credential.ErrInvalidCredentials` → HTTP 401 `INVALID_CREDENTIALS`)로 응답한다** — 둘을 구분해서 응답하면 공격자가 존재하는 아이디를 추측할 수 있다(user enumeration). `SignInHandler.Handle`(`internal/application/command/sign_in_handler.go`)이 "아이디 없음"과 "비밀번호 불일치" 두 분기 모두에서 같은 sentinel error를 반환하는 방식으로 이를 강제한다.
 
 ---
 
@@ -32,18 +43,33 @@
 internal/
   domain/
     account/                       ← 기존 도메인, 인증 개념 없음
+    credential/                    ← Credential Aggregate — Auth 전용 도메인
+      credential.go                ← credentialId, userId, passwordHash
+      repository.go                ← Repository interface (FindByUserID, Save)
+      errors.go                    ← ErrNotFound, ErrInvalidCredentials, ErrUserIDAlreadyExists
   application/
     command/
-      notifier.go
+      password_hasher.go           ← PasswordHasher 포트 (Technical Service, 인터페이스만)
+      token_issuer.go               ← TokenIssuer 포트 (Sign(userID) (string, error))
+      sign_up_handler.go            ← 아이디 중복 확인 → 해싱 → 저장
+      sign_in_handler.go            ← 해시 조회 → 검증 → 토큰 발급
   infrastructure/
     auth/
-      jwt_service.go                ← JWT 발급/검증 구현체
+      jwt_service.go                ← JWT 발급/검증 구현체 (TokenIssuer를 구조적으로 만족)
+      bcrypt_password_hasher.go     ← PasswordHasher 구현체 (golang.org/x/crypto/bcrypt)
+    persistence/
+      credential_repository.go      ← credential.Repository 구현체
   interface/
     http/
       middleware/
         auth_middleware.go          ← Bearer 토큰 추출 + context 주입
-      auth_handler.go                ← POST /auth/sign-in
+      auth_handler.go                ← POST /auth/sign-up, POST /auth/sign-in
+      dto.go                         ← SignUpRequest / SignInRequest / SignInResponse
+migrations/
+  0005_add_credential.sql           ← credentials 테이블(user_id UNIQUE)
 ```
+
+**패키지 이름 주의**: domain 패키지는 `auth`가 아니라 `credential`이다. `internal/infrastructure/auth`가 이미 JWT 관련 구현체들의 자리로 쓰이고 있어, domain 패키지까지 `auth`로 이름 붙이면 이 둘을 한 파일에서 동시에 import해야 하는 곳(`router.go` 등)에서 Go의 패키지명 충돌이 발생한다 — Go는 import 별칭으로 우회할 수 있지만, 애초에 이름을 겹치지 않게 짓는 편이 `account`/`card`가 이미 따르는 관용(패키지명 = 주요 Aggregate 이름)과도 더 잘 맞는다.
 
 ---
 
@@ -106,6 +132,108 @@ func (s *JWTService) Verify(tokenString string) (string, error) {
 
 **payload에는 `userId`만 담는다** — root 원칙과 동일하게, 역할/권한처럼 자주 바뀌는 정보나 이메일 같은 민감 정보는 넣지 않는다. JWT payload는 서명만 될 뿐 암호화되지 않으므로 base64 디코딩으로 누구나 읽을 수 있다.
 
+`*JWTService`는 위 `Sign(userID string) (string, error)` 시그니처만으로 이미 아래 `TokenIssuer` 포트를 구조적으로 만족한다 — Go의 구조적 타이핑 덕분에 별도 어댑터 타입이 필요 없다.
+
+---
+
+## Credential — 비밀번호 검증 (#188)
+
+`internal/domain/credential/`에 있는 Credential Aggregate가 `userId`/`passwordHash`를 보관한다. 평문 비밀번호는 domain/application 어디에도 저장하지 않는다.
+
+```go
+// internal/domain/credential/credential.go
+package credential
+
+type Credential struct {
+	CredentialID string
+	UserID       string
+	PasswordHash string
+	CreatedAt    time.Time
+}
+
+func New(userID, passwordHash string) *Credential { /* ... */ }
+
+// internal/domain/credential/repository.go
+type Repository interface {
+	FindByUserID(ctx context.Context, userID string) (*Credential, error)
+	Save(ctx context.Context, credential *Credential) error
+}
+```
+
+`PasswordHasher`는 [domain-service.md](domain-service.md)의 Technical Service 패턴이다 — `OutboxRelay`/`AccountAdapter`와 동일하게, 인터페이스는 그것을 사용하는 `application/command/`에 정의하고 구현체(bcrypt)는 `infrastructure/`에 둔다.
+
+```go
+// internal/application/command/password_hasher.go — 포트(인터페이스만)
+package command
+
+type PasswordHasher interface {
+	Hash(plainPassword string) (string, error)
+	Verify(plainPassword, passwordHash string) (bool, error)
+}
+
+// internal/infrastructure/auth/bcrypt_password_hasher.go — 구현체
+package auth
+
+import "golang.org/x/crypto/bcrypt"
+
+const bcryptCost = 12
+
+type BcryptPasswordHasher struct{}
+
+func (h *BcryptPasswordHasher) Hash(plainPassword string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcryptCost)
+	return string(hash), err
+}
+
+func (h *BcryptPasswordHasher) Verify(plainPassword, passwordHash string) (bool, error) {
+	err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(plainPassword))
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return false, nil
+	}
+	return false, err
+}
+```
+
+---
+
+## SignInHandler — 조회 → 검증 → 토큰 발급
+
+```go
+// internal/application/command/sign_in_handler.go
+package command
+
+type SignInHandler struct {
+	repo           credential.Repository
+	passwordHasher PasswordHasher
+	tokenIssuer    TokenIssuer
+}
+
+func (h *SignInHandler) Handle(ctx context.Context, cmd SignInCommand) (string, error) {
+	c, err := h.repo.FindByUserID(ctx, cmd.UserID)
+	if err != nil {
+		if errors.Is(err, credential.ErrNotFound) {
+			return "", credential.ErrInvalidCredentials // 아이디 미존재 → 비밀번호 불일치와 동일한 에러
+		}
+		return "", err
+	}
+
+	valid, err := h.passwordHasher.Verify(cmd.Password, c.PasswordHash)
+	if err != nil {
+		return "", err
+	}
+	if !valid {
+		return "", credential.ErrInvalidCredentials // 비밀번호 불일치
+	}
+
+	return h.tokenIssuer.Sign(c.UserID)
+}
+```
+
+Interface 레이어(`auth_handler.go`)는 `credential.ErrInvalidCredentials`를 `errors.Is`로 매핑해 HTTP 401 `INVALID_CREDENTIALS`로 변환한다(error-handling.md의 `accountErrorMapping`과 동일한 관용구 — `authErrorMapping`). `credential.ErrUserIDAlreadyExists`(가입 시 아이디 중복)는 400 `USER_ID_ALREADY_EXISTS`로 매핑한다 — 이 저장소가 "현재 상태와 충돌하는 요청"류를 전부 400으로 매핑하는 기존 관용(`account.ErrAlreadyClosed` 등)을 그대로 따른 것이고, nestjs 구현(`BadRequestException`)과도 일치한다.
+
 ---
 
 ## AuthMiddleware — `net/http` 미들웨어로 Bearer 토큰 검증
@@ -161,29 +289,43 @@ func UserIDFromContext(ctx context.Context) (string, bool) {
 
 ## 라우터 등록 — 그룹 단위로 미들웨어 적용
 
-root는 "Guard는 Controller 클래스 레벨에 적용, 메서드 레벨은 누락 위험"이라고 규정한다. Go에는 클래스가 없으므로, **라우트 그룹 전체를 미들웨어로 감싸는 것**으로 동일한 효과를 낸다. `internal/interface/http/router.go`를 확장하면:
+root는 "Guard는 Controller 클래스 레벨에 적용, 메서드 레벨은 누락 위험"이라고 규정한다. Go에는 클래스가 없으므로, **라우트 그룹 전체를 미들웨어로 감싸는 것**으로 동일한 효과를 낸다. 실제 `internal/interface/http/router.go`(발췌, 계좌/카드 라우트는 생략):
 
 ```go
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService) http.Handler {
-	accountHTTP := NewAccountHandler( /* ... */ )
+func NewRouter(
+	repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository,
+	accountAdapter command.AccountAdapter, outboxRelay command.OutboxRelay,
+	jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter,
+) (http.Handler, *HealthHandler) {
+	// ... accountHTTP, cardHTTP 조립 생략
+
+	// jwtService는 이미 command.TokenIssuer를 구조적으로 만족하므로 그대로 주입한다.
+	signUpHandler := command.NewSignUpHandler(credentialRepo, passwordHasher)
+	signInHandler := command.NewSignInHandler(credentialRepo, passwordHasher, jwtService)
+	authHTTP := NewAuthHandler(signUpHandler, signInHandler)
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST /accounts", accountHTTP.CreateAccount)
-	protected.HandleFunc("POST /accounts/{id}/deposit", accountHTTP.Deposit)
-	// ... 나머지 계좌 엔드포인트
+	// ... 나머지 계좌/카드 엔드포인트
+
+	limited := http.NewServeMux()
+	limited.Handle("/accounts", middleware.RequireAuth(jwtService)(protected)) // 인증 필요 — 그룹 전체
+	limited.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
+	limited.HandleFunc("POST /auth/sign-up", authHTTP.SignUp) // 인증 불필요
+	limited.HandleFunc("POST /auth/sign-in", authHTTP.SignIn) // 인증 불필요
 
 	mux := http.NewServeMux()
-	mux.Handle("/accounts", middleware.RequireAuth(jwtService)(protected)) // 인증 필요 — 그룹 전체
-	mux.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
-	mux.HandleFunc("POST /auth/sign-in", authHTTP.SignIn) // 인증 불필요
-	return middleware.CorrelationID(mux) // Correlation ID는 인증보다 먼저 적용 — observability.md 참고
+	mux.Handle("/", middleware.RateLimit(limiter)(limited))
+	mux.HandleFunc("GET /health/live", healthHandler.Live)
+	mux.HandleFunc("GET /health/ready", healthHandler.Ready)
+	return middleware.CorrelationID(mux), healthHandler // Correlation ID는 인증보다 먼저 적용 — observability.md 참고
 }
 ```
 
 (`GET /health/live`·`GET /health/ready` 같은 헬스체크 엔드포인트는 인증도, rate limit도 걸리지 않은 채 `mux`에 직접 등록된다 — [graceful-shutdown.md](graceful-shutdown.md), [rate-limiting.md](rate-limiting.md) 참고.)
 
 - 인증이 필요한 라우트를 **하나의 `http.ServeMux`로 묶고 미들웨어로 감싸는 것**이 "메서드별로 미들웨어를 따로 붙이는 실수"를 방지하는 Go식 방법이다. 새 엔드포인트를 이 서브 mux에 추가하기만 하면 자동으로 인증이 적용된다.
-- 인증 불필요 엔드포인트(`/auth/sign-in`, `/health/*`)는 별도의 미들웨어 없는 mux에 등록한다.
+- 인증 불필요 엔드포인트(`/auth/sign-up`, `/auth/sign-in`, `/health/*`)는 `RequireAuth`로 감싸지 않은 mux에 등록한다.
 
 ---
 
@@ -216,6 +358,8 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 - **JWT payload는 최소한으로**: `userId`만 담는다.
 - **미들웨어는 라우트 그룹 단위 적용**: 개별 핸들러마다 감싸지 않는다 — 새 엔드포인트 추가 시 누락 위험을 없앤다.
 - **`context.Context`로 인증 정보 전파**: `context.WithValue` + 전용 키 타입(`contextKey`)으로 타입 충돌을 방지한다.
+- **sign-in은 반드시 저장된 해시와 비교한 뒤에만 토큰을 발급한다**: userId만으로 토큰을 발급하지 않는다(#188). 아이디 미존재/비밀번호 불일치는 같은 에러로 응답해 user enumeration을 막는다.
+- **비밀번호 해싱은 Technical Service로 분리한다**: `PasswordHasher` 인터페이스는 `application/command/`, bcrypt 구현체는 `infrastructure/auth/`에 둔다 — Domain/Application이 `bcrypt` 라이브러리에 직접 의존하지 않는다.
 
 ---
 

@@ -82,7 +82,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -134,6 +134,7 @@ func runTests(m *testing.M) int {
 
 	repo := persistence.NewAccountRepository(db, outboxWriter)
 	cardRepo := persistence.NewCardRepository(db)
+	credentialRepo := persistence.NewCredentialRepository(db)
 	accountAdapter := acl.NewAccountAdapter(repo)
 	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
 	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
@@ -162,6 +163,7 @@ func runTests(m *testing.M) int {
 	})
 
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
+	testPasswordHasher := auth.NewBcryptPasswordHasher()
 
 	// e2e 테스트는 같은 프로세스 안에서 짧은 시간에 수십 개 요청을 보낸다 — 운영 기본값
 	// (초당 100개, burst 20)을 그대로 쓰면 rate limiter가 테스트 도중에도 429를 반환해
@@ -169,7 +171,7 @@ func runTests(m *testing.M) int {
 	// 여기서만 넉넉한 limiter로 override한다.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, accountAdapter, outboxRelay, testJWTService, testLimiter)
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, accountAdapter, outboxRelay, testJWTService, testPasswordHasher, testLimiter)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
@@ -236,7 +238,10 @@ func createAccountWithEmail(t *testing.T, ownerID, email, currency string) map[s
 
 func TestAuth(t *testing.T) {
 	t.Run("sign-in으로_발급받은_토큰으로_보호된_엔드포인트에_접근할_수_있다", func(t *testing.T) {
-		resp := doRequest(t, http.MethodPost, "/auth/sign-in", "", map[string]string{"userId": ownerID})
+		signUpResp := doRequest(t, http.MethodPost, "/auth/sign-up", "", map[string]string{"userId": ownerID, "password": "password123!"})
+		require.Equal(t, http.StatusCreated, signUpResp.StatusCode)
+
+		resp := doRequest(t, http.MethodPost, "/auth/sign-in", "", map[string]string{"userId": ownerID, "password": "password123!"})
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 		body := decodeBody(t, resp)
 		require.NotEmpty(t, body["accessToken"])

@@ -9,6 +9,7 @@ import (
 	"github.com/example/account-service/internal/application/query"
 	"github.com/example/account-service/internal/domain/account"
 	"github.com/example/account-service/internal/domain/card"
+	"github.com/example/account-service/internal/domain/credential"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/interface/http/middleware"
 )
@@ -18,7 +19,7 @@ import (
 // limiter는 호출자가 조립한다(main()은 config.LoadRateLimitConfig()로, 테스트는 임계값이
 // 훨씬 높은 limiter로) — rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
 // 운영값과 테스트값을 분리하기 위해서다.
-func NewRouter(repo account.Repository, cardRepo card.Repository, accountAdapter command.AccountAdapter, outboxRelay command.OutboxRelay, jwtService *auth.JWTService, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
+func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, accountAdapter command.AccountAdapter, outboxRelay command.OutboxRelay, jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
 	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
 	depositHandler := command.NewDepositHandler(repo, outboxRelay)
 	withdrawHandler := command.NewWithdrawHandler(repo, outboxRelay)
@@ -43,7 +44,12 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, accountAdapter
 	getCardHandler := query.NewGetCardHandler(cardRepo)
 	cardHTTP := NewCardHandler(issueCardHandler, getCardHandler)
 
-	authHTTP := NewAuthHandler(jwtService)
+	// Auth — jwtService는 이미 command.TokenIssuer(Sign(userID) (string, error))를
+	// 구조적으로 만족하므로 그대로 SignInHandler에 주입한다(#188 — sign-in에 실제
+	// 비밀번호 검증을 추가한 수정).
+	signUpHandler := command.NewSignUpHandler(credentialRepo, passwordHasher)
+	signInHandler := command.NewSignInHandler(credentialRepo, passwordHasher, jwtService)
+	authHTTP := NewAuthHandler(signUpHandler, signInHandler)
 	healthHandler := NewHealthHandler()
 
 	protected := http.NewServeMux()
@@ -64,6 +70,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, accountAdapter
 	limited.Handle("/accounts/", middleware.RequireAuth(jwtService)(protected))
 	limited.Handle("/cards", middleware.RequireAuth(jwtService)(protected))
 	limited.Handle("/cards/", middleware.RequireAuth(jwtService)(protected))
+	limited.HandleFunc("POST /auth/sign-up", authHTTP.SignUp)
 	limited.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)
 
 	mux := http.NewServeMux()

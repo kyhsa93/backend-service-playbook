@@ -55,6 +55,7 @@ func main() {
 	// 적재하고, Card는 아래 handler map에서 그 문자열을 구독한다(cross-domain.md).
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
 	cardRepo := persistence.NewCardRepository(db)
+	credentialRepo := persistence.NewCredentialRepository(db)
 	accountAdapter := acl.NewAccountAdapter(accountRepo)
 	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
 	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
@@ -91,11 +92,12 @@ func main() {
 		os.Exit(1)
 	}
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
+	passwordHasher := auth.NewBcryptPasswordHasher()
 
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, accountAdapter, outboxRelay, jwtService, limiter)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, accountAdapter, outboxRelay, jwtService, passwordHasher, limiter)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
