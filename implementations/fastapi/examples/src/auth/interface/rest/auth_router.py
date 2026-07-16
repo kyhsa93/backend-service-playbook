@@ -1,14 +1,38 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....database import get_session
+from ...application.command.sign_in_handler import SignInCommand, SignInHandler
+from ...application.command.sign_up_handler import SignUpCommand, SignUpHandler
+from ...domain.repository import CredentialRepository
 from ...infrastructure.jwt_auth_service import JwtAuthService
-from .schemas import SignInRequest, SignInResponse
+from ...infrastructure.persistence.credential_repository import SqlAlchemyCredentialRepository
+from ...infrastructure.security.bcrypt_password_hasher import BcryptPasswordHasher
+from .schemas import SignInRequest, SignInResponse, SignUpRequest
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
+def _credential_repo(session: AsyncSession = Depends(get_session)) -> CredentialRepository:
+    return SqlAlchemyCredentialRepository(session)
+
+
+@router.post("/sign-up", status_code=201)
+async def sign_up(
+    body: SignUpRequest,
+    repo: CredentialRepository = Depends(_credential_repo),
+) -> None:
+    await SignUpHandler(repo, BcryptPasswordHasher()).execute(
+        SignUpCommand(user_id=body.user_id, password=body.password)
+    )
+
+
 @router.post("/sign-in", status_code=201, response_model=SignInResponse)
-async def sign_in(body: SignInRequest) -> SignInResponse:
-    # 이 저장소에는 별도의 User/자격증명 저장소가 없다 — 자격증명 검증 없이 주어진 user_id로
-    # 토큰을 발급한다(nestjs/go/java/kotlin 구현과 동일한 단순화).
-    access_token = JwtAuthService().issue_token(body.user_id)
+async def sign_in(
+    body: SignInRequest,
+    repo: CredentialRepository = Depends(_credential_repo),
+) -> SignInResponse:
+    access_token = await SignInHandler(repo, BcryptPasswordHasher(), JwtAuthService()).execute(
+        SignInCommand(user_id=body.user_id, password=body.password)
+    )
     return SignInResponse(access_token=access_token)

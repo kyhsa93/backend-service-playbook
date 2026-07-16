@@ -17,6 +17,7 @@ from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
 
 from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa: E402
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
+from src.auth.domain.errors import InvalidCredentialsError, UserIdAlreadyExistsError  # noqa: E402
 from src.auth.infrastructure.jwt_auth_service import set_jwt_secret  # noqa: E402
 from src.auth.interface.rest.auth_router import router as auth_router  # noqa: E402
 from src.card.domain.errors import CardError, CardNotFoundError, LinkedAccountNotFoundError  # noqa: E402
@@ -132,6 +133,16 @@ async def linked_account_not_found_handler(request: Request, exc: LinkedAccountN
 
 @app.exception_handler(CardError)
 async def card_error_handler(request: Request, exc: CardError) -> JSONResponse:
+    return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
+
+
+@app.exception_handler(InvalidCredentialsError)
+async def invalid_credentials_handler(request: Request, exc: InvalidCredentialsError) -> JSONResponse:
+    return JSONResponse(status_code=401, content=build_error_response(401, exc.code.value, str(exc)))
+
+
+@app.exception_handler(UserIdAlreadyExistsError)
+async def user_id_already_exists_handler(request: Request, exc: UserIdAlreadyExistsError) -> JSONResponse:
     return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
 
 

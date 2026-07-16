@@ -6,6 +6,7 @@ pydantic[email]
 pydantic-settings
 aioboto3
 python-jose[cryptography]
+bcrypt
 alembic
 slowapi
 

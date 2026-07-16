@@ -1,0 +1,6 @@
+from enum import Enum
+
+
+class AuthErrorCode(str, Enum):
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    USER_ID_ALREADY_EXISTS = "USER_ID_ALREADY_EXISTS"
