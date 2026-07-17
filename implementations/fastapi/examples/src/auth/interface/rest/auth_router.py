@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
 from ...application.command.sign_in_handler import SignInCommand, SignInHandler
 from ...application.command.sign_up_handler import SignUpCommand, SignUpHandler
@@ -18,7 +19,9 @@ def _credential_repo(session: AsyncSession = Depends(get_session)) -> Credential
 
 
 @router.post("/sign-up", status_code=201)
+@limiter.limit(rate_limit_config.write_limit)
 async def sign_up(
+    request: Request,
     body: SignUpRequest,
     repo: CredentialRepository = Depends(_credential_repo),
 ) -> None:
@@ -28,7 +31,9 @@ async def sign_up(
 
 
 @router.post("/sign-in", status_code=201, response_model=SignInResponse)
+@limiter.limit(rate_limit_config.write_limit)
 async def sign_in(
+    request: Request,
     body: SignInRequest,
     repo: CredentialRepository = Depends(_credential_repo),
 ) -> SignInResponse:

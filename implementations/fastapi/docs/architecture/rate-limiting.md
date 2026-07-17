@@ -107,6 +107,8 @@ async def get_account(account_id: str, ...) -> GetAccountResponse:
 
 `create_account`/`deposit`/`withdraw`/`suspend_account`/`reactivate_account`/`close_account`(모두 `POST`) 6개 쓰기 엔드포인트에 `@limiter.limit(rate_limit_config.write_limit)`이 적용되어 있다. `get_account`/`get_transactions`(모두 `GET`) 조회 엔드포인트는 별도 데코레이터 없이 `Limiter(default_limits=...)`를 통해 전역 기본값만 적용받는다 — 조회를 쓰기보다 관대하게 두는 "원칙"은 지키면서도, `config/rate_limit_config.py`가 read 전용 값을 별도로 노출하지는 않는다(필요해지면 `RateLimitConfig`에 `read_limit` 필드를 추가해 확장한다).
 
+`auth_router.py`의 `sign_up`/`sign_in`도 `POST`이므로 동일하게 `@limiter.limit(rate_limit_config.write_limit)`이 적용되어 있다(issue #193) — 특히 `sign_in`은 비밀번호 검증이 도입된 뒤([authentication.md](authentication.md)) 브루트포스 공격의 표적이 될 수 있는 엔드포인트라, 전역 기본값(`RATE_LIMIT_DEFAULT`)보다 엄격한 쓰기 등급 제한을 받아야 한다.
+
 ### 내부/헬스체크 엔드포인트 제외
 
 `slowapi`에는 NestJS의 `@SkipThrottle()` 같은 전용 데코레이터가 없다 — 대신 헬스체크 라우트를 `Limiter`가 등록되지 않은 별도 `APIRouter`에 두거나, `exempt_when` 콜백으로 조건부 예외 처리한다.
