@@ -96,6 +96,48 @@ cd examples
 `./gradlew build`(`check` 태스크 경유)에도 `spotlessCheck`가 포함되어 있어, 포맷이 깨지면 빌드가 실패한다.
 새 코드를 추가한 뒤에는 커밋 전에 `spotlessApply`를 한 번 돌리는 것을 권장한다.
 
+## 스캐폴딩 — 새 도메인 생성기
+
+`docs/reference.md`가 정의하는 "실전 구현 템플릿"을 Card(2번째 도메인, domain/JPA 분리 구조)와
+Account(Repository/Outbox 패턴)의 실제 코드를 조합해 실제 코드로 만든 뒤, 도메인 이름만
+파라미터화해 재사용 가능하게 일반화한 스크립트다. 단일 status 필드(PENDING/ACTIVE/CANCELLED) +
+`create()`/`activate()`/`cancel(reason)` Aggregate + Command/Query "Service"(CQRS, `@Service`
+plain 클래스 — CommandBus/Handler 아님) + 도메인 이벤트 1종 + `OutboxEventHandler` 구현체 +
+Repository + JPA Entity/Mapper + REST Controller/DTO + Flyway 마이그레이션까지 한 번에
+생성한다.
+
+Java/Gradle 툴체인을 새로 빌드하지 않도록 Python 스크립트로 작성했다(Java 컴파일 없이 즉시 실행).
+
+```bash
+# 기본: ../examples/src/main/java/com/example/accountservice/<domain>/ 아래 생성
+python3 scripts/create_domain.py Coupon
+
+# 다른 프로젝트(스크래치 카피 등)에 생성하려면 --out으로 프로젝트 루트를 지정
+python3 scripts/create_domain.py LoyaltyCategory --out /path/to/scratch-project
+```
+
+**모듈 등록 단계가 없다** — nestjs(`@Module({ providers: [...] })`)나 Go와 달리, Spring은
+`@Service`/`@Component`/`@Repository`/`@RestController`가 붙은 클래스를 classpath 전체에서
+자동으로 수집한다(component scanning). 새 도메인의 `OutboxEventHandler` 구현체도 공유
+`OutboxRelay`(`outbox/OutboxRelay.java`)가 생성자 주입 `List<OutboxEventHandler>`로 자동
+수집하므로, 손으로 고칠 central wiring 파일이 없다(`AccountServiceApplication.java`에도 도메인
+bean을 나열하는 곳이 없음을 직접 확인함).
+
+생성 직후 확인 순서:
+
+```bash
+cd <projectRoot>
+./gradlew spotlessApply   # 템플릿 포맷을 googleJavaFormat 기준으로 맞춤
+./gradlew build           # 컴파일 + 기존 테스트(Testcontainers e2e 포함) 회귀 확인
+bash harness.sh <projectRoot>
+```
+
+Account/Card와 무관한 새 도메인(Coupon, LoyaltyCategory 등 다단어/불규칙 복수형 포함)으로 실제
+생성해 harness FAIL 0건을 확인했다. 나이브 복수형 규칙(+s/+es/y→ies)을 쓰므로, 불규칙 복수형
+도메인(예: person → people)이면 `find<Domains>`/`<domains>`/REST 경로 등 생성된 이름을 수동으로
+다듬어야 할 수 있다 — 실행 결과 출력이 이를 안내한다. 생성되는 것은 구조적 스켈레톤(빈 CRUD형
+시작점)이라, 실제 비즈니스 규칙·에러 메시지·필드는 생성 후 직접 채워 넣는다.
+
 ## 예시 코드 (Account 도메인 전체)
 
 `examples/` 디렉토리에 Account 도메인 전체 구현 예시(계좌 개설/입출금/정지/재개/종료 + SES 알림)가 있다.
