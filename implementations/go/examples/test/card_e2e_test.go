@@ -20,7 +20,7 @@ func getCardStatus(t *testing.T, ownerID, cardID string) string {
 	t.Helper()
 	resp := doRequest(t, http.MethodGet, "/cards/"+cardID, ownerID, nil)
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return ""
 	}
 	body := decodeBody(t, resp)

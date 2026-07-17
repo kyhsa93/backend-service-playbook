@@ -94,7 +94,7 @@ func (r *CardRepository) FindAll(ctx context.Context, q card.FindQuery) ([]*card
 	if err != nil {
 		return nil, 0, fmt.Errorf("find cards: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var cards []*card.Card
 	for rows.Next() {

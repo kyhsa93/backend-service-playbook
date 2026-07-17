@@ -91,7 +91,7 @@ func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([
 	if err != nil {
 		return nil, 0, fmt.Errorf("find accounts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var accounts []*account.Account
 	for rows.Next() {
@@ -115,7 +115,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO accounts (id, owner_id, email, amount, currency, status, updated_at)
@@ -169,7 +169,7 @@ func (r *AccountRepository) FindTransactions(ctx context.Context, accountID stri
 	if err != nil {
 		return nil, 0, fmt.Errorf("find transactions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var transactions []account.Transaction
 	for rows.Next() {

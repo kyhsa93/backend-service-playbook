@@ -42,7 +42,11 @@ func main() {
 		slog.Error("failed to connect to db", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			slog.Error("failed to close db", "error", closeErr)
+		}
+	}()
 
 	// 의존성 조립 — 프레임워크 없이 생성자 체이닝
 	notifier := notification.NewService(notification.NewSESClient(), db)

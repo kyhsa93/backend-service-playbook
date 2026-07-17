@@ -44,7 +44,7 @@ func checkCQRSPattern(root string) RuleResult {
 	result.Findings = append(result.Findings, passFinding("internal/application/query/"))
 
 	found := false
-	filepath.WalkDir(queryDir, func(path string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(queryDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(d.Name(), "_test.go") {
 			return nil
 		}
@@ -61,7 +61,9 @@ func checkCQRSPattern(root string) RuleResult {
 		}
 		return nil
 	})
-	if !found {
+	if walkErr != nil {
+		result.Findings = append(result.Findings, failFinding(queryDir, "디렉토리 탐색 실패: "+walkErr.Error()))
+	} else if !found {
 		result.Findings = append(result.Findings, skipFinding("application/query/ 안에 .go 파일 없음"))
 	}
 	return result

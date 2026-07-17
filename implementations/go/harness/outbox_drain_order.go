@@ -25,7 +25,7 @@ var (
 func checkOutboxDrainOrder(root string) RuleResult {
 	result := RuleResult{Section: "outbox-drain-order"}
 	found := false
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
@@ -61,7 +61,9 @@ func checkOutboxDrainOrder(root string) RuleResult {
 		}
 		return nil
 	})
-	if !found {
+	if walkErr != nil {
+		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+	} else if !found {
 		result.Findings = append(result.Findings, skipFinding("OutboxRelay를 사용하는 Command Handler 없음"))
 	}
 	return result

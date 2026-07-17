@@ -30,7 +30,7 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(body.Password) < minPasswordLength {
-		writeJSONError(w, http.StatusBadRequest, "VALIDATION_FAILED", "password must be at least 8 characters")
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "password must be at least 8 characters")
 		return
 	}
 
@@ -57,7 +57,7 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(SignInResponse{AccessToken: accessToken})
+	writeJSON(w, r, SignInResponse{AccessToken: accessToken})
 }
 
 // authErrorMapping은 account_handler.go의 accountErrorMapping과 동일한 관용구다
@@ -76,10 +76,10 @@ var authErrorMapping = []struct {
 func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range authErrorMapping {
 		if errors.Is(err, m.err) {
-			writeJSONError(w, m.status, m.code, err.Error())
+			writeJSONError(w, r, m.status, m.code, err.Error())
 			return
 		}
 	}
 	slog.ErrorContext(r.Context(), "unhandled auth error", "error", err)
-	writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }

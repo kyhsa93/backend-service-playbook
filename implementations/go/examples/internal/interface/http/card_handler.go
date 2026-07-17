@@ -43,7 +43,7 @@ func (h *CardHandler) IssueCard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(CardResponse{
+	writeJSON(w, r, CardResponse{
 		CardID:    c.CardID,
 		AccountID: c.AccountID,
 		OwnerID:   c.OwnerID,
@@ -65,7 +65,7 @@ func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CardResponse{
+	writeJSON(w, r, CardResponse{
 		CardID:    result.CardID,
 		AccountID: result.AccountID,
 		OwnerID:   result.OwnerID,
@@ -90,10 +90,10 @@ var cardErrorMapping = []struct {
 func writeCardError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range cardErrorMapping {
 		if errors.Is(err, m.err) {
-			writeJSONError(w, m.status, m.code, err.Error())
+			writeJSONError(w, r, m.status, m.code, err.Error())
 			return
 		}
 	}
 	slog.ErrorContext(r.Context(), "unhandled card error", "error", err)
-	writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }

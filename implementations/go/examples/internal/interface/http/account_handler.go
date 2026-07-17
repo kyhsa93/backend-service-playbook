@@ -69,7 +69,7 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(CreateAccountResponse{
+	writeJSON(w, r, CreateAccountResponse{
 		AccountID: a.AccountID,
 		OwnerID:   a.OwnerID,
 		Email:     a.Email,
@@ -112,7 +112,7 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(TransactionResponse{
+	writeJSON(w, r, TransactionResponse{
 		TransactionID: tx.TransactionID,
 		AccountID:     tx.AccountID,
 		Type:          string(tx.Type),
@@ -140,7 +140,7 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(TransactionResponse{
+	writeJSON(w, r, TransactionResponse{
 		TransactionID: tx.TransactionID,
 		AccountID:     tx.AccountID,
 		Type:          string(tx.Type),
@@ -200,7 +200,7 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GetAccountResponse{
+	writeJSON(w, r, GetAccountResponse{
 		AccountID: result.AccountID,
 		OwnerID:   result.OwnerID,
 		Email:     result.Email,
@@ -235,7 +235,7 @@ func (h *AccountHandler) GetTransactions(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GetTransactionsResponse{Transactions: summaries, Count: result.Count})
+	writeJSON(w, r, GetTransactionsResponse{Transactions: summaries, Count: result.Count})
 }
 
 func parsePagination(r *http.Request) (page, take int) {
@@ -271,23 +271,31 @@ var accountErrorMapping = []struct {
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range accountErrorMapping {
 		if errors.Is(err, m.err) {
-			writeJSONError(w, m.status, m.code, err.Error())
+			writeJSONError(w, r, m.status, m.code, err.Error())
 			return
 		}
 	}
 	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
-	writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 
 // writeJSONError는 root docs/architecture/error-handling.md가 요구하는
 // {statusCode, code, message, error} 표준 JSON 에러 응답을 기록한다.
-func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+func writeJSONError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(ErrorResponse{
+	writeJSON(w, r, ErrorResponse{
 		StatusCode: status,
 		Code:       code,
 		Message:    message,
 		Error:      http.StatusText(status),
 	})
+}
+
+// writeJSON은 v를 응답 바디로 인코딩한다. 이 시점에는 이미 상태 코드/헤더가
+// 기록된 뒤이므로 Encode 실패를 클라이언트에 다시 알릴 방법이 없다 — 로그만 남긴다.
+func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.ErrorContext(r.Context(), "failed to encode json response", "error", err)
+	}
 }

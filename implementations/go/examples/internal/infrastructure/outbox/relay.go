@@ -75,7 +75,7 @@ func (r *Relay) fetchPending(ctx context.Context) ([]outboxRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query pending outbox rows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var pending []outboxRow
 	for rows.Next() {

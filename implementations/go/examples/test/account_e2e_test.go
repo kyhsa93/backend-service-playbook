@@ -64,7 +64,7 @@ func runTests(m *testing.M) int {
 	if err != nil {
 		panic(fmt.Sprintf("failed to start postgres container: %v", err))
 	}
-	defer pgContainer.Terminate(ctx)
+	defer func() { _ = pgContainer.Terminate(ctx) }()
 
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
@@ -75,7 +75,7 @@ func runTests(m *testing.M) int {
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	testDB = db
 
 	if err := waitForDB(db, 30, time.Second); err != nil {
@@ -100,7 +100,7 @@ func runTests(m *testing.M) int {
 	if err != nil {
 		panic(fmt.Sprintf("failed to start localstack container: %v", err))
 	}
-	defer testcontainers.TerminateContainer(localstackContainer)
+	defer func() { _ = testcontainers.TerminateContainer(localstackContainer) }()
 
 	host, err := localstackContainer.Host(ctx)
 	if err != nil {
@@ -113,10 +113,10 @@ func runTests(m *testing.M) int {
 	localstackHTTP = fmt.Sprintf("http://%s:%s", host, port.Port())
 
 	// 프로덕션과 동일한 경로(환경변수 → notification.NewSESClient())로 SES 클라이언트를 만든다.
-	os.Setenv("AWS_ENDPOINT_URL", localstackHTTP)
-	os.Setenv("AWS_REGION", "us-east-1")
-	os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	_ = os.Setenv("AWS_ENDPOINT_URL", localstackHTTP)
+	_ = os.Setenv("AWS_REGION", "us-east-1")
+	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
+	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
 	sesClient := notification.NewSESClient()
 
 	// 실제 SES와 마찬가지로 LocalStack의 SES 에뮬레이터도 발신자 검증을 요구한다 —
@@ -217,7 +217,7 @@ func doRequest(t *testing.T, method, path, userID string, body any) *http.Respon
 
 func decodeBody(t *testing.T, resp *http.Response) map[string]any {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var result map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	return result

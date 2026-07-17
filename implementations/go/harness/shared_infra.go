@@ -30,7 +30,7 @@ func checkSharedInfra(root string) RuleResult {
 func checkOutboxPattern(root string) []Finding {
 	usesOutboxRelay := false
 	var outboxDirs []string
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -52,6 +52,9 @@ func checkOutboxPattern(root string) []Finding {
 		}
 		return nil
 	})
+	if walkErr != nil {
+		return []Finding{failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error())}
+	}
 
 	if !usesOutboxRelay {
 		return []Finding{skipFinding("outbox 패턴 없음")}
@@ -63,7 +66,7 @@ func checkOutboxPattern(root string) []Finding {
 
 	hasWriter, hasRelay := false, false
 	for _, dir := range outboxDirs {
-		filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 				return nil
 			}
@@ -80,6 +83,9 @@ func checkOutboxPattern(root string) []Finding {
 			}
 			return nil
 		})
+		if walkErr != nil {
+			return []Finding{failFinding(dir, "디렉토리 탐색 실패: "+walkErr.Error())}
+		}
 	}
 
 	if hasWriter && hasRelay {
@@ -98,7 +104,7 @@ func checkOutboxPattern(root string) []Finding {
 func checkTaskQueuePattern(root string) []Finding {
 	hasTaskFile := false
 	hasTaskDir := false
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -115,6 +121,9 @@ func checkTaskQueuePattern(root string) []Finding {
 		}
 		return nil
 	})
+	if walkErr != nil {
+		return []Finding{failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error())}
+	}
 
 	if !hasTaskFile {
 		return []Finding{skipFinding("task-queue 패턴 없음")}

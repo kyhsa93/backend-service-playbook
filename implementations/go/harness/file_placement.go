@@ -9,7 +9,7 @@ import (
 // checkFilePlacement — [5] 파일명 suffix 기반 레이어 배치 규칙
 func checkFilePlacement(root string) RuleResult {
 	result := RuleResult{Section: "file-placement"}
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
@@ -33,5 +33,8 @@ func checkFilePlacement(root string) RuleResult {
 		}
 		return nil
 	})
+	if walkErr != nil {
+		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+	}
 	return result
 }

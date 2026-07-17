@@ -32,7 +32,7 @@ func fetchSesMessages(t *testing.T) []sesMessage {
 	t.Helper()
 	resp, err := http.Get(localstackHTTP + "/_aws/ses")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	var body sesMessagesResponse
