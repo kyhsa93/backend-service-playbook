@@ -2,9 +2,9 @@
 
 > NestJS 대비 문서. 루트에는 대응 문서가 없다 — rate limiting 자체가 특정 구현 라이브러리 선택을 요구하는 인프라 주제라 root 24개 주제에 포함되지 않는다.
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
-`build.gradle`에 `resilience4j-spring-boot3` 의존성이 추가되었고, 아래 두 겹 방어가 모두 `examples/`에 반영되어 있다: `common/web/RateLimitFilter`(메서드 기준 전역, `/actuator/**` 제외)와 `AccountController.createAccount`의 `@RateLimiter(name = "createAccount")`(애노테이션 기반, `resilience4j.ratelimiter.instances.createAccount` 설정). `RequestNotPermitted`는 `common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 [error-handling.md](error-handling.md)의 4필드 형식으로 변환한다.
+`build.gradle`에 `resilience4j-spring-boot3` 의존성이 있고, 아래 두 겹 방어가 모두 `examples/`에 반영되어 있다: `common/web/RateLimitFilter`(메서드 기준 전역, `/actuator/**` 제외)와 `AccountController.createAccount`의 `@RateLimiter(name = "createAccount")`(애노테이션 기반, `resilience4j.ratelimiter.instances.createAccount` 설정). `RequestNotPermitted`는 `common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 [error-handling.md](error-handling.md)의 4필드 형식으로 변환한다.
 
 `RateLimitFilter`는 `RateLimiterRegistry`(Spring Boot가 `application.yml`의 `resilience4j.ratelimiter.instances.*`로부터 자동 구성하는 빈)를 생성자로 주입받아, 쓰기(POST/PUT/PATCH/DELETE)/읽기(GET/HEAD) 메서드별로 named instance(`http-write`/`http-read`)를 조회한다 — kotlin-springboot의 `RateLimitingFilter`와 동일한 방식이다. 값은 코드 변경 없이 `application.yml`/환경 변수/커맨드라인 인자로 배포 시점에 조정할 수 있다.
 

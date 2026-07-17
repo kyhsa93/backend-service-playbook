@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 [root config.md](../../../../docs/architecture/config.md) 참조.
 
-## 적용 완료 — `@ConfigurationProperties` + `data class`
+## `@ConfigurationProperties` + `data class`
 
 현재 `examples/src/main/resources/application.yml`:
 
@@ -31,9 +31,9 @@ ses:
   sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
 ```
 
-(`ddl-auto`/마이그레이션은 [persistence.md](persistence.md) 참고 — Flyway로 이미 해결되어 더 이상 갭이 아니다.)
+(`ddl-auto`/마이그레이션은 [persistence.md](persistence.md) 참고 — Flyway로 관리된다.)
 
-`aws`/`ses` 네임스페이스는 이미 `@ConfigurationProperties` + `@Validated`로 관심사별 분리와 Fail-fast 검증을 모두 갖췄다. **`jwt.secret`도 동일한 패턴으로 적용 완료되었다** — `JwtProperties(@field:NotBlank val secret: String)` + `@ConfigurationProperties(prefix = "jwt")`로 감싸져 있고, `AuthService`/`JwtAuthenticationFilter`는 이제 `@Value` 대신 이 `JwtProperties`를 생성자 주입받는다. 아래에서 세 네임스페이스 모두를 실제 코드로 정리한다.
+`aws`/`ses` 네임스페이스는 `@ConfigurationProperties` + `@Validated`로 관심사별 분리와 Fail-fast 검증을 모두 갖췄다. **`jwt.secret`도 동일한 패턴을 따른다** — `JwtProperties(@field:NotBlank val secret: String)` + `@ConfigurationProperties(prefix = "jwt")`로 감싸져 있고, `AuthService`/`JwtAuthenticationFilter`는 `@Value` 대신 이 `JwtProperties`를 생성자 주입받는다. 아래에서 세 네임스페이스 모두를 실제 코드로 정리한다.
 
 ---
 
@@ -158,7 +158,7 @@ class AuthService(jwtProperties: JwtProperties) {
 
 ---
 
-## Fail-Fast — `@Validated` + Bean Validation (적용 완료: aws/ses/jwt)
+## Fail-Fast — `@Validated` + Bean Validation (aws/ses/jwt)
 
 `data class`에 Bean Validation 애노테이션을 붙이고 `@ConfigurationProperties` 클래스에 `@Validated`를 추가하면, 빈 문자열도 명시적으로 차단할 수 있다 — `AwsProperties`/`SesProperties`/`JwtProperties` 모두 이 패턴이다.
 
@@ -172,7 +172,7 @@ class AuthService(jwtProperties: JwtProperties) {
 
 | 항목 | 권장 방식 | 이 저장소의 실제 상태 |
 |------|----------|----------------------|
-| 일반 설정 (호스트명, 포트, 리전) | 환경 변수 → `application.yml` → `@ConfigurationProperties` | `AwsProperties`/`SesProperties`로 적용 완료 |
+| 일반 설정 (호스트명, 포트, 리전) | 환경 변수 → `application.yml` → `@ConfigurationProperties` | `AwsProperties`/`SesProperties` |
 | 민감값 (DB 비밀번호, JWT secret) | Secrets Manager → 상세는 [secret-manager.md](secret-manager.md) | `jwt.secret`만 해당 — prod 프로파일에서 `SecretsEnvironmentPostProcessor`가 Secrets Manager 조회 결과로 덮어쓴다 |
 
 **프로덕션 프로파일에서 `jwt.secret`을 채우는 실제 메커니즘은 `@Bean`+`@Profile` 팩토리가 아니라 `EnvironmentPostProcessor`다.** `SecretsEnvironmentPostProcessor`(`secret/infrastructure/`)가 `ApplicationContext` 생성보다도 이른 시점에 `prod` 프로파일에서만 Secrets Manager를 조회해 `jwt.secret` 프로퍼티를 `Environment`에 주입한다 — 이후 `JwtProperties`의 `@ConfigurationProperties(prefix = "jwt")` 바인딩은 이 값을 그대로 사용하므로, `AuthService`/`JwtAuthenticationFilter` 코드는 로컬/prod를 구분하는 어떤 분기도 갖지 않는다. 상세는 [secret-manager.md](secret-manager.md) 참조.
@@ -198,7 +198,7 @@ class CreateAccountService(private val sesProperties: SesProperties) { /* 금지
 ## 원칙 요약
 
 - **`@ConfigurationProperties` + `data class`**: `AwsProperties`/`SesProperties`/`JwtProperties`로 관심사별 분리 완료. 기본값 없는 필드(`region`, `senderEmail`, `secret`)로 Fail-fast를 얻는다.
-- **`@Validated` + Bean Validation**: `aws`/`ses`/`jwt` 모두 `@field:NotBlank` 등으로 적용 완료됨.
+- **`@Validated` + Bean Validation**: `aws`/`ses`/`jwt` 모두 `@field:NotBlank` 등으로 검증한다.
 - **민감값은 Secrets Manager**: `jwt.secret`만 해당하며, `SecretsEnvironmentPostProcessor`로 prod 프로파일에서 실제 연동됨 — [secret-manager.md](secret-manager.md) 참조.
 - **설정 접근은 Infrastructure 레이어**: Domain/Application은 설정 타입에 의존하지 않는다.
 - **`.env`는 로컬 전용**: 커밋하지 않는다 ([local-dev.md](local-dev.md) 참조).

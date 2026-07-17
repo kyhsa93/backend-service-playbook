@@ -147,11 +147,11 @@ override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Acco
 
 **`close()`(상태 전환)와 soft delete는 서로 다른 생명주기 이벤트로 분리했다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태만 바꾸고 `deletedAt`은 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(모든 조회가 `deletedAt IS NULL`을 조건으로 걸기 때문에, `close()`가 `deletedAt`까지 설정해버리면 종료 직후 계좌를 다시 조회할 방법이 없어진다). 대신 삭제는 `account/application/command/DeleteAccountService.kt`라는 별도 유스케이스(`DELETE /accounts/{accountId}`)로 존재하고, `Account.markDeleted()`가 "이미 CLOSED 상태인 계좌만 삭제 가능"이라는 규칙을 도메인 레벨에서 강제한다 — 활성 계좌를 곧바로 삭제하려 하면 `DeleteRequiresClosedAccountException`(400)을 던진다.
 
-메서드 네이밍(`delete<Noun>`)은 root 컨벤션과 일치한다 — `findAccounts`/`saveAccount`로의 리네이밍도 완료되어 더 이상 갭이 아니다. 상세는 [repository-pattern.md](repository-pattern.md) 참고.
+메서드 네이밍(`delete<Noun>`)은 root 컨벤션과 일치한다 — Repository는 `findAccounts`/`saveAccount` 네이밍을 쓴다. 상세는 [repository-pattern.md](repository-pattern.md) 참고.
 
 ---
 
-## 마이그레이션 — Flyway로 관리 (더 이상 갭 아님)
+## 마이그레이션 — Flyway로 관리
 
 Hibernate의 자동 스키마 동기화는 root가 "개발 환경 전용"으로 못 박는 기능이다. 이 예제는 Flyway를 도입해 이 원칙을 따른다.
 

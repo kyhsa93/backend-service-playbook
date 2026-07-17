@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙은 루트 [local-dev.md](../../../../docs/architecture/local-dev.md) 참고.
 
-## 이미 구현된 실제 예시 — Postgres + LocalStack(SES)
+## 실제 예시 — Postgres + LocalStack(SES)
 
-`implementations/java-springboot/examples/docker-compose.yml`은 root 원칙을 이미 실제로 따르고 있다:
+`implementations/java-springboot/examples/docker-compose.yml`은 root 원칙을 실제로 따르고 있다:
 
 ```yaml
 # examples/docker-compose.yml — 실제 코드
@@ -99,7 +99,7 @@ Spring Boot는 `.env` 파일을 기본 지원하지 않으므로(Node의 `dotenv
 
 ---
 
-## AWS SDK에서 LocalStack 연동 — 이미 구현됨
+## AWS SDK에서 LocalStack 연동
 
 ```java
 // account/infrastructure/notification/SesConfig.java — 실제 코드
@@ -149,10 +149,10 @@ docker compose down -v
 
 ## 원칙
 
-- **로컬 개발 시 외부 서비스에 직접 연결하지 않는다**: DB는 Docker Compose, SES는 LocalStack — 이미 준수.
-- **모든 인프라 서비스에 healthcheck를 설정한다**: 이미 준수 (`pg_isready`, `awslocal ses list-identities`).
-- **초기화 스크립트를 커밋에 포함한다**: `localstack/init-ses.sh` — 이미 준수.
-- **이미지 버전을 고정한다**: `postgres:16-alpine`, `localstack/localstack:3.0` — 이미 준수.
+- **로컬 개발 시 외부 서비스에 직접 연결하지 않는다**: DB는 Docker Compose, SES는 LocalStack.
+- **모든 인프라 서비스에 healthcheck를 설정한다**: `pg_isready`, `awslocal ses list-identities`.
+- **초기화 스크립트를 커밋에 포함한다**: `localstack/init-ses.sh`.
+- **이미지 버전을 고정한다**: `postgres:16-alpine`, `localstack/localstack:3.0`.
 - **개선 여지**: `app` 서비스를 `profiles: [app]`으로 추가하고, `.env.development`/`.env.docker` 또는 `application-local.yml`로 환경 변수 관리를 체계화한다.
 
 ---

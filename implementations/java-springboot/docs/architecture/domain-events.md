@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 루트 [domain-events.md](../../../../docs/architecture/domain-events.md) 참고.
 
-## Outbox 패턴 — 구현 완료
+## Outbox 패턴
 
 root 원칙: Domain Event는 in-process 이벤트 버스를 사용하지 않는다. **Repository가 Aggregate와 이벤트를 같은 트랜잭션에서 Outbox 테이블에 저장 → Relay가 저장된 이벤트를 읽어 핸들러에 전달**하는 경로를 따른다.
 
@@ -26,7 +26,7 @@ public class CreateAccountService {
 }
 ```
 
-`CreateAccountService`는 더 이상 `@Transactional`을 클래스에 붙이지 않는다 — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`(아래 2단계) 내부에 있다. `saveAccount()`가 반환(=커밋)한 뒤에야 `outboxRelay.processPending()`을 호출하므로, Relay는 항상 이미 커밋된 이벤트만 읽는다 — "발행 직후 크래시하면 유실"이라는 예전 gap이 사라진다: 크래시가 나더라도 Outbox 행은 DB에 남아 있고, 다음에 어떤 커맨드든 호출되면 `processPending()`이 테이블 전체를 다시 훑어 재시도한다.
+`CreateAccountService` 클래스에는 `@Transactional`이 붙지 않는다 — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`(아래 2단계) 내부에 있다. `saveAccount()`가 반환(=커밋)한 뒤에야 `outboxRelay.processPending()`을 호출하므로, Relay는 항상 이미 커밋된 이벤트만 읽는다. 이 순서 덕분에 발행 직후 크래시가 나더라도 Outbox 행은 DB에 남아 있고, 다음에 어떤 커맨드든 호출되면 `processPending()`이 테이블 전체를 다시 훑어 재시도한다 — 이벤트가 유실되지 않는다.
 
 ---
 
@@ -131,7 +131,7 @@ public class AccountRepositoryImpl implements AccountRepository {
 }
 ```
 
-**Command Service는 더 이상 `ApplicationEventPublisher`/`@EventListener`를 쓰지 않는다.** 6개 Command Service(`CreateAccountService`/`DepositService`/`WithdrawService`/`SuspendAccountService`/`ReactivateAccountService`/`CloseAccountService`) 모두 `ApplicationEventPublisher` 의존성을 제거했고, 클래스 레벨 `@Transactional`도 제거했다 — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`다. 이 한 번의 호출로 Aggregate 상태와 이벤트가 원자적으로 커밋되거나 함께 롤백된다.
+**Command Service는 `ApplicationEventPublisher`/`@EventListener`에 의존하지 않는다.** 6개 Command Service(`CreateAccountService`/`DepositService`/`WithdrawService`/`SuspendAccountService`/`ReactivateAccountService`/`CloseAccountService`) 모두 `ApplicationEventPublisher` 의존성이 없고, 클래스 레벨 `@Transactional`도 붙지 않는다 — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`다. 이 한 번의 호출로 Aggregate 상태와 이벤트가 원자적으로 커밋되거나 함께 롤백된다.
 
 ---
 
@@ -171,7 +171,7 @@ public class OutboxRelay {
 
 `processPending()`은 **`@Scheduled` 폴링이 아니라, 모든 Command Service가 자신의 저장 트랜잭션 직후 한 번씩 호출한다** — `CreateAccountService`뿐 아니라 `DepositService`/`WithdrawService`/`SuspendAccountService`/`ReactivateAccountService`/`CloseAccountService`도 동일하게 `accountRepository.saveAccount(account)` 다음 줄에서 호출한다. 매 호출마다 테이블 전체의 미처리 행을 훑으므로, 특정 커맨드가 남긴 이벤트가 그 커맨드 자신의 호출에서 실패하더라도 **다른 어떤 커맨드가 다음에 호출되든** 다시 시도된다 — 별도의 재시도 스케줄러가 없어도 at-least-once 전달이 성립한다.
 
-핸들러 실행 중 예외가 발생해도 `catch`가 흡수하므로 `processPending()`을 호출한 원본 커맨드(계좌 생성/입출금 등)는 절대 실패하지 않는다 — 알림 발송 실패가 핵심 비즈니스 트랜잭션을 오염시키지 않는다는 목표는 예전 `AccountNotificationListener`의 try-catch와 동일하게 유지된다.
+핸들러 실행 중 예외가 발생해도 `catch`가 흡수하므로 `processPending()`을 호출한 원본 커맨드(계좌 생성/입출금 등)는 절대 실패하지 않는다 — 알림 발송 실패가 핵심 비즈니스 트랜잭션을 오염시키지 않는다는 보장이 이렇게 유지된다.
 
 ---
 
@@ -210,7 +210,7 @@ public class AccountCreatedEventHandler implements OutboxEventHandler {
 }
 ```
 
-나머지 5개 이벤트(`MoneyDepositedEvent`/`MoneyWithdrawnEvent`/`AccountSuspendedEvent`/`AccountReactivatedEvent`/`AccountClosedEvent`)도 각각 동일한 구조의 `MoneyDepositedEventHandler`/`MoneyWithdrawnEventHandler`/`AccountSuspendedEventHandler`/`AccountReactivatedEventHandler`/`AccountClosedEventHandler`로 존재한다 — 이메일 제목/본문/수신자 로직은 예전 `AccountNotificationListener`(삭제됨)의 해당 분기와 동일하다.
+나머지 5개 이벤트(`MoneyDepositedEvent`/`MoneyWithdrawnEvent`/`AccountSuspendedEvent`/`AccountReactivatedEvent`/`AccountClosedEvent`)도 각각 동일한 구조의 `MoneyDepositedEventHandler`/`MoneyWithdrawnEventHandler`/`AccountSuspendedEventHandler`/`AccountReactivatedEventHandler`/`AccountClosedEventHandler`로 존재한다.
 
 **핸들러가 Payload를 스스로 역직렬화하는 이유**: `OutboxRelay`는 `eventType`(문자열)으로 핸들러를 찾아 raw JSON payload를 그대로 넘길 뿐, 타입 정보를 갖지 않는다 — Java의 정적 타입 시스템에서 제네릭 Relay가 여러 이벤트 타입을 다루려면 이 경계에서 타입이 지워질 수밖에 없다. 각 핸들러가 `ObjectMapper.readValue(payload, XxxEvent.class)`로 자신의 이벤트 타입만 알고 역직렬화한다.
 

@@ -147,7 +147,7 @@ public class WebConfig implements WebMvcConfigurer {
 }
 ```
 
-Spring Security가 이미 도입되어 있으므로([authentication.md](authentication.md) 참고) CORS는 `WebMvcConfigurer.addCorsMappings(...)` 대신 `SecurityConfig`의 `SecurityFilterChain`에 `.cors(...)` 설정으로 추가하는 편이 낫다 — `WebMvcConfigurer`와 `SecurityFilterChain` 양쪽에 중복 설정하면 필터 순서에 따라 예기치 않게 하나만 적용된다. 이 저장소는 Spring Security를 이미 쓰므로 CORS 도입 시 `SecurityConfig` 쪽에 두는 것을 권장하고, 위 `WebConfig.addCorsMappings(...)` 예시는 Spring Security 없이 최소로 도입할 경우의 참고용이다.
+Spring Security를 쓰므로([authentication.md](authentication.md) 참고) CORS는 `WebMvcConfigurer.addCorsMappings(...)` 대신 `SecurityConfig`의 `SecurityFilterChain`에 `.cors(...)` 설정으로 추가하는 편이 낫다 — `WebMvcConfigurer`와 `SecurityFilterChain` 양쪽에 중복 설정하면 필터 순서에 따라 예기치 않게 하나만 적용된다. 이 저장소는 Spring Security를 쓰므로 CORS 도입 시 `SecurityConfig` 쪽에 두는 것을 권장하고, 위 `WebConfig.addCorsMappings(...)` 예시는 Spring Security 없이 최소로 도입할 경우의 참고용이다.
 
 ---
 
@@ -163,7 +163,7 @@ Spring Security가 이미 도입되어 있으므로([authentication.md](authenti
 |---|---|---|
 | `NestFactory.create(AppModule)` | `SpringApplication.run(AccountServiceApplication.class, args)` | `AccountServiceApplication.java` |
 | `app.enableShutdownHooks()` | 기본 활성 (`server.shutdown: graceful` 설정만 추가) | `application.yml` |
-| `app.useGlobalPipes(new ValidationPipe())` | `@Valid` + `spring-boot-starter-validation` (이미 적용됨) | 각 Controller 메서드 파라미터 |
+| `app.useGlobalPipes(new ValidationPipe())` | `@Valid` + `spring-boot-starter-validation` | 각 Controller 메서드 파라미터 |
 | `app.useGlobalFilters(new HttpExceptionFilter())` | `@RestControllerAdvice` 클래스 (현재 미도입) | `common/web/GlobalExceptionHandler.java` |
 | `app.enableCors({...})` | `WebMvcConfigurer.addCorsMappings()` (현재 미도입) | `config/WebConfig.java`(기존 파일에 추가 — 새 클래스를 만들지 않는다) |
 | `SwaggerModule.setup('api', app, document)` | `springdoc-openapi` 의존성 추가만으로 자동 노출 (현재 미도입) | `build.gradle` + 선택적 `OpenApiConfig` |

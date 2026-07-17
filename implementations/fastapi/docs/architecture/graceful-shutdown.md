@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md)
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 `main.py`의 `lifespan` 종료 블록이 채워졌다: SIGTERM 수신 시 `app_state["is_shutting_down"]`을 리소스 정리보다 먼저 `True`로 전환해 `/health/ready`가 즉시 503을 반환하도록 하고, 그 뒤 `engine.dispose()`로 SQLAlchemy 커넥션 풀을 정리한다. `/health/live`, `/health/ready` 엔드포인트도 함께 추가되었다 — 아래 문서 내용 그대로 실제 코드다.
 
@@ -10,7 +10,7 @@
 
 ## `lifespan` — 기동과 종료
 
-`Base.metadata.create_all`을 호출하던 예전 구현은 이미 Alembic 마이그레이션으로 대체되었다(persistence.md 참조) — `lifespan`이 스키마를 만들지 않는다. 기동 블록은 프로덕션에서만 Secrets Manager에서 JWT secret을 조회해 주입한다(secret-manager.md 참조). `validate_env()`는 `lifespan`보다 앞선 시점, 즉 `main.py` 최상단의 모듈 임포트 시점(`FastAPI(...)` 인스턴스가 만들어지기도 전)에 이미 호출된다 — [config.md](config.md) 참조.
+`lifespan`은 스키마를 만들지 않는다 — 스키마는 Alembic 마이그레이션으로 관리한다(persistence.md 참조). 기동 블록은 프로덕션에서만 Secrets Manager에서 JWT secret을 조회해 주입한다(secret-manager.md 참조). `validate_env()`는 `lifespan`보다 앞선 시점, 즉 `main.py` 최상단의 모듈 임포트 시점(`FastAPI(...)` 인스턴스가 만들어지기도 전)에 호출된다 — [config.md](config.md) 참조.
 
 ```python
 # main.py — 실제 코드. validate_env()는 lifespan보다 훨씬 앞선 모듈 임포트 시점에 호출된다

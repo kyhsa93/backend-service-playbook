@@ -4,9 +4,9 @@
 
 ---
 
-## 적용 완료 — `DATABASE_URL` fail-fast 검증
+## `DATABASE_URL` fail-fast 검증
 
-`cmd/server/main.go`가 `sql.Open`을 호출하기 전에 `config.LoadDatabaseConfig()`로 `DATABASE_URL` 존재를 검증한다(더 이상 gap 아님). `sql.Open` 자체는 DSN이 비어 있어도 에러를 내지 않는다(드라이버가 실제 연결을 시도할 때까지 지연 평가되는 `database/sql`의 특성 때문) — 그래서 기동 시점에 별도로 검증해야 한다.
+`cmd/server/main.go`가 `sql.Open`을 호출하기 전에 `config.LoadDatabaseConfig()`로 `DATABASE_URL` 존재를 검증한다. `sql.Open` 자체는 DSN이 비어 있어도 에러를 내지 않는다(드라이버가 실제 연결을 시도할 때까지 지연 평가되는 `database/sql`의 특성 때문) — 그래서 기동 시점에 별도로 검증해야 한다.
 
 ---
 

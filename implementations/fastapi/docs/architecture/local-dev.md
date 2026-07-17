@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/local-dev.md](../../../../docs/architecture/local-dev.md)
 
-이 항목은 root 문서 기준으로 이미 잘 구현되어 있다 — `examples/docker-compose.yml`, `examples/localstack/init-ses.sh`, `examples/localstack/init-secrets.sh`가 실제 root 원칙(Docker Compose 인프라 + LocalStack + 앱 컨테이너 프로필)을 따른다.
+이 항목은 root 문서 기준에 맞게 구현되어 있다 — `examples/docker-compose.yml`, `examples/localstack/init-ses.sh`, `examples/localstack/init-secrets.sh`가 실제 root 원칙(Docker Compose 인프라 + LocalStack + 앱 컨테이너 프로필)을 따른다.
 
 ## 현재 구성
 
@@ -157,9 +157,9 @@ docker compose --profile app down -v
 
 ---
 
-## AWS SDK — LocalStack 연동 (이미 올바르게 구현됨)
+## AWS SDK — LocalStack 연동
 
-`SesNotificationService`(`infrastructure/notification/notification_service.py`)와 `AwsSecretService`(`common/aws_secret_service.py`)는 이미 root 원칙대로 환경 변수 기반 엔드포인트 분기를 구현하고 있다.
+`SesNotificationService`(`infrastructure/notification/notification_service.py`)와 `AwsSecretService`(`common/aws_secret_service.py`)는 root 원칙대로 환경 변수 기반 엔드포인트 분기를 구현하고 있다.
 
 ```python
 async with self._boto_session.client(
@@ -179,11 +179,11 @@ async with self._boto_session.client(
 ## 원칙
 
 - **로컬 개발 시 외부 서비스에 직접 연결하지 않는다**: DB는 Docker Compose, AWS 서비스는 LocalStack.
-- **모든 인프라 서비스에 healthcheck를 설정한다**: 이미 지켜지고 있다.
-- **LocalStack 이미지 버전을 고정한다**: 이미 `3.0`으로 고정되어 있다.
+- **모든 인프라 서비스에 healthcheck를 설정한다**.
+- **LocalStack 이미지 버전을 고정한다**: `3.0`으로 고정되어 있다.
 - **초기화 스크립트는 저장소에 커밋한다**: `localstack/init-*.sh`.
-- **profiles로 앱 서비스를 분리한다**: 이미 지켜지고 있다 — `app` 서비스는 `profiles: [app]`로 기본 기동에서 제외된다.
-- **`.env*`는 커밋하지 않는다**: 이미 `.gitignore`에 포함되어 있다.
+- **profiles로 앱 서비스를 분리한다** — `app` 서비스는 `profiles: [app]`로 기본 기동에서 제외된다.
+- **`.env*`는 커밋하지 않는다**: `.gitignore`에 포함되어 있다.
 
 ### 관련 문서
 

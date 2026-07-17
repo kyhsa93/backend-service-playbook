@@ -4,9 +4,9 @@
 
 ## 현재 구현 — JWT Bearer 인증 + 비밀번호 기반 자격 증명 검증이 적용되어 있다
 
-`src/account/interface/rest/account_router.py`의 라우터는 `APIRouter(..., dependencies=[Depends(get_current_user)])`로 선언되어 있어, `/accounts` 하위 모든 엔드포인트가 JWT 검증을 거친다. 각 라우트 함수도 `current_user: CurrentUser = Depends(get_current_user)`를 파라미터로 받아 검증된 `user_id`를 Command/Query에 실어 전달한다. 과거에 쓰였던 `x_user_id: str = Header(...)` 같은 무검증 헤더 신뢰 패턴은 더 이상 존재하지 않는다.
+`src/account/interface/rest/account_router.py`의 라우터는 `APIRouter(..., dependencies=[Depends(get_current_user)])`로 선언되어 있어, `/accounts` 하위 모든 엔드포인트가 JWT 검증을 거친다. 각 라우트 함수도 `current_user: CurrentUser = Depends(get_current_user)`를 파라미터로 받아 검증된 `user_id`를 Command/Query에 실어 전달한다.
 
-`POST /auth/sign-in`도 실제 비밀번호 검증을 거친다 — 과거에는 `user_id`만 주어지면 자격 증명 확인 없이 토큰을 발급했다(다른 사용자의 `user_id`를 알기만 하면 그 사용자로 로그인할 수 있는 CRITICAL 취약점, #191). 지금은 `Credential` Aggregate(bcrypt 해시)와 `PasswordHasher` Technical Service를 통해 저장된 해시와 비교한 뒤에만 토큰을 발급한다.
+`POST /auth/sign-in`도 실제 비밀번호 검증을 거친다. `Credential` Aggregate(bcrypt 해시)와 `PasswordHasher` Technical Service를 통해 저장된 해시와 비교한 뒤에만 토큰을 발급한다.
 
 아래는 이 인증 흐름의 상세와, 실제 구현체(`src/auth/`)가 따르는 레이어 배치 원칙이다.
 
@@ -384,4 +384,4 @@ def auth_headers(user_id: str) -> dict:
 
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — 요청 파이프라인에서 인증 위치
 - [layer-architecture.md](layer-architecture.md) — Interface 레이어 역할
-- [config.md](config.md) — 환경 변수 관리, `JWT_SECRET` fail-fast 검증(적용 완료)
+- [config.md](config.md) — 환경 변수 관리, `JWT_SECRET` fail-fast 검증

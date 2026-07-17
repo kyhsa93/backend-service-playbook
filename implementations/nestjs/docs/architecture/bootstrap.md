@@ -76,4 +76,4 @@ bootstrap()
 
 ### 확장 지점
 
-- **Graceful Shutdown 세부 패턴**: `enableShutdownHooks()`는 물론, `HealthController`/`ShutdownState`도 이미 적용되었다([graceful-shutdown.md](graceful-shutdown.md) 참고) — `BeforeApplicationShutdown` 훅에서 readiness를 먼저 실패로 전환한 뒤 `/health/live`·`/health/ready`로 노출한다. Redis·메시지 큐 연결 정리는 이 저장소에 Redis·메시지 큐가 없어 여전히 미적용이다. TypeORM 연결은 Nest/TypeORM이 자체적으로 정리하므로 별도 처리가 불필요하다.
+- **Graceful Shutdown 세부 패턴**: `enableShutdownHooks()`와 `HealthController`/`ShutdownState`가 함께 적용되어 있다([graceful-shutdown.md](graceful-shutdown.md) 참고) — `BeforeApplicationShutdown` 훅에서 readiness를 먼저 실패로 전환한 뒤 `/health/live`·`/health/ready`로 노출한다. Redis·메시지 큐 연결 정리는 이 저장소에 Redis·메시지 큐가 없어 대상이 아니다. TypeORM 연결은 Nest/TypeORM이 자체적으로 정리하므로 별도 처리가 불필요하다.

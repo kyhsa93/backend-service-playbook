@@ -155,7 +155,7 @@ func (h *AccountCreatedEventHandler) Handle(ctx context.Context, payload []byte)
 }
 ```
 
-`notification.Service.Notify`는 더 이상 실패를 삼키지 않는다 — 에러를 반환해 Relay가 해당 행을 미처리 상태로 남기고 재시도할 수 있게 한다:
+`notification.Service.Notify`는 실패 시 에러를 반환하고, Relay가 해당 행을 미처리 상태로 남겨 재시도할 수 있게 한다:
 
 ```go
 // internal/infrastructure/notification/service.go

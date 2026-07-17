@@ -2,7 +2,7 @@
 
 `@nestjs/throttler`를 사용하여 API 요청 속도를 제한한다.
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 `examples/`에 `@nestjs/throttler`가 설치되어 있고, `src/app-module.ts`가 아래 "전역 설정" 코드 그대로 `ThrottlerModule.forRoot(getThrottlerConfig())`에 short(기본 1초 3회)/medium(기본 10초 20회)/long(기본 1분 100회) 3단 제한을 등록하고 `ThrottlerGuard`를 `APP_GUARD`로 바인딩한다 — 모든 엔드포인트에 자동 적용된다. 임계값은 `src/config/throttle.config.ts`가 `THROTTLE_*` 환경 변수로 override 가능하게 만든다(아래 "운영값 조정" 참고). 헬스체크 엔드포인트(`src/common/interface/health-controller.ts`, [graceful-shutdown.md](graceful-shutdown.md) 참고)는 `@SkipThrottle()`로 제한에서 제외했다. 이 문서의 "엔드포인트별 커스텀 제한" 섹션은 필요해지면 추가할 확장 패턴으로, 아직 `examples/`에는 적용되지 않았다.
 
@@ -95,7 +95,7 @@ export class InternalController { /* ... */ }
 | `THROTTLE_MEDIUM_TTL_MS` / `THROTTLE_MEDIUM_LIMIT` | `10000` / `20` | 10초 윈도우 |
 | `THROTTLE_LONG_TTL_MS` / `THROTTLE_LONG_LIMIT` | `60000` / `100` | 1분 윈도우 |
 
-이전에는 `ThrottlerModule.forRoot()`에 값이 직접 하드코딩되어 있어 조정 시 코드 변경 + 재배포가 필요했다 — go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`)·fastapi(`RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`)와 동일하게 환경 변수 기반으로 맞춰, 운영 중 임계값 조정에 코드 리뷰·재배포가 필요 없도록 통일했다(issue #153).
+이 값들은 환경 변수 기반이라, go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`)·fastapi(`RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`)와 동일하게 운영 중 임계값 조정에 코드 변경·재배포가 필요 없다.
 
 ## 응답 헤더
 
@@ -114,4 +114,4 @@ Throttler는 자동으로 응답 헤더에 제한 정보를 포함한다.
 - **전역 Guard로 등록**: `APP_GUARD`로 ThrottlerGuard를 등록하여 모든 엔드포인트에 기본 제한을 적용한다.
 - **엔드포인트별 세분화**: 쓰기 API(POST, PUT, DELETE)는 읽기 API보다 제한을 강하게 설정한다.
 - **내부 엔드포인트 제외**: 헬스체크, 메트릭 등 내부 엔드포인트는 `@SkipThrottle()`로 제외한다.
-- **환경 변수로 제한값 관리**: 하드코딩하지 않고 `throttle.config.ts`의 `THROTTLE_*` 환경 변수로 배포 시점에 조정 가능하도록 한다(위 "운영값 조정" 참고). ✅ 적용 완료.
+- **환경 변수로 제한값 관리**: 하드코딩하지 않고 `throttle.config.ts`의 `THROTTLE_*` 환경 변수로 배포 시점에 조정 가능하도록 한다(위 "운영값 조정" 참고).

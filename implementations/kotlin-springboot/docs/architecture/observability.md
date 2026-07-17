@@ -59,7 +59,7 @@ logger.info { "이메일 발송됨: accountId=$accountId, eventType=$eventType" 
 
 ---
 
-## 구조화된 로깅 — JSON + snake_case (logstash-logback-encoder, 적용 완료)
+## 구조화된 로깅 — JSON + snake_case (logstash-logback-encoder)
 
 `build.gradle.kts`와 `logback-spring.xml` 모두 이미 JSON 인코더를 갖추고 있다 — prod 프로파일에서는 CloudWatch/Datadog 등으로 그대로 수집 가능한 JSON 로그를, 로컬/테스트에서는 사람이 읽기 좋은 텍스트 로그를 낸다.
 
@@ -92,7 +92,7 @@ implementation("net.logstash.logback:logstash-logback-encoder:7.4")
 
 ---
 
-## Correlation ID — MDC 전파 (적용 완료)
+## Correlation ID — MDC 전파
 
 [cross-cutting-concerns.md](cross-cutting-concerns.md)에서 다룬 `CorrelationIdFilter`(실제 코드, `common/CorrelationIdFilter.kt`)가 요청 진입 시 MDC에 값을 넣는다. 이후 애플리케이션 어디서든 `MDC.get("correlationId")`로 접근 가능하고, `logstash-logback-encoder`의 `includeMdcKeyName`이 자동으로 로그 필드에 포함시킨다 — 각 로그 호출에서 correlationId를 인자로 넘길 필요가 없다.
 
@@ -120,9 +120,9 @@ Node의 `AsyncLocalStorage`와 동일한 역할을 JVM 스레드 모델에서는
 ## 원칙 요약
 
 - **Domain 레이어에서 로깅 금지**: `Account`, `Money`, `Transaction`은 로거를 import하지 않는다.
-- **구조화 로그는 `NotificationServiceImpl`에 이미 적용됨**: `logger.atInfo().addKeyValue(...)`로 snake_case 필드를 남긴다. `OutboxRelay`/`AccountController`의 `{}` 플레이스홀더 로그를 같은 방식으로 승격하는 것은 남은 개선 여지다.
+- **`NotificationServiceImpl`은 구조화 로그를 쓴다**: `logger.atInfo().addKeyValue(...)`로 snake_case 필드를 남긴다. `OutboxRelay`/`AccountController`의 `{}` 플레이스홀더 로그를 같은 방식으로 승격하는 것은 남은 개선 여지다.
 - **`kotlin-logging` 도입 검토**: 지연 평가 + `::class.java` 보일러플레이트 제거 — 아직 도입하지 않았다.
-- **MDC로 Correlation ID 전파(적용 완료)**: `CorrelationIdFilter`가 요청 진입점에서 설정하면 이후 모든 로그에 자동 포함.
+- **MDC로 Correlation ID 전파**: `CorrelationIdFilter`가 요청 진입점에서 설정하면 이후 모든 로그에 자동 포함.
 
 ### 관련 문서
 

@@ -34,7 +34,7 @@ mux.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)                 // 인증 
 return middleware.CorrelationID(mux)                                   // 1. 전처리(가장 바깥)
 ```
 
-미들웨어가 2개뿐이라 이 정도 중첩으로도 가독성에 문제가 없다 — 개수가 늘어나면 이 문서 이전 버전이 제시했던 `Chain(h, A, B, C)` 형태의 합성 헬퍼 도입을 검토한다.
+미들웨어가 2개뿐이라 이 정도 중첩으로도 가독성에 문제가 없다 — 개수가 늘어나면 `Chain(h, A, B, C)` 형태의 합성 헬퍼 도입을 검토한다.
 
 ---
 

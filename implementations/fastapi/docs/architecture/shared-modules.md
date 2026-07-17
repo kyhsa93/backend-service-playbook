@@ -76,10 +76,10 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 ```
 src/
   database.py                        ← 유지 — 엔진은 하나(연결 풀 공유)
-  common/                            ← 이미 존재 — 두 번째 도메인도 그대로 재사용
-  config/                            ← 이미 존재
-  auth/                              ← 이미 존재 — account/와 동일한 4레이어 구조
-  outbox/                            ← 이미 존재 — 두 번째 도메인도 같은 Outbox 테이블/Relay를 공유
+  common/                            ← 두 번째 도메인도 그대로 재사용
+  config/
+  auth/                              ← account/와 동일한 4레이어 구조
+  outbox/                            ← 두 번째 도메인도 같은 Outbox 테이블/Relay를 공유
   account/                           ← 도메인 패키지
     domain/ application/ infrastructure/ interface/
   user/                              ← 두 번째 도메인 패키지 (가상)

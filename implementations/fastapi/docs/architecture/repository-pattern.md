@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/repository-pattern.md](../../../../docs/architecture/repository-pattern.md)
 
-## Aggregate Root 단위 Repository — 이미 올바르게 구조화됨
+## Aggregate Root 단위 Repository
 
 Account Aggregate에 대해 구현체는 하나(`SqlAlchemyAccountRepository`)뿐이지만, 인터페이스(ABC)는 쓰기 모델 `AccountRepository`와 읽기 전용 `AccountQuery` 두 개로 나뉜다 — CommandHandler는 `AccountRepository`, QueryHandler는 `AccountQuery`에 의존한다. 자세한 배경은 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
@@ -132,7 +132,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
 
 ---
 
-## 동적 필터 패턴 — 이미 올바르게 구현됨
+## 동적 필터 패턴
 
 ```python
 # infrastructure/persistence/account_repository.py
@@ -159,10 +159,10 @@ async def find_all(self, page: int, take: int, account_id=None, owner_id=None, s
 ## 원칙
 
 - **1 Aggregate Root = 1 구현체, 쓰기/읽기 ABC는 분리 가능**: `SqlAlchemyAccountRepository` 구현체 하나가 쓰기용 `AccountRepository`와 읽기 전용 `AccountQuery` 두 인터페이스를 함께 만족한다 — [cqrs-pattern.md](cqrs-pattern.md) 참조.
-- **인터페이스는 domain/, 구현체는 infrastructure/**: 이미 지켜지고 있다.
-- **`save`만 사용, 별도 update 메서드 없음**: 이미 지켜지고 있다.
+- **인터페이스는 domain/, 구현체는 infrastructure/**.
+- **`save`만 사용, 별도 update 메서드 없음**.
 - **조회 메서드는 `find<Noun>s` 하나로 통일**: 알려진 격차 — 현재 `find_by_id`/`find_all` 분리.
-- **동적 필터는 값이 있을 때만 적용**: 이미 지켜지고 있다.
+- **동적 필터는 값이 있을 때만 적용**.
 - **삭제는 soft delete**: [persistence.md](persistence.md) 참조.
 
 ---

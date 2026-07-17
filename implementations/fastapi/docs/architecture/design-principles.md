@@ -22,7 +22,7 @@
 
 10. **ID는 Domain 팩토리 classmethod에서 생성, 하이픈 없는 32자리 hex** — `Account.create()`가 유일한 생성 경로이며, `common/generate_id.py`가 `uuid.uuid4().hex`(하이픈 없음)를 반환해 전 도메인에서 일관되게 쓰인다. ([aggregate-id.md](aggregate-id.md))
 
-11. **Domain Event는 `pull_events()`로 수집, 발행은 Outbox 경유** — `repo.save()`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋하고, Command Handler가 그 직후 `OutboxRelay.process_pending()`을 동기 호출해 드레인한다. `application/event/<event>_event_handler.py`가 이벤트 타입별로 `NotificationService`를 호출한다 — 더 이상 dual-write가 아니다. ([domain-events.md](domain-events.md))
+11. **Domain Event는 `pull_events()`로 수집, 발행은 Outbox 경유** — `repo.save()`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋하고, Command Handler가 그 직후 `OutboxRelay.process_pending()`을 동기 호출해 드레인한다. `application/event/<event>_event_handler.py`가 이벤트 타입별로 `NotificationService`를 호출한다. Aggregate 상태와 Outbox 행이 같은 트랜잭션으로 커밋되므로 dual-write가 발생하지 않는다. ([domain-events.md](domain-events.md))
 
 12. **Interface DTO(Pydantic)는 얇은 변환만** — `schemas.py`의 `BaseModel`은 요청/응답 형태만 정의하고, `application/query/result.py`의 Result 객체를 감싸는 역할만 한다. 형식 검증(422, Pydantic)과 비즈니스 규칙 위반(400, Domain 예외)을 혼동하지 않는다. ([cross-cutting-concerns.md](cross-cutting-concerns.md), [directory-structure.md](directory-structure.md))
 
@@ -30,7 +30,7 @@
 
 ---
 
-위 13개 항목 모두 `examples/`의 실제 코드가 문서의 원칙을 그대로 따른다 — 알려진 격차는 남아있지 않다. Rate Limiting은 `slowapi`로 이미 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.
+위 13개 항목 모두 `examples/`의 실제 코드가 문서의 원칙을 그대로 따른다. Rate Limiting은 `slowapi`로 구현되어 있다 — [rate-limiting.md](rate-limiting.md) 참고.
 
 ### 관련 문서
 

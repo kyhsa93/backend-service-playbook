@@ -7,11 +7,11 @@
 ```
 com.example.accountservice/
   AccountServiceApplication.kt
-  common/            ← 이미 존재 — CorrelationIdFilter/RequestLoggingInterceptor/WebConfig/GenerateId (cross-cutting-concerns.md, aggregate-id.md)
-  config/            ← 이미 존재 — AwsProperties/SesProperties (config.md)
-  auth/               ← 이미 존재 — AuthService/JwtAuthenticationFilter/SecurityConfig + Credential Aggregate (authentication.md)
-  secret/             ← 이미 존재 — SecretService/SecretServiceImpl/SecretsEnvironmentPostProcessor (secret-manager.md)
-  outbox/             ← 이미 존재 — OutboxEvent/OutboxWriter/OutboxRelay (domain-events.md)
+  common/            ← CorrelationIdFilter/RequestLoggingInterceptor/WebConfig/GenerateId (cross-cutting-concerns.md, aggregate-id.md)
+  config/            ← AwsProperties/SesProperties (config.md)
+  auth/               ← AuthService/JwtAuthenticationFilter/SecurityConfig + Credential Aggregate (authentication.md)
+  secret/             ← SecretService/SecretServiceImpl/SecretsEnvironmentPostProcessor (secret-manager.md)
+  outbox/             ← OutboxEvent/OutboxWriter/OutboxRelay (domain-events.md)
   account/           ← Bounded Context
   notification/      ← Technical Service (Account BC 소속, 별도 BC 아님)
 ```

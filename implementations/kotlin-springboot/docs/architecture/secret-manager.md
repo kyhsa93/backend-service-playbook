@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 [root secret-manager.md](../../../../docs/architecture/secret-manager.md) 참조.
 
-## 적용 완료 — AWS Secrets Manager + TTL 캐시
+## AWS Secrets Manager + TTL 캐시
 
 ```kotlin
 // notification/infrastructure/NotificationServiceImpl.kt — 실제 코드
@@ -14,7 +14,7 @@ class NotificationServiceImpl(
 ) : NotificationService
 ```
 
-`SES_SENDER_EMAIL`(→ `SesProperties.senderEmail`, [config.md](config.md) 참조)은 민감값이 아니라 발신자 이메일이므로 환경 변수로 충분하다. 실제로 민감한 값은 **JWT 서명 secret**이다 — 인증은 이미 구현되어 있고([authentication.md](authentication.md) 참조), 그 secret은 아래 `SecretService`/`SecretsEnvironmentPostProcessor`를 통해 prod 프로파일에서 AWS Secrets Manager로부터 조회된다. 아래는 [config.md](config.md)의 "민감값 — 환경 변수 vs Secrets Manager" 원칙을 Kotlin/Spring으로 구현한 실제 코드다.
+`SES_SENDER_EMAIL`(→ `SesProperties.senderEmail`, [config.md](config.md) 참조)은 민감값이 아니라 발신자 이메일이므로 환경 변수로 충분하다. 실제로 민감한 값은 **JWT 서명 secret**이다 — 인증은 [authentication.md](authentication.md)가 다루며, 그 secret은 아래 `SecretService`/`SecretsEnvironmentPostProcessor`를 통해 prod 프로파일에서 AWS Secrets Manager로부터 조회된다. 아래는 [config.md](config.md)의 "민감값 — 환경 변수 vs Secrets Manager" 원칙을 Kotlin/Spring으로 구현한 실제 코드다.
 
 ---
 
@@ -139,7 +139,7 @@ org.springframework.boot.env.EnvironmentPostProcessor=com.example.accountservice
 
 ---
 
-## 로컬 개발 — LocalStack (적용 완료)
+## 로컬 개발 — LocalStack
 
 ```yaml
 # docker-compose.yml — 실제 코드

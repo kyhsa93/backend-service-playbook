@@ -16,7 +16,7 @@ interfaces/rest (@RestController)  →  application/{command,query} (@Service)  
 
 ---
 
-## Domain 레이어 — 순수 도메인 + JPA 매핑 분리 (더 이상 gap 아님)
+## Domain 레이어 — 순수 도메인 + JPA 매핑 분리
 
 루트 원칙: Domain 레이어는 **어떤 프레임워크에도 의존하지 않는 순수한 코드**로 작성한다 (ORM 포함).
 

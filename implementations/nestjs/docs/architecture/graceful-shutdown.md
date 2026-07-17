@@ -2,7 +2,7 @@
 
 컨테이너 오케스트레이션 환경(Kubernetes, ECS 등)에서 SIGTERM 수신 시 진행 중인 요청을 안전하게 처리한 뒤 종료하는 패턴이다.
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출한다 — SIGTERM 수신 시 `OnApplicationShutdown`/`BeforeApplicationShutdown` 라이프사이클 훅이 동작한다. 아래 "헬스체크 연동" 섹션이 정의하는 `ShutdownState`(`src/common/infrastructure/shutdown-state.ts`)와 `HealthController`(`src/common/interface/health-controller.ts`, `GET /health/live`·`GET /health/ready`)도 문서 그대로 `examples/`에 반영되어 `src/app-module.ts`의 `providers`/`controllers`에 등록되어 있다. `RedisShutdown`/`QueueShutdown` 패턴은 이 저장소에 Redis·메시지 큐 연결 자체가 없어 아직 적용되지 않았다 — 필요해지면 추가할 확장 패턴으로 남겨둔다.
 

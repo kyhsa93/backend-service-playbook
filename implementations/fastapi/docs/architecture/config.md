@@ -8,7 +8,7 @@
 
 `src/config/jwt_config.py`의 `JwtConfig`도 같은 방식으로 검증된다. 다만 `JWT_SECRET`은 **프로덕션에서만 예외**다 — 프로덕션에서는 `main.py`의 `lifespan`이 Secrets Manager(`app/jwt`)에서 조회해 채우므로([secret-manager.md](secret-manager.md) 참고) 환경 변수가 비어 있어도 fail-fast 대상이 아니다. `validate_env()`가 `APP_ENV != "production"`일 때만 `JwtConfig.secret` 누락을 fail-fast로 막는다.
 
-**AWS 자격 증명**(`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`)도 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다. `src/common/aws_secret_service.py`와 `src/account/infrastructure/notification/notification_service.py` 모두 `AwsConfig().client_kwargs()`로 boto3 클라이언트를 생성한다 — 더 이상 각자 `os.getenv(..., "test")`를 산발적으로 호출하지 않는다. 단, `AwsConfig`는 모든 필드에 로컬 개발용 기본값(`region="us-east-1"`, `access_key_id="test"` 등)이 있어 **fail-fast 대상은 아니다** — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이라, DB 접속 정보/JWT secret과 달리 "누락 시 종료해야 하는 값"으로 보지 않는다(다른 언어 구현체도 SES/AWS 자격 증명 자체는 fail-fast 대상에서 제외한다).
+**AWS 자격 증명**(`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`)도 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다. `src/common/aws_secret_service.py`와 `src/account/infrastructure/notification/notification_service.py` 모두 `AwsConfig().client_kwargs()`로 boto3 클라이언트를 생성한다 — AWS 자격 증명 접근은 각자 `os.getenv(..., "test")`를 호출하는 대신 `AwsConfig` 하나로 중앙화되어 있다. 단, `AwsConfig`는 모든 필드에 로컬 개발용 기본값(`region="us-east-1"`, `access_key_id="test"` 등)이 있어 **fail-fast 대상은 아니다** — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이라, DB 접속 정보/JWT secret과 달리 "누락 시 종료해야 하는 값"으로 보지 않는다(다른 언어 구현체도 SES/AWS 자격 증명 자체는 fail-fast 대상에서 제외한다).
 
 아래는 Pydantic `BaseSettings`를 이용한 fail-fast 패턴이다. `DatabaseConfig`/`JwtConfig`/`AwsConfig` 모두 실제 코드다.
 
@@ -157,7 +157,7 @@ class DepositHandler:
         url = os.environ["DATABASE_URL"]   # 금지 — Handler는 설정을 모른다
 ```
 
-`src/account/infrastructure/notification/notification_service.py`와 `src/common/aws_secret_service.py`는 각자 `AwsConfig()`를 인스턴스화해 `client_kwargs()`로 boto3 클라이언트를 구성한다 — 위치(Infrastructure)도 올바르고, 더 이상 `os.getenv`를 산발적으로 호출하지 않는다.
+`src/account/infrastructure/notification/notification_service.py`와 `src/common/aws_secret_service.py`는 각자 `AwsConfig()`를 인스턴스화해 `client_kwargs()`로 boto3 클라이언트를 구성한다 — 위치(Infrastructure)도 올바르고, `os.getenv`를 산발적으로 호출하는 대신 `AwsConfig`를 통해 구성한다.
 
 ---
 

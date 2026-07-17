@@ -4,11 +4,11 @@
 
 ---
 
-## 적용 완료 — JWT/Bearer 인증 + 실제 비밀번호 검증
+## JWT/Bearer 인증 + 비밀번호 검증
 
-아래 패턴은 이미 `examples/`에 그대로 구현되어 있다(더 이상 gap 아님) — `internal/infrastructure/auth/jwt_service.go`(JWT 발급/검증), `internal/interface/http/middleware/auth_middleware.go`(Bearer 토큰 검증 미들웨어), `internal/interface/http/router.go`(라우트 그룹 단위 미들웨어 적용)가 이 문서가 서술하는 목표 상태 그대로다. `account_handler.go`는 `middleware.UserIDFromContext(r.Context())`로 인증된 사용자 ID를 꺼내며, 더 이상 `X-User-Id` 헤더를 신뢰하지 않는다.
+아래 패턴은 `examples/`에 그대로 구현되어 있다 — `internal/infrastructure/auth/jwt_service.go`(JWT 발급/검증), `internal/interface/http/middleware/auth_middleware.go`(Bearer 토큰 검증 미들웨어), `internal/interface/http/router.go`(라우트 그룹 단위 미들웨어 적용)가 이 문서가 서술하는 상태 그대로다. `account_handler.go`는 `middleware.UserIDFromContext(r.Context())`로 인증된 사용자 ID를 꺼낸다.
 
-> **#188 수정 이력**: 과거 `POST /auth/sign-in`은 `{ "userId": "..." }`만 받아 비밀번호 확인 없이 JWT를 발급했다 — 다른 사용자의 userId만 알면 누구든 그 사용자로 로그인할 수 있는 CRITICAL 취약점이었다(5개 언어 구현 공통 발견 사항, nestjs가 `06f8b69`에서 먼저 수정). 이제 `internal/domain/credential/` Credential Aggregate + `PasswordHasher` Technical Service(bcrypt)로 저장된 해시와 비교한 뒤에만 토큰을 발급한다. 아래 내용은 이 수정 이후의 최종 상태를 서술한다.
+`POST /auth/sign-in`은 `internal/domain/credential/` Credential Aggregate + `PasswordHasher` Technical Service(bcrypt)로 저장된 해시와 비교한 뒤에만 JWT를 발급한다.
 
 ---
 
@@ -136,7 +136,7 @@ func (s *JWTService) Verify(tokenString string) (string, error) {
 
 ---
 
-## Credential — 비밀번호 검증 (#188)
+## Credential — 비밀번호 검증
 
 `internal/domain/credential/`에 있는 Credential Aggregate가 `userId`/`passwordHash`를 보관한다. 평문 비밀번호는 domain/application 어디에도 저장하지 않는다.
 
@@ -358,7 +358,7 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 - **JWT payload는 최소한으로**: `userId`만 담는다.
 - **미들웨어는 라우트 그룹 단위 적용**: 개별 핸들러마다 감싸지 않는다 — 새 엔드포인트 추가 시 누락 위험을 없앤다.
 - **`context.Context`로 인증 정보 전파**: `context.WithValue` + 전용 키 타입(`contextKey`)으로 타입 충돌을 방지한다.
-- **sign-in은 반드시 저장된 해시와 비교한 뒤에만 토큰을 발급한다**: userId만으로 토큰을 발급하지 않는다(#188). 아이디 미존재/비밀번호 불일치는 같은 에러로 응답해 user enumeration을 막는다.
+- **sign-in은 반드시 저장된 해시와 비교한 뒤에만 토큰을 발급한다**: userId만으로 토큰을 발급하지 않는다. 아이디 미존재/비밀번호 불일치는 같은 에러로 응답해 user enumeration을 막는다.
 - **비밀번호 해싱은 Technical Service로 분리한다**: `PasswordHasher` 인터페이스는 `application/command/`, bcrypt 구현체는 `infrastructure/auth/`에 둔다 — Domain/Application이 `bcrypt` 라이브러리에 직접 의존하지 않는다.
 
 ---

@@ -85,7 +85,7 @@ public interface AccountRepository {
 public record AccountsWithCount(List<Account> accounts, long count) {}
 ```
 
-과거에는 `findByAccountIdAndOwnerId`처럼 Spring Data 파생 쿼리 관례를 따른 단건 전용 메서드가 별도로 있었다. 루트가 명시한 "조회는 `find<Noun>s` 하나만" 규칙에 맞춰 제거했고, 단건 조회는 `findAccounts(query)`를 `accountId`+`ownerId`+`take:1` 필터로 호출한 뒤 첫 번째 결과를 꺼내는 방식으로 통일했다:
+루트가 명시한 "조회는 `find<Noun>s` 하나만" 규칙에 맞춰, 단건 조회는 `findAccounts(query)`를 `accountId`+`ownerId`+`take:1` 필터로 호출한 뒤 첫 번째 결과를 꺼내는 방식으로 통일한다:
 
 ```java
 // 호출 측 — application/command/DepositService.java 등에서 반복되는 패턴

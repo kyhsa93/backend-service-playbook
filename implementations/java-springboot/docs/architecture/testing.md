@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 루트 [testing.md](../../../../docs/architecture/testing.md) 참고.
 
-## 적용 완료 — 3계층 테스트 피라미드가 모두 존재한다
+## 3계층 테스트 피라미드
 
 `examples/`에는 root가 요구하는 3계층이 모두 있다 — Domain 단위 테스트(`AccountTest`, `MoneyTest`), Application 단위 테스트(`CreateAccountServiceTest`, `DepositServiceTest`), E2E 테스트(`AccountControllerE2ETest`, `NotificationE2ETest`, Testcontainers 기반).
 
@@ -18,10 +18,10 @@
 
 ## 테스트 프레임워크 — JUnit 5 + Mockito
 
-`build.gradle`은 이미 `spring-boot-starter-test`(JUnit 5, AssertJ, Mockito 포함)를 갖고 있다:
+`build.gradle`은 `spring-boot-starter-test`(JUnit 5, AssertJ, Mockito 포함)를 갖고 있다:
 
 ```groovy
-// build.gradle — 실제 코드, 이미 존재
+// build.gradle — 실제 코드
 testImplementation 'org.springframework.boot:spring-boot-starter-test'
 testImplementation 'org.testcontainers:junit-jupiter'
 testImplementation 'org.testcontainers:postgresql'
@@ -170,7 +170,7 @@ class CreateAccountServiceTest {
 
 ---
 
-## E2E 테스트 — 이미 올바르게 구현됨 (Testcontainers)
+## E2E 테스트 — Testcontainers
 
 ```java
 // src/test/java/.../AccountControllerE2ETest.java — 실제 코드 (일부)

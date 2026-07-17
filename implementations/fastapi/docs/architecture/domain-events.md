@@ -299,7 +299,7 @@ def _outbox_relay(..., card_repo: CardRepository = Depends(_card_repo)) -> Outbo
 
 ## 원칙
 
-- **이벤트 수집은 Aggregate 안에서만**: `_events` + `pull_events()` — 이미 올바르게 구현되어 있다.
+- **이벤트 수집은 Aggregate 안에서만**: `_events` + `pull_events()`로 구현되어 있다.
 - **저장과 이벤트 적재는 하나의 트랜잭션**: `SqlAlchemyAccountRepository.save()` 안에서 Aggregate 상태와 Outbox row를 함께 적재하고, 요청 스코프 세션이 한 번에 커밋한다.
 - **후속 처리는 Outbox 드레인을 통해서만**: Command Handler는 알림 서비스를 직접 호출하지 않고 `OutboxRelay.process_pending()`만 호출한다.
 - **드레인은 폴링 워커가 아니라 다음 커맨드가 트리거한다**: 배경 작업(APScheduler/Celery) 없이도 매 커맨드가 테이블 전체를 훑어 재시도까지 자연스럽게 처리한다 — e2e 테스트에서 타이밍 대기가 필요 없는 이유이기도 하다.

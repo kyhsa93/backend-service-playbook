@@ -11,7 +11,7 @@ Go 전용 문서 — root에는 대응 문서가 없다. NestJS는 `src/common/`
 - [aggregate-id.md](aggregate-id.md) — `internal/common/id.go`에 `common.NewID()`(UUID v4 하이픈 제거) 유틸을 둔다고 명시.
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — Correlation ID 미들웨어가 `github.com/example/account-service/internal/common`을 import해 `common.NewID()`를 호출하는 목표 코드를 제시.
 
-즉 **`internal/common/`이 이 저장소가 이미 합의한, 아직 만들어지지 않은 공유 패키지의 이름**이다. 이 문서는 그 합의를 확장해서, 도메인이 하나 더 늘어났을 때 공유 코드 전체(이미 존재하는 `outbox/` 포함)가 어디로 나뉘는지 정리한다.
+즉 **`internal/common/`이 이 저장소가 합의한, 아직 만들어지지 않은 공유 패키지의 이름**이다. 이 문서는 그 합의를 확장해서, 도메인이 하나 더 늘어났을 때 공유 코드 전체(존재하는 `outbox/` 포함)가 어디로 나뉘는지 정리한다.
 
 ---
 
@@ -30,7 +30,7 @@ internal/
       user_repository.go           # User 전용 (가상)
     notification/
       service.go                   # Account 전용 알림 구현체
-    outbox/                        # 이미 존재 — OutboxWriter, OutboxRelay(domain-events.md), 도메인이 늘어나도 공유
+    outbox/                        # OutboxWriter, OutboxRelay(domain-events.md), 도메인이 늘어나도 공유
       writer.go
       relay.go
 
@@ -53,7 +53,7 @@ internal/
 
 - **`internal/common/`** — 어떤 도메인도 참조할 수 있는 프레임워크 무의존 순수 함수(ID 생성 등). Domain 레이어에서 import해도 원칙 2(프레임워크 무의존)를 어기지 않는다 — `common` 패키지 자체가 표준 라이브러리 수준의 순수 함수만 담기 때문이다.
 - **`internal/interface/http/middleware/`** — 이미 [cross-cutting-concerns.md](cross-cutting-concerns.md)가 위치를 정해 둔 HTTP 전용 공유 코드. 도메인마다 반복 구현하지 않고 하나의 체인을 모든 라우터에 적용한다.
-- **`internal/infrastructure/outbox/`** — 이미 존재한다. 두 번째 도메인이 추가되면 그 도메인의 Repository도 같은 `outbox.Writer`/`outbox.Relay` 인스턴스를 공유하면 된다([domain-events.md](domain-events.md) 참고). **`internal/infrastructure/persistence/tx.go`** — 여러 도메인을 하나의 DB 트랜잭션으로 묶어야 할 때 필요해지는 인프라로, 이건 아직 없다([persistence.md](persistence.md) 참고).
+- **`internal/infrastructure/outbox/`** — 두 번째 도메인이 추가되면 그 도메인의 Repository도 같은 `outbox.Writer`/`outbox.Relay` 인스턴스를 공유하면 된다([domain-events.md](domain-events.md) 참고). **`internal/infrastructure/persistence/tx.go`** — 여러 도메인을 하나의 DB 트랜잭션으로 묶어야 할 때 필요해지는 인프라로, 이건 아직 없다([persistence.md](persistence.md) 참고).
 - **도메인 전용 코드는 공유 패키지로 옮기지 않는다** — `account_repository.go`처럼 특정 도메인만 쓰는 구현체는 그 도메인의 `infrastructure/<concern>/` 하위에 그대로 둔다. "공유"는 두 도메인 이상이 실제로 같은 코드를 필요로 할 때만 성립한다(YAGNI — directory-structure.md의 "공용 인프라를 아직 추가하지 않은 이유"와 같은 원칙).
 
 ---

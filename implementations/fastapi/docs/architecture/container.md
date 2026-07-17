@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/container.md](../../../../docs/architecture/container.md)
 
-## 현재 구현 — `implementations/fastapi/examples/Dockerfile`가 이미 존재한다
+## 현재 구현 — `implementations/fastapi/examples/Dockerfile`
 
 `examples/Dockerfile`, `examples/.dockerignore`가 실제로 존재하며, 아래 멀티스테이지 빌드를 그대로 구현하고 있다.
 

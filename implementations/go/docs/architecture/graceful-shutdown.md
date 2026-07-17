@@ -54,7 +54,7 @@ slog.Info("server stopped")
 
 ---
 
-## Liveness / Readiness 엔드포인트 — 적용 완료
+## Liveness / Readiness 엔드포인트
 
 `internal/interface/http/health_handler.go`의 `HealthHandler`가 `/health/live`·`/health/ready`를 제공하고, `router.go`가 이 두 라우트를 rate limit 미들웨어([rate-limiting.md](rate-limiting.md))로 감싸지 않은 채 `mux`에 직접 등록한다.
 

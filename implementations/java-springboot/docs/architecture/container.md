@@ -2,11 +2,11 @@
 
 > 프레임워크 무관 원칙은 루트 [container.md](../../../../docs/architecture/container.md) 참고.
 
-## 현재 상태 — 멀티스테이지 Dockerfile + `HEALTHCHECK` 적용 완료
+## 멀티스테이지 Dockerfile + `HEALTHCHECK`
 
-`examples/Dockerfile`이 아래 "멀티스테이지 빌드 — Layered JAR" 절과 거의 동일한 3-스테이지(Build/Extract/Runtime) 구조로 이미 존재한다 — Layered JAR 추출, JRE 베이스 런타임(`eclipse-temurin:21-jre-alpine`), non-root `spring` 사용자, `exec form` ENTRYPOINT, `HEALTHCHECK` 지시문 모두 적용됨. 아래 섹션들은 그 실제 코드를 그대로 보여준다.
+`examples/Dockerfile`은 아래 "멀티스테이지 빌드 — Layered JAR" 절과 거의 동일한 3-스테이지(Build/Extract/Runtime) 구조다 — Layered JAR 추출, JRE 베이스 런타임(`eclipse-temurin:21-jre-alpine`), non-root `spring` 사용자, `exec form` ENTRYPOINT, `HEALTHCHECK` 지시문을 모두 사용한다. 아래 섹션들은 그 실제 코드를 그대로 보여준다.
 
-`build.gradle`에 `spring-boot-starter-actuator` 의존성과 liveness/readiness 프로브 설정은 이미 추가되었다([graceful-shutdown.md](graceful-shutdown.md) 참고) — `/actuator/health/liveness`, `/actuator/health/readiness`가 실제로 동작한다. `Dockerfile`의 `HEALTHCHECK` 지시문도 아래 절이 제안하던 대로 적용 완료됐다 — 오케스트레이터(Kubernetes 등)의 liveness/readiness probe가 이미 이 역할을 대신하므로 필수는 아니지만, 단독 `docker run` 환경에서도 상태를 확인할 수 있도록 추가했다.
+`build.gradle`에는 `spring-boot-starter-actuator` 의존성과 liveness/readiness 프로브 설정이 있다([graceful-shutdown.md](graceful-shutdown.md) 참고) — `/actuator/health/liveness`, `/actuator/health/readiness`가 실제로 동작한다. `Dockerfile`의 `HEALTHCHECK` 지시문도 아래 절이 제안하는 방식을 그대로 따른다 — 오케스트레이터(Kubernetes 등)의 liveness/readiness probe가 이 역할을 대신하므로 필수는 아니지만, 단독 `docker run` 환경에서도 상태를 확인할 수 있도록 추가했다.
 
 ---
 
@@ -117,7 +117,7 @@ docker run -e AWS_REGION=us-east-1 -e AWS_ACCESS_KEY_ID=... myapp
 
 ---
 
-## 헬스체크 엔드포인트 — Spring Boot Actuator (적용 완료)
+## 헬스체크 엔드포인트 — Spring Boot Actuator
 
 ```groovy
 // build.gradle — 실제 코드

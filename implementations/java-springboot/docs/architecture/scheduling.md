@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-`examples/`에 `@Scheduled`/`@EnableScheduling` 사용처가 전혀 없다 — 이 저장소는 주기적 배치 작업이 필요한 유스케이스(예: 만료 계좌 정리)를 아직 갖고 있지 않다. [domain-events.md](domain-events.md)의 `OutboxRelay`는 이미 구현되어 있지만, `@Scheduled` 폴링이 아니라 Command Service가 저장 직후 동기 호출하는 방식을 택했다(같은 문서의 "root 대비 의도적 차이" 참고) — 그래서 실제로는 `@Scheduled`를 도입하는 계기가 되지 않았다. 아래는 여전히 미구현인 "만료 계좌 정리 배치" 같은 진짜 주기적 작업이 생길 때 참고할 목표 형태다.
+`examples/`에 `@Scheduled`/`@EnableScheduling` 사용처가 전혀 없다 — 이 저장소는 주기적 배치 작업이 필요한 유스케이스(예: 만료 계좌 정리)를 아직 갖고 있지 않다. [domain-events.md](domain-events.md)의 `OutboxRelay`는 `@Scheduled` 폴링이 아니라 Command Service가 저장 직후 동기 호출하는 방식을 택했다(같은 문서의 "root 대비 의도적 차이" 참고) — 그래서 실제로는 `@Scheduled`를 도입하는 계기가 되지 않았다. 아래는 여전히 미구현인 "만료 계좌 정리 배치" 같은 진짜 주기적 작업이 생길 때 참고할 목표 형태다.
 
 ---
 

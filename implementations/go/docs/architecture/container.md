@@ -135,7 +135,7 @@ readiness 상태 토글과 SIGTERM 연동 상세는 [graceful-shutdown.md](grace
 
 ---
 
-## Dockerfile HEALTHCHECK — 전용 정적 바이너리 (적용 완료)
+## Dockerfile HEALTHCHECK — 전용 정적 바이너리
 
 `gcr.io/distroless/static-debian12`는 셸도 `curl`/`wget`도 없어 다른 언어 구현체처럼 `HEALTHCHECK CMD curl -f ...` 형태를 그대로 쓸 수 없다. 검토한 대안은 세 가지다.
 

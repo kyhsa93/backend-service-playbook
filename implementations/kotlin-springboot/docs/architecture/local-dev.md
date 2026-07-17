@@ -129,7 +129,7 @@ SPRING_DATASOURCE_PASSWORD=dev
 
 Spring Boot는 `SPRING_DATASOURCE_URL` 같은 대문자 스네이크 케이스 환경 변수를 `spring.datasource.url` 프로퍼티로 **자동 relaxed binding**한다 — Node/NestJS의 `ConfigModule`처럼 별도 매핑 코드가 필요 없다. 관심사별 `@ConfigurationProperties` data class로 이 값들을 타입 세이프하게 묶는 방법은 [config.md](config.md) 참조.
 
-`AWS_ENDPOINT_URL`이 설정되어 있으면 LocalStack, 비어 있으면 실제 AWS로 분기하는 것은 `SesConfig.sesClient()`가 이미 구현하고 있다 — [config.md](config.md), [secret-manager.md](secret-manager.md) 참조.
+`AWS_ENDPOINT_URL`이 설정되어 있으면 LocalStack, 비어 있으면 실제 AWS로 분기하는 것은 `SesConfig.sesClient()`가 구현하고 있다 — [config.md](config.md), [secret-manager.md](secret-manager.md) 참조.
 
 ---
 

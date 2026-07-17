@@ -24,7 +24,7 @@
 
 11. **Interface DTO는 Application 객체의 thin wrapper다** — `record` 필드를 그대로 옮겨 담는 한 줄 변환(`new DepositCommand(accountId, requesterId, request.amount())`)으로 충분하다. MapStruct 같은 매핑 라이브러리는 필드 수가 많아지기 전까지 불필요하다. ([layer-architecture.md](layer-architecture.md))
 
-12. **설정 접근은 Infrastructure 레이어로 한정한다** — `@Value`/`@ConfigurationProperties` 주입 대상은 `@Configuration`/`@Component` 클래스로 한정하고, Application Service와 Domain은 설정값을 직접 참조하지 않는다. `@ConfigurationProperties` + `@Validated`로 기동 시 fail-fast 검증을 한다 — `AwsProperties`/`SesProperties`로 이미 적용됨. ([config.md](config.md))
+12. **설정 접근은 Infrastructure 레이어로 한정한다** — `@Value`/`@ConfigurationProperties` 주입 대상은 `@Configuration`/`@Component` 클래스로 한정하고, Application Service와 Domain은 설정값을 직접 참조하지 않는다. `@ConfigurationProperties` + `@Validated`로 기동 시 fail-fast 검증을 한다 — `AwsProperties`/`SesProperties`가 이를 구현한다. ([config.md](config.md))
 
 13. **크로스 BC 호출은 Adapter(동기) 아니면 Integration Event(비동기)뿐이다** — 다른 BC의 Service/Repository를 Application 레이어에서 직접 주입하지 않는다. 조회는 `application/adapter/`의 인터페이스 + `infrastructure/`의 구현체로, 상태 변경은 Outbox 기반 Integration Event로만 전파한다. ([cross-domain.md](cross-domain.md), [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md))
 
@@ -32,7 +32,7 @@
 
 ## 이 저장소의 "알려진 gap" — 원칙과 코드가 아직 불일치하는 항목
 
-문서(`docs/architecture/`)는 위 13개 원칙을 이미 반영하고, `examples/`의 실제 코드도 대부분 이를 따른다 — 다음 항목만 아직 남은 gap이다.
+문서(`docs/architecture/`)는 위 13개 원칙을 반영하고, `examples/`의 실제 코드도 대부분 이를 따른다 — 다음 항목만 아직 남은 gap이다.
 
 | 원칙 (위 번호) | 코드 상태 |
 |---|---|

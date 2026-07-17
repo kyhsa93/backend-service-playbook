@@ -21,7 +21,7 @@ public class CreateAccountService {
 
 ---
 
-## `REQUIRES_NEW` — 알림 발송 트랜잭션 격리 (이미 구현됨)
+## `REQUIRES_NEW` — 알림 발송 트랜잭션 격리
 
 `account/infrastructure/notification/NotificationServiceImpl`이 이 저장소에서 유일하게 실제로 사용 중인 전파 속성 커스터마이징이다:
 
@@ -76,7 +76,7 @@ private LocalDateTime deletedAt;
 
 루트 원칙: 삭제는 hard delete가 아니라 `deletedAt` 타임스탬프를 기록하는 soft delete를 기본으로 사용하며, 조회 시 `deletedAt IS NULL`이 기본 적용되어야 한다.
 
-`Account`는 `deletedAt` 컬럼을 갖고 있고, 실제로 조회 쿼리들이 `deletedAt IS NULL` 조건을 이미 적용한다:
+`Account`는 `deletedAt` 컬럼을 갖고 있고, 실제로 조회 쿼리들이 `deletedAt IS NULL` 조건을 적용한다:
 
 ```java
 // AccountRepositoryImpl — 실제 코드, 조회는 올바르게 필터링됨
@@ -144,7 +144,7 @@ public class DeleteAccountService {
 
 ---
 
-## 마이그레이션 — Flyway로 관리 (더 이상 gap 아님)
+## 마이그레이션 — Flyway로 관리
 
 루트 원칙: 스키마 변경은 마이그레이션 파일로 관리한다. `ddl-auto: update`/`synchronize` 같은 자동 스키마 동기화는 **개발 환경 전용**이다. 이 예제는 Flyway를 도입해 이 원칙을 따른다.
 

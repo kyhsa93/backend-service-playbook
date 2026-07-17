@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 [root graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md) 참조.
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 `examples/src/main/resources/application.yml`에 `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase`와 `management.health.livenessstate`/`readinessstate`(probes) 설정이 모두 반영되어 있고, `build.gradle.kts`에 `spring-boot-starter-actuator` 의존성도 추가되어 있다 — 아래 문서 내용 그대로 실제 코드다. `SecurityConfig`의 화이트리스트도 실제로 서빙되는 `/actuator/health/**` 경로로 갱신되어 있다.
 

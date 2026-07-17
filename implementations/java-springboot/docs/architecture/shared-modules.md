@@ -4,7 +4,7 @@
 
 ## 현재 실제 상태 — `outbox/`는 실제로 존재, 나머지는 아직 없다
 
-`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`와 **`outbox/`** 둘뿐이다. `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxRelay`/`OutboxEventHandler`)는 알림 발송이 유실되면 안 되는 부가효과여서 실제로 필요해져 이미 존재한다([domain-events.md](domain-events.md) 참고) — 여러 도메인이 실제로 공유하는 진짜 공용 인프라다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다. `common/`, `database/`, `auth/` 같은 나머지 도메인 무관 공유 패키지는 아직 없다 — `IdGenerator`(아직 `UUID.randomUUID().toString()`을 도메인 코드에 직접 인라인), 트랜잭션 관리, 인증 공유 로직은 이 저장소에는 아직 코드로 존재하지 않는다.
+`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`와 **`outbox/`** 둘뿐이다. `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxRelay`/`OutboxEventHandler`)는 알림 발송이 유실되면 안 되는 부가효과여서 실제로 필요해져 존재한다([domain-events.md](domain-events.md) 참고) — 여러 도메인이 실제로 공유하는 진짜 공용 인프라다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다. `common/`, `database/`, `auth/` 같은 나머지 도메인 무관 공유 패키지는 아직 없다 — `IdGenerator`(아직 `UUID.randomUUID().toString()`을 도메인 코드에 직접 인라인), 트랜잭션 관리, 인증 공유 로직은 이 저장소에는 아직 코드로 존재하지 않는다.
 
 이는 [directory-structure.md](directory-structure.md) "공용 인프라 배치 기준 — 아직 부재" 섹션이 이미 지적한 gap과 정확히 같은 지점이다 — 이 문서는 그 배치 기준을 공유 코드 관점에서 조금 더 구체화한다.
 
@@ -34,7 +34,7 @@ com.example.accountservice/
   database/                 # (도메인이 늘어나 공유 DataSource/트랜잭션 유틸이 필요해지면)
     TransactionTemplateConfig.java
 
-  outbox/                   # 이미 존재 — domain-events.md 참고
+  outbox/                   # domain-events.md 참고
     OutboxEvent.java          # @Entity — Outbox 테이블 매핑
     OutboxEventJpaRepository.java
     OutboxEventHandler.java   # 이벤트 타입별 Handler가 구현하는 인터페이스

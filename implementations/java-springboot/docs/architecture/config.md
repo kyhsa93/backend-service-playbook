@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 루트 [config.md](../../../../docs/architecture/config.md) 참고.
 
-## 현재 예제의 상태 — 대부분 적용 완료
+## 현재 예제의 상태
 
 `examples/src/main/resources/application.yml` 전체:
 
@@ -31,16 +31,16 @@ jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 ```
 
-(`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 이제 Flyway로 관리되어 이 항목은 더 이상 gap이 아니다.)
+(`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 마이그레이션은 Flyway로 관리된다.)
 
-`config/AwsProperties.java`/`config/SesProperties.java`(`@ConfigurationProperties` + `@Validated`)가 이미 도입되어 기동 시점 검증이 실제로 동작하고, `application-prod.yml`이 운영 프로필에서 AWS 자격증명 기본값을 제거해 fail-fast를 강제한다 — 아래에서 실제 코드를 그대로 보여준다. 다만 두 가지는 아직 남은 gap이다:
+`config/AwsProperties.java`/`config/SesProperties.java`(`@ConfigurationProperties` + `@Validated`)를 통해 기동 시점 검증이 실제로 동작하고, `application-prod.yml`이 운영 프로필에서 AWS 자격증명 기본값을 제거해 fail-fast를 강제한다 — 아래에서 실제 코드를 그대로 보여준다. 다만 두 가지는 아직 남은 gap이다:
 
 - **관심사별 설정 파일 분리는 부분적이다**: `application-prod.yml` 하나만 실제로 존재하고, 아래 "관심사별 설정 파일 분리" 절이 제안하는 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`처럼 세분화된 `spring.config.import` 구성은 아직 도입되지 않았다.
 - **`AwsProperties.accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니다**: 아래 실제 코드가 보여주듯 `@NotBlank`는 `region`에만 붙어 있다. 로컬 기본값(`test`/`test`)이 운영에서도 조용히 통과하는 것을 막는 역할은 `AwsProperties`의 Bean Validation이 아니라 `application-prod.yml`이 해당 플레이스홀더에 기본값을 두지 않는 것(아래 참고)이 담당한다 — 두 메커니즘이 같은 목표를 다른 층에서 나눠 맡고 있다는 점에 주의한다.
 
 ---
 
-## `@ConfigurationProperties` + `@Validated` — Fail-fast 검증 (이미 적용됨)
+## `@ConfigurationProperties` + `@Validated` — Fail-fast 검증
 
 개별 `@Value`를 여러 클래스에 흩어놓는 대신, 관심사별 `@ConfigurationProperties` 클래스로 묶고 Bean Validation으로 기동 시 검증한다.
 
@@ -179,9 +179,9 @@ public class CreateAccountService {
 
 ## 원칙
 
-- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다 — `AwsProperties`/`SesProperties`로 이미 적용됨. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
+- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다 — `AwsProperties`/`SesProperties`가 이를 구현한다. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
 - **관심사별 분리**: `spring.config.import`로 설정 파일을 나눈다 — 운영 프로필 오버라이드(`application-prod.yml`)만 실재하고, 나머지 세분화는 아직 제안 단계(위 참고).
-- **운영 프로필은 기본값을 생략**한다: `${VAR}` (기본값 없음)로 강제 검증 — `application-prod.yml`이 이미 이 패턴을 따른다.
+- **운영 프로필은 기본값을 생략**한다: `${VAR}` (기본값 없음)로 강제 검증 — `application-prod.yml`이 이 패턴을 따른다.
 - **민감값은 Secrets Manager**: [secret-manager.md](secret-manager.md) 참고.
 - **설정 접근은 Infrastructure 레이어**: `@Value`/`@ConfigurationProperties` 주입 대상은 Infrastructure의 `@Configuration`/`@Component` 클래스로 한정한다.
 

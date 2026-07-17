@@ -927,7 +927,7 @@ export class TaskExecutionLogDb extends TaskExecutionLog {
 }
 ```
 
-- **UPSERT 패턴 선택의 이유**: 이전 버전은 `try { INSERT } catch (isUniqueViolation) { ... }` 방식이었으나, Postgres에서는 unique 위반 발생 시 **현재 트랜잭션이 aborted 상태**로 전환된다(SQLSTATE 25P02). 3단계 강한 원자성 패턴처럼 `transactionManager.run(...)` 안에서 `recordOnce()`를 호출할 경우, `'already-executed'` 반환 후 후속 작업·commit이 모두 "current transaction is aborted"로 실패한다. `.orIgnore()`(`ON CONFLICT DO NOTHING`)는 **예외를 발생시키지 않고** 충돌 row를 조용히 무시하므로, 어떤 트랜잭션 문맥에서도 안전하다.
+- **UPSERT 패턴 선택의 이유**: `try { INSERT } catch (isUniqueViolation) { ... }` 방식은 쓰지 않는다 — Postgres에서는 unique 위반 발생 시 **현재 트랜잭션이 aborted 상태**로 전환되기 때문이다(SQLSTATE 25P02). 3단계 강한 원자성 패턴처럼 `transactionManager.run(...)` 안에서 `recordOnce()`를 호출할 경우, `'already-executed'` 반환 후 후속 작업·commit이 모두 "current transaction is aborted"로 실패한다. `.orIgnore()`(`ON CONFLICT DO NOTHING`)는 **예외를 발생시키지 않고** 충돌 row를 조용히 무시하므로, 어떤 트랜잭션 문맥에서도 안전하다.
 - `isUniqueViolation` 헬퍼는 ledger 외의 영역(예: `task_outbox.deduplicationId` UNIQUE 위반 처리 등)에서 여전히 유용하므로 유지한다.
 
 ### Ledger cleanup

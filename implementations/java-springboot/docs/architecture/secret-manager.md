@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md) 참고. [config.md](config.md)의 "민감값 — 환경 변수 vs Secrets Manager" 원칙의 구현 상세다.
 
-## 현재 상태 — `SecretService` 적용 완료, `SesConfig`는 여전히 환경 변수만 사용
+## 현재 상태 — `SesConfig`는 여전히 환경 변수만 사용
 
-`common/service/SecretService`(인터페이스) + `common/infrastructure/SecretServiceImpl`(AWS Secrets Manager 구현체 + TTL 캐시)이 이미 구현되어 있다 — 아래 "`SecretService` — Technical Service로 추상화" 절이 실제 코드다. `common/config/SecretsEnvironmentPostProcessor`도 기동 초기에 Secrets Manager 값을 `Environment`에 주입한다(아래 참고).
+`common/service/SecretService`(인터페이스) + `common/infrastructure/SecretServiceImpl`(AWS Secrets Manager 구현체 + TTL 캐시)이 구현되어 있다 — 아래 "`SecretService` — Technical Service로 추상화" 절이 실제 코드다. `common/config/SecretsEnvironmentPostProcessor`도 기동 초기에 Secrets Manager 값을 `Environment`에 주입한다(아래 참고).
 
 다만 `account/infrastructure/notification/SesConfig.java`는 `SecretService`를 거치지 않고 여전히 `AwsProperties`(환경 변수 기반, [config.md](config.md) 참고)로만 AWS 자격증명을 받는다:
 
@@ -24,7 +24,7 @@ SES 자격증명 자체는 IAM 정책으로 다루는 것이 일반적이라(SES
 
 ---
 
-## `SecretService` — Technical Service로 추상화 (이미 구현됨)
+## `SecretService` — Technical Service로 추상화
 
 `account/application/service/NotificationService`(인터페이스) + `account/infrastructure/notification/NotificationServiceImpl`(구현체)가 보여주는 Technical Service 패턴을 Secret 조회에도 동일하게 적용했다.
 
@@ -68,7 +68,7 @@ public class SecretServiceImpl implements SecretService {
 ```
 
 - **`ConcurrentHashMap`으로 TTL 캐시**: Spring이 이 빈을 싱글턴으로 관리하므로 여러 요청 스레드가 동시에 `getSecret()`을 호출할 수 있다 — `HashMap`이 아니라 `ConcurrentHashMap`을 써야 스레드 안전하다. Caffeine(`com.github.ben-manes.caffeine:caffeine`) 같은 전용 캐시 라이브러리로 교체하면 만료 정책(size-based eviction 등)을 더 정교하게 제어할 수 있다.
-- **`AwsProperties`를 그대로 재사용**: `region`/`endpointUrl` 조회를 개별 `@Value`가 아니라 [config.md](config.md)가 정의하는 `AwsProperties`(`@ConfigurationProperties`) 빈을 생성자로 주입받아 처리한다 — `SesConfig`가 이미 쓰는 "endpoint-url 있으면 LocalStack, 없으면 실제 AWS" 패턴과 동일하다([local-dev.md](local-dev.md) 참고).
+- **`AwsProperties`를 그대로 재사용**: `region`/`endpointUrl` 조회를 개별 `@Value`가 아니라 [config.md](config.md)가 정의하는 `AwsProperties`(`@ConfigurationProperties`) 빈을 생성자로 주입받아 처리한다 — `SesConfig`가 쓰는 "endpoint-url 있으면 LocalStack, 없으면 실제 AWS" 패턴과 동일하다([local-dev.md](local-dev.md) 참고).
 - **현재 호출자는 하나뿐**: `SecretService`를 실제로 호출하는 곳은 아래 `SecretsEnvironmentPostProcessor`뿐이다 — Application/Infrastructure 코드에서 직접 `secretService.getSecret(...)`을 호출하는 지점은 아직 없다. 새로운 민감값이 필요해지면 이 인터페이스를 그대로 재사용한다.
 
 ---
@@ -89,7 +89,7 @@ String password = dbSecret.get("password").asText();
 
 ---
 
-## `@ConfigurationProperties`와의 연결 — 기동 시 한 번만 조회 (이미 구현됨)
+## `@ConfigurationProperties`와의 연결 — 기동 시 한 번만 조회
 
 [config.md](config.md)가 설명하는 `@ConfigurationProperties` + `@Validated` 체계에 Secrets Manager 조회 값을 통합하기 위해, Spring의 `EnvironmentPostProcessor`를 사용해 `ApplicationContext` 준비 이전에 Secrets Manager 값을 `Environment`에 주입한다. 이 저장소가 실제로 관리하는 시크릿은 JWT 서명 키(`app/jwt`) 하나뿐이다 — DB 접속 정보는 Secrets Manager로 옮기지 않았다(Postgres는 `SPRING_DATASOURCE_*` 환경 변수로만 구성됨, [local-dev.md](local-dev.md) 참고).
 
@@ -137,7 +137,7 @@ DB 접속 정보(`spring.datasource.username`/`password`)를 Secrets Manager로 
 
 ---
 
-## 로컬 개발 — LocalStack (이미 구성됨)
+## 로컬 개발 — LocalStack
 
 ```bash
 # examples/localstack/init-secrets.sh — 실제 코드
@@ -153,17 +153,17 @@ localstack:
     SERVICES: ses,secretsmanager
 ```
 
-`docker-compose.yml`의 `SERVICES`에 이미 `secretsmanager`가 포함되어 있고, `init-secrets.sh`가 LocalStack 컨테이너 기동 시 `app/jwt` 시크릿을 자동 생성한다 — 로컬에서도 운영과 동일한 Secrets Manager 경로를 그대로 탄다(단, `SPRING_PROFILES_ACTIVE=prod`일 때만 `SecretsEnvironmentPostProcessor`가 실제로 조회한다).
+`docker-compose.yml`의 `SERVICES`에 `secretsmanager`가 포함되어 있고, `init-secrets.sh`가 LocalStack 컨테이너 기동 시 `app/jwt` 시크릿을 자동 생성한다 — 로컬에서도 운영과 동일한 Secrets Manager 경로를 그대로 탄다(단, `SPRING_PROFILES_ACTIVE=prod`일 때만 `SecretsEnvironmentPostProcessor`가 실제로 조회한다).
 
 ---
 
 ## 원칙
 
 - **민감값은 환경 변수 기본값(`test`/`test`)에 영구히 의존하지 않는다**: 운영 환경은 Secrets Manager(`app/jwt`)에서 조회한다.
-- **TTL 캐시 필수**: Secrets Manager는 호출당 과금되므로 매 요청 조회를 피한다 — `SecretServiceImpl`이 이미 적용.
-- **SecretService 인터페이스로 추상화**: `NotificationService`와 동일한 Technical Service 패턴 — 이미 적용.
+- **TTL 캐시 필수**: Secrets Manager는 호출당 과금되므로 매 요청 조회를 피한다 — `SecretServiceImpl`이 이를 구현한다.
+- **SecretService 인터페이스로 추상화**: `NotificationService`와 동일한 Technical Service 패턴을 따른다.
 - **논리적으로 묶이는 값은 하나의 시크릿에 JSON으로 저장**한다.
-- **`EnvironmentPostProcessor`로 기동 초기에 주입**: `@ConfigurationProperties`/`@Value` 바인딩 이전에 값이 준비되어야 한다 — `SecretsEnvironmentPostProcessor`로 이미 적용.
+- **`EnvironmentPostProcessor`로 기동 초기에 주입**: `@ConfigurationProperties`/`@Value` 바인딩 이전에 값이 준비되어야 한다 — `SecretsEnvironmentPostProcessor`가 이를 담당한다.
 
 ---
 

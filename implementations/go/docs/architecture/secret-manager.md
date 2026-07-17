@@ -1,6 +1,6 @@
 # Secret 관리 (Go)
 
-원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md)를 따른다: 민감값은 환경 변수에 직접 두지 않고 AWS Secrets Manager 등에서 런타임에 조회하며, TTL 캐시로 반복 호출을 줄인다. **적용 완료** — JWT secret이 이 패턴으로 구현되어 있다(더 이상 gap 아님). SES 자격증명은 여전히 `os.Getenv`로 직접 읽는다(`ses_client.go`) — SES는 민감값이 아니라 리전/자격증명 자체(운영에서는 IAM 역할로 대체 가능)이므로 이 문서의 대상이 아니다.
+원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md)를 따른다: 민감값은 환경 변수에 직접 두지 않고 AWS Secrets Manager 등에서 런타임에 조회하며, TTL 캐시로 반복 호출을 줄인다. JWT secret이 이 패턴으로 구현되어 있다. SES 자격증명은 여전히 `os.Getenv`로 직접 읽는다(`ses_client.go`) — SES는 민감값이 아니라 리전/자격증명 자체(운영에서는 IAM 역할로 대체 가능)이므로 이 문서의 대상이 아니다.
 
 ---
 

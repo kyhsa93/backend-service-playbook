@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 루트 [authentication.md](../../../../docs/architecture/authentication.md) 참고.
 
-## 현재 예제의 상태 — 적용 완료
+## 현재 예제의 상태
 
 `account/interfaces/rest/AccountController.java`의 모든 엔드포인트는 `Authentication` 파라미터로 이미 인증된 사용자만 받는다:
 
@@ -19,9 +19,9 @@ public TransactionResult deposit(
 }
 ```
 
-`config/SecurityConfig.java`(JWT `SecurityFilterChain`, Nimbus 대칭키 인코더/디코더)와 `build.gradle`의 `spring-boot-starter-security`/`spring-boot-starter-oauth2-resource-server` 의존성이 이미 존재한다 — 더 이상 "X-User-Id 헤더를 그대로 신뢰"하는 상태가 아니다. `AccountControllerE2ETest`도 `X-User-Id` 헤더 대신 `Authorization: Bearer <token>`으로 인증하며(`headersFor(ownerId)`/`tokenFor(ownerId)` 헬퍼), 다른 소유자가 조회하면 404를 반환하는 검증은 실제로 인증된 `requesterId`를 기준으로 이루어진다.
+`config/SecurityConfig.java`(JWT `SecurityFilterChain`, Nimbus 대칭키 인코더/디코더)와 `build.gradle`의 `spring-boot-starter-security`/`spring-boot-starter-oauth2-resource-server` 의존성이 인증을 담당한다 — 모든 요청은 `Authorization: Bearer <token>`의 JWT를 검증받은 뒤에만 처리된다. `AccountControllerE2ETest`도 `X-User-Id` 헤더 대신 `Authorization: Bearer <token>`으로 인증하며(`headersFor(ownerId)`/`tokenFor(ownerId)` 헬퍼), 다른 소유자가 조회하면 404를 반환하는 검증은 실제로 인증된 `requesterId`를 기준으로 이루어진다.
 
-**로그인도 실제 자격증명 검증을 거친다.** `auth/domain/Credential`(userId + bcrypt 해시된 passwordHash) Aggregate와 `PasswordHasher`(Technical Service) 도입으로, `POST /auth/sign-in`은 저장된 해시와 비교한 뒤에만 토큰을 발급한다 — 과거에는 주어진 `userId`만으로 서명된 토큰을 발급해 다른 사용자를 사칭할 수 있는 취약점이 있었다(5개 언어 공통 CRITICAL 감사 발견 사항, nestjs 구현체에서 먼저 수정됨). `POST /auth/sign-up`으로 신규 가입(아이디 중복 확인 → 비밀번호 해싱 → 저장)도 새로 추가되었다. 아래에서 이 구조 전체(레이어 배치, `SecurityConfig`, 가입/로그인 흐름, 토큰 payload 설계)를 상세히 설명한다.
+**로그인은 실제 자격증명 검증을 거친다.** `auth/domain/Credential`(userId + bcrypt 해시된 passwordHash) Aggregate와 `PasswordHasher`(Technical Service)를 통해, `POST /auth/sign-in`은 저장된 해시와 비교한 뒤에만 토큰을 발급한다. `POST /auth/sign-up`은 아이디 중복 확인 → 비밀번호 해싱 → 저장 순서로 신규 가입을 처리한다. 아래에서 이 구조 전체(레이어 배치, `SecurityConfig`, 가입/로그인 흐름, 토큰 payload 설계)를 상세히 설명한다.
 
 ---
 
@@ -65,7 +65,7 @@ public TransactionResult deposit(
 
 ---
 
-## 의존성 — 이미 추가됨
+## 의존성
 
 ```groovy
 // build.gradle — 실제 코드
@@ -75,7 +75,7 @@ implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-ser
 
 ---
 
-## Security 설정 — `SecurityFilterChain` (이미 구현됨)
+## Security 설정 — `SecurityFilterChain`
 
 ```java
 // config/SecurityConfig.java — 실제 코드
@@ -271,10 +271,10 @@ public GetAccountResult getAccount(Authentication authentication, @PathVariable 
 
 ## 토큰 payload 설계
 
-JWT claim에는 `userId`(subject)만 담는다. 역할(role)/이메일 등은 담지 않는다 — payload는 서명만 되고 암호화되지 않으므로(`base64url` 디코딩으로 누구나 읽을 수 있음), 자주 바뀌거나 민감한 정보를 넣으면 토큰 재발급 전까지 변경이 반영되지 않거나 정보가 노출된다. 역할/권한이 필요하면 요청 처리 시점에 `userId`로 DB에서 조회한다. 실제 `SignInService`가 이미 이 원칙을 따른다 — `subject(credential.getUserId())` 하나만 claim에 담는다.
+JWT claim에는 `userId`(subject)만 담는다. 역할(role)/이메일 등은 담지 않는다 — payload는 서명만 되고 암호화되지 않으므로(`base64url` 디코딩으로 누구나 읽을 수 있음), 자주 바뀌거나 민감한 정보를 넣으면 토큰 재발급 전까지 변경이 반영되지 않거나 정보가 노출된다. 역할/권한이 필요하면 요청 처리 시점에 `userId`로 DB에서 조회한다. 실제 `SignInService`가 이 원칙을 따른다 — `subject(credential.getUserId())` 하나만 claim에 담는다.
 
 ```java
-// 올바른 방식 (실제 코드가 이미 이 패턴)
+// 올바른 방식 (실제 코드가 이 패턴)
 JwtClaimsSet.builder().subject(credential.getUserId()).issuedAt(now).expiresAt(exp).build()
 
 // 잘못된 방식 — 민감/가변 정보 포함
@@ -284,15 +284,15 @@ JwtClaimsSet.builder().subject(user.getUserId()).claim("email", user.getEmail())
 
 ---
 
-## `X-User-Id`에서 JWT로 — 마이그레이션 완료
+## 인증/인가 파이프라인 구성 요소
 
-과거 `AccountController`/`AccountControllerE2ETest`가 `X-User-Id` 헤더에 의존하던 상태에서 위 구조로 이미 전환되었다:
+전체 인증/인가 파이프라인은 다음 구성 요소로 이루어진다:
 
-1. `SecurityConfig` 추가 완료, `AuthController`/`SignUpService`/`SignInService`로 가입/로그인 엔드포인트 신설 완료.
-2. `AccountController`의 모든 엔드포인트가 `@RequestHeader("X-User-Id") String requesterId` 대신 `Authentication authentication`을 받고 `authentication.getName()`을 사용한다.
+1. `SecurityConfig`가 JWT 검증을 담당하고, `AuthController`/`SignUpService`/`SignInService`가 가입/로그인 엔드포인트를 제공한다.
+2. `AccountController`의 모든 엔드포인트가 `Authentication authentication`을 받고 `authentication.getName()`을 사용한다.
 3. `AccountControllerE2ETest`/`CardControllerE2ETest`/`NotificationE2ETest`의 `tokenFor(ownerId)`가 `/auth/sign-up` → `/auth/sign-in` 순서로 호출해 테스트용 JWT를 발급받아 캐싱한다.
 4. `/health/**`, `/error`, `/auth/sign-in`, `/auth/sign-up`만 인증 예외이고 나머지 전체 엔드포인트는 기본적으로 인증을 요구한다(`SecurityConfig`의 `anyRequest().authenticated()`).
-5. 로그인 자체의 자격증명 검증도 `Credential`/`PasswordHasher`로 실제 구현되었다(위 "가입/로그인" 절 참고) — 더 이상 알려진 gap이 아니다.
+5. 로그인 자체의 자격증명 검증도 `Credential`/`PasswordHasher`로 실제 구현되었다(위 "가입/로그인" 절 참고).
 
 인증/인가 파이프라인 전체(토큰 발급부터 검증, 자격증명 검증까지)가 올바르게 배선되어 있다.
 

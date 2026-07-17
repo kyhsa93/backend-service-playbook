@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/cross-cutting-concerns.md](../../../../docs/architecture/cross-cutting-concerns.md)
 
-## 현재 구현 — Correlation ID 미들웨어와 JWT `Depends` 인증이 이미 적용되어 있다
+## Correlation ID 미들웨어와 JWT `Depends` 인증
 
-`main.py`는 `@app.middleware("http")`로 등록된 `correlation_id_middleware`(Correlation ID 주입 + 요청 로깅)를 이미 갖추고 있고, `@app.exception_handler`로 에러 변환도 처리한다. 인증도 더 이상 `Header(...)`로 `X-User-Id`를 신뢰하지 않고, `Depends(get_current_user)`로 JWT를 검증한다 — [authentication.md](authentication.md) 참조. 아래는 FastAPI의 미들웨어/`Depends` 메커니즘을 이용한 이 파이프라인 구성 상세다.
+`main.py`는 `@app.middleware("http")`로 등록된 `correlation_id_middleware`(Correlation ID 주입 + 요청 로깅)를 갖추고 있고, `@app.exception_handler`로 에러 변환도 처리한다. 인증은 `Header(...)`로 `X-User-Id`를 신뢰하는 방식이 아니라, `Depends(get_current_user)`로 JWT를 검증하는 방식을 쓴다 — [authentication.md](authentication.md) 참조. 아래는 FastAPI의 미들웨어/`Depends` 메커니즘을 이용한 이 파이프라인 구성 상세다.
 
 ---
 
@@ -112,7 +112,7 @@ async def get_account(
 FastAPI는 요청 본문/쿼리 파라미터를 Pydantic 모델(`interface/rest/schemas.py`)로 선언하면 타입 불일치·필수값 누락 시 자동으로 `422 Unprocessable Entity`를 반환한다. 별도 Pipe 계층이 필요 없다.
 
 ```python
-# src/account/interface/rest/schemas.py — 이미 이 패턴을 따르고 있다
+# src/account/interface/rest/schemas.py — 이 패턴을 따른다
 class CreateAccountRequest(BaseModel):
     currency: str
     email: EmailStr   # 이메일 형식 검증도 Pydantic이 자동 수행

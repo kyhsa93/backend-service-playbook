@@ -17,7 +17,7 @@
 
 ---
 
-## `generateId()` 적용 완료 (더 이상 갭 아님)
+## `generateId()`
 
 `Account.create()`, `Transaction.create()`, `notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `generateId()`(하이픈 제거 32자리 hex)를 사용한다.
 

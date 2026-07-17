@@ -69,13 +69,13 @@ class DepositHandler:
         return transaction
 ```
 
-Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`, `OutboxRelay`)를 타입으로 받는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다. `NotificationService`는 더 이상 Command Handler가 직접 의존하지 않는다 — Outbox가 드레인한 이벤트를 처리하는 `application/event/<event>_event_handler.py`가 대신 의존한다([domain-events.md](domain-events.md) 참고).
+Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`, `OutboxRelay`)를 타입으로 받는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다. `NotificationService`는 Command Handler가 아니라, Outbox가 드레인한 이벤트를 처리하는 `application/event/<event>_event_handler.py`가 의존한다([domain-events.md](domain-events.md) 참고).
 
 → Command/Query Handler 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
 ### Technical Service 인터페이스 — `application/service/`
 
-기술적 구현이 핵심인 관심사(이메일 발송, 파일 스토리지, Secrets Manager 등)는 Application에 ABC를 두고 Infrastructure에서 구현한다. 이 저장소에서 이미 적용된 예:
+기술적 구현이 핵심인 관심사(이메일 발송, 파일 스토리지, Secrets Manager 등)는 Application에 ABC를 두고 Infrastructure에서 구현한다. 이 저장소의 예:
 
 ```python
 # application/service/notification_service.py — 인터페이스

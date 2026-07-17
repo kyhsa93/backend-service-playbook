@@ -46,7 +46,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 ## Entity 공통 컬럼 — `created_at`, `updated_at`, `deleted_at`
 
-`AccountModel`(`infrastructure/persistence/account_repository.py`)은 이미 세 컬럼을 모두 갖고 있다.
+`AccountModel`(`infrastructure/persistence/account_repository.py`)은 `created_at`/`updated_at`/`deleted_at` 세 컬럼을 모두 갖는다.
 
 ```python
 class AccountModel(Base):
@@ -76,7 +76,7 @@ class TimestampedMixin:
 
 ---
 
-## Soft Delete — 이미 올바르게 구현됨
+## Soft Delete
 
 `find_by_id`/`find_all`(`infrastructure/persistence/account_repository.py`)은 모두 `AccountModel.deleted_at.is_(None)` 조건을 조회 쿼리에 명시적으로 포함한다.
 
@@ -102,7 +102,7 @@ async def delete_account(self, account_id: str) -> None:
 
 ---
 
-## 마이그레이션 — Alembic으로 관리 (더 이상 격차 아님)
+## 마이그레이션 — Alembic으로 관리
 
 `create_all`은 **테이블이 없을 때만 생성**하며, 기존 테이블의 컬럼 추가/변경/삭제는 감지하지 못한다 — 프로덕션에서 스키마를 변경해야 할 때(컬럼 추가, 인덱스 추가 등) 이 방식으로는 반영할 방법이 없다. 이 예제는 Alembic을 도입해 이 문제를 해결한다.
 
@@ -142,7 +142,7 @@ app = FastAPI(title="Account Service")
 # Base.metadata.create_all 호출 없음 — 스키마는 `alembic upgrade head`로 배포 시점에 적용
 ```
 
-`create_all`은 로컬 개발·테스트 환경(매번 새 DB, 스키마 검증이 목적이 아님)에서는 계속 사용한다 — `tests/test_account_e2e.py`/`tests/test_notification_e2e.py`는 각자의 testcontainers 픽스처 안에서 독립적으로 `create_all`을 호출하므로(`main.py`의 lifespan에 의존하지 않음) 이번 변경의 영향을 받지 않는다. 실제로 빈 DB에 대해 `alembic revision --autogenerate`가 4개 테이블을 정확히 감지하고, `alembic upgrade head` 적용 후 `alembic check`가 "추가로 감지된 변경 없음"을 확인하는 것까지 검증함.
+`create_all`은 로컬 개발·테스트 환경(매번 새 DB, 스키마 검증이 목적이 아님)에서는 계속 사용한다 — `tests/test_account_e2e.py`/`tests/test_notification_e2e.py`는 각자의 testcontainers 픽스처 안에서 독립적으로 `create_all`을 호출하며, `main.py`의 lifespan에 의존하지 않는다. 빈 DB에 대해 `alembic revision --autogenerate`가 4개 테이블을 정확히 감지하고, `alembic upgrade head` 적용 후 `alembic check`가 "추가로 감지된 변경 없음"을 확인한다.
 
 ---
 

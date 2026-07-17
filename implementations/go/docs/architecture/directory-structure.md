@@ -138,7 +138,7 @@ go.mod
 
 ## 공용 인프라를 아직 추가하지 않은 이유
 
-root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다. `outbox/`는 실제로 필요해져 이미 추가되었다(알림 발송이 유실되면 안 되는 부가효과였기 때문 — [domain-events.md](domain-events.md) 참고). 나머지(`common/`, `database/`, `task-queue/`, `config/`)는 아직 그 필요가 생기지 않아 없다. 각 패턴을 실제로 추가할 때 참고할 문서를 위 표에 명시했다.
+root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다. `outbox/`는 실제로 필요해져 추가되었다(알림 발송이 유실되면 안 되는 부가효과였기 때문 — [domain-events.md](domain-events.md) 참고). 나머지(`common/`, `database/`, `task-queue/`, `config/`)는 아직 그 필요가 생기지 않아 없다. 각 패턴을 실제로 추가할 때 참고할 문서를 위 표에 명시했다.
 
 ---
 

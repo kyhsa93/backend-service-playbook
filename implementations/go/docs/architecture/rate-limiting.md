@@ -1,8 +1,8 @@
 # Rate Limiting (Go)
 
-Go 전용 문서 — root에는 대응 문서가 없다. Go 표준 라이브러리에는 NestJS의 `@nestjs/throttler` 같은 내장 rate limiting이 없다 — 이 저장소가 이미 채택 중인 최소 의존성 원칙과 가장 잘 맞는 선택은 Go 팀이 직접 관리하는 `golang.org/x/time/rate`(토큰 버킷)다.
+Go 전용 문서 — root에는 대응 문서가 없다. Go 표준 라이브러리에는 NestJS의 `@nestjs/throttler` 같은 내장 rate limiting이 없다 — 이 저장소가 채택 중인 최소 의존성 원칙과 가장 잘 맞는 선택은 Go 팀이 직접 관리하는 `golang.org/x/time/rate`(토큰 버킷)다.
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 `go.mod`에 `golang.org/x/time`이 추가되었고, `internal/interface/http/middleware/rate_limit_middleware.go`의 `RateLimit` 미들웨어가 `router.go`에서 `/accounts`·`/auth/sign-in` 등 모든 API 라우트에 전역으로 적용되어 있다. `internal/config/rate_limit.go`의 `RateLimitConfig`가 `RATE_LIMIT_RPS`/`RATE_LIMIT_BURST` 환경 변수(기본값: 초당 100개, burst 20개)로 임계값을 관리하고, `cmd/server/main.go`가 이 값으로 `rate.Limiter`를 조립해 `NewRouter`에 주입한다. `/health/live`·`/health/ready`는 라우트 등록 시 애초에 rate limit 미들웨어로 감싸지 않는 방식으로 제외했다.
 
@@ -220,7 +220,7 @@ if !limiter.Allow() {
 
 ## 운영값 조정
 
-`RATE_LIMIT_RPS`(초당 평균 허용 요청 수, 기본 100)·`RATE_LIMIT_BURST`(순간 burst 크기, 기본 20) 환경 변수를 배포 환경에 설정하고 프로세스를 재기동하면, 코드 변경·재빌드 없이 임계값을 조정할 수 있다 — `cmd/server/main.go`가 기동 시 `config.LoadRateLimitConfig()`로 이 값을 읽어 `rate.Limiter`를 조립하기 때문이다(위 "전역 미들웨어" 절 참고). 이 저장소의 5개 구현체 중 go가 가장 먼저 이 패턴을 채택했고, nestjs(`THROTTLE_*`)·fastapi(`RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`)도 동일한 방향으로 맞췄다(issue #153) — java/kotlin-springboot는 `application.yml` + Spring profiles 기반으로 사실상 동급의 배포 시점 유연성을 갖는다(각 언어 문서의 "운영값 조정" 절 참고).
+`RATE_LIMIT_RPS`(초당 평균 허용 요청 수, 기본 100)·`RATE_LIMIT_BURST`(순간 burst 크기, 기본 20) 환경 변수를 배포 환경에 설정하고 프로세스를 재기동하면, 코드 변경·재빌드 없이 임계값을 조정할 수 있다 — `cmd/server/main.go`가 기동 시 `config.LoadRateLimitConfig()`로 이 값을 읽어 `rate.Limiter`를 조립하기 때문이다(위 "전역 미들웨어" 절 참고). nestjs(`THROTTLE_*`)·fastapi(`RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`)도 동일한 방향의 환경 변수 기반 조정을 지원하며, java/kotlin-springboot는 `application.yml` + Spring profiles 기반으로 사실상 동급의 배포 시점 유연성을 갖는다(각 언어 문서의 "운영값 조정" 절 참고).
 
 ## 원칙
 

@@ -26,7 +26,7 @@ class DepositService(
 }
 ```
 
-`ApplicationEventPublisher`/`@EventListener`는 더 이상 쓰지 않는다. Command Service는 `OutboxRelay`에만 의존한다.
+Command Service는 `OutboxRelay`에만 의존한다 — `ApplicationEventPublisher`/`@EventListener`는 쓰지 않는다.
 
 ---
 
@@ -206,7 +206,7 @@ class AccountCreatedEventHandler(private val notificationService: NotificationSe
 }
 ```
 
-이전 `AccountNotificationListener`와 달리 Handler는 예외를 잡지 않는다 — 실패를 삼키고 로그만 남기던 책임이 `OutboxRelay`로 옮겨갔고, 그 결과 실패한 알림은 (이전처럼 유실되는 게 아니라) 다음 호출에서 재시도된다. 이것이 이번 Outbox 도입의 핵심 개선이다.
+Handler는 예외를 잡지 않는다 — 실패를 삼키지 않고 그대로 전파해, `OutboxRelay`가 해당 행을 미처리 상태로 남기고 다음 호출에서 재시도하게 한다.
 
 harness의 `event-placement` 규칙은 `*EventHandler` 접미사를 가진 파일이 `application/event/` 패키지 안에 있는지 검사한다 — 6개 Handler 모두 이 규칙을 그대로 통과한다.
 

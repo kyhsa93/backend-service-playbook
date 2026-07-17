@@ -126,7 +126,7 @@ NestJS는 API 문서를 노출하려면 `main.ts`에서 `DocumentBuilder`/`Swagg
 | `/redoc` | ReDoc |
 | `/openapi.json` | 원본 OpenAPI 스키마 |
 
-이 저장소는 `title="Account Service"` 외에 `version`, `description`을 커스터마이징하지 않는다. JWT 인증(`src/auth/interface/rest/dependencies.py`의 `HTTPBearer` 기반 `get_current_user` — [authentication.md](authentication.md) 참조)은 이미 구현되어 있고, FastAPI가 라우트 함수의 `Depends(HTTPBearer())` 시그니처만 보고 Swagger UI에 "Authorize" 버튼을 자동으로 추가한다 — NestJS처럼 `@ApiBearerAuth('token')`을 각 컨트롤러에 붙이거나 `DocumentBuilder.addBearerAuth()`를 호출할 필요가 없다.
+이 저장소는 `title="Account Service"` 외에 `version`, `description`을 커스터마이징하지 않는다. JWT 인증(`src/auth/interface/rest/dependencies.py`의 `HTTPBearer` 기반 `get_current_user` — [authentication.md](authentication.md) 참조)은 구현되어 있고, FastAPI가 라우트 함수의 `Depends(HTTPBearer())` 시그니처만 보고 Swagger UI에 "Authorize" 버튼을 자동으로 추가한다 — NestJS처럼 `@ApiBearerAuth('token')`을 각 컨트롤러에 붙이거나 `DocumentBuilder.addBearerAuth()`를 호출할 필요가 없다.
 
 ---
 

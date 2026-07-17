@@ -107,7 +107,7 @@ async def get_account(account_id: str, ...) -> GetAccountResponse:
 
 `create_account`/`deposit`/`withdraw`/`suspend_account`/`reactivate_account`/`close_account`(모두 `POST`) 6개 쓰기 엔드포인트에 `@limiter.limit(rate_limit_config.write_limit)`이 적용되어 있다. `get_account`/`get_transactions`(모두 `GET`) 조회 엔드포인트는 별도 데코레이터 없이 `Limiter(default_limits=...)`를 통해 전역 기본값만 적용받는다 — 조회를 쓰기보다 관대하게 두는 "원칙"은 지키면서도, `config/rate_limit_config.py`가 read 전용 값을 별도로 노출하지는 않는다(필요해지면 `RateLimitConfig`에 `read_limit` 필드를 추가해 확장한다).
 
-`auth_router.py`의 `sign_up`/`sign_in`도 `POST`이므로 동일하게 `@limiter.limit(rate_limit_config.write_limit)`이 적용되어 있다(issue #193) — 특히 `sign_in`은 비밀번호 검증이 도입된 뒤([authentication.md](authentication.md)) 브루트포스 공격의 표적이 될 수 있는 엔드포인트라, 전역 기본값(`RATE_LIMIT_DEFAULT`)보다 엄격한 쓰기 등급 제한을 받아야 한다.
+`auth_router.py`의 `sign_up`/`sign_in`도 `POST`이므로 동일하게 `@limiter.limit(rate_limit_config.write_limit)`이 적용되어 있다 — 특히 `sign_in`은 비밀번호 검증을 거치는([authentication.md](authentication.md)) 브루트포스 공격의 표적이 될 수 있는 엔드포인트라, 전역 기본값(`RATE_LIMIT_DEFAULT`)보다 엄격한 쓰기 등급 제한을 받아야 한다.
 
 ### 내부/헬스체크 엔드포인트 제외
 
@@ -157,7 +157,7 @@ class RateLimitConfig:
         self.write_limit = os.getenv("RATE_LIMIT_WRITE", "20/minute")
 ```
 
-하드코딩된 문자열 리터럴 대신 위와 같이 환경 변수로 분리하면 스테이징/프로덕션에서 값을 조정할 수 있다 — [config.md](config.md)의 fail-fast 검증 패턴과 함께 적용한다. `RateLimitConfig()`는 `src/common/rate_limit.py`가 앱 시작 시 한 번 인스턴스화해 `Limiter(default_limits=[...])`와 `@limiter.limit(...)` 데코레이터에 값을 넘기므로, 값을 바꾸려면 코드 변경 없이 배포 환경에서 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE` 환경 변수를 설정하고 프로세스를 재기동하면 된다 — go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`)·nestjs(`THROTTLE_*`, [../../../nestjs/docs/architecture/rate-limiting.md](../../../nestjs/docs/architecture/rate-limiting.md) "운영값 조정" 참고)와 동일하게 배포 시점 설정을 지원한다(issue #153). `examples/tests/conftest.py`는 e2e 테스트가 같은 프로세스·같은 클라이언트 IP로 짧은 시간에 수십 건을 요청하는 상황을 피하기 위해 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`를 넉넉한 값으로 override한다 — 운영 기본값(`100/minute`/`20/minute`)은 그대로 유지된다.
+하드코딩된 문자열 리터럴 대신 위와 같이 환경 변수로 분리하면 스테이징/프로덕션에서 값을 조정할 수 있다 — [config.md](config.md)의 fail-fast 검증 패턴과 함께 적용한다. `RateLimitConfig()`는 `src/common/rate_limit.py`가 앱 시작 시 한 번 인스턴스화해 `Limiter(default_limits=[...])`와 `@limiter.limit(...)` 데코레이터에 값을 넘기므로, 값을 바꾸려면 코드 변경 없이 배포 환경에서 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE` 환경 변수를 설정하고 프로세스를 재기동하면 된다 — go(`RATE_LIMIT_RPS`/`RATE_LIMIT_BURST`)·nestjs(`THROTTLE_*`, [../../../nestjs/docs/architecture/rate-limiting.md](../../../nestjs/docs/architecture/rate-limiting.md) "운영값 조정" 참고)와 동일하게 배포 시점 설정을 지원한다. `examples/tests/conftest.py`는 e2e 테스트가 같은 프로세스·같은 클라이언트 IP로 짧은 시간에 수십 건을 요청하는 상황을 피하기 위해 `RATE_LIMIT_DEFAULT`/`RATE_LIMIT_WRITE`를 넉넉한 값으로 override한다 — 운영 기본값(`100/minute`/`20/minute`)은 그대로 유지된다.
 
 ## 원칙
 

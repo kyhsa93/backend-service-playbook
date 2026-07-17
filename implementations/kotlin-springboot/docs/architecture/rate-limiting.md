@@ -1,6 +1,6 @@
 # Rate Limiting — Kotlin Spring Boot
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 `examples/build.gradle.kts`에 `resilience4j-spring-boot3` 의존성이 추가되어 있고, `common/RateLimitingFilter.kt`가 실제로 모든 HTTP 요청에 속도 제한을 건다. `application.yml`에 `http-write`(10건/60초)와 `http-read`(100건/60초) 두 개의 `RateLimiter` 인스턴스가 정의되어 있고, 필터가 요청 메서드(`GET`/`HEAD`는 read, 그 외는 write)에 따라 둘 중 하나를 선택한다. 제한 초과 시 429 응답은 root의 4필드(`statusCode`/`code`/`message`/`error`) 에러 형식을 그대로 따른다. 아래는 실제 구현 내용과 그 설계 근거다.
 
@@ -159,7 +159,7 @@ resilience4j:
 
 ## 원칙
 
-- **`examples/`에 `RateLimitingFilter`로 적용 완료** — `common/RateLimitingFilter.kt` + `resilience4j-spring-boot3` 의존성.
+- **`examples/`의 `RateLimitingFilter`** — `common/RateLimitingFilter.kt` + `resilience4j-spring-boot3` 의존성.
 - **파이프라인 위치는 인증/검증보다 앞** — `@Order(Int.MIN_VALUE + 1)`로 `CorrelationIdFilter` 다음, Spring Security 필터 체인보다 먼저 배치해 불필요한 다운스트림 처리(DB 조회, 트랜잭션 시작)를 막는다.
 - **Filter로 구현해 cross-cutting-concerns.md의 파이프라인 모델과 일관성 유지** — Application Service에 `@RateLimiter` 애노테이션을 흩뿌리는 것보다 계층 분리가 명확하다.
 - **429 응답도 root의 4필드 에러 형식을 따른다** ([error-handling.md](error-handling.md)).

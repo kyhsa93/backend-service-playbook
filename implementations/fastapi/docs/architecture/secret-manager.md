@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/secret-manager.md](../../../../docs/architecture/secret-manager.md)
 
-## 현재 구현 — `SecretService`/`AwsSecretService`는 이미 존재한다 (Secrets Manager는 JWT secret에만 연동됨)
+## `SecretService`/`AwsSecretService` — Secrets Manager는 JWT secret에만 연동됨
 
-`src/common/secret_service.py`(ABC)와 `src/common/aws_secret_service.py`(TTL 캐시를 가진 Secrets Manager 구현체)가 이미 실제 코드로 존재한다. `main.py`의 `lifespan`이 `APP_ENV == "production"`일 때만 `AwsSecretService().get_secret("app/jwt")`를 호출해 JWT secret을 조회하고 `set_jwt_secret()`으로 주입한다.
+`src/common/secret_service.py`(ABC)와 `src/common/aws_secret_service.py`(TTL 캐시를 가진 Secrets Manager 구현체)가 실제 코드로 존재한다. `main.py`의 `lifespan`이 `APP_ENV == "production"`일 때만 `AwsSecretService().get_secret("app/jwt")`를 호출해 JWT secret을 조회하고 `set_jwt_secret()`으로 주입한다.
 
 **언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소는 `APP_ENV == "production"`("production이면 클라우드")으로 게이팅한다. go도 변수명은 같은 `APP_ENV`를 쓰지만 **극성이 반대**(`env != "production"`, "production이 아니면 로컬"). nestjs는 `NODE_ENV !== 'production'`(go와 같은 극성, 변수명만 다름). kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
 
@@ -17,7 +17,7 @@ async with self._boto_session.client(
 ) as client:
 ```
 
-AWS 자격 증명은 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다([config.md](config.md) 참고) — 더 이상 `os.getenv(..., "test")`를 산발적으로 호출하지 않는다. `region`/`access_key_id`/`secret_access_key` 모두 로컬 개발용 기본값을 갖고 있어 fail-fast 대상이 아니다 — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이기 때문이다.
+AWS 자격 증명은 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다([config.md](config.md) 참고). `region`/`access_key_id`/`secret_access_key` 모두 로컬 개발용 기본값을 갖고 있어 fail-fast 대상이 아니다 — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이기 때문이다.
 
 또한 DB 비밀번호(`DatabaseConfig.url` — [config.md](config.md) 참조)는 여전히 환경 변수 하나에 통째로 담겨 있고, Secrets Manager 조회 경로가 없다 — 아래 "DB 설정에 Secrets Manager 적용" 절 참조.
 
@@ -132,7 +132,7 @@ awslocal secretsmanager create-secret \
 ```
 
 ```yaml
-# docker-compose.yml — 실제 코드. SERVICES에 secretsmanager가 이미 포함되어 있다
+# docker-compose.yml — 실제 코드. SERVICES에 secretsmanager가 포함되어 있다
 localstack:
   image: localstack/localstack:3.0
   environment:

@@ -8,7 +8,7 @@
 4. **Repository는 domain 패키지에 interface, infrastructure 패키지에 구현체**를 둔다. 구현체에 `var _ Repository = (*Impl)(nil)`로 컴파일 타임 만족 검증을 붙인다([repository-pattern.md](repository-pattern.md)).
 5. **에러는 sentinel error**(`var ErrXxx = errors.New(...)`)로 타입화한다. 계층을 거치며 `fmt.Errorf("...: %w", err)`로 래핑하고, HTTP 상태 코드 변환은 Interface 레이어에서 `errors.Is`로만 수행한다([error-handling.md](error-handling.md)).
 6. **CQRS는 `구조체 + Handle(ctx, cmd/query) (result, error)`**로 표현한다. Command Bus/Query Bus 없이 `router.go`에서 생성자로 직접 조립한다([cqrs-pattern.md](cqrs-pattern.md)).
-7. **Aggregate ID는 UUID v4에서 하이픈을 제거한 32자리 hex**다(`common.NewID()`, 적용 완료 — [aggregate-id.md](aggregate-id.md)).
+7. **Aggregate ID는 UUID v4에서 하이픈을 제거한 32자리 hex**다(`common.NewID()` — [aggregate-id.md](aggregate-id.md)).
 8. **DI 컨테이너는 없다** — 모든 의존성은 생성자 함수(`New...`)로 조립하고 `main.go`/`router.go`가 순서대로 연결한다. 새 의존성은 생성자 인자를 추가해 표현한다([module-pattern.md](module-pattern.md), [bootstrap.md](bootstrap.md)).
 9. **`context.Context`는 모든 레이어 경계를 관통**한다 — 취소, 데드라인, Correlation ID와 트랜잭션이 인자로 명시적으로 전파된다. Node의 `AsyncLocalStorage` 같은 숨은 저장소가 없다([cross-cutting-concerns.md](cross-cutting-concerns.md), [persistence.md](persistence.md)).
 10. **횡단 관심사는 미들웨어 체인**(`func(http.Handler) http.Handler`의 합성)으로 처리한다. 인증/로깅/Correlation ID를 Handler 밖에서 각각 하나의 관심사만 담당하도록 분리한다([cross-cutting-concerns.md](cross-cutting-concerns.md)).

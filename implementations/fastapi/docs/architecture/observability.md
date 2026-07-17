@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/observability.md](../../../../docs/architecture/observability.md)
 
-## 현재 구현 — 구조화 로깅과 Correlation ID가 이미 적용되어 있다
+## 구조화 로깅과 Correlation ID
 
-`src/common/logging_config.py`의 `JsonFormatter`/`configure_logging()`, `src/common/correlation.py`의 `contextvars` 기반 Correlation ID, `main.py`의 `correlation_id_middleware`가 모두 실제 코드로 존재한다. `infrastructure/notification/notification_service.py`도 더 이상 `%s` 문자열 보간을 쓰지 않고, `extra={...}`로 구조화된 필드(`event_type`, `account_id`, `recipient`, `ses_message_id`)를 전달한다.
+`src/common/logging_config.py`의 `JsonFormatter`/`configure_logging()`, `src/common/correlation.py`의 `contextvars` 기반 Correlation ID, `main.py`의 `correlation_id_middleware`가 모두 실제 코드로 존재한다. `infrastructure/notification/notification_service.py`는 `extra={...}`로 구조화된 필드(`event_type`, `account_id`, `recipient`, `ses_message_id`)를 전달한다.
 
 ```python
 # infrastructure/notification/notification_service.py — 실제 코드
@@ -125,9 +125,9 @@ def get_correlation_id() -> str:
 | Interface (`account_router.py`, 미들웨어) | HTTP 요청/응답, 처리 시간 |
 | Application (`*_handler.py`) | 비즈니스 이벤트 (필요 시) |
 | Infrastructure (`notification_service.py`) | 외부 연동 실패/성공, SQL 성능 이상 |
-| Domain (`account.py`) | **로깅하지 않음** — 이미 지켜지고 있다 |
+| Domain (`account.py`) | **로깅하지 않음** |
 
-`src/account/domain/account.py`는 어떤 로거도 import하지 않는다 — Domain 순수성이 이미 잘 유지되고 있다.
+`src/account/domain/account.py`는 어떤 로거도 import하지 않는다 — Domain 순수성이 유지된다.
 
 ---
 
@@ -142,7 +142,7 @@ def get_correlation_id() -> str:
 
 ## 원칙
 
-- **Domain 레이어에서 로깅 금지**: 이미 지켜지고 있다.
+- **Domain 레이어에서 로깅 금지**.
 - **구조화된 로그 사용**: JSON + snake_case 필드명. `%s` 문자열 보간 대신 `extra=` 사용.
 - **에러는 반드시 로깅 후 전파**: `logger.exception()` 뒤 예외를 삼키는 경우(`notify()`)는 [domain-events.md](domain-events.md)의 Outbox로 보완한다.
 - **Correlation ID로 요청 추적**: `contextvars` 기반, 모든 로그 라인에 자동 포함.

@@ -31,7 +31,7 @@ class CreateAccountService(
 
 Java Spring이라면 `private final AccountRepository accountRepository;` 필드 선언 + 생성자 본문의 대입문 + (생성자가 여러 개면) `@Autowired`까지 세 곳에 나눠 썼을 코드가, Kotlin은 **주 생성자 파라미터 선언 한 줄**로 끝난다. `private val`이 필드 선언과 대입을 동시에 수행하고, 생성자가 하나뿐이면 Spring 4.3+가 `@Autowired` 없이 자동으로 이를 DI 생성자로 인식한다.
 
-**`open` 필요성**: Kotlin 클래스는 기본적으로 `final`이라 상속이 불가능한데, Spring AOP(`@Transactional`의 트랜잭션 프록시 등)는 CGLIB 클래스 상속 기반 프록시를 생성해야 한다. `kotlin("plugin.spring")` 컴파일러 플러그인이 `@Component`/`@Service`/`@Repository`/`@Configuration`이 붙은 클래스를 자동으로 `open` 처리하므로, 소스에 `open` 키워드를 직접 쓸 필요가 없다 — `build.gradle.kts`에 이 플러그인이 이미 적용되어 있다.
+**`open` 필요성**: Kotlin 클래스는 기본적으로 `final`이라 상속이 불가능한데, Spring AOP(`@Transactional`의 트랜잭션 프록시 등)는 CGLIB 클래스 상속 기반 프록시를 생성해야 한다. `kotlin("plugin.spring")` 컴파일러 플러그인이 `@Component`/`@Service`/`@Repository`/`@Configuration`이 붙은 클래스를 자동으로 `open` 처리하므로, 소스에 `open` 키워드를 직접 쓸 필요가 없다 — `build.gradle.kts`에 이 플러그인이 적용되어 있다.
 
 ## `@Bean` — `@Configuration` 클래스의 팩토리 메서드
 

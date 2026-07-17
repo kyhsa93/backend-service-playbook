@@ -2,9 +2,9 @@
 
 > 프레임워크 무관 원칙은 루트 [observability.md](../../../../docs/architecture/observability.md) 참고.
 
-## 구조화된 로깅 — 이미 적용됨 (Logback JSON 인코더 + `StructuredArguments`)
+## 구조화된 로깅 — Logback JSON 인코더 + `StructuredArguments`
 
-이 저장소의 모든 로깅 호출은 이미 `net.logstash.logback.argument.StructuredArguments.kv(...)`로 필드를 명시적으로 구조화한다:
+이 저장소의 모든 로깅 호출은 `net.logstash.logback.argument.StructuredArguments.kv(...)`로 필드를 명시적으로 구조화한다:
 
 ```java
 // account/infrastructure/notification/NotificationServiceImpl.java — 실제 코드
@@ -28,10 +28,10 @@ log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessag
 
 ---
 
-## Logback JSON 인코더 — 이미 존재 (`logback-spring.xml`)
+## Logback JSON 인코더 (`logback-spring.xml`)
 
 ```groovy
-// build.gradle — 실제 코드, 이미 있음
+// build.gradle — 실제 코드
 implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 ```
 
@@ -58,16 +58,16 @@ implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 
 **로컬은 사람이 읽기 쉬운 평문, 운영은 JSON** — `springProfile`로 분기한다. JSON 인코더가 MDC의 `correlation_id`를 자동으로 로그 필드에 포함시킨다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter` 참고). 게이팅 프로필은 `prod`/`!prod`다 — [secret-manager.md](secret-manager.md)의 `SecretsEnvironmentPostProcessor`와 같은 프로필명·극성을 쓴다(이전에는 이 파일만 `local`/`!local`을 썼는데, 어디서도 `local` 프로필을 활성화하지 않아 실제로는 항상 JSON 인코더가 적용되는 잠재 버그였다 — `prod`/`!prod`로 통일해 활성 프로필이 없는 로컬 실행에서도 `!prod`가 매칭되어 평문 로깅이 기본값이 되도록 고쳤다).
 
-### 필드 네이밍 — snake_case로 구조화 인자 전달 (이미 적용됨)
+### 필드 네이밍 — snake_case로 구조화 인자 전달
 
 ```java
-// 실제 코드에서 이미 쓰이는 패턴
+// 실제 코드에서 쓰이는 패턴
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", response.messageId()));
 ```
 
-`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. `NotificationServiceImpl`/`OutboxRelay`/`AccountController` 세 곳 모두 이미 이 방식을 쓴다 — 새로운 로깅 호출을 추가할 때도 이 패턴을 그대로 따른다.
+`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. `NotificationServiceImpl`/`OutboxRelay`/`AccountController` 세 곳 모두 이 방식을 쓴다 — 새로운 로깅 호출을 추가할 때도 이 패턴을 그대로 따른다.
 
 ---
 
@@ -80,7 +80,7 @@ log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", ev
 | Infrastructure | 외부 연동 실패/재시도 | `NotificationServiceImpl`(SES 발송 성공/실패) |
 | Domain | **로깅 금지** | 준수 — `Account`는 로거를 import하지 않는다 |
 
-**`AccountException`이 던져지는 지점에서 로깅이 이미 추가되었다.** `@ExceptionHandler`는 예외를 잡아 `ErrorResponse`로 변환하기 전에 `warn` 레벨로 먼저 기록한다 — root 원칙("에러는 반드시 로깅한 뒤 예외를 던지거나 응답한다")을 이미 따른다:
+**`AccountException`이 던져지는 지점에서 로깅이 이루어진다.** `@ExceptionHandler`는 예외를 잡아 `ErrorResponse`로 변환하기 전에 `warn` 레벨로 먼저 기록한다 — root 원칙("에러는 반드시 로깅한 뒤 예외를 던지거나 응답한다")을 따른다:
 
 ```java
 // AccountController.java — 실제 코드
@@ -137,10 +137,10 @@ management:
 
 ## 원칙
 
-- **Domain 레이어에서 로깅 금지**: `Account`가 이미 준수하고 있다 — 신규 도메인 메서드 추가 시에도 유지한다.
-- **구조화된 로그로 전환**: Logback JSON 인코더 + `StructuredArguments.kv(...)`로 snake_case 필드를 명시적으로 구성한다 — 이미 적용됨.
-- **에러는 반드시 로깅**: `AccountController`의 `@ExceptionHandler`가 이미 `log.warn(...)`으로 기록한다.
-- **Correlation ID는 MDC로 전파**: `Filter`(`CorrelationIdFilter`)가 주입, JSON 인코더가 자동 포함 — 이미 적용됨.
+- **Domain 레이어에서 로깅 금지**: `Account`가 이 원칙을 준수한다 — 신규 도메인 메서드 추가 시에도 유지한다.
+- **구조화된 로그로 전환**: Logback JSON 인코더 + `StructuredArguments.kv(...)`로 snake_case 필드를 명시적으로 구성한다.
+- **에러는 반드시 로깅**: `AccountController`의 `@ExceptionHandler`가 `log.warn(...)`으로 기록한다.
+- **Correlation ID는 MDC로 전파**: `Filter`(`CorrelationIdFilter`)가 주입, JSON 인코더가 자동 포함된다.
 - **Actuator + Micrometer로 메트릭 노출**: 아직 미도입(`build.gradle`에 Actuator/Micrometer 의존성 없음) — 별도 계측 코드 없이 HTTP/JVM/DB 지표를 확보하려면 위 "메트릭 · 트레이싱" 절의 의존성/설정을 추가한다.
 
 ---

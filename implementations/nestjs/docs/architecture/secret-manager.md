@@ -148,7 +148,7 @@ awslocal secretsmanager create-secret \
   --secret-string '{"secret":"local-dev-secret"}'
 ```
 
-### Docker Compose — LocalStack SERVICES에 secretsmanager 추가 — 적용 완료
+### Docker Compose — LocalStack SERVICES에 secretsmanager 추가
 
 ```yaml
 localstack:

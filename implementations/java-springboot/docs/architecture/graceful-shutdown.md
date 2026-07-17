@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 루트 [graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md) 참고.
 
-## 현재 상태 — 적용 완료
+## 현재 구현
 
 `build.gradle`에 `spring-boot-starter-actuator` 의존성이 있고, `application.yml`에 `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase`와 `management.health.livenessState`/`readinessState`(probes) 설정이 모두 반영되어 있다 — 아래 문서 내용 그대로 실제 코드다.
 
@@ -104,7 +104,7 @@ public void cleanup() {
 
 ## 원칙
 
-- **`server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase` 필수 설정**: 적용 완료.
+- **`server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase` 필수 설정**: 설정되어 있다.
 - **Actuator의 liveness/readiness 프로브 활성화**: `management.health.livenessState/readinessState.enabled: true`.
 - **오케스트레이터의 `terminationGracePeriodSeconds`는 `timeout-per-shutdown-phase`보다 여유 있게** 설정한다.
 - **exec form ENTRYPOINT**: `["java", "..."]` — [container.md](container.md) 참고.

@@ -22,9 +22,9 @@
 
 ---
 
-### `generate_id()` 적용 완료 (더 이상 격차 아님)
+### `generate_id()`
 
-`src/account/domain/account.py`의 `Account.create()`, `src/account/domain/transaction.py`의 `Transaction.create()`, `notification_service.py`가 발급하는 sent_email ID 전부 아래 `generate_id()`(하이픈 제거 32자리 hex, `uuid.uuid4().hex`)를 사용한다. `outbox_writer.py`는 이미 `.hex`를 쓰고 있어 그대로 두었다.
+`src/account/domain/account.py`의 `Account.create()`, `src/account/domain/transaction.py`의 `Transaction.create()`, `notification_service.py`가 발급하는 sent_email ID 전부 아래 `generate_id()`(하이픈 제거 32자리 hex, `uuid.uuid4().hex`)를 사용한다. `outbox_writer.py`는 `uuid.uuid4().hex`를 직접 사용해 동일한 형식을 유지한다.
 
 ---
 

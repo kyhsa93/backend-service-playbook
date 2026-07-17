@@ -85,7 +85,7 @@ class DepositService(
 
 `.firstOrNull()`이 root의 `.pop()` / `.then(r => r.orders.pop())` 패턴에 대응하는 Kotlin 관용구다 — 리스트가 비어 있으면 `null`, `?:`로 즉시 예외를 던진다. Java의 `Optional<T>` 래핑이나 인덱스 접근(`[0]`, `IndexOutOfBoundsException` 위험) 없이 한 줄로 끝난다. 계좌를 조회 후 변경하는 6개 Command Service(`Deposit`/`Withdraw`/`Suspend`/`Close`/`Reactivate`/`Delete`)가 모두 이 패턴을 쓴다. `CreateAccountService`는 신규 Aggregate를 생성하므로 조회 없이 `saveAccount(account)`만 호출한다.
 
-**CQRS 읽기 전용 포트(`AccountQuery`)는 이 문서의 범위가 아니다.** `GetAccountService`/`GetTransactionsService`는 `AccountRepository`(쓰기 모델)가 아니라 `application/query/AccountQuery`에 의존한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다(harness `cqrs-pattern` 규칙이 실제로 검사한다). `AccountQuery`의 메서드 시그니처(`findByAccountIdAndOwnerId`/`findTransactions`/`countTransactions`)는 별개 인터페이스이므로 이번 변경 대상이 아니다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+**CQRS 읽기 전용 포트(`AccountQuery`)는 이 문서의 범위가 아니다.** `GetAccountService`/`GetTransactionsService`는 `AccountRepository`(쓰기 모델)가 아니라 `application/query/AccountQuery`에 의존한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다(harness `cqrs-pattern` 규칙이 실제로 검사한다). `AccountQuery`의 메서드 시그니처(`findByAccountIdAndOwnerId`/`findTransactions`/`countTransactions`)는 별개 인터페이스다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
 ---
 
@@ -137,13 +137,13 @@ class AccountRepositoryImpl(
 }
 ```
 
-**Repository에 update 메서드를 별도로 두지 않는다** — 이 원칙은 이미 지켜지고 있다. `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()`/`markDeleted()` 등 도메인 메서드로 이루어진 뒤 `saveAccount()`로 영속화된다.
+**Repository에 update 메서드를 별도로 두지 않는다** — `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()`/`markDeleted()` 등 도메인 메서드로 이루어진 뒤 `saveAccount()`로 영속화된다.
 
 **`close()`(상태 전환)와 `markDeleted()`(soft delete)는 서로 다른 생명주기 이벤트다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태를 바꿀 뿐 `deletedAt`을 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(계좌 이력 확인 등). `deleteAccount()`는 반대로 `deletedAt`을 설정해 이후 모든 조회(`deletedAt IS NULL` 조건)에서 제외시킨다. `Account.markDeleted()`는 `status != CLOSED`이면 `DeleteRequiresClosedAccountException`을 던져, 활성 계좌가 종료 절차 없이 곧바로 삭제되는 것을 막는다 — 삭제는 항상 "종료 → 삭제" 두 단계를 거친다.
 
 ---
 
-## 동적 필터 — 이미 올바르게 구현됨
+## 동적 필터
 
 ```kotlin
 // infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
@@ -164,12 +164,12 @@ private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
 
 ## 원칙 요약
 
-- **1 Aggregate = 1 Repository 인터페이스 + 구현체**: 이미 올바름.
+- **1 Aggregate = 1 Repository 인터페이스 + 구현체**.
 - **`delete<Noun>` 추가 완료**: `deleteAccount(accountId)`가 실제 코드에 존재하고 `Account.markDeleted()`를 통해 CLOSED 상태만 삭제 가능하도록 강제한다.
 - **`find<Noun>s`/`save<Noun>`으로 통일 완료**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍되었다. `findTransactions`/`countTransactions`도 `findTransactions(query): Pair<...>` 하나로 합쳐졌다.
 - **단건 조회는 `take: 1` + `firstOrNull()`**: 전용 findOne 메서드를 만들지 않는다 — Command Service 6곳이 모두 이 패턴을 쓴다.
-- **Repository에 update 메서드 없음**: 이미 올바름 — 상태 변경은 Aggregate 도메인 메서드 + `saveAccount`/`deleteAccount`.
-- **동적 필터, soft-delete 조회 조건**: 이미 올바름.
+- **Repository에 update 메서드 없음**: 상태 변경은 Aggregate 도메인 메서드 + `saveAccount`/`deleteAccount`로 이루어진다.
+- **동적 필터, soft-delete 조회 조건**: 값이 있을 때만 조건을 추가하고, `deletedAt IS NULL`이 모든 조회에 기본 적용된다.
 
 ### 관련 문서
 

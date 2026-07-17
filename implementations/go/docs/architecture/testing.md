@@ -1,6 +1,6 @@
 # 테스트 전략 (Go)
 
-원칙은 루트 [testing.md](../../../../docs/architecture/testing.md)를 따른다: Domain 단위 테스트, Application 단위 테스트(Repository mock), E2E 테스트 3단계로 구성한다. **적용 완료** — 3단계 모두 `examples/`에 구현되어 있다(더 이상 gap 아님). 이 문서는 Go 표준 라이브러리 `testing` 패키지와 table-driven test 관용구로 각 계층을 어떻게 작성했는지 제시한다.
+원칙은 루트 [testing.md](../../../../docs/architecture/testing.md)를 따른다: Domain 단위 테스트, Application 단위 테스트(Repository mock), E2E 테스트 3단계로 구성한다. 3단계 모두 `examples/`에 구현되어 있다. 이 문서는 Go 표준 라이브러리 `testing` 패키지와 table-driven test 관용구로 각 계층을 어떻게 작성했는지 제시한다.
 
 | 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
 |---|---|---|---|
@@ -171,7 +171,7 @@ func TestDepositHandler_Handle_SavesAndDrainsOutbox(t *testing.T) {
 
 ---
 
-## E2E 테스트 — 이미 구현되어 있음
+## E2E 테스트
 
 `test/account_e2e_test.go`가 testcontainers-go로 실제 Postgres + LocalStack(SES) 컨테이너를 띄우고, `httptest.Server`로 실제 HTTP 요청을 보내 전체 경로를 검증한다.
 

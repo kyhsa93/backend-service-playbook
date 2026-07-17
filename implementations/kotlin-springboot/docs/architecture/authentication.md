@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 [root authentication.md](../../../../docs/architecture/authentication.md) 참조.
 
-## 적용 완료 — JWT/Bearer + Spring Security + 실제 비밀번호 검증
+## JWT/Bearer + Spring Security + 비밀번호 검증
 
 `examples/.../account/interfaces/rest/AccountController.kt`의 모든 엔드포인트는 `Authentication` 파라미터에서 인증된 사용자 ID를 꺼내 쓴다 — 클라이언트가 보낸 헤더를 신뢰하지 않는다:
 
@@ -24,7 +24,7 @@ fun createAccount(
 
 ## 가입 → 로그인 흐름
 
-과거 `POST /auth/sign-in`은 `userId`만 받으면 비밀번호 확인 없이 JWT를 발급했다 — 다른 사용자의 `userId`만 알면 그 사용자로 완전히 가장할 수 있는 CRITICAL 취약점이었다(#190, 5개 언어 공통 발견). 지금은 `Credential` Aggregate(`credentialId`, `userId`, `passwordHash`)를 도입해 실제 비밀번호를 저장·검증한다.
+`POST /auth/sign-in`은 `Credential` Aggregate(`credentialId`, `userId`, `passwordHash`)와 대조해 실제 비밀번호를 검증한 뒤에만 JWT를 발급한다.
 
 ```
 [가입]

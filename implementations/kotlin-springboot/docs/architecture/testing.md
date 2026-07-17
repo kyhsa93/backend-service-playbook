@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 [root testing.md](../../../../docs/architecture/testing.md) 참조.
 
-## 적용 완료 — 3계층(Domain/Application/E2E) 모두 존재한다
+## 3계층(Domain/Application/E2E)
 
 `examples/`는 root가 요구하는 3계층 테스트를 모두 갖췄다: `AccountTest.kt`(Domain 단위), `CreateAccountServiceTest.kt`/`DepositServiceTest.kt`(Application 단위, MockK), `AccountControllerE2ETest.kt`(Testcontainers 기반 E2E, Postgres + LocalStack SES). 아래에서 3계층 모두를 Kotlin 관용으로 정의하고, 실제 코드와 대조한다.
 
@@ -14,7 +14,7 @@
 
 ---
 
-## 테스트 프레임워크 선택 — JUnit 5 + MockK (적용 완료)
+## 테스트 프레임워크 선택 — JUnit 5 + MockK
 
 `build.gradle.kts`에 이미 `io.mockk:mockk`가 있고, Application 단위 테스트(`CreateAccountServiceTest.kt` 등)가 이를 사용한다. E2E 테스트는 여전히 Testcontainers 실제 인스턴스만 사용한다(mock 없음). 아래는 MockK를 택한 근거다.
 
@@ -34,7 +34,7 @@ testImplementation("io.mockk:mockk:1.13.13")
 
 ---
 
-## Domain 단위 테스트 — 프레임워크 없이 순수 Kotlin (적용 완료)
+## Domain 단위 테스트 — 프레임워크 없이 순수 Kotlin
 
 ```kotlin
 // src/test/kotlin/.../account/domain/AccountTest.kt — 실제 코드(일부 발췌, 전체 16개 테스트 케이스 중)
@@ -118,7 +118,7 @@ class AccountTest {
 
 ---
 
-## Application 단위 테스트 — MockK로 Repository 대체 (적용 완료)
+## Application 단위 테스트 — MockK로 Repository 대체
 
 ```kotlin
 // src/test/kotlin/.../account/application/command/CreateAccountServiceTest.kt — 실제 코드
@@ -169,7 +169,7 @@ class CreateAccountServiceTest {
 
 ---
 
-## E2E 테스트 — 이미 올바르게 구현됨 (Testcontainers)
+## E2E 테스트 — Testcontainers
 
 ```kotlin
 // src/test/kotlin/.../AccountControllerE2ETest.kt — 실제 코드 (일부)

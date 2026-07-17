@@ -32,9 +32,9 @@ func NewID() string {
 
 ---
 
-## `common.NewID()` 적용 완료 (더 이상 편차 아님)
+## `common.NewID()`
 
-`internal/domain/account/account.go`의 `New()`, `internal/domain/account/transaction.go`의 `newTransaction()`, 그리고 `internal/infrastructure/outbox/writer.go`/`internal/infrastructure/notification/service.go`가 발급하는 outbox/sent_email ID까지 전부 `common.NewID()`(하이픈 제거 32자리 hex)를 사용한다 — 예전에는 `uuid.NewString()`을 하이픈 제거 없이 그대로 썼다.
+`internal/domain/account/account.go`의 `New()`, `internal/domain/account/transaction.go`의 `newTransaction()`, 그리고 `internal/infrastructure/outbox/writer.go`/`internal/infrastructure/notification/service.go`가 발급하는 outbox/sent_email ID까지 전부 `common.NewID()`(하이픈 제거 32자리 hex)를 사용한다.
 
 컬럼 타입(`VARCHAR(36)`)은 32자리든 36자리(하이픈 포함)든 모두 담을 수 있으므로 이 변경에 마이그레이션은 필요 없었다.
 
@@ -42,7 +42,7 @@ func NewID() string {
 
 ## Aggregate 생성자에서 사용
 
-신규 생성과 DB 복원을 별도 함수로 분리하는 것이 Go 컨벤션이다 — 이 저장소는 생성자 `New(...)`와 복원용 `Reconstitute(...)`를 분리해서 이 원칙을 이미 구현하고 있다.
+신규 생성과 DB 복원을 별도 함수로 분리하는 것이 Go 컨벤션이다 — 이 저장소는 생성자 `New(...)`와 복원용 `Reconstitute(...)`를 분리해서 이 원칙을 구현하고 있다.
 
 ```go
 // internal/domain/account/account.go

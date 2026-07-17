@@ -2,7 +2,7 @@
 
 원칙은 루트 [api-response.md](../../../../docs/architecture/api-response.md)를 따른다: 오프셋 페이지네이션(`page`/`take`, 0-base), 목록 응답은 도메인 복수형 키 + `count`, 단건 응답은 범용 래퍼 없이 도메인 객체를 직접 반환한다.
 
-이 저장소의 Go 예제(`internal/interface/http/`)는 이 규칙을 이미 따르고 있다 — 이 문서는 실제 코드를 근거로 규칙을 설명한다.
+이 저장소의 Go 예제(`internal/interface/http/`)는 이 규칙을 따른다 — 이 문서는 실제 코드를 근거로 규칙을 설명한다.
 
 ---
 

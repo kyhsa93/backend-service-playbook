@@ -2,7 +2,7 @@
 
 > 프레임워크 무관 원칙은 [root error-handling.md](../../../../docs/architecture/error-handling.md) 참조.
 
-## 현재 구현 — sealed class 예외 계층은 이미 올바르다
+## 현재 구현 — sealed class 예외 계층
 
 ```kotlin
 // domain/AccountException.kt — 실제 코드
@@ -77,7 +77,7 @@ class AccountAlreadyClosedException :
 
 ## Interface 레이어 — `@RestControllerAdvice`로 전역 처리
 
-각 Controller에 `@ExceptionHandler`를 흩어두는 대신, `@RestControllerAdvice`로 애플리케이션 전역에서 한 번만 처리한다. `AccountController`에는 더 이상 `@ExceptionHandler` 메서드가 없다.
+각 Controller에 `@ExceptionHandler`를 흩어두는 대신, `@RestControllerAdvice`로 애플리케이션 전역에서 한 번만 처리한다. `AccountController`에는 `@ExceptionHandler` 메서드가 없다.
 
 ```kotlin
 // common/GlobalExceptionHandler.kt — 실제 코드
@@ -151,7 +151,7 @@ class GlobalExceptionHandler {
 - **`sealed class` 예외 계층은 유지**한다 — 이미 root 원칙과 일치하는 Kotlin다운 구현이다.
 - **`AccountErrorCode` enum 추가 완료** — 각 예외와 1:1 매핑됨.
 - **`ErrorResponse`를 4필드(`statusCode`/`code`/`message`/`error`)로 확장 완료**.
-- **`@RestControllerAdvice`로 에러 변환 전역화 완료** — `AccountController`에 더 이상 `@ExceptionHandler`가 없고 `common/GlobalExceptionHandler.kt` 하나로 통합됨.
+- **`@RestControllerAdvice`로 에러 변환을 전역화한다** — `AccountController`에는 `@ExceptionHandler`가 없고, `common/GlobalExceptionHandler.kt` 하나로 통합되어 있다.
 - **분류되지 않은 예외는 500으로 캐치-올**한다 — `handleUnknown(Exception::class)`으로 구현됨.
 
 ### 관련 문서

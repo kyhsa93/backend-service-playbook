@@ -2,7 +2,7 @@
 
 원칙은 루트 [observability.md](../../../../docs/architecture/observability.md)를 따른다: JSON 구조화 로그, snake_case 필드명, 레이어별 로깅 기준(Domain은 로깅하지 않음), Correlation ID를 모든 로그에 포함. Go 1.21+ 표준 라이브러리 `log/slog`가 구조화 로깅을 기본 제공하므로 별도 로깅 프레임워크(Winston, Pino 상당)가 필요 없다.
 
-**적용 완료** — `main.go`와 `notification/service.go`가 `log/slog` 기반 구조화 로깅을 쓴다(더 이상 gap 아님).
+`main.go`와 `notification/service.go`가 `log/slog` 기반 구조화 로깅을 쓴다.
 
 ---
 
@@ -95,7 +95,7 @@ slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Lev
 | `internal/infrastructure/` | 외부 연동 실패/재시도 | `notification/service.go`(발송 성공 로그), `outbox/relay.go`(처리 실패 로그) 모두 `slog` 사용 |
 | `internal/interface/http/` | 요청 에러 | `writeAccountError`가 500 에러 시 서버 측 로그도 남긴다(아래 참고) |
 
-`account_handler.go`의 `writeAccountError`는 500 에러를 클라이언트에 반환할 때 서버 측 로그도 남긴다(적용 완료):
+`account_handler.go`의 `writeAccountError`는 500 에러를 클라이언트에 반환할 때 서버 측 로그도 남긴다:
 
 ```go
 // internal/interface/http/account_handler.go — 실제 코드
@@ -115,7 +115,7 @@ func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 
 ## Correlation ID — `context.Context`로 전파
 
-root는 AsyncLocalStorage(Node)/ThreadLocal(Java) 상당의 컨텍스트-로컬 저장소로 전파하라고 한다. Go의 답은 그 자체가 목적인 표준 메커니즘, `context.Context` 값 전파다 — 별도 라이브러리가 필요 없다. **적용 완료** — 아래는 실제 코드다.
+root는 AsyncLocalStorage(Node)/ThreadLocal(Java) 상당의 컨텍스트-로컬 저장소로 전파하라고 한다. Go의 답은 그 자체가 목적인 표준 메커니즘, `context.Context` 값 전파다 — 별도 라이브러리가 필요 없다. 아래는 실제 코드다.
 
 ```go
 // internal/interface/http/middleware/correlation_id_middleware.go — 실제 코드 (cross-cutting-concerns.md와 공유)
