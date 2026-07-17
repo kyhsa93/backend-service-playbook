@@ -1,0 +1,57 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/implementations/nestjs/examples"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(nestjs)"
+
+  - package-ecosystem: "npm"
+    directory: "/implementations/nestjs/harness"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(nestjs)"
+
+  - package-ecosystem: "gomod"
+    directory: "/implementations/go/examples"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(go)"
+
+  - package-ecosystem: "gomod"
+    directory: "/implementations/go/harness"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(go)"
+
+  - package-ecosystem: "gradle"
+    directory: "/implementations/java-springboot/examples"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(java-springboot)"
+
+  - package-ecosystem: "gradle"
+    directory: "/implementations/kotlin-springboot/examples"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(kotlin-springboot)"
+
+  - package-ecosystem: "pip"
+    directory: "/implementations/fastapi/examples"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(fastapi)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
