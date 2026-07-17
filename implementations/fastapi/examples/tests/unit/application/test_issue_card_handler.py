@@ -26,9 +26,7 @@ async def test_execute_활성_계좌면_카드가_발급되고_저장된다(repo
     account_adapter.find_account.return_value = AccountView(account_id="account-1", active=True)
     handler = IssueCardHandler(repo, account_adapter)
 
-    card = await handler.execute(
-        IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA")
-    )
+    card = await handler.execute(IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA"))
 
     assert card.account_id == "account-1"
     assert card.owner_id == "owner-1"

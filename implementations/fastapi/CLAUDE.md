@@ -90,6 +90,23 @@ DDD 기반 FastAPI(Python) 서버 프로젝트의 설계/구현 가이드이다.
 ./harness.sh <projectRoot>
 ```
 
+## Lint / 포맷
+
+`examples/`와 `harness/` 모두 [ruff](https://docs.astral.sh/ruff/)로 린트·포맷을 검사한다(flake8+isort+black 대체).
+설정은 `pyproject.toml`(`implementations/fastapi/`) — 규칙셋은 `E`(pycodestyle)/`F`(pyflakes)/`I`(isort),
+`line-length = 120`(한글 주석이 많아 100자 기준은 무관한 줄바꿈 diff를 유발하므로 완화).
+`harness/tests/fixtures/`는 harness 회귀 테스트용으로 의도적으로 규칙을 위반하는 코드이므로 검사 대상에서 제외한다.
+
+```bash
+# implementations/fastapi/ 에서 실행 (examples/requirements.txt에 ruff 포함)
+ruff check .           # 린트
+ruff check --fix .     # 자동 수정 가능한 항목 고침
+ruff format .          # 포맷 적용
+ruff format --check .  # 포맷 위반만 확인 (CI와 동일)
+```
+
+CI(`.github/workflows/fastapi.yml`)는 `ruff check .`와 `ruff format --check .`를 테스트보다 먼저 실행해 위반 시 실패한다.
+
 ## 예시 코드
 
 `examples/` 디렉토리에 Account 도메인 전체 구현 예시가 있다.

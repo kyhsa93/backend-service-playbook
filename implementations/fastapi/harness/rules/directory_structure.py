@@ -1,4 +1,5 @@
 """[6] 디렉토리 구조 검사 (4레이어 + CQRS)"""
+
 from __future__ import annotations
 
 import os

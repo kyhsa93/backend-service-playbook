@@ -19,9 +19,7 @@ class CancelCardsByAccountHandler:
         self._repo = repo
 
     async def execute(self, cmd: CancelCardsByAccountCommand) -> None:
-        cards = await self._repo.find_by_account(
-            cmd.account_id, [CardStatus.ACTIVE.value, CardStatus.SUSPENDED.value]
-        )
+        cards = await self._repo.find_by_account(cmd.account_id, [CardStatus.ACTIVE.value, CardStatus.SUSPENDED.value])
         for card in cards:
             card.cancel()
             await self._repo.save(card)

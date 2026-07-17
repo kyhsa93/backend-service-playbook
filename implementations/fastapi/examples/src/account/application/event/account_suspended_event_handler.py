@@ -28,12 +28,14 @@ class AccountSuspendedEventHandler:
             suspended_at=datetime.fromisoformat(payload["suspended_at"]),
         )
 
-        await self._outbox_writer.save_all([
-            AccountSuspendedIntegrationEventV1(
-                account_id=event.account_id,
-                suspended_at=event.suspended_at.isoformat(),
-            )
-        ])
+        await self._outbox_writer.save_all(
+            [
+                AccountSuspendedIntegrationEventV1(
+                    account_id=event.account_id,
+                    suspended_at=event.suspended_at.isoformat(),
+                )
+            ]
+        )
 
         # 알림은 best-effort다 — NotificationService.notify()가 내부에서 모든 예외를 삼키므로
         # 여기서 실패해도 위 Integration Event 적재나 이 핸들러 자체는 영향받지 않는다.

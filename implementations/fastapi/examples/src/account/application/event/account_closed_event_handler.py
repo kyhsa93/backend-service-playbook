@@ -27,11 +27,13 @@ class AccountClosedEventHandler:
             closed_at=datetime.fromisoformat(payload["closed_at"]),
         )
 
-        await self._outbox_writer.save_all([
-            AccountClosedIntegrationEventV1(
-                account_id=event.account_id,
-                closed_at=event.closed_at.isoformat(),
-            )
-        ])
+        await self._outbox_writer.save_all(
+            [
+                AccountClosedIntegrationEventV1(
+                    account_id=event.account_id,
+                    closed_at=event.closed_at.isoformat(),
+                )
+            ]
+        )
 
         await self._notification_service.notify(event)

@@ -1,0 +1,16 @@
+[tool.ruff]
+# 한글 주석/에러 메시지가 많아 100자 기준은 무관한 줄바꿈 diff를 대량 유발한다.
+# 120자로 완화해 실제로 긴 줄만 잡아낸다.
+line-length = 120
+target-version = "py312"
+exclude = [
+  "harness/tests/fixtures",
+]
+
+[tool.ruff.lint]
+# 기본 규칙(E4/E7/E9/F) + pycodestyle 전체(E)/isort(I) 명시 추가.
+# `ALL`은 과도하게 엄격해 무관한 대규모 diff를 유발하므로 채택하지 않는다.
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]

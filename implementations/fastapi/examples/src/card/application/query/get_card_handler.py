@@ -12,7 +12,6 @@ class GetCardQuery:
 
 
 class GetCardHandler:
-
     def __init__(self, query: CardQuery) -> None:
         self._query = query
 

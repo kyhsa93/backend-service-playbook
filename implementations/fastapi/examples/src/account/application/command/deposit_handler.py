@@ -14,7 +14,6 @@ class DepositCommand:
 
 
 class DepositHandler:
-
     def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
         self._repo = repo
         self._outbox_relay = outbox_relay

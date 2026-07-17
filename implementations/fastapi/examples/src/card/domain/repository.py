@@ -14,7 +14,6 @@ class CardQuery(ABC):
 
 
 class CardRepository(CardQuery, ABC):
-
     @abstractmethod
     async def find_by_account(self, account_id: str, status: list[str]) -> list[Card]: ...
 

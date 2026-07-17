@@ -19,7 +19,6 @@ class CredentialModel(Base):
 
 
 class SqlAlchemyCredentialRepository(CredentialRepository):
-
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -36,10 +35,12 @@ class SqlAlchemyCredentialRepository(CredentialRepository):
         )
 
     async def save(self, credential: Credential) -> None:
-        self._session.add(CredentialModel(
-            id=credential.credential_id,
-            user_id=credential.user_id,
-            password_hash=credential.password_hash,
-            created_at=credential.created_at,
-        ))
+        self._session.add(
+            CredentialModel(
+                id=credential.credential_id,
+                user_id=credential.user_id,
+                password_hash=credential.password_hash,
+                created_at=credential.created_at,
+            )
+        )
         await self._session.flush()

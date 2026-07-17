@@ -3,10 +3,10 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from main import app
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
-from main import app
 from src.account.infrastructure.persistence.account_repository import Base
 from src.database import get_session
 

@@ -18,7 +18,6 @@ class AccountQuery(ABC):
 
 
 class AccountRepository(AccountQuery, ABC):
-
     @abstractmethod
     async def find_all(
         self,

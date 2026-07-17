@@ -4,12 +4,17 @@
 갖는다. `py_files`는 harness.py가 한 번만 계산해 모든 규칙에 전달한다(원본
 harness.py가 전역에서 한 번 `collect_py_files()`를 호출하던 것과 동일).
 """
+
 from __future__ import annotations
 
 import os
 
 SKIP_DIRS = {
-    ".git", "__pycache__", ".venv", "venv", "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "node_modules",
     # Alembic이 관리하는 디렉토리 — revision 파일명은 Alembic의 hex revision ID
     # 접두어 관례(예: 110ed0152981_create_initial_tables.py)를 따르므로 이
     # 저장소의 snake_case 파일명 규칙 대상이 아니다.

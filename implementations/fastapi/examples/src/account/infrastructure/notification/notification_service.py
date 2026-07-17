@@ -78,7 +78,8 @@ class SesNotificationService(NotificationService):
         recipient = event.email
 
         async with self._boto_session.client(
-            "ses", **AwsConfig().client_kwargs()  # type: ignore[call-arg]
+            "ses",
+            **AwsConfig().client_kwargs(),  # type: ignore[call-arg]
         ) as ses_client:
             response = await ses_client.send_email(
                 Source=os.getenv("SES_SENDER_EMAIL", DEFAULT_SENDER_EMAIL),
@@ -91,14 +92,16 @@ class SesNotificationService(NotificationService):
 
         ses_message_id = response["MessageId"]
 
-        self._session.add(SentEmailModel(
-            sent_email_id=generate_id(),
-            account_id=event.account_id,
-            event_type=event_type,
-            recipient=recipient,
-            subject=subject,
-            ses_message_id=ses_message_id,
-        ))
+        self._session.add(
+            SentEmailModel(
+                sent_email_id=generate_id(),
+                account_id=event.account_id,
+                event_type=event_type,
+                recipient=recipient,
+                subject=subject,
+                ses_message_id=ses_message_id,
+            )
+        )
         await self._session.flush()
 
         logger.info(

@@ -13,10 +13,7 @@ class SignInCommand:
 
 
 class SignInHandler:
-
-    def __init__(
-        self, repo: CredentialRepository, password_hasher: PasswordHasher, auth_service: AuthService
-    ) -> None:
+    def __init__(self, repo: CredentialRepository, password_hasher: PasswordHasher, auth_service: AuthService) -> None:
         self._repo = repo
         self._password_hasher = password_hasher
         self._auth_service = auth_service

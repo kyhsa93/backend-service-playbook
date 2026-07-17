@@ -6,6 +6,7 @@ from ....card.domain.repository import CardRepository
 from ....card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
 from ....card.interface.integration_event.card_integration_event_controller import CardIntegrationEventController
 from ....common.rate_limit import limiter, rate_limit_config
+from ....database import get_session
 from ....outbox.outbox_relay import OutboxRelay
 from ....outbox.outbox_writer import OutboxWriter
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
@@ -23,7 +24,6 @@ from ...application.event.money_withdrawn_event_handler import MoneyWithdrawnEve
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ...application.service.notification_service import NotificationService
-from ....database import get_session
 from ...domain.repository import AccountQuery
 from ...infrastructure.notification.notification_service import SesNotificationService
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository

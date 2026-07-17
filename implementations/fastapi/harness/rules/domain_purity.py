@@ -1,11 +1,12 @@
 """[5] domain/ 순수성 — FastAPI/SQLAlchemy/aioboto3 import 금지"""
+
 from __future__ import annotations
 
 import re
 
 from .common import RuleResult, failed, norm, passed, read, rel, skipped
 
-FORBIDDEN = re.compile(r'from fastapi|import fastapi|from sqlalchemy|import sqlalchemy|from aioboto3|import aioboto3')
+FORBIDDEN = re.compile(r"from fastapi|import fastapi|from sqlalchemy|import sqlalchemy|from aioboto3|import aioboto3")
 
 
 def check(root: str, py_files: list[str]) -> RuleResult:

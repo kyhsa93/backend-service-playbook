@@ -26,6 +26,13 @@ jobs:
 
       - run: pip install -r examples/requirements.txt
 
+      # ruff는 examples/와 harness/를 함께 검사한다 (implementations/fastapi/pyproject.toml 설정 적용).
+      - name: Lint (ruff check)
+        run: ruff check .
+
+      - name: Format check (ruff format)
+        run: ruff format --check .
+
       # cwd가 examples/여야 `from main import app`, `from src...`가 sys.path로 해석된다
       # (콘솔 스크립트 pytest는 cwd를 sys.path에 넣지 않으므로 `python -m pytest`를 examples/ 안에서 실행한다).
       - run: cd examples && python -m pytest tests

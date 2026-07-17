@@ -27,9 +27,7 @@ async def test_execute_ACTIVE_SUSPENDED_카드를_해지시키고_저장한다(r
 
     assert active_card.status == CardStatus.CANCELLED
     assert suspended_card.status == CardStatus.CANCELLED
-    repo.find_by_account.assert_awaited_once_with(
-        "account-1", [CardStatus.ACTIVE.value, CardStatus.SUSPENDED.value]
-    )
+    repo.find_by_account.assert_awaited_once_with("account-1", [CardStatus.ACTIVE.value, CardStatus.SUSPENDED.value])
     assert repo.save.await_count == 2
 
 

@@ -8,7 +8,6 @@ from ..service.notification_service import NotificationService
 
 
 class MoneyWithdrawnEventHandler:
-
     def __init__(self, notification_service: NotificationService) -> None:
         self._notification_service = notification_service
 

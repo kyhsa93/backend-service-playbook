@@ -41,7 +41,6 @@ class TransactionModel(Base):
 
 
 class SqlAlchemyAccountRepository(AccountRepository):
-
     def __init__(self, session: AsyncSession) -> None:
         # 지연 import — outbox_model.py가 이 모듈의 Base를 import하므로, 모듈 최상단에서
         # OutboxWriter를 import하면 순환 참조가 발생한다 (module-pattern.md "Python의 순환 참조" 참조).
@@ -83,9 +82,11 @@ class SqlAlchemyAccountRepository(AccountRepository):
             count_stmt = count_stmt.where(AccountModel.status.in_(status))
 
         total = (await self._session.execute(count_stmt)).scalar_one()
-        rows = (await self._session.execute(
-            stmt.order_by(AccountModel.id.desc()).offset(page * take).limit(take)
-        )).scalars().all()
+        rows = (
+            (await self._session.execute(stmt.order_by(AccountModel.id.desc()).offset(page * take).limit(take)))
+            .scalars()
+            .all()
+        )
 
         return [self._to_domain(row) for row in rows], total
 
@@ -96,24 +97,28 @@ class SqlAlchemyAccountRepository(AccountRepository):
             existing.status = account.status.value
             existing.updated_at = datetime.utcnow()
         else:
-            self._session.add(AccountModel(
-                id=account.account_id,
-                owner_id=account.owner_id,
-                email=account.email,
-                amount=account.balance.amount,
-                currency=account.balance.currency,
-                status=account.status.value,
-            ))
+            self._session.add(
+                AccountModel(
+                    id=account.account_id,
+                    owner_id=account.owner_id,
+                    email=account.email,
+                    amount=account.balance.amount,
+                    currency=account.balance.currency,
+                    status=account.status.value,
+                )
+            )
 
         for transaction in account.pull_pending_transactions():
-            self._session.add(TransactionModel(
-                id=transaction.transaction_id,
-                account_id=transaction.account_id,
-                type=transaction.type,
-                amount=transaction.amount.amount,
-                currency=transaction.amount.currency,
-                created_at=transaction.created_at,
-            ))
+            self._session.add(
+                TransactionModel(
+                    id=transaction.transaction_id,
+                    account_id=transaction.account_id,
+                    type=transaction.type,
+                    amount=transaction.amount.amount,
+                    currency=transaction.amount.currency,
+                    created_at=transaction.created_at,
+                )
+            )
 
         events = account.pull_events()
         if events:
@@ -123,14 +128,18 @@ class SqlAlchemyAccountRepository(AccountRepository):
 
     async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]:
         stmt = select(TransactionModel).where(TransactionModel.account_id == account_id)
-        count_stmt = (
-            select(func.count()).select_from(TransactionModel).where(TransactionModel.account_id == account_id)
-        )
+        count_stmt = select(func.count()).select_from(TransactionModel).where(TransactionModel.account_id == account_id)
 
         total = (await self._session.execute(count_stmt)).scalar_one()
-        rows = (await self._session.execute(
-            stmt.order_by(TransactionModel.created_at.desc()).offset(page * take).limit(take)
-        )).scalars().all()
+        rows = (
+            (
+                await self._session.execute(
+                    stmt.order_by(TransactionModel.created_at.desc()).offset(page * take).limit(take)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         transactions = [
             Transaction(

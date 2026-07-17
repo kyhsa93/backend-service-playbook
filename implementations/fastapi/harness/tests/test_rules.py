@@ -3,6 +3,7 @@
 harness/ 디렉토리를 sys.path에 넣어 `import rules`가 되게 한 뒤, 각 규칙 모듈의
 `check(root, py_files)`를 fixture 루트에 대해 직접 호출한다.
 """
+
 from __future__ import annotations
 
 import os

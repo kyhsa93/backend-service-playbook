@@ -57,9 +57,7 @@ class OutboxRelay:
                     progressed += 1
                 except Exception:  # noqa: BLE001 - 실패한 이벤트는 다음 드레인에서 재시도해야 하므로 여기서 삼킨다
                     failed_in_this_run.add(row.event_id)
-                    logger.exception(
-                        "이벤트 처리 실패: event_type=%s event_id=%s", row.event_type, row.event_id
-                    )
+                    logger.exception("이벤트 처리 실패: event_type=%s event_id=%s", row.event_type, row.event_id)
 
             await self._session.flush()
             if progressed == 0:  # 이번 패스에서 진전이 없었다면 더 반복해도 소용없다

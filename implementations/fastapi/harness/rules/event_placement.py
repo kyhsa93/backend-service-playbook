@@ -1,4 +1,5 @@
 """[8] event-placement"""
+
 from __future__ import annotations
 
 import os

@@ -5,6 +5,7 @@
 결과를 집계·출력하는 역할만 한다. 구조/회귀 테스트는 README.md 참고.
 Usage: python harness.py <projectRoot>
 """
+
 from __future__ import annotations
 
 import sys

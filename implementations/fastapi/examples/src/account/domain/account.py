@@ -64,13 +64,15 @@ class Account:
             created_at=now,
             updated_at=now,
         )
-        account._events.append(AccountCreated(
-            account_id=account.account_id,
-            owner_id=owner_id,
-            currency=currency,
-            email=email,
-            created_at=now,
-        ))
+        account._events.append(
+            AccountCreated(
+                account_id=account.account_id,
+                owner_id=owner_id,
+                currency=currency,
+                email=email,
+                created_at=now,
+            )
+        )
         return account
 
     def deposit(self, amount: int) -> Transaction:
@@ -83,14 +85,16 @@ class Account:
         self.updated_at = datetime.utcnow()
         transaction = Transaction.create(self.account_id, "DEPOSIT", money)
         self._pending_transactions.append(transaction)
-        self._events.append(MoneyDeposited(
-            account_id=self.account_id,
-            transaction_id=transaction.transaction_id,
-            email=self.email,
-            amount=money,
-            balance_after=self.balance,
-            created_at=transaction.created_at,
-        ))
+        self._events.append(
+            MoneyDeposited(
+                account_id=self.account_id,
+                transaction_id=transaction.transaction_id,
+                email=self.email,
+                amount=money,
+                balance_after=self.balance,
+                created_at=transaction.created_at,
+            )
+        )
         return transaction
 
     def withdraw(self, amount: int) -> Transaction:
@@ -105,14 +109,16 @@ class Account:
         self.updated_at = datetime.utcnow()
         transaction = Transaction.create(self.account_id, "WITHDRAWAL", money)
         self._pending_transactions.append(transaction)
-        self._events.append(MoneyWithdrawn(
-            account_id=self.account_id,
-            transaction_id=transaction.transaction_id,
-            email=self.email,
-            amount=money,
-            balance_after=self.balance,
-            created_at=transaction.created_at,
-        ))
+        self._events.append(
+            MoneyWithdrawn(
+                account_id=self.account_id,
+                transaction_id=transaction.transaction_id,
+                email=self.email,
+                amount=money,
+                balance_after=self.balance,
+                created_at=transaction.created_at,
+            )
+        )
         return transaction
 
     def suspend(self) -> None:

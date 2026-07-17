@@ -5,12 +5,12 @@ import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from main import app
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.localstack import LocalStackContainer
 from testcontainers.postgres import PostgresContainer
 
-from main import app
 from src.account.infrastructure.notification.sent_email_model import SentEmailModel
 from src.account.infrastructure.persistence.account_repository import Base
 from src.auth.infrastructure.jwt_auth_service import JwtAuthService

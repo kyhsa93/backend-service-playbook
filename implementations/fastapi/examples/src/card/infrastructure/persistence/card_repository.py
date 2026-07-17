@@ -24,7 +24,6 @@ class CardModel(Base):
 
 
 class SqlAlchemyCardRepository(CardRepository):
-
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -55,14 +54,16 @@ class SqlAlchemyCardRepository(CardRepository):
             existing.status = card.status.value
             existing.updated_at = datetime.utcnow()
         else:
-            self._session.add(CardModel(
-                id=card.card_id,
-                account_id=card.account_id,
-                owner_id=card.owner_id,
-                brand=card.brand,
-                status=card.status.value,
-                created_at=card.created_at,
-            ))
+            self._session.add(
+                CardModel(
+                    id=card.card_id,
+                    account_id=card.account_id,
+                    owner_id=card.owner_id,
+                    brand=card.brand,
+                    status=card.status.value,
+                    created_at=card.created_at,
+                )
+            )
         await self._session.flush()
 
     def _to_domain(self, row: CardModel) -> Card:

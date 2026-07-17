@@ -1,4 +1,5 @@
 """[2] ABC Repository — domain/ 에만 위치"""
+
 from __future__ import annotations
 
 from .common import RuleResult, failed, norm, passed, read, rel, skipped

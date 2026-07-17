@@ -17,7 +17,6 @@ class IssueCardCommand:
 
 
 class IssueCardHandler:
-
     def __init__(self, repo: CardRepository, account_adapter: AccountAdapter) -> None:
         self._repo = repo
         self._account_adapter = account_adapter

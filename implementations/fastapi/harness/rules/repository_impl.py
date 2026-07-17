@@ -1,4 +1,5 @@
 """[3] Repository 구현체 — infrastructure/ 에만 위치"""
+
 from __future__ import annotations
 
 import re
@@ -15,7 +16,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             continue
         if "abstractmethod" in src:
             continue
-        if not re.search(r'class\s+\w+Repository\b', src):
+        if not re.search(r"class\s+\w+Repository\b", src):
             continue
         found = True
         r = rel(root, f)

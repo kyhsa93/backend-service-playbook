@@ -3,10 +3,10 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from main import app
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
-from main import app
 from src.account.infrastructure.persistence.account_repository import Base
 from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.database import get_session
@@ -175,9 +175,7 @@ async def test_suspending_account_cascades_to_suspend_its_active_cards(client: A
     card = await issue_card(client, OWNER_ID, account["account_id"])
     assert card["status"] == "ACTIVE"
 
-    suspend_response = await client.post(
-        f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID)
-    )
+    suspend_response = await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
     assert suspend_response.status_code == 204
 
     # account.suspended.v1 Integration Event가 같은 요청의 Outbox 드레인 안에서 처리되어

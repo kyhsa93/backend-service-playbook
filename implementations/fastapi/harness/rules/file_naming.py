@@ -1,4 +1,5 @@
 """[1] 파일명 snake_case 검사"""
+
 from __future__ import annotations
 
 import os
@@ -6,7 +7,7 @@ import re
 
 from .common import RuleResult, failed, passed, skipped
 
-SNAKE_CASE = re.compile(r'^[a-z][a-z0-9]*(_[a-z0-9]+)*\.py$')
+SNAKE_CASE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*\.py$")
 
 
 def check(root: str, py_files: list[str]) -> RuleResult:

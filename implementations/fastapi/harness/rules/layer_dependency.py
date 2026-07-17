@@ -5,6 +5,7 @@
 docs/architecture/domain-service.md의 Technical Service 패턴 및 layer-architecture.md의
 의존 방향 규칙 참조.
 """
+
 from __future__ import annotations
 
 import ast
@@ -39,11 +40,13 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                 violations.append(f"{'.' * node.level}{module} 에서 {names} import")
 
         if violations:
-            result.add(failed(
-                r,
-                "application/ 은 infrastructure/ 구현체를 직접 import 할 수 없음 "
-                "(의존성 역전 위반, domain/ 인터페이스에 의존해야 함): " + "; ".join(violations),
-            ))
+            result.add(
+                failed(
+                    r,
+                    "application/ 은 infrastructure/ 구현체를 직접 import 할 수 없음 "
+                    "(의존성 역전 위반, domain/ 인터페이스에 의존해야 함): " + "; ".join(violations),
+                )
+            )
         else:
             result.add(passed(f"{r} (layer-dependency)"))
 

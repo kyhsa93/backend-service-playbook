@@ -23,7 +23,8 @@ class AwsSecretService(SecretService):
                 return value
 
         async with self._boto_session.client(
-            "secretsmanager", **AwsConfig().client_kwargs()  # type: ignore[call-arg]
+            "secretsmanager",
+            **AwsConfig().client_kwargs(),  # type: ignore[call-arg]
         ) as client:
             response = await client.get_secret_value(SecretId=secret_id)
 

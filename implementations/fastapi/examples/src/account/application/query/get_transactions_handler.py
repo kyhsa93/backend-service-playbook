@@ -14,7 +14,6 @@ class GetTransactionsQuery:
 
 
 class GetTransactionsHandler:
-
     def __init__(self, repo: AccountQuery) -> None:
         self._repo = repo
 

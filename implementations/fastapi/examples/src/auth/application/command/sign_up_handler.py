@@ -13,7 +13,6 @@ class SignUpCommand:
 
 
 class SignUpHandler:
-
     def __init__(self, repo: CredentialRepository, password_hasher: PasswordHasher) -> None:
         self._repo = repo
         self._password_hasher = password_hasher
