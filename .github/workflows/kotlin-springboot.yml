@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - 'implementations/kotlin-springboot/**'
+      - '.github/workflows/kotlin-springboot.yml'
   pull_request:
     paths:
       - 'implementations/kotlin-springboot/**'
+      - '.github/workflows/kotlin-springboot.yml'
 
 jobs:
   kotlin-springboot:

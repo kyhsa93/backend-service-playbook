@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - 'implementations/nestjs/**'
+      - '.github/workflows/nestjs.yml'
   pull_request:
     paths:
       - 'implementations/nestjs/**'
+      - '.github/workflows/nestjs.yml'
 
 jobs:
   nestjs:

@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - 'implementations/go/**'
+      - '.github/workflows/go.yml'
   pull_request:
     paths:
       - 'implementations/go/**'
+      - '.github/workflows/go.yml'
 
 jobs:
   go:
