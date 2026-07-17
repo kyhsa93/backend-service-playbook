@@ -34,4 +34,7 @@ jobs:
       # 오탐할 수 있다 — pytest 실행으로 examples/ 아래 생긴 __pycache__를 harness 실행 전에 정리한다.
       - run: find examples -iname __pycache__ -exec rm -rf {} +
 
+      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+        run: cd harness && python3 -m pytest tests/
+
       - run: bash harness.sh examples

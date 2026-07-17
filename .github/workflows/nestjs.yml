@@ -24,4 +24,4 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run test:e2e
-      - run: cd ../harness && npm ci && npm run evaluate -- ../examples
+      - run: cd ../harness && npm ci && npm run test:evaluators && npm run evaluate -- ../examples

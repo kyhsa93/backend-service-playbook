@@ -36,5 +36,12 @@ jobs:
         run: ./gradlew build
         working-directory: implementations/java-springboot/examples
 
+      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+        working-directory: implementations/java-springboot/harness
+        run: |
+          javac -d build/classes $(find src -name "*.java")
+          javac -cp build/classes -d build/test-classes test/RuleTest.java
+          cd test && java -cp ../build/classes:../build/test-classes RuleTest
+
       - name: Run harness
         run: bash harness.sh examples

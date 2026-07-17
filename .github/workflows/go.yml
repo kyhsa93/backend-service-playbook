@@ -31,5 +31,11 @@ jobs:
         working-directory: implementations/go/examples
         run: go test ./...
 
+      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+        working-directory: implementations/go/harness
+        run: |
+          go test ./...
+          go vet ./...
+
       - name: Harness
         run: bash harness.sh examples

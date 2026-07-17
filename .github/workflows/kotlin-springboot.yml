@@ -35,4 +35,10 @@ jobs:
           unzip -q /tmp/kotlin-compiler.zip -d /tmp
           echo "/tmp/kotlinc/bin" >> "$GITHUB_PATH"
 
+      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+        working-directory: implementations/kotlin-springboot/harness
+        run: |
+          kotlinc src test/RuleTest.kt -include-runtime -d build/test.jar
+          cd test && java -cp ../build/test.jar harness.test.RuleTestKt
+
       - run: bash harness.sh examples
