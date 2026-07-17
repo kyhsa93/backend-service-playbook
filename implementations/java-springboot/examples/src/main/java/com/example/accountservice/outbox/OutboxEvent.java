@@ -5,14 +5,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Domain Event를 Aggregate 저장과 같은 트랜잭션에서 영속화하는 Outbox 레코드.
- * account.domain의 도메인 이벤트(record)를 JSON으로 직렬화해 보관하며,
- * {@link OutboxRelay}가 이후 이 테이블을 읽어 핸들러에 전달하고 처리 완료를 표시한다.
+ * Domain Event를 Aggregate 저장과 같은 트랜잭션에서 영속화하는 Outbox 레코드. account.domain의 도메인 이벤트(record)를 JSON으로
+ * 직렬화해 보관하며, {@link OutboxRelay}가 이후 이 테이블을 읽어 핸들러에 전달하고 처리 완료를 표시한다.
  */
 @Entity
 @Table(name = "outbox")
@@ -51,9 +49,23 @@ public class OutboxEvent {
         this.processed = true;
     }
 
-    public String getEventId() { return eventId; }
-    public String getEventType() { return eventType; }
-    public String getPayload() { return payload; }
-    public boolean isProcessed() { return processed; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getEventId() {
+        return eventId;
+    }
+
+    public String getEventType() {
+        return eventType;
+    }
+
+    public String getPayload() {
+        return payload;
+    }
+
+    public boolean isProcessed() {
+        return processed;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
 }

@@ -7,7 +7,6 @@ public record TransactionResult(
         String accountId,
         String type,
         MoneyResult amount,
-        LocalDateTime createdAt
-) {
+        LocalDateTime createdAt) {
     public record MoneyResult(long amount, String currency) {}
 }

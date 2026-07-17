@@ -1,21 +1,5 @@
 package com.example.accountservice.auth.application.command;
 
-import com.example.accountservice.auth.application.query.CredentialQuery;
-import com.example.accountservice.auth.application.service.PasswordHasher;
-import com.example.accountservice.auth.domain.AuthException;
-import com.example.accountservice.auth.domain.Credential;
-import com.example.accountservice.auth.domain.CredentialFindQuery;
-import com.example.accountservice.auth.domain.CredentialRepository;
-import com.example.accountservice.auth.domain.CredentialsWithCount;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,17 +7,29 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.accountservice.auth.application.query.CredentialQuery;
+import com.example.accountservice.auth.application.service.PasswordHasher;
+import com.example.accountservice.auth.domain.AuthException;
+import com.example.accountservice.auth.domain.Credential;
+import com.example.accountservice.auth.domain.CredentialFindQuery;
+import com.example.accountservice.auth.domain.CredentialRepository;
+import com.example.accountservice.auth.domain.CredentialsWithCount;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 @ExtendWith(MockitoExtension.class)
 class SignUpServiceTest {
 
-    @Mock
-    private CredentialQuery credentialQuery;
+    @Mock private CredentialQuery credentialQuery;
 
-    @Mock
-    private CredentialRepository credentialRepository;
+    @Mock private CredentialRepository credentialRepository;
 
-    @Mock
-    private PasswordHasher passwordHasher;
+    @Mock private PasswordHasher passwordHasher;
 
     private SignUpService service;
 

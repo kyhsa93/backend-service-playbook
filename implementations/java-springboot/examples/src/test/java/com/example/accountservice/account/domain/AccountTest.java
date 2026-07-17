@@ -1,9 +1,9 @@
 package com.example.accountservice.account.domain;
 
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
 
 class AccountTest {
 
@@ -17,8 +17,10 @@ class AccountTest {
 
         assertThat(account.getBalance().amount()).isEqualTo(0);
         assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
-        assertThat(account.pullDomainEvents()).hasSize(1)
-                .first().isInstanceOf(AccountCreatedEvent.class);
+        assertThat(account.pullDomainEvents())
+                .hasSize(1)
+                .first()
+                .isInstanceOf(AccountCreatedEvent.class);
     }
 
     @Test
@@ -60,7 +62,8 @@ class AccountTest {
         assertThat(events).hasSize(1);
         assertThat(((MoneyDepositedEvent) events.get(0)).amount().amount()).isEqualTo(5000);
         assertThat(account.getBalance().amount()).isEqualTo(5000);
-        assertThat(account.pullPendingTransactions().get(0).getTransactionId()).matches("^[0-9a-f]{32}$");
+        assertThat(account.pullPendingTransactions().get(0).getTransactionId())
+                .matches("^[0-9a-f]{32}$");
     }
 
     @Test
@@ -107,7 +110,10 @@ class AccountTest {
         account.suspend();
 
         assertThat(account.getStatus()).isEqualTo(AccountStatus.SUSPENDED);
-        assertThat(account.pullDomainEvents()).hasSize(1).first().isInstanceOf(AccountSuspendedEvent.class);
+        assertThat(account.pullDomainEvents())
+                .hasSize(1)
+                .first()
+                .isInstanceOf(AccountSuspendedEvent.class);
     }
 
     @Test
@@ -130,7 +136,10 @@ class AccountTest {
         account.reactivate();
 
         assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
-        assertThat(account.pullDomainEvents()).hasSize(1).first().isInstanceOf(AccountReactivatedEvent.class);
+        assertThat(account.pullDomainEvents())
+                .hasSize(1)
+                .first()
+                .isInstanceOf(AccountReactivatedEvent.class);
     }
 
     @Test
@@ -162,7 +171,10 @@ class AccountTest {
         account.close();
 
         assertThat(account.getStatus()).isEqualTo(AccountStatus.CLOSED);
-        assertThat(account.pullDomainEvents()).hasSize(1).first().isInstanceOf(AccountClosedEvent.class);
+        assertThat(account.pullDomainEvents())
+                .hasSize(1)
+                .first()
+                .isInstanceOf(AccountClosedEvent.class);
     }
 
     @Test

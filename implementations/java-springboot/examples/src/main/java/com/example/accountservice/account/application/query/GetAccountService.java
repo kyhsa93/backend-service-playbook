@@ -15,18 +15,25 @@ public class GetAccountService {
     private final AccountQuery accountQuery;
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
-        Account account = accountQuery
-                .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
-                .accounts().stream().findFirst()
-                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+        Account account =
+                accountQuery
+                        .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                        .accounts()
+                        .stream()
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new AccountException(
+                                                AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
+                                                "계좌를 찾을 수 없습니다."));
         return new GetAccountResult(
                 account.getAccountId(),
                 account.getOwnerId(),
                 account.getEmail(),
-                new GetAccountResult.MoneyResult(account.getBalance().amount(), account.getBalance().currency()),
+                new GetAccountResult.MoneyResult(
+                        account.getBalance().amount(), account.getBalance().currency()),
                 account.getStatus().name(),
                 account.getCreatedAt(),
-                account.getUpdatedAt()
-        );
+                account.getUpdatedAt());
     }
 }

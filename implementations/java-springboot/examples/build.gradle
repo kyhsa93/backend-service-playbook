@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.3.5'
     id 'io.spring.dependency-management' version '1.1.6'
+    id 'com.diffplug.spotless' version '6.25.0'
 }
 
 group = 'com.example'
@@ -53,4 +54,23 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// 코드 품질 baseline: 포맷/불필요한 import 등 기계적으로 잡을 수 있는 이슈를 자동 교정한다.
+// Checkstyle(순수 린터, 별도 ruleset 필요)보다 googleJavaFormat 기반 자동 수정이 diff를
+// 최소화하면서 baseline 커버리지를 확보하는 데 더 낮은 마찰 비용을 가진다고 판단해 채택했다.
+// `./gradlew spotlessApply`로 자동 수정, `./gradlew spotlessCheck`(= build에 포함)로 검증한다.
+spotless {
+    java {
+        target 'src/main/java/**/*.java', 'src/test/java/**/*.java'
+        googleJavaFormat('1.22.0').aosp()
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+        importOrder()
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'spotlessCheck'
 }

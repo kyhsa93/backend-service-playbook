@@ -9,13 +9,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
 import java.time.LocalDateTime;
 
 /**
- * card/domain/Card.java의 JPA 매핑 전용 대응물.
- * Domain Aggregate(Card)는 이 클래스를 전혀 알지 못한다 — 변환은 CardMapper가 전담한다
- * (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조, layer-architecture.md 참고).
+ * card/domain/Card.java의 JPA 매핑 전용 대응물. Domain Aggregate(Card)는 이 클래스를 전혀 알지 못한다 — 변환은 CardMapper가
+ * 전담한다 (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조, layer-architecture.md 참고).
  */
 @Entity
 @Table(name = "card")
@@ -53,8 +51,7 @@ public class CardJpaEntity {
             String ownerId,
             String brand,
             CardStatus status,
-            LocalDateTime createdAt
-    ) {
+            LocalDateTime createdAt) {
         this.id = id;
         this.cardId = cardId;
         this.accountId = accountId;
@@ -69,11 +66,31 @@ public class CardJpaEntity {
         this.status = status;
     }
 
-    Long getId() { return id; }
-    String getCardId() { return cardId; }
-    String getAccountId() { return accountId; }
-    String getOwnerId() { return ownerId; }
-    String getBrand() { return brand; }
-    CardStatus getStatus() { return status; }
-    LocalDateTime getCreatedAt() { return createdAt; }
+    Long getId() {
+        return id;
+    }
+
+    String getCardId() {
+        return cardId;
+    }
+
+    String getAccountId() {
+        return accountId;
+    }
+
+    String getOwnerId() {
+        return ownerId;
+    }
+
+    String getBrand() {
+        return brand;
+    }
+
+    CardStatus getStatus() {
+        return status;
+    }
+
+    LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
 }

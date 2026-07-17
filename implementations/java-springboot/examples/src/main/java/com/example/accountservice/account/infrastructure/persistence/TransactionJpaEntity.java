@@ -10,12 +10,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
 import java.time.LocalDateTime;
 
 /**
- * account/domain/Transaction.java의 JPA 매핑 전용 대응물.
- * Domain 하위 Entity(Transaction)는 이 클래스를 전혀 알지 못한다 — 변환은 TransactionMapper가 전담한다.
+ * account/domain/Transaction.java의 JPA 매핑 전용 대응물. Domain 하위 Entity(Transaction)는 이 클래스를 전혀 알지 못한다 —
+ * 변환은 TransactionMapper가 전담한다.
  */
 @Entity
 @Table(name = "transactions")
@@ -35,8 +34,7 @@ public class TransactionJpaEntity {
     @Column(nullable = false)
     private TransactionType type;
 
-    @Embedded
-    private MoneyEmbeddable amount;
+    @Embedded private MoneyEmbeddable amount;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -49,8 +47,7 @@ public class TransactionJpaEntity {
             String accountId,
             TransactionType type,
             MoneyEmbeddable amount,
-            LocalDateTime createdAt
-    ) {
+            LocalDateTime createdAt) {
         this.id = id;
         this.transactionId = transactionId;
         this.accountId = accountId;
@@ -59,10 +56,27 @@ public class TransactionJpaEntity {
         this.createdAt = createdAt;
     }
 
-    Long getId() { return id; }
-    String getTransactionId() { return transactionId; }
-    String getAccountId() { return accountId; }
-    TransactionType getType() { return type; }
-    MoneyEmbeddable getAmount() { return amount; }
-    LocalDateTime getCreatedAt() { return createdAt; }
+    Long getId() {
+        return id;
+    }
+
+    String getTransactionId() {
+        return transactionId;
+    }
+
+    String getAccountId() {
+        return accountId;
+    }
+
+    TransactionType getType() {
+        return type;
+    }
+
+    MoneyEmbeddable getAmount() {
+        return amount;
+    }
+
+    LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
 }

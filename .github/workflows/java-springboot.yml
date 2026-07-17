@@ -32,6 +32,12 @@ jobs:
           java-version: '21'
           cache: gradle
 
+      # spotlessCheck는 build/check가 자동으로 포함하지만, Testcontainers e2e까지 기다리지
+      # 않고 포맷 위반을 먼저 빠르게 보고하기 위해 별도 스텝으로 분리한다.
+      - name: Lint (Spotless)
+        run: ./gradlew spotlessCheck
+        working-directory: implementations/java-springboot/examples
+
       - name: Build (unit + Testcontainers e2e)
         run: ./gradlew build
         working-directory: implementations/java-springboot/examples

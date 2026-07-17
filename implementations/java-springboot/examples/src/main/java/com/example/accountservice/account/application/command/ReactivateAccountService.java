@@ -16,10 +16,19 @@ public class ReactivateAccountService {
     private final OutboxRelay outboxRelay;
 
     public void reactivate(ReactivateAccountCommand command) {
-        Account account = accountRepository
-                .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
-                .accounts().stream().findFirst()
-                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+        Account account =
+                accountRepository
+                        .findAccounts(
+                                new AccountFindQuery(
+                                        0, 1, command.accountId(), command.requesterId(), null))
+                        .accounts()
+                        .stream()
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new AccountException(
+                                                AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
+                                                "계좌를 찾을 수 없습니다."));
         account.reactivate();
         accountRepository.saveAccount(account);
         outboxRelay.processPending();

@@ -14,8 +14,14 @@ public class GetCardService {
     private final CardQuery cardQuery;
 
     public GetCardResult getCard(String cardId, String requesterId) {
-        Card card = cardQuery.findByCardIdAndOwnerId(cardId, requesterId)
-                .orElseThrow(() -> new CardException(CardException.ErrorCode.CARD_NOT_FOUND, "카드를 찾을 수 없습니다."));
+        Card card =
+                cardQuery
+                        .findByCardIdAndOwnerId(cardId, requesterId)
+                        .orElseThrow(
+                                () ->
+                                        new CardException(
+                                                CardException.ErrorCode.CARD_NOT_FOUND,
+                                                "카드를 찾을 수 없습니다."));
         return new GetCardResult(
                 card.getCardId(),
                 card.getAccountId(),

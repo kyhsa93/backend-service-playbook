@@ -1,11 +1,18 @@
 package com.example.accountservice.auth.application.command;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
 import com.example.accountservice.auth.application.query.CredentialQuery;
 import com.example.accountservice.auth.application.service.PasswordHasher;
 import com.example.accountservice.auth.domain.AuthException;
 import com.example.accountservice.auth.domain.Credential;
 import com.example.accountservice.auth.domain.CredentialFindQuery;
 import com.example.accountservice.auth.domain.CredentialsWithCount;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,25 +22,14 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 
-import java.time.Instant;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class SignInServiceTest {
 
-    @Mock
-    private CredentialQuery credentialQuery;
+    @Mock private CredentialQuery credentialQuery;
 
-    @Mock
-    private PasswordHasher passwordHasher;
+    @Mock private PasswordHasher passwordHasher;
 
-    @Mock
-    private JwtEncoder jwtEncoder;
+    @Mock private JwtEncoder jwtEncoder;
 
     private SignInService service;
 
@@ -48,12 +44,13 @@ class SignInServiceTest {
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "owner-1")))
                 .thenReturn(new CredentialsWithCount(List.of(credential), 1));
         when(passwordHasher.verify("plain-password", "hashed-password")).thenReturn(true);
-        Jwt jwt = Jwt.withTokenValue("access-token")
-                .header("alg", "HS256")
-                .claim("sub", "owner-1")
-                .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plusSeconds(3600))
-                .build();
+        Jwt jwt =
+                Jwt.withTokenValue("access-token")
+                        .header("alg", "HS256")
+                        .claim("sub", "owner-1")
+                        .issuedAt(Instant.now())
+                        .expiresAt(Instant.now().plusSeconds(3600))
+                        .build();
         when(jwtEncoder.encode(any(JwtEncoderParameters.class))).thenReturn(jwt);
 
         SignInResult result = service.signIn(new SignInCommand("owner-1", "plain-password"));
@@ -66,7 +63,8 @@ class SignInServiceTest {
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "no-such-user")))
                 .thenReturn(new CredentialsWithCount(List.of(), 0));
 
-        assertThatThrownBy(() -> service.signIn(new SignInCommand("no-such-user", "plain-password")))
+        assertThatThrownBy(
+                        () -> service.signIn(new SignInCommand("no-such-user", "plain-password")))
                 .isInstanceOf(AuthException.class)
                 .extracting(e -> ((AuthException) e).code())
                 .isEqualTo(AuthException.ErrorCode.INVALID_CREDENTIALS);

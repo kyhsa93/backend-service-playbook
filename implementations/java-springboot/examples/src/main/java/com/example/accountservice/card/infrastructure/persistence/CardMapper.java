@@ -3,8 +3,8 @@ package com.example.accountservice.card.infrastructure.persistence;
 import com.example.accountservice.card.domain.Card;
 
 /**
- * Card(순수 도메인) ↔ CardJpaEntity(JPA 매핑) 변환 전담 클래스.
- * CardRepositoryImpl 내부에서만 사용된다 — Domain/Application 레이어는 이 클래스를 알지 못한다.
+ * Card(순수 도메인) ↔ CardJpaEntity(JPA 매핑) 변환 전담 클래스. CardRepositoryImpl 내부에서만 사용된다 —
+ * Domain/Application 레이어는 이 클래스를 알지 못한다.
  */
 final class CardMapper {
 

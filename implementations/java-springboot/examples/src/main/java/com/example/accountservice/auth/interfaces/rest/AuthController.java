@@ -1,5 +1,7 @@
 package com.example.accountservice.auth.interfaces.rest;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 import com.example.accountservice.account.interfaces.rest.ErrorResponse;
 import com.example.accountservice.auth.application.command.SignInCommand;
 import com.example.accountservice.auth.application.command.SignInResult;
@@ -19,8 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-
-import static net.logstash.logback.argument.StructuredArguments.kv;
 
 @RestController
 @RequestMapping("/auth")
@@ -45,10 +45,12 @@ public class AuthController {
 
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ErrorResponse> handleAuthException(AuthException e) {
-        HttpStatus status = e.code() == AuthException.ErrorCode.INVALID_CREDENTIALS
-                ? HttpStatus.UNAUTHORIZED
-                : HttpStatus.BAD_REQUEST;
+        HttpStatus status =
+                e.code() == AuthException.ErrorCode.INVALID_CREDENTIALS
+                        ? HttpStatus.UNAUTHORIZED
+                        : HttpStatus.BAD_REQUEST;
         log.warn("인증 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
-        return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
+        return ResponseEntity.status(status)
+                .body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }
 }

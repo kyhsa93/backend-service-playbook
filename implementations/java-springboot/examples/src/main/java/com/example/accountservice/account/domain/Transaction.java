@@ -1,12 +1,11 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
-
 import java.time.LocalDateTime;
 
 /**
- * Account Aggregate의 하위 Entity — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다.
- * 영속성 매핑은 infrastructure/persistence/TransactionJpaEntity + TransactionMapper가 전담한다.
+ * Account Aggregate의 하위 Entity — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 영속성 매핑은
+ * infrastructure/persistence/TransactionJpaEntity + TransactionMapper가 전담한다.
  */
 public class Transaction {
 
@@ -28,16 +27,13 @@ public class Transaction {
         return transaction;
     }
 
-    /**
-     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Transaction을 복원할 때 사용한다.
-     */
+    /** Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Transaction을 복원할 때 사용한다. */
     public static Transaction reconstitute(
             String transactionId,
             String accountId,
             TransactionType type,
             Money amount,
-            LocalDateTime createdAt
-    ) {
+            LocalDateTime createdAt) {
         Transaction transaction = new Transaction();
         transaction.transactionId = transactionId;
         transaction.accountId = accountId;
@@ -47,9 +43,23 @@ public class Transaction {
         return transaction;
     }
 
-    public String getTransactionId() { return transactionId; }
-    public String getAccountId() { return accountId; }
-    public TransactionType getType() { return type; }
-    public Money getAmount() { return amount; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getTransactionId() {
+        return transactionId;
+    }
+
+    public String getAccountId() {
+        return accountId;
+    }
+
+    public TransactionType getType() {
+        return type;
+    }
+
+    public Money getAmount() {
+        return amount;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
 }

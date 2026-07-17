@@ -8,5 +8,4 @@ public record IssueCardResult(
         String ownerId,
         String brand,
         String status,
-        LocalDateTime createdAt
-) {}
+        LocalDateTime createdAt) {}

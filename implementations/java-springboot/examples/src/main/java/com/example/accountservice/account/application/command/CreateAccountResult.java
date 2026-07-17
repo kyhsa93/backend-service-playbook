@@ -8,7 +8,6 @@ public record CreateAccountResult(
         String email,
         MoneyResult balance,
         String status,
-        LocalDateTime createdAt
-) {
+        LocalDateTime createdAt) {
     public record MoneyResult(long amount, String currency) {}
 }

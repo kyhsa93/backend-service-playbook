@@ -10,12 +10,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
 import java.time.LocalDateTime;
 
 /**
- * account/domain/Account.java의 JPA 매핑 전용 대응물.
- * Domain Aggregate(Account)는 이 클래스를 전혀 알지 못한다 — 변환은 AccountMapper가 전담한다(layer-architecture.md 참고).
+ * account/domain/Account.java의 JPA 매핑 전용 대응물. Domain Aggregate(Account)는 이 클래스를 전혀 알지 못한다 — 변환은
+ * AccountMapper가 전담한다(layer-architecture.md 참고).
  */
 @Entity
 @Table(name = "accounts")
@@ -34,8 +33,7 @@ public class AccountJpaEntity {
     @Column(nullable = false)
     private String email;
 
-    @Embedded
-    private MoneyEmbeddable balance;
+    @Embedded private MoneyEmbeddable balance;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -47,8 +45,7 @@ public class AccountJpaEntity {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    @Column
-    private LocalDateTime deletedAt;
+    @Column private LocalDateTime deletedAt;
 
     protected AccountJpaEntity() {}
 
@@ -61,8 +58,7 @@ public class AccountJpaEntity {
             AccountStatus status,
             LocalDateTime createdAt,
             LocalDateTime updatedAt,
-            LocalDateTime deletedAt
-    ) {
+            LocalDateTime deletedAt) {
         this.id = id;
         this.accountId = accountId;
         this.ownerId = ownerId;
@@ -80,8 +76,7 @@ public class AccountJpaEntity {
             MoneyEmbeddable balance,
             AccountStatus status,
             LocalDateTime updatedAt,
-            LocalDateTime deletedAt
-    ) {
+            LocalDateTime deletedAt) {
         this.email = email;
         this.balance = balance;
         this.status = status;
@@ -89,13 +84,39 @@ public class AccountJpaEntity {
         this.deletedAt = deletedAt;
     }
 
-    Long getId() { return id; }
-    String getAccountId() { return accountId; }
-    String getOwnerId() { return ownerId; }
-    String getEmail() { return email; }
-    MoneyEmbeddable getBalance() { return balance; }
-    AccountStatus getStatus() { return status; }
-    LocalDateTime getCreatedAt() { return createdAt; }
-    LocalDateTime getUpdatedAt() { return updatedAt; }
-    LocalDateTime getDeletedAt() { return deletedAt; }
+    Long getId() {
+        return id;
+    }
+
+    String getAccountId() {
+        return accountId;
+    }
+
+    String getOwnerId() {
+        return ownerId;
+    }
+
+    String getEmail() {
+        return email;
+    }
+
+    MoneyEmbeddable getBalance() {
+        return balance;
+    }
+
+    AccountStatus getStatus() {
+        return status;
+    }
+
+    LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
 }

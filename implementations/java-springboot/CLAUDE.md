@@ -81,6 +81,21 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 
 FAIL 항목의 규칙 이름과 메시지에 관련 문서 링크가 포함된다. 해당 문서를 열어 수정한다.
 
+## 코드 포맷/린트 (Spotless)
+
+harness는 아키텍처 규칙(파일 배치, 레이어링)만 검사하고 포맷·불필요한 import 같은 일반적인 코드 품질은
+검사하지 않는다. `examples/build.gradle`에 [Spotless](https://github.com/diffplug/spotless) +
+`googleJavaFormat`(AOSP 스타일, 4-space indent)을 적용해 이 gap을 메운다.
+
+```bash
+cd examples
+./gradlew spotlessCheck   # 포맷 위반 검사만 (수정 없음). CI가 이 태스크를 실행한다.
+./gradlew spotlessApply   # 위반 자동 수정
+```
+
+`./gradlew build`(`check` 태스크 경유)에도 `spotlessCheck`가 포함되어 있어, 포맷이 깨지면 빌드가 실패한다.
+새 코드를 추가한 뒤에는 커밋 전에 `spotlessApply`를 한 번 돌리는 것을 권장한다.
+
 ## 예시 코드 (Account 도메인 전체)
 
 `examples/` 디렉토리에 Account 도메인 전체 구현 예시(계좌 개설/입출금/정지/재개/종료 + SES 알림)가 있다.

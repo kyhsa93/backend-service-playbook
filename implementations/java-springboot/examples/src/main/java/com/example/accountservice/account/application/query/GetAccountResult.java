@@ -9,7 +9,6 @@ public record GetAccountResult(
         MoneyResult balance,
         String status,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
-) {
+        LocalDateTime updatedAt) {
     public record MoneyResult(long amount, String currency) {}
 }

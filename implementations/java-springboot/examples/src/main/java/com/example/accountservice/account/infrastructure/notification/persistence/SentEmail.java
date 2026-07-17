@@ -2,7 +2,6 @@ package com.example.accountservice.account.infrastructure.notification.persisten
 
 import com.example.accountservice.common.IdGenerator;
 import jakarta.persistence.*;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -36,7 +35,12 @@ public class SentEmail {
 
     protected SentEmail() {}
 
-    public static SentEmail create(String accountId, String eventType, String recipient, String subject, String sesMessageId) {
+    public static SentEmail create(
+            String accountId,
+            String eventType,
+            String recipient,
+            String subject,
+            String sesMessageId) {
         SentEmail sentEmail = new SentEmail();
         sentEmail.sentEmailId = IdGenerator.generate();
         sentEmail.accountId = accountId;
@@ -48,11 +52,31 @@ public class SentEmail {
         return sentEmail;
     }
 
-    public String getSentEmailId() { return sentEmailId; }
-    public String getAccountId() { return accountId; }
-    public String getEventType() { return eventType; }
-    public String getRecipient() { return recipient; }
-    public String getSubject() { return subject; }
-    public String getSesMessageId() { return sesMessageId; }
-    public LocalDateTime getSentAt() { return sentAt; }
+    public String getSentEmailId() {
+        return sentEmailId;
+    }
+
+    public String getAccountId() {
+        return accountId;
+    }
+
+    public String getEventType() {
+        return eventType;
+    }
+
+    public String getRecipient() {
+        return recipient;
+    }
+
+    public String getSubject() {
+        return subject;
+    }
+
+    public String getSesMessageId() {
+        return sesMessageId;
+    }
+
+    public LocalDateTime getSentAt() {
+        return sentAt;
+    }
 }

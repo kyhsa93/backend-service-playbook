@@ -18,12 +18,14 @@ public class SignUpService {
     private final PasswordHasher passwordHasher;
 
     public void signUp(SignUpCommand command) {
-        boolean exists = !credentialQuery
-                .findCredentials(new CredentialFindQuery(0, 1, command.userId()))
-                .credentials()
-                .isEmpty();
+        boolean exists =
+                !credentialQuery
+                        .findCredentials(new CredentialFindQuery(0, 1, command.userId()))
+                        .credentials()
+                        .isEmpty();
         if (exists) {
-            throw new AuthException(AuthException.ErrorCode.USER_ID_ALREADY_EXISTS, "이미 사용 중인 아이디입니다.");
+            throw new AuthException(
+                    AuthException.ErrorCode.USER_ID_ALREADY_EXISTS, "이미 사용 중인 아이디입니다.");
         }
 
         String passwordHash = passwordHasher.hash(command.password());

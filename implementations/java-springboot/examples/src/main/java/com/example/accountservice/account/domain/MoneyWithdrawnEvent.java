@@ -8,5 +8,4 @@ public record MoneyWithdrawnEvent(
         String transactionId,
         Money amount,
         Money balanceAfter,
-        LocalDateTime createdAt
-) {}
+        LocalDateTime createdAt) {}

@@ -14,16 +14,17 @@ public class CreateAccountService {
     private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
-        Account account = Account.create(command.requesterId(), command.email(), command.currency());
+        Account account =
+                Account.create(command.requesterId(), command.email(), command.currency());
         accountRepository.saveAccount(account);
         outboxRelay.processPending();
         return new CreateAccountResult(
                 account.getAccountId(),
                 account.getOwnerId(),
                 account.getEmail(),
-                new CreateAccountResult.MoneyResult(account.getBalance().amount(), account.getBalance().currency()),
+                new CreateAccountResult.MoneyResult(
+                        account.getBalance().amount(), account.getBalance().currency()),
                 account.getStatus().name(),
-                account.getCreatedAt()
-        );
+                account.getCreatedAt());
     }
 }

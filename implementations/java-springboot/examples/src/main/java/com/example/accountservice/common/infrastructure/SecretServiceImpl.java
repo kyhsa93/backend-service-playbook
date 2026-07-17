@@ -2,15 +2,14 @@ package com.example.accountservice.common.infrastructure;
 
 import com.example.accountservice.common.service.SecretService;
 import com.example.accountservice.config.AwsProperties;
-import org.springframework.stereotype.Component;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
-
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.stereotype.Component;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
 
 @Component
 public class SecretServiceImpl implements SecretService {

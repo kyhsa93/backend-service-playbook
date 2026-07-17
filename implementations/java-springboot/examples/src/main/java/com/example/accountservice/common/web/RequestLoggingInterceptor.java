@@ -13,15 +13,24 @@ public class RequestLoggingInterceptor implements HandlerInterceptor {
     private static final String START_TIME_ATTR = "startTime";
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+    public boolean preHandle(
+            HttpServletRequest request, HttpServletResponse response, Object handler) {
         request.setAttribute(START_TIME_ATTR, System.currentTimeMillis());
         return true;
     }
 
     @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+    public void afterCompletion(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Object handler,
+            Exception ex) {
         long durationMs = System.currentTimeMillis() - (long) request.getAttribute(START_TIME_ATTR);
-        log.info("{} {} status={} duration_ms={}", request.getMethod(), request.getRequestURI(),
-                response.getStatus(), durationMs);
+        log.info(
+                "{} {} status={} duration_ms={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                response.getStatus(),
+                durationMs);
     }
 }

@@ -1,5 +1,7 @@
 package com.example.accountservice.account.interfaces.rest;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 import com.example.accountservice.account.application.command.*;
 import com.example.accountservice.account.application.query.GetAccountResult;
 import com.example.accountservice.account.application.query.GetAccountService;
@@ -14,8 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import static net.logstash.logback.argument.StructuredArguments.kv;
 
 @RestController
 @RequestMapping("/accounts")
@@ -38,11 +38,10 @@ public class AccountController {
     @ResponseStatus(HttpStatus.CREATED)
     @io.github.resilience4j.ratelimiter.annotation.RateLimiter(name = "createAccount")
     public CreateAccountResult createAccount(
-            Authentication authentication,
-            @Valid @RequestBody CreateAccountRequest request
-    ) {
+            Authentication authentication, @Valid @RequestBody CreateAccountRequest request) {
         String requesterId = authentication.getName();
-        return createAccountService.create(new CreateAccountCommand(requesterId, request.email(), request.currency()));
+        return createAccountService.create(
+                new CreateAccountCommand(requesterId, request.email(), request.currency()));
     }
 
     @PostMapping("/{accountId}/deposit")
@@ -50,8 +49,7 @@ public class AccountController {
     public TransactionResult deposit(
             Authentication authentication,
             @PathVariable String accountId,
-            @RequestBody DepositRequest request
-    ) {
+            @RequestBody DepositRequest request) {
         String requesterId = authentication.getName();
         return depositService.deposit(new DepositCommand(accountId, requesterId, request.amount()));
     }
@@ -61,22 +59,24 @@ public class AccountController {
     public TransactionResult withdraw(
             Authentication authentication,
             @PathVariable String accountId,
-            @RequestBody WithdrawRequest request
-    ) {
+            @RequestBody WithdrawRequest request) {
         String requesterId = authentication.getName();
-        return withdrawService.withdraw(new WithdrawCommand(accountId, requesterId, request.amount()));
+        return withdrawService.withdraw(
+                new WithdrawCommand(accountId, requesterId, request.amount()));
     }
 
     @PostMapping("/{accountId}/suspend")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void suspendAccount(Authentication authentication, @PathVariable String accountId) {
-        suspendAccountService.suspend(new SuspendAccountCommand(accountId, authentication.getName()));
+        suspendAccountService.suspend(
+                new SuspendAccountCommand(accountId, authentication.getName()));
     }
 
     @PostMapping("/{accountId}/reactivate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void reactivateAccount(Authentication authentication, @PathVariable String accountId) {
-        reactivateAccountService.reactivate(new ReactivateAccountCommand(accountId, authentication.getName()));
+        reactivateAccountService.reactivate(
+                new ReactivateAccountCommand(accountId, authentication.getName()));
     }
 
     @PostMapping("/{accountId}/close")
@@ -92,7 +92,8 @@ public class AccountController {
     }
 
     @GetMapping("/{accountId}")
-    public GetAccountResult getAccount(Authentication authentication, @PathVariable String accountId) {
+    public GetAccountResult getAccount(
+            Authentication authentication, @PathVariable String accountId) {
         return getAccountService.getAccount(accountId, authentication.getName());
     }
 
@@ -101,17 +102,19 @@ public class AccountController {
             Authentication authentication,
             @PathVariable String accountId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int take
-    ) {
-        return getTransactionsService.getTransactions(accountId, authentication.getName(), page, take);
+            @RequestParam(defaultValue = "20") int take) {
+        return getTransactionsService.getTransactions(
+                accountId, authentication.getName(), page, take);
     }
 
     @ExceptionHandler(AccountException.class)
     public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) {
-        HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
-                ? HttpStatus.NOT_FOUND
-                : HttpStatus.BAD_REQUEST;
+        HttpStatus status =
+                e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
+                        ? HttpStatus.NOT_FOUND
+                        : HttpStatus.BAD_REQUEST;
         log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
-        return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
+        return ResponseEntity.status(status)
+                .body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }
 }

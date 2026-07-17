@@ -1,6 +1,9 @@
 package com.example.accountservice.auth.interfaces.rest;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.example.accountservice.AccountServiceApplication;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,13 +18,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Testcontainers
 @SuppressWarnings("unchecked")
-@SpringBootTest(classes = AccountServiceApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        classes = AccountServiceApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AuthControllerE2ETest {
 
     @Container
@@ -36,11 +37,11 @@ class AuthControllerE2ETest {
         registry.add("spring.flyway.enabled", () -> "false");
         // 이 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
         // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
-        registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
+        registry.add(
+                "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }
 
-    @Autowired
-    private TestRestTemplate restTemplate;
+    @Autowired private TestRestTemplate restTemplate;
 
     private static final String PASSWORD = "password123!";
 
@@ -50,15 +51,19 @@ class AuthControllerE2ETest {
     // 팩토리로 바꿔서 피한다(build.gradle의 testImplementation httpclient5 참고).
     @BeforeEach
     void useApacheHttpClientRequestFactory() {
-        restTemplate.getRestTemplate().setRequestFactory(new HttpComponentsClientHttpRequestFactory());
+        restTemplate
+                .getRestTemplate()
+                .setRequestFactory(new HttpComponentsClientHttpRequestFactory());
     }
 
     private ResponseEntity<Map> signUp(String userId, String password) {
-        return restTemplate.postForEntity("/auth/sign-up", Map.of("userId", userId, "password", password), Map.class);
+        return restTemplate.postForEntity(
+                "/auth/sign-up", Map.of("userId", userId, "password", password), Map.class);
     }
 
     private ResponseEntity<Map> signIn(String userId, String password) {
-        return restTemplate.postForEntity("/auth/sign-in", Map.of("userId", userId, "password", password), Map.class);
+        return restTemplate.postForEntity(
+                "/auth/sign-in", Map.of("userId", userId, "password", password), Map.class);
     }
 
     @Test
