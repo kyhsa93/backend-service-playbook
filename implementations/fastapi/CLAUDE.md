@@ -12,6 +12,7 @@ DDD 기반 FastAPI(Python) 서버 프로젝트의 설계/구현 가이드이다.
 
 | 작업 / 키워드 | 읽을 문서 |
 |---------------|----------|
+| 새 도메인 추가, 도메인 모듈 템플릿, Order 예시 | `docs/reference.md` — `scripts/create_domain.py`로 즉시 코드 생성 가능(아래 "스캐폴딩" 참고) |
 | 프로젝트 구조, 디렉토리 레이아웃, 파일·클래스 네이밍 | `docs/architecture/directory-structure.md` |
 | 레이어 역할, Domain / Application / Interface / Infrastructure, `Depends` 기반 DI | `docs/architecture/layer-architecture.md` |
 | Repository 패턴, ABC 인터페이스·SQLAlchemy 구현, 메서드 네이밍 | `docs/architecture/repository-pattern.md` |
@@ -106,6 +107,40 @@ ruff format --check .  # 포맷 위반만 확인 (CI와 동일)
 ```
 
 CI(`.github/workflows/fastapi.yml`)는 `ruff check .`와 `ruff format --check .`를 테스트보다 먼저 실행해 위반 시 실패한다.
+
+## 스캐폴딩 — 새 도메인 생성기
+
+`docs/reference.md`·`examples/src/account`·`examples/src/card`의 실제 코드를 기준으로,
+Aggregate(단일 상태 필드 + PENDING/ACTIVE/CANCELLED) + CQRS Command/Query Handler + 도메인
+이벤트 1종(cancel에서 발행) + Repository(ABC/구현체) + Router + Pydantic 스키마 + Alembic
+마이그레이션까지 한 번에 생성하는 Python 스크립트다. FastAPI에는 DI 컨테이너가 없고 OutboxRelay가
+프로세스 전체에 공유 인스턴스 하나뿐이므로(도메인마다 전용 OutboxRelay를 두는 NestJS와 다름),
+새 도메인 디렉토리 생성뿐 아니라 `main.py`(라우터 등록), `account_router.py`(공유 OutboxRelay의
+조립 지점인 `_outbox_relay()`), `migrations/env.py`(Alembic이 감지할 모델 import)까지 함께
+배선해야 한다.
+
+```bash
+# 기본: ../examples/src/<domain>/ 아래 생성, main.py/account_router.py/migrations는
+# 건드리지 않고 붙여넣을 스니펫만 출력
+python3 scripts/create_domain.py Coupon
+
+# --wire를 주면 main.py/account_router.py/migrations/env.py/migrations/versions/까지 자동 배선
+python3 scripts/create_domain.py Coupon --wire
+
+# 다른 프로젝트(이 저장소를 템플릿으로 복제한 프로젝트 등)에 생성하려면 --out으로 지정
+python3 scripts/create_domain.py Coupon --out /path/to/other-project/src --wire
+```
+
+생성 직후 `ruff check . && ruff format --check . && bash harness.sh <projectRoot>`로 검증한다 —
+Account/Card와 무관한 새 도메인(Coupon, LoyaltyCategory 등 다단어/불규칙 복수형 포함)으로 실제
+테스트해 harness가 `236 passed  PASS`(FAIL 0건)를 확인했다. `--wire` 실행 시 배선 대상 파일에 자동으로
+`ruff check --fix`/`ruff format`을 실행해, 도메인 이름에 따라 import 삽입 위치의 알파벳 순서가
+달라지는 문제(예: "card" 다음 "common" 앞 vs "database" 다음 "outbox" 앞)를 텍스트 삽입만으로
+완벽히 재현하려 하지 않고 ruff의 isort 구현에 맡긴다. 나이브 복수형 규칙(+s/+es/y→ies)을
+snake_case 위에서 적용하므로, 진짜 불규칙 복수형(person→people 등) 도메인이면
+`find<Domains>`/`<domains>` 등 생성된 이름을 수동으로 다듬어야 할 수 있다. 생성되는 것은
+구조적 스켈레톤(빈 CRUD형 시작점)이라, 실제 비즈니스 규칙·에러 메시지·필드는 생성 후 직접
+채워 넣는다.
 
 ## 예시 코드
 
