@@ -93,6 +93,60 @@ cd examples
 
 기본 룰셋을 그대로 쓰되 최대 엄격도는 지양한다(`build.gradle.kts`의 `ktlint { }` 블록 참조). 자동 수정이 안 되는 위반(와일드카드 import, 파일당 단일 클래스의 파일명 불일치 등)은 `@Suppress`로 숨기지 않고 실제 코드/파일명을 고친다 — 예외가 필요하면 `docs/conventions.md`의 "주의" 각주처럼 왜 그런지 문서에 남긴다.
 
+## 스캐폴딩 — 새 도메인 생성기
+
+`docs/reference.md`가 정의하는 실전 구현 템플릿을 Account(Repository/Outbox 패턴)와
+Card(2번째 도메인, domain/JPA 분리 구조)의 실제 코드를 조합해 만든 뒤, 도메인 이름만
+파라미터화해 재사용 가능하게 일반화한 스크립트다. 단일 status 필드(PENDING/ACTIVE/CANCELLED) +
+`create()`/`activate()`/`cancel(reason)` Aggregate(sealed exception 계층 포함) + Command/Query
+"Service"(CQRS, `@Service` plain 클래스 — Handler/CommandBus 아님) + 도메인 이벤트 1종(`cancel()`만
+발행) + Repository + JPA Entity/Mapper + REST Controller/DTO + Flyway 마이그레이션까지 한 번에
+생성한다.
+
+Kotlin/Gradle 툴체인을 새로 빌드하지 않도록 Python 스크립트로 작성했다(컴파일 없이 즉시 실행).
+
+```bash
+# 기본: ../examples/src/main/kotlin/com/example/accountservice/<domain>/ 아래 생성만 한다.
+# OutboxRelay.kt/GlobalExceptionHandler.kt는 건드리지 않고 붙여넣을 스니펫만 출력한다.
+python3 scripts/create_domain.py Coupon
+
+# 다른 프로젝트(스크래치 카피 등)에 생성하려면 --project-root로 Gradle 모듈 루트를 지정하고,
+# OutboxRelay.kt/GlobalExceptionHandler.kt 자동 패치까지 원하면 --wire를 추가한다.
+python3 scripts/create_domain.py LoyaltyCategory --project-root /path/to/scratch-project/examples --wire
+```
+
+**모듈 등록 단계가 없다(대부분)** — nestjs(`@Module({ providers: [...] })`)나 Go와 달리, Spring은
+`@Service`/`@Component`/`@Repository`/`@RestController`가 붙은 클래스를 classpath 전체에서
+자동으로 수집한다(component scanning, `AccountServiceApplication.kt`에도 도메인 bean을 나열하는
+곳이 없음을 직접 확인함). **다만 kotlin-springboot는 java-springboot와 달리 여기서 완전히 자유롭지
+않다** — java-springboot의 `OutboxRelay`는 생성자 주입 `List<OutboxEventHandler>`로 구현체를
+자동 수집하지만, 이 저장소의 `outbox/OutboxRelay.kt`는 각 Domain Event 핸들러를 생성자에 개별
+파라미터로 명시적으로 주입받고 `dispatch()`의 `when` 블록에서 이벤트 타입 문자열로 직접 분기한다
+(domain-events.md 3~4단계, 실제 코드로 확인). `common/GlobalExceptionHandler.kt`도 마찬가지로
+도메인 예외마다 `@ExceptionHandler` 메서드를 손으로 등록하는 구조다. 그래서 이 두 파일만은
+새 도메인마다 실제로 고쳐야 하고, `--wire`가 그 패치(import 삽입 후 재정렬 + 생성자 파라미터 추가 +
+`when`/`@ExceptionHandler` 분기 추가)를 자동화한다. `--wire` 없이 실행하면 두 파일에 붙여넣을
+내용만 콘솔에 출력한다 — 기존 파일을 스크립트가 임의로 고치는 걸 원치 않을 수 있어 기본값은 안전한
+쪽이다.
+
+생성 직후 확인 순서(`<projectRoot>`는 기본값이면 `examples`, `--project-root`를 줬으면 그 경로):
+
+```bash
+bash implementations/kotlin-springboot/harness.sh <projectRoot>
+cd <projectRoot> && ./gradlew ktlintCheck && ./gradlew build   # build에 ktlintCheck가 포함되어 있어 사실상 중복 확인
+```
+
+Account/Card와 무관한 새 도메인(단어 1개 "Coupon"과 다단어 "LoyaltyCategory")으로 실제 생성해
+harness FAIL 0건(309건 전부 PASS), `ktlintCheck` 통과, `./gradlew build`(Testcontainers e2e
+포함) 성공을 모두 확인했다. 나이브 복수형 규칙(+s/+es/자음+y→ies)을 쓰므로, 불규칙 복수형 도메인
+(예: person → people)이면 `find<Domains>`/`<domains>`/REST 경로 등 생성된 이름을 수동으로
+다듬어야 할 수 있다 — 실행 결과 출력이 이를 안내한다. ktlint(`standard:class-signature`,
+`standard:argument-list-wrapping`, `standard:max-line-length`)는 실제 렌더링된 줄 길이로만
+판정하므로, 도메인 이름 길이에 따라 한 줄/여러 줄 형태가 달라지는 부분(sealed exception의
+supertype 호출, Repository 조회 분기 등)은 생성 시점에 길이를 계산해 분기하도록 스크립트 안에
+구현되어 있다. 생성되는 것은 구조적 스켈레톤(빈 CRUD형 시작점)이라, 실제 비즈니스 규칙·에러
+메시지·필드는 생성 후 직접 채워 넣는다.
+
 ## 예시 코드 (Account 도메인 전체)
 
 `examples/` 디렉토리에 Account 도메인 전체 구현 예시(계좌 개설/입출금/정지/재개/종료 + SES 알림)가 있다.
