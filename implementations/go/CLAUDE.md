@@ -22,6 +22,7 @@ DDD 기반 Go 백엔드 서비스의 설계/구현 가이드이다.
 | DI 컨테이너 없는 의존성 조립, 패키지 = 모듈 경계, 순환 의존 방지 | `docs/architecture/module-pattern.md` |
 | 크로스 도메인 호출, Adapter 패턴 구현, 다른 Bounded Context 호출 예시 | `docs/architecture/cross-domain.md` |
 | 공유 코드 위치, `internal/common/`, 공용 인프라 배치 | `docs/architecture/shared-modules.md` |
+| 새 도메인 추가, 도메인 스캐폴딩 템플릿, Order 예시 | `docs/reference.md` — `scripts/create-domain`으로 `docs/reference.md` 템플릿을 실제 코드로 즉시 생성 가능(아래 "스캐폴딩" 참고) |
 
 ### 데이터 / 트랜잭션
 
@@ -99,6 +100,43 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 CI(`.github/workflows/go.yml`)는 `golangci/golangci-lint-action`으로 두 모듈을 각각 검사하며,
 위반이 있으면 빌드가 실패한다.
+
+## 스캐폴딩 — 새 도메인 생성기
+
+`docs/reference.md`의 "실전 구현 템플릿"(Order 예시)을 실제 코드로 만들어 harness 전체를
+통과시킨 뒤, 도메인 이름만 파라미터화해 재사용 가능하게 일반화한 Go 프로그램이다
+(`scripts/create-domain/`). Aggregate(단일 Status 필드 + PENDING/ACTIVE/CANCELLED) +
+CQRS Command/Query Handler + 도메인 이벤트 1종 + Repository(도메인 인터페이스 +
+infrastructure 구현체) + HTTP Handler/DTO + 마이그레이션까지 한 번에 생성한다.
+
+```bash
+# 기본: examples/internal/... 아래 생성, main.go/router.go는 건드리지 않고 붙여넣을
+# 내용만 콘솔에 출력
+go run ./scripts/create-domain Coupon
+
+# --wire를 주면 cmd/server/main.go(저장소 조립 + 공유 outbox.Relay의 handlers map 등록)와
+# internal/interface/http/router.go(Handler 조립 + 라우트 등록)까지 자동 삽입
+go run ./scripts/create-domain Coupon --wire
+
+# 다른 프로젝트(이 저장소를 템플릿으로 복제한 프로젝트 등)에 생성하려면 --out으로 지정
+go run ./scripts/create-domain Coupon --out /path/to/other-project --wire
+```
+
+NestJS는 도메인마다 전용 `OutboxRelay`를 두지만 Go는 DI 컨테이너가 없어 `main.go`가 조립하는
+**단일 공유** `outbox.Relay`(`internal/infrastructure/outbox/relay.go`)의 `handlers` map에
+모든 도메인이 함께 등록된다 — 그래서 `--wire`는 `main.go`(및 `main.go`와 똑같은 모양으로
+의존성을 다시 조립하는 e2e 테스트가 있다면 그 파일까지)와 `router.go` 양쪽을 함께 고친다.
+
+생성 직후 `./harness.sh <projectRoot>`로 검증한다 — Account/Card와 무관한 새 도메인
+(Coupon, LoyaltyCategory 등 다단어/불규칙 복수형 포함)으로 실제 테스트해 harness
+전체 통과, `go build`/`go vet`/`golangci-lint run` 무경고를 확인했다. 나이브 복수형
+규칙(+s/+es/y→ies)을 쓰므로, 불규칙 복수형 도메인이면 테이블명·REST 경로(`<domains>Lower`)
+등 생성된 이름을 수동으로 다듬어야 할 수 있다. 공유 `outbox.Writer`(SaveAll)는 현재
+`account.DomainEvent` 슬라이스 타입에 고정돼 있어 다른 도메인이 그대로 재사용할 수
+없다는 알려진 격차가 있다 — 생성된 Repository는 이를 우회해 같은 트랜잭션 안에서 Outbox
+행을 직접 적재한다(생성된 `<domain>_repository.go`의 주석 참고). 생성되는 것은 구조적
+스켈레톤(빈 CRUD형 시작점)이라, 실제 비즈니스 규칙·에러 메시지·필드는 생성 후 직접
+채워 넣는다.
 
 ## 예시 코드 (Account 도메인 전체)
 
