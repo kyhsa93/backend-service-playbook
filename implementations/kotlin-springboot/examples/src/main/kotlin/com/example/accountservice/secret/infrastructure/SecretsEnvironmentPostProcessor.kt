@@ -19,8 +19,10 @@ import java.net.URI
  * 주지 않는다.
  */
 class SecretsEnvironmentPostProcessor : EnvironmentPostProcessor {
-
-    override fun postProcessEnvironment(environment: ConfigurableEnvironment, application: SpringApplication) {
+    override fun postProcessEnvironment(
+        environment: ConfigurableEnvironment,
+        application: SpringApplication,
+    ) {
         if (!environment.acceptsProfiles(Profiles.of("prod"))) return
 
         val region = environment.getProperty("AWS_REGION", "us-east-1")
@@ -28,9 +30,11 @@ class SecretsEnvironmentPostProcessor : EnvironmentPostProcessor {
         val accessKeyId = environment.getProperty("AWS_ACCESS_KEY_ID", "test")
         val secretAccessKey = environment.getProperty("AWS_SECRET_ACCESS_KEY", "test")
 
-        val builder = SecretsManagerClient.builder()
-            .region(Region.of(region))
-            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey)))
+        val builder =
+            SecretsManagerClient
+                .builder()
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey)))
         if (endpointUrl.isNotBlank()) builder.endpointOverride(URI.create(endpointUrl))
         val client = builder.build()
 

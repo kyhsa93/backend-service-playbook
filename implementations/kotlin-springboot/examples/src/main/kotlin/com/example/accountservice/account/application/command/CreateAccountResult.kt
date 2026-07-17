@@ -10,5 +10,8 @@ data class CreateAccountResult(
     val status: String,
     val createdAt: LocalDateTime,
 ) {
-    data class MoneyResult(val amount: Long, val currency: String)
+    data class MoneyResult(
+        val amount: Long,
+        val currency: String,
+    )
 }

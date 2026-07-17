@@ -8,5 +8,11 @@ package com.example.accountservice.account.application.service
  * (docs/architecture/domain-service.md의 Technical Service 패턴 참고)
  */
 interface NotificationService {
-    fun sendEmail(accountId: String, eventType: String, recipient: String, subject: String, body: String)
+    fun sendEmail(
+        accountId: String,
+        eventType: String,
+        recipient: String,
+        subject: String,
+        body: String,
+    )
 }

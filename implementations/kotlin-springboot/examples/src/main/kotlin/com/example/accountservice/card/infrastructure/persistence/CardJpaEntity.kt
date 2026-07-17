@@ -22,27 +22,20 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "cards")
 class CardJpaEntity(
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
-
     @Column(nullable = false, unique = true)
     var cardId: String = "",
-
     @Column(nullable = false)
     var accountId: String = "",
-
     @Column(nullable = false)
     var ownerId: String = "",
-
     @Column(nullable = false)
     var brand: String = "",
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var status: CardStatus = CardStatus.ACTIVE,
-
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 )

@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class DepositServiceTest {
-
     private val accountRepository = mockk<AccountRepository>(relaxed = true)
     private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
     private val service = DepositService(accountRepository, outboxRelay)

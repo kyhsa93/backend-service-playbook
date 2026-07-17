@@ -16,20 +16,15 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "credentials")
 class CredentialJpaEntity(
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
-
     @Column(nullable = false, unique = true)
     var credentialId: String = "",
-
     @Column(nullable = false, unique = true)
     var userId: String = "",
-
     @Column(nullable = false)
     var passwordHash: String = "",
-
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 )

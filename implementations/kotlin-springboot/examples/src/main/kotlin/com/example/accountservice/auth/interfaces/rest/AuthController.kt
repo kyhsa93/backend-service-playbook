@@ -24,7 +24,9 @@ data class SignInRequest(
     @field:NotBlank val password: String,
 )
 
-data class SignInResponse(val accessToken: String)
+data class SignInResponse(
+    val accessToken: String,
+)
 
 @RestController
 @RequestMapping("/auth")
@@ -32,14 +34,16 @@ class AuthController(
     private val signUpService: SignUpService,
     private val signInService: SignInService,
 ) {
-
     @PostMapping("/sign-up")
     @ResponseStatus(HttpStatus.CREATED)
-    fun signUp(@Valid @RequestBody request: SignUpRequest) {
+    fun signUp(
+        @Valid @RequestBody request: SignUpRequest,
+    ) {
         signUpService.signUp(SignUpCommand(request.userId, request.password))
     }
 
     @PostMapping("/sign-in")
-    fun signIn(@Valid @RequestBody request: SignInRequest): SignInResponse =
-        SignInResponse(signInService.signIn(SignInCommand(request.userId, request.password)))
+    fun signIn(
+        @Valid @RequestBody request: SignInRequest,
+    ): SignInResponse = SignInResponse(signInService.signIn(SignInCommand(request.userId, request.password)))
 }

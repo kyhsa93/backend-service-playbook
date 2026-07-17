@@ -6,7 +6,6 @@ import org.junit.jupiter.api.assertThrows
 import java.time.LocalDateTime
 
 class CardTest {
-
     private fun createCard(status: CardStatus = CardStatus.ACTIVE): Card =
         Card.reconstitute(
             cardId = "card-1",

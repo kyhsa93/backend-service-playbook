@@ -11,18 +11,18 @@ import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
 
 class SuspendCardsByAccountServiceTest {
-
     private val cardRepository = mockk<CardRepository>(relaxed = true)
     private val service = SuspendCardsByAccountService(cardRepository)
 
-    private fun activeCard(cardId: String): Card = Card.reconstitute(
-        cardId = cardId,
-        accountId = "account-1",
-        ownerId = "owner-1",
-        brand = "VISA",
-        status = CardStatus.ACTIVE,
-        createdAt = LocalDateTime.now(),
-    )
+    private fun activeCard(cardId: String): Card =
+        Card.reconstitute(
+            cardId = cardId,
+            accountId = "account-1",
+            ownerId = "owner-1",
+            brand = "VISA",
+            status = CardStatus.ACTIVE,
+            createdAt = LocalDateTime.now(),
+        )
 
     @Test
     fun `계좌의 ACTIVE 카드를 모두 정지하고 저장한다`() {

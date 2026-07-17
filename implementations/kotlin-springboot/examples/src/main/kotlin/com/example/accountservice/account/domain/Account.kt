@@ -8,7 +8,6 @@ import java.time.LocalDateTime
  * 영속성 매핑은 infrastructure/persistence/AccountJpaEntity + AccountMapper가 전담한다.
  */
 class Account private constructor() {
-
     var accountId: String = ""
         private set
 
@@ -38,7 +37,11 @@ class Account private constructor() {
     private val pendingTransactions: MutableList<Transaction> = mutableListOf()
 
     companion object {
-        fun create(ownerId: String, currency: String, email: String): Account =
+        fun create(
+            ownerId: String,
+            currency: String,
+            email: String,
+        ): Account =
             Account().apply {
                 this.accountId = generateId()
                 this.ownerId = ownerId

@@ -1,7 +1,7 @@
 package com.example.accountservice.account.application.event
 
-import com.example.accountservice.account.domain.AccountCreatedEvent
 import com.example.accountservice.account.application.service.NotificationService
+import com.example.accountservice.account.domain.AccountCreatedEvent
 import org.springframework.stereotype.Component
 
 /**
@@ -11,8 +11,9 @@ import org.springframework.stereotype.Component
  * 로그를 남기고 Outbox 행을 processed=false로 남겨 다음 호출에서 재시도한다(at-least-once 전달).
  */
 @Component
-class AccountCreatedEventHandler(private val notificationService: NotificationService) {
-
+class AccountCreatedEventHandler(
+    private val notificationService: NotificationService,
+) {
     fun handle(event: AccountCreatedEvent) {
         notificationService.sendEmail(
             accountId = event.accountId,

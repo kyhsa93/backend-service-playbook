@@ -12,11 +12,11 @@ class IssueCardService(
     private val cardRepository: CardRepository,
     private val accountAdapter: AccountAdapter,
 ) {
-
     fun issue(command: IssueCardCommand): IssueCardResult {
         // 동기 Adapter(ACL)로 연결 계좌를 조회 — 응답(발급 가부)에 필요하므로 동기 호출.
-        val account = accountAdapter.findAccount(command.accountId, command.requesterId)
-            ?: throw LinkedAccountNotFoundException()
+        val account =
+            accountAdapter.findAccount(command.accountId, command.requesterId)
+                ?: throw LinkedAccountNotFoundException()
         if (!account.active) throw CardIssueRequiresActiveAccountException()
 
         val card = Card.issue(accountId = command.accountId, ownerId = command.requesterId, brand = command.brand)

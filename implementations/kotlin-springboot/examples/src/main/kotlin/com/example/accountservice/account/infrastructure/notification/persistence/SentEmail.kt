@@ -12,7 +12,6 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "sent_emails")
 class SentEmail protected constructor() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null

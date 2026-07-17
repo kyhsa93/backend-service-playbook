@@ -4,6 +4,7 @@ plugins {
     kotlin("plugin.jpa") version "1.9.25"
     id("org.springframework.boot") version "3.3.5"
     id("io.spring.dependency-management") version "1.1.6"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
 }
 
 group = "com.example"
@@ -64,4 +65,16 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// 코드 스타일 lint. 포맷 위반은 `./gradlew ktlintFormat`으로 자동 수정하고,
+// CI에서는 `ktlintCheck`(build에 연동)로 검증만 한다. 최대 엄격도가 아니라
+// 기본 룰셋 + 표준 라이브러리 import 정렬 정도의 온건한 설정을 유지한다.
+ktlint {
+    version.set("1.3.1")
+    verbose.set(true)
+    outputToConsole.set(true)
+    filter {
+        exclude("**/generated/**")
+    }
 }

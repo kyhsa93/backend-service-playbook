@@ -19,11 +19,11 @@ import org.springframework.stereotype.Service
 class DeleteAccountService(
     private val accountRepository: AccountRepository,
 ) {
-
     fun delete(command: DeleteAccountCommand) {
-        val (accounts, _) = accountRepository.findAccounts(
-            AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
-        )
+        val (accounts, _) =
+            accountRepository.findAccounts(
+                AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
+            )
         accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
         accountRepository.deleteAccount(command.accountId)
     }

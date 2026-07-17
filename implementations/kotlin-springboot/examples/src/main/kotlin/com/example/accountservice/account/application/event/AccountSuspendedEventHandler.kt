@@ -43,7 +43,8 @@ class AccountSuspendedEventHandler(
                 body = "계좌(${event.accountId})가 정지되었습니다.",
             )
         } catch (e: Exception) {
-            logger.atError()
+            logger
+                .atError()
                 .addKeyValue("account_id", event.accountId)
                 .setCause(e)
                 .log("정지 알림 발송 실패")

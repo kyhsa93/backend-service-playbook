@@ -9,7 +9,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class CreateAccountServiceTest {
-
     private val accountRepository = mockk<AccountRepository>(relaxed = true)
     private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
     private val service = CreateAccountService(accountRepository, outboxRelay)

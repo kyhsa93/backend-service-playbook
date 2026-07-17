@@ -48,7 +48,6 @@ import java.net.http.HttpResponse
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 )
 class NotificationE2ETest {
-
     companion object {
         private const val SENDER_EMAIL = "no-reply@backend-service-playbook.example.com"
         private const val TEST_PASSWORD = "password123!"
@@ -85,13 +84,14 @@ class NotificationE2ETest {
         fun verifySesSender() {
             // LocalStack의 SES 에뮬레이터도 실제 SES처럼 발신자 신원 검증을 강제하므로,
             // 테스트에서 이메일을 보내기 전에 발신 주소를 미리 인증해 둔다.
-            val sesClient = SesClient.builder()
-                .region(Region.of(localstack.region))
-                .credentialsProvider(
-                    StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
-                )
-                .endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SES))
-                .build()
+            val sesClient =
+                SesClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SES))
+                    .build()
             sesClient.verifyEmailIdentity(VerifyEmailIdentityRequest.builder().emailAddress(SENDER_EMAIL).build())
             sesClient.close()
         }
@@ -105,15 +105,17 @@ class NotificationE2ETest {
 
     private val tokenCache = mutableMapOf<String, String>()
 
-    private fun tokenFor(userId: String): String = tokenCache.getOrPut(userId) {
-        restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
-        val response = restTemplate.postForEntity(
-            "/auth/sign-in",
-            mapOf("userId" to userId, "password" to TEST_PASSWORD),
-            Map::class.java,
-        )
-        response.body!!["accessToken"] as String
-    }
+    private fun tokenFor(userId: String): String =
+        tokenCache.getOrPut(userId) {
+            restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
+            val response =
+                restTemplate.postForEntity(
+                    "/auth/sign-in",
+                    mapOf("userId" to userId, "password" to TEST_PASSWORD),
+                    Map::class.java,
+                )
+            response.body!!["accessToken"] as String
+        }
 
     private fun headersFor(ownerId: String): HttpHeaders {
         val headers = HttpHeaders()
@@ -122,10 +124,17 @@ class NotificationE2ETest {
         return headers
     }
 
-    private fun post(path: String, ownerId: String, body: Map<String, Any>): ResponseEntity<Map<*, *>> =
-        restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headersFor(ownerId)), Map::class.java)
+    private fun post(
+        path: String,
+        ownerId: String,
+        body: Map<String, Any>,
+    ): ResponseEntity<Map<*, *>> = restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headersFor(ownerId)), Map::class.java)
 
-    private fun createAccount(ownerId: String, email: String, currency: String = "KRW"): String {
+    private fun createAccount(
+        ownerId: String,
+        email: String,
+        currency: String = "KRW",
+    ): String {
         val response = post("/accounts", ownerId, mapOf("currency" to currency, "email" to email))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         return response.body!!["accountId"] as String
@@ -137,6 +146,7 @@ class NotificationE2ETest {
         val request = HttpRequest.newBuilder(URI.create("$endpoint/_aws/ses")).GET().build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
         val mapper = jacksonObjectMapper()
+
         @Suppress("UNCHECKED_CAST")
         val root = mapper.readValue(response.body(), Map::class.java) as Map<String, Any>
         @Suppress("UNCHECKED_CAST")
@@ -144,18 +154,27 @@ class NotificationE2ETest {
     }
 
     /** DB에 저장된 발송 기록과 LocalStack SES에 실제로 도착한 메시지를 모두 검증한다. */
-    private fun assertEmailSent(accountId: String, eventType: String, recipient: String) {
-        val sentEmail = sentEmailJpaRepository.findByAccountId(accountId)
-            .firstOrNull { it.eventType == eventType }
-            ?: throw AssertionError("$eventType 발송 기록이 저장되지 않았습니다: accountId=$accountId")
+    private fun assertEmailSent(
+        accountId: String,
+        eventType: String,
+        recipient: String,
+    ) {
+        val sentEmail =
+            sentEmailJpaRepository
+                .findByAccountId(accountId)
+                .firstOrNull { it.eventType == eventType }
+                ?: throw AssertionError("$eventType 발송 기록이 저장되지 않았습니다: accountId=$accountId")
         assertThat(sentEmail.recipient).isEqualTo(recipient)
         assertThat(sentEmail.sesMessageId).isNotBlank()
 
         val messages = fetchSesMessages()
-        val matched = messages.firstOrNull { it["Id"] == sentEmail.sesMessageId }
-            ?: throw AssertionError("localstack SES에서 sesMessageId=${sentEmail.sesMessageId} 메시지를 찾을 수 없습니다.")
+        val matched =
+            messages.firstOrNull { it["Id"] == sentEmail.sesMessageId }
+                ?: throw AssertionError("localstack SES에서 sesMessageId=${sentEmail.sesMessageId} 메시지를 찾을 수 없습니다.")
+
         @Suppress("UNCHECKED_CAST")
         val destination = matched["Destination"] as Map<String, Any>
+
         @Suppress("UNCHECKED_CAST")
         val toAddresses = destination["ToAddresses"] as List<String>
         assertThat(toAddresses).contains(recipient)

@@ -1,7 +1,7 @@
 package com.example.accountservice.account.application.event
 
-import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import com.example.accountservice.account.application.service.NotificationService
+import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import org.springframework.stereotype.Component
 
 /**
@@ -11,16 +11,18 @@ import org.springframework.stereotype.Component
  * 로그를 남기고 Outbox 행을 processed=false로 남겨 다음 호출에서 재시도한다(at-least-once 전달).
  */
 @Component
-class MoneyWithdrawnEventHandler(private val notificationService: NotificationService) {
-
+class MoneyWithdrawnEventHandler(
+    private val notificationService: NotificationService,
+) {
     fun handle(event: MoneyWithdrawnEvent) {
         notificationService.sendEmail(
             accountId = event.accountId,
             eventType = "MoneyWithdrawn",
             recipient = event.email,
             subject = "[Account] 출금이 완료되었습니다",
-            body = "${event.amount.amount} ${event.amount.currency}이 출금되었습니다. " +
-                "출금 후 잔액: ${event.balanceAfter.amount} ${event.balanceAfter.currency}",
+            body =
+                "${event.amount.amount} ${event.amount.currency}이 출금되었습니다. " +
+                    "출금 후 잔액: ${event.balanceAfter.amount} ${event.balanceAfter.currency}",
         )
     }
 }

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class AccountTest {
-
     private fun createAccount(currency: String = "KRW"): Account =
         Account.create(ownerId = "owner-1", currency = currency, email = "owner-1@example.com")
 

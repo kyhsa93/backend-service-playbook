@@ -8,11 +8,14 @@ import org.springframework.web.servlet.HandlerInterceptor
 
 @Component
 class RequestLoggingInterceptor : HandlerInterceptor {
-
     private val logger = LoggerFactory.getLogger(RequestLoggingInterceptor::class.java)
     private val startTimeAttr = "startTime"
 
-    override fun preHandle(request: HttpServletRequest, response: HttpServletResponse, handler: Any): Boolean {
+    override fun preHandle(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        handler: Any,
+    ): Boolean {
         request.setAttribute(startTimeAttr, System.currentTimeMillis())
         return true
     }

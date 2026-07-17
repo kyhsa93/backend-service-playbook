@@ -28,7 +28,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 )
 class AuthControllerE2ETest {
-
     companion object {
         @Container
         @JvmStatic
@@ -62,11 +61,15 @@ class AuthControllerE2ETest {
         restTemplate.restTemplate.requestFactory = HttpComponentsClientHttpRequestFactory()
     }
 
-    private fun signUp(userId: String, password: String = PASSWORD) =
-        restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to password), Map::class.java)
+    private fun signUp(
+        userId: String,
+        password: String = PASSWORD,
+    ) = restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to password), Map::class.java)
 
-    private fun signIn(userId: String, password: String) =
-        restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId, "password" to password), Map::class.java)
+    private fun signIn(
+        userId: String,
+        password: String,
+    ) = restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId, "password" to password), Map::class.java)
 
     @Test
     fun `sign-up 후 sign-in하면 200과 액세스 토큰을 반환한다`() {

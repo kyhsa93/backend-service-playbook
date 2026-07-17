@@ -7,5 +7,9 @@ package com.example.accountservice.auth.application.service
  */
 interface PasswordHasher {
     fun hash(plainPassword: String): String
-    fun verify(plainPassword: String, passwordHash: String): Boolean
+
+    fun verify(
+        plainPassword: String,
+        passwordHash: String,
+    ): Boolean
 }

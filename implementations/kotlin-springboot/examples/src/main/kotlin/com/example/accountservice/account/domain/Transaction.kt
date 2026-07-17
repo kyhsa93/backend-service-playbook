@@ -8,7 +8,6 @@ import java.time.LocalDateTime
  * 영속성 매핑은 infrastructure/persistence/TransactionJpaEntity + TransactionMapper가 전담한다.
  */
 class Transaction private constructor() {
-
     var transactionId: String = ""
         private set
 
@@ -25,7 +24,11 @@ class Transaction private constructor() {
         private set
 
     companion object {
-        fun create(accountId: String, type: TransactionType, amount: Money): Transaction =
+        fun create(
+            accountId: String,
+            type: TransactionType,
+            amount: Money,
+        ): Transaction =
             Transaction().apply {
                 this.transactionId = generateId()
                 this.accountId = accountId

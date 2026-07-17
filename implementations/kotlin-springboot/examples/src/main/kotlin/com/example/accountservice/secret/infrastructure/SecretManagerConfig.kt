@@ -10,16 +10,20 @@ import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient
 import java.net.URI
 
 @Configuration
-class SecretManagerConfig(private val awsProperties: AwsProperties) {
+class SecretManagerConfig(
+    private val awsProperties: AwsProperties,
+) {
     @Bean
     fun secretsManagerClient(): SecretsManagerClient {
-        val builder = SecretsManagerClient.builder()
-            .region(Region.of(awsProperties.region))
-            .credentialsProvider(
-                StaticCredentialsProvider.create(
-                    AwsBasicCredentials.create(awsProperties.accessKeyId, awsProperties.secretAccessKey),
-                ),
-            )
+        val builder =
+            SecretsManagerClient
+                .builder()
+                .region(Region.of(awsProperties.region))
+                .credentialsProvider(
+                    StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(awsProperties.accessKeyId, awsProperties.secretAccessKey),
+                    ),
+                )
         if (awsProperties.endpointUrl.isNotBlank()) builder.endpointOverride(URI.create(awsProperties.endpointUrl))
         return builder.build()
     }

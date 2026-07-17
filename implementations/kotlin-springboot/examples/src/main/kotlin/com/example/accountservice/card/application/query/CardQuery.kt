@@ -12,5 +12,8 @@ import com.example.accountservice.card.domain.Card
  * 두 인터페이스를 모두 구현하지만, 각 Service는 자신에게 필요한 인터페이스 타입으로만 주입받는다.
  */
 interface CardQuery {
-    fun findByCardIdAndOwnerId(cardId: String, ownerId: String): Card?
+    fun findByCardIdAndOwnerId(
+        cardId: String,
+        ownerId: String,
+    ): Card?
 }

@@ -9,12 +9,14 @@ import java.util.Date
 import javax.crypto.SecretKey
 
 @Service
-class AuthService(jwtProperties: JwtProperties) {
-
+class AuthService(
+    jwtProperties: JwtProperties,
+) {
     private val key: SecretKey = Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray())
 
     fun sign(userId: String): String =
-        Jwts.builder()
+        Jwts
+            .builder()
             .subject(userId)
             .issuedAt(Date.from(Instant.now()))
             .expiration(Date.from(Instant.now().plusSeconds(3600)))

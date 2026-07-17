@@ -10,7 +10,6 @@ import java.time.LocalDateTime
  * (account/card와 동일한 domain/JPA 분리 구조).
  */
 class Credential private constructor() {
-
     var credentialId: String = ""
         private set
 
@@ -25,7 +24,10 @@ class Credential private constructor() {
 
     companion object {
         /** 회원가입 시 새 Credential을 발급한다. 비밀번호는 이미 해싱된 값을 받는다. */
-        fun create(userId: String, passwordHash: String): Credential =
+        fun create(
+            userId: String,
+            passwordHash: String,
+        ): Credential =
             Credential().apply {
                 this.credentialId = generateId()
                 this.userId = userId

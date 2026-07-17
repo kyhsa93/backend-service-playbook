@@ -61,8 +61,10 @@ class OutboxRelay(
         val failedInThisRun = mutableSetOf<String>()
 
         for (pass in 0 until MAX_PASSES) {
-            val pending = outboxEventJpaRepository.findByProcessedFalseOrderByCreatedAtAsc()
-                .filter { it.eventId !in failedInThisRun }
+            val pending =
+                outboxEventJpaRepository
+                    .findByProcessedFalseOrderByCreatedAtAsc()
+                    .filter { it.eventId !in failedInThisRun }
             if (pending.isEmpty()) return
 
             var progressed = 0
@@ -71,10 +73,10 @@ class OutboxRelay(
                     .onSuccess {
                         row.markProcessed()
                         progressed++
-                    }
-                    .onFailure {
+                    }.onFailure {
                         failedInThisRun += row.eventId
-                        logger.atError()
+                        logger
+                            .atError()
                             .addKeyValue("event_type", row.eventType)
                             .addKeyValue("event_id", row.eventId)
                             .setCause(it)
@@ -86,7 +88,10 @@ class OutboxRelay(
         }
     }
 
-    private fun dispatch(eventType: String, payload: String) {
+    private fun dispatch(
+        eventType: String,
+        payload: String,
+    ) {
         when (eventType) {
             "AccountCreatedEvent" ->
                 accountCreatedEventHandler.handle(objectMapper.readValue(payload, AccountCreatedEvent::class.java))

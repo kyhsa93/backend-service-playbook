@@ -9,5 +9,9 @@ package com.example.accountservice.card.domain
  */
 interface CardRepository {
     fun save(card: Card)
-    fun findByAccountIdAndStatuses(accountId: String, statuses: List<CardStatus>): List<Card>
+
+    fun findByAccountIdAndStatuses(
+        accountId: String,
+        statuses: List<CardStatus>,
+    ): List<Card>
 }

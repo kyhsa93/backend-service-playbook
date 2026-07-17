@@ -36,6 +36,8 @@ Kotlin/Java 생태계는 root의 kebab-case 파일명 규칙을 따르지 않는
 
 **주의**: root(TypeScript)/harness는 이 저장소의 관례로 kebab-case가 아니라 PascalCase 파일명을 정답으로 채택한다는 점을 다른 언어 구현체와 혼동하지 않는다 — [directory-structure.md](architecture/directory-structure.md) "파일 네이밍 규칙 — Kotlin/Java 관례" 절 참조.
 
+**주의**: `Schemas.kt`는 도메인에 Request/Response DTO가 둘 이상일 때의 관례다. DTO가 정확히 하나뿐인 모듈은 ktlint `standard:filename` 룰(파일에 top-level 선언이 하나뿐이면 파일명이 그 선언과 같아야 한다)과 충돌하므로, 그 DTO 클래스명을 그대로 파일명으로 쓴다 (예: `IssueCardRequest.kt`). DTO가 추가되어 둘 이상이 되면 `Schemas.kt`(또는 `<Domain>Schemas.kt`)로 합친다.
+
 REST 엔드포인트의 URL 경로 자체는 root 원칙대로 여전히 kebab-case를 사용한다(`/order-items`) — 이것은 파일명이 아니라 HTTP 경로 규칙이다. 8절 참조.
 
 ---

@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class IssueCardServiceTest {
-
     private val cardRepository = mockk<CardRepository>(relaxed = true)
     private val accountAdapter = mockk<AccountAdapter>()
     private val service = IssueCardService(cardRepository, accountAdapter)

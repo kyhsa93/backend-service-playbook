@@ -7,7 +7,6 @@ import com.example.accountservice.card.domain.Card
  * CardRepositoryImpl 내부에서만 사용된다 — Domain/Application 레이어는 이 오브젝트를 알지 못한다.
  */
 internal object CardMapper {
-
     fun toDomain(entity: CardJpaEntity): Card =
         Card.reconstitute(
             cardId = entity.cardId,
@@ -31,7 +30,10 @@ internal object CardMapper {
         )
 
     /** 기존 엔티티(PK 보존)에 도메인 Card의 최신 상태(status)를 반영한다 — update 대상. */
-    fun updateEntity(entity: CardJpaEntity, card: Card): CardJpaEntity {
+    fun updateEntity(
+        entity: CardJpaEntity,
+        card: Card,
+    ): CardJpaEntity {
         entity.status = card.status
         return entity
     }

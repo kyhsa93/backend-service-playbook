@@ -6,11 +6,16 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 @Transactional(readOnly = true)
-class GetAccountService(private val accountQuery: AccountQuery) {
-
-    fun getAccount(accountId: String, requesterId: String): GetAccountResult {
-        val account = accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
-            ?: throw AccountNotFoundException(accountId)
+class GetAccountService(
+    private val accountQuery: AccountQuery,
+) {
+    fun getAccount(
+        accountId: String,
+        requesterId: String,
+    ): GetAccountResult {
+        val account =
+            accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
+                ?: throw AccountNotFoundException(accountId)
         return GetAccountResult(
             accountId = account.accountId,
             ownerId = account.ownerId,

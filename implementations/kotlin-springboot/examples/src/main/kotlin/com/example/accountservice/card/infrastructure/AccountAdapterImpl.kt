@@ -19,8 +19,10 @@ import org.springframework.stereotype.Component
 class AccountAdapterImpl(
     private val accountQuery: AccountQuery,
 ) : AccountAdapter {
-
-    override fun findAccount(accountId: String, ownerId: String): AccountView? =
+    override fun findAccount(
+        accountId: String,
+        ownerId: String,
+    ): AccountView? =
         accountQuery.findByAccountIdAndOwnerId(accountId, ownerId)?.let { account ->
             AccountView(accountId = account.accountId, active = account.status == AccountStatus.ACTIVE)
         }

@@ -22,7 +22,6 @@ class RateLimitingFilter(
     private val rateLimiterRegistry: RateLimiterRegistry,
     private val objectMapper: ObjectMapper,
 ) : OncePerRequestFilter() {
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,

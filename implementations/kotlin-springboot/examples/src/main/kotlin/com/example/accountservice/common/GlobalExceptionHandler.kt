@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  */
 @RestControllerAdvice
 class GlobalExceptionHandler {
-
     private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
     @ExceptionHandler(AccountNotFoundException::class)
@@ -82,6 +81,9 @@ class GlobalExceptionHandler {
         return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "예상치 못한 오류가 발생했습니다.")
     }
 
-    private fun errorResponse(status: HttpStatus, code: String, message: String): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(status).body(ErrorResponse(status.value(), code, message, status.reasonPhrase))
+    private fun errorResponse(
+        status: HttpStatus,
+        code: String,
+        message: String,
+    ): ResponseEntity<ErrorResponse> = ResponseEntity.status(status).body(ErrorResponse(status.value(), code, message, status.reasonPhrase))
 }

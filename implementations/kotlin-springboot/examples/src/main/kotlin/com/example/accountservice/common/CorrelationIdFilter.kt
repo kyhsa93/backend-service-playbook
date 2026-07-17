@@ -15,7 +15,6 @@ private const val MDC_KEY = "correlationId"
 @Component
 @Order(Int.MIN_VALUE)
 class CorrelationIdFilter : OncePerRequestFilter() {
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,

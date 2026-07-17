@@ -13,8 +13,9 @@ import org.springframework.stereotype.Service
  * persistence.md의 트랜잭션 경계 규칙 참조).
  */
 @Service
-class SuspendCardsByAccountService(private val cardRepository: CardRepository) {
-
+class SuspendCardsByAccountService(
+    private val cardRepository: CardRepository,
+) {
     fun suspend(accountId: String) {
         val cards = cardRepository.findByAccountIdAndStatuses(accountId, listOf(CardStatus.ACTIVE))
         for (card in cards) {

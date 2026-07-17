@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class MoneyTest {
-
     @Test
     fun `금액이 음수면 생성 시 예외를 던진다`() {
         assertThrows<InvalidMoneyAmountException> { Money(-1, "KRW") }

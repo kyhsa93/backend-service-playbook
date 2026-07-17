@@ -13,7 +13,6 @@ class SignUpService(
     private val credentialRepository: CredentialRepository,
     private val passwordHasher: PasswordHasher,
 ) {
-
     fun signUp(command: SignUpCommand) {
         credentialQuery.findByUserId(command.userId)?.let { throw UserIdAlreadyExistsException() }
 

@@ -15,13 +15,12 @@ import org.springframework.transaction.annotation.Transactional
 @Repository
 class CredentialRepositoryImpl(
     private val jpaRepository: CredentialJpaRepository,
-) : CredentialRepository, CredentialQuery {
-
+) : CredentialRepository,
+    CredentialQuery {
     @Transactional
     override fun saveCredential(credential: Credential) {
         jpaRepository.save(CredentialMapper.toNewEntity(credential))
     }
 
-    override fun findByUserId(userId: String): Credential? =
-        jpaRepository.findByUserId(userId)?.let(CredentialMapper::toDomain)
+    override fun findByUserId(userId: String): Credential? = jpaRepository.findByUserId(userId)?.let(CredentialMapper::toDomain)
 }

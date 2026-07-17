@@ -6,9 +6,15 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 @Transactional(readOnly = true)
-class GetTransactionsService(private val accountQuery: AccountQuery) {
-
-    fun getTransactions(accountId: String, requesterId: String, page: Int, take: Int): GetTransactionsResult {
+class GetTransactionsService(
+    private val accountQuery: AccountQuery,
+) {
+    fun getTransactions(
+        accountId: String,
+        requesterId: String,
+        page: Int,
+        take: Int,
+    ): GetTransactionsResult {
         accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
             ?: throw AccountNotFoundException(accountId)
 
@@ -16,14 +22,15 @@ class GetTransactionsService(private val accountQuery: AccountQuery) {
         val count = accountQuery.countTransactions(accountId)
 
         return GetTransactionsResult(
-            transactions = transactions.map {
-                GetTransactionsResult.TransactionSummary(
-                    transactionId = it.transactionId,
-                    type = it.type.name,
-                    amount = GetTransactionsResult.MoneyResult(it.amount.amount, it.amount.currency),
-                    createdAt = it.createdAt,
-                )
-            },
+            transactions =
+                transactions.map {
+                    GetTransactionsResult.TransactionSummary(
+                        transactionId = it.transactionId,
+                        type = it.type.name,
+                        amount = GetTransactionsResult.MoneyResult(it.amount.amount, it.amount.currency),
+                        createdAt = it.createdAt,
+                    )
+                },
             count = count,
         )
     }

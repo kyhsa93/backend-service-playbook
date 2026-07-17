@@ -7,7 +7,6 @@ import com.example.accountservice.account.domain.Account
  * AccountRepositoryImpl 내부에서만 사용된다 — Domain/Application 레이어는 이 오브젝트를 알지 못한다.
  */
 internal object AccountMapper {
-
     fun toDomain(entity: AccountJpaEntity): Account =
         Account.reconstitute(
             accountId = entity.accountId,
@@ -35,7 +34,10 @@ internal object AccountMapper {
         )
 
     /** 기존 엔티티(PK 보존)에 도메인 Account의 최신 상태를 반영한다 — update 대상. */
-    fun updateEntity(entity: AccountJpaEntity, account: Account): AccountJpaEntity {
+    fun updateEntity(
+        entity: AccountJpaEntity,
+        account: Account,
+    ): AccountJpaEntity {
         entity.email = account.email
         entity.balance = MoneyEmbeddable.fromDomain(account.balance)
         entity.status = account.status

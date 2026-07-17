@@ -33,7 +33,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 )
 class CardControllerE2ETest {
-
     companion object {
         @Container
         @JvmStatic
@@ -62,15 +61,17 @@ class CardControllerE2ETest {
 
     private val tokenCache = mutableMapOf<String, String>()
 
-    private fun tokenFor(userId: String): String = tokenCache.getOrPut(userId) {
-        restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
-        val response = restTemplate.postForEntity(
-            "/auth/sign-in",
-            mapOf("userId" to userId, "password" to TEST_PASSWORD),
-            Map::class.java,
-        )
-        response.body!!["accessToken"] as String
-    }
+    private fun tokenFor(userId: String): String =
+        tokenCache.getOrPut(userId) {
+            restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
+            val response =
+                restTemplate.postForEntity(
+                    "/auth/sign-in",
+                    mapOf("userId" to userId, "password" to TEST_PASSWORD),
+                    Map::class.java,
+                )
+            response.body!!["accessToken"] as String
+        }
 
     private fun headersFor(ownerId: String): HttpHeaders {
         val headers = HttpHeaders()
@@ -79,23 +80,36 @@ class CardControllerE2ETest {
         return headers
     }
 
-    private fun post(path: String, ownerId: String, body: Map<String, Any>): ResponseEntity<Map<*, *>> =
-        restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headersFor(ownerId)), Map::class.java)
+    private fun post(
+        path: String,
+        ownerId: String,
+        body: Map<String, Any>,
+    ): ResponseEntity<Map<*, *>> = restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headersFor(ownerId)), Map::class.java)
 
-    private fun get(path: String, ownerId: String): ResponseEntity<Map<*, *>> =
-        restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
+    private fun get(
+        path: String,
+        ownerId: String,
+    ): ResponseEntity<Map<*, *>> = restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
 
-    private fun createAccount(ownerId: String, currency: String = "KRW"): Map<*, *> {
-        val response = post(
-            "/accounts",
-            ownerId,
-            mapOf("currency" to currency, "email" to "$ownerId@example.com"),
-        )
+    private fun createAccount(
+        ownerId: String,
+        currency: String = "KRW",
+    ): Map<*, *> {
+        val response =
+            post(
+                "/accounts",
+                ownerId,
+                mapOf("currency" to currency, "email" to "$ownerId@example.com"),
+            )
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         return response.body!!
     }
 
-    private fun issueCard(ownerId: String, accountId: String, brand: String = "VISA"): Map<*, *> {
+    private fun issueCard(
+        ownerId: String,
+        accountId: String,
+        brand: String = "VISA",
+    ): Map<*, *> {
         val response = post("/cards", ownerId, mapOf("accountId" to accountId, "brand" to brand))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         return response.body!!

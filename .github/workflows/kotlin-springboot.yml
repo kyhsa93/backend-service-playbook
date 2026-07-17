@@ -25,6 +25,14 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # ktlint(issue #202) — 스타일 위반은 여기서 빨리 실패시키고, 4분 넘게 걸리는
+      # Testcontainers e2e 테스트까지 기다리지 않게 한다. ktlintCheck는 build.gradle.kts의
+      # 플러그인 설정으로 check/build 태스크에도 이미 연결되어 있어 아래 `./gradlew build`가
+      # 다시 한 번 검증하지만, 별도 스텝으로 뽑아두면 실패 원인이 로그에서 바로 구분된다.
+      - name: Lint (ktlint)
+        run: ./gradlew ktlintCheck
+        working-directory: implementations/kotlin-springboot/examples
+
       # Testcontainers 기반 e2e 테스트 포함 — ubuntu-latest는 Docker가 기본 탑재되어 있어 그대로 동작한다.
       - run: ./gradlew build
         working-directory: implementations/kotlin-springboot/examples

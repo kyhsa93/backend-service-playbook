@@ -7,7 +7,6 @@ import com.example.accountservice.account.domain.Transaction
  * AccountRepositoryImpl 내부에서만 사용된다. Transaction은 생성 후 불변이므로 insert 전용 변환만 필요하다.
  */
 internal object TransactionMapper {
-
     fun toDomain(entity: TransactionJpaEntity): Transaction =
         Transaction.reconstitute(
             transactionId = entity.transactionId,

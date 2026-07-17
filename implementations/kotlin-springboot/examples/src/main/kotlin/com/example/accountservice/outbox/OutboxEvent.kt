@@ -19,7 +19,6 @@ import java.util.UUID
 @Entity
 @Table(name = "outbox_events")
 class OutboxEvent protected constructor() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
@@ -46,7 +45,10 @@ class OutboxEvent protected constructor() {
         private set
 
     companion object {
-        fun from(event: Any, objectMapper: ObjectMapper): OutboxEvent =
+        fun from(
+            event: Any,
+            objectMapper: ObjectMapper,
+        ): OutboxEvent =
             OutboxEvent().apply {
                 this.eventId = UUID.randomUUID().toString().replace("-", "")
                 // Integration Event는 버전이 명시된 공개 계약명(eventName, 예: `account.suspended.v1`)을

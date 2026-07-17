@@ -5,6 +5,14 @@ import org.springframework.data.jpa.repository.JpaRepository
 
 interface CardJpaRepository : JpaRepository<CardJpaEntity, Long> {
     fun findByCardId(cardId: String): CardJpaEntity?
-    fun findByCardIdAndOwnerId(cardId: String, ownerId: String): CardJpaEntity?
-    fun findByAccountIdAndStatusInOrderByCardIdDesc(accountId: String, statuses: List<CardStatus>): List<CardJpaEntity>
+
+    fun findByCardIdAndOwnerId(
+        cardId: String,
+        ownerId: String,
+    ): CardJpaEntity?
+
+    fun findByAccountIdAndStatusInOrderByCardIdDesc(
+        accountId: String,
+        statuses: List<CardStatus>,
+    ): List<CardJpaEntity>
 }

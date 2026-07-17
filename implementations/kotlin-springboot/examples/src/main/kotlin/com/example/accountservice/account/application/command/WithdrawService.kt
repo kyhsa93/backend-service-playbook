@@ -11,11 +11,11 @@ class WithdrawService(
     private val accountRepository: AccountRepository,
     private val outboxRelay: OutboxRelay,
 ) {
-
     fun withdraw(command: WithdrawCommand): TransactionResult {
-        val (accounts, _) = accountRepository.findAccounts(
-            AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
-        )
+        val (accounts, _) =
+            accountRepository.findAccounts(
+                AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
+            )
         val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
         val transaction = account.withdraw(command.amount)
         accountRepository.saveAccount(account)

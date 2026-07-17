@@ -7,7 +7,6 @@ import com.example.accountservice.auth.domain.Credential
  * CredentialRepositoryImpl 내부에서만 사용된다 — Domain/Application 레이어는 이 오브젝트를 알지 못한다.
  */
 internal object CredentialMapper {
-
     fun toDomain(entity: CredentialJpaEntity): Credential =
         Credential.reconstitute(
             credentialId = entity.credentialId,

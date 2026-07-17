@@ -22,33 +22,24 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "accounts")
 class AccountJpaEntity(
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
-
     @Column(nullable = false, unique = true)
     var accountId: String = "",
-
     @Column(nullable = false)
     var ownerId: String = "",
-
     @Column(nullable = false)
     var email: String = "",
-
     @Embedded
     var balance: MoneyEmbeddable = MoneyEmbeddable(),
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var status: AccountStatus = AccountStatus.ACTIVE,
-
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
-
     @Column(nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now(),
-
     @Column
     var deletedAt: LocalDateTime? = null,
 )

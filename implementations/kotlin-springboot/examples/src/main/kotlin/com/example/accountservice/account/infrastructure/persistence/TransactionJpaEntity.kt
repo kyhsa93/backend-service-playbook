@@ -20,24 +20,18 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "transactions")
 class TransactionJpaEntity(
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
-
     @Column(nullable = false, unique = true)
     var transactionId: String = "",
-
     @Column(nullable = false)
     var accountId: String = "",
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var type: TransactionType = TransactionType.DEPOSIT,
-
     @Embedded
     var amount: MoneyEmbeddable = MoneyEmbeddable(),
-
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 )

@@ -9,7 +9,6 @@ import java.time.LocalDateTime
  * (account/domain/Account.kt와 동일한 domain/JPA 분리 구조, #169 참고).
  */
 class Card private constructor() {
-
     var cardId: String = ""
         private set
 
@@ -35,7 +34,11 @@ class Card private constructor() {
          * 연결 계좌의 활성 여부는 Card Aggregate가 알 수 없다. 발급 가능 여부(계좌 존재·활성)는
          * Application 레이어가 AccountAdapter(ACL)로 동기 조회해 판단한 뒤 이 팩토리를 호출한다.
          */
-        fun issue(accountId: String, ownerId: String, brand: String): Card =
+        fun issue(
+            accountId: String,
+            ownerId: String,
+            brand: String,
+        ): Card =
             Card().apply {
                 this.cardId = generateId()
                 this.accountId = accountId

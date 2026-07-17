@@ -38,7 +38,6 @@ import java.net.http.HttpResponse
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 )
 class AccountControllerE2ETest {
-
     companion object {
         private const val SENDER_EMAIL = "no-reply@backend-service-playbook.example.com"
 
@@ -74,13 +73,14 @@ class AccountControllerE2ETest {
         fun verifySesSender() {
             // LocalStack의 SES 에뮬레이터도 실제 SES처럼 발신자 신원 검증을 강제하므로,
             // 테스트에서 이메일을 보내기 전에 발신 주소를 미리 인증해 둔다.
-            val sesClient = SesClient.builder()
-                .region(Region.of(localstack.region))
-                .credentialsProvider(
-                    StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
-                )
-                .endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SES))
-                .build()
+            val sesClient =
+                SesClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SES))
+                    .build()
             sesClient.verifyEmailIdentity(VerifyEmailIdentityRequest.builder().emailAddress(SENDER_EMAIL).build())
             sesClient.close()
         }
@@ -98,15 +98,17 @@ class AccountControllerE2ETest {
 
     private val tokenCache = mutableMapOf<String, String>()
 
-    private fun tokenFor(userId: String): String = tokenCache.getOrPut(userId) {
-        restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
-        val response = restTemplate.postForEntity(
-            "/auth/sign-in",
-            mapOf("userId" to userId, "password" to TEST_PASSWORD),
-            Map::class.java,
-        )
-        response.body!!["accessToken"] as String
-    }
+    private fun tokenFor(userId: String): String =
+        tokenCache.getOrPut(userId) {
+            restTemplate.postForEntity("/auth/sign-up", mapOf("userId" to userId, "password" to TEST_PASSWORD), Map::class.java)
+            val response =
+                restTemplate.postForEntity(
+                    "/auth/sign-in",
+                    mapOf("userId" to userId, "password" to TEST_PASSWORD),
+                    Map::class.java,
+                )
+            response.body!!["accessToken"] as String
+        }
 
     private fun headersFor(ownerId: String): HttpHeaders {
         val headers = HttpHeaders()
@@ -115,16 +117,27 @@ class AccountControllerE2ETest {
         return headers
     }
 
-    private fun post(path: String, ownerId: String, body: Map<String, Any>): ResponseEntity<Map<*, *>> =
-        restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headersFor(ownerId)), Map::class.java)
+    private fun post(
+        path: String,
+        ownerId: String,
+        body: Map<String, Any>,
+    ): ResponseEntity<Map<*, *>> = restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headersFor(ownerId)), Map::class.java)
 
-    private fun get(path: String, ownerId: String): ResponseEntity<Map<*, *>> =
-        restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
+    private fun get(
+        path: String,
+        ownerId: String,
+    ): ResponseEntity<Map<*, *>> = restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
 
-    private fun delete(path: String, ownerId: String): ResponseEntity<Map<*, *>> =
-        restTemplate.exchange(path, HttpMethod.DELETE, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
+    private fun delete(
+        path: String,
+        ownerId: String,
+    ): ResponseEntity<Map<*, *>> = restTemplate.exchange(path, HttpMethod.DELETE, HttpEntity<Void>(headersFor(ownerId)), Map::class.java)
 
-    private fun createAccount(ownerId: String, currency: String, email: String = "$ownerId@example.com"): Map<*, *> {
+    private fun createAccount(
+        ownerId: String,
+        currency: String,
+        email: String = "$ownerId@example.com",
+    ): Map<*, *> {
         val response = post("/accounts", ownerId, mapOf("currency" to currency, "email" to email))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         return response.body!!
@@ -136,6 +149,7 @@ class AccountControllerE2ETest {
         val request = HttpRequest.newBuilder(URI.create("$endpoint/_aws/ses")).GET().build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
         val mapper = jacksonObjectMapper()
+
         @Suppress("UNCHECKED_CAST")
         val root = mapper.readValue(response.body(), Map::class.java) as Map<String, Any>
         @Suppress("UNCHECKED_CAST")
@@ -173,13 +187,15 @@ class AccountControllerE2ETest {
         val accountId = account["accountId"] as String
 
         val messages = fetchSesMessages()
-        val matched = messages.firstOrNull { message ->
-            @Suppress("UNCHECKED_CAST")
-            val destination = message["Destination"] as Map<String, Any>
-            @Suppress("UNCHECKED_CAST")
-            val toAddresses = destination["ToAddresses"] as List<String>
-            toAddresses.contains(email)
-        }
+        val matched =
+            messages.firstOrNull { message ->
+                @Suppress("UNCHECKED_CAST")
+                val destination = message["Destination"] as Map<String, Any>
+
+                @Suppress("UNCHECKED_CAST")
+                val toAddresses = destination["ToAddresses"] as List<String>
+                toAddresses.contains(email)
+            }
         assertThat(matched).isNotNull()
         val messageId = matched!!["Id"] as String
 

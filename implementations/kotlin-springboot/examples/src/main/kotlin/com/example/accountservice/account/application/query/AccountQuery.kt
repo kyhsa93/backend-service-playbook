@@ -13,7 +13,16 @@ import com.example.accountservice.account.domain.Transaction
  * 인터페이스 타입으로만 주입받는다.
  */
 interface AccountQuery {
-    fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account?
-    fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction>
+    fun findByAccountIdAndOwnerId(
+        accountId: String,
+        ownerId: String,
+    ): Account?
+
+    fun findTransactions(
+        accountId: String,
+        page: Int,
+        take: Int,
+    ): List<Transaction>
+
     fun countTransactions(accountId: String): Long
 }

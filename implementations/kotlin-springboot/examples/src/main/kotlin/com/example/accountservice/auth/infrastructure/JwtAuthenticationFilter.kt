@@ -12,8 +12,9 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
-class JwtAuthenticationFilter(jwtProperties: JwtProperties) : OncePerRequestFilter() {
-
+class JwtAuthenticationFilter(
+    jwtProperties: JwtProperties,
+) : OncePerRequestFilter() {
     private val key = Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray())
 
     override fun doFilterInternal(
@@ -25,8 +26,13 @@ class JwtAuthenticationFilter(jwtProperties: JwtProperties) : OncePerRequestFilt
         if (header != null && header.startsWith("Bearer ")) {
             val token = header.removePrefix("Bearer ")
             runCatching {
-                val userId = Jwts.parser().verifyWith(key).build()
-                    .parseSignedClaims(token).payload.subject
+                val userId =
+                    Jwts
+                        .parser()
+                        .verifyWith(key)
+                        .build()
+                        .parseSignedClaims(token)
+                        .payload.subject
                 val authentication = UsernamePasswordAuthenticationToken(userId, null, emptyList())
                 SecurityContextHolder.getContext().authentication = authentication
             }

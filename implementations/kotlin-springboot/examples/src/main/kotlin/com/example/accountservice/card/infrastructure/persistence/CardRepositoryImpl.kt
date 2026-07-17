@@ -14,20 +14,28 @@ import org.springframework.transaction.annotation.Transactional
 @Repository
 class CardRepositoryImpl(
     private val jpaRepository: CardJpaRepository,
-) : CardRepository, CardQuery {
-
+) : CardRepository,
+    CardQuery {
     @Transactional
     override fun save(card: Card) {
-        val entity = jpaRepository.findByCardId(card.cardId)
-            ?.let { CardMapper.updateEntity(it, card) }
-            ?: CardMapper.toNewEntity(card)
+        val entity =
+            jpaRepository
+                .findByCardId(card.cardId)
+                ?.let { CardMapper.updateEntity(it, card) }
+                ?: CardMapper.toNewEntity(card)
         jpaRepository.save(entity)
     }
 
-    override fun findByAccountIdAndStatuses(accountId: String, statuses: List<CardStatus>): List<Card> =
-        jpaRepository.findByAccountIdAndStatusInOrderByCardIdDesc(accountId, statuses)
+    override fun findByAccountIdAndStatuses(
+        accountId: String,
+        statuses: List<CardStatus>,
+    ): List<Card> =
+        jpaRepository
+            .findByAccountIdAndStatusInOrderByCardIdDesc(accountId, statuses)
             .map(CardMapper::toDomain)
 
-    override fun findByCardIdAndOwnerId(cardId: String, ownerId: String): Card? =
-        jpaRepository.findByCardIdAndOwnerId(cardId, ownerId)?.let(CardMapper::toDomain)
+    override fun findByCardIdAndOwnerId(
+        cardId: String,
+        ownerId: String,
+    ): Card? = jpaRepository.findByCardIdAndOwnerId(cardId, ownerId)?.let(CardMapper::toDomain)
 }

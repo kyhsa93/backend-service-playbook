@@ -42,7 +42,8 @@ class AccountClosedEventHandler(
                 body = "계좌(${event.accountId})가 해지되었습니다.",
             )
         } catch (e: Exception) {
-            logger.atError()
+            logger
+                .atError()
                 .addKeyValue("account_id", event.accountId)
                 .setCause(e)
                 .log("해지 알림 발송 실패")

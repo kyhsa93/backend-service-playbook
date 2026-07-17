@@ -21,17 +21,39 @@ class NotificationServiceImpl(
 ) : NotificationService {
     private val logger = LoggerFactory.getLogger(NotificationServiceImpl::class.java)
 
-    override fun sendEmail(accountId: String, eventType: String, recipient: String, subject: String, body: String) {
-        val request = SendEmailRequest.builder()
-            .source(sesProperties.senderEmail)
-            .destination(Destination.builder().toAddresses(recipient).build())
-            .message(
-                Message.builder()
-                    .subject(Content.builder().data(subject).charset("UTF-8").build())
-                    .body(Body.builder().text(Content.builder().data(body).charset("UTF-8").build()).build())
-                    .build(),
-            )
-            .build()
+    override fun sendEmail(
+        accountId: String,
+        eventType: String,
+        recipient: String,
+        subject: String,
+        body: String,
+    ) {
+        val request =
+            SendEmailRequest
+                .builder()
+                .source(sesProperties.senderEmail)
+                .destination(Destination.builder().toAddresses(recipient).build())
+                .message(
+                    Message
+                        .builder()
+                        .subject(
+                            Content
+                                .builder()
+                                .data(subject)
+                                .charset("UTF-8")
+                                .build(),
+                        ).body(
+                            Body
+                                .builder()
+                                .text(
+                                    Content
+                                        .builder()
+                                        .data(body)
+                                        .charset("UTF-8")
+                                        .build(),
+                                ).build(),
+                        ).build(),
+                ).build()
 
         val result = sesClient.sendEmail(request)
 
@@ -45,7 +67,8 @@ class NotificationServiceImpl(
             ),
         )
 
-        logger.atInfo()
+        logger
+            .atInfo()
             .addKeyValue("account_id", accountId)
             .addKeyValue("event_type", eventType)
             .addKeyValue("recipient", recipient)

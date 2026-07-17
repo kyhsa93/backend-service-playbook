@@ -12,7 +12,6 @@ class SignInService(
     private val passwordHasher: PasswordHasher,
     private val authService: AuthService,
 ) {
-
     fun signIn(command: SignInCommand): String {
         // 아이디 미존재/비밀번호 불일치를 동일한 예외로 응답 — 존재하는 아이디를 추측 가능하게 만들지 않기 위함.
         val credential = credentialQuery.findByUserId(command.userId) ?: throw InvalidCredentialsException()

@@ -12,13 +12,15 @@ import org.springframework.stereotype.Service
  * (domain-events.md, persistence.md의 트랜잭션 경계 규칙 참조).
  */
 @Service
-class CancelCardsByAccountService(private val cardRepository: CardRepository) {
-
+class CancelCardsByAccountService(
+    private val cardRepository: CardRepository,
+) {
     fun cancel(accountId: String) {
-        val cards = cardRepository.findByAccountIdAndStatuses(
-            accountId,
-            listOf(CardStatus.ACTIVE, CardStatus.SUSPENDED),
-        )
+        val cards =
+            cardRepository.findByAccountIdAndStatuses(
+                accountId,
+                listOf(CardStatus.ACTIVE, CardStatus.SUSPENDED),
+            )
         for (card in cards) {
             card.cancel()
             cardRepository.save(card)

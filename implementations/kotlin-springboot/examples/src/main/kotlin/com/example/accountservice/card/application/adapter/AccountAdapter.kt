@@ -10,7 +10,10 @@ package com.example.accountservice.card.application.adapter
  * [com.example.accountservice.card.infrastructure.AccountAdapterImpl]가 담당한다.
  */
 interface AccountAdapter {
-    fun findAccount(accountId: String, ownerId: String): AccountView?
+    fun findAccount(
+        accountId: String,
+        ownerId: String,
+    ): AccountView?
 }
 
 data class AccountView(

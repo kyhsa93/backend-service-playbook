@@ -9,9 +9,13 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 @Component
-class SecretServiceImpl(private val client: SecretsManagerClient) : SecretService {
-
-    private data class CacheEntry(val value: String, val expiresAt: Instant)
+class SecretServiceImpl(
+    private val client: SecretsManagerClient,
+) : SecretService {
+    private data class CacheEntry(
+        val value: String,
+        val expiresAt: Instant,
+    )
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
     private val ttl = Duration.ofMinutes(5)

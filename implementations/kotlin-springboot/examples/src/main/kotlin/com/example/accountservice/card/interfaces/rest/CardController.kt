@@ -22,16 +22,16 @@ class CardController(
     private val issueCardService: IssueCardService,
     private val getCardService: GetCardService,
 ) {
-
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun issueCard(
         authentication: Authentication,
         @Valid @RequestBody request: IssueCardRequest,
-    ): IssueCardResult =
-        issueCardService.issue(IssueCardCommand(request.accountId, request.brand, authentication.name))
+    ): IssueCardResult = issueCardService.issue(IssueCardCommand(request.accountId, request.brand, authentication.name))
 
     @GetMapping("/{cardId}")
-    fun getCard(authentication: Authentication, @PathVariable cardId: String): GetCardResult =
-        getCardService.getCard(cardId, authentication.name)
+    fun getCard(
+        authentication: Authentication,
+        @PathVariable cardId: String,
+    ): GetCardResult = getCardService.getCard(cardId, authentication.name)
 }
