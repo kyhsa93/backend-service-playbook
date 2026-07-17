@@ -91,7 +91,7 @@ export function listMethodDecorators(filePath: string): MethodDecoratorInfo[] {
       for (const mod of mods) {
         if (!ts.isDecorator(mod)) continue
         const expr = mod.expression
-        let name = ''
+        let name: string
         let argsText = ''
         if (ts.isCallExpression(expr)) {
           name = expr.expression.getText(sf)

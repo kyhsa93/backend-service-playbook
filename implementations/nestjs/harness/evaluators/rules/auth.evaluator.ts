@@ -13,7 +13,6 @@ import * as path from 'node:path'
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 
 const DOC_REF = 'docs/architecture/authentication.md'
-const CONTROLLER_CLASS_PATTERN = /@Controller\s*\([^)]*\)[\s\S]*?export\s+class\s+([A-Za-z0-9_]+Controller)[\s\S]*?\{/g
 const METHOD_PATTERN = /@(Get|Post|Put|Patch|Delete)\s*\([^)]*\)[\s\S]*?(?:async\s+)?([A-Za-z0-9_]+)\s*\(/g
 const PROTECTED_OR_PUBLIC_PATTERN = /@UseGuards\s*\(|@Public\s*\(|@SkipAuth\s*\(|@AllowAnonymous\s*\(/
 const AUTH_FILE_PATTERN = /(auth|jwt|guard|strategy)/i

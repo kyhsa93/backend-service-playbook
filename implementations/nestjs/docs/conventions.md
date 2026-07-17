@@ -789,3 +789,18 @@ describe('OrderController (e2e)', () => {
 {도메인 행위}_when_{조건}_then_{기대 결과}
 예: placeOrder_whenStockInsufficient_thenThrowsOutOfStockException
 ```
+
+---
+
+## 14. Lint (ESLint)
+
+`examples/`, `harness/` 각각 독립적인 npm 프로젝트이며 각자 ESLint(flat config, `eslint.config.mjs`)를 갖는다. `eslint:recommended` + `typescript-eslint`의 `recommended`(non-type-checked) 프리셋을 사용한다 — 과도한 엄격함(`strict`/`strictTypeChecked`)보다 기본적인 코드 품질(미사용 변수/import, 명시적 `any` 등) 커버리지를 목표로 한다.
+
+```bash
+cd implementations/nestjs/examples && npm run lint
+cd implementations/nestjs/harness && npm run lint
+```
+
+- harness의 `tests/fixtures/**`는 harness 자체 테스트용으로 **의도적으로 잘못 작성된** 코드 샘플이다. `eslint.config.mjs`의 `ignores`에서 제외되어 있으며 lint 위반이 있어도 고치지 않는다.
+- 새 코드를 추가하거나 harness/`examples`를 수정한 뒤에는 `npm run build && npm test && npm run test:e2e`(examples) 또는 `npm run test:evaluators`(harness) 실행 전에 `npm run lint`로 기본 코드 품질 위반이 없는지 먼저 확인한다.
+- CI(`.github/workflows/nestjs.yml`)에서도 두 프로젝트 각각 `npm run lint`를 별도 스텝으로 실행하여 위반 시 빌드를 실패시킨다.

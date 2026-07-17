@@ -23,7 +23,8 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
       - run: npm test
       - run: npm run test:e2e
-      - run: cd ../harness && npm ci && npm run test:evaluators && npm run evaluate -- ../examples
+      - run: cd ../harness && npm ci && npm run lint && npm run test:evaluators && npm run evaluate -- ../examples

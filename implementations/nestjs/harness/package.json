@@ -5,6 +5,7 @@
   "description": "NestJS evaluation harness for the backend-service-playbook",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "evaluate": "tsx evaluators/cli/run.ts",
     "test:evaluators": "tsx tests/run-fixtures.ts",
     "test:meta": "tsx tests/run-meta.ts"
@@ -13,7 +14,11 @@
     "typescript": "^5.4.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.11.0",
-    "tsx": "^4.7.0"
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "tsx": "^4.7.0",
+    "typescript-eslint": "^8.64.0"
   }
 }

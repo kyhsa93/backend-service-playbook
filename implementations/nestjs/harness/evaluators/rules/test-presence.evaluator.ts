@@ -9,8 +9,8 @@ export function evaluateTestPresence(root: string): EvaluatorResult {
 
   const hasTestDir = fs.existsSync(path.join(root, 'test'))
   const hasSpecFile = fs.existsSync(path.join(root, 'src')) &&
-    fs.readdirSync(path.join(root, 'src'), { recursive: true } as any)
-      .some((f: string) => f.endsWith('.spec.ts'))
+    fs.readdirSync(path.join(root, 'src'), { recursive: true })
+      .some((f) => f.toString().endsWith('.spec.ts'))
 
   if (!hasTestDir && !hasSpecFile) {
     failures.push({

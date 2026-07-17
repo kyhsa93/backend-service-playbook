@@ -8,7 +8,7 @@ import { CorrelationIdStore } from '@/common/correlation-id-store'
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP')
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest()
     const { method, url } = req
     const now = Date.now()
