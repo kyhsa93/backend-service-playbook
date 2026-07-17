@@ -42,6 +42,30 @@ function collectDomainEventClassNames(domainFiles: string[]): Set<string> {
   return names
 }
 
+// src/ 바로 아래 첫 번째 디렉토리를 "도메인"으로 취급한다(예: src/order/domain/order.ts → 'order').
+// OutboxRelay는 도메인마다 하나씩 두고 자기 도메인이 발행하는 이벤트만 드레인하는 게 이
+// 저장소의 실제 컨벤션이라(account/application/event/outbox-relay.ts는 Account 이벤트만
+// 다룸), relay-handler-map-incomplete 검사는 전역 이벤트 집합이 아니라 도메인별로 좁혀야 한다.
+function topDomainSegment(file: string, srcDir: string): string {
+  const relPath = path.relative(srcDir, file).replace(/\\/g, '/')
+  return relPath.split('/')[0]
+}
+
+function collectDomainEventClassNamesByDomain(domainFiles: string[], srcDir: string): Map<string, Set<string>> {
+  const byDomain = new Map<string, Set<string>>()
+  for (const f of domainFiles) {
+    const content = fs.readFileSync(f, 'utf-8')
+    const regex = /_events\.push\s*\(\s*new\s+(\w+)\s*\(/g
+    let m: RegExpExecArray | null
+    while ((m = regex.exec(content)) !== null) {
+      const domain = topDomainSegment(f, srcDir)
+      if (!byDomain.has(domain)) byDomain.set(domain, new Set())
+      byDomain.get(domain)!.add(m[1])
+    }
+  }
+  return byDomain
+}
+
 export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
   const failures: EvaluatorFailure[] = []
 
@@ -200,24 +224,32 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     }
   }
 
-  // 9. OutboxRelay의 핸들러 맵이 모든 Domain Event 타입을 커버하는지 검증. 이전까지의
-  //    규칙들은 write(적재) 경로만 봤을 뿐 relay/dispatch(드레인) 경로는 전혀 검증하지
-  //    않았다 — 핸들러 맵에서 항목 하나가 빠져도(예: MoneyDeposited 삭제) 그 이벤트는
-  //    Outbox 테이블에 영원히 processed=false로 남아 조용히 드레인되지 않는다.
+  // 9. OutboxRelay의 핸들러 맵이 자기 도메인이 발행하는 모든 Domain Event 타입을
+  //    커버하는지 검증. 이전까지의 규칙들은 write(적재) 경로만 봤을 뿐 relay/dispatch
+  //    (드레인) 경로는 전혀 검증하지 않았다 — 핸들러 맵에서 항목 하나가 빠져도(예:
+  //    MoneyDeposited 삭제) 그 이벤트는 Outbox 테이블에 영원히 processed=false로 남아
+  //    조용히 드레인되지 않는다. 도메인마다 자기 이벤트만 처리하는 전용 OutboxRelay를
+  //    두는 게 이 저장소의 실제 컨벤션이므로(issue #229), 검사 범위는 도메인별로 좁힌다
+  //    — relay 파일이 다른 도메인의 이벤트까지 다뤄야 한다고 요구하지 않는다.
   if (aggregatesWithEvents.length > 0 && eventClassNames.size > 0) {
     const relayFiles = files.filter((f) => /outbox-relay\.ts$/.test(path.basename(f)))
-    if (relayFiles.length === 0) {
-      failures.push({
-        ruleId: 'domain-event-outbox.relay-missing',
-        severity: 'high',
-        message: `Domain Event가 발행되는데 OutboxRelay(*outbox-relay.ts)를 찾지 못함 — 적재된 이벤트를 드레인할 경로가 없음`,
-        docRef: DOC_REF
-      })
-      score -= 5
-    } else {
-      for (const relayFile of relayFiles) {
+    const eventsByDomain = collectDomainEventClassNamesByDomain(domainFiles, srcDir)
+
+    for (const [domain, domainEvents] of eventsByDomain) {
+      const domainRelayFiles = relayFiles.filter((f) => topDomainSegment(f, srcDir) === domain)
+      if (domainRelayFiles.length === 0) {
+        failures.push({
+          ruleId: 'domain-event-outbox.relay-missing',
+          severity: 'high',
+          message: `${domain} 도메인이 Domain Event(${[...domainEvents].join(', ')})를 발행하는데 해당 도메인의 OutboxRelay(*outbox-relay.ts)를 찾지 못함 — 적재된 이벤트를 드레인할 경로가 없음`,
+          docRef: DOC_REF
+        })
+        score -= 5
+        continue
+      }
+      for (const relayFile of domainRelayFiles) {
         const content = fs.readFileSync(relayFile, 'utf-8')
-        const missing = [...eventClassNames].filter((name) => !new RegExp(`\\b${name}\\s*:`).test(content))
+        const missing = [...domainEvents].filter((name) => !new RegExp(`\\b${name}\\s*:`).test(content))
         if (missing.length > 0) {
           failures.push({
             ruleId: 'domain-event-outbox.relay-handler-map-incomplete',

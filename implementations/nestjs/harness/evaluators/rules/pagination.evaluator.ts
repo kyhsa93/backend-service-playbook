@@ -118,11 +118,22 @@ export function evaluatePagination(root: string): EvaluatorResult {
     }
   }
 
-  // Repository 반환값에 data/items/result 같은 범용 키 사용 금지
+  // Repository 반환값에 data/items/result 같은 범용 키 사용 금지 — 단, 파일 전체가 아니라
+  // 페이지네이션 응답 시그니처(`Promise<{ ...; count: number }>` 형태) 안에서만 검사한다.
+  // 파일 전체를 훑으면 페이지네이션과 무관한 동명 필드(예: 저장 payload의 `items: order.items`
+  // 같은 정당한 도메인 필드)까지 오탐한다 — Account/Card에는 우연히 이런 이름이 없어 드러나지
+  // 않았을 뿐이다.
   const repoFiles = files.filter((f) => f.endsWith('-repository.ts') || f.endsWith('-repository-impl.ts'))
   for (const file of repoFiles) {
     const content = fs.readFileSync(file, 'utf-8')
-    if (/[{,]\s*(data|items|result)\s*:/.test(content)) {
+    const promiseObjectPattern = /Promise<\{([^}]*)\}>/g
+    let match: RegExpExecArray | null
+    let flagged = false
+    while (!flagged && (match = promiseObjectPattern.exec(content)) !== null) {
+      const body = match[1]
+      if (/\b(data|items|result)\s*:/.test(body) && /\bcount\b/.test(body)) flagged = true
+    }
+    if (flagged) {
       failures.push({
         ruleId: 'pagination.generic-response-key',
         severity: 'medium',
