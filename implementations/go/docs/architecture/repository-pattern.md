@@ -20,8 +20,7 @@ type FindQuery struct {
 }
 
 type Repository interface {
-	FindByID(ctx context.Context, accountID, ownerID string) (*Account, error)
-	FindAll(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
 	Save(ctx context.Context, account *Account) error
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
@@ -69,28 +68,36 @@ func NewDepositHandler(repo account.Repository, outboxRelay OutboxRelay) *Deposi
 
 ---
 
-## 메서드 네이밍 — root 규칙과의 차이
+## 메서드 네이밍 — root 규칙과의 대응
 
-root는 `find<Noun>s`(항상 목록 반환, 단건은 `take:1`) / `save<Noun>` / `delete<Noun>` 세 패턴만 쓰라고 한다. 이 저장소의 `account.Repository`는 다르게 설계되어 있다:
+root는 `find<Noun>s`(항상 목록 반환, 단건도 `take:1`로 흉내낸다) / `save<Noun>` / `delete<Noun>` 세 패턴만 쓰라고 한다. 이 저장소의 `account.Repository`는 그 규칙을 그대로 따른다:
 
-| root 규칙 | 이 저장소의 실제 메서드 | 차이 |
+| root 규칙 | 이 저장소의 실제 메서드 | 대응 |
 |---|---|---|
-| `find<Noun>s`(단건도 목록으로) | `FindByID` + `FindAll` 두 메서드 분리 | 단건 조회를 별도 메서드로 분리 — Go 관용에서는 이쪽이 더 자연스럽다(호출부에서 `nil` 체크가 명확) |
+| `find<Noun>s`(단건도 목록으로) | `FindAccounts(ctx, FindQuery)` | 동일 — 조회는 이 메서드 하나뿐이다. `FindQuery.Take`/필터 필드로 목록/단건을 모두 표현한다 |
 | `delete<Noun>` | 없음 | `Account`는 `Close()`로 상태만 바꾸고 실제로 행을 지우지 않는다 — 계좌 도메인 특성상 "삭제" 유스케이스 자체가 없다 |
 | `save<Noun>` | `Save` | 동일 — upsert(`ON CONFLICT ... DO UPDATE`)로 생성/수정을 겸한다 |
 
-새 도메인을 추가할 때 root 규칙을 더 엄격히 따르고 싶다면 `FindByID`/`FindAll`을 하나의 `Find(ctx, query) ([]*T, int, error)`로 합치고 호출부에서 `Take: 1`로 단건을 흉내내는 방식도 가능하다 — 다만 이 저장소는 그렇게 하지 않았고, 그 이유(명시적 단건 조회가 Go에서 더 관용적)를 분명히 밝혀둔다. 이 문서는 새 규칙을 강제하지 않고 현재 컨벤션을 있는 그대로 설명한다.
+**단건 조회는 별도 메서드가 아니라 `FindAccounts`를 `Take: 1`로 호출해 재사용한다.** java/kotlin-springboot의 `findAccounts(...).stream().findFirst().orElseThrow(...)`와 동일한 역할을 하는 헬퍼가 `internal/domain/account/repository.go`의 `FindOne(ctx, q, accountID, ownerID)`다 — `FindAccounts`를 `FindQuery{AccountID: accountID, OwnerID: ownerID, Take: 1}`로 호출하고, 결과가 없으면 `ErrNotFound`를 반환한다. Go에는 Stream이 없으므로 이 반복 패턴(첫 결과 꺼내기 + 없으면 에러)을 자유 함수로 추출해 각 호출부(Command/Query Handler, `acl/account_adapter.go`)가 중복 없이 재사용한다:
+
+```go
+// internal/application/command/deposit_handler.go
+a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
+if err != nil {
+	return nil, fmt.Errorf("deposit: %w", err)
+}
+```
 
 `Repository`에 update 메서드가 별도로 없는 것은 root 원칙과 일치한다 — 상태 변경은 항상 Aggregate 메서드(`Deposit`, `Suspend` 등) 호출 후 `Save()`로 반영한다.
 
 ---
 
-## 동적 필터 — `FindAll`의 조건부 WHERE
+## 동적 필터 — `FindAccounts`의 조건부 WHERE
 
 root의 "값이 있을 때만 조건 추가" 패턴을 Go는 슬라이스 append로 구현한다(`account_repository.go`):
 
 ```go
-func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
+func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
 	args := []any{}
 	where := []string{"deleted_at IS NULL"}
 	i := 1
@@ -126,7 +133,7 @@ func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([
 
 ## Soft Delete — 조회 시 필터링
 
-`internal/infrastructure/persistence/account_repository.go`의 모든 조회 쿼리는 `deleted_at IS NULL`을 기본 조건에 포함한다(`FindByID`, `FindAll`의 `where` 슬라이스 초기값). 상세 스키마와 삭제 흐름은 [persistence.md](persistence.md) 참고 — 다만 이 예제는 Account를 물리적으로 삭제하는 유스케이스가 없어(계좌는 `Close()`로 상태 전환만 함) `deleted_at` 컬럼이 있어도 실제로 채워지는 경로는 아직 없다.
+`internal/infrastructure/persistence/account_repository.go`의 모든 조회 쿼리는 `deleted_at IS NULL`을 기본 조건에 포함한다(`FindAccounts`의 `where` 슬라이스 초기값). 상세 스키마와 삭제 흐름은 [persistence.md](persistence.md) 참고 — 다만 이 예제는 Account를 물리적으로 삭제하는 유스케이스가 없어(계좌는 `Close()`로 상태 전환만 함) `deleted_at` 컬럼이 있어도 실제로 채워지는 경로는 아직 없다.
 
 ---
 

@@ -21,6 +21,7 @@ import (
 	"github.com/example/account-service/internal/config"
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
+	"github.com/example/account-service/internal/infrastructure/logging"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -29,7 +30,11 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	// CorrelationHandler가 JSONHandler를 감싸, ctx에 correlation ID가 있으면 모든
+	// 로그 호출에 자동으로 "correlation_id" 필드를 추가한다 — 호출부마다 직접
+	// 넘길 필요가 없다(observability.md).
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	slog.SetDefault(slog.New(logging.NewCorrelationHandler(jsonHandler)))
 
 	dbConfig, err := config.LoadDatabaseConfig()
 	if err != nil {

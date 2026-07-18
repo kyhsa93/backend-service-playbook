@@ -29,8 +29,7 @@ Go의 `import` 그래프가 곧 의존 방향이다 — `internal/domain/account
 ```go
 // internal/domain/account/repository.go — 인터페이스만, 구현 없음
 type Repository interface {
-	FindByID(ctx context.Context, accountID, ownerID string) (*Account, error)
-	FindAll(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
 	Save(ctx context.Context, account *Account) error
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
@@ -47,7 +46,7 @@ Go에는 `@nestjs/cqrs`의 `CommandBus`/`QueryBus`가 없다 — 대신 **구조
 ```go
 // internal/application/command/deposit_handler.go
 func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*account.Transaction, error) {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)  // 1. Repository에서 조회
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)  // 1. Repository에서 조회
 	if err != nil {
 		return nil, fmt.Errorf("deposit: %w", err)
 	}
@@ -70,8 +69,7 @@ root는 Command Service와 Query Service를 **서로 다른 인터페이스**(Re
 ```go
 // internal/domain/account/repository.go
 type Query interface {
-	FindByID(ctx context.Context, accountID, ownerID string) (*Account, error)
-	FindAll(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 
@@ -86,7 +84,7 @@ type GetAccountHandler struct {
 }
 ```
 
-`internal/infrastructure/persistence/account_repository.go`의 `AccountRepository`는 두 인터페이스의 구현체를 따로 둘 필요가 없다 — Go interface는 구조적 타이핑이므로, `Save`를 포함한 4개 메서드를 갖춘 concrete struct 하나가 `Repository`와 `Query`를 동시에 만족한다. `router.go`는 여전히 단일 `accountRepo` 인스턴스를 조립해 Command Handler에는 `account.Repository`로, Query Handler에는 `account.Query`로 전달한다 — `Repository`가 `Query`를 embed하므로 별도 어댑터 없이 넘길 수 있다. 읽기 모델을 별도 저장소(read replica, 캐시, 검색 인덱스 등)로 분리해야 하는 시점이 오면 `Query`만 구현하는 read-only 구현체를 추가하는 방향으로 확장한다.
+`internal/infrastructure/persistence/account_repository.go`의 `AccountRepository`는 두 인터페이스의 구현체를 따로 둘 필요가 없다 — Go interface는 구조적 타이핑이므로, `Save`를 포함한 3개 메서드(`FindAccounts`/`FindTransactions`/`Save`)를 갖춘 concrete struct 하나가 `Repository`와 `Query`를 동시에 만족한다. `router.go`는 여전히 단일 `accountRepo` 인스턴스를 조립해 Command Handler에는 `account.Repository`로, Query Handler에는 `account.Query`로 전달한다 — `Repository`가 `Query`를 embed하므로 별도 어댑터 없이 넘길 수 있다. 읽기 모델을 별도 저장소(read replica, 캐시, 검색 인덱스 등)로 분리해야 하는 시점이 오면 `Query`만 구현하는 read-only 구현체를 추가하는 방향으로 확장한다.
 
 ---
 

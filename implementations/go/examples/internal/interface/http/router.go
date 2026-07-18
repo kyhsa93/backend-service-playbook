@@ -79,5 +79,5 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	mux.HandleFunc("GET /health/live", healthHandler.Live)
 	mux.HandleFunc("GET /health/ready", healthHandler.Ready)
 
-	return middleware.CorrelationID(mux), healthHandler
+	return middleware.CorrelationID(middleware.RequestLogging(mux)), healthHandler
 }

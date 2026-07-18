@@ -23,7 +23,7 @@ func NewWithdrawHandler(repo account.Repository, outboxRelay OutboxRelay) *Withd
 }
 
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*account.Transaction, error) {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
 		return nil, fmt.Errorf("withdraw: %w", err)
 	}

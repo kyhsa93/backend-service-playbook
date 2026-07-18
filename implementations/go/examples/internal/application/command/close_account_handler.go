@@ -22,7 +22,7 @@ func NewCloseAccountHandler(repo account.Repository, outboxRelay OutboxRelay) *C
 }
 
 func (h *CloseAccountHandler) Handle(ctx context.Context, cmd CloseAccountCommand) error {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
 		return fmt.Errorf("close account: %w", err)
 	}

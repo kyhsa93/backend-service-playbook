@@ -22,7 +22,7 @@ func NewReactivateAccountHandler(repo account.Repository, outboxRelay OutboxRela
 }
 
 func (h *ReactivateAccountHandler) Handle(ctx context.Context, cmd ReactivateAccountCommand) error {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
 		return fmt.Errorf("reactivate account: %w", err)
 	}

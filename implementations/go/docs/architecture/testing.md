@@ -106,18 +106,24 @@ import (
 )
 
 // stubRepository는 테스트별로 필요한 동작만 함수 필드로 주입받는 최소 mock이다.
+// findByIDFn은 account.FindOne이 감싸는 단건 조회 시나리오만 흉내내면 충분하므로,
+// FindAccounts가 이를 단건 결과([]*account.Account 길이 0 또는 1)로 감싸 반환한다.
 type stubRepository struct {
 	findByIDFn func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
 	saveFn     func(ctx context.Context, a *account.Account) error
 }
 
-func (s *stubRepository) FindByID(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
-	return s.findByIDFn(ctx, accountID, ownerID)
+func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
+	a, err := s.findByIDFn(ctx, q.AccountID, q.OwnerID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if a == nil {
+		return nil, 0, nil
+	}
+	return []*account.Account{a}, 1, nil
 }
 func (s *stubRepository) Save(ctx context.Context, a *account.Account) error { return s.saveFn(ctx, a) }
-func (s *stubRepository) FindAll(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
-	return nil, 0, nil
-}
 func (s *stubRepository) FindTransactions(ctx context.Context, accountID string, page, take int) ([]account.Transaction, int, error) {
 	return nil, 0, nil
 }

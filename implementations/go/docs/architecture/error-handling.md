@@ -62,18 +62,22 @@ Go에는 예외가 없으므로 "즉시 throw"는 "즉시 `return zero값, err`"
 Infrastructure/Application 레이어를 거치며 에러에 어떤 작업이 실패했는지 컨텍스트를 덧붙인다. `%w`로 래핑하면 원본 에러를 감싸면서도 `errors.Is`/`errors.Unwrap`으로 원본을 계속 찾을 수 있다.
 
 ```go
-// internal/infrastructure/persistence/account_repository.go
-if err := row.Scan(&id, &ownerIDCol, &email, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
-	if err == sql.ErrNoRows {
-		return nil, account.ErrNotFound
+// internal/domain/account/repository.go — FindOne 헬퍼가 ErrNotFound를 반환하는 지점
+func FindOne(ctx context.Context, q Query, accountID, ownerID string) (*Account, error) {
+	accounts, _, err := q.FindAccounts(ctx, FindQuery{AccountID: accountID, OwnerID: ownerID, Take: 1})
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("find account by id: %w", err)
+	if len(accounts) == 0 {
+		return nil, ErrNotFound
+	}
+	return accounts[0], nil
 }
 ```
 
 ```go
 // internal/application/command/deposit_handler.go
-a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 if err != nil {
 	return nil, fmt.Errorf("deposit: %w", err)
 }

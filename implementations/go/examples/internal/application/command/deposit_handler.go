@@ -23,7 +23,7 @@ func NewDepositHandler(repo account.Repository, outboxRelay OutboxRelay) *Deposi
 }
 
 func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*account.Transaction, error) {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
 		return nil, fmt.Errorf("deposit: %w", err)
 	}

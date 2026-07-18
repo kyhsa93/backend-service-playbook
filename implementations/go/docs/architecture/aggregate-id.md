@@ -64,7 +64,7 @@ func Reconstitute(accountID, ownerID, email string, balance Money, status Status
 ```
 
 - **신규 생성**: `New()`가 ID를 새로 발급한다. 클라이언트가 제공한 ID를 받지 않는다 — `New()`의 파라미터 목록에 ID가 없다는 점 자체가 이 규칙을 코드로 강제한다.
-- **DB 복원**: `internal/infrastructure/persistence/account_repository.go`의 `FindByID`/`FindAll`이 DB row에서 읽은 `id` 컬럼 값을 `Reconstitute()`에 전달한다. Repository는 ID를 새로 발급하지 않는다.
+- **DB 복원**: `internal/infrastructure/persistence/account_repository.go`의 `FindAccounts`가 DB row에서 읽은 `id` 컬럼 값을 `Reconstitute()`에 전달한다. Repository는 ID를 새로 발급하지 않는다.
 
 ---
 

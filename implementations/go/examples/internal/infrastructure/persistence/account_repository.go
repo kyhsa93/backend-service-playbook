@@ -26,29 +26,7 @@ func NewAccountRepository(db *sql.DB, outboxWriter *outbox.Writer) *AccountRepos
 	return &AccountRepository{db: db, outboxWriter: outboxWriter}
 }
 
-func (r *AccountRepository) FindByID(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
-	row := r.db.QueryRowContext(ctx,
-		`SELECT id, owner_id, email, amount, currency, status, created_at, updated_at
-		 FROM accounts WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
-		accountID, ownerID,
-	)
-	var id, ownerIDCol, email, currency, status string
-	var amount int64
-	var createdAt, updatedAt time.Time
-	if err := row.Scan(&id, &ownerIDCol, &email, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, account.ErrNotFound
-		}
-		return nil, fmt.Errorf("find account by id: %w", err)
-	}
-	balance, err := account.NewMoney(amount, currency)
-	if err != nil {
-		return nil, err
-	}
-	return account.Reconstitute(id, ownerIDCol, email, balance, account.Status(status), createdAt, updatedAt), nil
-}
-
-func (r *AccountRepository) FindAll(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
+func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
 	args := []any{}
 	where := []string{"deleted_at IS NULL"}
 	i := 1

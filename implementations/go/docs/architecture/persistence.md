@@ -76,7 +76,7 @@ err := database.WithTx(ctx, db, func(ctx context.Context) error {
 
 이 패턴이 root의 AsyncLocalStorage 기반 TransactionManager와 동일한 역할을 한다 — 차이는 Node가 암묵적 스토리지(콜백 외부에서도 접근 가능)를 쓰는 반면, Go는 `context.Context`를 **함수 인자로 명시적으로 전달**해야 한다는 점이다(Go 관용 — context를 전역 변수나 구조체 필드에 숨겨 저장하지 않는다).
 
-### 현재 `examples/`의 실제 코드 — 알려진 격차
+### 현재 `examples/`의 실제 코드 — 로컬 트랜잭션으로 충분한 범위까지만 구현
 
 `internal/infrastructure/persistence/account_repository.go`의 `Save()`는 위 패턴을 쓰지 않는다. **로컬 트랜잭션을 그 함수 안에서 직접 열고 닫는다**:
 
@@ -98,7 +98,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 }
 ```
 
-이것으로 충분한 이유는 `Save()` 하나가 `accounts` + `transactions` 두 테이블만 다루고, 그 범위 밖의 다른 Repository와 트랜잭션을 묶을 필요가 지금까지 없었기 때문이다. **하지만 root가 요구하는 "여러 Repository를 넘나드는 컨텍스트 기반 전파"는 이 저장소 어디에도 구현되어 있지 않다** — 이후 두 번째 Aggregate(예: Payment)가 추가되어 Account와 하나의 트랜잭션으로 묶여야 하는 시나리오가 생기면 위의 목표 패턴으로 리팩토링이 필요하다.
+이것으로 충분한 이유는 `Save()` 하나가 `accounts` + `transactions` 두 테이블만 다루고, 그 범위 밖의 다른 Repository와 트랜잭션을 묶을 필요가 지금까지 없었기 때문이다. Command Handler를 전부 훑어봐도(`internal/application/command/`) 한 Handler가 두 Aggregate의 Repository에 동시에 쓰기를 호출하는 경우가 없다 — Account BC와 Card BC 사이의 상호작용은 항상 Integration Event를 통한 비동기 최종 일관성으로 처리되고([cross-domain.md](cross-domain.md)), `SuspendCardsByAccountHandler`처럼 여러 행을 갱신하는 Handler도 전부 같은 Aggregate(Card)의 Repository만 호출한다. root가 요구하는 "여러 Repository를 넘나드는 컨텍스트 기반 전파"를 만들 실제 유스케이스가 아직 없으므로, 위 목표 패턴(`database.WithTx` + `Querier`)은 만들지 않았다 — 두 번째 Aggregate가 하나의 트랜잭션으로 묶여야 하는 시나리오가 실제로 생기면 그때 이 패턴으로 리팩토링한다(YAGNI, [shared-modules.md](shared-modules.md) 참고).
 
 ---
 
@@ -126,7 +126,7 @@ Go에는 ORM 베이스 클래스/믹스인이 없으므로(공용 struct embeddi
 ## Soft Delete
 
 - 스키마: `deleted_at TIMESTAMP NULL` — `NULL`이면 활성, non-NULL이면 삭제됨.
-- 조회 필터: `account_repository.go`의 `FindByID`/`FindAll` 모두 `WHERE ... deleted_at IS NULL`을 기본으로 포함한다.
+- 조회 필터: `account_repository.go`의 `FindAccounts`가 `WHERE ... deleted_at IS NULL`을 기본으로 포함한다.
 - **알려진 격차**: `deleted_at`을 실제로 채우는 `DELETE`/soft-delete 유스케이스가 코드에 없다. `Account.Close()`는 `Status`를 `StatusClosed`로 바꿀 뿐 `deleted_at`을 건드리지 않는다 — "계좌 종료"와 "행 삭제"는 이 도메인에서 별개 개념이다. 만약 향후 계좌를 완전히 지우는 유스케이스(예: 규정 준수를 위한 개인정보 삭제)가 생기면:
 
 ```go
@@ -148,10 +148,12 @@ hard delete(`DELETE FROM accounts ...`)는 사용하지 않는다.
 ```
 migrations/
   0001_init.sql                            ← accounts, transactions 테이블 생성
+  0001_init.down.sql                       ← 0001_init.sql을 역순으로 되돌림
   0002_add_email_and_sent_emails.sql       ← accounts.email 컬럼 추가 + sent_emails 테이블 생성
+  0002_add_email_and_sent_emails.down.sql  ← 0002_add_email_and_sent_emails.sql을 역순으로 되돌림
 ```
 
-`test/account_e2e_test.go`의 `TestMain`이 컨테이너 기동 후 이 파일들을 순서대로 읽어 실행한다(`os.ReadFile(filepath.Join("..", "migrations", migration))`). **알려진 격차**: 각 마이그레이션에 대응하는 롤백(`down`) 스크립트가 없다 — `0001_init.down.sql` 같은 파일이 없으므로 프로덕션에서 마이그레이션을 되돌리려면 수동으로 반대 SQL을 작성해야 한다. `golang-migrate/migrate` 같은 라이브러리를 도입하면 `0001_init.up.sql`/`0001_init.down.sql` 쌍 관리와 마이그레이션 버전 추적(`schema_migrations` 테이블)을 표준화할 수 있다 — 이번 문서화 패스에서는 도구 자체를 도입하지 않았다.
+`test/account_e2e_test.go`의 `TestMain`이 컨테이너 기동 후 up 파일들을 순서대로 읽어 실행한다(`os.ReadFile(filepath.Join("..", "migrations", migration))`) — 파일명을 하드코딩한 목록으로 나열하므로 `.down.sql` 파일이 섞여 있어도 up 실행 경로에는 영향이 없다. 각 `NNNN_*.sql`에는 짝이 되는 `NNNN_*.down.sql`이 있어, 해당 up 파일이 만든 테이블/컬럼/인덱스를 생성 역순으로 제거한다 — 예를 들어 `0001_init.down.sql`은 `transactions`를 먼저 지우고(외래키가 `accounts`를 참조하므로) `accounts`를 그다음에 지운다. `golang-migrate/migrate` 같은 버전 추적 도구(`schema_migrations` 테이블)는 여전히 도입하지 않았다 — down 파일을 실제로 적용하는 것은 운영자가 수동으로 실행하는 몫이며, 이 저장소는 그 실행 메커니즘 자체를 자동화하지 않는다.
 
 `synchronize`/`ddl-auto: update` 같은 자동 스키마 동기화에 대응하는 개념(`database/sql`은애초에 ORM이 아니므로 자동 동기화 기능 자체가 없다)은 Go에는 없다 — 항상 마이그레이션 파일을 통해서만 스키마가 바뀐다는 점에서 오히려 root 원칙(운영 환경에서는 반드시 마이그레이션 사용)을 구조적으로 지키기 쉽다.
 

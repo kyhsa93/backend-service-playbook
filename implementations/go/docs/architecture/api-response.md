@@ -52,7 +52,7 @@ type GetTransactionsResponse struct {
 }
 ```
 
-`Count`는 페이지 크기가 아니라 **필터 적용 후 전체 건수**다. `internal/infrastructure/persistence/account_repository.go`의 `FindTransactions`는 `SELECT COUNT(*)`를 별도로 실행해 `total`을 구하고, `FindAll`도 동일한 패턴(`COUNT(*)` 쿼리 + `LIMIT/OFFSET` 쿼리 두 번 실행)을 따른다.
+`Count`는 페이지 크기가 아니라 **필터 적용 후 전체 건수**다. `internal/infrastructure/persistence/account_repository.go`의 `FindTransactions`는 `SELECT COUNT(*)`를 별도로 실행해 `total`을 구하고, `FindAccounts`도 동일한 패턴(`COUNT(*)` 쿼리 + `LIMIT/OFFSET` 쿼리 두 번 실행)을 따른다.
 
 ---
 
@@ -79,13 +79,12 @@ type GetAccountResponse struct {
 
 ## Repository 조회 메서드 — 배열 + count 반환
 
-`account.Repository` 인터페이스의 `FindAll`은 root의 "목록 조회는 항상 도메인 객체 배열 + count"를 그대로 따른다.
+`account.Repository` 인터페이스의 `FindAccounts`는 root의 "목록 조회는 항상 도메인 객체 배열 + count"를 그대로 따른다.
 
 ```go
 // internal/domain/account/repository.go
 type Repository interface {
-	FindByID(ctx context.Context, accountID, ownerID string) (*Account, error)
-	FindAll(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
 	Save(ctx context.Context, account *Account) error
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
@@ -93,15 +92,15 @@ type Repository interface {
 
 Go의 다중 반환값(`([]*Account, int, error)`)이 TypeScript의 `Promise<{ orders: Order[]; count: number }>`와 동일한 역할을 한다 — 별도 Result 래퍼 타입 없이 언어 기능으로 표현된다.
 
-### 단건 조회 — 별도 메서드 유지 (root와의 편차)
+### 단건 조회 — `find<Noun>s` + `take: 1`
 
-root 문서는 `findOne`을 따로 두지 않고 `find<Noun>s({ take: 1 })`로 통일하라고 권장하지만, 이 저장소의 Go 예제는 `FindByID`(단건, 소유자 검증 포함)와 `FindAll`(목록)을 **분리된 메서드**로 유지한다. 소유자 검증(`ownerID` 일치)이 단건 조회의 핵심 관심사이기 때문에 `FindQuery{OwnerID, Take: 1}` 형태로 통합하는 것보다 명시적인 별도 시그니처가 더 읽기 쉽다는 판단이다. 새 도메인을 작성할 때 root 방식(단일 `Find` + `take:1`)과 이 저장소 방식(`FindByID` 분리) 중 하나를 선택할 수 있으나, 한 저장소 안에서는 일관성을 유지한다. 자세한 내용은 [repository-pattern.md](repository-pattern.md) 참조.
+root 문서가 권장하는 대로 `findOne` 상당의 전용 메서드를 따로 두지 않고, `FindAccounts`를 `FindQuery{AccountID, OwnerID, Take: 1}`로 호출해 단건 조회를 흉내낸다. 이 반복 패턴(첫 결과 꺼내기 + 없으면 `ErrNotFound`)은 `internal/domain/account/repository.go`의 `FindOne(ctx, q, accountID, ownerID)` 헬퍼로 추출해 각 호출부가 재사용한다 — java/kotlin-springboot의 `findAccounts(...).stream().findFirst().orElseThrow(...)`와 동일한 역할이다. 자세한 내용은 [repository-pattern.md](repository-pattern.md) 참조.
 
 ---
 
 ## 동적 필터 조건 패턴
 
-`internal/infrastructure/persistence/account_repository.go`의 `FindAll`은 값이 있을 때만 WHERE 조건을 추가한다.
+`internal/infrastructure/persistence/account_repository.go`의 `FindAccounts`는 값이 있을 때만 WHERE 조건을 추가한다.
 
 ```go
 where := []string{"deleted_at IS NULL"}
@@ -144,7 +143,7 @@ type GetAccountResult struct {
 ```go
 // internal/application/query/get_account_handler.go
 func (h *GetAccountHandler) Handle(ctx context.Context, q GetAccountQuery) (*GetAccountResult, error) {
-	a, err := h.repo.FindByID(ctx, q.AccountID, q.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, q.AccountID, q.RequesterID)
 	if err != nil {
 		return nil, fmt.Errorf("get account: %w", err)
 	}

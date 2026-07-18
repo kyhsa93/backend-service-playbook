@@ -176,7 +176,7 @@ Command Handler는 저장이 끝난 직후 이 드레인을 한 번 호출할 �
 ```go
 // internal/application/command/deposit_handler.go
 func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*account.Transaction, error) {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	// ...
 	tx, err := a.Deposit(cmd.Amount)
 	// ...

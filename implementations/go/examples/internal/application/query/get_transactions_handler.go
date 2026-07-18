@@ -23,7 +23,7 @@ func NewGetTransactionsHandler(repo account.Query) *GetTransactionsHandler {
 }
 
 func (h *GetTransactionsHandler) Handle(ctx context.Context, q GetTransactionsQuery) (*GetTransactionsResult, error) {
-	if _, err := h.repo.FindByID(ctx, q.AccountID, q.RequesterID); err != nil {
+	if _, err := account.FindOne(ctx, h.repo, q.AccountID, q.RequesterID); err != nil {
 		return nil, fmt.Errorf("get transactions: %w", err)
 	}
 

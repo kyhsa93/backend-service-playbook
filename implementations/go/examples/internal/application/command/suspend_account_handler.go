@@ -22,7 +22,7 @@ func NewSuspendAccountHandler(repo account.Repository, outboxRelay OutboxRelay) 
 }
 
 func (h *SuspendAccountHandler) Handle(ctx context.Context, cmd SuspendAccountCommand) error {
-	a, err := h.repo.FindByID(ctx, cmd.AccountID, cmd.RequesterID)
+	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
 		return fmt.Errorf("suspend account: %w", err)
 	}

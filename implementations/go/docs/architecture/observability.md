@@ -119,38 +119,66 @@ root는 AsyncLocalStorage(Node)/ThreadLocal(Java) 상당의 컨텍스트-로컬 
 
 ```go
 // internal/interface/http/middleware/correlation_id_middleware.go — 실제 코드 (cross-cutting-concerns.md와 공유)
-type correlationIDKey struct{}
-
 func CorrelationID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		correlationID := r.Header.Get("X-Correlation-Id")
 		if correlationID == "" {
 			correlationID = uuid.NewString()
 		}
-		ctx := context.WithValue(r.Context(), correlationIDKey{}, correlationID)
+		ctx := common.WithCorrelationID(r.Context(), correlationID)
 		w.Header().Set("X-Correlation-Id", correlationID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func CorrelationIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(correlationIDKey{}).(string); ok {
-		return id
-	}
-	return ""
+	return common.CorrelationIDFromContext(ctx)
 }
 ```
 
-로그를 남길 때 `ctx`에서 꺼내 필드로 포함시킨다:
+context 값을 담는 키는 `internal/interface/http/middleware`가 아니라 `internal/common`(프레임워크 무의존, 어느 레이어에서도 참조 가능한 패키지)의 `WithCorrelationID`/`CorrelationIDFromContext`에 있다 — 아래 커스텀 `slog.Handler`도 같은 패키지의 함수로 값을 읽기 때문이다.
+
+## `slog.Handler`를 감싸 모든 로그에 자동으로 필드 추가
+
+각 로그 호출부에서 매번 `"correlation_id", CorrelationIDFromContext(ctx)`를 넘기지 않도록, `slog.Handler`를 감싸서 `ctx`에 correlation ID가 있으면 **모든 로그 레코드에 자동으로 필드를 추가**하는 커스텀 핸들러를 둔다:
 
 ```go
-slog.InfoContext(ctx, "account created",
-	"account_id", a.AccountID,
-	"correlation_id", CorrelationIDFromContext(ctx),
-)
+// internal/infrastructure/logging/correlation.go — 실제 코드
+package logging
+
+type CorrelationHandler struct {
+	slog.Handler
+}
+
+func NewCorrelationHandler(next slog.Handler) *CorrelationHandler {
+	return &CorrelationHandler{Handler: next}
+}
+
+func (h *CorrelationHandler) Handle(ctx context.Context, record slog.Record) error {
+	if correlationID := common.CorrelationIDFromContext(ctx); correlationID != "" {
+		record.AddAttrs(slog.String("correlation_id", correlationID))
+	}
+	return h.Handler.Handle(ctx, record)
+}
+
+func (h *CorrelationHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &CorrelationHandler{Handler: h.Handler.WithAttrs(attrs)}
+}
+
+func (h *CorrelationHandler) WithGroup(name string) slog.Handler {
+	return &CorrelationHandler{Handler: h.Handler.WithGroup(name)}
+}
 ```
 
-더 나아가 `slog.Handler`를 감싸서 `ctx`에 correlation ID가 있으면 **모든 로그 호출에 자동으로 필드를 추가**하는 커스텀 핸들러를 만들 수도 있다 — 매 로그 호출마다 `"correlation_id", ...`를 반복하지 않아도 된다. 이 저장소는 아직 이 커스텀 핸들러까지는 만들지 않았다(각 로그 호출부에서 명시적으로 `CorrelationIDFromContext(ctx)`를 넘기는 방식) — 유일하게 남은 부분적 gap이다.
+`main.go`의 로거 초기화에서 `JSONHandler`를 이 핸들러로 감싼다:
+
+```go
+// cmd/server/main.go — 실제 코드
+jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+slog.SetDefault(slog.New(logging.NewCorrelationHandler(jsonHandler)))
+```
+
+이후 `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)`처럼 `correlation_id`를 직접 넘기지 않아도, `ctx`에 값이 있으면 `CorrelationHandler.Handle`이 자동으로 필드를 추가한다. `WithAttrs`/`WithGroup`을 감싸는 이유는, 그렇지 않으면 `slog.Logger.With(...)`/`WithGroup(...)`으로 만든 하위 로거가 correlation_id 자동 주입을 잃어버리기 때문이다.
 
 ---
 

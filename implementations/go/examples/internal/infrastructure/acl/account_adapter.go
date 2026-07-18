@@ -28,7 +28,7 @@ func NewAccountAdapter(accounts account.Query) *AccountAdapter {
 var _ command.AccountAdapter = (*AccountAdapter)(nil)
 
 func (a *AccountAdapter) FindAccount(ctx context.Context, accountID, ownerID string) (*command.AccountView, error) {
-	acc, err := a.accounts.FindByID(ctx, accountID, ownerID)
+	acc, err := account.FindOne(ctx, a.accounts, accountID, ownerID)
 	if err != nil {
 		// 상류의 "계좌 없음" 에러 타입을 Card 도메인으로 누수시키지 않고 nil 신호로 번역한다.
 		if errors.Is(err, account.ErrNotFound) {

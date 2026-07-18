@@ -149,7 +149,7 @@ go.mod
 | 파일명 | `snake_case.go` | `account_repository.go`, `get_transactions_handler.go` |
 | 패키지명 | 소문자 단일 단어(언더스코어 없음) | `package account`, `package persistence` |
 | 타입명 | `PascalCase` | `Account`, `AccountRepository` |
-| 공개 함수/메서드 | `PascalCase` | `New`, `Deposit`, `FindByID` |
+| 공개 함수/메서드 | `PascalCase` | `New`, `Deposit`, `FindAccounts` |
 | 비공개 함수/메서드 | `camelCase` | `newTransaction`, `describe` |
 | 에러 | `ErrXxx` | `ErrNotFound`, `ErrInsufficientBalance` |
 | 인터페이스 | 명사(동사+er 지양, 역할 이름 우선) | `Repository`, `OutboxRelay`, `SESClient` |
