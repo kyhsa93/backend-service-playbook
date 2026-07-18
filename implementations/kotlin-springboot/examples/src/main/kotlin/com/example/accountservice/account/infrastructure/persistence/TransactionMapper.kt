@@ -13,6 +13,7 @@ internal object TransactionMapper {
             accountId = entity.accountId,
             type = entity.type,
             amount = entity.amount.toDomain(),
+            referenceId = entity.referenceId,
             createdAt = entity.createdAt,
         )
 
@@ -23,6 +24,7 @@ internal object TransactionMapper {
             accountId = transaction.accountId,
             type = transaction.type,
             amount = MoneyEmbeddable.fromDomain(transaction.amount),
+            referenceId = transaction.referenceId,
             createdAt = transaction.createdAt,
         )
 }

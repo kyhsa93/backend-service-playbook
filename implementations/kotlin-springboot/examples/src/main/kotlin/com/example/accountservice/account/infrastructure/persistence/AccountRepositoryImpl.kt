@@ -7,6 +7,7 @@ import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.account.domain.Transaction
 import com.example.accountservice.account.domain.TransactionFindQuery
+import com.example.accountservice.account.domain.TransactionType
 import com.example.accountservice.outbox.OutboxWriter
 import jakarta.persistence.EntityManager
 import org.springframework.data.domain.PageRequest
@@ -95,6 +96,11 @@ class AccountRepositoryImpl(
             .map(TransactionMapper::toDomain)
 
     override fun countTransactions(accountId: String): Long = transactionJpaRepository.countByAccountId(accountId)
+
+    override fun hasTransactionWithReference(
+        referenceId: String,
+        type: TransactionType,
+    ): Boolean = transactionJpaRepository.existsByReferenceIdAndType(referenceId, type)
 
     private fun buildJpql(
         query: AccountFindQuery,

@@ -79,26 +79,32 @@ class Account private constructor() {
             }
     }
 
-    fun deposit(amount: Long): Transaction {
+    fun deposit(
+        amount: Long,
+        referenceId: String? = null,
+    ): Transaction {
         if (status != AccountStatus.ACTIVE) throw DepositRequiresActiveAccountException()
         if (amount <= 0) throw InvalidAmountException()
         val money = Money(amount, balance.currency)
         balance = balance.add(money)
         updatedAt = LocalDateTime.now()
-        val transaction = Transaction.create(accountId, TransactionType.DEPOSIT, money)
+        val transaction = Transaction.create(accountId, TransactionType.DEPOSIT, money, referenceId)
         pendingTransactions += transaction
         domainEvents += MoneyDepositedEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt)
         return transaction
     }
 
-    fun withdraw(amount: Long): Transaction {
+    fun withdraw(
+        amount: Long,
+        referenceId: String? = null,
+    ): Transaction {
         if (status != AccountStatus.ACTIVE) throw WithdrawRequiresActiveAccountException()
         if (amount <= 0) throw InvalidAmountException()
         val money = Money(amount, balance.currency)
         if (balance.isLessThan(money)) throw InsufficientBalanceException()
         balance = balance.subtract(money)
         updatedAt = LocalDateTime.now()
-        val transaction = Transaction.create(accountId, TransactionType.WITHDRAWAL, money)
+        val transaction = Transaction.create(accountId, TransactionType.WITHDRAWAL, money, referenceId)
         pendingTransactions += transaction
         domainEvents += MoneyWithdrawnEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt)
         return transaction

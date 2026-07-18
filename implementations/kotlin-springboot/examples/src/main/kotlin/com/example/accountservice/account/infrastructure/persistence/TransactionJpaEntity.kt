@@ -32,6 +32,8 @@ class TransactionJpaEntity(
     var type: TransactionType = TransactionType.DEPOSIT,
     @Embedded
     var amount: MoneyEmbeddable = MoneyEmbeddable(),
+    @Column
+    var referenceId: String? = null,
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 )

@@ -8,12 +8,16 @@ import com.example.accountservice.auth.domain.InvalidCredentialsException
 import com.example.accountservice.card.domain.CardException
 import com.example.accountservice.card.domain.CardNotFoundException
 import com.example.accountservice.card.domain.LinkedAccountNotFoundException
+import com.example.accountservice.payment.domain.LinkedCardNotFoundException
+import com.example.accountservice.payment.domain.PaymentException
+import com.example.accountservice.payment.domain.PaymentNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import com.example.accountservice.payment.domain.LinkedAccountNotFoundException as PaymentLinkedAccountNotFoundException
 
 /**
  * 애플리케이션 전역 예외 → HTTP 응답 변환.
@@ -53,6 +57,30 @@ class GlobalExceptionHandler {
     @ExceptionHandler(CardException::class)
     fun handleCardException(e: CardException): ResponseEntity<ErrorResponse> {
         logger.warn("카드 요청 실패: {}", e.message)
+        return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(PaymentNotFoundException::class)
+    fun handlePaymentNotFound(e: PaymentNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("결제를 찾을 수 없음: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(LinkedCardNotFoundException::class)
+    fun handleLinkedCardNotFound(e: LinkedCardNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("연결할 카드를 찾을 수 없음: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(PaymentLinkedAccountNotFoundException::class)
+    fun handlePaymentLinkedAccountNotFound(e: PaymentLinkedAccountNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("연결된 계좌를 찾을 수 없음: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(PaymentException::class)
+    fun handlePaymentException(e: PaymentException): ResponseEntity<ErrorResponse> {
+        logger.warn("결제 요청 실패: {}", e.message)
         return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
     }
 

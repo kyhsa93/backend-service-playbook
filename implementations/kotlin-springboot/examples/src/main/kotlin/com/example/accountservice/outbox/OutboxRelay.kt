@@ -14,7 +14,17 @@ import com.example.accountservice.account.domain.AccountReactivatedEvent
 import com.example.accountservice.account.domain.AccountSuspendedEvent
 import com.example.accountservice.account.domain.MoneyDepositedEvent
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
+import com.example.accountservice.account.interfaces.integrationevent.AccountIntegrationEventController
 import com.example.accountservice.card.interfaces.integrationevent.CardIntegrationEventController
+import com.example.accountservice.payment.application.event.PaymentCancelledEventHandler
+import com.example.accountservice.payment.application.event.PaymentCompletedEventHandler
+import com.example.accountservice.payment.application.event.RefundApprovedEventHandler
+import com.example.accountservice.payment.application.integrationevent.PaymentCancelledIntegrationEventV1
+import com.example.accountservice.payment.application.integrationevent.PaymentCompletedIntegrationEventV1
+import com.example.accountservice.payment.application.integrationevent.RefundApprovedIntegrationEventV1
+import com.example.accountservice.payment.domain.PaymentCancelledEvent
+import com.example.accountservice.payment.domain.PaymentCompletedEvent
+import com.example.accountservice.payment.domain.RefundApprovedEvent
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -50,6 +60,14 @@ class OutboxRelay(
     // Card BC의 Integration Event 수신부. outbox/는 어느 BC에도 속하지 않는 공유 인프라이므로
     // 이 파일이 Card를 참조하는 것 자체는 원칙 위반이 아니다(Account가 Card를 참조하지만 않으면 된다).
     private val cardIntegrationEventController: CardIntegrationEventController,
+    // Payment/Refund Domain Event → Integration Event 변환 핸들러. Payment BC가 두 번째로 이
+    // OutboxRelay를 공유한다(Account에 이어).
+    private val paymentCompletedEventHandler: PaymentCompletedEventHandler,
+    private val paymentCancelledEventHandler: PaymentCancelledEventHandler,
+    private val refundApprovedEventHandler: RefundApprovedEventHandler,
+    // Payment BC의 Integration Event 수신부 — Account가 Payment의 payment.completed.v1/
+    // payment.cancelled.v1/refund.approved.v1을 구독해 실제 차감/보상 크레딧을 수행한다.
+    private val accountIntegrationEventController: AccountIntegrationEventController,
 ) {
     private val logger = LoggerFactory.getLogger(OutboxRelay::class.java)
 
@@ -113,6 +131,24 @@ class OutboxRelay(
             AccountClosedIntegrationEventV1.EVENT_NAME -> {
                 val event = objectMapper.readValue(payload, AccountClosedIntegrationEventV1::class.java)
                 cardIntegrationEventController.onAccountClosed(event.accountId)
+            }
+            "PaymentCompletedEvent" ->
+                paymentCompletedEventHandler.handle(objectMapper.readValue(payload, PaymentCompletedEvent::class.java))
+            "PaymentCancelledEvent" ->
+                paymentCancelledEventHandler.handle(objectMapper.readValue(payload, PaymentCancelledEvent::class.java))
+            "RefundApprovedEvent" ->
+                refundApprovedEventHandler.handle(objectMapper.readValue(payload, RefundApprovedEvent::class.java))
+            PaymentCompletedIntegrationEventV1.EVENT_NAME -> {
+                val event = objectMapper.readValue(payload, PaymentCompletedIntegrationEventV1::class.java)
+                accountIntegrationEventController.onPaymentCompleted(event.paymentId, event.accountId, event.amount)
+            }
+            PaymentCancelledIntegrationEventV1.EVENT_NAME -> {
+                val event = objectMapper.readValue(payload, PaymentCancelledIntegrationEventV1::class.java)
+                accountIntegrationEventController.onPaymentCancelled(event.paymentId, event.accountId, event.amount)
+            }
+            RefundApprovedIntegrationEventV1.EVENT_NAME -> {
+                val event = objectMapper.readValue(payload, RefundApprovedIntegrationEventV1::class.java)
+                accountIntegrationEventController.onRefundApproved(event.refundId, event.accountId, event.amount)
             }
             else -> logger.warn("알 수 없는 이벤트 타입: {}", eventType)
         }
