@@ -69,7 +69,7 @@ class OutboxRelay(
 
             var progressed = 0
             for (row in pending) {
-                runCatching { dispatch(row.eventType, row.payload) }
+                runCatching { dispatch(row.eventType, row.eventId, row.payload) }
                     .onSuccess {
                         row.markProcessed()
                         progressed++
@@ -90,21 +90,22 @@ class OutboxRelay(
 
     private fun dispatch(
         eventType: String,
+        eventId: String,
         payload: String,
     ) {
         when (eventType) {
             "AccountCreatedEvent" ->
-                accountCreatedEventHandler.handle(objectMapper.readValue(payload, AccountCreatedEvent::class.java))
+                accountCreatedEventHandler.handle(objectMapper.readValue(payload, AccountCreatedEvent::class.java), eventId)
             "MoneyDepositedEvent" ->
-                moneyDepositedEventHandler.handle(objectMapper.readValue(payload, MoneyDepositedEvent::class.java))
+                moneyDepositedEventHandler.handle(objectMapper.readValue(payload, MoneyDepositedEvent::class.java), eventId)
             "MoneyWithdrawnEvent" ->
-                moneyWithdrawnEventHandler.handle(objectMapper.readValue(payload, MoneyWithdrawnEvent::class.java))
+                moneyWithdrawnEventHandler.handle(objectMapper.readValue(payload, MoneyWithdrawnEvent::class.java), eventId)
             "AccountSuspendedEvent" ->
-                accountSuspendedEventHandler.handle(objectMapper.readValue(payload, AccountSuspendedEvent::class.java))
+                accountSuspendedEventHandler.handle(objectMapper.readValue(payload, AccountSuspendedEvent::class.java), eventId)
             "AccountReactivatedEvent" ->
-                accountReactivatedEventHandler.handle(objectMapper.readValue(payload, AccountReactivatedEvent::class.java))
+                accountReactivatedEventHandler.handle(objectMapper.readValue(payload, AccountReactivatedEvent::class.java), eventId)
             "AccountClosedEvent" ->
-                accountClosedEventHandler.handle(objectMapper.readValue(payload, AccountClosedEvent::class.java))
+                accountClosedEventHandler.handle(objectMapper.readValue(payload, AccountClosedEvent::class.java), eventId)
             AccountSuspendedIntegrationEventV1.EVENT_NAME -> {
                 val event = objectMapper.readValue(payload, AccountSuspendedIntegrationEventV1::class.java)
                 cardIntegrationEventController.onAccountSuspended(event.accountId)

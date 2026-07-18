@@ -24,7 +24,10 @@ class AccountSuspendedEventHandler(
 ) {
     private val logger = LoggerFactory.getLogger(AccountSuspendedEventHandler::class.java)
 
-    fun handle(event: AccountSuspendedEvent) {
+    fun handle(
+        event: AccountSuspendedEvent,
+        eventId: String,
+    ) {
         // 외부 BC(Card 등)에 알리는 Integration Event를 Outbox에 적재한다.
         outboxWriter.saveAll(
             listOf(AccountSuspendedIntegrationEventV1(event.accountId, event.suspendedAt.toString())),
@@ -34,10 +37,13 @@ class AccountSuspendedEventHandler(
         // (AccountSuspendedEvent) 자체가 처리 실패로 남아 다음 호출에서 재드레인되고, 그 과정에서
         // 위에서 이미 적재한 Integration Event가 중복 적재된다(수신 측이 멱등이라 무해하지만
         // 불필요한 증폭이다). 알림 자체의 재시도는 별도 outbox 행(sent_email 파이프라인)의 몫이다.
+        // eventId는 이 Outbox 행의 eventId다 — NotificationService가 이를 키로 Level 2(Ledger)
+        // 중복 발송 방지를 적용한다.
         try {
             notificationService.sendEmail(
                 accountId = event.accountId,
                 eventType = "AccountSuspended",
+                sourceEventId = eventId,
                 recipient = event.email,
                 subject = "[Account] 계좌가 정지되었습니다",
                 body = "계좌(${event.accountId})가 정지되었습니다.",

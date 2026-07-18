@@ -24,10 +24,24 @@ class NotificationServiceImpl(
     override fun sendEmail(
         accountId: String,
         eventType: String,
+        sourceEventId: String,
         recipient: String,
         subject: String,
         body: String,
     ) {
+        // Level 2(Ledger) 멱등성 — 이 Outbox 이벤트가 이미 이메일 발송으로 이어졌다면 재발송하지
+        // 않는다. Relay가 at-least-once로 재시도하는 동안 SES 호출은 성공했지만 processed=true
+        // 커밋 전에 프로세스가 죽는 경우, 다음 재시도에서 이 체크가 중복 발송을 막는다.
+        if (sentEmailJpaRepository.existsBySourceEventId(sourceEventId)) {
+            logger
+                .atInfo()
+                .addKeyValue("account_id", accountId)
+                .addKeyValue("event_type", eventType)
+                .addKeyValue("source_event_id", sourceEventId)
+                .log("이미 발송된 이벤트 — 중복 발송 스킵")
+            return
+        }
+
         val request =
             SendEmailRequest
                 .builder()
@@ -61,6 +75,7 @@ class NotificationServiceImpl(
             SentEmail.create(
                 accountId = accountId,
                 eventType = eventType,
+                sourceEventId = sourceEventId,
                 recipient = recipient,
                 subject = subject,
                 sesMessageId = result.messageId(),

@@ -32,7 +32,7 @@ class Account private constructor() {
     var deletedAt: LocalDateTime? = null
         private set
 
-    private val domainEvents: MutableList<Any> = mutableListOf()
+    private val domainEvents: MutableList<DomainEvent> = mutableListOf()
 
     private val pendingTransactions: MutableList<Transaction> = mutableListOf()
 
@@ -132,7 +132,7 @@ class Account private constructor() {
         updatedAt = deletedAt!!
     }
 
-    fun pullDomainEvents(): List<Any> = domainEvents.toList().also { domainEvents.clear() }
+    fun pullDomainEvents(): List<DomainEvent> = domainEvents.toList().also { domainEvents.clear() }
 
     fun pullPendingTransactions(): List<Transaction> = pendingTransactions.toList().also { pendingTransactions.clear() }
 }

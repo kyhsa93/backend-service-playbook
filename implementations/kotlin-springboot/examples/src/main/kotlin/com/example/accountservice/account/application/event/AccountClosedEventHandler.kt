@@ -24,7 +24,10 @@ class AccountClosedEventHandler(
 ) {
     private val logger = LoggerFactory.getLogger(AccountClosedEventHandler::class.java)
 
-    fun handle(event: AccountClosedEvent) {
+    fun handle(
+        event: AccountClosedEvent,
+        eventId: String,
+    ) {
         // 외부 BC(Card 등)에 알리는 Integration Event를 Outbox에 적재한다.
         outboxWriter.saveAll(
             listOf(AccountClosedIntegrationEventV1(event.accountId, event.closedAt.toString())),
@@ -32,11 +35,13 @@ class AccountClosedEventHandler(
 
         // 알림은 best-effort다(정지 핸들러와 동일한 이유 — 실패해도 이 핸들러를 던지게 두면
         // 이미 적재한 Integration Event가 다음 재드레인 때 중복 적재된다). 알림 자체의 재시도는
-        // 별도 outbox 행(sent_email 파이프라인)의 몫이다.
+        // 별도 outbox 행(sent_email 파이프라인)의 몫이다. eventId는 이 Outbox 행의 eventId다 —
+        // NotificationService가 이를 키로 Level 2(Ledger) 중복 발송 방지를 적용한다.
         try {
             notificationService.sendEmail(
                 accountId = event.accountId,
                 eventType = "AccountClosed",
+                sourceEventId = eventId,
                 recipient = event.email,
                 subject = "[Account] 계좌가 해지되었습니다",
                 body = "계좌(${event.accountId})가 해지되었습니다.",

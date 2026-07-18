@@ -3,7 +3,7 @@ package com.example.accountservice.account.domain
 import java.time.LocalDateTime
 
 data class AccountClosedEvent(
-    val accountId: String,
-    val email: String,
+    override val accountId: String,
+    override val email: String,
     val closedAt: LocalDateTime,
-)
+) : DomainEvent

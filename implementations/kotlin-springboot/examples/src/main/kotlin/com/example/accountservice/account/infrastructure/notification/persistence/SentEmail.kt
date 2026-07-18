@@ -29,6 +29,10 @@ class SentEmail protected constructor() {
     var eventType: String = ""
         private set
 
+    @Column(name = "source_event_id", nullable = false, unique = true)
+    var sourceEventId: String = ""
+        private set
+
     @Column(nullable = false)
     var recipient: String = ""
         private set
@@ -49,6 +53,7 @@ class SentEmail protected constructor() {
         fun create(
             accountId: String,
             eventType: String,
+            sourceEventId: String,
             recipient: String,
             subject: String,
             sesMessageId: String,
@@ -57,6 +62,7 @@ class SentEmail protected constructor() {
                 this.sentEmailId = generateId()
                 this.accountId = accountId
                 this.eventType = eventType
+                this.sourceEventId = sourceEventId
                 this.recipient = recipient
                 this.subject = subject
                 this.sesMessageId = sesMessageId

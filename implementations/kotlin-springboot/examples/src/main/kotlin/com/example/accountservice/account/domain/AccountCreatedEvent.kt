@@ -3,9 +3,9 @@ package com.example.accountservice.account.domain
 import java.time.LocalDateTime
 
 data class AccountCreatedEvent(
-    val accountId: String,
+    override val accountId: String,
     val ownerId: String,
-    val email: String,
+    override val email: String,
     val currency: String,
     val createdAt: LocalDateTime,
-)
+) : DomainEvent
