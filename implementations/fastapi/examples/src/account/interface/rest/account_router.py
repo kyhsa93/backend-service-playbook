@@ -9,6 +9,9 @@ from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
 from ....outbox.outbox_relay import OutboxRelay
 from ....outbox.outbox_writer import OutboxWriter
+from ....payment.application.event.payment_cancelled_event_handler import PaymentCancelledEventHandler
+from ....payment.application.event.payment_completed_event_handler import PaymentCompletedEventHandler
+from ....payment.application.event.refund_approved_event_handler import RefundApprovedEventHandler
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
 from ...application.command.create_account_handler import CreateAccountCommand, CreateAccountHandler
 from ...application.command.deposit_handler import DepositCommand, DepositHandler
@@ -24,9 +27,12 @@ from ...application.event.money_withdrawn_event_handler import MoneyWithdrawnEve
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ...application.service.notification_service import NotificationService
-from ...domain.repository import AccountQuery
+from ...domain.repository import AccountQuery, AccountRepository
 from ...infrastructure.notification.notification_service import SesNotificationService
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
+from ...interface.integration_event.account_integration_event_controller import (
+    AccountIntegrationEventController,
+)
 from .schemas import (
     CreateAccountRequest,
     CreateAccountResponse,
@@ -56,18 +62,30 @@ def _card_repo(session: AsyncSession = Depends(get_session)) -> CardRepository:
     return SqlAlchemyCardRepository(session)
 
 
+def _account_repo(session: AsyncSession = Depends(get_session)) -> AccountRepository:
+    return SqlAlchemyAccountRepository(session)
+
+
 def _outbox_relay(
     session: AsyncSession = Depends(get_session),
     notification_service: NotificationService = Depends(_notification_service),
     card_repo: CardRepository = Depends(_card_repo),
+    account_repo: AccountRepository = Depends(_account_repo),
 ) -> OutboxRelay:
     # 이 dict가 프로세스 전체의 단일 조립 지점이다 — Account 자신의 Domain Event 핸들러뿐
     # 아니라, Account가 발행하는 Integration Event(account.suspended.v1/account.closed.v1)를
-    # 구독하는 외부 BC(Card)의 반응 핸들러도 같은 OutboxRelay/같은 dict에 등록한다. FastAPI에는
-    # NestJS의 EventHandlerRegistry 같은 모듈 간 느슨한 등록 메커니즘이 없으므로, 이 팩토리가
-    # 곧 두 BC의 이벤트 배선을 조립하는 composition root다.
+    # 구독하는 외부 BC(Card)의 반응 핸들러, Payment 자신의 Domain Event를 Integration Event로
+    # 변환하는 핸들러(PaymentCompleted/PaymentCancelled/RefundApproved), 그리고 그 Integration
+    # Event(payment.completed.v1/payment.cancelled.v1/refund.approved.v1)를 구독하는 Account의
+    # 반응 핸들러까지 모두 같은 OutboxRelay/같은 dict에 등록한다. FastAPI에는 NestJS의
+    # EventHandlerRegistry 같은 모듈 간 느슨한 등록 메커니즘이 없으므로, 이 팩토리가 곧 세
+    # BC(Account/Card/Payment)의 이벤트 배선을 조립하는 composition root다. payment_router.py는
+    # 이 함수를 그대로 import해 재사용한다(Payment도 Domain Event를 발행하므로 같은 공유
+    # OutboxRelay 인스턴스가 필요하다) — Card는 발행 없이 구독만 하므로 이 함수를 가져다 쓸
+    # 필요가 없었지만, Payment는 첫 발행측 도메인이라 이 재사용이 처음 생겼다.
     outbox_writer = OutboxWriter(session)
     card_integration_event_controller = CardIntegrationEventController(card_repo)
+    account_integration_event_controller = AccountIntegrationEventController(account_repo)
     return OutboxRelay(
         session=session,
         handlers={
@@ -79,6 +97,12 @@ def _outbox_relay(
             "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
             "account.suspended.v1": card_integration_event_controller.on_account_suspended,
             "account.closed.v1": card_integration_event_controller.on_account_closed,
+            "PaymentCompleted": PaymentCompletedEventHandler(outbox_writer).handle,
+            "PaymentCancelled": PaymentCancelledEventHandler(outbox_writer).handle,
+            "RefundApproved": RefundApprovedEventHandler(outbox_writer).handle,
+            "payment.completed.v1": account_integration_event_controller.on_payment_completed,
+            "payment.cancelled.v1": account_integration_event_controller.on_payment_cancelled,
+            "refund.approved.v1": account_integration_event_controller.on_refund_approved,
         },
     )
 

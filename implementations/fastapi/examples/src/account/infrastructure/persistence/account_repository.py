@@ -38,6 +38,10 @@ class TransactionModel(Base):
     amount: Mapped[int]
     currency: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    # Payment BC의 Integration Event 반응이 남긴 거래를 상관관계 짓고(payment_id/refund_id),
+    # 동일 (reference_id, type) 조합의 재처리를 막는 Level 2 Ledger 키로도 쓰인다
+    # (has_transaction_with_reference 참고). 사용자가 직접 요청한 입출금에는 없다(nullable).
+    reference_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
 
 
 class SqlAlchemyAccountRepository(AccountRepository):
@@ -106,6 +110,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
                     amount=transaction.amount.amount,
                     currency=transaction.amount.currency,
                     created_at=transaction.created_at,
+                    reference_id=transaction.reference_id,
                 )
             )
 
@@ -137,10 +142,20 @@ class SqlAlchemyAccountRepository(AccountRepository):
                 type=r.type,  # type: ignore[arg-type]
                 amount=Money(r.amount, r.currency),
                 created_at=r.created_at,
+                reference_id=r.reference_id,
             )
             for r in rows
         ]
         return transactions, total
+
+    async def has_transaction_with_reference(self, reference_id: str, type: str) -> bool:
+        stmt = (
+            select(func.count())
+            .select_from(TransactionModel)
+            .where(TransactionModel.reference_id == reference_id, TransactionModel.type == type)
+        )
+        count = (await self._session.execute(stmt)).scalar_one()
+        return count > 0
 
     def _to_domain(self, row: AccountModel) -> Account:
         return Account(

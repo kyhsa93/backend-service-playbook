@@ -75,7 +75,7 @@ class Account:
         )
         return account
 
-    def deposit(self, amount: int) -> Transaction:
+    def deposit(self, amount: int, reference_id: str | None = None) -> Transaction:
         if self.status != AccountStatus.ACTIVE:
             raise DepositRequiresActiveAccountError()
         if amount <= 0:
@@ -83,7 +83,7 @@ class Account:
         money = Money(amount, self.balance.currency)
         self.balance = self.balance.add(money)
         self.updated_at = datetime.utcnow()
-        transaction = Transaction.create(self.account_id, "DEPOSIT", money)
+        transaction = Transaction.create(self.account_id, "DEPOSIT", money, reference_id=reference_id)
         self._pending_transactions.append(transaction)
         self._events.append(
             MoneyDeposited(
@@ -97,7 +97,7 @@ class Account:
         )
         return transaction
 
-    def withdraw(self, amount: int) -> Transaction:
+    def withdraw(self, amount: int, reference_id: str | None = None) -> Transaction:
         if self.status != AccountStatus.ACTIVE:
             raise WithdrawRequiresActiveAccountError()
         if amount <= 0:
@@ -107,7 +107,7 @@ class Account:
             raise InsufficientBalanceError()
         self.balance = self.balance.subtract(money)
         self.updated_at = datetime.utcnow()
-        transaction = Transaction.create(self.account_id, "WITHDRAWAL", money)
+        transaction = Transaction.create(self.account_id, "WITHDRAWAL", money, reference_id=reference_id)
         self._pending_transactions.append(transaction)
         self._events.append(
             MoneyWithdrawn(

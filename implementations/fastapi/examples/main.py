@@ -28,6 +28,11 @@ from src.common.error_response import build_error_response  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
 from src.common.rate_limit import limiter  # noqa: E402
 from src.database import engine  # noqa: E402
+from src.payment.domain.errors import (  # noqa: E402
+    LinkedAccountNotFoundError as PaymentLinkedAccountNotFoundError,
+)
+from src.payment.domain.errors import LinkedCardNotFoundError, PaymentError, PaymentNotFoundError  # noqa: E402
+from src.payment.interface.rest.payment_router import router as payment_router  # noqa: E402
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -68,6 +73,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(card_router)
+app.include_router(payment_router)
 
 
 @app.get("/health/live")
@@ -133,6 +139,28 @@ async def linked_account_not_found_handler(request: Request, exc: LinkedAccountN
 
 @app.exception_handler(CardError)
 async def card_error_handler(request: Request, exc: CardError) -> JSONResponse:
+    return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
+
+
+@app.exception_handler(PaymentNotFoundError)
+async def payment_not_found_handler(request: Request, exc: PaymentNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
+
+
+@app.exception_handler(LinkedCardNotFoundError)
+async def linked_card_not_found_handler(request: Request, exc: LinkedCardNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
+
+
+@app.exception_handler(PaymentLinkedAccountNotFoundError)
+async def payment_linked_account_not_found_handler(
+    request: Request, exc: PaymentLinkedAccountNotFoundError
+) -> JSONResponse:
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
+
+
+@app.exception_handler(PaymentError)
+async def payment_error_handler(request: Request, exc: PaymentError) -> JSONResponse:
     return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
 
 

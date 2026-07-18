@@ -107,6 +107,80 @@ class SesNotificationService(NotificationService):
 
 ---
 
+### Domain Service — 여러 Aggregate를 조율하는 순수 도메인 로직
+
+Account/Card는 각자 단일 Aggregate BC라 "하나의 Aggregate로는 판단할 수 없는 규칙"을 보여줄 수 없었다.
+`examples/src/payment/`(Payment BC)는 `Payment`/`Refund` 두 Aggregate를 갖는 첫 도메인이라, 이
+패턴을 실제로 동작하는 코드로 확인할 수 있다.
+
+**도메인 규칙**: "환불은 원 결제가 COMPLETED 상태여야 하고, 환불 금액이 결제 금액을 넘을 수 없다."
+`Payment`는 자신에 대한 환불 시도(`Refund`)를 모르고(환불은 별도 Aggregate로만 존재), `Refund`는
+원 결제의 금액·상태를 모른다(`payment_id`로 참조만 한다). 어느 한쪽 Aggregate의 메서드로 이
+판단을 넣으려면 다른 쪽 Aggregate 전체를 파라미터로 받아야 해서 경계가 무너지므로, 두 Aggregate를
+모두 로드한 Application 레이어가 위임하는 별도의 Domain Service에 위치한다:
+
+```python
+# domain/refund_eligibility_service.py — Domain Service. FastAPI의 Depends(다른 어떤
+# DI 컨테이너)에도 등록하지 않는다 — 상태가 없는 순수 판단 로직이라 Application
+# 레이어가 필요할 때 직접 인스턴스화해 쓴다.
+@dataclass(frozen=True)
+class RefundDecision:
+    approved: bool
+    reason: str | None = None
+
+
+class RefundEligibilityService:
+    def evaluate(self, payment: Payment, refund: Refund) -> RefundDecision:
+        if payment.status != PaymentStatus.COMPLETED:
+            return RefundDecision(approved=False, reason="완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+        if refund.amount > payment.amount:
+            return RefundDecision(approved=False, reason="환불 금액은 결제 금액을 초과할 수 없습니다.")
+        return RefundDecision(approved=True)
+```
+
+```python
+# application/command/request_refund_handler.py — 두 Repository를 로드해 위임
+class RequestRefundHandler:
+    def __init__(self, payment_repo: PaymentRepository, refund_repo: RefundRepository, outbox_relay: OutboxRelay) -> None:
+        self._payment_repo = payment_repo
+        self._refund_repo = refund_repo
+        self._outbox_relay = outbox_relay
+        self._refund_eligibility_service = RefundEligibilityService()
+
+    async def execute(self, cmd: RequestRefundCommand) -> Refund:
+        payments, _ = await self._payment_repo.find_payments(page=0, take=1, payment_id=cmd.payment_id, owner_id=cmd.requester_id)
+        payment = payments[0] if payments else None
+        if payment is None:
+            raise PaymentNotFoundError(cmd.payment_id)
+
+        refund = Refund.create(payment_id=payment.payment_id, amount=cmd.amount, reason=cmd.reason)
+
+        decision = self._refund_eligibility_service.evaluate(payment, refund)
+        if decision.approved:
+            refund.approve(account_id=payment.account_id, owner_id=payment.owner_id)
+        else:
+            # 환불 거부는 유효한 도메인 판단 결과다 — 예외를 던지지 않고 REJECTED로
+            # 저장한 Refund를 그대로 반환한다. Interface 레이어가 이를 201 + status
+            # 필드로 응답한다(4xx 에러가 아니다).
+            refund.reject(decision.reason or "환불 요청이 거부되었습니다.")
+
+        await self._refund_repo.save(refund)
+        await self._outbox_relay.process_pending()
+        return refund
+```
+
+`RefundEligibilityService`는 순수 함수적 판단만 한다 — Repository를 직접 호출하지 않는다(그랬다면
+Domain Service를 잘못 쓰는 패턴, root [domain-service.md](../../../../docs/architecture/domain-service.md)의
+"Domain Service를 잘못 쓰는 패턴" 참고). 로드는 항상 Application 레이어(`RequestRefundHandler`)의 몫이다.
+
+단위 테스트도 Application 레이어를 거치지 않고 `RefundEligibilityService`를 직접 인스턴스화해 판단
+로직만 검증한다(`tests/unit/domain/test_refund_eligibility_service.py`).
+
+전체 코드: `examples/src/payment/domain/refund_eligibility_service.py`, `payment.py`, `refund.py`,
+`examples/src/payment/application/command/request_refund_handler.py`.
+
+---
+
 ## Infrastructure 레이어 — `infrastructure/`
 
 외부 시스템에 실제로 접근하는 유일한 레이어.
@@ -183,3 +257,4 @@ async def deposit(
 - [cqrs-pattern.md](cqrs-pattern.md) — Command/Query Handler 상세
 - [domain-events.md](domain-events.md) — Domain Event, Outbox 패턴
 - [directory-structure.md](directory-structure.md) — 전체 디렉토리 트리
+- root [domain-service.md](../../../../docs/architecture/domain-service.md) — Domain Service/Technical Service 패턴의 프레임워크 무관 원칙(이 문서 "Domain Service" 섹션의 `RefundEligibilityService`가 실제 코드 근거)

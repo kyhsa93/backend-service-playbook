@@ -11,11 +11,14 @@ import src.account.infrastructure.notification.sent_email_model  # noqa: F401
 import src.auth.infrastructure.persistence.credential_repository  # noqa: F401
 import src.card.infrastructure.persistence.card_repository  # noqa: F401
 import src.outbox.outbox_model  # noqa: F401
+import src.payment.infrastructure.persistence.payment_repository  # noqa: F401
+import src.payment.infrastructure.persistence.refund_repository  # noqa: F401
 
 # 프로젝트의 Base(및 그 위에 등록된 모든 모델)를 가져와야 autogenerate가 모델 변경을
-# 감지할 수 있다 — outbox_model/sent_email_model/card_repository/credential_repository도 같은
-# Base를 import하면서 메타데이터에 등록되므로 여기서 함께 import해준다(그렇지 않으면 해당
-# 테이블들이 "모델에는 있는데 감지가 안 되는" 상태가 된다).
+# 감지할 수 있다 — outbox_model/sent_email_model/card_repository/credential_repository/
+# payment_repository/refund_repository도 같은 Base를 import하면서 메타데이터에 등록되므로
+# 여기서 함께 import해준다(그렇지 않으면 해당 테이블들이 "모델에는 있는데 감지가 안 되는"
+# 상태가 된다).
 from src.account.infrastructure.persistence.account_repository import Base
 
 # this is the Alembic Config object, which provides
