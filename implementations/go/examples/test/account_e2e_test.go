@@ -82,7 +82,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -135,9 +135,14 @@ func runTests(m *testing.M) int {
 	repo := persistence.NewAccountRepository(db, outboxWriter)
 	cardRepo := persistence.NewCardRepository(db)
 	credentialRepo := persistence.NewCredentialRepository(db)
+	paymentRepo := persistence.NewPaymentRepository(db)
 	accountAdapter := acl.NewAccountAdapter(repo)
+	paymentCardAdapter := acl.NewPaymentCardAdapter(cardRepo)
+	paymentAccountAdapter := acl.NewPaymentAccountAdapter(repo)
 	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
 	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
+	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(repo)
+	depositByPaymentHandler := command.NewDepositByPaymentHandler(repo)
 
 	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
@@ -146,6 +151,9 @@ func runTests(m *testing.M) int {
 		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
 		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
+		"PaymentCompleted":   event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
+		"PaymentCancelled":   event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
+		"RefundApproved":     event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
 		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountSuspendedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
@@ -160,6 +168,33 @@ func runTests(m *testing.M) int {
 			}
 			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
 		},
+		"payment.completed.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.PaymentCompletedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return withdrawByPaymentHandler.Handle(ctx, command.WithdrawByPaymentCommand{
+				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
+			})
+		},
+		"payment.cancelled.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.PaymentCancelledV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
+				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
+			})
+		},
+		"refund.approved.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.RefundApprovedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
+				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.RefundID,
+			})
+		},
 	})
 
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
@@ -171,7 +206,7 @@ func runTests(m *testing.M) int {
 	// 여기서만 넉넉한 limiter로 override한다.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, accountAdapter, outboxRelay, testJWTService, testPasswordHasher, testLimiter)
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, outboxRelay, testJWTService, testPasswordHasher, testLimiter)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 

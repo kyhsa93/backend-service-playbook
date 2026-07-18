@@ -27,7 +27,9 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*acc
 	if err != nil {
 		return nil, fmt.Errorf("withdraw: %w", err)
 	}
-	tx, err := a.Withdraw(cmd.Amount)
+	// 사용자가 직접 요청한 출금이므로 referenceID는 없다("") — Payment BC 반응
+	// (withdraw_by_payment_handler.go)만 상관관계 키를 싣는다.
+	tx, err := a.Withdraw(cmd.Amount, "")
 	if err != nil {
 		return nil, err
 	}

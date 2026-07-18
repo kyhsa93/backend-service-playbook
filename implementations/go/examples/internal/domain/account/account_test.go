@@ -65,7 +65,7 @@ func TestAccount_Deposit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := tt.setup()
-			_, err := a.Deposit(tt.amount)
+			_, err := a.Deposit(tt.amount, "")
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Deposit() error = %v, want %v", err, tt.wantErr)
 			}
@@ -77,7 +77,7 @@ func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
 	a.ClearEvents()
 
-	tx, err := a.Deposit(1000)
+	tx, err := a.Deposit(1000, "")
 	if err != nil {
 		t.Fatalf("Deposit() unexpected error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestAccount_Withdraw(t *testing.T) {
 			name: "0원_이하_출금은_에러",
 			setup: func() *account.Account {
 				a := account.New("owner-1", "a@example.com", "KRW")
-				_, _ = a.Deposit(5000)
+				_, _ = a.Deposit(5000, "")
 				return a
 			},
 			amount:  0,
@@ -135,7 +135,7 @@ func TestAccount_Withdraw(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := tt.setup()
-			_, err := a.Withdraw(tt.amount)
+			_, err := a.Withdraw(tt.amount, "")
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Withdraw() error = %v, want %v", err, tt.wantErr)
 			}
@@ -145,10 +145,10 @@ func TestAccount_Withdraw(t *testing.T) {
 
 func TestAccount_Withdraw_CollectsDomainEvent(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
-	_, _ = a.Deposit(1000)
+	_, _ = a.Deposit(1000, "")
 	a.ClearEvents()
 
-	if _, err := a.Withdraw(400); err != nil {
+	if _, err := a.Withdraw(400, ""); err != nil {
 		t.Fatalf("Withdraw() unexpected error: %v", err)
 	}
 
@@ -205,7 +205,7 @@ func TestAccount_Close(t *testing.T) {
 			name: "잔액이_0이_아니면_에러",
 			setup: func() *account.Account {
 				a := account.New("owner-1", "a@example.com", "KRW")
-				_, _ = a.Deposit(1000)
+				_, _ = a.Deposit(1000, "")
 				return a
 			},
 			wantErr: account.ErrBalanceNotZero,
@@ -238,7 +238,7 @@ func TestAccount_Close(t *testing.T) {
 
 func TestAccount_ClearTransactions(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
-	_, _ = a.Deposit(1000)
+	_, _ = a.Deposit(1000, "")
 
 	if len(a.PendingTransactions()) != 1 {
 		t.Fatalf("want 1 pending transaction, got %d", len(a.PendingTransactions()))

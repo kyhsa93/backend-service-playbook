@@ -27,7 +27,9 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 	if err != nil {
 		return nil, fmt.Errorf("deposit: %w", err)
 	}
-	tx, err := a.Deposit(cmd.Amount)
+	// 사용자가 직접 요청한 입금이므로 referenceID는 없다("") — Payment BC 반응
+	// (deposit_by_payment_handler.go)만 상관관계 키를 싣는다.
+	tx, err := a.Deposit(cmd.Amount, "")
 	if err != nil {
 		return nil, err
 	}

@@ -106,10 +106,14 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 	}
 
 	for _, t := range a.PendingTransactions() {
+		var referenceID any
+		if t.ReferenceID != "" {
+			referenceID = t.ReferenceID
+		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO transactions (id, account_id, type, amount, currency, created_at)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			t.TransactionID, t.AccountID, string(t.Type), t.Amount.Amount, t.Amount.Currency, t.CreatedAt,
+			`INSERT INTO transactions (id, account_id, type, amount, currency, reference_id, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			t.TransactionID, t.AccountID, string(t.Type), t.Amount.Amount, t.Amount.Currency, referenceID, t.CreatedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("save transaction: %w", err)
@@ -128,6 +132,19 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 	a.ClearTransactions()
 	a.ClearEvents()
 	return nil
+}
+
+// HasTransactionWithReference는 account.Query가 요구하는 멱등성 체크를 구현한다.
+// (referenceID, type) 조합으로 확인해야 하는 이유는 account.Query 인터페이스의 주석 참고.
+func (r *AccountRepository) HasTransactionWithReference(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error) {
+	var count int
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM transactions WHERE reference_id = $1 AND type = $2`,
+		referenceID, string(txType),
+	).Scan(&count); err != nil {
+		return false, fmt.Errorf("count transactions by reference: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (r *AccountRepository) FindTransactions(ctx context.Context, accountID string, page, take int) ([]account.Transaction, int, error) {

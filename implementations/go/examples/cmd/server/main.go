@@ -69,6 +69,16 @@ func main() {
 	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
 	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
 
+	// Payment BC 의존성 — Account/Card와 마찬가지로 합성 루트만 세 BC를 모두 알고, 서로는
+	// Outbox의 문자열 event_type을 매개로만 연결된다. Payment는 Card/Account를 동기
+	// Adapter(ACL)로 조회하고(paymentCardAdapter/paymentAccountAdapter), Account는 Payment의
+	// Integration Event(payment.completed.v1 등)에 비동기로 반응한다(아래 handler map).
+	paymentRepo := persistence.NewPaymentRepository(db)
+	paymentCardAdapter := acl.NewPaymentCardAdapter(cardRepo)
+	paymentAccountAdapter := acl.NewPaymentAccountAdapter(accountRepo)
+	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(accountRepo)
+	depositByPaymentHandler := command.NewDepositByPaymentHandler(accountRepo)
+
 	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
@@ -76,6 +86,12 @@ func main() {
 		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
 		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
+		// Payment BC의 Domain Event를 외부 BC용 Integration Event로 변환해 Outbox에
+		// 다시 적재한다(account.AccountSuspended가 account.suspended.v1로 변환되는 것과
+		// 동일한 관용구).
+		"PaymentCompleted": event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
+		"PaymentCancelled": event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
+		"RefundApproved":   event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
 		// Card BC가 Account의 Integration Event에 반응한다(비동기). 언마샬 글루만 여기 두고
 		// 실제 유스케이스는 Card Application 핸들러에 위임한다.
 		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
@@ -92,6 +108,36 @@ func main() {
 			}
 			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
 		},
+		// Account BC가 Payment의 Integration Event에 반응한다(비동기). payment.cancelled.v1과
+		// refund.approved.v1은 둘 다 "이미 차감된 금액을 되돌린다"는 동일한 동작이라
+		// DepositByPaymentHandler 하나를 재사용한다(referenceId만 paymentId/refundId로 다름).
+		"payment.completed.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.PaymentCompletedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return withdrawByPaymentHandler.Handle(ctx, command.WithdrawByPaymentCommand{
+				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
+			})
+		},
+		"payment.cancelled.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.PaymentCancelledV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
+				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
+			})
+		},
+		"refund.approved.v1": func(ctx context.Context, payload []byte) error {
+			var e integrationevent.RefundApprovedV1
+			if err := json.Unmarshal(payload, &e); err != nil {
+				return err
+			}
+			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
+				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.RefundID,
+			})
+		},
 	})
 
 	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
@@ -106,7 +152,7 @@ func main() {
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, accountAdapter, outboxRelay, jwtService, passwordHasher, limiter)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, outboxRelay, jwtService, passwordHasher, limiter)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 

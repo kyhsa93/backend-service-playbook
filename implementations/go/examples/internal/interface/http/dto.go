@@ -95,3 +95,47 @@ type ErrorResponse struct {
 	Message    string `json:"message"`
 	Error      string `json:"error"`
 }
+
+type CreatePaymentRequest struct {
+	CardID string `json:"cardId"`
+	Amount int64  `json:"amount"`
+}
+
+type CancelPaymentRequest struct {
+	Reason string `json:"reason"`
+}
+
+type PaymentResponse struct {
+	PaymentID string    `json:"paymentId"`
+	CardID    string    `json:"cardId"`
+	AccountID string    `json:"accountId"`
+	OwnerID   string    `json:"ownerId"`
+	Amount    int64     `json:"amount"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type GetPaymentsResponse struct {
+	Payments []PaymentResponse `json:"payments"`
+	Count    int               `json:"count"`
+}
+
+type RequestRefundRequest struct {
+	Amount int64  `json:"amount"`
+	Reason string `json:"reason"`
+}
+
+type RefundResponse struct {
+	RefundID     string    `json:"refundId"`
+	PaymentID    string    `json:"paymentId"`
+	Amount       int64     `json:"amount"`
+	Reason       string    `json:"reason"`
+	Status       string    `json:"status"`
+	DecisionNote string    `json:"decisionNote,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type GetRefundsResponse struct {
+	Refunds []RefundResponse `json:"refunds"`
+	Count   int              `json:"count"`
+}

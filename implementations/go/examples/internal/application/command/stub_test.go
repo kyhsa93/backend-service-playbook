@@ -10,8 +10,9 @@ import (
 // findByIDFn은 account.FindOne이 감싸는 단건 조회 시나리오만 흉내내면 충분하므로,
 // FindAccounts 구현이 이를 단건 결과([]*account.Account 길이 0 또는 1)로 감싸 반환한다.
 type stubRepository struct {
-	findByIDFn func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
-	saveFn     func(ctx context.Context, a *account.Account) error
+	findByIDFn                    func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
+	saveFn                        func(ctx context.Context, a *account.Account) error
+	hasTransactionWithReferenceFn func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error)
 }
 
 func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
@@ -36,6 +37,15 @@ func (s *stubRepository) FindTransactions(
 	ctx context.Context, accountID string, page, take int,
 ) ([]account.Transaction, int, error) {
 	return nil, 0, nil
+}
+
+func (s *stubRepository) HasTransactionWithReference(
+	ctx context.Context, referenceID string, txType account.TransactionType,
+) (bool, error) {
+	if s.hasTransactionWithReferenceFn == nil {
+		return false, nil
+	}
+	return s.hasTransactionWithReferenceFn(ctx, referenceID, txType)
 }
 
 type stubOutboxRelay struct{ processed int }
