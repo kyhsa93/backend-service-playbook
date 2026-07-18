@@ -19,7 +19,10 @@ class WithdrawHandler:
         self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: WithdrawCommand) -> Transaction:
-        account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id
+        )
+        account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.withdraw(cmd.amount)

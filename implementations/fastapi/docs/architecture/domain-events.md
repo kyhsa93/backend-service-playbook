@@ -123,7 +123,8 @@ class DepositHandler:
         self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+        account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
@@ -162,7 +163,11 @@ class OutboxRelay:
                 handler = self._handlers.get(row.event_type)
                 try:
                     if handler is not None:
-                        await handler(json.loads(row.payload))
+                        # 이 Outbox 행의 event_id를 payload에 실어 보낸다 — 핸들러가 Ledger 키로
+                        # 써서 재시도로 인한 중복 처리를 스스로 건너뛸 수 있다("이벤트 핸들러 멱등성" 참조).
+                        payload = json.loads(row.payload)
+                        payload["outbox_event_id"] = row.event_id
+                        await handler(payload)
                     row.processed = True
                     progressed += 1
                 except Exception:  # noqa: BLE001 - 다음 드레인에서 재시도해야 하므로 여기서 삼킨다
@@ -178,7 +183,7 @@ class OutboxRelay:
 
 ### 3단계: `application/event/`의 EventHandler가 페이로드를 역직렬화해 `NotificationService`를 호출한다
 
-`event_type`별로 하나씩, `account_created_event_handler.py`/`money_deposited_event_handler.py`/`money_withdrawn_event_handler.py`/`account_suspended_event_handler.py`/`account_reactivated_event_handler.py`/`account_closed_event_handler.py`가 있다. 각 핸들러는 Outbox에 저장된 JSON 페이로드(`dict`)를 원래의 frozen dataclass(`AccountDomainEvent`)로 복원한 뒤, 기존 `NotificationService.notify()`를 그대로 호출한다 — 이메일 제목/본문 렌더링(`_render()`)과 발송 기록(`SentEmailModel`) 로직은 전혀 바뀌지 않았다.
+`event_type`별로 하나씩, `account_created_event_handler.py`/`money_deposited_event_handler.py`/`money_withdrawn_event_handler.py`/`account_suspended_event_handler.py`/`account_reactivated_event_handler.py`/`account_closed_event_handler.py`가 있다. 각 핸들러는 Outbox에 저장된 JSON 페이로드(`dict`)를 원래의 frozen dataclass(`AccountDomainEvent`)로 복원한 뒤, `NotificationService.notify()`에 이벤트와 함께 `payload["outbox_event_id"]`(`OutboxRelay`가 실어 보낸 이 행의 고유 id)를 넘겨 호출한다 — 이 id가 "이벤트 핸들러 멱등성"에서 다루는 Ledger 키다.
 
 ```python
 # application/event/money_deposited_event_handler.py — 실제 코드
@@ -196,7 +201,7 @@ class MoneyDepositedEventHandler:
             balance_after=Money(**payload["balance_after"]),
             created_at=datetime.fromisoformat(payload["created_at"]),
         )
-        await self._notification_service.notify(event)
+        await self._notification_service.notify(event, payload["outbox_event_id"])
 ```
 
 `interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 이 6개 핸들러를 `event_type` 문자열 → `handle` 메서드의 `dict` 레지스트리로 조립해 `OutboxRelay`에 주입한다.
@@ -220,25 +225,50 @@ def _outbox_relay(
     )
 ```
 
-`SesNotificationService.notify()`(`src/account/infrastructure/notification/notification_service.py`)는 이전과 동일하게 SES 발송 실패를 잡아 로깅만 하고 삼킨다 — 다만 이제 이 실패는 `OutboxRelay.process_pending()`의 `try/except`에도 걸리므로, 어느 계층에서 잡히든 결과는 같다: Outbox row가 `processed=False`로 남아 다음 드레인에서 재시도된다.
+`SesNotificationService.notify()`(`src/account/infrastructure/notification/notification_service.py`)는 SES 발송 실패를 잡아 로깅만 하고 삼킨다 — 이 실패는 `OutboxRelay.process_pending()`의 `try/except`에도 걸리므로, 어느 계층에서 잡히든 결과는 같다: Outbox row가 `processed=False`로 남아 다음 드레인에서 재시도된다. `notify()`는 실제 발송 전에 `outbox_event_id` 기준으로 이미 처리된 이벤트인지부터 확인한다(Ledger 멱등성, 아래 참조).
 
 ---
 
-## 이벤트 핸들러 멱등성 — 남은 개선 지점
+## 이벤트 핸들러 멱등성
 
-Outbox 도입으로 `notify()`는 **at-least-once**로 호출될 수 있다(`OutboxRelay`가 `row.processed = True`로 표시하기 직전에 죽으면 같은 이벤트가 다음 드레인에서 다시 발송된다). `SentEmailModel`(`src/account/infrastructure/notification/sent_email_model.py`)에 이미 `event_type` + `account_id` 컬럼이 있으므로, 중복 발송을 막으려면 발송 전에 already-sent 여부를 조회하는 Level 2(Ledger) 멱등성을 추가로 적용할 수 있다. **이 문서 작성 시점 기준으로 이 멱등성 체크는 아직 코드에 없다** — Outbox 자체의 원자성(계좌 저장과 이벤트 적재가 항상 같이 커밋됨)은 이미 보장되므로, 이는 "이벤트 유실"이 아니라 "드문 상황에서 같은 이메일이 두 번 발송될 수 있다"는 별개의, 덜 심각한 격차다.
+Outbox 도입으로 `notify()`는 **at-least-once**로 호출될 수 있다(`OutboxRelay`가 `row.processed = True`로 표시하기 직전에 죽으면 같은 이벤트가 다음 드레인에서 다시 발송된다). 이를 막기 위해 Level 2(Ledger) 멱등성을 적용했다 — `SentEmailModel`(`src/account/infrastructure/notification/sent_email_model.py`)이 발송 이력 Entity이자 Ledger 역할을 겸한다.
+
+Ledger 키는 Outbox 행의 `event_id`다(`account_id`+`event_type`이 아니다 — 같은 계좌에 같은 종류의 이벤트가 여러 번 발생할 수 있으므로 그 조합만으로는 "이 이벤트 한 건"을 특정할 수 없다). `OutboxRelay.process_pending()`이 핸들러를 호출할 때 payload에 `outbox_event_id`(= `row.event_id`)를 실어 보내고, 각 EventHandler가 이를 그대로 `NotificationService.notify(event, outbox_event_id)`에 전달한다.
 
 ```python
-# _send_and_record() 진입 시 추가하면 되는 코드 (아직 미적용)
-existing = await self._session.execute(
-    select(SentEmailModel).where(
-        SentEmailModel.account_id == event.account_id,
-        SentEmailModel.event_type == event_type,
-    )
-)
-if existing.scalar_one_or_none() is not None:
-    return  # 이미 발송됨 — 중복 스킵
+# infrastructure/notification/sent_email_model.py — 실제 코드(발췌)
+class SentEmailModel(Base):
+    __tablename__ = "sent_emails"
+
+    sent_email_id: Mapped[str] = mapped_column(primary_key=True)
+    account_id: Mapped[str]
+    event_type: Mapped[str]
+    ...
+    outbox_event_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
+    sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 ```
+
+```python
+# infrastructure/notification/notification_service.py — 실제 코드(발췌)
+async def _send_and_record(self, event: AccountDomainEvent, outbox_event_id: str) -> None:
+    event_type = type(event).__name__
+
+    already_sent = (
+        await self._session.execute(
+            select(SentEmailModel).where(SentEmailModel.outbox_event_id == outbox_event_id)
+        )
+    ).scalar_one_or_none()
+    if already_sent is not None:
+        logger.info("이미 발송된 이벤트 — 중복 발송을 건너뜀", extra={...})
+        return  # 이미 발송됨 — 중복 스킵
+
+    subject, body = _render(event)
+    ...
+    self._session.add(SentEmailModel(..., outbox_event_id=outbox_event_id))
+    await self._session.flush()
+```
+
+check(조회)와 record(저장)가 `notify()` 한 호출 안에서, Aggregate 저장·Outbox 드레인과 같은 요청 스코프 `AsyncSession`으로 일어난다 — 별도 트랜잭션이 아니다. Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하는 Level 1(본질적 멱등)이라 Ledger가 필요 없다 — 알림을 보내는 Account 쪽 EventHandler만 Level 2가 필요했다.
 
 완전한 멱등성 원칙 요약은 root의 [domain-events.md#이벤트-핸들러-멱등성](../../../../docs/architecture/domain-events.md#이벤트-핸들러-멱등성) 참조.
 
@@ -271,7 +301,7 @@ class AccountSuspendedEventHandler:
         await self._outbox_writer.save_all([
             AccountSuspendedIntegrationEventV1(account_id=event.account_id, suspended_at=event.suspended_at.isoformat())
         ])
-        await self._notification_service.notify(event)
+        await self._notification_service.notify(event, payload["outbox_event_id"])
 ```
 
 수신 측(Card BC)은 `interface/integration_event/card_integration_event_controller.py`가 담당한다 — HTTP Router와 동일한 위치(`interface/`)의 입력 경계이며, 자기 도메인의 Command Handler만 호출한다. 조립은 발행 측(`account`)의 composition root인 `interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 맡는다 — Account 자신의 6개 Domain Event 핸들러와 Card의 두 Integration Event 반응 핸들러를 같은 `handlers` dict에 등록한다(FastAPI에는 NestJS의 `EventHandlerRegistry` 같은 모듈 간 느슨한 등록 메커니즘이 없다).
@@ -304,7 +334,7 @@ def _outbox_relay(..., card_repo: CardRepository = Depends(_card_repo)) -> Outbo
 - **후속 처리는 Outbox 드레인을 통해서만**: Command Handler는 알림 서비스를 직접 호출하지 않고 `OutboxRelay.process_pending()`만 호출한다.
 - **드레인은 폴링 워커가 아니라 다음 커맨드가 트리거한다**: 배경 작업(APScheduler/Celery) 없이도 매 커맨드가 테이블 전체를 훑어 재시도까지 자연스럽게 처리한다 — e2e 테스트에서 타이밍 대기가 필요 없는 이유이기도 하다.
 - **드레인은 진전이 없을 때까지 여러 패스를 반복한다**: Domain Event 핸들러가 같은 세션에 새 Integration Event를 적재해도(Card BC 연동 참조) 한 커맨드 처리 안에서 연쇄 반응까지 완결된다 — `MAX_PASSES`로 상한을 둔다.
-- **핸들러는 (아직) 멱등하지 않다**: at-least-once 전달을 전제로 하지만, Ledger(`SentEmailModel`) 기반 중복 스킵은 아직 미적용 — 남은 개선 지점. 단, Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하므로 재수신에 자연히 멱등하다.
+- **핸들러는 멱등하게 구현되어 있다**: 알림을 보내는 Account 쪽 EventHandler는 Ledger(`SentEmailModel.outbox_event_id`) 기반 중복 스킵(Level 2)을 적용한다. Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하므로 재수신에 자연히 멱등하다(Level 1).
 
 ---
 

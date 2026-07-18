@@ -11,15 +11,7 @@ class AccountQuery(ABC):
     """
 
     @abstractmethod
-    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
-
-    @abstractmethod
-    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
-
-
-class AccountRepository(AccountQuery, ABC):
-    @abstractmethod
-    async def find_all(
+    async def find_accounts(
         self,
         page: int,
         take: int,
@@ -28,5 +20,10 @@ class AccountRepository(AccountQuery, ABC):
         status: list[str] | None = None,
     ) -> tuple[list[Account], int]: ...
 
+    @abstractmethod
+    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
+
+
+class AccountRepository(AccountQuery, ABC):
     @abstractmethod
     async def save(self, account: Account) -> None: ...

@@ -12,7 +12,7 @@
 2. **Adapter 인터페이스는 호출하는 쪽의 `application/adapter/`에 ABC로 정의**한다 — Repository/Technical Service와 동일한 위치 원칙([layer-architecture.md](layer-architecture.md)의 "Technical Service 인터페이스" 참조).
 3. **Adapter 구현체는 호출하는 쪽의 `infrastructure/`에 배치**하고, 대상 도메인의 실제 진입점(이 저장소에서는 대상 도메인이 공개한 읽기 인터페이스, 예: `AccountQuery`)을 호출한다.
 4. Adapter 인터페이스는 **호출하는 쪽이 필요로 하는 형태**로만 메서드를 정의한다 — 대상 도메인의 전체 API나 내부 enum을 노출하지 않는다.
-5. 조회 메서드 네이밍은 이 저장소의 실제 Repository 컨벤션(`find_by_id` / `find_all` — [repository-pattern.md](repository-pattern.md)의 "알려진 격차" 참조)을 그대로 따른다.
+5. 조회 메서드 네이밍은 이 저장소의 실제 Repository 컨벤션(`find_accounts` 하나로 통일 — [repository-pattern.md](repository-pattern.md) 참조)을 그대로 따른다.
 
 ## 실제 구현 — Card BC에서 Account 활성 여부 확인
 
@@ -59,7 +59,8 @@ class AccountAdapterImpl(AccountAdapter):
         self._account_query = account_query
 
     async def find_account(self, account_id: str, owner_id: str) -> AccountView | None:
-        account = await self._account_query.find_by_id(account_id, owner_id)
+        accounts, _ = await self._account_query.find_accounts(page=0, take=1, account_id=account_id, owner_id=owner_id)
+        account = accounts[0] if accounts else None
         # 상류의 "계좌 없음"(None)을 그대로 Card 도메인의 None 신호로 전달한다 (오염 방지).
         if account is None:
             return None
@@ -137,7 +138,7 @@ async def issue_card(
 - [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) — 동기/비동기 선택 기준, ACL 원칙 (root)
 - [domain-events.md](domain-events.md) — 반대 방향(Account → Card)의 비동기 Integration Event 흐름
 - [layer-architecture.md](layer-architecture.md) — Technical Service 인터페이스 배치 원칙
-- [repository-pattern.md](repository-pattern.md) — `find_by_id`/`find_all` 네이밍 컨벤션과 root와의 격차
+- [repository-pattern.md](repository-pattern.md) — `find_accounts` 조회 메서드 통일 컨벤션
 - [cqrs-pattern.md](cqrs-pattern.md) — `AccountQuery`/`CardQuery` 읽기 전용 인터페이스 분리
 - [module-pattern.md](module-pattern.md) — `Depends` 기반 바인딩
 - [testing.md](testing.md) — Adapter mock을 이용한 Application 단위 테스트

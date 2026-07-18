@@ -78,15 +78,15 @@ class TimestampedMixin:
 
 ## Soft Delete
 
-`find_by_id`/`find_all`(`infrastructure/persistence/account_repository.py`)은 모두 `AccountModel.deleted_at.is_(None)` 조건을 조회 쿼리에 명시적으로 포함한다.
+`find_accounts`(`infrastructure/persistence/account_repository.py`)는 `AccountModel.deleted_at.is_(None)` 조건을 조회 쿼리에 명시적으로 포함한다.
 
 ```python
-async def find_by_id(self, account_id: str, owner_id: str) -> Account | None:
-    stmt = select(AccountModel).where(
-        AccountModel.id == account_id,
-        AccountModel.owner_id == owner_id,
-        AccountModel.deleted_at.is_(None),
-    )
+async def find_accounts(self, page: int, take: int, account_id=None, owner_id=None, status=None):
+    stmt = select(AccountModel).where(AccountModel.deleted_at.is_(None))
+    if account_id:
+        stmt = stmt.where(AccountModel.id == account_id)
+    if owner_id:
+        stmt = stmt.where(AccountModel.owner_id == owner_id)
     ...
 ```
 

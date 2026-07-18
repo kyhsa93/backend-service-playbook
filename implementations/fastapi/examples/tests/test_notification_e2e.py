@@ -15,6 +15,7 @@ from src.account.infrastructure.notification.sent_email_model import SentEmailMo
 from src.account.infrastructure.persistence.account_repository import Base
 from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.database import get_session
+from src.outbox.outbox_model import OutboxModel
 
 OWNER_ID = "owner-1"
 RECIPIENT_EMAIL = "owner1@example.com"
@@ -99,6 +100,25 @@ async def _find_sent_email(session_factory, account_id: str, event_type: str) ->
         return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def _count_sent_emails(session_factory, account_id: str, event_type: str) -> int:
+    async with session_factory() as session:
+        stmt = select(SentEmailModel).where(
+            SentEmailModel.account_id == account_id, SentEmailModel.event_type == event_type
+        )
+        return len((await session.execute(stmt)).scalars().all())
+
+
+async def _mark_unprocessed(session_factory, event_type: str) -> None:
+    """OutboxRelay가 아직 처리하지 않은 것처럼 보이도록 `processed`를 되돌린다 —
+    Outbox/Relay의 at-least-once 재전달(같은 이벤트가 다시 드레인됨)을 시뮬레이션한다."""
+    async with session_factory() as session:
+        stmt = select(OutboxModel).where(OutboxModel.event_type == event_type)
+        rows = (await session.execute(stmt)).scalars().all()
+        for row in rows:
+            row.processed = False
+        await session.commit()
+
+
 @pytest.mark.asyncio
 async def test_account_created_sends_ses_email_and_records_it(notification_env: dict) -> None:
     client: AsyncClient = notification_env["client"]
@@ -118,6 +138,31 @@ async def test_account_created_sends_ses_email_and_records_it(notification_env: 
     matched = next((m for m in ses_messages if m["Id"] == sent_email.ses_message_id), None)
     assert matched is not None
     assert RECIPIENT_EMAIL in matched["Destination"]["ToAddresses"]
+
+
+@pytest.mark.asyncio
+async def test_outbox가_같은_이벤트를_재전달해도_이메일이_중복_발송되지_않는다(notification_env: dict) -> None:
+    client: AsyncClient = notification_env["client"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+
+    assert await _count_sent_emails(notification_env["session_factory"], account_id, "AccountCreated") == 1
+
+    # OutboxRelay가 AccountCreated 이벤트를 다시 드레인하도록 processed 플래그를 되돌린다
+    # (at-least-once 재전달 시뮬레이션) — 이후 아무 커맨드나 실행하면 OutboxRelay는 이 행도
+    # 함께 재드레인한다(테이블 전체를 훑는 구조이기 때문).
+    await _mark_unprocessed(notification_env["session_factory"], "AccountCreated")
+
+    deposit_response = await client.post(
+        f"/accounts/{account_id}/deposit", json={"amount": 1000}, headers=auth_headers(OWNER_ID)
+    )
+    assert deposit_response.status_code == 201
+
+    # Ledger(SentEmailModel.outbox_event_id) 덕분에 같은 이벤트가 재드레인돼도 이메일은 한 번만 남는다.
+    assert await _count_sent_emails(notification_env["session_factory"], account_id, "AccountCreated") == 1
 
 
 @pytest.mark.asyncio

@@ -140,7 +140,7 @@
 [ ] Repository 구현체가 infrastructure/persistence/ 레이어에 있는가?
 [ ] Repository 구현체 클래스명이 SqlAlchemy<Aggregate>Repository 인가?
 [ ] Repository 조회 메서드명이 find_<noun>s 패턴(단건/목록 통일)을 따르는가?
-    → find_by_id와 find_all로 분리되어 있다면, 새로 작성하는 Repository는 find_<noun>s(take, page, ...) 하나로 통일하고 단건은 take=1 + 인덱싱으로 조회 (repository-pattern.md의 "알려진 격차"와 "root 컨벤션에 맞춘 형태" 참조)
+    → find_by_id와 find_all처럼 분리되어 있다면, find_<noun>s(take, page, ...) 하나로 통일하고 단건은 take=1 + 인덱싱으로 조회 (repository-pattern.md의 `AccountQuery.find_accounts` 예시 참조)
 [ ] Repository에 update_<noun> 메서드가 있는가?
     → 있다면 제거. 조회 후 Aggregate 도메인 메서드로 수정, save() 하나로 upsert
 [ ] save()가 신규/기존을 판별해 upsert처럼 동작하는가? (session.get()으로 기존 row 조회 후 분기)

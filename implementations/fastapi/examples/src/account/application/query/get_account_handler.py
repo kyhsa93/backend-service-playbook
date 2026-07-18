@@ -16,7 +16,10 @@ class GetAccountHandler:
         self._repo = repo
 
     async def execute(self, query: GetAccountQuery) -> GetAccountResult:
-        account = await self._repo.find_by_id(query.account_id, query.requester_id)
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=query.account_id, owner_id=query.requester_id
+        )
+        account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(query.account_id)
         return GetAccountResult(

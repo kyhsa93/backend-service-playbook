@@ -27,7 +27,10 @@ class AccountQuery(ABC):
     """읽기 전용 인터페이스 — Query Handler 전용."""
 
     @abstractmethod
-    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+    async def find_accounts(
+        self, page: int, take: int,
+        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+    ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
     async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
@@ -37,52 +40,10 @@ class AccountRepository(AccountQuery, ABC):
     """쓰기 모델 — AccountQuery를 상속해 조회 메서드를 재사용한다."""
 
     @abstractmethod
-    async def find_all(
-        self, page: int, take: int,
-        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
-    ) -> tuple[list[Account], int]: ...
-
-    @abstractmethod
     async def save(self, account: Account) -> None: ...
 ```
 
-CommandHandler는 `AccountRepository` 타입(ABC), QueryHandler는 `AccountQuery` 타입(ABC)으로 주입받는다 — 어느 쪽도 `SqlAlchemyAccountRepository`를 직접 import하지 않는다. DI 바인딩은 FastAPI `Depends` 팩토리가 담당한다: [layer-architecture.md](layer-architecture.md), [cqrs-pattern.md](cqrs-pattern.md) 참조.
-
-`Transaction`(하위 Entity)은 별도 Repository를 갖지 않는다 — `AccountRepository.find_transactions()`를 통해 Account Aggregate 경계 안에서 조회된다. 이는 root의 "Aggregate 내부 하위 Entity는 Aggregate Root의 Repository를 통해 함께 저장/조회한다" 원칙을 정확히 따른다.
-
----
-
-## 알려진 격차 — 메서드 네이밍이 root 컨벤션과 다르다
-
-root 원칙은 조회 메서드를 **`find<Noun>s` 하나로 통일**하고, 단건 조회는 `take: 1`로 호출 후 결과를 꺼내는 패턴을 요구한다. 현재 `AccountRepository`는 `find_by_id`와 `find_all`을 별도 메서드로 분리하고 있다.
-
-```python
-# 현재 — 두 메서드로 분리 (root 컨벤션과 다름)
-async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
-async def find_all(self, page: int, take: int, account_id: str | None = None, ...) -> tuple[list[Account], int]: ...
-```
-
-이 자체가 코드 품질 문제는 아니다 — `find_by_id`가 단건을 `Account | None`으로 직접 반환하는 편이 호출부(`deposit_handler.py` 등)에서는 더 읽기 쉽다. 다만 root가 요구하는 통일된 컨벤션과는 형태가 다르므로, 이 문서는 두 형태를 모두 제시하고 격차를 명시한다.
-
-### root 컨벤션에 맞춘 형태
-
-```python
-# domain/repository.py — root 컨벤션 적용 시
-class AccountRepository(ABC):
-    @abstractmethod
-    async def find_accounts(
-        self,
-        page: int,
-        take: int,
-        account_id: str | None = None,
-        owner_id: str | None = None,
-        status: list[str] | None = None,
-    ) -> tuple[list[Account], int]: ...
-    # find_by_id는 제거 — 단건 조회는 호출부에서 take=1로 호출
-
-    @abstractmethod
-    async def save(self, account: Account) -> None: ...
-```
+조회 메서드는 `find_accounts` 하나로 통일되어 있다 — 단건 조회는 필터(`account_id`+`owner_id`)와 `take=1`로 호출한 뒤 결과 목록의 첫 항목을 꺼내는 패턴을 쓴다:
 
 ```python
 # application/command/deposit_handler.py — 단건 조회 패턴
@@ -94,15 +55,11 @@ async def execute(self, cmd: DepositCommand) -> Transaction:
     ...
 ```
 
-**두 형태의 트레이드오프:**
+`deposit_handler.py`/`withdraw_handler.py`/`suspend_account_handler.py`/`reactivate_account_handler.py`/`close_account_handler.py`/`get_account_handler.py`/`get_transactions_handler.py` 등 계좌 단건을 조회하는 모든 호출부가 이 패턴을 따른다. java/kotlin-springboot의 `findAccounts` 패턴과 형태가 같다.
 
-| | `find_by_id` + `find_all` (현재) | `find_accounts` 하나만 (root 컨벤션) |
-|---|---|---|
-| 호출부 가독성 | 높음 — `Account \| None`을 바로 받음 | 목록에서 꺼내는 한 줄이 추가로 필요 |
-| 구현 중복 | 낮음 — 두 메서드가 필터 조건을 각자 구성 | 없음 — 조회 경로가 하나로 통일됨 |
-| 동적 필터 확장성 | 두 메서드를 각각 확장해야 함 | 하나만 확장하면 됨 |
+CommandHandler는 `AccountRepository` 타입(ABC), QueryHandler는 `AccountQuery` 타입(ABC)으로 주입받는다 — 어느 쪽도 `SqlAlchemyAccountRepository`를 직접 import하지 않는다. DI 바인딩은 FastAPI `Depends` 팩토리가 담당한다: [layer-architecture.md](layer-architecture.md), [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
-이 저장소를 새 컨벤션으로 옮기려면 `find_by_id`를 제거하고 모든 호출부(`deposit_handler.py`, `withdraw_handler.py`, `get_account_handler.py` 등 6곳)를 `find_accounts(..., take=1)` 패턴으로 수정해야 한다 — 아직 반영되지 않았다.
+`Transaction`(하위 Entity)은 별도 Repository를 갖지 않는다 — `AccountRepository.find_transactions()`를 통해 Account Aggregate 경계 안에서 조회된다. 이는 root의 "Aggregate 내부 하위 Entity는 Aggregate Root의 Repository를 통해 함께 저장/조회한다" 원칙을 정확히 따른다.
 
 ---
 
@@ -136,7 +93,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
 
 ```python
 # infrastructure/persistence/account_repository.py
-async def find_all(self, page: int, take: int, account_id=None, owner_id=None, status=None):
+async def find_accounts(self, page: int, take: int, account_id=None, owner_id=None, status=None):
     stmt = select(AccountModel).where(AccountModel.deleted_at.is_(None))
     count_stmt = select(func.count()).select_from(AccountModel).where(AccountModel.deleted_at.is_(None))
 
@@ -161,7 +118,7 @@ async def find_all(self, page: int, take: int, account_id=None, owner_id=None, s
 - **1 Aggregate Root = 1 구현체, 쓰기/읽기 ABC는 분리 가능**: `SqlAlchemyAccountRepository` 구현체 하나가 쓰기용 `AccountRepository`와 읽기 전용 `AccountQuery` 두 인터페이스를 함께 만족한다 — [cqrs-pattern.md](cqrs-pattern.md) 참조.
 - **인터페이스는 domain/, 구현체는 infrastructure/**.
 - **`save`만 사용, 별도 update 메서드 없음**.
-- **조회 메서드는 `find<Noun>s` 하나로 통일**: 알려진 격차 — 현재 `find_by_id`/`find_all` 분리.
+- **조회 메서드는 `find<Noun>s` 하나로 통일**: `AccountQuery.find_accounts()` 하나로 목록/단건 조회를 모두 처리한다 — 단건 조회는 `account_id`+`owner_id` 필터와 `take=1`로 호출한 뒤 첫 항목을 꺼낸다.
 - **동적 필터는 값이 있을 때만 적용**.
 - **삭제는 soft delete**: [persistence.md](persistence.md) 참조.
 

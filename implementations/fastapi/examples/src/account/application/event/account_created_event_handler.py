@@ -18,4 +18,4 @@ class AccountCreatedEventHandler:
             email=payload["email"],
             created_at=datetime.fromisoformat(payload["created_at"]),
         )
-        await self._notification_service.notify(event)
+        await self._notification_service.notify(event, payload["outbox_event_id"])

@@ -16,4 +16,4 @@ class AccountReactivatedEventHandler:
             email=payload["email"],
             reactivated_at=datetime.fromisoformat(payload["reactivated_at"]),
         )
-        await self._notification_service.notify(event)
+        await self._notification_service.notify(event, payload["outbox_event_id"])

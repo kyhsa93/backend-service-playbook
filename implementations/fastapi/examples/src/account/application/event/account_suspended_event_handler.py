@@ -39,4 +39,4 @@ class AccountSuspendedEventHandler:
 
         # 알림은 best-effort다 — NotificationService.notify()가 내부에서 모든 예외를 삼키므로
         # 여기서 실패해도 위 Integration Event 적재나 이 핸들러 자체는 영향받지 않는다.
-        await self._notification_service.notify(event)
+        await self._notification_service.notify(event, payload["outbox_event_id"])

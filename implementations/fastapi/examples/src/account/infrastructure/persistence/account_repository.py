@@ -49,18 +49,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
         self._session = session
         self._outbox_writer = OutboxWriter(session)
 
-    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None:
-        stmt = select(AccountModel).where(
-            AccountModel.id == account_id,
-            AccountModel.owner_id == owner_id,
-            AccountModel.deleted_at.is_(None),
-        )
-        row = (await self._session.execute(stmt)).scalar_one_or_none()
-        if row is None:
-            return None
-        return self._to_domain(row)
-
-    async def find_all(
+    async def find_accounts(
         self,
         page: int,
         take: int,

@@ -38,7 +38,10 @@ from .transaction import Transaction
 
 class AccountRepository(ABC):
     @abstractmethod
-    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+    async def find_accounts(
+        self, page: int, take: int,
+        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+    ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
     async def save(self, account: Account) -> None: ...
@@ -60,7 +63,8 @@ class DepositHandler:
         self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+        account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)   # 비즈니스 로직은 Aggregate에 위임
@@ -81,15 +85,15 @@ Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`, `Out
 # application/service/notification_service.py — 인터페이스
 class NotificationService(ABC):
     @abstractmethod
-    async def notify(self, event: AccountDomainEvent) -> None: ...
+    async def notify(self, event: AccountDomainEvent, outbox_event_id: str) -> None: ...
 ```
 
 ```python
 # infrastructure/notification/notification_service.py — 구현체 (SES)
 class SesNotificationService(NotificationService):
-    async def notify(self, event: AccountDomainEvent) -> None:
+    async def notify(self, event: AccountDomainEvent, outbox_event_id: str) -> None:
         try:
-            await self._send_and_record(event)
+            await self._send_and_record(event, outbox_event_id)  # outbox_event_id로 중복 발송 여부를 먼저 확인한다
         except Exception:
             logger.exception("알림 이메일 발송 실패: ...")
 ```
@@ -113,14 +117,15 @@ class SqlAlchemyAccountRepository(AccountRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None:
-        stmt = select(AccountModel).where(
-            AccountModel.id == account_id,
-            AccountModel.owner_id == owner_id,
-            AccountModel.deleted_at.is_(None),
-        )
-        row = (await self._session.execute(stmt)).scalar_one_or_none()
-        return self._to_domain(row) if row else None
+    async def find_accounts(self, page: int, take: int, account_id=None, owner_id=None, status=None):
+        stmt = select(AccountModel).where(AccountModel.deleted_at.is_(None))
+        if account_id:
+            stmt = stmt.where(AccountModel.id == account_id)
+        if owner_id:
+            stmt = stmt.where(AccountModel.owner_id == owner_id)
+        # ... (전체 건수 count_stmt, offset/limit 적용은 repository-pattern.md 참고)
+        rows = (await self._session.execute(stmt.offset(page * take).limit(take))).scalars().all()
+        return [self._to_domain(row) for row in rows], total
 ```
 
 Domain/Application의 ABC 구현체(`SqlAlchemyAccountRepository`, `SesNotificationService`)가 모두 여기 있다. FastAPI에는 전용 DI 컨테이너가 없으므로, `interface/rest/account_router.py`의 `Depends` 팩토리 함수가 "바인딩 지점" 역할을 한다:

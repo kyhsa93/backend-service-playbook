@@ -141,18 +141,18 @@ Account (domain)  →  GetAccountResult (application/query, dataclass)  →  Get
 
 ---
 
-## 알려진 격차 — 단건 조회가 별도 메서드로 분리되어 있다
+## 단건 조회도 같은 Repository 메서드를 쓴다
 
-루트 원칙은 "목록 조회 메서드(`find<Noun>s`) 하나만 두고, 단건 조회는 `take: 1` + `pop()` 패턴으로 처리한다"이다. 현재 `AccountRepository`(`src/account/domain/repository.py`)는 `find_by_id`와 `find_all`을 별도 메서드로 분리해 두고 있다 — 이 조회 방식 통일 문제는 [repository-pattern.md](repository-pattern.md)에서 상세히 다룬다. 여기서는 이 분리가 API 응답 계층에 미치는 영향만 짚는다: 단건 조회 엔드포인트(`GET /accounts/{account_id}`)와 목록 조회 엔드포인트(`GET /accounts/{account_id}/transactions`)가 서로 다른 Repository 메서드에 의존하게 되어, 향후 동적 필터가 늘어날 때 두 경로에 중복 구현이 생기기 쉽다.
+단건 조회 엔드포인트(`GET /accounts/{account_id}`)와 목록 조회에 준하는 내부 조회 모두 `AccountRepository.find_accounts()` 하나에 의존한다 — 단건 조회는 `account_id`+`owner_id` 필터와 `take=1`로 호출한 뒤 결과의 첫 항목을 꺼낸다. 조회 경로가 하나로 통일되어 있어 동적 필터가 늘어나도 구현이 중복되지 않는다. 상세는 [repository-pattern.md](repository-pattern.md) 참조.
 
 ---
 
 ## 동적 필터 조건 패턴
 
-목록 조회 쿼리에서 조건은 값이 있을 때만 적용한다. `SqlAlchemyAccountRepository.find_all`이 이 패턴을 따른다.
+목록 조회 쿼리에서 조건은 값이 있을 때만 적용한다. `SqlAlchemyAccountRepository.find_accounts`가 이 패턴을 따른다.
 
 ```python
-async def find_all(
+async def find_accounts(
     self, page: int, take: int,
     account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
 ) -> tuple[list[Account], int]:

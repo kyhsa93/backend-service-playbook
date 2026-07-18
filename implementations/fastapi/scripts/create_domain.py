@@ -227,12 +227,7 @@ class {n.Domain}Query(ABC):
     """
 
     @abstractmethod
-    async def find_by_id(self, {n.domain}_id: str, owner_id: str) -> {n.Domain} | None: ...
-
-
-class {n.Domain}Repository({n.Domain}Query, ABC):
-    @abstractmethod
-    async def find_all(
+    async def find_{n.domains}(
         self,
         page: int,
         take: int,
@@ -241,6 +236,8 @@ class {n.Domain}Repository({n.Domain}Query, ABC):
         status: list[str] | None = None,
     ) -> tuple[list[{n.Domain}], int]: ...
 
+
+class {n.Domain}Repository({n.Domain}Query, ABC):
     @abstractmethod
     async def save(self, {n.domain}: {n.Domain}) -> None: ...
 '''
@@ -292,7 +289,10 @@ class Cancel{n.Domain}Handler:
         self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: Cancel{n.Domain}Command) -> None:
-        {n.domain} = await self._repo.find_by_id(cmd.{n.domain}_id, cmd.requester_id)
+        {n.domains}, _ = await self._repo.find_{n.domains}(
+            page=0, take=1, {n.domain}_id=cmd.{n.domain}_id, owner_id=cmd.requester_id
+        )
+        {n.domain} = {n.domains}[0] if {n.domains} else None
         if {n.domain} is None:
             raise {n.Domain}NotFoundError(cmd.{n.domain}_id)
         {n.domain}.cancel(cmd.reason)
@@ -333,7 +333,10 @@ class Get{n.Domain}Handler:
         self._query = query
 
     async def execute(self, query: Get{n.Domain}Query) -> Get{n.Domain}Result:
-        {n.domain} = await self._query.find_by_id(query.{n.domain}_id, query.requester_id)
+        {n.domains}, _ = await self._query.find_{n.domains}(
+            page=0, take=1, {n.domain}_id=query.{n.domain}_id, owner_id=query.requester_id
+        )
+        {n.domain} = {n.domains}[0] if {n.domains} else None
         if {n.domain} is None:
             raise {n.Domain}NotFoundError(query.{n.domain}_id)
         return Get{n.Domain}Result(
@@ -402,18 +405,7 @@ class SqlAlchemy{n.Domain}Repository({n.Domain}Repository):
         self._session = session
         self._outbox_writer = OutboxWriter(session)
 
-    async def find_by_id(self, {n.domain}_id: str, owner_id: str) -> {n.Domain} | None:
-        stmt = select({n.Domain}Model).where(
-            {n.Domain}Model.id == {n.domain}_id,
-            {n.Domain}Model.owner_id == owner_id,
-            {n.Domain}Model.deleted_at.is_(None),
-        )
-        row = (await self._session.execute(stmt)).scalar_one_or_none()
-        if row is None:
-            return None
-        return self._to_domain(row)
-
-    async def find_all(
+    async def find_{n.domains}(
         self,
         page: int,
         take: int,

@@ -4,6 +4,7 @@ import logging
 import os
 
 import aioboto3
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....common.generate_id import generate_id
@@ -57,23 +58,39 @@ class SesNotificationService(NotificationService):
 
     알림 발송 실패가 계좌 커맨드 자체에 영향을 주지 않도록, 이 서비스의 유일한
     공개 메서드인 notify()는 내부에서 발생하는 모든 예외를 잡아 로깅만 하고 삼킨다.
+
+    Outbox는 at-least-once 전달을 보장하므로(같은 이벤트가 재시도로 두 번 전달될 수 있다),
+    발송 전에 `outbox_event_id` 기준으로 이미 처리된 이벤트인지 확인하는 Level 2(Ledger)
+    멱등성을 적용한다 — `SentEmailModel`이 발송 이력 Entity이자 Ledger 역할을 겸한다
+    (domain-events.md "이벤트 핸들러 멱등성" 참고).
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._boto_session = aioboto3.Session()
 
-    async def notify(self, event: AccountDomainEvent) -> None:
+    async def notify(self, event: AccountDomainEvent, outbox_event_id: str) -> None:
         try:
-            await self._send_and_record(event)
+            await self._send_and_record(event, outbox_event_id)
         except Exception:  # noqa: BLE001 - 알림 실패는 커맨드 처리에 영향을 주면 안 된다
             logger.exception(
                 "알림 이메일 발송 실패",
                 extra={"event_type": type(event).__name__, "account_id": event.account_id},
             )
 
-    async def _send_and_record(self, event: AccountDomainEvent) -> None:
+    async def _send_and_record(self, event: AccountDomainEvent, outbox_event_id: str) -> None:
         event_type = type(event).__name__
+
+        already_sent = (
+            await self._session.execute(select(SentEmailModel).where(SentEmailModel.outbox_event_id == outbox_event_id))
+        ).scalar_one_or_none()
+        if already_sent is not None:
+            logger.info(
+                "이미 발송된 이벤트 — 중복 발송을 건너뜀",
+                extra={"event_type": event_type, "account_id": event.account_id, "outbox_event_id": outbox_event_id},
+            )
+            return
+
         subject, body = _render(event)
         recipient = event.email
 
@@ -100,6 +117,7 @@ class SesNotificationService(NotificationService):
                 recipient=recipient,
                 subject=subject,
                 ses_message_id=ses_message_id,
+                outbox_event_id=outbox_event_id,
             )
         )
         await self._session.flush()
@@ -111,5 +129,6 @@ class SesNotificationService(NotificationService):
                 "account_id": event.account_id,
                 "recipient": recipient,
                 "ses_message_id": ses_message_id,
+                "outbox_event_id": outbox_event_id,
             },
         )

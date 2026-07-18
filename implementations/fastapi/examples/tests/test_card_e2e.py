@@ -112,7 +112,7 @@ async def test_issue_card_other_owners_account_returns_404(client: AsyncClient) 
     )
 
     # AccountAdapter는 (account_id, owner_id) 쌍으로 조회하므로 다른 소유자에게는
-    # "계좌 없음"과 동일하게 보인다 — Account BC의 find_by_id와 동일한 격리 방식.
+    # "계좌 없음"과 동일하게 보인다 — Account BC의 find_accounts(account_id, owner_id, take=1)와 동일한 격리 방식.
     assert response.status_code == 404
 
 

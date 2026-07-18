@@ -51,7 +51,8 @@ class DepositHandler:
         self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        account = await self._repo.find_by_id(cmd.account_id, cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+        account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
@@ -64,7 +65,7 @@ class DepositHandler:
 
 ### Query + QueryHandler — 읽기 전용 `AccountQuery`에만 의존
 
-QueryHandler는 쓰기용 `AccountRepository`(ABC, `save()` 포함)가 아니라 읽기 전용 `AccountQuery` 인터페이스에 의존한다. `AccountQuery`는 `domain/repository.py`에 함께 정의된 별도 ABC로, `find_by_id`/`find_transactions`처럼 QueryHandler가 실제로 호출하는 메서드만 선언하고 `save()`는 노출하지 않는다.
+QueryHandler는 쓰기용 `AccountRepository`(ABC, `save()` 포함)가 아니라 읽기 전용 `AccountQuery` 인터페이스에 의존한다. `AccountQuery`는 `domain/repository.py`에 함께 정의된 별도 ABC로, `find_accounts`/`find_transactions`처럼 QueryHandler가 실제로 호출하는 메서드만 선언하고 `save()`는 노출하지 않는다.
 
 ```python
 # src/account/domain/repository.py
@@ -78,7 +79,10 @@ class AccountQuery(ABC):
     """읽기 전용 인터페이스 — Query Handler 전용. save() 등 쓰기 메서드를 노출하지 않는다."""
 
     @abstractmethod
-    async def find_by_id(self, account_id: str, owner_id: str) -> Account | None: ...
+    async def find_accounts(
+        self, page: int, take: int,
+        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+    ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
     async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
@@ -86,12 +90,6 @@ class AccountQuery(ABC):
 
 class AccountRepository(AccountQuery, ABC):
     """쓰기 모델 — AccountQuery를 상속해 조회 메서드를 재사용하되 save() 등 쓰기 메서드를 추가한다."""
-
-    @abstractmethod
-    async def find_all(
-        self, page: int, take: int,
-        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
-    ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
     async def save(self, account: Account) -> None: ...
@@ -119,7 +117,8 @@ class GetAccountHandler:
         self._repo = repo
 
     async def execute(self, query: GetAccountQuery) -> GetAccountResult:
-        account = await self._repo.find_by_id(query.account_id, query.requester_id)
+        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=query.account_id, owner_id=query.requester_id)
+        account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(query.account_id)
         return GetAccountResult(

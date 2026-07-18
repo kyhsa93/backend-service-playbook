@@ -13,7 +13,8 @@ class AccountAdapterImpl(AccountAdapter):
         self._account_query = account_query
 
     async def find_account(self, account_id: str, owner_id: str) -> AccountView | None:
-        account = await self._account_query.find_by_id(account_id, owner_id)
+        accounts, _ = await self._account_query.find_accounts(page=0, take=1, account_id=account_id, owner_id=owner_id)
+        account = accounts[0] if accounts else None
         # 상류의 "계좌 없음"(None)을 그대로 Card 도메인의 None 신호로 전달한다 (오염 방지).
         if account is None:
             return None

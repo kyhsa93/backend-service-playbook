@@ -143,7 +143,7 @@ def outbox_relay() -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(repo, outbox_relay) -> None:
-    repo.find_by_id.return_value = None
+    repo.find_accounts.return_value = ([], 0)
     handler = DepositHandler(repo, outbox_relay)
 
     with pytest.raises(AccountNotFoundError):
@@ -156,7 +156,7 @@ async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(rep
 async def test_execute_입금_성공_시_save와_outbox_드레인이_호출된다(repo, outbox_relay) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     account.pull_events()   # 생성 이벤트 소진 — deposit 이벤트만 남긴다
-    repo.find_by_id.return_value = account
+    repo.find_accounts.return_value = ([account], 1)
     handler = DepositHandler(repo, outbox_relay)
 
     transaction = await handler.execute(

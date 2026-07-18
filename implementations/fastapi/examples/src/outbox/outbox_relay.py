@@ -52,7 +52,12 @@ class OutboxRelay:
                 handler = self._handlers.get(row.event_type)
                 try:
                     if handler is not None:
-                        await handler(json.loads(row.payload))
+                        # 이벤트 자체의 payload에 이 Outbox 행의 고유 event_id를 실어 보낸다 —
+                        # 핸들러가 이 값을 Ledger 키로 써서 재시도(at-least-once)로 인한 중복
+                        # 처리를 스스로 건너뛸 수 있다(domain-events.md "이벤트 핸들러 멱등성" 참고).
+                        payload = json.loads(row.payload)
+                        payload["outbox_event_id"] = row.event_id
+                        await handler(payload)
                     row.processed = True
                     progressed += 1
                 except Exception:  # noqa: BLE001 - 실패한 이벤트는 다음 드레인에서 재시도해야 하므로 여기서 삼킨다
