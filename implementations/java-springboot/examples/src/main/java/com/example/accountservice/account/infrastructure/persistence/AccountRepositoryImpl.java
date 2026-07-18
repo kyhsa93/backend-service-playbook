@@ -7,6 +7,7 @@ import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.AccountStatus;
 import com.example.accountservice.account.domain.AccountsWithCount;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.account.domain.TransactionType;
 import com.example.accountservice.account.domain.TransactionsWithCount;
 import com.example.accountservice.outbox.OutboxWriter;
 import jakarta.persistence.EntityManager;
@@ -76,6 +77,11 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
                             AccountMapper.updateEntity(entity, account);
                             jpaRepository.save(entity);
                         });
+    }
+
+    @Override
+    public boolean hasTransactionWithReference(String referenceId, TransactionType type) {
+        return transactionJpaRepository.existsByReferenceIdAndType(referenceId, type);
     }
 
     @Override

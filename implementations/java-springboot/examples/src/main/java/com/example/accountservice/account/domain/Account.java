@@ -66,6 +66,15 @@ public class Account {
     }
 
     public Transaction deposit(long amount) {
+        return deposit(amount, null);
+    }
+
+    /**
+     * {@code referenceId}는 Payment BC의 Integration Event 반응(DepositByPaymentService)에서만 채워진다 — 사용자가
+     * 직접 요청한 입금은 {@link #deposit(long)}(referenceId 없음)을 쓴다. Level 2 Ledger 멱등성 판단은 이 값 + type 조합으로
+     * 이루어진다({@link AccountRepository#hasTransactionWithReference} 참고).
+     */
+    public Transaction deposit(long amount, String referenceId) {
         if (this.status != AccountStatus.ACTIVE) {
             throw new AccountException(
                     AccountException.ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT,
@@ -79,7 +88,7 @@ public class Account {
         this.balance = this.balance.add(money);
         this.updatedAt = LocalDateTime.now();
         Transaction transaction =
-                Transaction.create(this.accountId, TransactionType.DEPOSIT, money);
+                Transaction.create(this.accountId, TransactionType.DEPOSIT, money, referenceId);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(
                 new MoneyDepositedEvent(
@@ -93,6 +102,14 @@ public class Account {
     }
 
     public Transaction withdraw(long amount) {
+        return withdraw(amount, null);
+    }
+
+    /**
+     * {@code referenceId}는 Payment BC의 Integration Event 반응(WithdrawByPaymentService)에서만 채워진다 —
+     * 사용자가 직접 요청한 출금은 {@link #withdraw(long)}(referenceId 없음)을 쓴다.
+     */
+    public Transaction withdraw(long amount, String referenceId) {
         if (this.status != AccountStatus.ACTIVE) {
             throw new AccountException(
                     AccountException.ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT,
@@ -110,7 +127,7 @@ public class Account {
         this.balance = this.balance.subtract(money);
         this.updatedAt = LocalDateTime.now();
         Transaction transaction =
-                Transaction.create(this.accountId, TransactionType.WITHDRAWAL, money);
+                Transaction.create(this.accountId, TransactionType.WITHDRAWAL, money, referenceId);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(
                 new MoneyWithdrawnEvent(

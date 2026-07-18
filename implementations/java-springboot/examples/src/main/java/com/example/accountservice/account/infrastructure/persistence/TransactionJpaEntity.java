@@ -36,6 +36,11 @@ public class TransactionJpaEntity {
 
     @Embedded private MoneyEmbeddable amount;
 
+    // Payment BC 반응(withdraw-by-payment/deposit-by-payment)에서만 채워지는 상관관계 키 — 멱등성 판단(같은
+    // referenceId+type의 거래가 이미 있으면 재처리하지 않음)에 쓰인다.
+    @Column(nullable = true)
+    private String referenceId;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -47,12 +52,14 @@ public class TransactionJpaEntity {
             String accountId,
             TransactionType type,
             MoneyEmbeddable amount,
+            String referenceId,
             LocalDateTime createdAt) {
         this.id = id;
         this.transactionId = transactionId;
         this.accountId = accountId;
         this.type = type;
         this.amount = amount;
+        this.referenceId = referenceId;
         this.createdAt = createdAt;
     }
 
@@ -74,6 +81,10 @@ public class TransactionJpaEntity {
 
     MoneyEmbeddable getAmount() {
         return amount;
+    }
+
+    String getReferenceId() {
+        return referenceId;
     }
 
     LocalDateTime getCreatedAt() {

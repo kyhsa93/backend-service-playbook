@@ -13,16 +13,29 @@ public class Transaction {
     private String accountId;
     private TransactionType type;
     private Money amount;
+    // 외부 BC(Payment)의 Integration Event 반응으로 발생한 거래를 다른 BC의 Aggregate ID(paymentId/refundId)로
+    // 상관관계 지을 수 있게 하는 선택 필드다. 사용자가 직접 요청한 입금/출금에는 없다(null) — Payment 반응
+    // Command(WithdrawByPaymentService/
+    // DepositByPaymentService)에서만 채워지며, at-least-once 재수신 시 이 값 + type으로 중복 처리를 막는 Level 2 Ledger
+    // 키로
+    // 쓰인다(domain-events.md의 "이벤트 핸들러 멱등성" 참고).
+    private String referenceId;
     private LocalDateTime createdAt;
 
     private Transaction() {}
 
     static Transaction create(String accountId, TransactionType type, Money amount) {
+        return create(accountId, type, amount, null);
+    }
+
+    static Transaction create(
+            String accountId, TransactionType type, Money amount, String referenceId) {
         Transaction transaction = new Transaction();
         transaction.transactionId = IdGenerator.generate();
         transaction.accountId = accountId;
         transaction.type = type;
         transaction.amount = amount;
+        transaction.referenceId = referenceId;
         transaction.createdAt = LocalDateTime.now();
         return transaction;
     }
@@ -33,12 +46,14 @@ public class Transaction {
             String accountId,
             TransactionType type,
             Money amount,
+            String referenceId,
             LocalDateTime createdAt) {
         Transaction transaction = new Transaction();
         transaction.transactionId = transactionId;
         transaction.accountId = accountId;
         transaction.type = type;
         transaction.amount = amount;
+        transaction.referenceId = referenceId;
         transaction.createdAt = createdAt;
         return transaction;
     }
@@ -57,6 +72,10 @@ public class Transaction {
 
     public Money getAmount() {
         return amount;
+    }
+
+    public String getReferenceId() {
+        return referenceId;
     }
 
     public LocalDateTime getCreatedAt() {

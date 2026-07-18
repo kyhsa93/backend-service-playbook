@@ -25,6 +25,7 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 | `@Transactional`, 트랜잭션 전파, `REQUIRES_NEW`, Soft Delete, 마이그레이션(Flyway) | `docs/architecture/persistence.md` |
 | Domain Event, Outbox 패턴, `OutboxWriter`/`OutboxRelay` | `docs/architecture/domain-events.md` |
 | Command/Query Service 분리, Handler 기반 CQRS 전환 기준, 읽기 전용 Query 인터페이스 | `docs/architecture/cqrs-pattern.md` |
+| Domain Service, 여러 Aggregate 조율(`RefundEligibilityService`), Technical Service와의 차이 | `docs/architecture/domain-service.md` |
 
 ### API / Interface
 

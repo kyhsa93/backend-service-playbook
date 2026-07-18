@@ -16,6 +16,7 @@ final class TransactionMapper {
                 entity.getAccountId(),
                 entity.getType(),
                 entity.getAmount().toDomain(),
+                entity.getReferenceId(),
                 entity.getCreatedAt());
     }
 
@@ -26,6 +27,7 @@ final class TransactionMapper {
                 transaction.getAccountId(),
                 transaction.getType(),
                 MoneyEmbeddable.fromDomain(transaction.getAmount()),
+                transaction.getReferenceId(),
                 transaction.getCreatedAt());
     }
 }

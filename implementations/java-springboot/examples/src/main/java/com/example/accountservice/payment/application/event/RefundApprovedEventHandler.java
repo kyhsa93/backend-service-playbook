@@ -1,0 +1,47 @@
+package com.example.accountservice.payment.application.event;
+
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
+import com.example.accountservice.outbox.OutboxEventHandler;
+import com.example.accountservice.outbox.OutboxWriter;
+import com.example.accountservice.payment.application.integrationevent.RefundApprovedIntegrationEventV1;
+import com.example.accountservice.payment.domain.RefundApprovedEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+/**
+ * Outbox에 쌓인 {@link RefundApprovedEvent}를 처리해 {@code refund.approved.v1} Integration Event로 변환해
+ * 적재한다. Account BC가 이를 구독해 환불 크레딧(deposit)을 실행한다.
+ */
+@Component
+@RequiredArgsConstructor
+public class RefundApprovedEventHandler implements OutboxEventHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(RefundApprovedEventHandler.class);
+
+    private final OutboxWriter outboxWriter;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    public String eventType() {
+        return RefundApprovedEvent.class.getSimpleName();
+    }
+
+    @Override
+    public void handle(String payload) throws Exception {
+        RefundApprovedEvent event = objectMapper.readValue(payload, RefundApprovedEvent.class);
+        log.info(
+                "환불 승인됨",
+                kv("refund_id", event.refundId()),
+                kv("payment_id", event.paymentId()),
+                kv("account_id", event.accountId()));
+
+        outboxWriter.save(
+                RefundApprovedIntegrationEventV1.EVENT_TYPE,
+                new RefundApprovedIntegrationEventV1(
+                        event.refundId(), event.paymentId(), event.accountId(), event.amount()));
+    }
+}
