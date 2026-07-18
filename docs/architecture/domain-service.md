@@ -59,6 +59,74 @@ export class OrderCommandService {
 
 ---
 
+### 실제 동작하는 예시 — RefundEligibilityService (cross-Aggregate 조율)
+
+위 `OrderPricingService` 예시는 사실 단일 Aggregate(`Order`)와 값 객체(`coupon`)의 조합이라, "여러
+Aggregate를 읽어서 판단해야 하는 로직"의 진짜 예시는 아니다. 아래는 **두 개의 독립된 Aggregate를
+실제로 함께 로드해 조율하는** 예시다 — nestjs 구현체(`implementations/nestjs/examples/src/payment/`)의
+실제 코드를 그대로 인용한다. 패턴 자체는 프레임워크 무관이며 다른 언어에서도 동일하게 적용된다.
+
+**도메인 규칙**: "환불은 원 결제가 COMPLETED 상태여야 하고, 환불 금액이 결제 금액을 넘을 수 없다."
+
+- `Payment` Aggregate는 자신에 대한 환불 시도(`Refund`)를 모른다 — 환불은 별도 Aggregate로만 존재한다.
+- `Refund` Aggregate는 원 결제의 금액·상태를 모른다 — `paymentId`로 참조만 한다.
+
+어느 한쪽 Aggregate의 메서드로 이 판단을 넣으려면 다른 쪽 Aggregate 전체를 파라미터로 받아야 해서
+Aggregate 경계가 무너진다. 그래서 이 판단은 두 Aggregate를 모두 로드한 Application 레이어가 위임하는
+별도의 Domain Service에 위치한다:
+
+```typescript
+// domain/refund-eligibility-service.ts — Domain Service (프레임워크 데코레이터 없음)
+export interface RefundDecision {
+  readonly approved: boolean
+  readonly reason?: string
+}
+
+export class RefundEligibilityService {
+  public evaluate(payment: Payment, refund: Refund): RefundDecision {
+    if (payment.status !== PaymentStatus.COMPLETED) {
+      return { approved: false, reason: PaymentErrorMessage['완료된 결제에 대해서만 환불을 요청할 수 있습니다.'] }
+    }
+    if (refund.amount > payment.amount) {
+      return { approved: false, reason: PaymentErrorMessage['환불 금액은 결제 금액을 초과할 수 없습니다.'] }
+    }
+    return { approved: true }
+  }
+}
+```
+
+```typescript
+// application/command/request-refund-command-handler.ts — 두 Repository를 로드해 위임
+export class RequestRefundCommandHandler {
+  private readonly refundEligibilityService = new RefundEligibilityService()
+
+  public async execute(command: RequestRefundCommand): Promise<Refund> {
+    const payment = await this.paymentRepository
+      .findPayments({ paymentId: command.paymentId, ownerId: command.requesterId, take: 1, page: 0 })
+      .then((r) => r.payments.pop())
+    if (!payment) throw new Error(PaymentErrorMessage['결제를 찾을 수 없습니다.'])
+
+    const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
+
+    const decision = this.refundEligibilityService.evaluate(payment, refund)
+    if (decision.approved) refund.approve({ accountId: payment.accountId, ownerId: payment.ownerId })
+    else refund.reject(decision.reason ?? '환불 요청이 거부되었습니다.')
+
+    await this.refundRepository.saveRefund(refund)
+    return refund
+  }
+}
+```
+
+`RefundEligibilityService`는 상태가 없고 `new`로 직접 인스턴스화해 쓴다 — DI 컨테이너에 등록하지
+않는다(위 "위치 및 네이밍" 섹션의 "프레임워크 데코레이터를 사용하지 않는다" 원칙을 그대로 지킨다).
+단위 테스트도 Application 레이어를 거치지 않고 이 클래스를 직접 `new`해 판단 로직만 검증한다.
+
+전체 코드: `implementations/nestjs/examples/src/payment/domain/refund-eligibility-service.ts`,
+`payment.ts`, `refund.ts`, `application/command/request-refund-command-handler.ts`.
+
+---
+
 ### Domain Service vs Application Service vs Technical Service
 
 혼동하기 쉬운 세 개념의 차이 (Technical Service는 아래 섹션 참고):

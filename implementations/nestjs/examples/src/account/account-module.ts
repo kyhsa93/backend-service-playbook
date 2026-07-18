@@ -1,13 +1,17 @@
-import { Module } from '@nestjs/common'
+import { Module, OnModuleInit } from '@nestjs/common'
 import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
+import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
 import { CloseAccountCommandHandler } from '@/account/application/command/close-account-command-handler'
 import { CreateAccountCommandHandler } from '@/account/application/command/create-account-command-handler'
+import { DepositByPaymentCommandHandler } from '@/account/application/command/deposit-by-payment-command-handler'
 import { DepositCommandHandler } from '@/account/application/command/deposit-command-handler'
 import { ReactivateAccountCommandHandler } from '@/account/application/command/reactivate-account-command-handler'
 import { SuspendAccountCommandHandler } from '@/account/application/command/suspend-account-command-handler'
+import { WithdrawByPaymentCommandHandler } from '@/account/application/command/withdraw-by-payment-command-handler'
 import { WithdrawCommandHandler } from '@/account/application/command/withdraw-command-handler'
+import { AccountIntegrationEventController } from '@/account/interface/integration-event/account-integration-event-controller'
 import { AccountClosedHandler } from '@/account/application/event/account-closed-handler'
 import { AccountCreatedHandler } from '@/account/application/event/account-created-handler'
 import { AccountReactivatedHandler } from '@/account/application/event/account-reactivated-handler'
@@ -45,9 +49,15 @@ import { AuthModule } from '@/auth/auth-module'
     SuspendAccountCommandHandler,
     ReactivateAccountCommandHandler,
     CloseAccountCommandHandler,
+    // Payment BC의 Integration Event(payment.completed.v1 / payment.cancelled.v1 /
+    // refund.approved.v1)에 대한 반응 Command Handler
+    WithdrawByPaymentCommandHandler,
+    DepositByPaymentCommandHandler,
     // Query Handlers
     GetAccountQueryHandler,
     GetTransactionsQueryHandler,
+    // Integration Event 수신부 (외부 BC → Account)
+    AccountIntegrationEventController,
     // Event Handlers
     AccountCreatedHandler,
     MoneyDepositedHandler,
@@ -69,4 +79,21 @@ import { AuthModule } from '@/auth/auth-module'
   // Repository·도메인 객체는 공개하지 않는다.
   exports: [AccountQuery]
 })
-export class AccountModule {}
+export class AccountModule implements OnModuleInit {
+  constructor(
+    private readonly registry: EventHandlerRegistry,
+    private readonly accountIntegrationEventController: AccountIntegrationEventController
+  ) {}
+
+  // Payment BC가 발행하는 Integration Event를 자기 수신부에 연결한다. CardModule이
+  // account.suspended.v1/account.closed.v1을 구독하는 것과 동일한 패턴 —
+  // 등록만 추가되며 Card 관련 등록·코드는 건드리지 않는다.
+  onModuleInit(): void {
+    this.registry.register('payment.completed.v1', (payload) =>
+      this.accountIntegrationEventController.onPaymentCompleted(payload as never))
+    this.registry.register('payment.cancelled.v1', (payload) =>
+      this.accountIntegrationEventController.onPaymentCancelled(payload as never))
+    this.registry.register('refund.approved.v1', (payload) =>
+      this.accountIntegrationEventController.onRefundApproved(payload as never))
+  }
+}

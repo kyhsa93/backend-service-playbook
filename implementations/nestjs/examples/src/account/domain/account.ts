@@ -66,12 +66,12 @@ export class Account {
     return account
   }
 
-  public deposit(amount: Money): Transaction {
+  public deposit(amount: Money, referenceId?: string): Transaction {
     if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'])
     if (amount.amount <= 0) throw new Error(AccountErrorMessage['금액은 0보다 커야 합니다.'])
 
     this._balance = this._balance.add(amount)
-    const transaction = new Transaction({ accountId: this.accountId, type: 'DEPOSIT', amount })
+    const transaction = new Transaction({ accountId: this.accountId, type: 'DEPOSIT', amount, referenceId })
     this._transactions.push(transaction)
     this._events.push(new MoneyDeposited({
       accountId: this.accountId,
@@ -84,13 +84,13 @@ export class Account {
     return transaction
   }
 
-  public withdraw(amount: Money): Transaction {
+  public withdraw(amount: Money, referenceId?: string): Transaction {
     if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'])
     if (amount.amount <= 0) throw new Error(AccountErrorMessage['금액은 0보다 커야 합니다.'])
     if (this._balance.isLessThan(amount)) throw new Error(AccountErrorMessage['잔액이 부족합니다.'])
 
     this._balance = this._balance.subtract(amount)
-    const transaction = new Transaction({ accountId: this.accountId, type: 'WITHDRAWAL', amount })
+    const transaction = new Transaction({ accountId: this.accountId, type: 'WITHDRAWAL', amount, referenceId })
     this._transactions.push(transaction)
     this._events.push(new MoneyWithdrawn({
       accountId: this.accountId,

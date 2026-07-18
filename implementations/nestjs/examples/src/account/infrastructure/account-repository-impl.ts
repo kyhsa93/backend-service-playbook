@@ -8,6 +8,7 @@ import { Account } from '@/account/domain/account'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { AccountStatus } from '@/account/account-enum'
 import { Money } from '@/account/domain/money'
+import { TransactionType } from '@/account/domain/transaction'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 
@@ -71,6 +72,7 @@ export class AccountRepositoryImpl extends AccountRepository {
         type: transaction.type,
         amount: transaction.amount.amount,
         currency: transaction.amount.currency,
+        referenceId: transaction.referenceId ?? null,
         createdAt: transaction.createdAt
       })))
       account.clearTransactions()
@@ -80,5 +82,11 @@ export class AccountRepositoryImpl extends AccountRepository {
       await this.outboxWriter.saveAll(account.domainEvents)
       account.clearEvents()
     }
+  }
+
+  public async hasTransactionWithReference(referenceId: string, type: TransactionType): Promise<boolean> {
+    const manager = this.transactionManager.getManager()
+    const count = await manager.count(TransactionEntity, { where: { referenceId, type } })
+    return count > 0
   }
 }

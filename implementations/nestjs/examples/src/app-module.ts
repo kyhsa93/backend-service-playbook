@@ -17,6 +17,7 @@ import { jwtConfig } from '@/config/jwt.config'
 import { getThrottlerConfig } from '@/config/throttle.config'
 import { AppDataSource } from '@/database/data-source'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { PaymentModule } from '@/payment/payment-module'
 
 @Module({
   imports: [
@@ -30,7 +31,8 @@ import { OutboxModule } from '@/outbox/outbox-module'
     OutboxModule,
     AuthModule,
     AccountModule,
-    CardModule
+    CardModule,
+    PaymentModule
   ],
   controllers: [HealthController],
   providers: [

@@ -37,7 +37,11 @@ import { CardIntegrationEventController } from '@/card/interface/integration-eve
     { provide: CardQuery, useClass: CardQueryImpl },
     // 크로스 도메인 Adapter (Card → Account 동기 조회)
     { provide: AccountAdapter, useClass: AccountAdapterImpl }
-  ]
+  ],
+  // 다른 BC(Payment)가 Adapter(ACL)를 통해 카드를 동기 조회할 수 있도록 읽기 서비스만
+  // 공개한다(AccountModule의 기존 exports: [AccountQuery]와 동일한 패턴).
+  // Repository·도메인 객체는 공개하지 않는다.
+  exports: [CardQuery]
 })
 export class CardModule implements OnModuleInit {
   constructor(

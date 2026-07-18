@@ -64,6 +64,16 @@ Adapter는 **Anticorruption Layer(ACL)** 역할을 한다. 외부 BC의 모델·
 - Integration Event는 내부 Domain Event를 그대로 외부에 노출하지 않는다. Application EventHandler가 변환 지점이다.
 - 수신 측은 at-least-once 전달을 전제로 멱등하게 구현한다.
 
+**실제 예시 — 보상 트랜잭션(compensating action):** 결제 BC가 동기 Adapter로 계좌 활성·잔액을
+확인한 뒤 결제를 완료 처리하면(`payment.completed.v1`), 계좌 BC가 이를 구독해 실제 차감(`withdraw`)을
+수행한다 — 동기 조회 시점과 비동기 차감 시점 사이에는 짧은 최종 일관성(eventual consistency) 구간이
+있다. 이후 결제가 취소되면(`payment.cancelled.v1`) 계좌 BC가 같은 방식으로 구독해 `deposit()`으로
+**이미 차감된 금액을 되돌리는 보상 크레딧**을 실행한다 — 별도의 트랜잭션 롤백이 아니라 새로운
+비동기 이벤트로 앞선 상태변경을 상쇄하는, BC 간 보상 트랜잭션의 전형적인 형태다. 환불 승인
+(`refund.approved.v1`)도 동일한 반응(크레딧)을 재사용한다. nestjs 구현:
+`implementations/nestjs/examples/src/account/interface/integration-event/account-integration-event-controller.ts`,
+`implementations/nestjs/examples/src/payment/application/event/`.
+
 ---
 
 ### 두 패턴 혼용
