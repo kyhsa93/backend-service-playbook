@@ -38,7 +38,7 @@ Java Spring이라면 `private final AccountRepository accountRepository;` 필드
 생성자 주입만으로 만들 수 없는 빈(서드파티 SDK 클라이언트 등)은 `@Configuration` 클래스의 `@Bean` 함수로 등록한다.
 
 ```kotlin
-// notification/infrastructure/SesConfig.kt — 실제 코드
+// account/infrastructure/notification/SesConfig.kt — 실제 코드
 @Configuration
 class SesConfig {
 

@@ -5,7 +5,7 @@
 ## AWS Secrets Manager + TTL 캐시
 
 ```kotlin
-// notification/infrastructure/NotificationServiceImpl.kt — 실제 코드
+// account/infrastructure/notification/NotificationServiceImpl.kt — 실제 코드
 @Component
 class NotificationServiceImpl(
     private val sesClient: SesClient,

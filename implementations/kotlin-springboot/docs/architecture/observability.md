@@ -5,7 +5,7 @@
 ## 현재 로깅 — SLF4J 직접 사용 + 구조화 로그(fluent API) 병행
 
 ```kotlin
-// notification/infrastructure/NotificationServiceImpl.kt — 실제 코드
+// account/infrastructure/notification/NotificationServiceImpl.kt — 실제 코드
 private val logger = LoggerFactory.getLogger(NotificationServiceImpl::class.java)
 
 logger.atInfo()
