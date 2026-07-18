@@ -24,6 +24,13 @@ management:
       enabled: true
     readinessState:
       enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  metrics:
+    tags:
+      application: account-service
 
 aws:
   region: ${AWS_REGION:us-east-1}

@@ -67,7 +67,7 @@ public class AccountServiceApplication { ... }
 4. 커맨드라인 인자 (--server.port=9090 등)
 ```
 
-이 저장소는 현재 `application.yml` + `application-prod.yml`(운영 프로필 오버라이드, 기본값 없음) 두 파일을 갖는다 — `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`처럼 세분화된 `spring.config.import` 구성은 아직 제안 단계다. 관심사별 분리와 프로필 전략은 [config.md](config.md) "관심사별 설정 파일 분리"에서 상세히 다룬다. 여기서는 로딩 순서 자체가 부트스트랩 1단계에 속한다는 점만 짚는다.
+이 저장소는 `application.yml` + `application-prod.yml`(운영 프로필 오버라이드, 기본값 없음) 두 파일 구성을 최종 구조로 확정했다 — `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`처럼 더 세분화된 `spring.config.import` 구성은 이 저장소의 설정 표면 규모에 비해 불필요한 복잡도로 판단해 도입하지 않는다. 관심사별 분리와 프로필 전략은 [config.md](config.md) "관심사별 설정 파일 분리"에서 상세히 다룬다. 여기서는 로딩 순서 자체가 부트스트랩 1단계에 속한다는 점만 짚는다.
 
 ---
 
@@ -75,12 +75,15 @@ public class AccountServiceApplication { ... }
 
 NestJS의 `app.useGlobalFilters(new HttpExceptionFilter())`처럼 부트스트랩 시점에 명시적으로 등록하는 전역 필터가 Spring Boot에는 없다 — 대신 `@RestControllerAdvice`가 붙은 클래스는 `@ComponentScan`이 자동으로 발견해 **모든** `@RestController`에 적용한다. 등록이 `main()` 안이 아니라 클래스 선언 자체에 있다는 점이 NestJS와의 핵심 차이다.
 
-`common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 도메인에 무관한 공통 예외(`RequestNotPermitted` — rate limit)를 전역으로 처리한다. `AccountException`/`CardException`/`AuthException`처럼 도메인 특화 예외는 각 Controller(`AccountController`/`CardController`/`AuthController`)에 남겨 둔다 — `GlobalExceptionHandler` 클래스 주석에 그 이유가 명시되어 있다: 도메인 예외 타입과 에러 코드 매핑은 그 도메인의 Controller가 가장 잘 알기 때문이다. `MethodArgumentNotValidException`(Validation 실패)은 아직 어느 쪽에도 핸들러가 없어 Spring 기본 형식으로 응답한다 — 커스텀 4필드 `ErrorResponse`로 통일하려면 [error-handling.md](error-handling.md) "Validation 실패 응답" 절이 제안하는 핸들러를 `GlobalExceptionHandler`에 추가해야 한다.
+`common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 도메인에 무관한 공통 예외를 전역으로 처리한다 — `RequestNotPermitted`(rate limit)와 `MethodArgumentNotValidException`(Validation 실패) 둘 다 이 클래스에 있다. `AccountException`/`CardException`/`AuthException`처럼 도메인 특화 예외는 각 Controller(`AccountController`/`CardController`/`AuthController`)에 남겨 둔다 — `GlobalExceptionHandler` 클래스 주석에 그 이유가 명시되어 있다: 도메인 예외 타입과 에러 코드 매핑은 그 도메인의 Controller가 가장 잘 알기 때문이다.
 
 ```java
-// common/web/GlobalExceptionHandler.java — 제안, error-handling.md 참고
+// common/web/GlobalExceptionHandler.java — 실제 코드
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(RequestNotPermitted.class)
+    public ResponseEntity<ErrorResponse> handleRateLimit(RequestNotPermitted e) { /* ... */ }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) { /* ... */ }
 }
@@ -164,7 +167,7 @@ Spring Security를 쓰므로([authentication.md](authentication.md) 참고) CORS
 | `NestFactory.create(AppModule)` | `SpringApplication.run(AccountServiceApplication.class, args)` | `AccountServiceApplication.java` |
 | `app.enableShutdownHooks()` | 기본 활성 (`server.shutdown: graceful` 설정만 추가) | `application.yml` |
 | `app.useGlobalPipes(new ValidationPipe())` | `@Valid` + `spring-boot-starter-validation` | 각 Controller 메서드 파라미터 |
-| `app.useGlobalFilters(new HttpExceptionFilter())` | `@RestControllerAdvice` 클래스 (현재 미도입) | `common/web/GlobalExceptionHandler.java` |
+| `app.useGlobalFilters(new HttpExceptionFilter())` | `@RestControllerAdvice` 클래스 | `common/web/GlobalExceptionHandler.java` |
 | `app.enableCors({...})` | `WebMvcConfigurer.addCorsMappings()` (현재 미도입) | `config/WebConfig.java`(기존 파일에 추가 — 새 클래스를 만들지 않는다) |
 | `SwaggerModule.setup('api', app, document)` | `springdoc-openapi` 의존성 추가만으로 자동 노출 (현재 미도입) | `build.gradle` + 선택적 `OpenApiConfig` |
 | `app.listen(process.env.PORT ?? 3000)` | `server.port` (기본 8080) | `application.yml` |

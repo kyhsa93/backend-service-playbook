@@ -109,15 +109,16 @@ String correlationId = MDC.get("correlation_id");
 
 ## 메트릭 · 트레이싱 — Spring Boot Actuator + Micrometer
 
-`build.gradle`에 `spring-boot-starter-actuator`는 이미 있다(health probe 노출용 — [graceful-shutdown.md](graceful-shutdown.md) 참고). Prometheus 스크레이프용 Micrometer 레지스트리는 아직 없다:
+`build.gradle`에 `spring-boot-starter-actuator`(health probe 노출용 — [graceful-shutdown.md](graceful-shutdown.md) 참고)와 Prometheus 스크레이프용 Micrometer 레지스트리가 모두 있다:
 
 ```groovy
-// build.gradle — 추가 필요
+// build.gradle — 실제 코드
+implementation 'org.springframework.boot:spring-boot-starter-actuator'
 implementation 'io.micrometer:micrometer-registry-prometheus'
 ```
 
 ```yaml
-# application.yml — 추가
+# application.yml — 실제 코드
 management:
   endpoints:
     web:
@@ -128,7 +129,7 @@ management:
       application: account-service
 ```
 
-`GET /actuator/prometheus`가 Prometheus 스크레이프 엔드포인트를 자동 노출한다. HTTP 요청 수/지연시간(`http.server.requests`), JVM 메모리, DB 커넥션 풀(HikariCP) 지표가 별도 계측 코드 없이 자동 수집된다 — Spring Boot Actuator가 root의 "메트릭 스택은 특정하지 않되 Prometheus 권장" 방향을 프레임워크 차원에서 기본 지원한다.
+`GET /actuator/prometheus`가 Prometheus 스크레이프 엔드포인트를 노출한다. HTTP 요청 수/지연시간(`http.server.requests`), JVM 메모리, DB 커넥션 풀(HikariCP) 지표가 별도 계측 코드 없이 자동 수집된다 — Spring Boot Actuator가 root의 "메트릭 스택은 특정하지 않되 Prometheus 권장" 방향을 프레임워크 차원에서 기본 지원한다.
 
 트레이싱은 `spring-boot-starter-actuator` + Micrometer Tracing(`micrometer-tracing-bridge-otel`)으로 OpenTelemetry 연동이 가능하다 — 이 저장소는 아직 도입하지 않았다.
 
@@ -140,7 +141,7 @@ management:
 - **구조화된 로그로 전환**: Logback JSON 인코더 + `StructuredArguments.kv(...)`로 snake_case 필드를 명시적으로 구성한다.
 - **에러는 반드시 로깅**: `AccountController`의 `@ExceptionHandler`가 `log.warn(...)`으로 기록한다.
 - **Correlation ID는 MDC로 전파**: `Filter`(`CorrelationIdFilter`)가 주입, JSON 인코더가 자동 포함된다.
-- **Actuator + Micrometer로 메트릭 노출**: Actuator는 이미 있지만 Micrometer-Prometheus 레지스트리는 아직 없다 — 별도 계측 코드 없이 HTTP/JVM/DB 지표를 확보하려면 위 "메트릭 · 트레이싱" 절의 의존성/설정을 추가한다.
+- **Actuator + Micrometer로 메트릭 노출**: Actuator와 Micrometer-Prometheus 레지스트리가 모두 있어 `GET /actuator/prometheus`가 별도 계측 코드 없이 HTTP/JVM/DB 지표를 노출한다 — 위 "메트릭 · 트레이싱" 절 참고.
 
 ---
 

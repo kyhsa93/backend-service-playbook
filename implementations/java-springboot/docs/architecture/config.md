@@ -33,10 +33,10 @@ jwt:
 
 (`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 마이그레이션은 Flyway로 관리된다.)
 
-`config/AwsProperties.java`/`config/SesProperties.java`(`@ConfigurationProperties` + `@Validated`)를 통해 기동 시점 검증이 실제로 동작하고, `application-prod.yml`이 운영 프로필에서 AWS 자격증명 기본값을 제거해 fail-fast를 강제한다 — 아래에서 실제 코드를 그대로 보여준다. 다만 두 가지는 아직 남은 gap이다:
+`config/AwsProperties.java`/`config/SesProperties.java`(`@ConfigurationProperties` + `@Validated`)를 통해 기동 시점 검증이 실제로 동작하고, `application-prod.yml`이 운영 프로필에서 AWS 자격증명 기본값을 제거해 fail-fast를 강제한다 — 아래에서 실제 코드를 그대로 보여준다.
 
-- **관심사별 설정 파일 분리는 부분적이다**: `application-prod.yml` 하나만 실제로 존재하고, 아래 "관심사별 설정 파일 분리" 절이 제안하는 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`처럼 세분화된 `spring.config.import` 구성은 아직 도입되지 않았다.
-- **`AwsProperties.accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니다**: 아래 실제 코드가 보여주듯 `@NotBlank`는 `region`에만 붙어 있다. 로컬 기본값(`test`/`test`)이 운영에서도 조용히 통과하는 것을 막는 역할은 `AwsProperties`의 Bean Validation이 아니라 `application-prod.yml`이 해당 플레이스홀더에 기본값을 두지 않는 것(아래 참고)이 담당한다 — 두 메커니즘이 같은 목표를 다른 층에서 나눠 맡고 있다는 점에 주의한다.
+- **`AwsProperties.accessKeyId`/`secretAccessKey`도 `@NotBlank` 대상이다**: `region`과 동일하게 두 필드 모두 Bean Validation이 붙어 있다. 로컬 기본값(`test`/`test`)은 non-blank라 이 검증을 그대로 통과하므로 로컬 개발 편의에는 영향이 없다. `application-prod.yml`이 해당 플레이스홀더의 기본값을 생략하는 것(아래 참고)과 `@NotBlank`는 서로 다른 실패 조건을 잡는 의도적인 2중 방어다 — 환경 변수 자체가 없으면 `PlaceholderResolutionException`(프로퍼티 바인딩 이전 단계)이, 환경 변수가 빈 문자열로 설정되어 있으면 `@NotBlank`(바인딩 이후 Bean Validation 단계)가 각각 잡아낸다.
+- **관심사별 설정 파일 분리는 현재 2-파일 구성(`application.yml` + `application-prod.yml`)으로 확정했다**: 이 저장소의 설정 표면(AWS 자격증명, SES 발신자, JWT secret)이 작아 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` 수준의 세분화는 불필요한 복잡도로 판단해 도입하지 않기로 결정했다 — 아래 "관심사별 설정 파일 분리" 절 참고.
 
 ---
 
@@ -50,9 +50,9 @@ jwt:
 @Validated
 public record AwsProperties(
         @NotBlank String region,
-        String endpointUrl,             // 로컬 전용 — 운영에서는 비워둠
-        String accessKeyId,             // Bean Validation 대상 아님 — 아래 "현재 예제의 상태" 참고
-        String secretAccessKey          // 마찬가지
+        String endpointUrl,             // 로컬 전용 — 운영에서는 비워둠, blank 허용
+        @NotBlank String accessKeyId,
+        @NotBlank String secretAccessKey
 ) {}
 ```
 
@@ -74,7 +74,7 @@ public class AccountServiceApplication {
 }
 ```
 
-`@ConfigurationProperties`를 `record`로 선언하면(Spring Boot 3.x 지원) 불변 객체로 주입되고, `@NotBlank`/`@Email` 등 Bean Validation 애노테이션이 **애플리케이션 컨텍스트 로딩 시점**에 검증된다. 값이 비어 있으면 `BindValidationException`이 발생하며 `ApplicationContext` 초기화가 실패하고 프로세스가 즉시 종료된다 — Node의 `process.exit(1)`에 해당하는 Spring식 fail-fast다. `region`/`senderEmail`은 이 메커니즘으로 직접 검증되고, `accessKeyId`/`secretAccessKey`는 아래 `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다(신규로 `@NotBlank`를 추가해 검증을 이중화하는 것도 가능하다).
+`@ConfigurationProperties`를 `record`로 선언하면(Spring Boot 3.x 지원) 불변 객체로 주입되고, `@NotBlank`/`@Email` 등 Bean Validation 애노테이션이 **애플리케이션 컨텍스트 로딩 시점**에 검증된다. 값이 비어 있으면 `BindValidationException`이 발생하며 `ApplicationContext` 초기화가 실패하고 프로세스가 즉시 종료된다 — Node의 `process.exit(1)`에 해당하는 Spring식 fail-fast다. `region`/`senderEmail`/`accessKeyId`/`secretAccessKey` 모두 이 메커니즘으로 직접 검증된다. `accessKeyId`/`secretAccessKey`는 추가로 아래 `application-prod.yml`의 기본값 생략으로도 fail-fast를 얻는다 — 환경 변수 누락과 빈 문자열 값을 각각 다른 층에서 잡아내는 의도적인 2중 방어다.
 
 ```java
 // account/infrastructure/notification/SesConfig.java — 실제 코드, Infrastructure 레이어에서만 주입받는다
@@ -102,7 +102,7 @@ public class SesConfig {
 
 ---
 
-## 관심사별 설정 파일 분리 — 부분 적용 (운영 프로필 오버라이드만 실재)
+## 관심사별 설정 파일 분리 — 2-파일 구성으로 확정
 
 이 저장소는 현재 `application.yml` + `application-prod.yml` 두 파일만 갖는다 — 아래는 실제 코드다:
 
@@ -113,33 +113,9 @@ aws:
   secret-access-key: ${AWS_SECRET_ACCESS_KEY}
 ```
 
-운영 프로필(`application-prod.yml`)에서는 `${AWS_ACCESS_KEY_ID}`처럼 **기본값을 생략**한다. Spring은 플레이스홀더에 대응하는 환경 변수가 없으면 `PlaceholderResolutionException`을 던지며 기동을 실패시킨다 — 이것이 Spring Boot의 자연스러운 fail-fast 메커니즘이며, `AwsProperties.accessKeyId`/`secretAccessKey`에 Bean Validation이 없어도 이 경로로 fail-fast가 성립하는 이유다.
+운영 프로필(`application-prod.yml`)에서는 `${AWS_ACCESS_KEY_ID}`처럼 **기본값을 생략**한다. Spring은 플레이스홀더에 대응하는 환경 변수가 없으면 `PlaceholderResolutionException`을 던지며 기동을 실패시킨다 — 이것이 Spring Boot의 자연스러운 fail-fast 메커니즘이고, `AwsProperties.accessKeyId`/`secretAccessKey`의 `@NotBlank`(위 참고)와 함께 환경 변수 누락/빈 문자열 두 실패 조건을 각각 다른 층에서 잡아낸다.
 
-**아직 도입되지 않은 것**: `spring.config.import` 기반의 세분화된 관심사별 분리(`application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`)는 여전히 제안 단계다 — 규모가 커지면 아래 구조로 확장한다.
-
-```
-src/main/resources/
-  application.yml              # 공통 (spring.application.name 등) + 하위 파일 import
-  application-database.yml     # DB 연결 (제안, 아직 없음)
-  application-aws.yml          # AWS(SES/S3/Secrets Manager) 설정 (제안, 아직 없음)
-  application-jwt.yml          # JWT 설정 (제안, 아직 없음 — authentication.md 참고)
-  application-local.yml        # 로컬 전용 오버라이드 (제안, 아직 없음)
-  application-prod.yml         # 운영 전용 오버라이드 (실제 존재, 위 참고)
-```
-
-```yaml
-# application.yml — 세분화된 spring.config.import 도입 시 (제안)
-spring:
-  application:
-    name: account-service
-  config:
-    import:
-      - application-database.yml
-      - application-aws.yml
-      - application-jwt.yml
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:local}
-```
+**세분화된 분리는 채택하지 않는다**: `spring.config.import` 기반의 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` 분리는 검토했지만, 이 저장소의 설정 표면(AWS 자격증명 3개 필드, SES 발신자 1개 필드, JWT secret 1개 필드)이 파일을 나눠 관리해야 할 규모에 이르지 않아 불필요한 복잡도로 판단했다 — `application.yml` + `application-prod.yml` 2-파일 구성을 최종 구조로 확정한다. 도메인이 늘어나 설정 항목이 실제로 늘어나면(예: DB 커넥션 풀 세부 튜닝, 여러 외부 연동 추가) 그때 이 구조를 재검토한다.
 
 ---
 
@@ -179,8 +155,8 @@ public class CreateAccountService {
 
 ## 원칙
 
-- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다 — `AwsProperties`/`SesProperties`가 이를 구현한다. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
-- **관심사별 분리**: `spring.config.import`로 설정 파일을 나눈다 — 운영 프로필 오버라이드(`application-prod.yml`)만 실재하고, 나머지 세분화는 아직 제안 단계(위 참고).
+- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다 — `AwsProperties`/`SesProperties`가 이를 구현하고, 모든 필드(`region`/`accessKeyId`/`secretAccessKey`/`senderEmail`)에 `@NotBlank`가 붙어 있다. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
+- **관심사별 분리는 2-파일 구성으로 확정**: 이 저장소의 설정 표면 규모에서는 `application.yml` + 운영 프로필 오버라이드(`application-prod.yml`)만으로 충분하다고 판단했다 — 더 세분화된 `spring.config.import` 분리는 도입하지 않는다(위 참고).
 - **운영 프로필은 기본값을 생략**한다: `${VAR}` (기본값 없음)로 강제 검증 — `application-prod.yml`이 이 패턴을 따른다.
 - **민감값은 Secrets Manager**: [secret-manager.md](secret-manager.md) 참고.
 - **설정 접근은 Infrastructure 레이어**: `@Value`/`@ConfigurationProperties` 주입 대상은 Infrastructure의 `@Configuration`/`@Component` 클래스로 한정한다.

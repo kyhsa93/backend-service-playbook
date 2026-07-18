@@ -100,12 +100,12 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
 
 ---
 
-## Validation 실패 응답 — `@Valid` 실패 시 전역 핸들러 필요
+## Validation 실패 응답 — 전역 핸들러가 처리
 
-`@Valid @RequestBody CreateAccountRequest request`가 Bean Validation에 실패하면 Spring이 `MethodArgumentNotValidException`을 던진다. 현재 `AccountController`는 이를 위한 `@ExceptionHandler`가 없어 Spring Boot 기본 에러 응답(`/error` 핸들러가 생성하는 형식)이 그대로 노출된다 — `AccountException`과 다른 스키마다.
+`@Valid @RequestBody CreateAccountRequest request`가 Bean Validation에 실패하면 Spring이 `MethodArgumentNotValidException`을 던진다. `common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 이를 처리해, `AccountException`과 같은 4필드 `ErrorResponse` 스키마로 응답한다.
 
 ```java
-// 전역 핸들러 추가 — @RestControllerAdvice로 여러 Controller에 공통 적용 (제안)
+// common/web/GlobalExceptionHandler.java — 실제 코드
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -120,9 +120,9 @@ public class GlobalExceptionHandler {
 }
 ```
 
-root 원칙: Validation 실패의 `code`는 항상 `VALIDATION_FAILED` 고정값이다. 여러 필드 에러가 있을 수 있으므로 `message`는 문자열 배열이 될 수도 있다(root 예시 참고) — 이 저장소는 join된 단일 문자열로 단순화하는 것도 선택지다.
+root 원칙: Validation 실패의 `code`는 항상 `VALIDATION_FAILED` 고정값이다. 여러 필드 에러가 있을 수 있으므로 `message`는 문자열 배열이 될 수도 있다(root 예시 참고) — 이 저장소는 join된 단일 문자열로 단순화했다.
 
-**`@ExceptionHandler`를 `AccountController`가 아닌 `@RestControllerAdvice` 전역 클래스로 옮기는 이유**: 도메인이 늘어나면 각 Controller가 `MethodArgumentNotValidException` 핸들러를 중복 정의하게 된다. Validation처럼 도메인에 무관한 공통 예외는 전역에서 한 번만 처리하고, `AccountException`처럼 도메인 특화 예외만 `AccountController`에 남긴다.
+**`@ExceptionHandler`를 `AccountController`가 아닌 `@RestControllerAdvice` 전역 클래스에 두는 이유**: 도메인이 늘어나면 각 Controller가 `MethodArgumentNotValidException` 핸들러를 중복 정의하게 된다. Validation처럼 도메인에 무관한 공통 예외는 전역에서 한 번만 처리하고, `AccountException`처럼 도메인 특화 예외만 각 Controller(`AccountController`/`CardController`/`AuthController`)에 남긴다 — rate limit(`RequestNotPermitted`) 핸들러와 같은 배치 원칙이다.
 
 ---
 
