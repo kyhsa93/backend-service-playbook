@@ -55,23 +55,28 @@ awslocal ses verify-email-identity --email-address no-reply@backend-service-play
 
 ---
 
-## 알려진 차이 — `app` 서비스와 `profiles: [app]`이 compose에 없다
+## `app` 서비스와 `.env.*` 파일
 
-root는 앱 자체도 `profiles: [app]`으로 선택 실행하는 서비스로 포함할 것을 권장하지만, 이 저장소의 `docker-compose.yml`에는 `app` 서비스가 없다. 로컬 개발은 인프라(Postgres, LocalStack)만 컨테이너로 띄우고 앱은 항상 호스트에서 `./gradlew bootRun`으로 직접 실행하는 것이 전제다 — Gradle/Kotlin 빌드가 무거워(컴파일 + 데몬) 매번 컨테이너 이미지를 재빌드하며 개발하기보다 IDE의 증분 컴파일과 핫 리로드(Spring DevTools)를 활용하는 것이 JVM 생태계의 일반적인 개발 흐름이기 때문이다. 앱까지 컨테이너로 실행하고 싶다면 [container.md](container.md)의 Dockerfile을 사용해 `app` 서비스를 추가할 수 있다.
+`docker-compose.yml`은 `database`/`localstack`뿐 아니라 `app` 서비스도 갖고 있고, `profiles: [app]`로 기본 기동에서는 제외된다 — 기본 `docker compose up -d`는 인프라(Postgres, LocalStack)만 띄우고, 앱까지 컨테이너로 실행하려면 `docker compose --profile app up -d --build`를 쓴다:
 
 ```yaml
-# 추가하려면 — container.md의 Dockerfile 기준
+# docker-compose.yml — 실제 코드
   app:
     build: .
     ports: ['8080:8080']
+    env_file:
+      - .env.development
     environment:
-      DATABASE_HOST: database
+      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
     depends_on:
       database: { condition: service_healthy }
       localstack: { condition: service_healthy }
     profiles: ['app']
 ```
+
+`.env.example`(커밋됨)과 `.env.development`(`.gitignore`에 포함, `.env.example`을 복사해서 만듦)도 이미 있다 — `SPRING_DATASOURCE_URL`/`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`SES_SENDER_EMAIL`/`JWT_SECRET`을 담는다. Gradle/Kotlin 빌드가 무거워(컴파일 + 데몬) 호스트에서 `./gradlew bootRun` + IDE 증분 컴파일/핫 리로드(Spring DevTools)로 개발하는 것이 기본 흐름이고, `app` 서비스는 배포 환경과 동일한 컨테이너로 검증하고 싶을 때 쓴다.
 
 ---
 

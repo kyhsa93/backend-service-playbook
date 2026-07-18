@@ -40,10 +40,10 @@
 | [local-dev.md](../architecture/local-dev.md) | **Covered** | `docs/architecture/local-dev.md`, `examples/docker-compose.yml`, `examples/localstack/init-ses.sh` | Postgres + LocalStack(SES) healthcheck 구성, 버전 고정, 초기화 스크립트가 정의와 일치한다. `app` 서비스/`profiles: [app]`, `.env.*` 파일 부재는 확장 여지로 문서화되어 있다. |
 | [file-storage.md](../architecture/file-storage.md) | **Covered** | `docs/architecture/file-storage.md` | `S3Presigner` 기반 Presigned URL 패턴, `account/infrastructure/notification/`의 Technical Service 구조를 템플릿으로 재사용하는 방법을 정의. Account 도메인에 첨부파일 유스케이스 자체가 없어 코드 대응은 없다(순수 신규 문서). |
 | **[domain-service.md](../architecture/domain-service.md)** | **Thin** | `examples/.../account/application/service/NotificationService.java` + `account/infrastructure/notification/NotificationServiceImpl.java` | Technical Service 패턴(인터페이스는 application에, 구현체는 infrastructure에)은 코드로 구현되어 있고, `file-storage.md`/`secret-manager.md`/`directory-structure.md`가 이를 반복 참조하며 설명한다. `notification`은 최상위 공유 모듈이 아니라 유일한 사용처인 `account` 도메인 내부에 배치되어 root의 Technical Service 패턴(도메인 내부 배치)과 일치한다. `domain-service.md`에 대응하는 Java 전용 전담 문서는 없다. |
-| **[cross-domain-communication.md](../architecture/cross-domain-communication.md)** | **Missing** | — | 예제가 단일 BC(Account) 구조라 Adapter(ACL)나 Integration Event 발행/수신 예시가 없다. `notification`은 별도 BC가 아니라 `account` 내부 Technical Service([directory-structure.md](../../implementations/java-springboot/docs/architecture/directory-structure.md)에서 명확히 구분). |
+| [cross-domain-communication.md](../architecture/cross-domain-communication.md) | **Covered** | Java 전용 대응 문서는 [`cross-domain.md`](../../implementations/java-springboot/docs/architecture/cross-domain.md)(아래 "Java Spring Boot 전용" 절) | Account/Card 두 BC가 실제로 존재해 동기 Adapter(`card/application/adapter/AccountAdapter` + `card/infrastructure/AccountAdapterImpl`)와 비동기 Integration Event(`account.suspended.v1`/`account.closed.v1`) 양쪽 모두 실제 코드로 구현되어 있다. |
 | **[strategic-ddd.md](../architecture/strategic-ddd.md)** | **Missing** | — | Subdomain 분류, BC 식별, Context Map에 대한 Java 관점의 전용 문서 없음. |
 
-**요약**: 24개 root 아키텍처 문서 중 **Covered 21(그중 코드 gap이 없는 항목 19, 코드에 일부 gap이 남은 항목 2) / Thin 1 / Missing 2**. 남은 gap은 `config`(AwsProperties 자격증명 필드 Bean Validation 미적용, 세분화된 설정 파일 분리 미제안)와 `observability`(Micrometer 기반 커스텀 메트릭·트레이싱 미도입) 2개뿐이다. `notification`은 최상위 공유 모듈이 아니라 `account` 도메인 내부(Technical Service)에 배치되어 있다.
+**요약**: 24개 root 아키텍처 문서 중 **Covered 22(그중 코드 gap이 없는 항목 20, 코드에 일부 gap이 남은 항목 2) / Thin 1 / Missing 1**. 남은 gap은 `config`(AwsProperties 자격증명 필드 Bean Validation 미적용, 세분화된 설정 파일 분리 미제안)와 `observability`(Micrometer 기반 커스텀 메트릭·트레이싱 미도입) 2개뿐이다. `notification`은 최상위 공유 모듈이 아니라 `account` 도메인 내부(Technical Service)에 배치되어 있다.
 
 ---
 
@@ -54,7 +54,7 @@
 | 문서 | 내용 |
 |---|---|
 | `docs/architecture/bootstrap.md` | `AccountServiceApplication`의 `@SpringBootApplication`/`SpringApplication.run()` 부트스트랩 순서, `application.yml` 로딩 순서, `@RestControllerAdvice` 전역 예외 처리 배선(error-handling.md 교차 참조). Actuator는 도입되어 있다 — springdoc/CORS 도입 가이드만 여전히 forward-looking |
-| `docs/architecture/cross-domain.md` | 도메인 간 동기 호출 Adapter 패턴의 Java/Spring 구현 예시 — `application/adapter/` 인터페이스 + `infrastructure/` 구현체. 이 저장소는 단일 BC 구조라 가상의 User BC를 상정한 예시임을 명시 |
+| `docs/architecture/cross-domain.md` | 도메인 간 동기 호출 Adapter 패턴의 Java/Spring 구현 예시 — `application/adapter/` 인터페이스 + `infrastructure/` 구현체. Account/Card 두 BC가 실제로 존재해 동기 Adapter와 비동기 Integration Event 양쪽 모두 실제 코드로 다룬다 |
 | `docs/architecture/design-principles.md` | 이 저장소의 핵심 설계 원칙 13개를 압축한 TL;DR 인덱스 + 남은 gap 요약 표(config.md의 Bean Validation 미대상 필드뿐) |
 | `docs/architecture/module-pattern.md` | Spring DI 컨테이너 메커니즘(스테레오타입 애노테이션, 생성자 주입, `@Bean`/`@Configuration`, `@Profile`)과 NestJS `@Module`의 근본적 차이(모듈 경계가 컴파일 타임에 강제되지 않음), 순환 의존 시 `@Lazy` vs BC 경계 재설계 |
 | `docs/architecture/rate-limiting.md` | Resilience4j `RateLimiter` 기반 `Filter` 구현 예시. `build.gradle`에 `resilience4j-spring-boot3` 의존성이 있고 `RateLimitFilter`가 모든 비-actuator 요청에 적용된다 |
