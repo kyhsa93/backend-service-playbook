@@ -6,7 +6,7 @@
 
 root 원칙: Domain Event는 in-process 이벤트 버스를 사용하지 않는다. **Repository가 Aggregate와 이벤트를 같은 트랜잭션에서 Outbox 테이블에 저장 → Relay가 저장된 이벤트를 읽어 핸들러에 전달**하는 경로를 따른다.
 
-이 저장소의 `examples/`는 이 경로를 그대로 구현한다 — 단, root/nestjs 문서가 언급하는 "메시지 큐 + `@Scheduled` 폴링" 대신, **Command Service가 자신의 저장 트랜잭션이 커밋된 직후 Relay를 동기적으로 한 번 호출**하는 방식을 쓴다. 이 저장소에는 실제 메시지 큐 인프라가 없고, e2e 테스트에서 비동기 폴링을 기다리는 타이밍 문제를 피하려는 의도적 단순화다 — nestjs 구현체와 동일한 트리거 전략이다.
+root 문서의 3단계는 "같은 프로세스 안 동기 드레인"과 "메시지 큐를 경유하는 분산 드레인" 둘 다를 유효한 경로로 인정한다 — 이 저장소는 전자를 택했다: **Command Service가 자신의 저장 트랜잭션이 커밋된 직후 Relay를 동기적으로 한 번 호출**해 outbox 미처리 행을 직접 드레인한다(메시지 큐/`@Scheduled` 폴러 없음). e2e 테스트에서 비동기 폴링을 기다리는 타이밍 문제를 피할 수 있다는 부수적 장점도 있다 — nestjs 구현체와 동일한 트리거 전략이다.
 
 ```java
 // application/command/CreateAccountService.java — 실제 코드

@@ -1,6 +1,6 @@
 # 도메인 이벤트 발행 패턴
 
-> **이 저장소의 실제 `examples/`와의 차이**: 아래 3~6단계(OutboxRelay→SQS 전송, EventConsumer, Integration Event)는 여러 Bounded Context/프로세스로 확장될 때를 대비한 **목표 설계**다. 이 저장소는 Account/Card 등 여러 BC가 있지만 모두 같은 서비스/프로세스 안에 있어 SQS 같은 별도 메시지 브로커 홉이 필요 없어서, 실제 `account/application/event/outbox-relay.ts`는 커맨드가 저장을 커밋한 직후 **같은 프로세스 안에서 동기적으로** outbox 미처리 행을 읽어 이벤트 타입별 핸들러를 직접 호출한다(SQS/EventConsumer 없음). `EventHandlerRegistry`(`outbox/event-handler-registry.ts`)는 `@HandleEvent(...)` 데코레이터만 제공하고, 실제 `OutboxRelay`는 이 메타데이터를 조회하지 않는 생성자 주입 기반 고정 맵을 쓴다 — 아래 코드 예시에 나오는 `ModuleRef` 기반 동적 라우팅은 구현되어 있지 않다. 1~2단계(Aggregate 이벤트 수집, Repository 트랜잭션 저장)는 실제 코드와 동일하다.
+> **이 저장소의 실제 `examples/`가 고른 경로**: root [domain-events.md](../../../../docs/architecture/domain-events.md)의 3단계는 "같은 프로세스 안 동기 드레인"과 "메시지 큐를 경유하는 분산 드레인" 둘 다를 유효한 경로로 인정한다 — 이 저장소는 Account/Card 등 여러 BC가 있지만 모두 같은 서비스/프로세스 안에 있으므로 전자를 택했다. 실제 `account/application/event/outbox-relay.ts`는 커맨드가 저장을 커밋한 직후 **같은 프로세스 안에서 동기적으로** outbox 미처리 행을 읽어 이벤트 타입별 핸들러를 직접 호출한다(SQS/EventConsumer 없음). `EventHandlerRegistry`(`outbox/event-handler-registry.ts`)는 `@HandleEvent(...)` 데코레이터만 제공하고, 실제 `OutboxRelay`는 이 메타데이터를 조회하지 않는 생성자 주입 기반 고정 맵을 쓴다 — 아래 코드 예시에 나오는 `ModuleRef` 기반 동적 라우팅은 구현되어 있지 않다.
 
 ### 개념 구분 — Domain Event vs Integration Event
 

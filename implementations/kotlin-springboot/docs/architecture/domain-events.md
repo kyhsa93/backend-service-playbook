@@ -4,7 +4,7 @@
 
 ## Outbox 패턴 — `examples/`에 실제로 구현되어 있다
 
-root는 명확히 규정한다: *"Domain Event는 in-process 이벤트 버스를 사용하지 않는다. Outbox → 메시지 큐 → EventConsumer 경로로 전달된다."* 이 저장소의 `examples/`는 이 규칙을 따른다 — 다만 별도 메시지 큐(SQS 등)를 두는 대신, Command Service가 트랜잭션 커밋 직후 Relay를 동기 호출해 같은 프로세스 안에서 즉시 드레인하는 단순화된 형태다(아래 "메시지 큐를 두지 않은 이유" 참고).
+root는 명확히 규정한다: *"Domain Event는 in-process 이벤트 버스를 사용하지 않는다. Repository.save()가 Aggregate와 같은 트랜잭션으로 Outbox에 저장하고, Relay가 그 저장된 이벤트를 읽어 핸들러에 전달한다."* 이 저장소의 `examples/`는 이 규칙을 그대로 따른다 — root가 동등하게 인정하는 두 경로(같은 프로세스 안 동기 드레인 / 메시지 큐를 경유하는 분산 드레인) 중, Command Service가 트랜잭션 커밋 직후 Relay를 동기 호출해 같은 프로세스 안에서 즉시 드레인하는 전자를 택했다(아래 "메시지 큐를 두지 않은 이유" 참고).
 
 ```kotlin
 // application/command/DepositService.kt — 현재 코드

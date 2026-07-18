@@ -4,18 +4,20 @@
 
 **Domain Event**: 같은 Bounded Context 내부 사건. Aggregate 내부 상태 변화의 결과. 구조가 자유롭게 변하며 외부 BC와 결합되지 않는다.
 - 생성: Aggregate 도메인 메서드 내부에서 `_events.push(new OrderCancelled(...))`
-- 저장: Repository에서 Outbox에 적재
-- 수신: 같은 BC의 `application/event/<domain-event>-handler.ts`
+- 저장: **Repository.save()가 Aggregate를 영속화하는 트랜잭션 안에서** Outbox에 함께 적재 (별도 저장 호출이 아니다)
+- 수신: 같은 BC의 `application/event/<domain-event>-handler.ts` — 이 핸들러는 Aggregate가 이벤트를 만든 시점에 바로 실행되는 것이 아니라, **Outbox에 저장되어 있던 이벤트를 Relay가 나중에 읽어 넘겨줄 때** 실행된다
 
 **Integration Event**: 외부 BC · 외부 시스템과의 **공개 계약**. 이름·스키마가 안정적이어야 하며 버전을 명시한다(`order.cancelled.v1`). 소비 측이 의존할 수 있는 유일한 접점.
-- 생성: **Application EventHandler**가 Domain Event를 수신한 뒤 필요 시 변환하여 Outbox에 적재 (Aggregate가 직접 만들지 않는다)
-- 수신: 외부 BC가 발행한 Integration Event는 `interface/integration-event/` 에서 수신
+- 생성: **Application EventHandler**가 (Outbox에서 전달받은) Domain Event를 처리하는 도중 필요 시 변환하여, 같은 방식으로 Outbox에 적재 (Aggregate가 직접 만들지 않는다)
+- 수신: 외부 BC가 발행한 Integration Event도 동일한 원칙을 따른다 — 발행 측 Outbox에 저장된 이벤트가 전달되면, 수신 측은 `interface/integration-event/`에서 수신
 
 둘을 구분하지 않으면 BC 간 결합이 커지고 내부 이벤트 리팩토링이 외부 consumer를 깨뜨린다.
 
 ---
 
 ### 전체 흐름
+
+핵심은 딱 두 가지다: **(1) Outbox 저장은 Repository.save()가 Aggregate를 영속화하는 그 트랜잭션 안에서 함께 일어난다** — Command Service나 다른 어떤 코드도 outbox에 별도로 쓰지 않는다. **(2) EventHandler는 이미 outbox 테이블에 저장되어 있는(=커밋이 끝난) 이벤트를 Relay가 읽어서 넘겨줄 때만 실행된다** — Aggregate가 이벤트를 만드는 시점과 EventHandler가 그 이벤트를 처리하는 시점은 항상 분리되어 있고, 그 사이를 잇는 유일한 매개체가 outbox 테이블이다(in-process 이벤트 버스로 직접 구독하지 않는다).
 
 ```
 [1. 도메인 로직 실행]
@@ -27,24 +29,29 @@
     - aggregate.domainEvents를 outbox 테이블에 저장
     - aggregate.clearEvents()
   트랜잭션 커밋 → Aggregate와 이벤트가 함께 확정되거나 함께 롤백
+  ★ 이 시점 이전에는 이벤트가 outbox에 존재하지 않으므로 어떤 EventHandler도 실행될 수 없다.
 
-[3. Outbox → 메시지 큐 전송]
-  OutboxRelay: outbox 테이블을 짧은 주기로 폴링
-    → 미전송 이벤트를 메시지 큐(SQS 등)로 전송
-    → 전송 완료된 이벤트를 processed 처리
+[3. Relay가 저장된 이벤트를 읽어 EventHandler에 전달]
+  OutboxRelay: outbox 테이블에서 processed=false인 행을 읽는다
+    → eventType에 따라 application/event/ 내부 EventHandler를 직접 호출
+    → 호출이 성공하면 그 행을 processed 처리 (실패하면 그대로 두어 다음 드레인에서 재시도)
 
-[4. 메시지 큐 → EventHandler 수신 (같은 BC의 Domain Event 처리)]
-  EventConsumer: 큐에서 메시지를 수신
-    → eventType에 따라 application/event/ 내부 EventHandler 호출
-    → 후속 처리 실행 (같은 BC 내 상태 조정, 로깅 등)
+  Relay를 언제 깨우는지는 배포 형태에 따라 다르지만, EventHandler 입장에서는 항상
+  "이미 outbox에 저장된 이벤트를 Relay가 넘겨준 것"을 처리할 뿐이다:
+    - 같은 프로세스 안에 있다면(이 저장소의 모든 구현체가 선택한 방식) — Command Service가
+      저장 트랜잭션 커밋 직후 Relay를 동기 호출해 즉시 드레인한다. 별도 폴러/메시지 큐가 없다.
+    - 여러 프로세스/서비스로 나뉜 분산 환경이라면 — Relay가 outbox를 짧은 주기로 폴링해
+      미전송 행을 메시지 큐(SQS 등)로 전송하고, 별도 EventConsumer가 큐에서 받아 같은
+      EventHandler를 호출한다. 이 경로도 "저장된 이벤트를 읽어 전달"이라는 본질은 동일하고,
+      메시지 큐는 프로세스 경계를 넘기기 위한 전송 수단일 뿐이다.
 
-[5. (선택) Integration Event 발행 — Application EventHandler가 변환]
+[4. (선택) Integration Event 발행 — Application EventHandler가 변환]
   EventHandler가 Domain Event를 외부 BC로 알려야 할 때:
     → IntegrationEventV1 객체를 구성
-    → OutboxWriter로 외부 큐용 outbox에 적재
-    → 이후 3단계와 동일하게 Relay → 메시지 큐 → 외부 BC
+    → OutboxWriter로 외부 BC용 outbox 행을 (같은 트랜잭션에서) 적재
+    → 이후 3단계와 동일한 경로로 Relay가 다시 드레인해 외부 BC에 전달
 
-[6. 외부 BC의 Integration Event 수신]
+[5. 외부 BC의 Integration Event 수신]
   다른 BC가 발행한 Integration Event가 자기 BC에 들어올 때:
     → interface/integration-event/<domain>-integration-event-controller.ts
     → 핸들러가 수신 → Command Service를 호출하여 자기 도메인의 유스케이스 실행
