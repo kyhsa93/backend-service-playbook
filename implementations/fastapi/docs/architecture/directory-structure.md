@@ -212,15 +212,15 @@ class SesNotificationService(NotificationService):
 
 ## 공용 인프라 배치 기준
 
-`common/`, `config/`, `auth/`, `outbox/`는 도메인이 `account` 하나뿐인 지금도 존재한다 — 순수 기술적/횡단적 관심사는 도메인 수와 무관하게 도메인 패키지 바깥에 둔다는 원칙을 처음부터 적용했기 때문이다. 두 번째 도메인을 추가할 때도 이 위치는 그대로 재사용한다.
+`common/`, `config/`, `auth/`, `outbox/`는 `account`와 `card` 두 도메인이 함께 쓰는 공유 패키지다 — 순수 기술적/횡단적 관심사는 도메인 수와 무관하게 도메인 패키지 바깥에 둔다는 원칙을 처음부터 적용했기 때문이다.
 
 | 디렉토리 | 포함 내용 |
 |---------|----------|
 | `src/common/` | 순수 유틸/인프라 — `generate_id.py`([aggregate-id.md](aggregate-id.md)), `logging_config.py`/`correlation.py`([observability.md](observability.md)), `secret_service.py`/`aws_secret_service.py`([secret-manager.md](secret-manager.md)) |
-| `src/config/` | 관심사별 설정 클래스, fail-fast 검증 — `database_config.py`, `validator.py` ([config.md](config.md) 참조). `jwt_config.py`/`aws_config.py`는 아직 없다 |
+| `src/config/` | 관심사별 설정 클래스, fail-fast 검증 — `database_config.py`/`jwt_config.py`/`aws_config.py`/`rate_limit_config.py`, `validator.py` ([config.md](config.md) 참조) |
 | `src/auth/` | 공유 인증 — `account/`와 동일한 4레이어 구조 ([authentication.md](authentication.md) 참조) |
 | `src/outbox/` | 공유 Outbox 패턴 ([domain-events.md](domain-events.md) 참조) |
-| `src/database.py` | DB 엔진/세션 팩토리 — 현재 위치 유지 (도메인이 하나뿐인 동안은 모듈 파일로 충분) |
+| `src/database.py` | DB 엔진/세션 팩토리 — 현재 위치 유지 (모듈 파일로 충분) |
 
 ---
 

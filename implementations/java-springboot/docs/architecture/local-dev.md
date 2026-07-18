@@ -59,43 +59,47 @@ awslocal ses verify-email-identity --email-address no-reply@backend-service-play
 
 ---
 
-## 알려진 gap — `app` 서비스와 `.env.*` 파일 부재
+## `app` 서비스와 `.env.*` 파일
 
-root가 권장하는 두 가지가 이 저장소에는 없다:
-
-**1) `app` 서비스가 compose에 없다** — 현재는 인프라(DB, LocalStack)만 compose로 띄우고 앱은 항상 `./gradlew bootRun`으로 호스트에서 직접 실행하는 것을 전제한다. `--profile app`으로 앱까지 컨테이너 실행하는 옵션이 없다:
+`docker-compose.yml`은 `database`/`localstack`뿐 아니라 `app` 서비스도 갖고 있고, `profiles: [app]`로 기본 기동에서는 제외된다 — 기본 `docker compose up -d`는 인프라(DB, LocalStack)만 띄우고, 앱까지 컨테이너로 실행하려면 `docker compose --profile app up -d --build`를 쓴다:
 
 ```yaml
-# docker-compose.yml — 추가 시 (제안)
+# docker-compose.yml — 실제 코드 (일부)
   app:
     build: .
     ports: ['8080:8080']
-    env_file: ['.env.docker']
+    env_file:
+      - .env.development
+    environment:
+      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
+      AWS_ENDPOINT_URL: http://localstack:4566
     depends_on:
       database: { condition: service_healthy }
       localstack: { condition: service_healthy }
     profiles: ['app']
 ```
 
-`Dockerfile` 자체가 아직 없으므로([container.md](container.md) 참고) 이 서비스는 Dockerfile 작성과 함께 추가해야 한다.
+`environment:`가 `env_file:`보다 우선 적용되므로, 호스트 직접 실행용 `.env.development`를 그대로 재사용하면서 컨테이너 네트워크에서만 필요한 두 값(`SPRING_DATASOURCE_URL`, `AWS_ENDPOINT_URL`)만 오버라이드한다.
 
-**2) `.env.development`/`.env.docker` 파일이 없다** — 현재 로컬 개발자는 환경 변수를 셸에서 직접 export하거나 IDE 실행 설정에 하드코딩해야 한다.
+`.env.example`(커밋됨)과 `.env.development`(`.gitignore`에 포함, `.env.example`을 복사해서 만듦)도 이미 있다:
 
 ```env
-# .env.development — 추가 시 (제안, 호스트에서 앱 직접 실행)
+# .env.example — 실제 코드 (호스트에서 ./gradlew bootRun으로 앱을 직접 실행할 때 사용)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/app
+SPRING_DATASOURCE_USERNAME=dev
+SPRING_DATASOURCE_PASSWORD=dev
+
 AWS_REGION=us-east-1
 AWS_ENDPOINT_URL=http://localhost:4566
 AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
+
+JWT_SECRET=local-dev-secret-local-dev-secret
 ```
 
-```env
-# .env.docker — 추가 시 (앱이 컨테이너 안에서 실행될 때 — 서비스명으로 연결)
-AWS_ENDPOINT_URL=http://localstack:4566
-```
-
-Spring Boot는 `.env` 파일을 기본 지원하지 않으므로(Node의 `dotenv`에 대응하는 표준 메커니즘이 없다), `.env.development`는 `direnv`나 IDE의 "Run Configuration" 환경 변수 가져오기로 로드하거나, `spring-dotenv` 같은 서드파티 라이브러리를 추가해야 한다. 가장 Spring다운 대안은 `application-local.yml` 프로필 파일에 로컬 기본값을 직접 기술하는 것이다([config.md](config.md) 참고) — 이 저장소의 `application.yml`이 이미 `${AWS_ACCESS_KEY_ID:test}` 형태로 기본값을 내장하는 것이 이 전략에 해당한다.
+Spring Boot는 `.env` 파일을 자동으로 읽지 않으므로(Node의 `dotenv`에 대응하는 표준 메커니즘이 없다), `export $(cat .env.development | xargs) && ./gradlew bootRun`처럼 셸에 로드하거나 direnv 등을 쓴다. `application.yml`이 `${AWS_ACCESS_KEY_ID:test}` 형태로 기본값을 내장하고 있어, `.env.development` 없이도 로컬 기동은 가능하다 — `.env.development`는 그 기본값을 명시적으로 관리하고 싶을 때 쓴다.
 
 ---
 
@@ -153,7 +157,7 @@ docker compose down -v
 - **모든 인프라 서비스에 healthcheck를 설정한다**: `pg_isready`, `awslocal ses list-identities`.
 - **초기화 스크립트를 커밋에 포함한다**: `localstack/init-ses.sh`.
 - **이미지 버전을 고정한다**: `postgres:16-alpine`, `localstack/localstack:3.0`.
-- **개선 여지**: `app` 서비스를 `profiles: [app]`으로 추가하고, `.env.development`/`.env.docker` 또는 `application-local.yml`로 환경 변수 관리를 체계화한다.
+- **profiles로 앱 서비스를 분리한다**: `app` 서비스는 `profiles: [app]`로 기본 기동에서 제외된다.
 
 ---
 

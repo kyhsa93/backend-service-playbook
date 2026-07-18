@@ -36,7 +36,7 @@
 
 | 원칙 (위 번호) | 코드 상태 |
 |---|---|
-| 12. Fail-fast 설정 검증 | 적용됨 — `AwsProperties`/`SesProperties`(`@ConfigurationProperties` + `@Validated`), 단 `accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니고 `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다([config.md](config.md) 참고) |
+| 12. Fail-fast 설정 검증 | `AwsProperties`/`SesProperties`(`@ConfigurationProperties` + `@Validated`)가 대부분 필드를 검증하지만, `accessKeyId`/`secretAccessKey`는 Bean Validation 대상이 아니다 — `application-prod.yml`의 기본값 생략으로 fail-fast를 얻는다. 관심사별 설정 파일 분리(`application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml`)도 아직 `application-prod.yml` 하나뿐이라 부분적이다([config.md](config.md) 참고) |
 
 전체 gap 목록은 [docs/implementations/java-springboot.md](../../../../docs/implementations/java-springboot.md)의 커버리지 표를 참고한다.
 

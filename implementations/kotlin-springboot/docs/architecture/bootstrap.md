@@ -67,7 +67,7 @@ application.yml (기본값)
 NestJS는 `app.useGlobalFilters(new HttpExceptionFilter())`처럼 부트스트랩 함수 안에서 명시적으로 등록한다. Spring Boot는 **`@RestControllerAdvice`가 붙은 클래스 자체가 컴포넌트 스캔으로 자동 등록**되므로 `main()`에 해당하는 코드가 없다.
 
 ```kotlin
-// common/GlobalExceptionHandler.kt — error-handling.md에서 제안하는 형태
+// common/GlobalExceptionHandler.kt — 실제 코드 발췌, error-handling.md 참조
 @RestControllerAdvice
 class GlobalExceptionHandler {
     @ExceptionHandler(AccountException::class)
@@ -75,7 +75,7 @@ class GlobalExceptionHandler {
 }
 ```
 
-`AccountServiceApplication.kt`는 이 클래스의 존재조차 알 필요가 없다 — 패키지 안에 있고 `@RestControllerAdvice`가 붙어 있으면 그것으로 충분하다. 현재 `examples/`는 아직 이 전역 핸들러 없이 `AccountController`에 `@ExceptionHandler` 메서드 두 개를 직접 두고 있다 — 상세 갭과 올바른 형태는 [error-handling.md](error-handling.md) 참조.
+`AccountServiceApplication.kt`는 이 클래스의 존재조차 알 필요가 없다 — 패키지 안에 있고 `@RestControllerAdvice`가 붙어 있으면 그것으로 충분하다. `examples/`도 이 전역 핸들러 하나로 통합되어 있고, `AccountController`에는 `@ExceptionHandler` 메서드가 없다 — 상세는 [error-handling.md](error-handling.md) 참조.
 
 ## OpenAPI/Swagger — 현재 미도입
 

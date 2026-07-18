@@ -13,7 +13,7 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 | 작업 / 키워드 | 읽을 문서 |
 |---------------|----------|
 | 프로젝트 구조, 패키지 레이아웃, Account/notification 모듈 실제 구조 | `docs/architecture/directory-structure.md` |
-| 레이어 역할, Domain / Application / Infrastructure / Interfaces, JPA 엔티티가 도메인을 겸하는 gap | `docs/architecture/layer-architecture.md` |
+| 레이어 역할, Domain / Application / Infrastructure / Interfaces, Domain/JPA 매핑 분리 | `docs/architecture/layer-architecture.md` |
 | Aggregate, Entity, Value Object, `record`, 정적 팩토리 메서드 | `docs/architecture/tactical-ddd.md` |
 | Repository 인터페이스·구현, 메서드 네이밍(`find<Noun>s`/`save<Noun>`/`delete<Noun>`) | `docs/architecture/repository-pattern.md` |
 | Aggregate ID 생성 규칙 (32자리 hex, 하이픈 제거) | `docs/architecture/aggregate-id.md` |
@@ -24,7 +24,7 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 |---------------|----------|
 | `@Transactional`, 트랜잭션 전파, `REQUIRES_NEW`, Soft Delete, 마이그레이션(Flyway) | `docs/architecture/persistence.md` |
 | Domain Event, Outbox 패턴, `OutboxWriter`/`OutboxRelay` | `docs/architecture/domain-events.md` |
-| Command/Query Service 분리, Handler 기반 CQRS 전환 기준, Query 인터페이스 gap | `docs/architecture/cqrs-pattern.md` |
+| Command/Query Service 분리, Handler 기반 CQRS 전환 기준, 읽기 전용 Query 인터페이스 | `docs/architecture/cqrs-pattern.md` |
 
 ### API / Interface
 

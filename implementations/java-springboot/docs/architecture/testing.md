@@ -105,7 +105,7 @@ class AccountTest {
 }
 ```
 
-- `Account`, `Money`, `Transaction`이 JPA 애노테이션을 갖고 있음에도(layer-architecture.md의 알려진 gap) **`@SpringBootTest` 없이 `Account.create(...)` 정적 호출만으로 테스트가 가능하다** — JPA 애노테이션은 런타임 메타데이터일 뿐 클래스 로딩/인스턴스화 자체를 방해하지 않기 때문이다. Spring 컨텍스트를 띄우지 않으므로 밀리초 단위로 끝난다.
+- `Account`, `Money`, `Transaction`은 JPA 애노테이션이 전혀 없는 순수 도메인 클래스라서 **`@SpringBootTest` 없이 `Account.create(...)` 정적 호출만으로 테스트가 가능하다**([layer-architecture.md](layer-architecture.md) 참고). Spring 컨텍스트를 띄우지 않으므로 밀리초 단위로 끝난다.
 - `AssertJ`(`spring-boot-starter-test`에 포함)의 `assertThatThrownBy` + `extracting`으로 예외 타입뿐 아니라 `ErrorCode`까지 정밀하게 검증한다 — 문자열 메시지가 아니라 enum 값으로 단언하므로 메시지 문구가 바뀌어도 테스트가 깨지지 않는다.
 - `Money`(Value Object)의 record 동등성도 여기서 함께 검증할 수 있다: `assertThat(new Money(1000, "KRW")).isEqualTo(new Money(1000, "KRW"))` — record가 자동 생성한 `equals()`를 확인하는 것뿐이므로 필수는 아니지만, Value Object 계약을 문서화하는 효과가 있다.
 

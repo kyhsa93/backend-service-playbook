@@ -203,9 +203,10 @@ public class AccountController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CreateAccountResult createAccount(
-            @RequestHeader("X-User-Id") String requesterId,
+            Authentication authentication,
             @Valid @RequestBody CreateAccountRequest request
     ) {
+        String requesterId = authentication.getName();
         return createAccountService.create(new CreateAccountCommand(requesterId, request.email(), request.currency()));
     }
 
@@ -214,7 +215,7 @@ public class AccountController {
 }
 ```
 
-`@RequestHeader("X-User-Id")`로 인증되지 않은 값을 신뢰하는 것은 알려진 gap이다 — 올바른 패턴은 [authentication.md](authentication.md) 참고.
+`requesterId`는 `Authentication`(Spring Security가 JWT를 검증한 뒤 채워준다)에서 꺼낸다 — 클라이언트가 임의로 보낸 헤더 값을 신뢰하지 않는다. 상세는 [authentication.md](authentication.md) 참고.
 
 ### Interface DTO — Application 객체의 thin wrapper
 

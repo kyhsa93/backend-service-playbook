@@ -12,6 +12,15 @@ cmd/
     main.go                                  ← 진입점, 의존성 조립
 
 internal/
+  common/                                    ← 도메인 무관 공유 순수 유틸 (shared-modules.md 참고)
+    id.go                                    ← common.NewID() — aggregate-id.md
+
+  config/                                    ← 관심사별 설정 로딩/검증 (config.md 참고)
+    database.go
+    jwt.go
+    rate_limit.go
+    secret_service.go
+
   domain/
     account/
       account.go                             ← Aggregate Root (New/Reconstitute + 도메인 메서드)
@@ -26,6 +35,10 @@ internal/
       card_status.go                         ← Status enum
       errors.go
       repository.go                          ← Repository/Query interface (CQRS 분리)
+    credential/                              ← 인증/가입 Aggregate (authentication.md 참고)
+      credential.go                          ← userId + bcrypt 해시
+      errors.go
+      repository.go
 
   application/
     command/
@@ -40,6 +53,8 @@ internal/
       issue_card_handler.go                  ← 카드 발급 (AccountAdapter로 계좌 활성 여부 동기 확인)
       suspend_cards_by_account_handler.go    ← account.suspended.v1 반응 유스케이스 (멱등)
       cancel_cards_by_account_handler.go     ← account.closed.v1 반응 유스케이스 (멱등)
+      sign_in_handler.go                     ← 저장된 해시와 비교 후 토큰 발급 (authentication.md 참고)
+      sign_up_handler.go                     ← 중복 확인 → 해싱 → 저장
     query/
       get_account_handler.go
       get_transactions_handler.go
@@ -62,8 +77,14 @@ internal/
     persistence/
       account_repository.go                  ← account.Repository 구현체 (같은 트랜잭션에 Outbox 행도 적재)
       card_repository.go                     ← card.Repository 구현체
+      credential_repository.go               ← credential.Repository 구현체
     acl/
       account_adapter.go                     ← command.AccountAdapter 구현체 (Card→Account ACL, cross-domain.md)
+    auth/                                    ← 인증 Technical Service 구현체 (authentication.md 참고)
+      bcrypt_password_hasher.go
+      jwt_service.go
+    secret/                                  ← Secrets Manager 접근 구현체 (secret-manager.md 참고)
+      service.go
     notification/
       service.go                             ← 이벤트 핸들러가 호출하는 알림 발송 (SES + DB 기록)
       ses_client.go                          ← SES 클라이언트 생성
@@ -77,6 +98,7 @@ internal/
       router.go                              ← net/http 라우팅 + 의존성 조립 보조
       account_handler.go                      ← HTTP 핸들러
       card_handler.go                        ← Card HTTP 핸들러 (POST /cards, GET /cards/{cardId})
+      auth_handler.go                        ← POST /auth/sign-in, POST /auth/sign-up
       dto.go                                  ← 요청/응답 DTO
 
 migrations/
@@ -110,11 +132,11 @@ go.mod
 | `<domain>/application/query/` | `internal/application/query/` |
 | `<domain>/infrastructure/` | `internal/infrastructure/<concern>/` (persistence, notification 등 관심사별 하위 패키지) |
 | `<domain>/interface/` | `internal/interface/http/` |
-| `common/` | 필요 시 `internal/common/`(ID 생성 등 프레임워크 무관 순수 함수) — 현재 `examples/`에는 아직 없다([aggregate-id.md](aggregate-id.md) 참고) |
-| `database/`(TransactionManager) | 없음 — 현재 `Save()` 내부 로컬 `db.BeginTx()`만 사용. root가 요구하는 컨텍스트 기반 전파는 미구현([persistence.md](persistence.md) 참고) |
+| `common/` | `internal/common/`(`id.go` — ID 생성 등 프레임워크 무관 순수 함수)([aggregate-id.md](aggregate-id.md) 참고) |
+| `database/`(TransactionManager) | 없음 — 현재 `Save()` 내부 로컬 `db.BeginTx()`만 사용. 여러 Repository를 하나의 트랜잭션으로 묶는 컨텍스트 기반 전파가 필요한 시나리오가 아직 없다([persistence.md](persistence.md) 참고) |
 | `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Relay` 구현됨([domain-events.md](domain-events.md) 참고) |
 | `task-queue/` | 없음 — 스케줄링/Task Queue 예제 없음([scheduling.md](scheduling.md) 참고) |
-| `config/` | 없음 — `main.go`가 `os.Getenv`를 검증 없이 직접 사용. 새로 만들 때는 `internal/config/`로 분리([config.md](config.md) 참고) |
+| `config/` | `internal/config/`(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`)([config.md](config.md) 참고) |
 
 여러 도메인이 추가되면 `internal/domain/<domain>/`, `internal/infrastructure/persistence/<domain>_repository.go`처럼 도메인별로 파일이 늘어난다. 현재 `examples/`에는 Account와 Card 두 Bounded Context가 있고(파일명 접두사 `card_*`로 구분), `internal/application/command/`·`query/`는 아직 평평한 구조로 두 도메인의 핸들러를 함께 담는다 — 도메인이 더 많아져 파일이 번잡해지면 `command/<domain>/`처럼 하위 디렉토리로 나누는 것을 검토한다. Account↔Card 크로스 도메인 호출 배치는 [cross-domain.md](cross-domain.md)를 참고한다.
 
