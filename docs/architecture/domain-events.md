@@ -17,7 +17,7 @@
 
 ### 전체 흐름
 
-핵심은 딱 두 가지다: **(1) Outbox 저장은 Repository.save()가 Aggregate를 영속화하는 그 트랜잭션 안에서 함께 일어난다** — Command Service나 다른 어떤 코드도 outbox에 별도로 쓰지 않는다. **(2) EventHandler는 이미 outbox 테이블에 저장되어 있는(=커밋이 끝난) 이벤트를 Relay가 읽어서 넘겨줄 때만 실행된다** — Aggregate가 이벤트를 만드는 시점과 EventHandler가 그 이벤트를 처리하는 시점은 항상 분리되어 있고, 그 사이를 잇는 유일한 매개체가 outbox 테이블이다(in-process 이벤트 버스로 직접 구독하지 않는다).
+핵심은 세 가지다: **(1) Outbox 저장은 Repository.save()가 Aggregate를 영속화하는 그 트랜잭션 안에서 함께 일어난다** — Command Service나 다른 어떤 코드도 outbox에 별도로 쓰지 않는다. **(2) Outbox에 저장된 이벤트를 메시지 큐로 실어 나르는 것은 Command Service가 아니라 독립적으로 주기 실행되는 Poller의 책임**이다 — Command Service는 저장이 끝나면 그 즉시 요청을 끝내고, 이벤트가 언제 처리되는지는 전혀 알지 못하고 관여하지도 않는다. **(3) EventHandler는 메시지 큐에서 이벤트를 직접 수신하는 Consumer를 통해서만 실행된다** — Aggregate가 이벤트를 만드는 시점, Outbox에 쌓인 이벤트가 큐로 나가는 시점, Consumer가 그 이벤트를 처리하는 시점은 서로 다른 세 개의 독립적인 흐름이며 **동기적으로 이어지는 예외는 없다.**
 
 ```
 [1. 도메인 로직 실행]
@@ -29,33 +29,36 @@
     - aggregate.domainEvents를 outbox 테이블에 저장
     - aggregate.clearEvents()
   트랜잭션 커밋 → Aggregate와 이벤트가 함께 확정되거나 함께 롤백
-  ★ 이 시점 이전에는 이벤트가 outbox에 존재하지 않으므로 어떤 EventHandler도 실행될 수 없다.
+  Command Service는 여기서 끝난다 — 이후 어떤 단계도 호출하지 않는다.
 
-[3. Relay가 저장된 이벤트를 읽어 EventHandler에 전달]
-  OutboxRelay: outbox 테이블에서 processed=false인 행을 읽는다
-    → eventType에 따라 application/event/ 내부 EventHandler를 직접 호출
-    → 호출이 성공하면 그 행을 processed 처리 (실패하면 그대로 두어 다음 드레인에서 재시도)
+[3. OutboxPoller — 독립적으로 주기 실행, 저장된 이벤트를 큐로 전송]
+  OutboxPoller: 별도 스케줄(예: 1~2초 주기)로 단독 실행된다
+    → outbox 테이블에서 processed=false인 행을 읽는다
+    → 각 행을 메시지 큐(SQS 등)로 발행한다 (eventType은 메시지 속성, payload는 본문)
+    → 발행에 성공한 행은 즉시 processed=true로 표시한다
+       (여기서 processed는 "핸들러가 처리를 끝냈다"가 아니라 "큐로 전달을 끝냈다"는 뜻이다 —
+        이후의 전달 보장은 outbox가 아니라 메시지 큐 자신의 재전달 메커니즘이 담당한다)
 
-  Relay를 언제 깨우는지는 배포 형태에 따라 다르지만, EventHandler 입장에서는 항상
-  "이미 outbox에 저장된 이벤트를 Relay가 넘겨준 것"을 처리할 뿐이다:
-    - 같은 프로세스 안에 있다면(이 저장소의 모든 구현체가 선택한 방식) — Command Service가
-      저장 트랜잭션 커밋 직후 Relay를 동기 호출해 즉시 드레인한다. 별도 폴러/메시지 큐가 없다.
-    - 여러 프로세스/서비스로 나뉜 분산 환경이라면 — Relay가 outbox를 짧은 주기로 폴링해
-      미전송 행을 메시지 큐(SQS 등)로 전송하고, 별도 EventConsumer가 큐에서 받아 같은
-      EventHandler를 호출한다. 이 경로도 "저장된 이벤트를 읽어 전달"이라는 본질은 동일하고,
-      메시지 큐는 프로세스 경계를 넘기기 위한 전송 수단일 뿐이다.
+[4. OutboxConsumer — 독립적으로 큐를 수신 대기, EventHandler 호출]
+  OutboxConsumer: 메시지 큐를 짧은 주기로 수신 대기한다(long polling)
+    → 메시지를 받으면 eventType에 따라 application/event/ 내부 EventHandler를 호출
+    → 핸들러가 성공하면 메시지를 삭제(ack)
+    → 핸들러가 실패하면 메시지를 삭제하지 않는다 — 큐의 visibility timeout이 지나면
+      자동으로 다시 수신되어 재시도된다(at-least-once, DLQ로 격리 가능)
 
-[4. (선택) Integration Event 발행 — Application EventHandler가 변환]
+[5. (선택) Integration Event 발행 — Application EventHandler가 변환]
   EventHandler가 Domain Event를 외부 BC로 알려야 할 때:
     → IntegrationEventV1 객체를 구성
     → OutboxWriter로 외부 BC용 outbox 행을 (같은 트랜잭션에서) 적재
-    → 이후 3단계와 동일한 경로로 Relay가 다시 드레인해 외부 BC에 전달
+    → 이후 3~4단계와 동일한 경로(Poller → 큐 → Consumer)로 외부 BC에 전달된다
 
-[5. 외부 BC의 Integration Event 수신]
+[6. 외부 BC의 Integration Event 수신]
   다른 BC가 발행한 Integration Event가 자기 BC에 들어올 때:
     → interface/integration-event/<domain>-integration-event-controller.ts
     → 핸들러가 수신 → Command Service를 호출하여 자기 도메인의 유스케이스 실행
 ```
+
+**"같은 프로세스 안에서 저장 직후 동기적으로 드레인"하는 방식은 쓰지 않는다.** Command Service가 저장 트랜잭션을 커밋한 뒤 곧바로 Relay/Consumer를 호출해 그 자리에서 이벤트를 처리해버리면, Outbox 패턴이 원래 분리하려던 "쓰기"와 "이벤트 처리"가 다시 한 요청 안에 묶여버린다 — Poller/Consumer가 항상 독립적으로 실행되어야 이 분리가 실제로 보장된다. 예외 없이 모든 Domain Event/Integration Event가 이 경로를 따른다.
 
 ---
 
@@ -105,7 +108,8 @@ outbox
   eventId    : string (PK, 고유 ID)
   eventType  : string (예: 'OrderCancelled', 'order.cancelled.v1')
   payload    : string (JSON 직렬화)
-  processed  : boolean (기본값 false)
+  processed  : boolean (기본값 false) — OutboxPoller가 메시지 큐로 발행을 마치면 true.
+               핸들러가 실제로 처리를 끝냈는지는 이 컬럼이 아니라 메시지 큐가 안다(ack/재전달).
   createdAt  : datetime
 ```
 
