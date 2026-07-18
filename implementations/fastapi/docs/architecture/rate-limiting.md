@@ -174,5 +174,5 @@ class RateLimitConfig:
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — 미들웨어 체인 내 위치
 - [authentication.md](authentication.md) — JWT 인증 흐름, 사용자 ID 기준 제한으로 전환할 때의 전제
 - [module-pattern.md](module-pattern.md) — `Limiter`를 `common/`에 둬 순환 import를 피하는 이유
-- [graceful-shutdown.md](graceful-shutdown.md) — 헬스체크 엔드포인트(아직 미구현) 도입 시 함께 반영할 rate limit 제외 처리
+- [graceful-shutdown.md](graceful-shutdown.md) — `/health/live`/`/health/ready`는 `main.py`에서 rate limit `Depends` 없이 정의되어 있어 이미 제한 대상에서 제외되어 있다
 - [config.md](config.md) — 환경별 제한값 관리

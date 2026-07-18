@@ -109,11 +109,10 @@ String correlationId = MDC.get("correlation_id");
 
 ## 메트릭 · 트레이싱 — Spring Boot Actuator + Micrometer
 
-`build.gradle`에 Actuator/Micrometer 의존성이 아직 없다:
+`build.gradle`에 `spring-boot-starter-actuator`는 이미 있다(health probe 노출용 — [graceful-shutdown.md](graceful-shutdown.md) 참고). Prometheus 스크레이프용 Micrometer 레지스트리는 아직 없다:
 
 ```groovy
 // build.gradle — 추가 필요
-implementation 'org.springframework.boot:spring-boot-starter-actuator'
 implementation 'io.micrometer:micrometer-registry-prometheus'
 ```
 
@@ -141,7 +140,7 @@ management:
 - **구조화된 로그로 전환**: Logback JSON 인코더 + `StructuredArguments.kv(...)`로 snake_case 필드를 명시적으로 구성한다.
 - **에러는 반드시 로깅**: `AccountController`의 `@ExceptionHandler`가 `log.warn(...)`으로 기록한다.
 - **Correlation ID는 MDC로 전파**: `Filter`(`CorrelationIdFilter`)가 주입, JSON 인코더가 자동 포함된다.
-- **Actuator + Micrometer로 메트릭 노출**: 아직 미도입(`build.gradle`에 Actuator/Micrometer 의존성 없음) — 별도 계측 코드 없이 HTTP/JVM/DB 지표를 확보하려면 위 "메트릭 · 트레이싱" 절의 의존성/설정을 추가한다.
+- **Actuator + Micrometer로 메트릭 노출**: Actuator는 이미 있지만 Micrometer-Prometheus 레지스트리는 아직 없다 — 별도 계측 코드 없이 HTTP/JVM/DB 지표를 확보하려면 위 "메트릭 · 트레이싱" 절의 의존성/설정을 추가한다.
 
 ---
 

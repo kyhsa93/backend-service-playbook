@@ -110,6 +110,6 @@ fun getAccount(accountId: String, requesterId: String): GetAccountResult {
 
 ### 관련 문서
 
-- [repository-pattern.md](repository-pattern.md) — Repository 메서드 설계, 알려진 갭 상세
+- [repository-pattern.md](repository-pattern.md) — Repository 메서드 설계
 - [layer-architecture.md](layer-architecture.md) — Query Service, Result 객체
 - [cqrs-pattern.md](cqrs-pattern.md) — Command/Query 분리

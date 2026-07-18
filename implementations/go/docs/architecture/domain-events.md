@@ -194,9 +194,9 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 
 ---
 
-## Integration Event / 멱등성 — 미구현
+## Integration Event / 멱등성
 
-이 저장소는 Bounded Context가 Account 하나뿐이라 Integration Event(BC 간 공개 계약, `account.deposited.v1` 같은 버저닝)를 보여줄 장면 자체가 없다. 이벤트 핸들러 멱등성 3단계 전략(본질적 멱등 / Ledger / 강한 원자성)도 지금은 이벤트 소비자가 `notification.Service` 하나뿐이라 실질적으로 필요하지 않다 — Outbox + Relay 경로가 메시지 큐를 거치는 별도 프로세스로 확장되면 root 문서의 3단계 전략을 그대로 적용한다.
+Account와 Card 두 Bounded Context가 있어 Integration Event(BC 간 공개 계약, `account.suspended.v1`/`account.closed.v1` 버저닝)가 실제로 존재한다 — `internal/application/integration-event/`의 `account_suspended_integration_event.go`/`account_closed_integration_event.go` 참고. Card 쪽 반응 유스케이스(`suspend_cards_by_account_handler.go`/`cancel_cards_by_account_handler.go`)는 ACTIVE(또는 ACTIVE·SUSPENDED)인 카드만 골라 처리하는 방식으로 멱등하게 구현되어 있다 — at-least-once 전달을 전제로 같은 이벤트가 재수신돼도 무해하다. 상세는 [cross-domain.md](cross-domain.md) 참고. 이벤트 핸들러 멱등성 3단계 전략(본질적 멱등 / Ledger / 강한 원자성) 중에는 본질적 멱등(상태 전이 기반)만 쓰였다 — Outbox + Relay 경로가 메시지 큐를 거치는 별도 프로세스로 확장되면 나머지 전략도 검토한다.
 
 ---
 

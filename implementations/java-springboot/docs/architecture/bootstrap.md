@@ -71,11 +71,11 @@ public class AccountServiceApplication { ... }
 
 ---
 
-## 전역 예외 처리 배선 — 현재 Controller-local, `@RestControllerAdvice`로 전역화 필요
+## 전역 예외 처리 배선 — 공통 예외는 전역, 도메인 예외는 Controller-local
 
 NestJS의 `app.useGlobalFilters(new HttpExceptionFilter())`처럼 부트스트랩 시점에 명시적으로 등록하는 전역 필터가 Spring Boot에는 없다 — 대신 `@RestControllerAdvice`가 붙은 클래스는 `@ComponentScan`이 자동으로 발견해 **모든** `@RestController`에 적용한다. 등록이 `main()` 안이 아니라 클래스 선언 자체에 있다는 점이 NestJS와의 핵심 차이다.
 
-현재 코드는 `AccountController` 내부에 `@ExceptionHandler(AccountException.class)`가 있어 `AccountController`에만 적용된다. [error-handling.md](error-handling.md) "Validation 실패 응답" 섹션이 제안하는 `@RestControllerAdvice` 전역 클래스가 아직 없다 — 도메인이 하나뿐이라 지금은 문제가 드러나지 않지만, 두 번째 `@RestController`가 생기면 `MethodArgumentNotValidException` 핸들러를 중복 정의해야 한다.
+`common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 도메인에 무관한 공통 예외(`RequestNotPermitted` — rate limit)를 전역으로 처리한다. `AccountException`/`CardException`/`AuthException`처럼 도메인 특화 예외는 각 Controller(`AccountController`/`CardController`/`AuthController`)에 남겨 둔다 — `GlobalExceptionHandler` 클래스 주석에 그 이유가 명시되어 있다: 도메인 예외 타입과 에러 코드 매핑은 그 도메인의 Controller가 가장 잘 알기 때문이다. `MethodArgumentNotValidException`(Validation 실패)은 아직 어느 쪽에도 핸들러가 없어 Spring 기본 형식으로 응답한다 — 커스텀 4필드 `ErrorResponse`로 통일하려면 [error-handling.md](error-handling.md) "Validation 실패 응답" 절이 제안하는 핸들러를 `GlobalExceptionHandler`에 추가해야 한다.
 
 ```java
 // common/web/GlobalExceptionHandler.java — 제안, error-handling.md 참고
