@@ -23,15 +23,13 @@ type RequestRefundCommand struct {
 type RequestRefundHandler struct {
 	payments payment.Repository
 	refunds  payment.RefundRepository
-	outbox   OutboxRelay
 }
 
 func NewRequestRefundHandler(
 	payments payment.Repository,
 	refunds payment.RefundRepository,
-	outbox OutboxRelay,
 ) *RequestRefundHandler {
-	return &RequestRefundHandler{payments: payments, refunds: refunds, outbox: outbox}
+	return &RequestRefundHandler{payments: payments, refunds: refunds}
 }
 
 func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundCommand) (*payment.Refund, error) {
@@ -57,12 +55,11 @@ func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundComm
 		}
 	}
 
+	// 저장 후 곧바로 반환한다 — RefundApproved → refund.approved.v1은 outbox.Poller가
+	// 다음 tick에 SQS로 발행하고 outbox.Consumer가 Account BC의 반응을 실행한다
+	// (동기 드레인 금지, domain-events.md). 거부된 경우에는 Domain Event가 없으므로
+	// 발행할 것도 없다.
 	if err := h.refunds.SaveRefund(ctx, r); err != nil {
-		return nil, err
-	}
-	// RefundApproved → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다.
-	// 거부된 경우에는 Domain Event가 없으므로 드레인할 것이 없어 no-op이다.
-	if err := h.outbox.ProcessPending(ctx); err != nil {
 		return nil, err
 	}
 	return r, nil

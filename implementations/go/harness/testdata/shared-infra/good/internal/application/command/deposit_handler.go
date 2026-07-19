@@ -1,5 +1,7 @@
 package command
 
-type OutboxRelay interface {
-	ProcessPending() error
+import "somepkg/internal/infrastructure/outbox"
+
+type DepositHandler struct {
+	writer *outbox.Writer
 }

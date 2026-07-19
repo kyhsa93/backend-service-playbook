@@ -18,9 +18,10 @@ type DepositByPaymentCommand struct {
 }
 
 // DepositByPaymentHandler의 멱등성은 WithdrawByPaymentHandler와 동일한 이유로 Level 2
-// Ledger를 쓴다. OutboxRelay를 주입받지 않는 이유도 WithdrawByPaymentHandler와 동일하다
-// (항상 이미 진행 중인 outbox.Relay.ProcessPending 호출 안에서만 실행되므로, 새로 적재된
-// Domain Event는 그 호출의 다음 패스가 자동으로 드레인한다).
+// Ledger를 쓴다. outbox.Poller/outbox.Consumer를 직접 참조하지 않는 이유도
+// WithdrawByPaymentHandler와 동일하다(항상 outbox.Consumer의 handlers map을 통해서만
+// 호출되고, 새로 적재된 Domain Event는 독립적으로 주기 실행되는 Poller가 다음 tick에
+// 드레인한다).
 type DepositByPaymentHandler struct {
 	repo account.Repository
 }

@@ -15,7 +15,7 @@ func TestCancelPaymentHandler_Handle_PaymentNotFound(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	handler := command.NewCancelPaymentHandler(store, &stubOutboxRelay{})
+	handler := command.NewCancelPaymentHandler(store)
 
 	_, err := handler.Handle(context.Background(), command.CancelPaymentCommand{PaymentID: "missing", RequesterID: "owner-1", Reason: "customer request"})
 
@@ -36,8 +36,7 @@ func TestCancelPaymentHandler_Handle_CancelsCompletedPayment(t *testing.T) {
 		},
 		saveFn: func(ctx context.Context, saved *payment.Payment) error { saveCalled = true; return nil },
 	}
-	outboxRelay := &stubOutboxRelay{}
-	handler := command.NewCancelPaymentHandler(store, outboxRelay)
+	handler := command.NewCancelPaymentHandler(store)
 
 	result, err := handler.Handle(context.Background(), command.CancelPaymentCommand{PaymentID: p.PaymentID, RequesterID: "owner-1", Reason: "customer request"})
 
@@ -50,9 +49,6 @@ func TestCancelPaymentHandler_Handle_CancelsCompletedPayment(t *testing.T) {
 	if !saveCalled {
 		t.Fatal("want store.Save to be called")
 	}
-	if outboxRelay.processed == 0 {
-		t.Fatal("want outboxRelay.ProcessPending to be called at least once")
-	}
 }
 
 func TestCancelPaymentHandler_Handle_PendingPaymentCannotBeCancelled(t *testing.T) {
@@ -62,7 +58,7 @@ func TestCancelPaymentHandler_Handle_PendingPaymentCannotBeCancelled(t *testing.
 			return []*payment.Payment{p}, 1, nil
 		},
 	}
-	handler := command.NewCancelPaymentHandler(store, &stubOutboxRelay{})
+	handler := command.NewCancelPaymentHandler(store)
 
 	_, err := handler.Handle(context.Background(), command.CancelPaymentCommand{PaymentID: p.PaymentID, RequesterID: "owner-1", Reason: "customer request"})
 

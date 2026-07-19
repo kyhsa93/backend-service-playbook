@@ -15,6 +15,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ses"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -92,10 +94,10 @@ func runTests(m *testing.M) int {
 		}
 	}
 
-	// LocalStack로 SES를 에뮬레이션한다. 반드시 3.0(무료 Community 태그)을 고정한다 —
+	// LocalStack로 SES·SQS를 에뮬레이션한다. 반드시 3.0(무료 Community 태그)을 고정한다 —
 	// :latest는 유료 라이선스를 요구해 컨테이너가 즉시 종료된다.
 	localstackContainer, err := localstack.Run(ctx, "localstack/localstack:3.0",
-		testcontainers.WithEnv(map[string]string{"SERVICES": "ses"}),
+		testcontainers.WithEnv(map[string]string{"SERVICES": "ses,sqs"}),
 	)
 	if err != nil {
 		panic(fmt.Sprintf("failed to start localstack container: %v", err))
@@ -129,6 +131,10 @@ func runTests(m *testing.M) int {
 
 	notifier := notification.NewService(sesClient, db)
 
+	// 프로덕션과 동일한 경로(환경변수 → outbox.NewSQSClient())로 SQS 클라이언트를 만든다.
+	sqsClient := outbox.NewSQSClient()
+	queueURL := setupDomainEventQueue(ctx, sqsClient)
+
 	outboxWriter := outbox.NewWriter()
 	outboxPublisher := outbox.NewPublisher(db)
 
@@ -144,7 +150,7 @@ func runTests(m *testing.M) int {
 	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(repo)
 	depositByPaymentHandler := command.NewDepositByPaymentHandler(repo)
 
-	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+	outboxHandlers := map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
 		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
@@ -195,7 +201,14 @@ func runTests(m *testing.M) int {
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.RefundID,
 			})
 		},
-	})
+	}
+
+	// Poller(Outbox → SQS 발행)와 Consumer(SQS → Handler 실행)를 main()과 동일하게
+	// 독립 goroutine으로 띄운다 — Command Handler는 이들을 전혀 참조하지 않는다(동기
+	// 드레인 금지, domain-events.md). runTests(테스트 프로세스 전체)가 끝날 때 함께
+	// 정지되도록 이 ctx를 그대로 쓴다.
+	go outbox.NewPoller(db, sqsClient, queueURL).Run(ctx)
+	go outbox.NewConsumer(sqsClient, queueURL, outboxHandlers).Run(ctx)
 
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 	testPasswordHasher := auth.NewBcryptPasswordHasher()
@@ -206,11 +219,42 @@ func runTests(m *testing.M) int {
 	// 여기서만 넉넉한 limiter로 override한다.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, outboxRelay, testJWTService, testPasswordHasher, testLimiter)
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter)
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
 	return m.Run()
+}
+
+// setupDomainEventQueue는 nestjs의 localstack/init-sqs.sh와 동일한 파라미터(같은 큐
+// 이름, RedrivePolicy maxReceiveCount=3)로 domain-events/domain-events-dlq 큐를
+// 만들고 메인 큐 URL을 반환한다. docker-compose 기반 로컬 실행은 init-sqs.sh가 이
+// 역할을 대신하지만, testcontainers-go로 매 테스트마다 새로 뜨는 LocalStack에는 그
+// 초기화 스크립트가 마운트되지 않으므로 SQS API를 직접 호출해 동등한 상태를 만든다.
+func setupDomainEventQueue(ctx context.Context, sqsClient *sqs.Client) string {
+	dlqOut, err := sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("domain-events-dlq")})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create domain-events-dlq: %v", err))
+	}
+
+	dlqAttrs, err := sqsClient.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
+		QueueUrl:       dlqOut.QueueUrl,
+		AttributeNames: []types.QueueAttributeName{types.QueueAttributeNameQueueArn},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to read domain-events-dlq ARN: %v", err))
+	}
+	dlqArn := dlqAttrs.Attributes[string(types.QueueAttributeNameQueueArn)]
+
+	redrivePolicy := fmt.Sprintf(`{"deadLetterTargetArn":"%s","maxReceiveCount":"3"}`, dlqArn)
+	queueOut, err := sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{
+		QueueName:  aws.String("domain-events"),
+		Attributes: map[string]string{string(types.QueueAttributeNameRedrivePolicy): redrivePolicy},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create domain-events queue: %v", err))
+	}
+	return *queueOut.QueueUrl
 }
 
 func waitForDB(db *sql.DB, attempts int, interval time.Duration) error {

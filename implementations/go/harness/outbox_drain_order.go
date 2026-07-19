@@ -7,33 +7,36 @@ import (
 	"strings"
 )
 
-// checkOutboxDrainOrder — [8] Outbox 드레인 순서 검증 — domain-events.md의 핵심 불변식
+// checkOutboxDrainOrder — [8] 동기 드레인 금지 검증 — domain-events.md의 핵심 불변식
+// (2026-07 async 전환으로 규칙이 뒤집힘)
 //
-// OutboxRelay를 의존성으로 갖는 Command Handler는 저장(Save) 커밋 이후
-// 반드시 ProcessPending을 호출해 Outbox를 드레인해야 한다(domain-events.md).
-// 이 검사는 파일명·배치가 아니라 실제 메서드 본문을 본다 — Save() 호출 뒤에
-// ProcessPending() 호출이 텍스트 순서상 등장하는지 확인한다(AST는 아니지만,
-// 같은 함수 본문 안에서 두 호출의 상대적 순서를 근사적으로 검증하기에는
-// 충분하다). 이 규칙이 없으면 dual-write 시절 패턴으로 회귀해도
-// (ProcessPending 호출 삭제, 또는 알림을 직접 호출하는 것으로 되돌려도)
-// 다른 어떤 규칙도 이를 잡아내지 못한다.
+// 예전에는 Command Handler가 저장(Save) 커밋 직후 OutboxRelay.ProcessPending을
+// 호출해 Outbox를 동기적으로 드레인해야 했다. 이제는 정반대다 — Outbox → SQS 발행은
+// 독립적으로 주기 실행되는 outbox.Poller가, SQS → Handler 실행은 outbox.Consumer가
+// 각자 맡는다(main.go의 goroutine). Command Handler는 저장 후 곧바로 반환해야 하며,
+// OutboxRelay/OutboxPoller/OutboxConsumer를 참조하거나 드레인 메서드(ProcessPending/
+// Poll/drainOnce)를 호출하면 안 된다. 이 검사가 없으면 누군가 예전 습관대로 Command
+// Handler에 드레인 호출을 다시 추가해도 잡아내지 못한다.
 var (
-	// \.Save\w*\( — Save(...) 자체뿐 아니라 SaveRefund(...)/SaveAccount(...)처럼 같은
-	// 패키지 안에 저장 대상이 여럿이라 이름이 갈리는 도메인 특화 변형도 인정한다
-	// (예: internal/domain/payment가 Payment+Refund 두 Aggregate를 갖고 있어
-	// Repository.Save/RefundRepository.SaveRefund로 이름이 나뉜 경우).
-	saveCall           = regexp.MustCompile(`\.Save\w*\(`)
-	processPendingCall = regexp.MustCompile(`\.ProcessPending\(`)
-	blockComment       = regexp.MustCompile(`(?s)/\*.*?\*/`)
-	lineComment        = regexp.MustCompile(`//[^\n]*`)
+	// OutboxRelay(옛 포트)뿐 아니라 신규 타입(OutboxPoller/OutboxConsumer, outbox.Poller/
+	// outbox.Consumer/outbox.Relay 참조)도 함께 금지한다 — 어떤 이름으로 회귀하든 잡는다.
+	forbiddenSymbol = regexp.MustCompile(
+		`\bOutboxRelay\b|\bOutboxPoller\b|\bOutboxConsumer\b|\boutbox\.Relay\b|\boutbox\.Poller\b|\boutbox\.Consumer\b`,
+	)
+	// .ProcessPending(/.Poll(/.drainOnce( 등 드레인 메서드 호출.
+	forbiddenCall = regexp.MustCompile(`\.\s*(?:ProcessPending|Poll|drainOnce)\s*\(`)
+	saveCall      = regexp.MustCompile(`\.Save\w*\(`)
+	blockComment  = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	lineComment   = regexp.MustCompile(`//[^\n]*`)
 )
 
 // stripGoComments는 라인/블록 주석을 제거한 소스를 반환한다. 이 파일의 검사들은 AST가
 // 아니라 텍스트 검색(strings.Contains, 정규식)에 의존하므로, 설계 의도를 설명하는 주석문
 // 안에서 "OutboxRelay" 같은 식별자를 언급하는 것만으로 실제 의존성이 있다고 잘못
-// 판단해서는 안 된다(예: "OutboxRelay를 주입받지 않는 이유는..."처럼 실제로는 그 타입에
-// 의존하지 않음을 설명하는 주석). 문자열 리터럴 안의 "//"/"/*"는 이 저장소의 실제
-// 소스에서 이런 종류의 오탐을 만들 만큼 흔하지 않으므로, 완전한 파서 대신 이 근사치로 충분하다.
+// 판단해서는 안 된다(예: "이 Handler는 outbox.Poller/outbox.Consumer를 직접 참조하지
+// 않는다"처럼 실제로는 그 타입에 의존하지 않음을 설명하는 주석). 문자열 리터럴 안의
+// "//"/"/*"는 이 저장소의 실제 소스에서 이런 종류의 오탐을 만들 만큼 흔하지 않으므로,
+// 완전한 파서 대신 이 근사치로 충분하다.
 func stripGoComments(src string) string {
 	src = blockComment.ReplaceAllString(src, "")
 	src = lineComment.ReplaceAllString(src, "")
@@ -58,31 +61,33 @@ func checkOutboxDrainOrder(root string) RuleResult {
 			return nil
 		}
 		src := stripGoComments(string(content))
-		if !strings.Contains(src, "OutboxRelay") {
-			// 이 핸들러는 OutboxRelay를 의존성으로 갖지 않음 — 대상 아님(예: 조회 전용 핸들러가 이 디렉토리에 있는 경우 등)
-			return nil
-		}
-		found = true
 		rel, _ := filepath.Rel(root, path)
 
-		saveLoc := saveCall.FindStringIndex(src)
-		ppLoc := processPendingCall.FindStringIndex(src)
-		switch {
-		case saveLoc == nil:
-			result.Findings = append(result.Findings, failFinding(rel, "OutboxRelay를 참조하지만 Save(...) 호출을 찾을 수 없음"))
-		case ppLoc == nil:
-			result.Findings = append(result.Findings, failFinding(rel, "OutboxRelay를 참조하지만 ProcessPending(...) 호출이 없음 — 저장 직후 Outbox 드레인 누락(domain-events.md)"))
-		case ppLoc[0] < saveLoc[0]:
-			result.Findings = append(result.Findings, failFinding(rel, "ProcessPending(...) 호출이 Save(...) 호출보다 먼저 등장함 — 커밋 이후 드레인 순서 위반"))
-		default:
-			result.Findings = append(result.Findings, passFinding(rel+" (Save → ProcessPending 순서 확인)"))
+		if forbiddenSymbol.MatchString(src) {
+			found = true
+			result.Findings = append(result.Findings, failFinding(rel,
+				"OutboxRelay/OutboxPoller/OutboxConsumer를 참조함 — Command Handler는 저장 후 곧바로 반환해야 하며, Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지, domain-events.md)"))
+			return nil
+		}
+		if forbiddenCall.MatchString(src) {
+			found = true
+			result.Findings = append(result.Findings, failFinding(rel,
+				"ProcessPending()/Poll()/drainOnce() 등 드레인 메서드를 호출함 — Command Handler는 저장 후 곧바로 반환해야 한다(동기 드레인 금지, domain-events.md)"))
+			return nil
+		}
+		// Save(...) 호출이 있는(=상태를 변경하는) Handler인데 금지 심볼/호출이 전혀 없으면
+		// "올바르게 드레인하지 않는다"로 Pass 처리한다 — Query Handler 등 Save가 없는
+		// 파일은 이 규칙의 대상이 아니므로 조용히 skip한다.
+		if saveCall.MatchString(src) {
+			found = true
+			result.Findings = append(result.Findings, passFinding(rel+" (Save 이후 동기 드레인 호출 없음 확인)"))
 		}
 		return nil
 	})
 	if walkErr != nil {
 		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("OutboxRelay를 사용하는 Command Handler 없음"))
+		result.Findings = append(result.Findings, skipFinding("Save(...)를 호출하는 Command Handler 없음"))
 	}
 	return result
 }

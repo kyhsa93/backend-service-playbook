@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -63,14 +64,30 @@ func findSentEmail(t *testing.T, accountID, eventType string) (sentEmailRow, boo
 	return r, true
 }
 
+// waitForSentEmail은 findSentEmail을 폴링한다 — 이메일 발송은 이제 EventHandler가
+// Outbox → SQS → Consumer 경로를 거쳐 비동기로 수행하므로, HTTP 응답이 돌아온 시점에는
+// 아직 sent_emails에 기록되지 않았을 수 있다(waitForCardStatus/waitForAccountBalance와
+// 동일한 예산 — Poller 1초 tick + Consumer 5초 long polling + LocalStack 지연).
+func waitForSentEmail(t *testing.T, accountID, eventType string) sentEmailRow {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if row, found := findSentEmail(t, accountID, eventType); found {
+			return row
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("sent_emails에 accountId=%s eventType=%s 기록이 나타나지 않음(timed out)", accountID, eventType)
+	return sentEmailRow{}
+}
+
 func TestNotification(t *testing.T) {
 	t.Run("계좌_생성시_이메일이_실제로_발송되고_DB에_기록된다", func(t *testing.T) {
 		email := "notify-created@example.com"
 		account := createAccountWithEmail(t, "notify-owner-created", email, "KRW")
 		accountID := account["accountId"].(string)
 
-		sentEmail, found := findSentEmail(t, accountID, "AccountCreated")
-		require.True(t, found, "sent_emails에 AccountCreated 기록이 있어야 한다")
+		sentEmail := waitForSentEmail(t, accountID, "AccountCreated")
 		require.Equal(t, email, sentEmail.Recipient)
 		require.NotEmpty(t, sentEmail.SesMessageID)
 
@@ -95,8 +112,7 @@ func TestNotification(t *testing.T) {
 			map[string]int{"amount": 5000})
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-		sentEmail, found := findSentEmail(t, accountID, "MoneyDeposited")
-		require.True(t, found, "sent_emails에 MoneyDeposited 기록이 있어야 한다")
+		sentEmail := waitForSentEmail(t, accountID, "MoneyDeposited")
 		require.Equal(t, email, sentEmail.Recipient)
 		require.NotEmpty(t, sentEmail.SesMessageID)
 
@@ -120,8 +136,7 @@ func TestNotification(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/close", "notify-owner-closed", nil)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
-		sentEmail, found := findSentEmail(t, accountID, "AccountClosed")
-		require.True(t, found, "sent_emails에 AccountClosed 기록이 있어야 한다")
+		sentEmail := waitForSentEmail(t, accountID, "AccountClosed")
 		require.Equal(t, email, sentEmail.Recipient)
 
 		messages := fetchSesMessages(t)

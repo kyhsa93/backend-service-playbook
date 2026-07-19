@@ -29,16 +29,21 @@ func getAccountBalance(t *testing.T, ownerID, accountID string) int64 {
 }
 
 // waitForAccountBalance는 비동기 Integration Event 반영을 기다리며 계좌 잔액을 폴링한다.
+//
+// Outbox → SQS → Handler 경로는 Poller의 1초 tick + Consumer의 5초 long polling +
+// LocalStack 자체 지연이 겹쳐 옛 동기 드레인(즉시 반영)보다 왕복이 훨씬 오래 걸린다 —
+// nestjs 구현체가 실측한 2~4초 왕복을 감당하도록 예산을 30초(200ms 간격 150회, nestjs와
+// 동일)로 잡는다.
 func waitForAccountBalance(t *testing.T, ownerID, accountID string, want int64) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	var last int64
 	for time.Now().Before(deadline) {
 		last = getAccountBalance(t, ownerID, accountID)
 		if last == want {
 			return
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("account %s balance = %d, want %d (timed out)", accountID, last, want)
 }
@@ -197,8 +202,11 @@ func TestRequestRefund(t *testing.T) {
 		require.Equal(t, "REJECTED", body["status"])
 		require.NotEmpty(t, body["decisionNote"])
 
-		// 거부된 환불은 크레딧을 유발하지 않는다 — 잔액 변화 없음을 확인한다.
-		time.Sleep(200 * time.Millisecond)
+		// 거부된 환불은 크레딧을 유발하지 않는다 — 잔액 변화 없음을 확인한다. 애초에
+		// Domain Event가 없어 Outbox에 아무 행도 적재되지 않으므로 이론상 대기가 필요
+		// 없지만, "혹시라도 잘못 발행됐다면" 그 지연(Poller 1초 tick + Consumer 5초
+		// long polling)보다 넉넉하게 기다려야 이 음성 검증이 의미가 있다.
+		time.Sleep(8 * time.Second)
 		require.Equal(t, int64(8000), getAccountBalance(t, owner, accountID))
 	})
 

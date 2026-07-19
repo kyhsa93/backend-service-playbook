@@ -1,8 +1,8 @@
 package command
 
-// WithdrawByPaymentHandler does NOT depend on OutboxRelay — it only mentions the name in
-// this explanatory comment. It is always invoked from inside an already-running
-// Relay.ProcessPending loop, so calling ProcessPending itself would be redundant.
+// WithdrawByPaymentHandler does NOT reference OutboxRelay/outbox.Poller/outbox.Consumer —
+// it only mentions those names in this explanatory comment. It is always invoked from
+// outbox.Consumer's handlers map, so referencing them itself would be redundant.
 type WithdrawByPaymentHandler struct {
 	repo Repository
 }

@@ -20,10 +20,11 @@
 // 안내만 한다 — 기존 프로젝트의 중앙 조립 파일을 스크립트가 임의로 고치는 걸 원치 않을
 // 수 있어 기본값은 안전한 쪽(수동 적용)으로 둔다(nestjs의 create-domain.js와 동일한 기본값 철학).
 //
-// Go는 NestJS와 달리 도메인마다 전용 OutboxRelay를 두지 않는다 — 단일 공유
-// outbox.Relay(internal/infrastructure/outbox/relay.go)가 모든 도메인의 이벤트를
-// 드레인하므로, main.go의 handlers map에 새 도메인 항목을 추가하는 것이 이 생성기의
-// 핵심 wiring 대상이다(자세한 설계는 wiring.go 주석 참고).
+// Go는 도메인마다 전용 Relay/Consumer를 두지 않는다 — main.go가 조립하는 단일 공유
+// map[string]outbox.Handler를 outbox.Poller(발행)/outbox.Consumer(수신·실행)가 함께
+// 쓰므로, main.go의 이 handlers map에 새 도메인 항목을 추가하는 것이 이 생성기의 핵심
+// wiring 대상이다(자세한 설계는 wiring.go 주석 참고). Command Handler는 이 map을
+// 전혀 참조하지 않는다 — 저장 후 곧바로 반환한다(동기 드레인 금지, domain-events.md).
 package main
 
 import (

@@ -15,7 +15,7 @@ func TestRequestRefundHandler_Handle_PaymentNotFound(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	handler := command.NewRequestRefundHandler(store, store, &stubOutboxRelay{})
+	handler := command.NewRequestRefundHandler(store, store)
 
 	_, err := handler.Handle(context.Background(), command.RequestRefundCommand{PaymentID: "missing", Amount: 100, Reason: "wrong item", RequesterID: "owner-1"})
 
@@ -39,8 +39,7 @@ func TestRequestRefundHandler_Handle_ApprovesWithinCompletedPaymentAmount(t *tes
 		},
 		saveRefundFn: func(ctx context.Context, r *payment.Refund) error { savedRefund = r; return nil },
 	}
-	outboxRelay := &stubOutboxRelay{}
-	handler := command.NewRequestRefundHandler(store, store, outboxRelay)
+	handler := command.NewRequestRefundHandler(store, store)
 
 	result, err := handler.Handle(context.Background(), command.RequestRefundCommand{PaymentID: p.PaymentID, Amount: 500, Reason: "wrong item", RequesterID: "owner-1"})
 
@@ -52,9 +51,6 @@ func TestRequestRefundHandler_Handle_ApprovesWithinCompletedPaymentAmount(t *tes
 	}
 	if savedRefund != result {
 		t.Fatal("want store.SaveRefund to be called with the created refund")
-	}
-	if outboxRelay.processed == 0 {
-		t.Fatal("want outboxRelay.ProcessPending to be called at least once")
 	}
 }
 
@@ -70,7 +66,7 @@ func TestRequestRefundHandler_Handle_RejectsWithoutError(t *testing.T) {
 			return []*payment.Payment{p}, 1, nil
 		},
 	}
-	handler := command.NewRequestRefundHandler(store, store, &stubOutboxRelay{})
+	handler := command.NewRequestRefundHandler(store, store)
 
 	// 환불 금액(1500)이 결제 금액(1000)을 초과 — RefundEligibilityService가 거부한다.
 	result, err := handler.Handle(context.Background(), command.RequestRefundCommand{PaymentID: p.PaymentID, Amount: 1500, Reason: "wrong item", RequesterID: "owner-1"})

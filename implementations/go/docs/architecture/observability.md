@@ -31,9 +31,9 @@ func (s *Service) send(ctx context.Context, eventType string, content emailConte
 	return nil
 }
 
-// Notify는 발송 실패를 로그가 아니라 에러로 반환한다 — 호출부인 outbox/relay.go의
-// Drain 루프가 이 에러를 받아 slog.ErrorContext로 로그를 남기고, 해당 이벤트를
-// outbox 테이블에 미처리 상태로 남겨 다음 Drain 때 재시도한다(domain-events.md 참고).
+// Notify는 발송 실패를 로그가 아니라 에러로 반환한다 — 호출부인 outbox/consumer.go의
+// handleMessage가 이 에러를 받아 slog.ErrorContext로 로그를 남기고, 해당 SQS 메시지를
+// 삭제하지 않아 visibility timeout 이후 재전달되게 한다(domain-events.md 참고).
 func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	eventType, content, ok := describe(event)
 	if !ok {
@@ -47,12 +47,8 @@ func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 ```
 
 ```go
-// internal/infrastructure/outbox/relay.go — 실제 코드, Notify()가 반환한 에러를 여기서 로깅
-slog.ErrorContext(ctx, "outbox event processing failed",
-	"event_type", row.eventType,
-	"event_id", row.eventID,
-	"error", err,
-)
+// internal/infrastructure/outbox/consumer.go — 실제 코드, Notify()가 반환한 에러를 여기서 로깅
+slog.ErrorContext(ctx, "이벤트 처리 실패", "event_type", eventType, "error", err)
 ```
 
 `slog.InfoContext`/`slog.ErrorContext`는 `ctx`를 받는다 — 아래 Correlation ID 전파와 자연스럽게 연결된다. 필드는 key-value 쌍으로 넘기며, `slog`가 기본 `TextHandler` 또는 `JSONHandler`로 렌더링한다. 운영 환경에서는 `JSONHandler`를 쓴다:

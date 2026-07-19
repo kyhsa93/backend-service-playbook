@@ -30,13 +30,13 @@ type PaymentStore interface {
 // limiter는 호출자가 조립한다(main()은 config.LoadRateLimitConfig()로, 테스트는 임계값이
 // 훨씬 높은 limiter로) — rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
 // 운영값과 테스트값을 분리하기 위해서다.
-func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, outboxRelay command.OutboxRelay, jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
-	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
-	depositHandler := command.NewDepositHandler(repo, outboxRelay)
-	withdrawHandler := command.NewWithdrawHandler(repo, outboxRelay)
-	suspendAccountHandler := command.NewSuspendAccountHandler(repo, outboxRelay)
-	reactivateAccountHandler := command.NewReactivateAccountHandler(repo, outboxRelay)
-	closeAccountHandler := command.NewCloseAccountHandler(repo, outboxRelay)
+func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
+	createAccountHandler := command.NewCreateAccountHandler(repo)
+	depositHandler := command.NewDepositHandler(repo)
+	withdrawHandler := command.NewWithdrawHandler(repo)
+	suspendAccountHandler := command.NewSuspendAccountHandler(repo)
+	reactivateAccountHandler := command.NewReactivateAccountHandler(repo)
+	closeAccountHandler := command.NewCloseAccountHandler(repo)
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	getTransactionsHandler := query.NewGetTransactionsHandler(repo)
 
@@ -59,9 +59,9 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	// 계좌 활성 여부·잔액 충분 여부를 동기 확인한다. 실제 계좌 차감/보상 크레딧은 여기서
 	// 하지 않는다 — payment.completed.v1/payment.cancelled.v1/refund.approved.v1
 	// Integration Event를 Account BC가 비동기로 구독해 수행한다(cross-domain.md).
-	createPaymentHandler := command.NewCreatePaymentHandler(paymentStore, paymentCardAdapter, paymentAccountAdapter, outboxRelay)
-	cancelPaymentHandler := command.NewCancelPaymentHandler(paymentStore, outboxRelay)
-	requestRefundHandler := command.NewRequestRefundHandler(paymentStore, paymentStore, outboxRelay)
+	createPaymentHandler := command.NewCreatePaymentHandler(paymentStore, paymentCardAdapter, paymentAccountAdapter)
+	cancelPaymentHandler := command.NewCancelPaymentHandler(paymentStore)
+	requestRefundHandler := command.NewRequestRefundHandler(paymentStore, paymentStore)
 	getPaymentHandler := query.NewGetPaymentHandler(paymentStore)
 	getPaymentsHandler := query.NewGetPaymentsHandler(paymentStore)
 	getRefundsHandler := query.NewGetRefundsHandler(paymentStore, paymentStore)

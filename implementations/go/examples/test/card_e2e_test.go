@@ -31,16 +31,21 @@ func getCardStatus(t *testing.T, ownerID, cardID string) string {
 }
 
 // waitForCardStatus는 비동기 Integration Event 반영을 기다리며 카드 상태를 폴링한다.
+//
+// Outbox → SQS → Handler 경로는 Poller의 1초 tick + Consumer의 5초 long polling +
+// LocalStack 자체 지연이 겹쳐 옛 동기 드레인(즉시 반영)보다 왕복이 훨씬 오래 걸린다 —
+// nestjs 구현체가 실측한 2~4초 왕복을 감당하도록 예산을 30초(200ms 간격 150회, nestjs와
+// 동일)로 잡는다.
 func waitForCardStatus(t *testing.T, ownerID, cardID, want string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	var last string
 	for time.Now().Before(deadline) {
 		last = getCardStatus(t, ownerID, cardID)
 		if last == want {
 			return
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("card %s status = %q, want %q (timed out)", cardID, last, want)
 }

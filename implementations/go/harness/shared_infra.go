@@ -16,10 +16,14 @@ import (
 // (internal/infrastructure/outbox/ 등) 어디에 두어도 되므로, internal/ 전체를
 // 재귀적으로 뒤져 확인한다.
 //
-// "outbox 패턴이 쓰이고 있는가"는 domain-events.md가 command 패키지의 이벤트
-// 드레인 포트로 규정하는 OutboxRelay 인터페이스(internal/application/command/)의
-// 실제 참조 여부로 판단한다 — 파일명에 우연히 "outbox" 문자열이 들어간 무관한
-// 파일(예: migrations/000X_add_outbox.sql)에 낚이지 않기 위함이다.
+// "outbox 패턴이 쓰이고 있는가"는 domain-events.md가 Repository 구현체(및 Application
+// EventHandler)의 트랜잭션 저장 지점으로 규정하는 outbox.Writer(internal/infrastructure/
+// persistence/ 등)의 실제 참조 여부로 판단한다 — 파일명에 우연히 "outbox" 문자열이
+// 들어간 무관한 파일(예: migrations/000X_add_outbox.sql)에 낚이지 않기 위함이다.
+// 2026-07 async 전환 전에는 command 패키지의 OutboxRelay 참조로 게이트를 판단했지만,
+// 동기 드레인 금지 이후 Command Handler는 outbox 관련 타입을 전혀 참조하지 않게
+// 됐으므로 그 신호가 사라졌다 — 대신 항상 남아있는 Repository ↔ outbox.Writer 연결로
+// 게이트를 옮겼다.
 func checkSharedInfra(root string) RuleResult {
 	result := RuleResult{Section: "shared-infra"}
 	result.Findings = append(result.Findings, checkOutboxPattern(root)...)
@@ -28,7 +32,7 @@ func checkSharedInfra(root string) RuleResult {
 }
 
 func checkOutboxPattern(root string) []Finding {
-	usesOutboxRelay := false
+	usesOutboxWriter := false
 	var outboxDirs []string
 	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -47,8 +51,8 @@ func checkOutboxPattern(root string) []Finding {
 		if readErr != nil {
 			return nil
 		}
-		if strings.Contains(string(content), "OutboxRelay") {
-			usesOutboxRelay = true
+		if strings.Contains(string(content), "outbox.Writer") || strings.Contains(string(content), "outbox.NewWriter") {
+			usesOutboxWriter = true
 		}
 		return nil
 	})
@@ -56,15 +60,17 @@ func checkOutboxPattern(root string) []Finding {
 		return []Finding{failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error())}
 	}
 
-	if !usesOutboxRelay {
+	if !usesOutboxWriter {
 		return []Finding{skipFinding("outbox 패턴 없음")}
 	}
 
 	if len(outboxDirs) == 0 {
-		return []Finding{failFinding("internal/**/outbox/", "OutboxRelay를 참조하지만 전용 outbox/ 디렉토리가 없음")}
+		return []Finding{failFinding("internal/**/outbox/", "outbox.Writer를 참조하지만 전용 outbox/ 디렉토리가 없음")}
 	}
 
-	hasWriter, hasRelay := false, false
+	// Relay(동기 드레인)는 2026-07 async 전환으로 제거됐다 — 대신 Poller(Outbox → SQS
+	// 발행)와 Consumer(SQS → Handler 실행)가 그 역할을 나눠 맡는다(domain-events.md).
+	hasWriter, hasPoller, hasConsumer := false, false, false
 	for _, dir := range outboxDirs {
 		walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
@@ -78,8 +84,11 @@ func checkOutboxPattern(root string) []Finding {
 			if regexp.MustCompile(`(?m)^type\s+Writer\s+struct\b`).MatchString(src) {
 				hasWriter = true
 			}
-			if regexp.MustCompile(`(?m)^type\s+Relay\s+struct\b`).MatchString(src) {
-				hasRelay = true
+			if regexp.MustCompile(`(?m)^type\s+Poller\s+struct\b`).MatchString(src) {
+				hasPoller = true
+			}
+			if regexp.MustCompile(`(?m)^type\s+Consumer\s+struct\b`).MatchString(src) {
+				hasConsumer = true
 			}
 			return nil
 		})
@@ -88,15 +97,18 @@ func checkOutboxPattern(root string) []Finding {
 		}
 	}
 
-	if hasWriter && hasRelay {
-		return []Finding{passFinding("internal/**/outbox/ (Writer/Relay 구현 확인)")}
+	if hasWriter && hasPoller && hasConsumer {
+		return []Finding{passFinding("internal/**/outbox/ (Writer/Poller/Consumer 구현 확인)")}
 	}
 	var missing []string
 	if !hasWriter {
 		missing = append(missing, "Writer")
 	}
-	if !hasRelay {
-		missing = append(missing, "Relay")
+	if !hasPoller {
+		missing = append(missing, "Poller")
+	}
+	if !hasConsumer {
+		missing = append(missing, "Consumer")
 	}
 	return []Finding{failFinding("internal/**/outbox/", "outbox/ 디렉토리는 있으나 "+strings.Join(missing, ", ")+" 타입 선언을 찾을 수 없음")}
 }

@@ -158,22 +158,20 @@ type Create{{.Domain}}Command struct {
 }
 
 type Create{{.Domain}}Handler struct {
-	repo        {{.DomainLower}}.Repository
-	outboxRelay OutboxRelay
+	repo {{.DomainLower}}.Repository
 }
 
-func NewCreate{{.Domain}}Handler(repo {{.DomainLower}}.Repository, outboxRelay OutboxRelay) *Create{{.Domain}}Handler {
-	return &Create{{.Domain}}Handler{repo: repo, outboxRelay: outboxRelay}
+func NewCreate{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Create{{.Domain}}Handler {
+	return &Create{{.Domain}}Handler{repo: repo}
 }
 
+// Handle은 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기
+// 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
+// domain-events.md).
 func (h *Create{{.Domain}}Handler) Handle(ctx context.Context, cmd Create{{.Domain}}Command) (*{{.DomainLower}}.{{.Domain}}, error) {
 	{{.Recv}} := {{.DomainLower}}.New(cmd.OwnerID)
 	// Repository.Save가 {{.DomainLower}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(domain-events.md).
 	if err := h.repo.Save(ctx, {{.Recv}}); err != nil {
-		return nil, fmt.Errorf("create {{.DomainLower}}: %w", err)
-	}
-	// 저장 트랜잭션이 커밋된 직후 Outbox를 동기적으로 드레인한다 — 폴링/스케줄러 없음.
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
 		return nil, fmt.Errorf("create {{.DomainLower}}: %w", err)
 	}
 	return {{.Recv}}, nil
@@ -196,14 +194,16 @@ type Cancel{{.Domain}}Command struct {
 }
 
 type Cancel{{.Domain}}Handler struct {
-	repo        {{.DomainLower}}.Repository
-	outboxRelay OutboxRelay
+	repo {{.DomainLower}}.Repository
 }
 
-func NewCancel{{.Domain}}Handler(repo {{.DomainLower}}.Repository, outboxRelay OutboxRelay) *Cancel{{.Domain}}Handler {
-	return &Cancel{{.Domain}}Handler{repo: repo, outboxRelay: outboxRelay}
+func NewCancel{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Cancel{{.Domain}}Handler {
+	return &Cancel{{.Domain}}Handler{repo: repo}
 }
 
+// Handle은 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기
+// 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
+// domain-events.md).
 func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Domain}}Command) error {
 	{{.Recv}}, err := h.repo.FindByID(ctx, cmd.{{.Domain}}ID, cmd.OwnerID)
 	if err != nil {
@@ -216,9 +216,6 @@ func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Doma
 	}
 
 	if err := h.repo.Save(ctx, {{.Recv}}); err != nil {
-		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
-	}
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
 		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
 	}
 	return nil
@@ -300,8 +297,8 @@ func New{{.Domain}}CancelledEventHandler() *{{.Domain}}CancelledEventHandler {
 	return &{{.Domain}}CancelledEventHandler{}
 }
 
-// Handle은 outbox.Handler 시그니처를 만족한다 — Relay가 event_type="{{.Domain}}Cancelled" 행을
-// 만날 때마다 호출한다.
+// Handle은 outbox.Handler 시그니처를 만족한다 — Consumer가 SQS에서 event_type=
+// "{{.Domain}}Cancelled" 메시지를 수신할 때마다 호출한다.
 func (h *{{.Domain}}CancelledEventHandler) Handle(ctx context.Context, payload []byte) error {
 	var evt {{.DomainLower}}.{{.Domain}}Cancelled
 	if err := json.Unmarshal(payload, &evt); err != nil {

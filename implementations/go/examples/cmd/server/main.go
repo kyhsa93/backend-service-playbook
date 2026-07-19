@@ -56,8 +56,15 @@ func main() {
 	// 의존성 조립 — 프레임워크 없이 생성자 체이닝
 	notifier := notification.NewService(notification.NewSESClient(), db)
 
+	sqsConfig, err := config.LoadSQSConfig()
+	if err != nil {
+		slog.Error("config error", "error", err)
+		os.Exit(1)
+	}
+
 	outboxWriter := outbox.NewWriter()
 	outboxPublisher := outbox.NewPublisher(db)
+	sqsClient := outbox.NewSQSClient()
 
 	// Card BC 의존성. 합성 루트(main)만 Account와 Card 양쪽을 알고, 두 BC는 서로를
 	// import하지 않는다 — Account는 Outbox에 Integration Event를 문자열 event_type으로
@@ -79,7 +86,10 @@ func main() {
 	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(accountRepo)
 	depositByPaymentHandler := command.NewDepositByPaymentHandler(accountRepo)
 
-	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+	// 이 handlers map은 outbox.Consumer가 SQS에서 수신한 메시지의 eventType으로
+	// 핸들러를 찾는 데 쓰인다 — Command Handler는 더 이상 이 map을 참조하지 않는다
+	// (동기 드레인 금지, domain-events.md).
+	outboxHandlers := map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
 		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
@@ -138,7 +148,10 @@ func main() {
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.RefundID,
 			})
 		},
-	})
+	}
+
+	outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)
+	outboxConsumer := outbox.NewConsumer(sqsClient, sqsConfig.QueueURL, outboxHandlers)
 
 	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
 	jwtSecret, err := config.LoadJWTSecret(context.Background(), secretService, os.Getenv("APP_ENV"))
@@ -152,11 +165,12 @@ func main() {
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, outboxRelay, jwtService, passwordHasher, limiter)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, limiter)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
-	// SIGTERM/SIGINT를 받으면 ctx가 취소된다.
+	// SIGTERM/SIGINT를 받으면 ctx가 취소된다 — HTTP 서버뿐 아니라 아래 Poller/Consumer
+	// 백그라운드 루프도 이 같은 ctx로 정지시킨다(graceful-shutdown.md).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -167,6 +181,12 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	// Outbox → SQS 발행(Poller)과 SQS → EventHandler 수신(Consumer)은 HTTP 요청과
+	// 무관하게 독립적으로 주기 실행된다 — Command Handler는 이들을 전혀 참조하지
+	// 않는다(동기 드레인 금지, domain-events.md). ctx가 취소되면 둘 다 스스로 멈춘다.
+	go outboxPoller.Run(ctx)
+	go outboxConsumer.Run(ctx)
 
 	<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
 	slog.Info("shutdown signal received")

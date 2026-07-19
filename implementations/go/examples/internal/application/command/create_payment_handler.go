@@ -21,16 +21,14 @@ type CreatePaymentHandler struct {
 	repo     payment.Repository
 	cards    PaymentCardAdapter
 	accounts PaymentAccountAdapter
-	outbox   OutboxRelay
 }
 
 func NewCreatePaymentHandler(
 	repo payment.Repository,
 	cards PaymentCardAdapter,
 	accounts PaymentAccountAdapter,
-	outbox OutboxRelay,
 ) *CreatePaymentHandler {
-	return &CreatePaymentHandler{repo: repo, cards: cards, accounts: accounts, outbox: outbox}
+	return &CreatePaymentHandler{repo: repo, cards: cards, accounts: accounts}
 }
 
 func (h *CreatePaymentHandler) Handle(ctx context.Context, cmd CreatePaymentCommand) (*payment.Payment, error) {
@@ -67,10 +65,9 @@ func (h *CreatePaymentHandler) Handle(ctx context.Context, cmd CreatePaymentComm
 		return nil, err
 	}
 
+	// 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
+	// outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지, domain-events.md).
 	if err := h.repo.Save(ctx, p); err != nil {
-		return nil, err
-	}
-	if err := h.outbox.ProcessPending(ctx); err != nil {
 		return nil, err
 	}
 	return p, nil

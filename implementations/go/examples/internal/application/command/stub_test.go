@@ -47,10 +47,3 @@ func (s *stubRepository) HasTransactionWithReference(
 	}
 	return s.hasTransactionWithReferenceFn(ctx, referenceID, txType)
 }
-
-type stubOutboxRelay struct{ processed int }
-
-func (s *stubOutboxRelay) ProcessPending(ctx context.Context) error {
-	s.processed++
-	return nil
-}

@@ -74,8 +74,7 @@ func TestCreatePaymentHandler_Handle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &stubPaymentStore{}
-			outboxRelay := &stubOutboxRelay{}
-			handler := command.NewCreatePaymentHandler(store, tt.cards, tt.accts, outboxRelay)
+			handler := command.NewCreatePaymentHandler(store, tt.cards, tt.accts)
 
 			p, err := handler.Handle(context.Background(), command.CreatePaymentCommand{CardID: "card-1", Amount: tt.amount, RequesterID: "owner-1"})
 
@@ -85,9 +84,6 @@ func TestCreatePaymentHandler_Handle(t *testing.T) {
 			if tt.wantErr == nil {
 				if p.Status != payment.StatusCompleted {
 					t.Fatalf("Status = %v, want StatusCompleted", p.Status)
-				}
-				if outboxRelay.processed == 0 {
-					t.Fatal("want outboxRelay.ProcessPending to be called at least once")
 				}
 			}
 		})

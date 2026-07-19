@@ -14,14 +14,16 @@ type WithdrawCommand struct {
 }
 
 type WithdrawHandler struct {
-	repo        account.Repository
-	outboxRelay OutboxRelay
+	repo account.Repository
 }
 
-func NewWithdrawHandler(repo account.Repository, outboxRelay OutboxRelay) *WithdrawHandler {
-	return &WithdrawHandler{repo: repo, outboxRelay: outboxRelay}
+func NewWithdrawHandler(repo account.Repository) *WithdrawHandler {
+	return &WithdrawHandler{repo: repo}
 }
 
+// Handle은 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기
+// 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
+// domain-events.md).
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*account.Transaction, error) {
 	a, err := account.FindOne(ctx, h.repo, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
@@ -34,9 +36,6 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*acc
 		return nil, err
 	}
 	if err := h.repo.Save(ctx, a); err != nil {
-		return nil, err
-	}
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
 		return nil, err
 	}
 	return &tx, nil

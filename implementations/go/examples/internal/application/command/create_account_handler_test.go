@@ -8,13 +8,12 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-func TestCreateAccountHandler_Handle_SavesAndDrainsOutbox(t *testing.T) {
+func TestCreateAccountHandler_Handle_Saves(t *testing.T) {
 	var saved *account.Account
 	repo := &stubRepository{
 		saveFn: func(ctx context.Context, a *account.Account) error { saved = a; return nil },
 	}
-	outboxRelay := &stubOutboxRelay{}
-	handler := command.NewCreateAccountHandler(repo, outboxRelay)
+	handler := command.NewCreateAccountHandler(repo)
 
 	a, err := handler.Handle(context.Background(), command.CreateAccountCommand{
 		RequesterID: "owner-1", Email: "owner1@example.com", Currency: "KRW",
@@ -28,8 +27,5 @@ func TestCreateAccountHandler_Handle_SavesAndDrainsOutbox(t *testing.T) {
 	}
 	if saved != a {
 		t.Fatal("want repo.Save to be called with the created account")
-	}
-	if outboxRelay.processed == 0 {
-		t.Fatal("want outboxRelay.ProcessPending to be called at least once")
 	}
 }

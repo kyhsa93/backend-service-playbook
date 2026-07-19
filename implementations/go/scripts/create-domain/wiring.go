@@ -8,11 +8,14 @@ import (
 )
 
 // Go에는 NestJS의 @Module({ providers: [...] }) 같은 DI 컨테이너가 없다 — main.go의
-// 생성자 체이닝이 그 역할을 대신한다(module-pattern.md). Card BC도 별도 OutboxRelay 없이
-// main.go가 조립하는 단일 공유 outbox.Relay의 handlers map에 자기 이벤트를 등록한다
-// (internal/infrastructure/outbox/relay.go). 그래서 이 생성기는 nestjs처럼 app-module.ts
-// 하나만 고치는 게 아니라 main.go(핸들러 맵 + 저장소 조립)와 router.go(HTTP 라우팅 +
-// Handler 조립) 두 파일을 함께, 그리고 기존 코드의 실제 앵커 문자열을 기준으로 고친다.
+// 생성자 체이닝이 그 역할을 대신한다(module-pattern.md). Card BC도 별도 Relay/Consumer
+// 없이 main.go가 조립하는 단일 공유 map[string]outbox.Handler에 자기 이벤트를 등록하고,
+// 이 map을 outbox.Poller(발행)/outbox.Consumer(수신·실행)가 함께 쓴다
+// (internal/infrastructure/outbox/poller.go, consumer.go). 그래서 이 생성기는 nestjs처럼
+// app-module.ts 하나만 고치는 게 아니라 main.go(핸들러 맵 + 저장소 조립)와 router.go
+// (HTTP 라우팅 + Handler 조립) 두 파일을 함께, 그리고 기존 코드의 실제 앵커 문자열을
+// 기준으로 고친다. Command Handler는 이 handlers map을 전혀 참조하지 않는다(동기
+// 드레인 금지, domain-events.md) — 저장 후 곧바로 반환한다.
 
 // findMatchingClose는 src[openIdx]에 있는 여는 문자(open)와 짝이 맞는 닫는 문자(close)의
 // 인덱스를 찾는다. 문자열 리터럴/주석은 구분하지 않는 단순 깊이 계산이지만, 이 저장소의
@@ -169,8 +172,9 @@ func WireMainAndRouter(targetRoot string, n Names) (WireResult, error) {
 	return WireResult{ChangedFiles: changed}, nil
 }
 
-// wireDependencyAssembly는 main.go와 동일한 모양(Card 저장소 조립 -> 공유 outbox.Relay
-// handlers map -> httphandler.NewRouter(...) 호출)을 갖는 파일 하나에 새 도메인을 엮는다.
+// wireDependencyAssembly는 main.go와 동일한 모양(Card 저장소 조립 -> 공유
+// map[string]outbox.Handler -> httphandler.NewRouter(...) 호출)을 갖는 파일 하나에
+// 새 도메인을 엮는다.
 func wireDependencyAssembly(src string, n Names) (string, error) {
 	// 1. 저장소 조립 — cardRepo 생성 줄 바로 다음에 추가(Card는 항상 존재하는 안정적 앵커).
 	repoLine := fmt.Sprintf("\t%sRepo := persistence.New%sRepository(db)\n", n.DomainCamel, n.Domain)
@@ -179,8 +183,9 @@ func wireDependencyAssembly(src string, n Names) (string, error) {
 		return "", err
 	}
 
-	// 2. 공유 outbox.Relay의 handlers map에 이벤트 핸들러 등록 — map 리터럴의 닫는 중괄호
-	// 바로 앞에 끼워 넣는다(이미 등록된 도메인이 몇 개든 상관없이 항상 마지막에 추가됨).
+	// 2. 공유 handlers map(outbox.Poller/outbox.Consumer가 함께 쓴다)에 이벤트 핸들러
+	// 등록 — map 리터럴의 닫는 중괄호 바로 앞에 끼워 넣는다(이미 등록된 도메인이 몇 개든
+	// 상관없이 항상 마지막에 추가됨).
 	entry := fmt.Sprintf("\t\t\"%sCancelled\": event.New%sCancelledEventHandler().Handle,\n", n.Domain, n.Domain)
 	src, err = insertBeforeMatchingClose(src, "map[string]outbox.Handler{", '{', '}', entry)
 	if err != nil {
@@ -217,8 +222,8 @@ func wireRouter(src string, n Names) (string, error) {
 	// 3. Command/Query Handler + HTTP Handler 조립 — cardHTTP 조립 다음에 추가.
 	construction := fmt.Sprintf(
 		"\n\t// %s BC — 스캐폴딩 생성기(scripts/create-domain)가 생성.\n"+
-			"\tcreate%sHandler := command.NewCreate%sHandler(%sRepo, outboxRelay)\n"+
-			"\tcancel%sHandler := command.NewCancel%sHandler(%sRepo, outboxRelay)\n"+
+			"\tcreate%sHandler := command.NewCreate%sHandler(%sRepo)\n"+
+			"\tcancel%sHandler := command.NewCancel%sHandler(%sRepo)\n"+
 			"\tget%sHandler := query.NewGet%sHandler(%sRepo)\n"+
 			"\t%sHTTP := New%sHandler(create%sHandler, cancel%sHandler, get%sHandler)\n",
 		n.Domain,
@@ -267,7 +272,7 @@ func PrintWiringSnippet(n Names) {
 	fmt.Println()
 	fmt.Printf("cmd/server/main.go:\n")
 	fmt.Printf("  %sRepo := persistence.New%sRepository(db)\n", n.DomainCamel, n.Domain)
-	fmt.Printf("  outbox.NewRelay(...) handlers map에 추가: \"%sCancelled\": event.New%sCancelledEventHandler().Handle,\n", n.Domain, n.Domain)
+	fmt.Printf("  공유 outboxHandlers map(map[string]outbox.Handler)에 추가: \"%sCancelled\": event.New%sCancelledEventHandler().Handle,\n", n.Domain, n.Domain)
 	fmt.Printf("  httphandler.NewRouter(... , %sRepo)\n", n.DomainCamel)
 	fmt.Println()
 	fmt.Printf("internal/interface/http/router.go:\n")

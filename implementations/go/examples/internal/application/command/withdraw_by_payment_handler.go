@@ -21,12 +21,11 @@ type WithdrawByPaymentCommand struct {
 // (paymentId)의 거래가 이미 있으면 조용히 무시한다(at-least-once 재수신에 안전해야
 // 하므로 — 금액 이동은 반복 적용하면 잔액이 계속 줄어든다).
 //
-// OutboxRelay를 주입받지 않는다 — 이 Handler는 항상 outbox.Relay.ProcessPending의 핸들러
-// map을 통해서만 호출된다("payment.completed.v1" event_type, main.go 참고). Save()가
-// 발생시키는 새 Domain Event(MoneyWithdrawn)는 같은 트랜잭션으로 Outbox에 함께 적재되고,
-// 이미 진행 중인 그 ProcessPending 호출의 다음 패스가 자동으로 이어서 드레인한다
-// (outbox/relay.go의 다중 패스 루프 참고) — 스스로 ProcessPending을 다시 호출하면
-// main()의 조립 시점에 순환 의존을 만들 뿐 실질적인 이득이 없다.
+// 이 Handler는 항상 outbox.Consumer의 handlers map을 통해서만 호출된다
+// ("payment.completed.v1" event_type, main.go 참고) — outbox.Poller/outbox.Consumer를
+// 직접 참조하지 않는다. Save()가 발생시키는 새 Domain Event(MoneyWithdrawn)는 같은
+// 트랜잭션으로 Outbox에 함께 적재되고, 독립적으로 주기 실행되는 Poller가 다음 tick에
+// SQS로 발행한다(동기 드레인 금지, domain-events.md).
 type WithdrawByPaymentHandler struct {
 	repo account.Repository
 }

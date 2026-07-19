@@ -15,7 +15,7 @@ func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 			return nil, account.ErrNotFound
 		},
 	}
-	handler := command.NewDepositHandler(repo, &stubOutboxRelay{})
+	handler := command.NewDepositHandler(repo)
 
 	_, err := handler.Handle(context.Background(), command.DepositCommand{AccountID: "missing", Amount: 1000})
 
@@ -24,24 +24,20 @@ func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 	}
 }
 
-func TestDepositHandler_Handle_SavesAndDrainsOutbox(t *testing.T) {
+func TestDepositHandler_Handle_Saves(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
 	saveCalled := false
 	repo := &stubRepository{
 		findByIDFn: func(ctx context.Context, accountID, ownerID string) (*account.Account, error) { return a, nil },
 		saveFn:     func(ctx context.Context, a *account.Account) error { saveCalled = true; return nil },
 	}
-	outboxRelay := &stubOutboxRelay{}
-	handler := command.NewDepositHandler(repo, outboxRelay)
+	handler := command.NewDepositHandler(repo)
 
 	if _, err := handler.Handle(context.Background(), command.DepositCommand{AccountID: a.AccountID, Amount: 1000}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !saveCalled {
 		t.Fatal("want repo.Save to be called")
-	}
-	if outboxRelay.processed == 0 {
-		t.Fatal("want outboxRelay.ProcessPending to be called at least once")
 	}
 }
 
@@ -53,7 +49,7 @@ func TestDepositHandler_Handle_DomainErrorPropagates(t *testing.T) {
 		findByIDFn: func(ctx context.Context, accountID, ownerID string) (*account.Account, error) { return a, nil },
 		saveFn:     func(ctx context.Context, a *account.Account) error { saveCalled = true; return nil },
 	}
-	handler := command.NewDepositHandler(repo, &stubOutboxRelay{})
+	handler := command.NewDepositHandler(repo)
 
 	_, err := handler.Handle(context.Background(), command.DepositCommand{AccountID: a.AccountID, Amount: 1000})
 

@@ -6,8 +6,5 @@ type DepositHandler struct {
 }
 
 func (h *DepositHandler) Handle() error {
-	if err := h.repo.Save(ctx, a); err != nil {
-		return err
-	}
-	return nil
+	return h.repo.Save(ctx, a)
 }

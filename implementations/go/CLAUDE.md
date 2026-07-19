@@ -122,10 +122,14 @@ go run ./scripts/create-domain Coupon --wire
 go run ./scripts/create-domain Coupon --out /path/to/other-project --wire
 ```
 
-NestJS는 도메인마다 전용 `OutboxRelay`를 두지만 Go는 DI 컨테이너가 없어 `main.go`가 조립하는
-**단일 공유** `outbox.Relay`(`internal/infrastructure/outbox/relay.go`)의 `handlers` map에
-모든 도메인이 함께 등록된다 — 그래서 `--wire`는 `main.go`(및 `main.go`와 똑같은 모양으로
-의존성을 다시 조립하는 e2e 테스트가 있다면 그 파일까지)와 `router.go` 양쪽을 함께 고친다.
+NestJS는 도메인마다 전용 Relay/Consumer를 두지 않듯, Go도 도메인마다 전용 타입을 두지
+않는다 — `main.go`가 조립하는 **단일 공유** `map[string]outbox.Handler`에 모든 도메인이
+이벤트를 함께 등록하고, 이 map을 `outbox.Poller`(Outbox → SQS 발행,
+`internal/infrastructure/outbox/poller.go`)와 `outbox.Consumer`(SQS → Handler 실행,
+`internal/infrastructure/outbox/consumer.go`)가 나눠 쓴다. Command Handler는 이 map을
+전혀 참조하지 않는다 — 저장 후 곧바로 반환한다(동기 드레인 금지, domain-events.md). 그래서
+`--wire`는 `main.go`(및 `main.go`와 똑같은 모양으로 의존성을 다시 조립하는 e2e 테스트가
+있다면 그 파일까지)와 `router.go` 양쪽을 함께 고친다.
 
 생성 직후 `./harness.sh <projectRoot>`로 검증한다 — Account/Card와 무관한 새 도메인
 (Coupon, LoyaltyCategory 등 다단어/불규칙 복수형 포함)으로 실제 테스트해 harness
