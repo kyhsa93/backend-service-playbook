@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { ConfigModule } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
@@ -22,6 +23,7 @@ import { PaymentModule } from '@/payment/payment-module'
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig], validate: validateConfig }),
+    ScheduleModule.forRoot(), // OutboxPoller의 @Interval 등 스케줄링 데코레이터 활성화
     ThrottlerModule.forRoot(getThrottlerConfig()), // 기본값: short 1초 3회 / medium 10초 20회 / long 1분 100회 — THROTTLE_* 환경 변수로 override
     TypeOrmModule.forRoot({
       ...AppDataSource.options,

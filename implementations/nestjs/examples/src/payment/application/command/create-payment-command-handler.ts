@@ -4,7 +4,6 @@ import { TransactionManager } from '@/database/transaction-manager'
 import { AccountAdapter } from '@/payment/application/adapter/account-adapter'
 import { CardAdapter } from '@/payment/application/adapter/card-adapter'
 import { CreatePaymentCommand } from '@/payment/application/command/create-payment-command'
-import { OutboxRelay } from '@/payment/application/event/outbox-relay'
 import { Payment } from '@/payment/domain/payment'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { PaymentErrorMessage as ErrorMessage } from '@/payment/payment-error-message'
@@ -15,8 +14,7 @@ export class CreatePaymentCommandHandler implements ICommandHandler<CreatePaymen
     private readonly paymentRepository: PaymentRepository,
     private readonly cardAdapter: CardAdapter,
     private readonly accountAdapter: AccountAdapter,
-    private readonly transactionManager: TransactionManager,
-    private readonly outboxRelay: OutboxRelay
+    private readonly transactionManager: TransactionManager
   ) {}
 
   public async execute(command: CreatePaymentCommand): Promise<Payment> {
@@ -44,7 +42,6 @@ export class CreatePaymentCommandHandler implements ICommandHandler<CreatePaymen
     await this.transactionManager.run(async () => {
       await this.paymentRepository.savePayment(payment)
     })
-    await this.outboxRelay.processPending()
     return payment
   }
 }

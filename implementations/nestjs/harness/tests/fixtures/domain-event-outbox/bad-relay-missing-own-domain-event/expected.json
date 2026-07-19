@@ -1,7 +1,0 @@
-{
-  "name": "domain-event-outbox",
-  "applicable": true,
-  "expectedFailureRuleIds": [
-    "domain-event-outbox.relay-handler-map-incomplete"
-  ]
-}

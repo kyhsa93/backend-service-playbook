@@ -51,7 +51,7 @@ export class CardModule implements OnModuleInit {
 
   // Account BC가 발행하는 Integration Event를 자기 수신부에 연결한다.
   // eventName 리터럴(account.suspended.v1 등)이 Outbox row의 eventType이며,
-  // OutboxRelay가 드레인 시 정적 맵에 없는 이 eventType을 레지스트리로 위임한다.
+  // OutboxConsumer가 SQS에서 이 eventType을 수신하면 이 레지스트리에서 핸들러를 찾아 호출한다.
   onModuleInit(): void {
     this.registry.register('account.suspended.v1', (payload) =>
       this.cardIntegrationEventController.onAccountSuspended(payload as never))

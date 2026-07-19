@@ -18,8 +18,12 @@
 // 6. @HandleEvent 보유 파일은 application/event/<domain-event>-handler.ts 위치.
 // 7. @HandleIntegrationEvent 보유 파일은 interface/integration-event/<domain>-integration-event-controller.ts 위치.
 // 8. EventBus.publish() 직접 호출 금지 — @nestjs/cqrs 사용 중에도 Outbox 경로 준수.
-// 9. OutboxRelay의 핸들러 맵이 발행되는 모든 Domain Event 타입을 커버(드레인 경로 검증).
-// 10. OutboxRelay를 참조하는 Command Handler가 save 이후 processPending()을 호출(순서 포함).
+// 9. OutboxPoller/OutboxConsumer가 존재하고, 발행되는 모든 Domain Event 타입이
+//    EventHandlerRegistry.register(...)로 어딘가에 등록되어 있는지 검증(드레인 경로 검증).
+// 10. Command Handler가 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나
+//     processPending()류를 호출하지 않는지 검증 — Command Service는 저장 후 곧바로
+//     반환해야 하며, Outbox 드레인은 독립적으로 주기 실행되는 Poller/Consumer만의
+//     책임이다(동기 드레인 금지, issue 대응: 2026-07 async 전환).
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -28,6 +32,15 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { classifyLayer, walkTsFiles } from '../shared/ast-utils'
 
 const DOC_REF = 'docs/architecture/domain-events.md'
+
+// 매우 단순한 주석 제거. 이 evaluator 전체가 정규식 기반 텍스트 검사를 쓰므로 일관된
+// 접근이다 — rule 10(forbidden-sync-drain)이 "왜 OutboxPoller를 호출하면 안 되는지"를
+// 설명하는 코드 주석 자체를 위반으로 오탐하는 것을 막기 위해 도입했다. 문자열 리터럴
+// 안의 '//' 같은 극단적 엣지 케이스는 감수한다(이 파일의 다른 정규식 규칙들도 동일한
+// 수준의 근사치를 이미 쓰고 있다).
+function stripComments(content: string): string {
+  return content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+}
 
 function collectDomainEventClassNames(domainFiles: string[]): Set<string> {
   const names = new Set<string>()
@@ -43,9 +56,8 @@ function collectDomainEventClassNames(domainFiles: string[]): Set<string> {
 }
 
 // src/ 바로 아래 첫 번째 디렉토리를 "도메인"으로 취급한다(예: src/order/domain/order.ts → 'order').
-// OutboxRelay는 도메인마다 하나씩 두고 자기 도메인이 발행하는 이벤트만 드레인하는 게 이
-// 저장소의 실제 컨벤션이라(account/application/event/outbox-relay.ts는 Account 이벤트만
-// 다룸), relay-handler-map-incomplete 검사는 전역 이벤트 집합이 아니라 도메인별로 좁혀야 한다.
+// registry-coverage-incomplete 검사가 어떤 도메인의 이벤트가 등록에서 빠졌는지 특정할 수
+// 있도록, 전역 이벤트 집합이 아니라 도메인별로 나눠서 추적한다.
 function topDomainSegment(file: string, srcDir: string): string {
   const relPath = path.relative(srcDir, file).replace(/\\/g, '/')
   return relPath.split('/')[0]
@@ -224,37 +236,51 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     }
   }
 
-  // 9. OutboxRelay의 핸들러 맵이 자기 도메인이 발행하는 모든 Domain Event 타입을
-  //    커버하는지 검증. 이전까지의 규칙들은 write(적재) 경로만 봤을 뿐 relay/dispatch
-  //    (드레인) 경로는 전혀 검증하지 않았다 — 핸들러 맵에서 항목 하나가 빠져도(예:
-  //    MoneyDeposited 삭제) 그 이벤트는 Outbox 테이블에 영원히 processed=false로 남아
-  //    조용히 드레인되지 않는다. 도메인마다 자기 이벤트만 처리하는 전용 OutboxRelay를
-  //    두는 게 이 저장소의 실제 컨벤션이므로(issue #229), 검사 범위는 도메인별로 좁힌다
-  //    — relay 파일이 다른 도메인의 이벤트까지 다뤄야 한다고 요구하지 않는다.
-  if (aggregatesWithEvents.length > 0 && eventClassNames.size > 0) {
-    const relayFiles = files.filter((f) => /outbox-relay\.ts$/.test(path.basename(f)))
-    const eventsByDomain = collectDomainEventClassNamesByDomain(domainFiles, srcDir)
+  // 9. OutboxPoller/OutboxConsumer가 존재하고, 발행되는 모든 Domain Event 타입이
+  //    EventHandlerRegistry.register(...)로 어딘가에 등록되어 있는지 검증. 이전까지의
+  //    규칙들은 write(적재) 경로만 봤을 뿐 드레인 경로는 전혀 검증하지 않았다 —
+  //    등록 하나가 빠져도(예: MoneyDeposited) 그 이벤트는 Outbox 테이블에 영원히
+  //    processed=false로 남아 조용히 드레인되지 않는다.
+  //
+  //    과거에는 도메인마다 전용 OutboxRelay(*outbox-relay.ts)가 생성자 주입 고정 맵으로
+  //    이 라우팅을 담당했지만(issue #229), 동기 드레인을 전면 제거하면서 Poller(DB→큐
+  //    발행만 담당)와 Consumer(큐→핸들러 라우팅)로 역할이 분리되고, 라우팅 자체는 도메인
+  //    별 relay 파일이 아니라 하나의 공유 EventHandlerRegistry로 통합됐다 — 검사도
+  //    "relay 파일이 존재하는가"가 아니라 "문자열 키로 register() 등록됐는가"를 본다.
+  if (aggregatesWithEvents.length > 0) {
+    const hasPoller = files.some((f) => /outbox-poller\.ts$/.test(path.basename(f)))
+    const hasConsumer = files.some((f) => /outbox-consumer\.ts$/.test(path.basename(f)))
+    if (!hasPoller) {
+      failures.push({
+        ruleId: 'domain-event-outbox.poller-missing',
+        severity: 'high',
+        message: 'Domain Event가 발행되는데 outbox-poller.ts를 찾지 못함 — outbox 테이블에 적재된 이벤트를 큐로 발행할 경로가 없음',
+        docRef: DOC_REF
+      })
+      score -= 5
+    }
+    if (!hasConsumer) {
+      failures.push({
+        ruleId: 'domain-event-outbox.consumer-missing',
+        severity: 'high',
+        message: 'Domain Event가 발행되는데 outbox-consumer.ts를 찾지 못함 — 큐에서 수신해 EventHandler를 호출할 경로가 없음',
+        docRef: DOC_REF
+      })
+      score -= 5
+    }
 
-    for (const [domain, domainEvents] of eventsByDomain) {
-      const domainRelayFiles = relayFiles.filter((f) => topDomainSegment(f, srcDir) === domain)
-      if (domainRelayFiles.length === 0) {
-        failures.push({
-          ruleId: 'domain-event-outbox.relay-missing',
-          severity: 'high',
-          message: `${domain} 도메인이 Domain Event(${[...domainEvents].join(', ')})를 발행하는데 해당 도메인의 OutboxRelay(*outbox-relay.ts)를 찾지 못함 — 적재된 이벤트를 드레인할 경로가 없음`,
-          docRef: DOC_REF
-        })
-        score -= 5
-        continue
-      }
-      for (const relayFile of domainRelayFiles) {
-        const content = fs.readFileSync(relayFile, 'utf-8')
-        const missing = [...domainEvents].filter((name) => !new RegExp(`\\b${name}\\s*:`).test(content))
+    if (eventClassNames.size > 0) {
+      const registerCalls = files.map((f) => fs.readFileSync(f, 'utf-8')).join('\n')
+      const eventsByDomain = collectDomainEventClassNamesByDomain(domainFiles, srcDir)
+      for (const [domain, domainEvents] of eventsByDomain) {
+        const missing = [...domainEvents].filter(
+          (name) => !new RegExp(`\\bregister\\s*\\(\\s*['"\`]${name}['"\`]`).test(registerCalls)
+        )
         if (missing.length > 0) {
           failures.push({
-            ruleId: 'domain-event-outbox.relay-handler-map-incomplete',
+            ruleId: 'domain-event-outbox.registry-coverage-incomplete',
             severity: 'high',
-            message: `${rel(relayFile)}의 핸들러 맵이 다음 Domain Event를 다루지 않음: ${missing.join(', ')} — 해당 이벤트는 Outbox에 적재되어도 영원히 드레인되지 않음`,
+            message: `${domain} 도메인의 다음 Domain Event가 EventHandlerRegistry.register(...)로 등록되지 않음: ${missing.join(', ')} — 해당 이벤트는 Outbox에 적재되어도 OutboxConsumer가 처리할 핸들러를 찾지 못함`,
             docRef: DOC_REF
           })
           score -= 4
@@ -263,41 +289,26 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     }
   }
 
-  // 10. Command Handler가 OutboxRelay를 참조한다면, 저장(save) 이후 processPending()을
-  //     호출하는지(순서 포함) 검증. 이게 없으면 dual-write 시절 패턴(직접 알림 호출)으로
-  //     되돌리거나 processPending() 호출을 지워도 다른 어떤 규칙도 이를 잡지 못했다.
+  // 10. Command Handler가 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나
+  //     processPending()류를 호출하지 않는지 검증(예전 규칙의 정반대) — 동기 드레인을
+  //     전면 제거한 뒤에는 Command Service가 저장 후 곧바로 반환해야 하며, Outbox 드레인은
+  //     독립적으로 주기 실행되는 Poller/Consumer만의 책임이다. 이 검사가 없으면 누군가
+  //     예전 습관대로 Command Handler에 드레인 호출을 다시 추가해도 잡아내지 못한다.
   const commandHandlerFiles = files.filter(
     (f) => classifyLayer(f) === 'application' && /-command-handler\.ts$/.test(path.basename(f))
   )
   for (const f of commandHandlerFiles) {
-    const content = fs.readFileSync(f, 'utf-8')
-    if (!/\bOutboxRelay\b/.test(content)) continue
-    const saveMatch = /\.\w*[Ss]ave\w*\(/.exec(content)
-    const ppMatch = /\.processPending\s*\(/.exec(content)
-    if (!saveMatch) {
+    const content = stripComments(fs.readFileSync(f, 'utf-8'))
+    const forbiddenSymbol = /\bOutboxRelay\b|\bOutboxPoller\b|\bOutboxConsumer\b/.exec(content)
+    const forbiddenCall = /\.\s*(?:processPending|poll|drainOnce)\s*\(/.exec(content)
+    if (forbiddenSymbol || forbiddenCall) {
       failures.push({
-        ruleId: 'domain-event-outbox.command-handler.save-missing',
-        severity: 'medium',
-        message: `${rel(f)}가 OutboxRelay를 참조하지만 save 호출을 찾을 수 없음`,
-        docRef: DOC_REF
-      })
-      score -= 2
-    } else if (!ppMatch) {
-      failures.push({
-        ruleId: 'domain-event-outbox.command-handler.process-pending-missing',
+        ruleId: 'domain-event-outbox.command-handler.forbidden-sync-drain',
         severity: 'high',
-        message: `${rel(f)}가 OutboxRelay를 참조하지만 processPending() 호출이 없음 — 저장 직후 Outbox 드레인 누락`,
+        message: `${rel(f)}가 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나 드레인을 호출함 — Command Handler는 저장 후 곧바로 반환해야 하며, Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지)`,
         docRef: DOC_REF
       })
-      score -= 4
-    } else if (ppMatch.index < saveMatch.index) {
-      failures.push({
-        ruleId: 'domain-event-outbox.command-handler.process-pending-order',
-        severity: 'high',
-        message: `${rel(f)}의 processPending() 호출이 save 호출보다 먼저 등장함 — 커밋 이후 드레인 순서 위반`,
-        docRef: DOC_REF
-      })
-      score -= 4
+      score -= 6
     }
   }
 

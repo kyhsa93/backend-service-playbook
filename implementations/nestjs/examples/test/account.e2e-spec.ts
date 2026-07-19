@@ -1,7 +1,9 @@
 import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import request from 'supertest'
 
@@ -14,9 +16,14 @@ import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { createDomainEventQueue } from './support/sqs-test-queue'
 
+// Outbox 드레인이 OutboxPoller(주기 폴링)+OutboxConsumer(SQS 수신)로 완전히 비동기화됨에
+// 따라, OutboxModule을 import하는 모든 e2e 스펙은 실제 SQS(LocalStack)가 필요하다 —
+// 없으면 Poller/Consumer가 매 tick 연결 실패 로그만 반복해서 쌓인다.
 describe('AccountController (e2e)', () => {
   let container: StartedPostgreSqlContainer
+  let localstack: StartedLocalStackContainer
   let app: INestApplication
 
   const OWNER_ID = 'owner-1'
@@ -39,10 +46,21 @@ describe('AccountController (e2e)', () => {
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start()
+    localstack = await new LocalstackContainer('localstack/localstack:3.0')
+      .withEnvironment({ SERVICES: 'sqs' })
+      .start()
+
+    const sqsEndpoint = localstack.getConnectionUri()
+    process.env.AWS_ENDPOINT_URL = sqsEndpoint
+    process.env.AWS_REGION = 'us-east-1'
+    process.env.AWS_ACCESS_KEY_ID = 'test'
+    process.env.AWS_SECRET_ACCESS_KEY = 'test'
+    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
 
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
+        ScheduleModule.forRoot(),
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
@@ -73,8 +91,14 @@ describe('AccountController (e2e)', () => {
   }, 120000)
 
   afterAll(async () => {
+    delete process.env.AWS_ENDPOINT_URL
+    delete process.env.AWS_REGION
+    delete process.env.AWS_ACCESS_KEY_ID
+    delete process.env.AWS_SECRET_ACCESS_KEY
+    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
     await app?.close()
     await container?.stop()
+    await localstack?.stop()
   })
 
   async function createAccount(

@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
@@ -17,6 +18,7 @@ import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { createDomainEventQueue } from './support/sqs-test-queue'
 
 interface SesMessage {
   Id: string
@@ -46,7 +48,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
   beforeAll(async () => {
     postgres = await new PostgreSqlContainer('postgres:16-alpine').start()
     localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'ses' })
+      .withEnvironment({ SERVICES: 'ses,sqs' })
       .start()
 
     sesEndpoint = localstack.getConnectionUri()
@@ -55,6 +57,10 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     process.env.AWS_ACCESS_KEY_ID = 'test'
     process.env.AWS_SECRET_ACCESS_KEY = 'test'
     process.env.SES_SENDER_EMAIL = 'no-reply@backend-service-playbook.example.com'
+    // AccountCreated/MoneyDeposited Domain Event Handler(NotificationService 호출)는
+    // 이제 같은 프로세스 안에서 즉시 실행되지 않는다 — OutboxPoller가 이 이벤트를 SQS로
+    // 발행하고 OutboxConsumer가 수신해야 실행된다. 그래서 SES뿐 아니라 SQS도 필요하다.
+    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sesEndpoint)
 
     const verificationClient = new SESClient({
       region: 'us-east-1',
@@ -66,6 +72,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
+        ScheduleModule.forRoot(),
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: postgres.getConnectionUri(),
@@ -95,10 +102,24 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     delete process.env.AWS_ACCESS_KEY_ID
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SES_SENDER_EMAIL
+    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
     await app?.close()
     await postgres?.stop()
     await localstack?.stop()
   })
+
+  // AccountCreatedHandler/MoneyDepositedHandler(SES 발송)는 더 이상 같은 프로세스 안에서
+  // 커맨드 응답 전에 끝나지 않는다 — OutboxPoller(1초 주기)가 이벤트를 SQS로 발행하고
+  // OutboxConsumer(long polling)가 수신해야 실행된다. 즉시 조회하던 이전 assert를
+  // 폴링으로 바꾼다(card.e2e-spec.ts의 waitForCardStatus와 동일한 패턴).
+  async function waitForSentEmail(accountId: string, eventType: string): Promise<SentEmailEntity | null> {
+    for (let i = 0; i < 150; i++) {
+      const sentEmail = await dataSource.getRepository(SentEmailEntity).findOneBy({ accountId, eventType })
+      if (sentEmail) return sentEmail
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return dataSource.getRepository(SentEmailEntity).findOneBy({ accountId, eventType })
+  }
 
   it('계좌_생성시_SES로_이메일이_발송되고_발송_내역이_DB와_localstack에_기록된다', async () => {
     const response = await request(app.getHttpServer())
@@ -109,8 +130,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     expect(response.status).toBe(201)
     const accountId = response.body.accountId as string
 
-    const sentEmail = await dataSource.getRepository(SentEmailEntity)
-      .findOneBy({ accountId, eventType: 'AccountCreated' })
+    const sentEmail = await waitForSentEmail(accountId, 'AccountCreated')
 
     expect(sentEmail).not.toBeNull()
     expect(sentEmail?.recipient).toBe(RECIPIENT_EMAIL)
@@ -137,8 +157,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
 
     expect(depositResponse.status).toBe(201)
 
-    const sentEmail = await dataSource.getRepository(SentEmailEntity)
-      .findOneBy({ accountId, eventType: 'MoneyDeposited' })
+    const sentEmail = await waitForSentEmail(accountId, 'MoneyDeposited')
 
     expect(sentEmail).not.toBeNull()
     expect(sentEmail?.recipient).toBe(RECIPIENT_EMAIL)

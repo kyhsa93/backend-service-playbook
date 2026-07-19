@@ -9,7 +9,7 @@ import { WithdrawByPaymentCommand } from '@/account/application/command/withdraw
 // Card BC의 card-integration-event-controller.ts(Account 이벤트 구독)와 동일한
 // 위치·역할이다 — Account가 Payment를 Adapter로 조회하지 않는 것처럼, Payment도
 // Account를 직접 참조하지 않는다. 자기 도메인의 유스케이스(Command)만 호출하고,
-// 예외는 그대로 throw하여 OutboxRelay가 재시도를 담당하게 한다.
+// 예외는 그대로 throw하여 OutboxConsumer가 메시지를 삭제하지 않고 재시도를 담당하게 한다.
 @Injectable()
 export class AccountIntegrationEventController {
   private readonly logger = new Logger(AccountIntegrationEventController.name)

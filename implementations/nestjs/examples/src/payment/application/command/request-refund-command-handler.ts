@@ -1,7 +1,6 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
-import { OutboxRelay } from '@/payment/application/event/outbox-relay'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { Refund } from '@/payment/domain/refund'
@@ -19,8 +18,7 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
   constructor(
     private readonly paymentRepository: PaymentRepository,
     private readonly refundRepository: RefundRepository,
-    private readonly transactionManager: TransactionManager,
-    private readonly outboxRelay: OutboxRelay
+    private readonly transactionManager: TransactionManager
   ) {}
 
   public async execute(command: RequestRefundCommand): Promise<Refund> {
@@ -49,8 +47,8 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
       await this.refundRepository.saveRefund(refund)
     })
     // RefundApproved → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다.
-    // 거부된 경우에는 Domain Event가 없으므로 드레인할 것이 없어 no-op이다.
-    await this.outboxRelay.processPending()
+    // 거부된 경우에는 Domain Event가 없으므로 outbox에 적재된 것이 없다. 실제
+    // 구독·실행은 OutboxPoller/OutboxConsumer가 비동기로 처리한다.
     return refund
   }
 }

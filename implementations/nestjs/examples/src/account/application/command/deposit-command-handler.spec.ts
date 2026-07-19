@@ -4,7 +4,6 @@ import { DepositCommandHandler } from '@/account/application/command/deposit-com
 import { DepositCommand } from '@/account/application/command/deposit-command'
 import { Account } from '@/account/domain/account'
 import { AccountRepository } from '@/account/domain/account-repository'
-import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { TransactionManager } from '@/database/transaction-manager'
 import { AccountStatus } from '@/account/account-enum'
 import { Money } from '@/account/domain/money'
@@ -12,7 +11,6 @@ import { Money } from '@/account/domain/money'
 describe('DepositCommandHandler', () => {
   let handler: DepositCommandHandler
   let accountRepository: jest.Mocked<AccountRepository>
-  let outboxRelay: jest.Mocked<OutboxRelay>
 
   const buildAccount = (balance = 0): Account => new Account({
     accountId: 'account-1',
@@ -33,20 +31,15 @@ describe('DepositCommandHandler', () => {
         {
           provide: TransactionManager,
           useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() }
-        },
-        {
-          provide: OutboxRelay,
-          useValue: { processPending: jest.fn() }
         }
       ]
     }).compile()
 
     handler = module.get(DepositCommandHandler)
     accountRepository = module.get(AccountRepository)
-    outboxRelay = module.get(OutboxRelay)
   })
 
-  it('execute_when_계좌가_존재하면_then_잔액이_증가하고_저장_및_Outbox_드레인이_일어난다', async () => {
+  it('execute_when_계좌가_존재하면_then_잔액이_증가하고_저장된다', async () => {
     const account = buildAccount(1000)
     accountRepository.findAccounts.mockResolvedValue({ accounts: [account], count: 1 })
 
@@ -57,7 +50,6 @@ describe('DepositCommandHandler', () => {
     expect(transaction.type).toBe('DEPOSIT')
     expect(account.balance.amount).toBe(1500)
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(account)
-    expect(outboxRelay.processPending).toHaveBeenCalled()
   })
 
   it('execute_when_계좌가_존재하지_않으면_then_에러를_throw한다', async () => {

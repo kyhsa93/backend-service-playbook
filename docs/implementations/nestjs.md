@@ -20,7 +20,7 @@
 | [aggregate-id.md](../architecture/aggregate-id.md) | `implementations/nestjs/docs/architecture/aggregate-id.md` — generateId(), 하이픈 제거 32자리 hex |
 | [repository-pattern.md](../architecture/repository-pattern.md) | `implementations/nestjs/docs/architecture/repository-pattern.md` — TypeORM, @InjectRepository, NestJS DI 연결 |
 | [persistence.md](../architecture/persistence.md) | `implementations/nestjs/docs/architecture/persistence.md` — TypeORM QueryBuilder, TransactionManager(AsyncLocalStorage), 마이그레이션 |
-| [domain-events.md](../architecture/domain-events.md) | `implementations/nestjs/docs/architecture/domain-events.md` — @HandleEvent, OutboxWriter, OutboxRelay, SQS |
+| [domain-events.md](../architecture/domain-events.md) | `implementations/nestjs/docs/architecture/domain-events.md` — @HandleEvent, OutboxWriter, OutboxPoller, OutboxConsumer, SQS |
 | [cqrs-pattern.md](../architecture/cqrs-pattern.md) | `implementations/nestjs/docs/architecture/cqrs-pattern.md` — @nestjs/cqrs, CommandBus, QueryBus |
 | [error-handling.md](../architecture/error-handling.md) | `implementations/nestjs/docs/architecture/error-handling.md` — generateErrorResponse, HttpExceptionFilter |
 | [api-response.md](../architecture/api-response.md) | `implementations/nestjs/docs/architecture/api-response.md` — page/take DTO, class-validator |

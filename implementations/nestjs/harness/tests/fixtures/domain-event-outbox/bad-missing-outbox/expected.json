@@ -4,6 +4,9 @@
   "expectedFailureRuleIds": [
     "domain-event-outbox.module-missing",
     "domain-event-outbox.repository-does-not-persist-events",
-    "domain-event-outbox.clear-events-missing"
+    "domain-event-outbox.clear-events-missing",
+    "domain-event-outbox.poller-missing",
+    "domain-event-outbox.consumer-missing",
+    "domain-event-outbox.registry-coverage-incomplete"
   ]
 }

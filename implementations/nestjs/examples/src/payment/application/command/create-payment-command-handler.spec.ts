@@ -4,7 +4,6 @@ import { CreatePaymentCommandHandler } from '@/payment/application/command/creat
 import { CreatePaymentCommand } from '@/payment/application/command/create-payment-command'
 import { AccountAdapter } from '@/payment/application/adapter/account-adapter'
 import { CardAdapter } from '@/payment/application/adapter/card-adapter'
-import { OutboxRelay } from '@/payment/application/event/outbox-relay'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { PaymentStatus } from '@/payment/payment-enum'
 import { PaymentErrorMessage } from '@/payment/payment-error-message'
@@ -23,8 +22,7 @@ describe('CreatePaymentCommandHandler', () => {
         { provide: PaymentRepository, useValue: { findPayments: jest.fn(), savePayment: jest.fn() } },
         { provide: CardAdapter, useValue: { findCard: jest.fn() } },
         { provide: AccountAdapter, useValue: { findAccount: jest.fn() } },
-        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } },
-        { provide: OutboxRelay, useValue: { processPending: jest.fn() } }
+        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } }
       ]
     }).compile()
 

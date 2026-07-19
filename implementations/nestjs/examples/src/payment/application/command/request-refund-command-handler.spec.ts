@@ -2,7 +2,6 @@ import { Test } from '@nestjs/testing'
 
 import { RequestRefundCommandHandler } from '@/payment/application/command/request-refund-command-handler'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
-import { OutboxRelay } from '@/payment/application/event/outbox-relay'
 import { Payment } from '@/payment/domain/payment'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { RefundRepository } from '@/payment/domain/refund-repository'
@@ -24,8 +23,7 @@ describe('RequestRefundCommandHandler', () => {
         RequestRefundCommandHandler,
         { provide: PaymentRepository, useValue: { findPayments: jest.fn(), savePayment: jest.fn() } },
         { provide: RefundRepository, useValue: { findRefunds: jest.fn(), saveRefund: jest.fn() } },
-        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } },
-        { provide: OutboxRelay, useValue: { processPending: jest.fn() } }
+        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } }
       ]
     }).compile()
 

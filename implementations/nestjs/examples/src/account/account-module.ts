@@ -18,7 +18,6 @@ import { AccountReactivatedHandler } from '@/account/application/event/account-r
 import { AccountSuspendedHandler } from '@/account/application/event/account-suspended-handler'
 import { MoneyDepositedHandler } from '@/account/application/event/money-deposited-handler'
 import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdrawn-handler'
-import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { AccountQuery } from '@/account/application/query/account-query'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
@@ -65,8 +64,6 @@ import { AuthModule } from '@/auth/auth-module'
     AccountSuspendedHandler,
     AccountReactivatedHandler,
     AccountClosedHandler,
-    // Outbox 릴레이 (미처리 outbox 이벤트를 위 핸들러로 전달)
-    OutboxRelay,
     // Repositories
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
     // Query 구현체
@@ -82,13 +79,32 @@ import { AuthModule } from '@/auth/auth-module'
 export class AccountModule implements OnModuleInit {
   constructor(
     private readonly registry: EventHandlerRegistry,
-    private readonly accountIntegrationEventController: AccountIntegrationEventController
+    private readonly accountIntegrationEventController: AccountIntegrationEventController,
+    private readonly accountCreatedHandler: AccountCreatedHandler,
+    private readonly moneyDepositedHandler: MoneyDepositedHandler,
+    private readonly moneyWithdrawnHandler: MoneyWithdrawnHandler,
+    private readonly accountSuspendedHandler: AccountSuspendedHandler,
+    private readonly accountReactivatedHandler: AccountReactivatedHandler,
+    private readonly accountClosedHandler: AccountClosedHandler
   ) {}
 
-  // Payment BC가 발행하는 Integration Event를 자기 수신부에 연결한다. CardModule이
-  // account.suspended.v1/account.closed.v1을 구독하는 것과 동일한 패턴 —
-  // 등록만 추가되며 Card 관련 등록·코드는 건드리지 않는다.
+  // 자기 도메인이 발행하는 Domain Event(OutboxConsumer가 SQS에서 수신했을 때 호출할
+  // 핸들러)와, Payment BC가 발행하는 Integration Event 수신부를 모두 같은
+  // EventHandlerRegistry에 등록한다. 예전에는 이 라우팅을
+  // account/application/event/outbox-relay.ts의 생성자 주입 고정 맵이 담당했지만,
+  // Account/Payment가 각자 별도 Relay를 두던 구조를 하나의 공유 outbox 모듈로
+  // 통합하면서 모든 라우팅이 이 레지스트리 하나로 모인다.
   onModuleInit(): void {
+    this.registry.register('AccountCreated', (payload) => this.accountCreatedHandler.handle(payload as never))
+    this.registry.register('MoneyDeposited', (payload) => this.moneyDepositedHandler.handle(payload as never))
+    this.registry.register('MoneyWithdrawn', (payload) => this.moneyWithdrawnHandler.handle(payload as never))
+    this.registry.register('AccountSuspended', (payload) => this.accountSuspendedHandler.handle(payload as never))
+    this.registry.register('AccountReactivated', (payload) => this.accountReactivatedHandler.handle(payload as never))
+    this.registry.register('AccountClosed', (payload) => this.accountClosedHandler.handle(payload as never))
+
+    // Payment BC가 발행하는 Integration Event를 자기 수신부에 연결한다. CardModule이
+    // account.suspended.v1/account.closed.v1을 구독하는 것과 동일한 패턴 —
+    // 등록만 추가되며 Card 관련 등록·코드는 건드리지 않는다.
     this.registry.register('payment.completed.v1', (payload) =>
       this.accountIntegrationEventController.onPaymentCompleted(payload as never))
     this.registry.register('payment.cancelled.v1', (payload) =>

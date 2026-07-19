@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common'
+import { Module, OnModuleInit } from '@nestjs/common'
 import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
+import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
 import { AccountModule } from '@/account/account-module'
 import { AuthModule } from '@/auth/auth-module'
 import { CardModule } from '@/card/card-module'
@@ -13,7 +14,6 @@ import { RequestRefundCommandHandler } from '@/payment/application/command/reque
 import { PaymentCancelledHandler } from '@/payment/application/event/payment-cancelled-handler'
 import { PaymentCompletedHandler } from '@/payment/application/event/payment-completed-handler'
 import { RefundApprovedHandler } from '@/payment/application/event/refund-approved-handler'
-import { OutboxRelay } from '@/payment/application/event/outbox-relay'
 import { GetPaymentQueryHandler } from '@/payment/application/query/get-payment-query-handler'
 import { GetPaymentsQueryHandler } from '@/payment/application/query/get-payments-query-handler'
 import { GetRefundsQueryHandler } from '@/payment/application/query/get-refunds-query-handler'
@@ -58,8 +58,6 @@ import { PaymentController } from '@/payment/interface/payment-controller'
     PaymentCompletedHandler,
     PaymentCancelledHandler,
     RefundApprovedHandler,
-    // Outbox 릴레이 (미처리 outbox 이벤트를 위 핸들러로 전달)
-    OutboxRelay,
     // Repositories
     { provide: PaymentRepository, useClass: PaymentRepositoryImpl },
     { provide: RefundRepository, useClass: RefundRepositoryImpl },
@@ -71,4 +69,20 @@ import { PaymentController } from '@/payment/interface/payment-controller'
     { provide: AccountAdapter, useClass: AccountAdapterImpl }
   ]
 })
-export class PaymentModule {}
+export class PaymentModule implements OnModuleInit {
+  constructor(
+    private readonly registry: EventHandlerRegistry,
+    private readonly paymentCompletedHandler: PaymentCompletedHandler,
+    private readonly paymentCancelledHandler: PaymentCancelledHandler,
+    private readonly refundApprovedHandler: RefundApprovedHandler
+  ) {}
+
+  // Account BC의 account-module.ts와 동일한 패턴 — 자기 도메인이 발행하는 Domain
+  // Event를 OutboxConsumer가 SQS에서 수신했을 때 호출할 핸들러로 EventHandlerRegistry에
+  // 등록한다. 예전에는 payment/application/event/outbox-relay.ts의 고정 맵이 담당했다.
+  onModuleInit(): void {
+    this.registry.register('PaymentCompleted', (payload) => this.paymentCompletedHandler.handle(payload as never))
+    this.registry.register('PaymentCancelled', (payload) => this.paymentCancelledHandler.handle(payload as never))
+    this.registry.register('RefundApproved', (payload) => this.refundApprovedHandler.handle(payload as never))
+  }
+}

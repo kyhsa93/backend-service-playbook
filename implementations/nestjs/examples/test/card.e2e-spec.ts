@@ -1,7 +1,9 @@
 import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import request from 'supertest'
 
@@ -17,9 +19,11 @@ import { CardEntity } from '@/card/infrastructure/entity/card.entity'
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { createDomainEventQueue } from './support/sqs-test-queue'
 
 describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
   let container: StartedPostgreSqlContainer
+  let localstack: StartedLocalStackContainer
   let app: INestApplication
 
   const OWNER_ID = 'owner-1'
@@ -62,23 +66,36 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
     return response.body.status
   }
 
-  // in-process Outbox 드레인은 커맨드 처리 안에서 완결되지만, 혹시 모를 스케줄링 편차를
-  // 흡수하도록 짧게 재시도하며 카드 상태 전이를 기다린다.
+  // 이제 Outbox 드레인이 OutboxPoller(1초 주기)→SQS→OutboxConsumer(long polling)를
+  // 거치는 진짜 비동기 경로이므로, 같은 프로세스 안에서 즉시 끝나던 이전 폴링 예산
+  // (20회 * 100ms = 2초)으로는 부족할 수 있다 — poller tick + SQS 왕복 + consumer 처리
+  // 시간을 넉넉히 흡수하도록 150회 * 200ms(최대 30초)로 늘린다.
   async function waitForCardStatus(cardId: string, expected: string, ownerId = OWNER_ID): Promise<string> {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 150; i++) {
       const status = await getCardStatus(cardId, ownerId)
       if (status === expected) return status
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 200))
     }
     return getCardStatus(cardId, ownerId)
   }
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start()
+    localstack = await new LocalstackContainer('localstack/localstack:3.0')
+      .withEnvironment({ SERVICES: 'sqs' })
+      .start()
+
+    const sqsEndpoint = localstack.getConnectionUri()
+    process.env.AWS_ENDPOINT_URL = sqsEndpoint
+    process.env.AWS_REGION = 'us-east-1'
+    process.env.AWS_ACCESS_KEY_ID = 'test'
+    process.env.AWS_SECRET_ACCESS_KEY = 'test'
+    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
 
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
+        ScheduleModule.forRoot(),
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
@@ -115,8 +132,14 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
   }, 120000)
 
   afterAll(async () => {
+    delete process.env.AWS_ENDPOINT_URL
+    delete process.env.AWS_REGION
+    delete process.env.AWS_ACCESS_KEY_ID
+    delete process.env.AWS_SECRET_ACCESS_KEY
+    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
     await app?.close()
     await container?.stop()
+    await localstack?.stop()
   })
 
   describe('POST /cards — 동기 Adapter(ACL)로 Account 상태 확인', () => {

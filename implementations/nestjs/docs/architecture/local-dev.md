@@ -10,11 +10,12 @@ implementations/nestjs/examples/
   localstack/
     init-ses.sh                      ← SES 발신자 이메일 검증
     init-secrets.sh                  ← Secrets Manager에 app/jwt 시크릿 생성
+    init-sqs.sh                      ← OutboxPoller/OutboxConsumer용 domain-events 큐 + DLQ 생성
   .env.example                       ← 커밋되는 템플릿
   .env.development                   ← 로컬 개발용 환경 변수(.gitignore, .env.example을 복사해서 만듦)
 ```
 
-이 저장소는 캐시/큐(redis) 없이 Postgres + LocalStack(SES, Secrets Manager)만 쓴다 — root 예시의 redis/S3/SQS는 이 도메인(Account)에 해당하지 않는다.
+이 저장소는 캐시(redis)나 S3 없이 Postgres + LocalStack(SES, Secrets Manager, SQS)만 쓴다 — SQS는 `docs/architecture/domain-events.md`의 OutboxPoller/OutboxConsumer가 실제로 쓰는 큐이고, root 예시의 redis/S3는 이 도메인(Account/Card/Payment)에 해당하지 않는다.
 
 ### docker-compose.yml — 실제 코드
 
@@ -38,7 +39,7 @@ services:
     image: localstack/localstack:3.0
     ports: ['4566:4566']
     environment:
-      SERVICES: ses,secretsmanager
+      SERVICES: ses,secretsmanager,sqs
       DEFAULT_REGION: us-east-1
     volumes: ['./localstack:/etc/localstack/init/ready.d']
     healthcheck:
@@ -56,6 +57,7 @@ services:
       # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
       DATABASE_URL: postgres://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
     depends_on:
       database:
         condition: service_healthy
@@ -75,7 +77,7 @@ volumes:
 | 서비스 | 이미지 | 용도 | 포트 |
 |--------|--------|------|------|
 | `database` | `postgres:16-alpine` | PostgreSQL DB | 5432 |
-| `localstack` | `localstack/localstack:3.0` | AWS 서비스 대체 (SES, Secrets Manager) | 4566 |
+| `localstack` | `localstack/localstack:3.0` | AWS 서비스 대체 (SES, Secrets Manager, SQS) | 4566 |
 | `app` | 프로젝트 빌드 | NestJS 앱 (선택적, `profiles: [app]`) | 3000 |
 
 ### Health Check
@@ -126,6 +128,7 @@ AWS_ENDPOINT_URL=http://localhost:4566
 AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
+SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret
 JWT_EXPIRES_IN=1h

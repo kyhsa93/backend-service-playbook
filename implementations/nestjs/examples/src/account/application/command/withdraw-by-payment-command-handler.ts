@@ -1,7 +1,6 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
-import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { WithdrawByPaymentCommand } from '@/account/application/command/withdraw-by-payment-command'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { Money } from '@/account/domain/money'
@@ -17,8 +16,7 @@ import { Money } from '@/account/domain/money'
 export class WithdrawByPaymentCommandHandler implements ICommandHandler<WithdrawByPaymentCommand, void> {
   constructor(
     private readonly accountRepository: AccountRepository,
-    private readonly transactionManager: TransactionManager,
-    private readonly outboxRelay: OutboxRelay
+    private readonly transactionManager: TransactionManager
   ) {}
 
   public async execute(command: WithdrawByPaymentCommand): Promise<void> {
@@ -34,6 +32,5 @@ export class WithdrawByPaymentCommandHandler implements ICommandHandler<Withdraw
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(account)
     })
-    await this.outboxRelay.processPending()
   }
 }

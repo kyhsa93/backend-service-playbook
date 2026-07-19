@@ -1,7 +1,6 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
-import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { WithdrawCommand } from '@/account/application/command/withdraw-command'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { Money } from '@/account/domain/money'
@@ -12,8 +11,7 @@ import { AccountErrorMessage as ErrorMessage } from '@/account/account-error-mes
 export class WithdrawCommandHandler implements ICommandHandler<WithdrawCommand, Transaction> {
   constructor(
     private readonly accountRepository: AccountRepository,
-    private readonly transactionManager: TransactionManager,
-    private readonly outboxRelay: OutboxRelay
+    private readonly transactionManager: TransactionManager
   ) {}
 
   public async execute(command: WithdrawCommand): Promise<Transaction> {
@@ -26,7 +24,6 @@ export class WithdrawCommandHandler implements ICommandHandler<WithdrawCommand, 
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(account)
     })
-    await this.outboxRelay.processPending()
     return transaction
   }
 }

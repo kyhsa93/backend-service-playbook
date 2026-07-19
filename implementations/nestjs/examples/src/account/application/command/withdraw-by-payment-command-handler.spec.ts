@@ -4,7 +4,6 @@ import { WithdrawByPaymentCommandHandler } from '@/account/application/command/w
 import { WithdrawByPaymentCommand } from '@/account/application/command/withdraw-by-payment-command'
 import { Account } from '@/account/domain/account'
 import { AccountRepository } from '@/account/domain/account-repository'
-import { OutboxRelay } from '@/account/application/event/outbox-relay'
 import { TransactionManager } from '@/database/transaction-manager'
 import { AccountStatus } from '@/account/account-enum'
 import { Money } from '@/account/domain/money'
@@ -12,7 +11,6 @@ import { Money } from '@/account/domain/money'
 describe('WithdrawByPaymentCommandHandler', () => {
   let handler: WithdrawByPaymentCommandHandler
   let accountRepository: jest.Mocked<AccountRepository>
-  let outboxRelay: jest.Mocked<OutboxRelay>
 
   const buildAccount = (balance = 0): Account => new Account({
     accountId: 'account-1',
@@ -30,14 +28,12 @@ describe('WithdrawByPaymentCommandHandler', () => {
           provide: AccountRepository,
           useValue: { findAccounts: jest.fn(), saveAccount: jest.fn(), hasTransactionWithReference: jest.fn() }
         },
-        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } },
-        { provide: OutboxRelay, useValue: { processPending: jest.fn() } }
+        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } }
       ]
     }).compile()
 
     handler = module.get(WithdrawByPaymentCommandHandler)
     accountRepository = module.get(AccountRepository)
-    outboxRelay = module.get(OutboxRelay)
   })
 
   it('execute_when_처음_수신하면_then_잔액을_차감하고_저장한다', async () => {
@@ -49,7 +45,6 @@ describe('WithdrawByPaymentCommandHandler', () => {
 
     expect(account.balance.amount).toBe(5000)
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(account)
-    expect(outboxRelay.processPending).toHaveBeenCalled()
   })
 
   it('execute_when_같은_referenceId를_이미_처리했으면_then_아무_일도_하지_않는다', async () => {

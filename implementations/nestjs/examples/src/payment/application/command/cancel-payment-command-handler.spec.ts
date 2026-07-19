@@ -2,7 +2,6 @@ import { Test } from '@nestjs/testing'
 
 import { CancelPaymentCommandHandler } from '@/payment/application/command/cancel-payment-command-handler'
 import { CancelPaymentCommand } from '@/payment/application/command/cancel-payment-command'
-import { OutboxRelay } from '@/payment/application/event/outbox-relay'
 import { Payment } from '@/payment/domain/payment'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { PaymentStatus } from '@/payment/payment-enum'
@@ -18,8 +17,7 @@ describe('CancelPaymentCommandHandler', () => {
       providers: [
         CancelPaymentCommandHandler,
         { provide: PaymentRepository, useValue: { findPayments: jest.fn(), savePayment: jest.fn() } },
-        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } },
-        { provide: OutboxRelay, useValue: { processPending: jest.fn() } }
+        { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } }
       ]
     }).compile()
 

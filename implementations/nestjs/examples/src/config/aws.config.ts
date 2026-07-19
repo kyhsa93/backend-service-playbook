@@ -16,3 +16,10 @@ export function getAwsCredentials(): { accessKeyId: string; secretAccessKey: str
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test'
   }
 }
+
+// OutboxPoller가 발행하고 OutboxConsumer가 수신하는 공유 Domain/Integration Event SQS 큐.
+export function getDomainEventQueueUrl(): string {
+  const url = process.env.SQS_DOMAIN_EVENT_QUEUE_URL
+  if (!url) throw new Error('SQS_DOMAIN_EVENT_QUEUE_URL 환경 변수가 설정되지 않았습니다.')
+  return url
+}
