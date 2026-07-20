@@ -21,9 +21,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
     domains = [
         entry
         for entry in sorted(os.listdir(src_dir))
-        if os.path.isdir(os.path.join(src_dir, entry))
-        and entry not in SKIP_DIRS
-        and not is_shared_dir(entry)
+        if os.path.isdir(os.path.join(src_dir, entry)) and entry not in SKIP_DIRS and not is_shared_dir(entry)
     ]
     if not domains:
         result.add(skipped("src/ 아래에 도메인 디렉토리 없음"))
