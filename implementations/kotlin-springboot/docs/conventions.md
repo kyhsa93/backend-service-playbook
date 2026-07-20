@@ -32,7 +32,7 @@ Kotlin/Java 생태계는 root의 kebab-case 파일명 규칙을 따르지 않는
 | Request/Response DTO 모음 | `interfaces/rest/` | `Schemas.kt` 또는 `<Domain>Schemas.kt` | `Schemas.kt` |
 | `@ConfigurationProperties` | `config/` | `<Concern>Properties.kt` | `DatabaseProperties.kt` |
 | `@Configuration` (Bean 팩토리) | `infrastructure/` | `<Concern>Config.kt` | `SesConfig.kt` |
-| Scheduler | `infrastructure/` 또는 공유 `outbox/`/`scheduling/` | `<Concern>Relay.kt`/`<Concern>Scheduler.kt` | `OutboxRelay.kt` |
+| Scheduler | `infrastructure/` 또는 공유 `outbox/`/`scheduling/` | `<Concern>Poller.kt`/`<Concern>Scheduler.kt` | `OutboxPoller.kt` |
 
 **주의**: root(TypeScript)/harness는 이 저장소의 관례로 kebab-case가 아니라 PascalCase 파일명을 정답으로 채택한다는 점을 다른 언어 구현체와 혼동하지 않는다 — [directory-structure.md](architecture/directory-structure.md) "파일 네이밍 규칙 — Kotlin/Java 관례" 절 참조.
 

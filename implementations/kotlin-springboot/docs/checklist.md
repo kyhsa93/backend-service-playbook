@@ -103,9 +103,9 @@
 [ ] Domain Event는 Aggregate 내부 도메인 메서드에서만 수집되는가? (domainEvents 리스트 + pullDomainEvents())
     → Command Service가 직접 이벤트 객체를 생성하지 않는다
 [ ] Domain Event 발행이 ApplicationEventPublisher.publishEvent()에 의한 동기 in-process 방식이 아닌가?
-    → 그 방식이라면 위반. Repository.save<Noun>() 내부에서 Outbox 테이블에 함께 저장하고, Command Service는 저장 직후 OutboxRelay.processPending()만 호출한다 (domain-events.md 참조)
+    → 그 방식이라면 위반. Repository.save<Noun>() 내부에서 Outbox 테이블에 함께 저장하고, Command Service는 저장 직후 곧바로 반환한다 — Outbox 드레인은 별도 컴포넌트가 독립적으로 수행한다 (domain-events.md 참조)
 [ ] Repository 구현체의 save<Noun>() 메서드가 @Transactional로 Aggregate 저장 + Outbox 저장을 하나의 트랜잭션으로 묶는가?
-[ ] OutboxRelay가 Command Service의 저장 직후 동기 호출로 드레인되는가? (`@Scheduled` 폴링이 아니다 — domain-events.md 참조)
+[ ] Command Service가 Outbox 드레인 컴포넌트(OutboxPoller/OutboxConsumer)를 직접 호출하지 않는가? (`@Scheduled` 폴링(OutboxPoller) → SQS 발행 → OutboxConsumer가 독립적으로 드레인한다 — harness `outbox-no-sync-drain`, domain-events.md 참조)
 [ ] 이벤트 타입이 여러 개라면 sealed interface로 묶어 when 분기의 완전성(exhaustiveness)을 컴파일러가 검사하게 했는가?
 [ ] Event Handler(`*EventHandler`, outbox가 드레인한 이벤트 처리)가 application/event/ 패키지에 위치하는가?
     → harness의 event-placement 검사 대상

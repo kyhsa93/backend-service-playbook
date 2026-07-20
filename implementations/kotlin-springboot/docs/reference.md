@@ -31,8 +31,10 @@ com.example.orderservice/
   outbox/                             ← Domain Event 전파 인프라 (domain-events.md)
     OutboxEvent.kt                      ← @Entity
     OutboxEventJpaRepository.kt
-    OutboxRelay.kt                      ← @Scheduled 폴링 → 메시지 큐 발행
-    EventConsumer.kt                    ← 메시지 큐 폴링 → Handler 라우팅
+    OutboxWriter.kt                      ← Repository.save() 트랜잭션 안에서 Outbox 행 적재
+    OutboxPoller.kt                      ← @Scheduled 폴링 → 메시지 큐 발행
+    OutboxConsumer.kt                    ← 메시지 큐 long polling → EventHandlerRegistry로 라우팅
+    EventHandlerRegistry.kt              ← eventType → 핸들러 Map(생성자 주입)
 
   order/                              ← Bounded Context
     domain/
@@ -516,7 +518,7 @@ class OrderNotificationHandler {
 }
 ```
 
-이 Handler는 **동기 `@EventListener`가 아니라 `outbox/EventConsumer`가 메시지 큐에서 역직렬화한 이벤트를 라우팅**해 호출한다 — Command Service의 트랜잭션과 분리된, at-least-once 전달을 전제로 한 비동기 경로다. 근거: [domain-events.md](architecture/domain-events.md).
+이 Handler는 **동기 `@EventListener`가 아니라 `outbox/OutboxConsumer`가 메시지 큐에서 수신한 메시지를 `outbox/EventHandlerRegistry`로 라우팅**해 호출한다 — Command Service의 트랜잭션과 분리된, at-least-once 전달을 전제로 한 비동기 경로다. 근거: [domain-events.md](architecture/domain-events.md).
 
 ---
 

@@ -23,7 +23,6 @@ harness의 `service-annotation`(`@Service`는 `application/` 안에만), `reposi
 @Service
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val outboxRelay: OutboxRelay,
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult { /* ... */ }
 }

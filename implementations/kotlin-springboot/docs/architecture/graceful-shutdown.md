@@ -98,9 +98,9 @@ class SomeResource : DisposableBean {
 
 ---
 
-## 진행 중인 `@Scheduled`/Outbox Relay 작업
+## 진행 중인 `@Scheduled`/Outbox 폴링 작업
 
-[scheduling.md](scheduling.md)에서 다루는 `OutboxRelay`/`EventConsumer`처럼 `@Scheduled`로 폴링하는 컴포넌트는, 종료 시점에 폴링 도중이던 배치가 끊길 수 있다. `ThreadPoolTaskScheduler`를 사용한다면 아래처럼 종료 대기를 설정한다.
+[scheduling.md](scheduling.md)에서 다루는 `OutboxPoller`처럼 `@Scheduled`로 폴링하는 컴포넌트는, 종료 시점에 폴링 도중이던 배치가 끊길 수 있다. `ThreadPoolTaskScheduler`를 사용한다면 아래처럼 종료 대기를 설정한다. `OutboxConsumer`는 `@Scheduled`가 아니라 `SmartLifecycle` + 전용 스레드의 무한 루프(`waitTimeSeconds` long polling)로 구현되어 있으므로, 종료 시 대기는 `ThreadPoolTaskScheduler` 설정이 아니라 `SmartLifecycle.stop()`에서의 `Thread.join()`으로 처리한다(`outbox/OutboxConsumer.kt` 실제 코드 — `stop()`이 `workerThread.join(SHUTDOWN_JOIN_TIMEOUT_MS)`를 호출).
 
 ```kotlin
 @Configuration

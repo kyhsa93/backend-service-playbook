@@ -93,7 +93,7 @@ implementation("net.logstash.logback:logstash-logback-encoder:7.4")
 </configuration>
 ```
 
-구조화 로그를 남길 때는 `Marker` 또는 key-value 쌍을 사용한다 — SLF4J 2.x부터는 fluent API로 필드를 명시적으로 붙일 수 있고, `NotificationServiceImpl`이 실제로 이 패턴을 쓴다(위 "현재 로깅" 절 참고). **필드명은 root 원칙대로 snake_case**(`account_id`, `event_type`)를 사용한다 — Kotlin 프로퍼티명은 camelCase(`accountId`)이지만, 로그 필드는 모니터링 플랫폼 관례에 맞춘다. `OutboxRelay`/`AccountController`처럼 아직 `{}` 플레이스홀더만 쓰는 로그는 필요에 따라 같은 fluent API로 승격할 수 있다(남은 개선 여지, 필수 갭은 아니다).
+구조화 로그를 남길 때는 `Marker` 또는 key-value 쌍을 사용한다 — SLF4J 2.x부터는 fluent API로 필드를 명시적으로 붙일 수 있고, `NotificationServiceImpl`이 실제로 이 패턴을 쓴다(위 "현재 로깅" 절 참고). **필드명은 root 원칙대로 snake_case**(`account_id`, `event_type`)를 사용한다 — Kotlin 프로퍼티명은 camelCase(`accountId`)이지만, 로그 필드는 모니터링 플랫폼 관례에 맞춘다. `EventHandlerRegistry`(알 수 없는 eventType 경고)/`AccountController`처럼 아직 `{}` 플레이스홀더만 쓰는 로그는 필요에 따라 같은 fluent API로 승격할 수 있다(남은 개선 여지, 필수 갭은 아니다) — `OutboxPoller`/`OutboxConsumer`의 실패 로깅(SQS 발행/수신·핸들러 처리 실패)은 이미 `addKeyValue(...)` 구조화 로그를 쓴다.
 
 ---
 
@@ -116,7 +116,7 @@ Node의 `AsyncLocalStorage`와 동일한 역할을 JVM 스레드 모델에서는
 | 레이어 | 현재 코드 | 평가 |
 |---|---|---|
 | `account/domain/` | 로깅 없음 | root 원칙과 일치 — Aggregate는 프레임워크 무의존 유지 |
-| `outbox/OutboxRelay` | `logger.error(...)` (실패 시) | 일치 — Application 레이어에서 에러 로깅 |
+| `outbox/OutboxPoller`, `outbox/OutboxConsumer` | `logger.atError().addKeyValue(...).log(...)` (SQS 발행/수신·핸들러 처리 실패 시) | 일치 — 공유 인프라(`outbox/`)에서 에러 로깅 |
 | `notification/infrastructure/NotificationServiceImpl` | `logger.info(...)` (발송 성공) | 일치 — Infrastructure에서 외부 연동 결과 로깅 |
 | `account/interfaces/rest/AccountController` | `logger.warn(...)` (`@ExceptionHandler`에서 실패 로깅) | 일치 — HTTP 요청/응답 자체의 로깅은 [cross-cutting-concerns.md](cross-cutting-concerns.md)의 `RequestLoggingInterceptor`(실제 코드, `common/RequestLoggingInterceptor.kt`)가 담당 |
 
@@ -125,7 +125,7 @@ Node의 `AsyncLocalStorage`와 동일한 역할을 JVM 스레드 모델에서는
 ## 원칙 요약
 
 - **Domain 레이어에서 로깅 금지**: `Account`, `Money`, `Transaction`은 로거를 import하지 않는다.
-- **`NotificationServiceImpl`은 구조화 로그를 쓴다**: `logger.atInfo().addKeyValue(...)`로 snake_case 필드를 남긴다. `OutboxRelay`/`AccountController`의 `{}` 플레이스홀더 로그를 같은 방식으로 승격하는 것은 남은 개선 여지다.
+- **`NotificationServiceImpl`은 구조화 로그를 쓴다**: `logger.atInfo().addKeyValue(...)`로 snake_case 필드를 남긴다. `OutboxPoller`/`OutboxConsumer`의 실패 로깅은 이미 같은 방식이다 — `EventHandlerRegistry`/`AccountController`의 `{}` 플레이스홀더 로그를 같은 방식으로 승격하는 것은 남은 개선 여지다.
 - **`kotlin-logging` 도입 검토**: 지연 평가 + `::class.java` 보일러플레이트 제거 — 아직 도입하지 않았다.
 - **MDC로 Correlation ID 전파**: `CorrelationIdFilter`가 요청 진입점에서 설정하면 이후 모든 로그에 자동 포함.
 

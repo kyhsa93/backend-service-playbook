@@ -132,29 +132,36 @@ this.eventType = (event as? IntegrationEventContract)?.eventName ?: (event::clas
 ```
 
 ```kotlin
-// outbox/OutboxRelay.kt — 이벤트 타입별 when 분기 + 생성자 주입
+// outbox/EventHandlerRegistry.kt — eventType → 핸들러 Map + 생성자 주입 (2026-07 async 전환 이후 실제 코드)
 @Component
-class OutboxRelay(
+class EventHandlerRegistry(
     /* ...Account Domain Event 핸들러들... */
     private val cardIntegrationEventController: CardIntegrationEventController,
 ) {
-    private fun dispatch(eventType: String, payload: String) {
-        when (eventType) {
+    private val handlers: Map<String, (eventId: String, payload: String) -> Unit> =
+        mapOf(
             /* ...AccountCreatedEvent 등... */
-            AccountSuspendedIntegrationEventV1.EVENT_NAME -> {
+            AccountSuspendedIntegrationEventV1.EVENT_NAME to { _, payload ->
                 val event = objectMapper.readValue(payload, AccountSuspendedIntegrationEventV1::class.java)
                 cardIntegrationEventController.onAccountSuspended(event.accountId)
-            }
-            AccountClosedIntegrationEventV1.EVENT_NAME -> { /* ...onAccountClosed... */ }
-            else -> logger.warn("알 수 없는 이벤트 타입: {}", eventType)
+            },
+            AccountClosedIntegrationEventV1.EVENT_NAME to { _, payload -> /* ...onAccountClosed... */ },
+        )
+
+    fun dispatch(eventType: String, eventId: String, payload: String) {
+        val handler = handlers[eventType]
+        if (handler == null) {
+            logger.warn("알 수 없는 이벤트 타입: {}", eventType)
+            return
         }
+        handler(eventId, payload)
     }
 }
 ```
 
-`outbox/`는 어느 BC에도 속하지 않는 공유 인프라이므로, `OutboxRelay`가 Account의 Domain Event 핸들러와 Card의 Integration Event 수신부를 둘 다 생성자로 주입받아 참조하는 것은 원칙 위반이 아니다 — 금지되는 것은 **Account가 Card를 참조하는 것**뿐이다(`account/` 패키지 안 어떤 파일도 `card/`를 import하지 않는다). kotlin-springboot는 java-springboot처럼 애노테이션 기반 자동 discovery를 쓰지 않고, 이런 명시적 `when` 분기 + 생성자 주입 방식을 쓴다 — 어떤 eventType이 어떤 핸들러로 가는지 이 한 파일만 보면 전부 알 수 있다는 것이 트레이드오프다.
+`outbox/`는 어느 BC에도 속하지 않는 공유 인프라이므로, `EventHandlerRegistry`가 Account의 Domain Event 핸들러와 Card의 Integration Event 수신부를 둘 다 생성자로 주입받아 참조하는 것은 원칙 위반이 아니다 — 금지되는 것은 **Account가 Card를 참조하는 것**뿐이다(`account/` 패키지 안 어떤 파일도 `card/`를 import하지 않는다). kotlin-springboot는 java-springboot처럼 애노테이션 기반 자동 discovery를 쓰지 않고, 이런 명시적 생성자 주입 + `Map` 리터럴 방식을 쓴다 — 어떤 eventType이 어떤 핸들러로 가는지 이 한 파일만 보면 전부 알 수 있다는 것이 트레이드오프다(2026-07 async 전환 전에는 `OutboxRelay`가 같은 역할을 `when(eventType)` 하드코딩 분기로 했다 — `EventHandlerRegistry`는 그 분기를 미리 구성한 `Map` 조회로 대체했을 뿐, 생성자 주입 방식 자체는 동일하다).
 
-또한 `processPending()`은 한 패스가 아니라 **더 이상 진전이 없을 때까지 여러 패스로 반복 드레인**한다 — `AccountSuspendedEventHandler`가 위 1)에서 새 Outbox 행(`account.suspended.v1`)을 적재하면, 같은 `processPending()` 호출의 다음 패스가 그 행을 곧바로 집어 `CardIntegrationEventController`까지 전달한다. 즉 Domain Event → Integration Event 변환 → 외부 BC(Card) 수신이 **한 번의 Account 커맨드 처리(같은 트랜잭션) 안에서 완결**된다.
+`EventHandlerRegistry`는 직접 `@Scheduled`나 SQS를 다루지 않는다 — `OutboxConsumer`가 SQS에서 수신한 메시지를 이 레지스트리의 `dispatch()`로 넘길 뿐이다. 그리고 **Domain Event → Integration Event 변환 → 외부 BC(Card) 수신은 더 이상 한 트랜잭션·한 호출 안에서 완결되지 않는다**([domain-events.md](domain-events.md)의 "비동기 재드레인 경계가 바뀌었다" 절 참조) — `AccountSuspendedEventHandler`가 위 1)에서 새 Outbox 행(`account.suspended.v1`)을 적재하면, 그 행은 다음 `OutboxPoller` tick(최대 1초 후)에 SQS로 발행되고, `OutboxConsumer`가 그것을 다시 수신해 `EventHandlerRegistry.dispatch()`를 거쳐서야 `CardIntegrationEventController`까지 전달된다. 즉 Account 커맨드 처리(원래 트랜잭션)가 끝난 뒤 최소 두 번의 Poller/Consumer 왕복(수백 ms~수 초)을 거쳐야 Card BC가 반응한다.
 
 **3) Card 쪽 — 수신 후 자기 유스케이스만 호출**
 

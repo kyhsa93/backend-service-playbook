@@ -27,13 +27,13 @@ account/application/
 @Service
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val outboxRelay: OutboxRelay,
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
         accountRepository.saveAccount(account)   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
-        outboxRelay.processPending()       // 커밋 직후 동기 드레인 — domain-events.md 참고
         return CreateAccountResult(/* ... */)
+        // 여기서 끝난다 — Outbox 드레인(OutboxPoller/OutboxConsumer)은 별도 컴포넌트가 독립적으로
+        // 수행한다. domain-events.md 참고
     }
 }
 ```

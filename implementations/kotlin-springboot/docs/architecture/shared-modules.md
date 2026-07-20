@@ -11,7 +11,7 @@ com.example.accountservice/
   config/            ← AwsProperties/SesProperties (config.md)
   auth/               ← AuthService/JwtAuthenticationFilter/SecurityConfig + Credential Aggregate (authentication.md)
   secret/             ← SecretService/SecretServiceImpl/SecretsEnvironmentPostProcessor (secret-manager.md)
-  outbox/             ← OutboxEvent/OutboxWriter/OutboxRelay (domain-events.md)
+  outbox/             ← OutboxEvent/OutboxWriter/OutboxPoller/OutboxConsumer/EventHandlerRegistry (domain-events.md)
   account/           ← Bounded Context
   notification/      ← Technical Service (Account BC 소속, 별도 BC 아님)
 ```
@@ -57,7 +57,9 @@ com.example.accountservice/
     OutboxEvent.kt                    ← @Entity (domain-events.md)
     OutboxEventJpaRepository.kt
     OutboxWriter.kt                   ← Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
-    OutboxRelay.kt                    ← Command Service가 저장 직후 동기 호출 — @Scheduled 폴링 아님
+    OutboxPoller.kt                    ← @Scheduled 폴링으로 Outbox 테이블 → SQS 발행 (Command Service는 호출하지 않음)
+    OutboxConsumer.kt                  ← SmartLifecycle, SQS long polling → EventHandlerRegistry로 라우팅
+    EventHandlerRegistry.kt            ← eventType → 핸들러 매핑(Map 기반, when 분기 아님)
 
   account/                         ← Bounded Context
     domain/ application/ infrastructure/ interfaces/
@@ -81,7 +83,7 @@ com.example.accountservice/
 | `common/` | 어떤 BC의 비즈니스 로직도 포함하지 않는 프레임워크 공통 코드(에러 변환, 필터, ID 생성) | BC별 예외(`AccountException`)는 각 BC의 `domain/`에 남는다 |
 | `config/` | `@ConfigurationProperties` 바인딩 전용 `data class`. 이 자체가 로직을 갖지 않는다 | `SesConfig`처럼 `@Bean` 팩토리 메서드가 있는 클래스는 관련 BC/Technical Service의 `infrastructure/`에 남는다(예: `notification/infrastructure/SesConfig.kt`) — `config/`는 설정 *값*의 타입만 모은다 |
 | `auth/` | 인증/인가처럼 여러 BC가 공통으로 참조해야 하는 인프라. 특정 BC의 비즈니스 규칙이 아니다 | 인가 규칙 중 BC별 소유권 검사(`account.ownerId == requesterId`)는 각 BC의 Application Service에 남는다 |
-| `outbox/` | Domain Event를 트랜잭션 안전하게 외부로 전파하는 기술적 인프라(Outbox 테이블, Relay, Consumer) | 이벤트 자체(`AccountCreatedEvent` 등)는 각 BC의 `domain/`에 남는다 — Outbox는 그 이벤트를 나르는 배관일 뿐 |
+| `outbox/` | Domain Event를 트랜잭션 안전하게 외부로 전파하는 기술적 인프라(Outbox 테이블, Poller, Consumer) | 이벤트 자체(`AccountCreatedEvent` 등)는 각 BC의 `domain/`에 남는다 — Outbox는 그 이벤트를 나르는 배관일 뿐 |
 | `secret/` | Secrets Manager 조회/캐싱처럼 여러 BC가 공통으로 참조할 수 있는 기술 인프라 | 어떤 시크릿을 언제 조회할지에 대한 BC별 판단(예: 이벤트 핸들러가 특정 시크릿을 쓸지)은 각 BC의 Application 레이어에 남는다 |
 
 **공통 판단 기준**: "이 코드가 여러 BC에서 재사용되는가"와 "이 코드가 특정 BC의 비즈니스 불변식을 담고 있는가"를 함께 본다. 전자만 해당하면 공유 패키지로, 후자에 해당하면(재사용 여부와 무관하게) 해당 BC의 4레이어 안에 남긴다.

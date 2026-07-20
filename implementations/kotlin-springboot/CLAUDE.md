@@ -119,7 +119,7 @@ python3 scripts/create_domain.py LoyaltyCategory --project-root /path/to/scratch
 `@Service`/`@Component`/`@Repository`/`@RestController`가 붙은 클래스를 classpath 전체에서
 자동으로 수집한다(component scanning, `AccountServiceApplication.kt`에도 도메인 bean을 나열하는
 곳이 없음을 직접 확인함). **다만 kotlin-springboot는 java-springboot와 달리 여기서 완전히 자유롭지
-않다** — java-springboot의 `OutboxRelay`/Consumer는 생성자 주입 `List<OutboxEventHandler>`로
+않다** — java-springboot의 `OutboxConsumer`는 생성자 주입 `List<OutboxEventHandler>`로
 구현체를 자동 수집하지만, 이 저장소의 `outbox/EventHandlerRegistry.kt`(2026-07 async 전환 전에는
 `OutboxRelay.kt`)는 각 Domain Event 핸들러를 생성자에 개별 파라미터로 명시적으로 주입받고 그
 생성자에서 즉시 구성하는 `Map<eventType, handler>` 리터럴에 핸들러 항목을 직접 추가한다

@@ -9,7 +9,7 @@
 | 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
 |--------|----------|------------|----------|
 | Domain 단위 테스트 | `Account` 불변식 (16개 테스트 케이스) | 프레임워크 없음 | **있음** (`AccountTest.kt`) |
-| Application 단위 테스트 | `CreateAccountService`/`DepositService` 조율 로직 | `AccountRepository`/`OutboxRelay`를 MockK로 mock | **있음** (`CreateAccountServiceTest.kt`, `DepositServiceTest.kt`) |
+| Application 단위 테스트 | `CreateAccountService`/`DepositService` 조율 로직 | `AccountRepository`를 MockK로 mock | **있음** (`CreateAccountServiceTest.kt`, `DepositServiceTest.kt`) |
 | E2E 테스트 | Controller → Service → DB 전체 경로 | Testcontainers | 있음 (`AccountControllerE2ETest.kt`, `NotificationE2ETest.kt`) |
 
 ---
@@ -125,18 +125,14 @@ class AccountTest {
 package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.AccountRepository
-import com.example.accountservice.outbox.OutboxRelay
 import io.mockk.mockk
 import io.mockk.verify
-import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class CreateAccountServiceTest {
-
     private val accountRepository = mockk<AccountRepository>(relaxed = true)
-    private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
-    private val service = CreateAccountService(accountRepository, outboxRelay)
+    private val service = CreateAccountService(accountRepository)
 
     @Test
     fun `계좌 생성 시 저장되고 결과에 초기 잔액 0이 담긴다`() {
@@ -146,26 +142,17 @@ class CreateAccountServiceTest {
         assertThat(result.balance.amount).isEqualTo(0)
         verify(exactly = 1) { accountRepository.saveAccount(any()) }
     }
-
-    @Test
-    fun `저장 직후 outboxRelay가 드레인된다`() {
-        service.create(CreateAccountCommand("owner-1", "KRW", "owner-1@example.com"))
-
-        verifyOrder {
-            accountRepository.saveAccount(any())
-            outboxRelay.processPending()
-        }
-    }
 }
 ```
+
+Command Service는 `AccountRepository.saveAccount()`를 호출한 뒤 곧바로 반환하므로, Application 단위 테스트는 "저장이 일어났는가"만 검증하면 된다 — Outbox 드레인(`OutboxPoller`/`OutboxConsumer`)은 Command Service가 참조하지 않는 별도 컴포넌트이므로 이 테스트의 mock 대상이 아니다(2026-07 async 전환 전에는 `OutboxRelay.processPending()`이 저장 직후 동기 호출되어 `verifyOrder`로 호출 순서까지 검증했으나, 지금은 그 호출 자체가 없다). `OutboxPoller`/`OutboxConsumer`/`EventHandlerRegistry` 자체의 동작(SQS 발행/수신, 핸들러 라우팅)은 이 파일의 범위가 아니다 — 필요하다면 별도 단위 테스트나 `NotificationE2ETest`(LocalStack SQS/SES 종단 검증)로 다룬다.
 
 이 테스트는 `AccountCreated` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 `Repository.saveAccount()` 안에서 Outbox에 적재되는 시점에 이미 끝난다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/AccountCreatedEventHandler` 등을 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
 
 - `mockk<AccountRepository>(relaxed = true)`: `relaxed = true`는 스텁하지 않은 메서드 호출에 기본값(빈 리스트, `Unit` 등)을 자동 반환한다 — `saveAccount()`처럼 반환값이 없는 메서드를 매번 `every { } returns Unit`으로 채우지 않아도 된다.
-- `verifyOrder { ... }`: MockK의 순서 검증 기능으로 `saveAccount()`가 `processPending()`보다 먼저 호출되는지 확인한다 — Mockito의 `InOrder`에 대응하지만 문법이 더 간결하다.
 - **Repository mock은 `interface` 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지"가 Kotlin에서는 인터페이스 그대로 대응된다.
 - Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
-- `DepositServiceTest.kt`도 동일한 패턴(MockK Repository/OutboxRelay mock)을 따른다 — Command Service마다 Application 단위 테스트를 추가할 때의 템플릿으로 이 두 파일을 그대로 재사용한다.
+- `DepositServiceTest.kt`도 동일한 패턴(MockK로 `AccountRepository`만 mock)을 따른다 — Command Service마다 Application 단위 테스트를 추가할 때의 템플릿으로 이 두 파일을 그대로 재사용한다.
 
 ---
 

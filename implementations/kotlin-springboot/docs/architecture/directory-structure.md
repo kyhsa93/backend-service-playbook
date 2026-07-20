@@ -43,7 +43,9 @@ com.example.accountservice/
     OutboxEvent.kt                    ← @Entity
     OutboxEventJpaRepository.kt
     OutboxWriter.kt                   ← Repository.save() 트랜잭션 안에서 Outbox 행 적재
-    OutboxRelay.kt                    ← Command Service가 저장 직후 동기 호출해 드레인
+    OutboxPoller.kt                    ← @Scheduled 폴링으로 Outbox 테이블 → SQS 발행 (Command Service는 호출하지 않음)
+    OutboxConsumer.kt                  ← SmartLifecycle, SQS long polling → EventHandlerRegistry로 라우팅
+    EventHandlerRegistry.kt            ← eventType → 핸들러 매핑(Map 기반, when 분기 아님)
 
   account/
     domain/                          ← 프레임워크 무의존 (Spring/JPA import 없음, harness domain-purity 검사)
@@ -200,7 +202,7 @@ root가 규정하는 공용 패키지는 대부분 프로젝트 루트(`com.exam
 | `config/` | `@ConfigurationProperties` data class 모음(`AwsProperties`, `SesProperties`) | **있음** — [config.md](config.md) 참조 |
 | `auth/` | JWT 발급/검증, Spring Security 설정 | **있음** — [authentication.md](authentication.md) 참조 |
 | `secret/` | AWS Secrets Manager 연동, TTL 캐시 | **있음** — [secret-manager.md](secret-manager.md) 참조 |
-| `outbox/` | Domain Event Outbox, Writer, Relay | **있음** — [domain-events.md](domain-events.md) 참조 |
+| `outbox/` | Domain Event Outbox, Writer, Poller, Consumer | **있음** — [domain-events.md](domain-events.md) 참조 |
 
 두 번째 BC가 추가되거나 규모가 더 커질 때는 각 패키지 안에서 하위 구조를 더 세분화하면 된다 — 현재는 [shared-modules.md](shared-modules.md)가 정의하는 배치를 그대로 따른다.
 

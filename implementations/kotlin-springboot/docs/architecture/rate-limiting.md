@@ -42,13 +42,11 @@ resilience4j:
 @Service
 class CreateAccountService(
     private val accountRepository: AccountRepository,
-    private val outboxRelay: OutboxRelay,
 ) {
     @RateLimiter(name = "createAccount", fallbackMethod = "createRateLimited")
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
         accountRepository.saveAccount(account)
-        outboxRelay.processPending()
         return CreateAccountResult(/* ... */)
     }
 

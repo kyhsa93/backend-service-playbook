@@ -47,7 +47,6 @@ data class RefundDecision(
 class RequestRefundService(
     private val paymentRepository: PaymentRepository,
     private val refundRepository: RefundRepository,
-    private val outboxRelay: OutboxRelay,
 ) {
     private val refundEligibilityService = RefundEligibilityService()
 
@@ -67,7 +66,8 @@ class RequestRefundService(
         }
 
         refundRepository.saveRefund(refund)
-        outboxRelay.processPending()
+        // 여기서 곧바로 반환한다 — Outbox 드레인(OutboxPoller/OutboxConsumer)은 별도 컴포넌트가
+        // 독립적으로 담당한다(domain-events.md).
         return RequestRefundResult(/* ... */)
     }
 }
