@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.account import Account
 from ...domain.repository import AccountRepository
 
@@ -13,12 +12,12 @@ class CreateAccountCommand:
 
 
 class CreateAccountHandler:
-    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: AccountRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: CreateAccountCommand) -> Account:
         account = Account.create(cmd.requester_id, cmd.currency, cmd.email)
         await self._repo.save(account)
-        await self._outbox_relay.process_pending()
+        # 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
+        # OutboxPoller/OutboxConsumer만의 책임이다(domain-events.md).
         return account

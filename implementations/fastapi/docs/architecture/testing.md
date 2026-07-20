@@ -118,7 +118,7 @@ def test_close_잔액이_0이_아니면_종료할_수_없다() -> None:
 
 **위치**: `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py`.
 
-Handler 생성자가 ABC(`AccountRepository`, `OutboxRelay`) 타입을 받으므로, `unittest.mock`으로 만든 mock 객체를 그대로 주입할 수 있다 — 실제 DB/SES 없이 조율 로직만 검증한다.
+Handler 생성자가 ABC(`AccountRepository`) 타입만 받으므로(Outbox → SQS 발행/수신은 `OutboxPoller`/`OutboxConsumer`가 독립적으로 처리하고 Command Handler는 이를 전혀 참조하지 않는다 — domain-events.md 참고), `unittest.mock`으로 만든 mock 객체를 그대로 주입할 수 있다.
 
 ```python
 # tests/unit/application/test_deposit_handler.py — 실제 코드(발췌)
@@ -136,65 +136,80 @@ def repo() -> AsyncMock:
     return AsyncMock()   # AccountRepository의 모든 async 메서드를 자동으로 mock
 
 
-@pytest.fixture
-def outbox_relay() -> AsyncMock:
-    return AsyncMock()
-
-
 @pytest.mark.asyncio
-async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(repo, outbox_relay) -> None:
+async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(repo) -> None:
     repo.find_accounts.return_value = ([], 0)
-    handler = DepositHandler(repo, outbox_relay)
+    handler = DepositHandler(repo)
 
     with pytest.raises(AccountNotFoundError):
         await handler.execute(DepositCommand(account_id="non-existent", requester_id="owner-1", amount=1000))
 
-    outbox_relay.process_pending.assert_not_called()   # 조회 실패 시 Outbox 드레인도 호출되지 않아야 한다
+    repo.save.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_execute_입금_성공_시_save와_outbox_드레인이_호출된다(repo, outbox_relay) -> None:
+async def test_execute_입금_성공_시_save가_호출된다(repo) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     account.pull_events()   # 생성 이벤트 소진 — deposit 이벤트만 남긴다
     repo.find_accounts.return_value = ([account], 1)
-    handler = DepositHandler(repo, outbox_relay)
+    handler = DepositHandler(repo)
 
     transaction = await handler.execute(
         DepositCommand(account_id=account.account_id, requester_id="owner-1", amount=10000)
     )
 
     assert transaction.type == "DEPOSIT"
-    repo.save.assert_awaited_once_with(account)          # Aggregate 저장 + Outbox 적재는 save() 안에서 한 트랜잭션으로 처리됨
-    outbox_relay.process_pending.assert_awaited_once()   # 저장 직후 Outbox 드레인 호출 확인
+    repo.save.assert_awaited_once_with(account)   # Aggregate 저장 + Outbox 적재는 save() 안에서 한 트랜잭션으로 처리됨
 ```
 
-이 테스트는 `MoneyDeposited` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 Outbox 적재 시점에 이미 커밋되었다는 것과, 드레인 호출 여부만 확인) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/money_deposited_event_handler.py`를 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
+이 테스트는 `MoneyDeposited` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(Command Handler 단위 테스트는 조회 → 도메인 메서드 호출 → 저장까지의 조율 흐름만 본다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/money_deposited_event_handler.py`를 대상으로 별도 단위 테스트하거나, `test_notification_e2e.py`가 `OutboxPoller`/`OutboxConsumer`를 거쳐 실제 LocalStack SES로 종단 검증한다.
 
 **원칙:**
 - `unittest.mock.AsyncMock`(표준 라이브러리, Python 3.8+)이 `async def` 메서드를 자동으로 mock한다 — 별도 `pytest-mock` 없이도 충분하지만, fixture 조합이 많아지면 `pytest-mock`의 `mocker` fixture로 정리해도 좋다.
 - mock은 ABC(`AccountRepository`)의 메서드 시그니처를 따른다 — `AsyncMock()`은 스펙 없이 모든 속성을 mock하므로, 실수 방지를 원하면 `AsyncMock(spec=AccountRepository)`로 시그니처를 강제한다.
-- 검증 대상은 **조율 흐름**(조회 → 도메인 메서드 호출 → 저장 → 알림)이지 비즈니스 규칙이 아니다 — 비즈니스 규칙은 Domain 단위 테스트에서 이미 검증했다.
+- 검증 대상은 **조율 흐름**(조회 → 도메인 메서드 호출 → 저장)이지 비즈니스 규칙이 아니다 — 비즈니스 규칙은 Domain 단위 테스트에서 이미 검증했다.
 
 ---
 
 ## E2E 테스트
 
-`tests/test_account_e2e.py`, `tests/test_notification_e2e.py`가 testcontainers로 실제 Postgres(+ SES 케이스는 LocalStack)를 띄워 HTTP 엔드포인트 전체 경로를 검증한다.
+`tests/test_account_e2e.py`, `tests/test_auth_e2e.py`는 testcontainers로 실제 Postgres만 띄워 HTTP 엔드포인트 전체 경로를 검증한다. `tests/test_card_e2e.py`, `tests/test_payment_e2e.py`, `tests/test_notification_e2e.py`는 Account/Card/Payment 세 BC를 넘나드는 Integration Event나 알림 발송(SES)을 검증해야 하므로, Postgres에 더해 `LocalStackContainer`(SQS, `test_notification_e2e.py`는 SES도 함께)까지 띄우고 `OutboxPoller`/`OutboxConsumer`를 테스트 fixture가 직접 백그라운드 task로 기동한다 — `main.py`의 `lifespan`은 `httpx.ASGITransport`로 구동되는 이 테스트들에서 트리거되지 않기 때문이다.
 
 ```python
-# tests/test_account_e2e.py
+# tests/test_card_e2e.py — 실제 코드(발췌)
 @pytest_asyncio.fixture(scope="session")
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    with PostgresContainer("postgres:16-alpine") as postgres:
-        url = postgres.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
-        engine = create_async_engine(url)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    with (
+        PostgresContainer("postgres:16-alpine") as postgres,
+        LocalStackContainer("localstack/localstack:3.0", region_name="us-east-1").with_services("sqs") as localstack,
+    ):
+        queue_url = create_domain_event_queue(localstack)   # conftest.py — domain-events 큐 + DLQ 생성
+        os.environ["SQS_DOMAIN_EVENT_QUEUE_URL"] = queue_url
         ...
         app.dependency_overrides[get_session] = override_get_session
+        outbox_tasks = start_outbox_background_tasks(session_factory)   # conftest.py
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
+
+        await stop_outbox_background_tasks(outbox_tasks)
+```
+
+Domain Event/Integration Event가 실제로 SQS를 왕복하는 진짜 비동기 파이프라인이므로, API 응답 직후 곧바로 최종 상태를 `assert`할 수 없다 — `tests/conftest.py`의 `wait_until(condition_fn, timeout=15.0, interval=0.2)` 폴링 헬퍼로 조건이 충족될 때까지 기다린다.
+
+```python
+# tests/test_card_e2e.py — 실제 코드(발췌)
+@pytest.mark.asyncio
+async def test_suspending_account_cascades_to_suspend_its_active_cards(client: AsyncClient) -> None:
+    account = await create_account(client, OWNER_ID)
+    card = await issue_card(client, OWNER_ID, account["account_id"])
+
+    await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
+
+    # account.suspended.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리된다 —
+    # 응답 직후 즉시 반영되어 있지 않을 수 있으므로 폴링한다.
+    await wait_until(lambda: _status_is(client, OWNER_ID, card["card_id"], "SUSPENDED"))
 ```
 
 **적용된 원칙:**
@@ -202,6 +217,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 - `httpx.ASGITransport`로 실제 네트워크 소켓 없이 ASGI 앱을 직접 호출 — 빠르면서도 진짜 HTTP 요청/미들웨어 경로를 통과한다.
 - 각 테스트가 독립적인 계좌를 생성해 사용하므로 테스트 간 상태 공유가 없다.
 - `test_notification_e2e.py`는 `LocalStackContainer`로 실제 SES 발송까지 확인한다 — mock이 아닌 실제 발송 프로토콜을 검증한다.
+- **진짜 비동기 이벤트 처리를 검증하는 assertion은 `wait_until()`로 폴링한다**: 즉시 `assert`하면 타이밍에 따라 flaky해지거나(가끔 실패) 항상 통과해버려(아직 처리되지 않은 상태를 우연히 맞음) 실제로는 아무것도 검증하지 못할 수 있다.
 
 `pytest.ini`의 `asyncio_mode = auto`로 모든 `async def test_*`가 자동으로 `pytest-asyncio` 처리 대상이 된다.
 

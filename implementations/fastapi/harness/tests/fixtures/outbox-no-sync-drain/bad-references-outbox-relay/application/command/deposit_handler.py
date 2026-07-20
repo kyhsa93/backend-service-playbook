@@ -9,4 +9,5 @@ class DepositHandler:
     async def execute(self, cmd):
         account = await self._repo.find_by_id(cmd.account_id)
         await self._repo.save(account)
+        await self._outbox_relay.process_pending()
         return account

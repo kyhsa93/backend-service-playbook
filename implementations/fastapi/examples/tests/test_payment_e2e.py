@@ -1,11 +1,14 @@
+import os
 import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+from conftest import create_domain_event_queue, start_outbox_background_tasks, stop_outbox_background_tasks, wait_until
 from httpx import ASGITransport, AsyncClient
 from main import app
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from testcontainers.localstack import LocalStackContainer
 from testcontainers.postgres import PostgresContainer
 
 from src.account.infrastructure.persistence.account_repository import Base
@@ -13,9 +16,9 @@ from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.database import get_session
 
 # 다른 e2e 테스트 파일(test_account_e2e.py/test_card_e2e.py)과 동일하게, 이 파일도 자신만의
-# session-scope `client` fixture로 별도의 Postgres testcontainer를 띄운다 — 파일 간에는
-# 공유하지 않으므로 서로 오염되지 않는다(파일 내 여러 테스트 함수 사이의 오염은 각 테스트가
-# 자신만의 신규 계좌/카드를 만들어 피한다).
+# session-scope `client` fixture로 별도의 Postgres/LocalStack testcontainer를 띄운다 —
+# 파일 간에는 공유하지 않으므로 서로 오염되지 않는다(파일 내 여러 테스트 함수 사이의 오염은
+# 각 테스트가 자신만의 신규 계좌/카드를 만들어 피한다).
 OWNER_ID = "owner-1"
 OTHER_OWNER_ID = "owner-2"
 OWNER_EMAIL = "owner1@example.com"
@@ -28,7 +31,22 @@ def auth_headers(user_id: str) -> dict:
 
 @pytest_asyncio.fixture(scope="session")
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    with PostgresContainer("postgres:16-alpine") as postgres:
+    with (
+        PostgresContainer("postgres:16-alpine") as postgres,
+        LocalStackContainer("localstack/localstack:3.0", region_name="us-east-1").with_services("sqs") as localstack,
+    ):
+        queue_url = create_domain_event_queue(localstack)
+
+        previous_env = {
+            key: os.environ.get(key)
+            for key in ("AWS_REGION", "AWS_ENDPOINT_URL", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+        }
+        os.environ["AWS_REGION"] = "us-east-1"
+        os.environ["AWS_ENDPOINT_URL"] = localstack.get_url()
+        os.environ["AWS_ACCESS_KEY_ID"] = "test"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "test"
+        os.environ["SQS_DOMAIN_EVENT_QUEUE_URL"] = queue_url
+
         url = postgres.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
         engine = create_async_engine(url)
 
@@ -44,12 +62,21 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
         app.dependency_overrides[get_session] = override_get_session
 
+        outbox_tasks = start_outbox_background_tasks(session_factory)
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
 
+        await stop_outbox_background_tasks(outbox_tasks)
         await engine.dispose()
         app.dependency_overrides.pop(get_session, None)
+
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 async def create_account(client: AsyncClient, owner_id: str, currency: str = "KRW") -> dict:
@@ -82,6 +109,11 @@ async def get_account(client: AsyncClient, owner_id: str, account_id: str) -> di
     return response.json()
 
 
+async def _balance_is(client: AsyncClient, owner_id: str, account_id: str, expected: int) -> bool:
+    account = await get_account(client, owner_id, account_id)
+    return account["balance"]["amount"] == expected
+
+
 async def create_payment(client: AsyncClient, owner_id: str, card_id: str, amount: int) -> dict:
     response = await client.post(
         "/payments", json={"card_id": card_id, "amount": amount}, headers=auth_headers(owner_id)
@@ -110,26 +142,26 @@ async def test_create_payment_success_debits_account_immediately(client: AsyncCl
     assert payment["account_id"] == account["account_id"]
     assert payment["amount"] == 30000
 
-    # payment.completed.v1이 같은 요청의 Outbox 드레인 안에서 처리되어 잔액이 즉시
-    # 반영된다 — 별도의 폴링 대기가 필요 없다(test_card_e2e.py의 account.suspended.v1과 동일 패턴).
-    updated_account = await get_account(client, OWNER_ID, account["account_id"])
-    assert updated_account["balance"]["amount"] == 70000
+    # payment.completed.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리되어
+    # 잔액이 반영된다 — 응답 직후 즉시 반영되어 있지 않을 수 있으므로 폴링한다
+    # (test_card_e2e.py의 account.suspended.v1과 동일 패턴).
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
 
 @pytest.mark.asyncio
 async def test_create_payment_inactive_card_returns_400(client: AsyncClient) -> None:
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
-    # 계좌를 정지하면 account.suspended.v1을 Card BC가 구독해 카드도 같은 요청 안에서 정지된다.
+    # 계좌를 정지하면 account.suspended.v1을 Card BC가 구독해 카드도 비동기로 정지된다.
     suspend_response = await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
     assert suspend_response.status_code == 204
 
-    response = await client.post(
-        "/payments", json={"card_id": card["card_id"], "amount": 1000}, headers=auth_headers(OWNER_ID)
-    )
+    async def _card_is_inactive() -> bool:
+        response = await client.post(
+            "/payments", json={"card_id": card["card_id"], "amount": 1000}, headers=auth_headers(OWNER_ID)
+        )
+        return response.status_code == 400 and response.json()["code"] == "PAYMENT_REQUIRES_ACTIVE_CARD"
 
-    assert response.status_code == 400
-    body = response.json()
-    assert body["code"] == "PAYMENT_REQUIRES_ACTIVE_CARD"
+    await wait_until(_card_is_inactive)
 
 
 @pytest.mark.asyncio
@@ -175,16 +207,17 @@ async def test_create_payment_other_owners_card_returns_404(client: AsyncClient)
 async def test_cancel_payment_restores_balance_via_compensating_credit(client: AsyncClient) -> None:
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 30000)
-    assert (await get_account(client, OWNER_ID, account["account_id"]))["balance"]["amount"] == 70000
+    # payment.completed.v1이 비동기로 처리되어 잔액이 반영될 때까지 기다린다.
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
     cancel_response = await client.post(
         f"/payments/{payment['payment_id']}/cancel", json={"reason": "고객 요청"}, headers=auth_headers(OWNER_ID)
     )
     assert cancel_response.status_code == 204
 
-    # payment.cancelled.v1이 같은 요청 안에서 처리되어 보상 크레딧으로 잔액이 즉시 복구된다.
-    restored_account = await get_account(client, OWNER_ID, account["account_id"])
-    assert restored_account["balance"]["amount"] == 100000
+    # payment.cancelled.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리되어
+    # 보상 크레딧으로 잔액이 복구된다.
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 100000))
 
     get_payment_response = await client.get(f"/payments/{payment['payment_id']}", headers=auth_headers(OWNER_ID))
     assert get_payment_response.json()["status"] == "CANCELLED"
@@ -213,7 +246,7 @@ async def test_cancel_pending_or_already_cancelled_payment_returns_400(client: A
 async def test_refund_within_payment_amount_is_approved_and_credits_account(client: AsyncClient) -> None:
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 30000)
-    assert (await get_account(client, OWNER_ID, account["account_id"]))["balance"]["amount"] == 70000
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
     response = await client.post(
         f"/payments/{payment['payment_id']}/refunds",
@@ -226,9 +259,9 @@ async def test_refund_within_payment_amount_is_approved_and_credits_account(clie
     assert body["status"] == "APPROVED"
     assert body["decision_note"] == "환불이 승인되었습니다."
 
-    # refund.approved.v1이 같은 요청 안에서 처리되어 환불 크레딧이 즉시 반영된다.
-    credited_account = await get_account(client, OWNER_ID, account["account_id"])
-    assert credited_account["balance"]["amount"] == 100000
+    # refund.approved.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리되어
+    # 환불 크레딧이 반영된다.
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 100000))
 
 
 @pytest.mark.asyncio
@@ -248,9 +281,9 @@ async def test_refund_exceeding_payment_amount_is_rejected_with_201(client: Asyn
     assert body["status"] == "REJECTED"
     assert body["decision_note"] == "환불 금액은 결제 금액을 초과할 수 없습니다."
 
-    # 거부된 환불은 Domain Event가 없으므로 잔액에 아무 영향을 주지 않는다.
-    unchanged_account = await get_account(client, OWNER_ID, account["account_id"])
-    assert unchanged_account["balance"]["amount"] == 70000
+    # 거부된 환불은 Domain Event가 없으므로 잔액에 아무 영향을 주지 않는다 — 다만 결제
+    # 자체의 debit(payment.completed.v1)은 비동기이므로, 70000으로 반영될 때까지 기다린다.
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
 
 @pytest.mark.asyncio

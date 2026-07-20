@@ -3,13 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....account.domain.repository import AccountQuery
 from ....account.infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
-from ....account.interface.rest.account_router import _outbox_relay
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 from ....card.domain.repository import CardQuery
 from ....card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
 from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
-from ....outbox.outbox_relay import OutboxRelay
 from ...application.adapter.account_adapter import AccountAdapter
 from ...application.adapter.card_adapter import CardAdapter
 from ...application.command.cancel_payment_handler import CancelPaymentCommand, CancelPaymentHandler
@@ -78,9 +76,8 @@ async def create_payment(
     repo: PaymentRepository = Depends(_repo),
     card_adapter: CardAdapter = Depends(_card_adapter),
     account_adapter: AccountAdapter = Depends(_account_adapter),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> PaymentResponse:
-    payment = await CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay).execute(
+    payment = await CreatePaymentHandler(repo, card_adapter, account_adapter).execute(
         CreatePaymentCommand(requester_id=current_user.user_id, card_id=body.card_id, amount=body.amount)
     )
     return PaymentResponse(
@@ -102,9 +99,8 @@ async def cancel_payment(
     body: CancelPaymentRequest,
     current_user: CurrentUser = Depends(get_current_user),
     repo: PaymentRepository = Depends(_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
-    await CancelPaymentHandler(repo, outbox_relay).execute(
+    await CancelPaymentHandler(repo).execute(
         CancelPaymentCommand(requester_id=current_user.user_id, payment_id=payment_id, reason=body.reason)
     )
 
@@ -167,12 +163,11 @@ async def request_refund(
     current_user: CurrentUser = Depends(get_current_user),
     payment_repo: PaymentRepository = Depends(_repo),
     refund_repo: RefundRepository = Depends(_refund_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> RefundResponse:
     # 환불 거부는 도메인 관점에서 유효한 상태 전이다 — RequestRefundHandler는 거부 시에도
     # 예외를 던지지 않고 REJECTED 상태의 Refund를 반환하므로, 이 엔드포인트는 승인/거부
     # 모두 201 + status 필드로 응답한다(4xx가 아니다).
-    refund = await RequestRefundHandler(payment_repo, refund_repo, outbox_relay).execute(
+    refund = await RequestRefundHandler(payment_repo, refund_repo).execute(
         RequestRefundCommand(
             requester_id=current_user.user_id, payment_id=payment_id, amount=body.amount, reason=body.reason
         )

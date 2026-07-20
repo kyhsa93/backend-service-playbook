@@ -17,7 +17,7 @@ services:
     image: localstack/localstack:3.0
     ports: ['4566:4566']
     environment:
-      SERVICES: ses,secretsmanager
+      SERVICES: ses,secretsmanager,sqs
       DEFAULT_REGION: us-east-1
     volumes: ['./localstack:/etc/localstack/init/ready.d']
     healthcheck:
@@ -35,6 +35,7 @@ services:
       # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
       DATABASE_URL: postgresql+asyncpg://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
     depends_on:
       database:
         condition: service_healthy

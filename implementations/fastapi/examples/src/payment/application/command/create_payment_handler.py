@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import (
     InsufficientBalanceError,
     LinkedAccountNotFoundError,
@@ -27,12 +26,10 @@ class CreatePaymentHandler:
         repo: PaymentRepository,
         card_adapter: CardAdapter,
         account_adapter: AccountAdapter,
-        outbox_relay: OutboxRelay,
     ) -> None:
         self._repo = repo
         self._card_adapter = card_adapter
         self._account_adapter = account_adapter
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: CreatePaymentCommand) -> Payment:
         # 동기 Adapter(ACL)로 카드가 존재·활성 상태인지 확인 — 응답(결제 가부)에 필요하므로 동기 호출.
@@ -59,5 +56,4 @@ class CreatePaymentHandler:
         payment.complete()
 
         await self._repo.save(payment)
-        await self._outbox_relay.process_pending()
         return payment

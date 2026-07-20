@@ -35,7 +35,6 @@ from dataclasses import dataclass
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountRepository
 from ...domain.transaction import Transaction
-from ....outbox.outbox_relay import OutboxRelay
 
 
 @dataclass
@@ -46,9 +45,8 @@ class DepositCommand:
 
 
 class DepositHandler:
-    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: AccountRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
         accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
@@ -57,11 +55,10 @@ class DepositHandler:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
         await self._repo.save(account)          # Aggregate 저장 + Outbox 적재를 같은 트랜잭션으로 커밋
-        await self._outbox_relay.process_pending()  # 커밋 직후 동기적으로 Outbox 드레인
-        return transaction
+        return transaction   # 저장 후 곧바로 반환 — Outbox 드레인은 OutboxPoller/OutboxConsumer의 몫
 ```
 
-**흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출(`account.deposit()`) → Repository로 저장(Aggregate 상태 + Outbox 행을 한 트랜잭션에 커밋) → 저장 직후 `OutboxRelay.process_pending()`으로 드레인. Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](layer-architecture.md), [domain-events.md](domain-events.md) 참조.
+**흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출(`account.deposit()`) → Repository로 저장(Aggregate 상태 + Outbox 행을 한 트랜잭션에 커밋) → 곧바로 반환. Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`가 처리한다(Command Handler는 이를 호출하지 않는다 — harness의 `outbox-no-sync-drain` 규칙이 위반을 잡아낸다). Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](layer-architecture.md), [domain-events.md](domain-events.md) 참조.
 
 ### Query + QueryHandler — 읽기 전용 `AccountQuery`에만 의존
 
@@ -176,9 +173,8 @@ async def deposit(
     body: DepositRequest,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, outbox_relay).execute(
+    transaction = await DepositHandler(repo).execute(
         DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     return TransactionResponse(...)
@@ -224,7 +220,7 @@ Bus를 도입해도 Handler 클래스 자체(입력 = `@dataclass` Command/Query
 
 ## EventHandler — Domain Event 후속 처리
 
-Command Handler는 `notify()`를 직접 호출하지 않는다 — `repo.save()`가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Handler는 그 직후 `OutboxRelay.process_pending()`을 한 번 호출해 Outbox를 드레인할 뿐이다. `event_type`별 후속 처리(현재는 알림 발송, 향후 감사 로그·통계 집계 등이 늘어나도 마찬가지)는 `application/event/<event>_event_handler.py`로 분리되어 있다.
+Command Handler는 `notify()`를 직접 호출하지 않는다 — `repo.save()`가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Handler는 저장 후 곧바로 반환한다(`OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 호출하지 않는다). Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`가 처리하며, `event_type`별 후속 처리(현재는 알림 발송, 향후 감사 로그·통계 집계 등이 늘어나도 마찬가지)는 `application/event/<event>_event_handler.py`로 분리되어 있다.
 
 → 상세 구현은 [domain-events.md](domain-events.md) 참조.
 

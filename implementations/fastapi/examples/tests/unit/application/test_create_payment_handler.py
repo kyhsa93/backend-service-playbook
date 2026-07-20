@@ -30,20 +30,13 @@ def account_adapter() -> AsyncMock:
     return AsyncMock()
 
 
-@pytest.fixture
-def outbox_relay() -> AsyncMock:
-    return AsyncMock()
-
-
 @pytest.mark.asyncio
-async def test_execute_활성_카드와_충분한_잔액이면_결제가_완료로_저장된다(
-    repo, card_adapter, account_adapter, outbox_relay
-) -> None:
+async def test_execute_활성_카드와_충분한_잔액이면_결제가_완료로_저장된다(repo, card_adapter, account_adapter) -> None:
     card_adapter.find_card.return_value = CardView(card_id="card-1", account_id="account-1", active=True)
     account_adapter.find_account.return_value = AccountView(
         account_id="account-1", active=True, balance_amount=10000, currency="KRW"
     )
-    handler = CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay)
+    handler = CreatePaymentHandler(repo, card_adapter, account_adapter)
 
     payment = await handler.execute(CreatePaymentCommand(requester_id="owner-1", card_id="card-1", amount=5000))
 
@@ -52,13 +45,12 @@ async def test_execute_활성_카드와_충분한_잔액이면_결제가_완료�
     assert payment.owner_id == "owner-1"
     assert payment.amount == 5000
     repo.save.assert_awaited_once_with(payment)
-    outbox_relay.process_pending.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_execute_카드가_없으면_LinkedCardNotFoundError(repo, card_adapter, account_adapter, outbox_relay) -> None:
+async def test_execute_카드가_없으면_LinkedCardNotFoundError(repo, card_adapter, account_adapter) -> None:
     card_adapter.find_card.return_value = None
-    handler = CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay)
+    handler = CreatePaymentHandler(repo, card_adapter, account_adapter)
 
     with pytest.raises(LinkedCardNotFoundError):
         await handler.execute(CreatePaymentCommand(requester_id="owner-1", card_id="card-1", amount=5000))
@@ -68,11 +60,9 @@ async def test_execute_카드가_없으면_LinkedCardNotFoundError(repo, card_ad
 
 
 @pytest.mark.asyncio
-async def test_execute_비활성_카드면_PaymentRequiresActiveCardError(
-    repo, card_adapter, account_adapter, outbox_relay
-) -> None:
+async def test_execute_비활성_카드면_PaymentRequiresActiveCardError(repo, card_adapter, account_adapter) -> None:
     card_adapter.find_card.return_value = CardView(card_id="card-1", account_id="account-1", active=False)
-    handler = CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay)
+    handler = CreatePaymentHandler(repo, card_adapter, account_adapter)
 
     with pytest.raises(PaymentRequiresActiveCardError):
         await handler.execute(CreatePaymentCommand(requester_id="owner-1", card_id="card-1", amount=5000))
@@ -81,12 +71,10 @@ async def test_execute_비활성_카드면_PaymentRequiresActiveCardError(
 
 
 @pytest.mark.asyncio
-async def test_execute_연결계좌가_없으면_LinkedAccountNotFoundError(
-    repo, card_adapter, account_adapter, outbox_relay
-) -> None:
+async def test_execute_연결계좌가_없으면_LinkedAccountNotFoundError(repo, card_adapter, account_adapter) -> None:
     card_adapter.find_card.return_value = CardView(card_id="card-1", account_id="account-1", active=True)
     account_adapter.find_account.return_value = None
-    handler = CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay)
+    handler = CreatePaymentHandler(repo, card_adapter, account_adapter)
 
     with pytest.raises(LinkedAccountNotFoundError):
         await handler.execute(CreatePaymentCommand(requester_id="owner-1", card_id="card-1", amount=5000))
@@ -95,14 +83,12 @@ async def test_execute_연결계좌가_없으면_LinkedAccountNotFoundError(
 
 
 @pytest.mark.asyncio
-async def test_execute_비활성_계좌면_PaymentRequiresActiveAccountError(
-    repo, card_adapter, account_adapter, outbox_relay
-) -> None:
+async def test_execute_비활성_계좌면_PaymentRequiresActiveAccountError(repo, card_adapter, account_adapter) -> None:
     card_adapter.find_card.return_value = CardView(card_id="card-1", account_id="account-1", active=True)
     account_adapter.find_account.return_value = AccountView(
         account_id="account-1", active=False, balance_amount=10000, currency="KRW"
     )
-    handler = CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay)
+    handler = CreatePaymentHandler(repo, card_adapter, account_adapter)
 
     with pytest.raises(PaymentRequiresActiveAccountError):
         await handler.execute(CreatePaymentCommand(requester_id="owner-1", card_id="card-1", amount=5000))
@@ -111,14 +97,12 @@ async def test_execute_비활성_계좌면_PaymentRequiresActiveAccountError(
 
 
 @pytest.mark.asyncio
-async def test_execute_잔액이_부족하면_InsufficientBalanceError(
-    repo, card_adapter, account_adapter, outbox_relay
-) -> None:
+async def test_execute_잔액이_부족하면_InsufficientBalanceError(repo, card_adapter, account_adapter) -> None:
     card_adapter.find_card.return_value = CardView(card_id="card-1", account_id="account-1", active=True)
     account_adapter.find_account.return_value = AccountView(
         account_id="account-1", active=True, balance_amount=1000, currency="KRW"
     )
-    handler = CreatePaymentHandler(repo, card_adapter, account_adapter, outbox_relay)
+    handler = CreatePaymentHandler(repo, card_adapter, account_adapter)
 
     with pytest.raises(InsufficientBalanceError):
         await handler.execute(CreatePaymentCommand(requester_id="owner-1", card_id="card-1", amount=5000))

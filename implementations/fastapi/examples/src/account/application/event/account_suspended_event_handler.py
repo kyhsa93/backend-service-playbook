@@ -14,7 +14,8 @@ class AccountSuspendedEventHandler:
     application/event/의 EventHandler는 OutboxWriter를 직접 사용할 수 있는 유일한 예외로,
     여기서 외부 BC(Card 등)용 Integration Event(account.suspended.v1)로 변환해 같은 세션의
     Outbox에 적재한다(Aggregate가 Integration Event를 직접 만들지 않는다 — 변환 지점은 항상
-    EventHandler다). 이 행은 process_pending()의 다음 패스에서 함께 드레인된다.
+    EventHandler다). 이 행은 다음 OutboxPoller tick(최대 1초 뒤)에 SQS로 발행되고, 그 뒤
+    OutboxConsumer가 수신해 Card BC의 반응 핸들러를 호출한다.
     """
 
     def __init__(self, notification_service: NotificationService, outbox_writer: OutboxWriter) -> None:

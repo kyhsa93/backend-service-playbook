@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountRepository
 
@@ -12,9 +11,8 @@ class ReactivateAccountCommand:
 
 
 class ReactivateAccountHandler:
-    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: AccountRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: ReactivateAccountCommand) -> None:
         accounts, _ = await self._repo.find_accounts(
@@ -25,4 +23,3 @@ class ReactivateAccountHandler:
             raise AccountNotFoundError(cmd.account_id)
         account.reactivate()
         await self._repo.save(account)
-        await self._outbox_relay.process_pending()

@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountRepository
 from ...domain.transaction import Transaction
@@ -14,9 +13,8 @@ class WithdrawCommand:
 
 
 class WithdrawHandler:
-    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: AccountRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: WithdrawCommand) -> Transaction:
         accounts, _ = await self._repo.find_accounts(
@@ -27,5 +25,4 @@ class WithdrawHandler:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.withdraw(cmd.amount)
         await self._repo.save(account)
-        await self._outbox_relay.process_pending()
         return transaction

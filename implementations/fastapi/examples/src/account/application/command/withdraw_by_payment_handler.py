@@ -20,10 +20,10 @@ class WithdrawByPaymentHandler:
     멱등성과 달리 금액 이동은 반복 적용하면 잔액이 계속 줄어들므로 "이미 처리했는지"를
     확인해야 한다(Level 2 Ledger, domain-events.md 참고).
 
-    이 Handler는 Outbox 릴레이 객체를 직접 참조하지 않는다 — account.withdraw()가 남기는
-    MoneyWithdrawn Domain Event는, 이 반응을 촉발한 최초 process_pending() 호출의 다음
-    패스에서 함께 드레인된다(outbox_relay.py의 다중 패스 드레인 설계 참고). Card의
-    CancelCardsByAccountHandler/SuspendCardsByAccountHandler도 동일한 이유로 그 객체를
+    이 Handler는 Outbox 관련 객체를 전혀 참조하지 않는다 — account.withdraw()가 남기는
+    MoneyWithdrawn Domain Event는 OutboxPoller가 다음 tick에 SQS로 발행하고 OutboxConsumer가
+    독립적으로 수신해 처리한다(outbox_poller.py/outbox_consumer.py 참고). Card의
+    CancelCardsByAccountHandler/SuspendCardsByAccountHandler도 동일한 이유로 그 객체들을
     의존하지 않는다.
     """
 

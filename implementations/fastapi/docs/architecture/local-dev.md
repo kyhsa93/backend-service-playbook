@@ -2,18 +2,19 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/local-dev.md](../../../../docs/architecture/local-dev.md)
 
-이 항목은 root 문서 기준에 맞게 구현되어 있다 — `examples/docker-compose.yml`, `examples/localstack/init-ses.sh`, `examples/localstack/init-secrets.sh`가 실제 root 원칙(Docker Compose 인프라 + LocalStack + 앱 컨테이너 프로필)을 따른다.
+이 항목은 root 문서 기준에 맞게 구현되어 있다 — `examples/docker-compose.yml`, `examples/localstack/init-ses.sh`, `examples/localstack/init-secrets.sh`, `examples/localstack/init-sqs.sh`가 실제 root 원칙(Docker Compose 인프라 + LocalStack + 앱 컨테이너 프로필)을 따른다.
 
 ## 현재 구성
 
 ```
 implementations/fastapi/examples/
-  docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager) + app(profiles: [app])
+  docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager, SQS) + app(profiles: [app])
   .env.example                ← 커밋되는 템플릿 — 이를 복사해 .env.development를 만든다
   .gitignore                  ← .env* 패턴으로 로컬 전용 값을 커밋에서 제외
   localstack/
     init-ses.sh               ← SES 발신자 이메일 검증 스크립트
     init-secrets.sh            ← Secrets Manager에 app/jwt 시크릿 생성
+    init-sqs.sh                ← OutboxPoller/OutboxConsumer가 쓰는 domain-events 큐 + DLQ 생성
 ```
 
 ```yaml
@@ -37,7 +38,7 @@ services:
     image: localstack/localstack:3.0
     ports: ['4566:4566']
     environment:
-      SERVICES: ses,secretsmanager
+      SERVICES: ses,secretsmanager,sqs
       DEFAULT_REGION: us-east-1
     volumes: ['./localstack:/etc/localstack/init/ready.d']
     healthcheck:
@@ -55,6 +56,7 @@ services:
       # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
       DATABASE_URL: postgresql+asyncpg://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
     depends_on:
       database:
         condition: service_healthy
@@ -85,10 +87,28 @@ awslocal secretsmanager create-secret \
   --secret-string '{"secret":"local-dev-secret"}'
 ```
 
+```bash
+# localstack/init-sqs.sh — DLQ 우선 생성 후 RedrivePolicy로 메인 큐에 연결
+#!/bin/sh
+set -e
+
+awslocal sqs create-queue --queue-name domain-events-dlq
+
+DLQ_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/domain-events-dlq \
+  --attribute-names QueueArn \
+  --query 'Attributes.QueueArn' --output text)
+
+awslocal sqs create-queue --queue-name domain-events \
+  --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
+```
+
+DLQ + `maxReceiveCount=3`은 [scheduling.md — DLQ 모니터링](../../../../docs/architecture/scheduling.md#dlq-모니터링)이 요구하는 컨벤션을 그대로 따른다 — nestjs 구현의 `localstack/init-sqs.sh`와 큐 이름·RedrivePolicy가 동일하다(언어 간 일관성).
+
 **이미 root 원칙을 정확히 지키고 있는 부분:**
 - 모든 인프라 서비스에 `healthcheck`가 설정되어 있다 (`pg_isready`, `awslocal ses list-identities`).
 - LocalStack 이미지 버전이 `3.0`으로 고정되어 있다 (`latest` 사용 안 함).
-- 초기화 스크립트(`init-ses.sh`, `init-secrets.sh`)가 저장소에 커밋되어 모든 개발자가 동일한 환경을 재현할 수 있다.
+- 초기화 스크립트(`init-ses.sh`, `init-secrets.sh`, `init-sqs.sh`)가 저장소에 커밋되어 모든 개발자가 동일한 환경을 재현할 수 있다.
 - SES 발신자 이메일 검증을 초기화 스크립트에서 미리 처리한다 — LocalStack의 SES 에뮬레이터도 실제 SES처럼 미검증 발신자를 거부하기 때문이다 (`test_notification_e2e.py`의 주석 참조).
 - `app` 서비스가 `profiles: [app]`로 분리되어 있어, 기본 `docker compose up`은 인프라만 기동하고 앱은 호스트에서 직접 실행하는 워크플로우를 그대로 유지하면서도, 필요하면 앱까지 컨테이너로 기동할 수 있다.
 - `app` 서비스는 `container.md`의 Dockerfile을 `build: .`로 참조하고, 컨테이너 네트워크 안에서는 `localhost` 대신 서비스명(`database`, `localstack`)으로 접속하도록 환경 변수를 오버라이드한다.
@@ -121,6 +141,7 @@ AWS_ENDPOINT_URL=http://localhost:4566
 AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
+SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret
 APP_ENV=development
@@ -159,20 +180,22 @@ docker compose --profile app down -v
 
 ## AWS SDK — LocalStack 연동
 
-`SesNotificationService`(`infrastructure/notification/notification_service.py`)와 `AwsSecretService`(`common/aws_secret_service.py`)는 root 원칙대로 환경 변수 기반 엔드포인트 분기를 구현하고 있다.
+`SesNotificationService`(`infrastructure/notification/notification_service.py`), `AwsSecretService`(`common/aws_secret_service.py`), `OutboxPoller`/`OutboxConsumer`(`outbox/outbox_poller.py`/`outbox_consumer.py`)는 모두 `AwsConfig.client_kwargs()`(`config/aws_config.py`)를 통해 같은 환경 변수 기반 엔드포인트 분기를 공유한다.
 
 ```python
 async with self._boto_session.client(
-    "ses",
+    "sqs",  # 또는 "ses"/"secretsmanager" — 서비스명만 다르고 나머지는 동일하다
     region_name=os.getenv("AWS_REGION", "us-east-1"),
     endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,   # 있으면 LocalStack, 없으면 실제 AWS
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
-) as ses_client:
+) as sqs_client:
     ...
 ```
 
-`test_notification_e2e.py`는 `testcontainers.localstack.LocalStackContainer`로 이 흐름 전체(계좌 생성 → SES 발송 → LocalStack 메시지 확인)를 검증한다 — [testing.md](testing.md)의 E2E 테스트 섹션 참조.
+큐 URL은 `config/sqs_config.py`의 `SqsConfig.domain_event_queue_url`이 `SQS_DOMAIN_EVENT_QUEUE_URL` 환경 변수에서 읽는다.
+
+`test_notification_e2e.py`/`test_card_e2e.py`/`test_payment_e2e.py`는 `testcontainers.localstack.LocalStackContainer`로 이 흐름 전체(SES 발송·SQS 발행/수신 → LocalStack 메시지 확인)를 검증한다 — [testing.md](testing.md)의 E2E 테스트 섹션 참조.
 
 ---
 

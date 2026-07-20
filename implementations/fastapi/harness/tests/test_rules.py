@@ -24,7 +24,7 @@ from rules import (  # noqa: E402
     handler_placement,
     layer_dependency,
     no_notification_dependency_in_command,
-    outbox_drain_order,
+    outbox_no_sync_drain,
     repository_abc,
     repository_impl,
     shared_infra,
@@ -61,7 +61,7 @@ def assert_has_failure(result) -> None:
         (event_placement, "event-placement/good"),
         (layer_dependency, "layer-dependency/good"),
         (no_notification_dependency_in_command, "no-notification-dependency-in-command/good"),
-        (outbox_drain_order, "outbox-drain-order/good"),
+        (outbox_no_sync_drain, "outbox-no-sync-drain/good"),
         (cqrs_pattern, "cqrs-pattern/good"),
     ],
 )
@@ -82,8 +82,8 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (event_placement, "event-placement/bad-wrong-consumer-dir"),
         (layer_dependency, "layer-dependency/bad-imports-infra"),
         (no_notification_dependency_in_command, "no-notification-dependency-in-command/bad-has-dependency"),
-        (outbox_drain_order, "outbox-drain-order/bad-missing-process-pending"),
-        (outbox_drain_order, "outbox-drain-order/bad-wrong-order"),
+        (outbox_no_sync_drain, "outbox-no-sync-drain/bad-references-outbox-relay"),
+        (outbox_no_sync_drain, "outbox-no-sync-drain/bad-calls-drain-method"),
         (cqrs_pattern, "cqrs-pattern/bad-imports-repository"),
     ],
 )

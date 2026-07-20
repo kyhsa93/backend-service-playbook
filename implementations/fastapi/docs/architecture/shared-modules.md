@@ -34,7 +34,9 @@ examples/src/
   outbox/                  ← 공유 인프라: Outbox 패턴 (domain-events.md 참조)
     outbox_model.py       ← OutboxModel(Base) — account_repository.py의 Base를 그대로 재사용
     outbox_writer.py       ← OutboxWriter — Repository.save()가 같은 세션에서 호출
-    outbox_relay.py        ← OutboxRelay — Command Handler가 save() 직후 동기 호출
+    outbox_poller.py       ← OutboxPoller — Outbox → SQS 발행, main.py의 lifespan이 백그라운드 task로 기동
+    outbox_consumer.py     ← OutboxConsumer — SQS → EventHandler 수신, 마찬가지로 백그라운드 task
+    event_handlers.py      ← build_event_handlers() — eventType → 핸들러 dict 조립(composition root)
   account/                ← 유일한 도메인 (Bounded Context)
     domain/
     application/
@@ -112,4 +114,4 @@ from ....database import get_session                                            
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — `common/correlation.py`, Domain 레이어 참조 금지 원칙
 - [secret-manager.md](secret-manager.md) — `common/secret_service.py`/`common/aws_secret_service.py`
 - [authentication.md](authentication.md) — `auth/` 4레이어 구조 상세
-- [domain-events.md](domain-events.md) — `outbox/` 공유 패키지의 실제 구현(`outbox_model.py`/`outbox_writer.py`/`outbox_relay.py`)
+- [domain-events.md](domain-events.md) — `outbox/` 공유 패키지의 실제 구현(`outbox_model.py`/`outbox_writer.py`/`outbox_poller.py`/`outbox_consumer.py`/`event_handlers.py`)

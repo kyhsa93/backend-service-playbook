@@ -1,9 +1,14 @@
 """[7] shared-infra: outbox·task-queue
 
-outbox 트리거는 "OutboxRelay를 실제로 참조하는 코드가 있는가"로 판단한다 — 파일명에
+outbox 트리거는 "OutboxWriter를 실제로 참조하는 코드가 있는가"로 판단한다 — 파일명에
 우연히 "outbox" 문자열이 들어간 무관한 파일에 낚이지 않기 위함이다(과거 버그: 실제
 파일들이 이미 전부 src/outbox/ 안에 있어서 "밖에 있는 파일 찾기" 조건이 항상 거짓이
 되어 "outbox 패턴 없음"이라는 거짓 SKIP을 내고 있었다).
+
+2026-07 async 전환으로 outbox 구성 요소가 OutboxWriter(적재)+OutboxPoller(발행)+
+OutboxConsumer(수신)로 바뀌었다 — 예전에는 OutboxWriter+OutboxRelay(적재+동기 드레인)
+2개였다. 트리거 심볼도 OutboxRelay(더 이상 존재하지 않는 클래스)에서 OutboxWriter로
+옮겼다.
 """
 
 from __future__ import annotations
@@ -17,20 +22,23 @@ def check(root: str, py_files: list[str]) -> RuleResult:
     result = RuleResult("shared-infra")
     src_dir = os.path.join(root, "src")
 
-    uses_outbox_relay = any("OutboxRelay" in read(f) for f in py_files)
+    uses_outbox_writer = any("OutboxWriter" in read(f) for f in py_files)
     has_task_file = any("task_queue" in os.path.basename(f) and "/task-queue/" not in norm(f) for f in py_files)
 
-    if uses_outbox_relay:
+    if uses_outbox_writer:
         outbox_dir = os.path.join(src_dir, "outbox") if os.path.isdir(src_dir) else None
         if not outbox_dir or not os.path.isdir(outbox_dir):
-            result.add(failed("src/outbox/", "OutboxRelay를 참조하지만 src/outbox/ 디렉토리가 없음"))
+            result.add(failed("src/outbox/", "OutboxWriter를 참조하지만 src/outbox/ 디렉토리가 없음"))
         else:
-            has_writer = os.path.isfile(os.path.join(outbox_dir, "outbox_writer.py"))
-            has_relay = os.path.isfile(os.path.join(outbox_dir, "outbox_relay.py"))
-            if has_writer and has_relay:
-                result.add(passed("src/outbox/ (OutboxWriter/OutboxRelay 구현 확인)"))
+            checks = {
+                "outbox_writer.py": os.path.isfile(os.path.join(outbox_dir, "outbox_writer.py")),
+                "outbox_poller.py": os.path.isfile(os.path.join(outbox_dir, "outbox_poller.py")),
+                "outbox_consumer.py": os.path.isfile(os.path.join(outbox_dir, "outbox_consumer.py")),
+            }
+            if all(checks.values()):
+                result.add(passed("src/outbox/ (OutboxWriter/OutboxPoller/OutboxConsumer 구현 확인)"))
             else:
-                missing = [n for n, ok in (("outbox_writer.py", has_writer), ("outbox_relay.py", has_relay)) if not ok]
+                missing = [name for name, ok in checks.items() if not ok]
                 result.add(
                     failed(
                         "src/outbox/",

@@ -7,23 +7,25 @@ Aggregate(단일 status 필드, PENDING→ACTIVE/CANCELLED) + CQRS Command/Query
 마이그레이션까지 한 번에 생성한다.
 
 FastAPI에는 NestJS의 CommandBus/CqrsModule/@Module 같은 DI 컨테이너가 없다 — 대신 Depends
-팩토리 함수가 조립 지점이고, OutboxRelay는 프로세스 전체에 단 하나만 존재하는 공유 인스턴스다
-(도메인마다 전용 OutboxRelay를 두는 NestJS와 다르다). 그래서 이 생성기는 새 도메인 디렉토리를
-만드는 것 외에, 이미 존재하는 세 파일 — main.py(라우터 등록), account_router.py(공유
-OutboxRelay 조립 지점인 `_outbox_relay()`), migrations/env.py(Alembic이 감지할 모델 import) —
-을 함께 수정해야 한다. 기본값은 수정하지 않고 붙여넣을 스니펫만 출력하며, --wire를 줘야 실제
-파일을 고친다 (기존 프로젝트 파일을 임의로 고치는 걸 원치 않을 수 있어 안전한 쪽을 기본값으로
-둔다).
+팩토리 함수가 조립 지점이다. Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer가 앱 전체에서
+독립적으로 주기 실행되며(Command Handler는 이를 전혀 참조하지 않는다 — domain-events.md의
+동기 드레인 금지 원칙), eventType → 핸들러 라우팅은 `src/outbox/event_handlers.py`의
+`build_event_handlers()` 하나가 프로세스 전체의 단일 조립 지점(composition root)이다(도메인마다
+전용 Relay를 두는 예전 방식과 다르다). 그래서 이 생성기는 새 도메인 디렉토리를 만드는 것 외에,
+이미 존재하는 세 파일 — main.py(라우터 등록), event_handlers.py(공유 composition root인
+`build_event_handlers()`), migrations/env.py(Alembic이 감지할 모델 import) — 을 함께 수정해야
+한다. 기본값은 수정하지 않고 붙여넣을 스니펫만 출력하며, --wire를 줘야 실제 파일을 고친다
+(기존 프로젝트 파일을 임의로 고치는 걸 원치 않을 수 있어 안전한 쪽을 기본값으로 둔다).
 
 사용법:
   python3 scripts/create_domain.py <PascalCaseDomainName> [--out <targetSrcDir>] [--wire]
 
 예:
   python3 scripts/create_domain.py Coupon
-    → ../examples/src/coupon/ 아래에 생성(스크립트 기본 대상), main.py/account_router.py/
+    → ../examples/src/coupon/ 아래에 생성(스크립트 기본 대상), main.py/event_handlers.py/
       migrations/env.py는 건드리지 않고 붙여넣을 스니펫만 출력
   python3 scripts/create_domain.py Coupon --out /tmp/scratch-app/src --wire
-    → 지정한 src/ 아래 생성 + main.py/account_router.py/migrations/env.py/migrations/versions/
+    → 지정한 src/ 아래 생성 + main.py/event_handlers.py/migrations/env.py/migrations/versions/
       까지 자동 배선
 
 검증: 생성 뒤 `ruff check .`, `ruff format --check .`, `bash harness.sh <projectRoot>`로 확인한다.
@@ -248,7 +250,6 @@ class {n.Domain}Repository({n.Domain}Query, ABC):
     )
     files[f"{n.domain}/application/command/create_{n.domain}_handler.py"] = f"""from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 {create_handler_local_imports}
 
 
@@ -258,20 +259,17 @@ class Create{n.Domain}Command:
 
 
 class Create{n.Domain}Handler:
-    def __init__(self, repo: {n.Domain}Repository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: {n.Domain}Repository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: Create{n.Domain}Command) -> {n.Domain}:
         {n.domain} = {n.Domain}.create(owner_id=cmd.requester_id)
         await self._repo.save({n.domain})
-        await self._outbox_relay.process_pending()
         return {n.domain}
 """
 
     files[f"{n.domain}/application/command/cancel_{n.domain}_handler.py"] = f"""from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import {n.Domain}NotFoundError
 from ...domain.repository import {n.Domain}Repository
 
@@ -284,9 +282,8 @@ class Cancel{n.Domain}Command:
 
 
 class Cancel{n.Domain}Handler:
-    def __init__(self, repo: {n.Domain}Repository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: {n.Domain}Repository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: Cancel{n.Domain}Command) -> None:
         {n.domains}, _ = await self._repo.find_{n.domains}(
@@ -297,7 +294,6 @@ class Cancel{n.Domain}Handler:
             raise {n.Domain}NotFoundError(cmd.{n.domain}_id)
         {n.domain}.cancel(cmd.reason)
         await self._repo.save({n.domain})
-        await self._outbox_relay.process_pending()
 """
 
     # ---- application/query/ ----
@@ -492,11 +488,9 @@ class Get{n.Domain}Response(BaseModel):
     files[f"{n.domain}/interface/rest/{n.domain}_router.py"] = f'''from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....account.interface.rest.account_router import _outbox_relay
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
-from ....outbox.outbox_relay import OutboxRelay
 from ...application.command.cancel_{n.domain}_handler import Cancel{n.Domain}Command, Cancel{n.Domain}Handler
 from ...application.command.create_{n.domain}_handler import Create{n.Domain}Command, Create{n.Domain}Handler
 from ...application.query.get_{n.domain}_handler import Get{n.Domain}Handler, Get{n.Domain}Query
@@ -521,9 +515,8 @@ async def create_{n.domain}(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemy{n.Domain}Repository = Depends(_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> Create{n.Domain}Response:
-    {n.domain} = await Create{n.Domain}Handler(repo, outbox_relay).execute(
+    {n.domain} = await Create{n.Domain}Handler(repo).execute(
         Create{n.Domain}Command(requester_id=current_user.user_id)
     )
     return Create{n.Domain}Response(
@@ -542,9 +535,8 @@ async def cancel_{n.domain}(
     body: Cancel{n.Domain}Request,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemy{n.Domain}Repository = Depends(_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> None:
-    await Cancel{n.Domain}Handler(repo, outbox_relay).execute(
+    await Cancel{n.Domain}Handler(repo).execute(
         Cancel{n.Domain}Command({n.domain}_id={n.domain}_id, requester_id=current_user.user_id, reason=body.reason)
     )
 
@@ -661,7 +653,7 @@ def downgrade() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 배선 (main.py / account_router.py / migrations/env.py)
+# 배선 (main.py / event_handlers.py / migrations/env.py)
 # ---------------------------------------------------------------------------
 
 
@@ -733,43 +725,49 @@ async def {n.domain}_error_handler(request: Request, exc: {n.Domain}Error) -> JS
     return True
 
 
-def wire_account_router(account_router_path: str, n: Names) -> bool:
-    if not os.path.isfile(account_router_path):
-        print(f"account_router.py를 찾지 못해 OutboxRelay 자동 wiring을 건너뜁니다: {account_router_path}")
+def wire_event_handlers(event_handlers_path: str, n: Names) -> bool:
+    """`src/outbox/event_handlers.py`의 `build_event_handlers()`에 새 도메인의 Domain Event
+    핸들러를 등록한다 — 이 함수가 프로세스 전체의 단일 조립 지점(composition root)이다.
+    OutboxConsumer가 SQS에서 수신한 메시지를 eventType으로 이 dict에서 찾아 호출한다
+    (domain-events.md 참고. 2026-07 async 전환 전에는 `account_router.py`의 `_outbox_relay()`
+    팩토리를 대신 패치했었다).
+    """
+    if not os.path.isfile(event_handlers_path):
+        print(f"event_handlers.py를 찾지 못해 이벤트 핸들러 자동 wiring을 건너뜁니다: {event_handlers_path}")
         return False
 
-    with open(account_router_path, encoding="utf-8") as f:
+    with open(event_handlers_path, encoding="utf-8") as f:
         content = f.read()
 
     handler_import = (
-        f"from ....{n.domain}.application.event.{n.domain}_cancelled_event_handler "
-        f"import {n.Domain}CancelledEventHandler"
+        f"from ..{n.domain}.application.event.{n.domain}_cancelled_event_handler import {n.Domain}CancelledEventHandler"
     )
     if handler_import in content:
-        print(f"account_router.py에 이미 {n.Domain}CancelledEventHandler가 등록돼 있어 건너뜁니다.")
+        print(f"event_handlers.py에 이미 {n.Domain}CancelledEventHandler가 등록돼 있어 건너뜁니다.")
         return False
 
-    # account 자신의 event handler import 블록 마지막 줄 다음에 삽입 (isort 그룹 유지)
+    # 다른 도메인의 event handler import 블록 마지막 줄 다음에 삽입 (isort 그룹 유지)
     event_import_lines = list(
-        re.finditer(r"^from \.\.\.application\.event\..+ import \w+EventHandler$", content, re.MULTILINE)
+        re.finditer(r"^from \.\.\w+\.application\.event\..+ import \w+EventHandler$", content, re.MULTILINE)
     )
     if not event_import_lines:
-        print("account_router.py의 event handler import 앵커를 찾지 못해 wiring을 건너뜁니다.")
+        print("event_handlers.py의 event handler import 앵커를 찾지 못해 wiring을 건너뜁니다.")
         return False
     last_end = event_import_lines[-1].end()
     content = content[:last_end] + "\n" + handler_import + content[last_end:]
 
-    # handlers={ 딕셔너리의 첫 항목으로 새 도메인 이벤트를 등록한다 — 이 dict가 프로세스 전체의
-    # 단일 조립 지점(공유 OutboxRelay)이다.
-    entry = f'            "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,\n'
-    content, count = re.subn(r"(handlers=\{\n)", r"\1" + entry, content, count=1)
+    # return { 딕셔너리의 첫 항목으로 새 도메인 이벤트를 등록한다.
+    entry = f'        "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,\n'
+    content, count = re.subn(r"(    return \{\n)", r"\1" + entry, content, count=1)
     if count == 0:
-        print("account_router.py에서 handlers={ 딕셔너리를 찾지 못해 등록을 건너뜁니다.")
+        print("event_handlers.py에서 return { 딕셔너리를 찾지 못해 등록을 건너뜁니다.")
         return False
 
-    with open(account_router_path, "w", encoding="utf-8") as f:
+    with open(event_handlers_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"account_router.py의 공유 OutboxRelay에 {n.Domain}CancelledEventHandler 등록 완료: {account_router_path}")
+    print(
+        f"event_handlers.py의 build_event_handlers()에 {n.Domain}CancelledEventHandler 등록 완료: {event_handlers_path}"
+    )
     return True
 
 
@@ -815,15 +813,14 @@ def print_main_snippet(n: Names) -> None:
     print("")
 
 
-def print_account_router_snippet(n: Names) -> None:
-    print("--- account_router.py의 _outbox_relay()에 수동으로 추가할 내용 ---")
+def print_event_handlers_snippet(n: Names) -> None:
+    print("--- src/outbox/event_handlers.py의 build_event_handlers()에 수동으로 추가할 내용 ---")
     print("")
     print(
-        f"from ....{n.domain}.application.event.{n.domain}_cancelled_event_handler "
-        f"import {n.Domain}CancelledEventHandler"
+        f"from ..{n.domain}.application.event.{n.domain}_cancelled_event_handler import {n.Domain}CancelledEventHandler"
     )
     print("")
-    print("  # handlers={...} 딕셔너리에 추가:")
+    print("  # return {...} 딕셔너리에 추가:")
     print(f'    "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,')
     print("")
 
@@ -851,7 +848,7 @@ def run_ruff_fix(paths: list[str]) -> None:
     정리한다.
 
     새 도메인 자신의 파일은 템플릿에서 이미 올바른 순서로 만들어지지만, main.py/
-    account_router.py/migrations/env.py 같은 기존 공유 파일에 새 import 줄을 텍스트로
+    event_handlers.py/migrations/env.py 같은 기존 공유 파일에 새 import 줄을 텍스트로
     끼워 넣을 때는 "어디에 삽입해야 알파벳 순서가 정확히 맞는가"가 도메인 이름마다 달라진다
     (예: "card" 다음 "common" 앞 vs "database" 다음 "outbox" 앞 등, 도메인 이름의 알파벳
     위치에 따라 삽입 지점이 매번 바뀐다). 정확한 위치를 텍스트 삽입으로 매번 재현하는 대신,
@@ -872,7 +869,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="새 도메인 스캐폴딩 생성기")
     parser.add_argument("domain_name", help="PascalCase 도메인 이름 (예: Coupon, LoyaltyCategory)")
     parser.add_argument("--out", dest="out", default=None, help="생성 대상 src/ 디렉토리 (기본: ../examples/src)")
-    parser.add_argument("--wire", action="store_true", help="main.py/account_router.py/migrations를 자동 배선")
+    parser.add_argument("--wire", action="store_true", help="main.py/event_handlers.py/migrations를 자동 배선")
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -903,18 +900,18 @@ def main() -> None:
         write_file(migration_path, migration_content)
         print(f"Alembic 마이그레이션 생성 완료: {migration_filename} (down_revision={head})")
         main_path = os.path.join(project_root, "main.py")
-        account_router_path = os.path.join(target_src_dir, "account", "interface", "rest", "account_router.py")
+        event_handlers_path = os.path.join(target_src_dir, "outbox", "event_handlers.py")
         env_path = os.path.join(project_root, "migrations", "env.py")
         wire_main(main_path, n)
-        wire_account_router(account_router_path, n)
+        wire_event_handlers(event_handlers_path, n)
         wire_migrations_env(env_path, n)
-        touched_paths += [main_path, account_router_path, env_path]
+        touched_paths += [main_path, event_handlers_path, env_path]
     else:
         print("")
         print(f"--- migrations/versions/에 수동으로 추가할 마이그레이션 파일: {migration_filename} ---")
         print(f"(down_revision={head} — --wire 없이 실행했으므로 파일을 만들지 않았습니다)")
         print_main_snippet(n)
-        print_account_router_snippet(n)
+        print_event_handlers_snippet(n)
         print_env_snippet(n)
 
     run_ruff_fix(touched_paths)

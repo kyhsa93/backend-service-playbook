@@ -1,6 +1,6 @@
-from ....outbox.outbox_relay import OutboxRelay
+from ....outbox.outbox_writer import OutboxWriter
 
 
 class DepositHandler:
-    def __init__(self, outbox_relay: OutboxRelay) -> None:
-        self._outbox_relay = outbox_relay
+    def __init__(self, outbox_writer: OutboxWriter) -> None:
+        self._outbox_writer = outbox_writer

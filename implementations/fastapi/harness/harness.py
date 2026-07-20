@@ -19,7 +19,7 @@ from rules import (
     handler_placement,
     layer_dependency,
     no_notification_dependency_in_command,
-    outbox_drain_order,
+    outbox_no_sync_drain,
     repository_abc,
     repository_impl,
     shared_infra,
@@ -37,7 +37,7 @@ RULES = [
     event_placement,
     layer_dependency,
     no_notification_dependency_in_command,
-    outbox_drain_order,
+    outbox_no_sync_drain,
     cqrs_pattern,
 ]
 

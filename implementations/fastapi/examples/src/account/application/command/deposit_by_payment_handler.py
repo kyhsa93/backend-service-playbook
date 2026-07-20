@@ -19,7 +19,8 @@ class DepositByPaymentHandler:
     refund_id)만 다르므로 커맨드를 하나로 재사용한다.
 
     멱등성은 WithdrawByPaymentHandler와 동일한 이유로 Level 2 Ledger(reference_id+type)를
-    쓴다. Outbox 릴레이 객체를 직접 참조하지 않는 이유도 동일하다(다중 패스 드레인이 처리).
+    쓴다. Outbox 관련 객체를 직접 참조하지 않는 이유도 동일하다 — OutboxPoller/OutboxConsumer가
+    독립적으로 처리한다.
     """
 
     def __init__(self, repo: AccountRepository) -> None:

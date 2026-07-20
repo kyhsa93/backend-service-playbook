@@ -2,6 +2,8 @@
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/domain-events.md](../../../../docs/architecture/domain-events.md)
 
+> **이 저장소의 실제 경로**: root가 규정하는 유일한 경로 — **Outbox 적재는 Repository.save() 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 `OutboxPoller`가, EventHandler 실행은 SQS를 수신 대기하는 `OutboxConsumer`가** — 를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 이 저장소에 없다. `src/outbox/outbox_poller.py`/`outbox_consumer.py`가 실제 코드이며, `src/outbox/event_handlers.py`의 `build_event_handlers()`가 `eventType` → 핸들러 dict를 조립하는 composition root다.
+
 ## 이벤트 수집 — Aggregate 안에서만
 
 `src/account/domain/account.py`는 `_events: list[AccountDomainEvent]`에 이벤트를 모으고 `pull_events()`로 꺼내는 패턴을 정확히 구현하고 있다.
@@ -36,7 +38,7 @@ class Account:
 
 ## Outbox 패턴 — 실제 구현
 
-이전에는 `repo.save()`가 성공한 직후 커맨드 핸들러가 `notification_service.notify()`를 직접 호출하는 dual-write 구조였다 — 저장과 알림 발송 사이에 프로세스가 죽으면 이벤트가 영원히 유실될 수 있었다. 지금은 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, 드레인이 실패해도 다음 커맨드에서 자동 재시도되도록 구현되어 있다 — root 문서의 Outbox 요구사항을 충족한다.
+이전에는 `repo.save()`가 성공한 직후 커맨드 핸들러가 `notification_service.notify()`를 직접 호출하는 dual-write 구조였다 — 저장과 알림 발송 사이에 프로세스가 죽으면 이벤트가 영원히 유실될 수 있었다. 지금은 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Outbox → SQS 발행/수신을 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`에게 완전히 맡긴다 — root 문서가 규정하는 **Outbox 적재는 Repository.save() 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 Poller가, EventHandler 실행은 큐를 수신 대기하는 Consumer가** 담당하는 경로를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식(2026-07 이전 방식)은 이 저장소에 더 이상 없다.
 
 ### 1단계: Repository가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶는다
 
@@ -108,19 +110,17 @@ class OutboxModel(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 ```
 
-`Base`는 `src/account/infrastructure/persistence/account_repository.py`에 정의된 것을 그대로 import해서 재사용한다 — `Base.metadata.create_all`(`main.py`의 `lifespan`)이 `outbox` 테이블도 자동으로 만든다.
+`Base`는 `src/account/infrastructure/persistence/account_repository.py`에 정의된 것을 그대로 import해서 재사용한다 — 프로덕션에서는 Alembic 마이그레이션이 `outbox` 테이블을 만들고, 로컬/테스트 전용 `Base.metadata.create_all`(각 e2e 테스트의 testcontainers 픽스처)도 같은 테이블을 만든다(`persistence.md` 참고 — `main.py`의 `lifespan`은 `create_all`을 호출하지 않는다).
 
-### 2단계: Command Handler가 `repo.save()` 직후 Outbox를 동기적으로 드레인한다
+### 2단계: `OutboxPoller` — Outbox → SQS 전송 (실제 코드)
 
-nestjs 구현과 동일한 트리거 전략을 쓴다 — **폴링 워커(APScheduler/Celery) 없이**, 커맨드를 처리하는 바로 그 요청 안에서 `repo.save()`가 반환한 직후 `OutboxRelay.process_pending()`을 한 번 호출한다. 6개 Command Handler(`create_account_handler.py`, `deposit_handler.py`, `withdraw_handler.py`, `suspend_account_handler.py`, `reactivate_account_handler.py`, `close_account_handler.py`) 모두 같은 패턴이다.
+`src/outbox/outbox_poller.py` — `main.py`의 `lifespan`이 앱 기동 시 `asyncio.create_task()`로 단 한 번 띄우는 백그라운드 루프다. Command Handler는 이 클래스를 전혀 참조하지 않는다 — 참조하면 harness의 `outbox-no-sync-drain` 규칙이 잡아낸다.
 
 ```python
 # application/command/deposit_handler.py — 실제 코드
 class DepositHandler:
-
-    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: AccountRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
         accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
@@ -128,112 +128,148 @@ class DepositHandler:
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
-        await self._repo.save(account)          # Aggregate 저장 + Outbox 적재 (하나의 트랜잭션)
-        await self._outbox_relay.process_pending()   # 드레인 — 이 커맨드의 이벤트만이 아니라 테이블 전체
-        return transaction
+        await self._repo.save(account)  # Aggregate 저장 + Outbox 적재 (하나의 트랜잭션)
+        return transaction  # 여기서 끝난다 — Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer가 독립적으로 처리한다
 ```
 
-이 요청의 `AsyncSession`은 `Depends(get_session)`의 요청 스코프 캐싱으로 Repository/`OutboxRelay`/`NotificationService`가 모두 공유한다(`persistence.md` 참조). 따라서 Aggregate 저장, Outbox 적재, 이벤트 드레인(알림 발송 기록 포함)이 전부 같은 트랜잭션에 속하고, 라우트 함수가 반환된 뒤 `get_session()`의 `await session.commit()` 한 번으로 전부 커밋된다. 드레인 도중 프로세스가 죽으면 커밋 자체가 일어나지 않아 계좌 상태 변경도 함께 롤백되므로 — "계좌는 바뀌었는데 알림만 유실"되는 상황 자체가 발생하지 않는다.
-
-`OutboxRelay.process_pending()`(`src/outbox/outbox_relay.py`)은 자신이 방금 적재한 이벤트뿐 아니라 테이블 전체의 `processed=False` row를 훑는다 — 그래서 어떤 커맨드 처리 중 핸들러가 실패해 row가 미처리로 남아도, **다음에 어떤 종류의 커맨드든 한 번 더 실행되는 순간** 자동으로 재시도된다.
-
-핸들러 실행 도중 새 row가 적재될 수 있다 — 예를 들어 `AccountSuspended` Domain Event 핸들러가 `account.suspended.v1` Integration Event를 같은 세션에 적재하는 경우(Card BC 연동, 아래 참조)다. 이를 한 커맨드 처리 안에서 완결시키기 위해 `process_pending()`은 더 이상 진전이 없을 때까지 여러 패스로 반복 드레인한다(`MAX_PASSES`로 상한).
+`OutboxPoller.run_forever()`는 1초 주기로 `processed=False` 행을 최대 100개씩 읽어 SQS로 발행하고, 발행에 성공한 행을 즉시 `processed=True`로 표시한다 — **`processed`의 의미가 "핸들러가 처리를 끝냈다"에서 "SQS로 전달을 끝냈다"로 바뀐다.** 이후의 재시도/at-least-once 보장은 outbox 테이블이 아니라 SQS의 visibility timeout + DLQ가 담당한다.
 
 ```python
-# src/outbox/outbox_relay.py — 실제 코드
-class OutboxRelay:
-    def __init__(self, session: AsyncSession, handlers: dict[str, Callable[[dict], Awaitable[None]]]) -> None:
-        self._session = session
-        self._handlers = handlers
+# src/outbox/outbox_poller.py — 실제 코드(발췌)
+class OutboxPoller:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+        self._boto_session = aioboto3.Session()
 
-    async def process_pending(self) -> None:
-        failed_in_this_run: set[str] = set()
+    async def run_forever(self) -> None:
+        while True:
+            try:
+                await self._drain_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Outbox 폴링 실패")
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)  # 1초
 
-        for _ in range(MAX_PASSES):
-            stmt = select(OutboxModel).where(OutboxModel.processed.is_(False))
-            rows = [
-                row for row in (await self._session.execute(stmt)).scalars().all()
-                if row.event_id not in failed_in_this_run
-            ]
+    async def _drain_once(self) -> None:
+        queue_url = SqsConfig().domain_event_queue_url
+        async with self._session_factory() as session:
+            stmt = (
+                select(OutboxModel).where(OutboxModel.processed.is_(False))
+                .order_by(OutboxModel.created_at).limit(BATCH_SIZE)
+            )
+            rows = (await session.execute(stmt)).scalars().all()
             if not rows:
                 return
 
-            progressed = 0
-            for row in rows:
-                handler = self._handlers.get(row.event_type)
-                try:
-                    if handler is not None:
+            async with self._boto_session.client("sqs", **AwsConfig().client_kwargs()) as sqs_client:
+                for row in rows:
+                    try:
                         # 이 Outbox 행의 event_id를 payload에 실어 보낸다 — 핸들러가 Ledger 키로
                         # 써서 재시도로 인한 중복 처리를 스스로 건너뛸 수 있다("이벤트 핸들러 멱등성" 참조).
-                        payload = json.loads(row.payload)
-                        payload["outbox_event_id"] = row.event_id
-                        await handler(payload)
-                    row.processed = True
-                    progressed += 1
-                except Exception:  # noqa: BLE001 - 다음 드레인에서 재시도해야 하므로 여기서 삼킨다
-                    failed_in_this_run.add(row.event_id)
-                    logger.exception("이벤트 처리 실패: event_type=%s event_id=%s", row.event_type, row.event_id)
+                        body = json.loads(row.payload)
+                        body["outbox_event_id"] = row.event_id
+                        await sqs_client.send_message(
+                            QueueUrl=queue_url,
+                            MessageBody=json.dumps(body),
+                            MessageAttributes={"eventType": {"DataType": "String", "StringValue": row.event_type}},
+                        )
+                        row.processed = True
+                    except Exception:
+                        logger.exception("SQS 발행 실패: event_type=%s event_id=%s", row.event_type, row.event_id)
 
-            await self._session.flush()
-            if progressed == 0:  # 이번 패스에서 진전이 없었다면 더 반복해도 소용없다
-                return
+            await session.commit()
 ```
 
-`process_pending()`은 절대 예외를 밖으로 던지지 않는다 — 핸들러가 실패해도 로깅만 하고 다음 row로 넘어가며, 실패한 row는 이번 호출의 다음 패스에서는 재시도하지 않고(`failed_in_this_run`) `processed=False`로 남겨 **다음 `process_pending()` 호출**에서 재시도되게 한다.
+`outbox_event_id`를 SQS `MessageBody`에 실어 보내는 시점이 이전(동기 드레인 시절 `OutboxRelay`가 핸들러 호출 직전에 주입)과 달라졌다 — 이제는 `OutboxPoller`가 **발행 시점**에 이미 페이로드에 심어 넣는다. `OutboxConsumer`가 이 값을 그대로 핸들러에 전달하므로, 각 EventHandler 코드는 바뀌지 않았다(`payload["outbox_event_id"]`를 읽는 위치는 동일).
 
-### 3단계: `application/event/`의 EventHandler가 페이로드를 역직렬화해 `NotificationService`를 호출한다
+### 3단계: `OutboxConsumer` — SQS → EventHandler 수신 (실제 코드)
 
-`event_type`별로 하나씩, `account_created_event_handler.py`/`money_deposited_event_handler.py`/`money_withdrawn_event_handler.py`/`account_suspended_event_handler.py`/`account_reactivated_event_handler.py`/`account_closed_event_handler.py`가 있다. 각 핸들러는 Outbox에 저장된 JSON 페이로드(`dict`)를 원래의 frozen dataclass(`AccountDomainEvent`)로 복원한 뒤, `NotificationService.notify()`에 이벤트와 함께 `payload["outbox_event_id"]`(`OutboxRelay`가 실어 보낸 이 행의 고유 id)를 넘겨 호출한다 — 이 id가 "이벤트 핸들러 멱등성"에서 다루는 Ledger 키다.
+`src/outbox/outbox_consumer.py` — `main.py`의 `lifespan`이 마찬가지로 앱 기동 시 단 한 번 띄운다. `receive_message`의 `WaitTimeSeconds`로 long polling하다가 메시지를 받으면 `eventType`(MessageAttributes)으로 `build_event_handlers()`가 조립한 dict에서 핸들러를 찾아 호출한다.
 
 ```python
-# application/event/money_deposited_event_handler.py — 실제 코드
-class MoneyDepositedEventHandler:
+# src/outbox/outbox_consumer.py — 실제 코드(발췌)
+class OutboxConsumer:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+        self._boto_session = aioboto3.Session()
 
-    def __init__(self, notification_service: NotificationService) -> None:
-        self._notification_service = notification_service
+    async def run_forever(self) -> None:
+        queue_url = SqsConfig().domain_event_queue_url
+        async with self._boto_session.client("sqs", **AwsConfig().client_kwargs()) as sqs_client:
+            while True:
+                result = await sqs_client.receive_message(
+                    QueueUrl=queue_url, MaxNumberOfMessages=10,
+                    MessageAttributeNames=["eventType"], WaitTimeSeconds=5,
+                )
+                for message in result.get("Messages", []):
+                    await self._handle_message(sqs_client, queue_url, message)
 
-    async def handle(self, payload: dict) -> None:
-        event = MoneyDeposited(
-            account_id=payload["account_id"],
-            transaction_id=payload["transaction_id"],
-            email=payload["email"],
-            amount=Money(**payload["amount"]),
-            balance_after=Money(**payload["balance_after"]),
-            created_at=datetime.fromisoformat(payload["created_at"]),
-        )
-        await self._notification_service.notify(event, payload["outbox_event_id"])
+    async def _handle_message(self, sqs_client, queue_url: str, message: dict) -> None:
+        event_type = message.get("MessageAttributes", {}).get("eventType", {}).get("StringValue")
+        try:
+            if not event_type:
+                raise ValueError("eventType 메시지 속성이 없습니다.")
+            payload = json.loads(message.get("Body", "{}"))
+            async with self._session_factory() as session:
+                handler = build_event_handlers(session).get(event_type)
+                if handler is None:
+                    raise ValueError(f"등록된 핸들러 없음: {event_type}")
+                await handler(payload)
+                await session.commit()
+            await sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
+        except Exception:
+            logger.exception("이벤트 처리 실패: event_type=%s", event_type)
+            # 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
 ```
 
-`interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 이 6개 핸들러를 `event_type` 문자열 → `handle` 메서드의 `dict` 레지스트리로 조립해 `OutboxRelay`에 주입한다.
+핸들러 성공 → `delete_message`로 삭제(ack). 핸들러 실패(또는 등록된 핸들러 없음) → 삭제하지 않는다 → SQS가 visibility timeout 이후 자동 재전달한다(at-least-once) — 이 저장소가 요구하는 EventHandler 멱등성이 바로 이 재전달을 전제한다.
+
+**메시지 하나당 새 `AsyncSession`을 연다** — `_handle_message()`가 `async with self._session_factory() as session:`으로 매번 새 세션을 열고 `build_event_handlers(session)`을 그 자리에서 호출해 Repository/Service 인스턴스를 조립한다. 세션을 Consumer 생성 시점에 한 번만 만들어 계속 재사용하지 않는 이유는 `persistence.md`의 "세션은 단위 작업당 하나" 원칙 — 여러 메시지에 걸쳐 하나의 세션을 공유하면 트랜잭션 경계가 모호해지고 실패한 메시지의 변경사항이 다음 메시지로 새어 나갈 위험이 있다.
+
+### `build_event_handlers()` — 핸들러 라우팅 조립 (실제 코드)
+
+`src/outbox/event_handlers.py`의 `build_event_handlers(session) -> dict[str, Callable]`이 `eventType` 문자열 → 처리 함수의 전체 배선을 조립한다. FastAPI에는 NestJS의 `EventHandlerRegistry` 같은 모듈 간 느슨한 등록 메커니즘이 없으므로, 이 함수 하나가 Account/Card/Payment 세 BC의 composition root다 — `OutboxConsumer`가 메시지를 처리할 때마다 새 세션으로 이 함수를 호출한다("한 번만 조립한다"는 것은 이 조립 로직의 *정의*가 고정되어 있다는 뜻이지, 프로세스 전체에서 세션 하나를 붙잡고 산다는 뜻이 아니다).
 
 ```python
-# interface/rest/account_router.py — 실제 코드
-def _outbox_relay(
-    session: AsyncSession = Depends(get_session),
-    notification_service: NotificationService = Depends(_notification_service),
-) -> OutboxRelay:
-    return OutboxRelay(
-        session=session,
-        handlers={
-            "AccountCreated": AccountCreatedEventHandler(notification_service).handle,
-            "MoneyDeposited": MoneyDepositedEventHandler(notification_service).handle,
-            "MoneyWithdrawn": MoneyWithdrawnEventHandler(notification_service).handle,
-            "AccountSuspended": AccountSuspendedEventHandler(notification_service).handle,
-            "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
-            "AccountClosed": AccountClosedEventHandler(notification_service).handle,
-        },
-    )
+# src/outbox/event_handlers.py — 실제 코드(발췌)
+def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
+    account_repo = SqlAlchemyAccountRepository(session)
+    card_repo = SqlAlchemyCardRepository(session)
+    notification_service = SesNotificationService(session)
+    outbox_writer = OutboxWriter(session)
+    card_integration_event_controller = CardIntegrationEventController(card_repo)
+    account_integration_event_controller = AccountIntegrationEventController(account_repo)
+
+    return {
+        "AccountCreated": AccountCreatedEventHandler(notification_service).handle,
+        "MoneyDeposited": MoneyDepositedEventHandler(notification_service).handle,
+        "MoneyWithdrawn": MoneyWithdrawnEventHandler(notification_service).handle,
+        "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
+        "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
+        "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
+        "account.suspended.v1": card_integration_event_controller.on_account_suspended,
+        "account.closed.v1": card_integration_event_controller.on_account_closed,
+        "PaymentCompleted": PaymentCompletedEventHandler(outbox_writer).handle,
+        "PaymentCancelled": PaymentCancelledEventHandler(outbox_writer).handle,
+        "RefundApproved": RefundApprovedEventHandler(outbox_writer).handle,
+        "payment.completed.v1": account_integration_event_controller.on_payment_completed,
+        "payment.cancelled.v1": account_integration_event_controller.on_payment_cancelled,
+        "refund.approved.v1": account_integration_event_controller.on_refund_approved,
+    }
 ```
 
-`SesNotificationService.notify()`(`src/account/infrastructure/notification/notification_service.py`)는 SES 발송 실패를 잡아 로깅만 하고 삼킨다 — 이 실패는 `OutboxRelay.process_pending()`의 `try/except`에도 걸리므로, 어느 계층에서 잡히든 결과는 같다: Outbox row가 `processed=False`로 남아 다음 드레인에서 재시도된다. `notify()`는 실제 발송 전에 `outbox_event_id` 기준으로 이미 처리된 이벤트인지부터 확인한다(Ledger 멱등성, 아래 참조).
+예전에는 `interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 **요청마다** 이 조립을 다시 했다(HTTP 요청 스코프 `Depends(get_session)`에 묶여 있었기 때문) — 이제는 `src/outbox/`의 이 함수 하나로 고정되어 `OutboxConsumer`가 메시지마다 재사용한다. `application/event/`의 EventHandler 코드 자체(`account_created_event_handler.py` 등)는 바뀌지 않았다 — payload(dict)를 받아 처리하는 시그니처가 동일하기 때문이다.
+
+`SesNotificationService.notify()`(`src/account/infrastructure/notification/notification_service.py`)는 SES 발송 실패를 잡아 로깅만 하고 삼킨다 — 이 실패는 `OutboxConsumer._handle_message()`의 `try/except`에도 걸리므로, 어느 계층에서 잡히든 결과는 같다: 메시지가 삭제되지 않아 SQS가 재전달한다. `notify()`는 실제 발송 전에 `outbox_event_id` 기준으로 이미 처리된 이벤트인지부터 확인한다(Ledger 멱등성, 아래 참조).
 
 ---
 
 ## 이벤트 핸들러 멱등성
 
-Outbox 도입으로 `notify()`는 **at-least-once**로 호출될 수 있다(`OutboxRelay`가 `row.processed = True`로 표시하기 직전에 죽으면 같은 이벤트가 다음 드레인에서 다시 발송된다). 이를 막기 위해 Level 2(Ledger) 멱등성을 적용했다 — `SentEmailModel`(`src/account/infrastructure/notification/sent_email_model.py`)이 발송 이력 Entity이자 Ledger 역할을 겸한다.
+SQS는 **at-least-once** 전달을 보장하므로 같은 메시지가 중복 수신될 수 있다. 이를 막기 위해 알림을 보내는 EventHandler는 Level 2(Ledger) 멱등성을 적용했다 — `SentEmailModel`(`src/account/infrastructure/notification/sent_email_model.py`)이 발송 이력 Entity이자 Ledger 역할을 겸한다.
 
-Ledger 키는 Outbox 행의 `event_id`다(`account_id`+`event_type`이 아니다 — 같은 계좌에 같은 종류의 이벤트가 여러 번 발생할 수 있으므로 그 조합만으로는 "이 이벤트 한 건"을 특정할 수 없다). `OutboxRelay.process_pending()`이 핸들러를 호출할 때 payload에 `outbox_event_id`(= `row.event_id`)를 실어 보내고, 각 EventHandler가 이를 그대로 `NotificationService.notify(event, outbox_event_id)`에 전달한다.
+Ledger 키는 Outbox 행의 `event_id`다(`account_id`+`event_type`이 아니다 — 같은 계좌에 같은 종류의 이벤트가 여러 번 발생할 수 있으므로 그 조합만으로는 "이 이벤트 한 건"을 특정할 수 없다). `OutboxPoller`가 SQS로 발행하는 시점에 payload에 `outbox_event_id`(= `row.event_id`)를 실어 보내고, `OutboxConsumer`가 이를 그대로 핸들러에 전달하며, 각 EventHandler가 이를 그대로 `NotificationService.notify(event, outbox_event_id)`에 전달한다.
 
 ```python
 # infrastructure/notification/sent_email_model.py — 실제 코드(발췌)
@@ -268,7 +304,7 @@ async def _send_and_record(self, event: AccountDomainEvent, outbox_event_id: str
     await self._session.flush()
 ```
 
-check(조회)와 record(저장)가 `notify()` 한 호출 안에서, Aggregate 저장·Outbox 드레인과 같은 요청 스코프 `AsyncSession`으로 일어난다 — 별도 트랜잭션이 아니다. Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하는 Level 1(본질적 멱등)이라 Ledger가 필요 없다 — 알림을 보내는 Account 쪽 EventHandler만 Level 2가 필요했다.
+check(조회)와 record(저장)가 `notify()` 한 호출 안에서, `OutboxConsumer`가 이 메시지 처리를 위해 새로 연 `AsyncSession`으로 일어난다(Aggregate 저장 트랜잭션과는 완전히 별개의 트랜잭션이다 — 이제 둘은 서로 다른 시점, 다른 프로세스 틱에서 실행된다). Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하는 Level 1(본질적 멱등)이라 Ledger가 필요 없다 — 알림을 보내는 Account 쪽 EventHandler만 Level 2가 필요했다.
 
 완전한 멱등성 원칙 요약은 root의 [domain-events.md#이벤트-핸들러-멱등성](../../../../docs/architecture/domain-events.md#이벤트-핸들러-멱등성) 참조.
 
@@ -304,26 +340,16 @@ class AccountSuspendedEventHandler:
         await self._notification_service.notify(event, payload["outbox_event_id"])
 ```
 
-수신 측(Card BC)은 `interface/integration_event/card_integration_event_controller.py`가 담당한다 — HTTP Router와 동일한 위치(`interface/`)의 입력 경계이며, 자기 도메인의 Command Handler만 호출한다. 조립은 발행 측(`account`)의 composition root인 `interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 맡는다 — Account 자신의 6개 Domain Event 핸들러와 Card의 두 Integration Event 반응 핸들러를 같은 `handlers` dict에 등록한다(FastAPI에는 NestJS의 `EventHandlerRegistry` 같은 모듈 간 느슨한 등록 메커니즘이 없다).
+수신 측(Card BC)은 `interface/integration_event/card_integration_event_controller.py`가 담당한다 — HTTP Router와 동일한 위치(`interface/`)의 입력 경계이며, 자기 도메인의 Command Handler만 호출한다. 조립은 `src/outbox/event_handlers.py`의 `build_event_handlers()`가 맡는다 — Account 자신의 6개 Domain Event 핸들러와 Card의 두 Integration Event 반응 핸들러를 같은 `handlers` dict에 등록한다(FastAPI에는 NestJS의 `EventHandlerRegistry` 같은 모듈 간 느슨한 등록 메커니즘이 없다).
 
-```python
-# src/account/interface/rest/account_router.py — 실제 코드(발췌)
-def _outbox_relay(..., card_repo: CardRepository = Depends(_card_repo)) -> OutboxRelay:
-    outbox_writer = OutboxWriter(session)
-    card_integration_event_controller = CardIntegrationEventController(card_repo)
-    return OutboxRelay(
-        session=session,
-        handlers={
-            ...,
-            "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
-            "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
-            "account.suspended.v1": card_integration_event_controller.on_account_suspended,
-            "account.closed.v1": card_integration_event_controller.on_account_closed,
-        },
-    )
-```
+이 배선 덕에 `POST /accounts/{id}/suspend` 요청은 다음 순서로 완결된다 — 단, **이제는 하나의 HTTP 요청·트랜잭션 안에서 완결되지 않는다**:
+1. HTTP 요청 안에서 `AccountSuspended` Domain Event가 Outbox에 적재되고 응답이 반환된다.
+2. 다음 `OutboxPoller` tick(최대 1초 뒤)이 이 행을 SQS로 발행한다.
+3. `OutboxConsumer`가 이를 수신해 `AccountSuspendedEventHandler`를 호출 — 알림을 보내고, `account.suspended.v1` Integration Event를 같은(그 메시지 처리를 위해 새로 연) 세션의 Outbox에 추가로 적재한다.
+4. 다음 `OutboxPoller` tick이 이 Integration Event도 SQS로 발행한다.
+5. `OutboxConsumer`가 이를 수신해 Card BC의 `SuspendCardsByAccountHandler`를 호출 — 연결된 모든 ACTIVE 카드를 SUSPENDED로 바꾼다.
 
-이 배선 덕에 `POST /accounts/{id}/suspend` 한 요청 안에서 (1) `AccountSuspended` Domain Event가 Outbox에 적재되고 (2) 첫 드레인 패스가 그 이벤트를 처리하며 `account.suspended.v1` Integration Event를 같은 Outbox에 추가로 적재하고 (3) 다음 드레인 패스가 그 Integration Event를 처리해 Card BC의 `SuspendCardsByAccountHandler`가 연결된 모든 ACTIVE 카드를 SUSPENDED로 바꾼다 — 전부 하나의 HTTP 요청, 하나의 트랜잭션 안에서 완결된다.
+E2E 테스트(`test_card_e2e.py`)는 이 비동기 왕복을 전제로 `wait_until()` 폴링 헬퍼로 최종 상태를 확인한다(`testing.md` 참고) — 응답 직후 즉시 `assert`하면 실패한다.
 
 ---
 
@@ -331,10 +357,10 @@ def _outbox_relay(..., card_repo: CardRepository = Depends(_card_repo)) -> Outbo
 
 - **이벤트 수집은 Aggregate 안에서만**: `_events` + `pull_events()`로 구현되어 있다.
 - **저장과 이벤트 적재는 하나의 트랜잭션**: `SqlAlchemyAccountRepository.save()` 안에서 Aggregate 상태와 Outbox row를 함께 적재하고, 요청 스코프 세션이 한 번에 커밋한다.
-- **후속 처리는 Outbox 드레인을 통해서만**: Command Handler는 알림 서비스를 직접 호출하지 않고 `OutboxRelay.process_pending()`만 호출한다.
-- **드레인은 폴링 워커가 아니라 다음 커맨드가 트리거한다**: 배경 작업(APScheduler/Celery) 없이도 매 커맨드가 테이블 전체를 훑어 재시도까지 자연스럽게 처리한다 — e2e 테스트에서 타이밍 대기가 필요 없는 이유이기도 하다.
-- **드레인은 진전이 없을 때까지 여러 패스를 반복한다**: Domain Event 핸들러가 같은 세션에 새 Integration Event를 적재해도(Card BC 연동 참조) 한 커맨드 처리 안에서 연쇄 반응까지 완결된다 — `MAX_PASSES`로 상한을 둔다.
-- **핸들러는 멱등하게 구현되어 있다**: 알림을 보내는 Account 쪽 EventHandler는 Ledger(`SentEmailModel.outbox_event_id`) 기반 중복 스킵(Level 2)을 적용한다. Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하므로 재수신에 자연히 멱등하다(Level 1).
+- **Command Handler는 저장 후 곧바로 반환한다**: `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 호출하지 않는다 — 동기 드레인은 harness가 `outbox-no-sync-drain` 규칙으로 잡아낸다.
+- **Outbox → SQS → Handler 순서로 전달한다**: `OutboxPoller`(발행)와 `OutboxConsumer`(수신·실행)가 서로 독립적으로 주기 실행된다. 폴링 워커(APScheduler/Celery)가 아니라 `main.py`의 `lifespan`이 기동하는 `asyncio.create_task()` 백그라운드 루프다.
+- **핸들러는 멱등하게 구현되어 있다**: SQS at-least-once 전달 특성에 대비한다. 알림을 보내는 Account 쪽 EventHandler는 Ledger(`SentEmailModel.outbox_event_id`) 기반 중복 스킵(Level 2)을 적용한다. Card BC의 반응 핸들러(`SuspendCardsByAccountHandler`/`CancelCardsByAccountHandler`)는 ACTIVE(또는 ACTIVE·SUSPENDED) 카드만 골라 처리하므로 재수신에 자연히 멱등하다(Level 1).
+- **핸들러 라우팅은 `src/outbox/event_handlers.py`에 고정한다**: `build_event_handlers()`가 Account/Card/Payment 세 BC의 composition root다 — 도메인별 라우터가 요청마다 재조립하지 않는다.
 
 ---
 

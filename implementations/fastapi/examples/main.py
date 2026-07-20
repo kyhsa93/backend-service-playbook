@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -27,7 +28,9 @@ from src.common.correlation import generate_correlation_id, set_correlation_id  
 from src.common.error_response import build_error_response  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
 from src.common.rate_limit import limiter  # noqa: E402
-from src.database import engine  # noqa: E402
+from src.database import SessionLocal, engine  # noqa: E402
+from src.outbox.outbox_consumer import OutboxConsumer  # noqa: E402
+from src.outbox.outbox_poller import OutboxPoller  # noqa: E402
 from src.payment.domain.errors import (  # noqa: E402
     LinkedAccountNotFoundError as PaymentLinkedAccountNotFoundError,
 )
@@ -48,6 +51,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
+
+    # OutboxPoller(Outbox → SQS 발행)와 OutboxConsumer(SQS → EventHandler 수신)를 앱
+    # 기동 시 단 한 번 백그라운드 task로 띄운다 — 요청마다 새로 만들어지지 않는다. Command
+    # Handler는 더 이상 이 둘을 호출하지 않는다(domain-events.md — 동기 드레인 금지).
+    outbox_poller = OutboxPoller(SessionLocal)
+    outbox_consumer = OutboxConsumer(SessionLocal)
+    background_tasks = [
+        asyncio.create_task(outbox_poller.run_forever()),
+        asyncio.create_task(outbox_consumer.run_forever()),
+    ]
     logger.info("app_started")
 
     yield  # --- 이 사이에 요청을 처리한다 ---
@@ -55,6 +68,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # --- 종료 (SIGTERM 수신 → uvicorn이 lifespan의 종료 블록을 실행) ---
     app_state["is_shutting_down"] = True  # readiness를 즉시 503으로 전환
     logger.info("shutdown_initiated")
+
+    # 백그라운드 task를 취소하고 완전히 끝날 때까지 기다린다 — dangling task를 남기지 않는다.
+    # OutboxConsumer가 대기 중이던 receive_message(최대 WaitTimeSeconds)는 즉시 중단된다.
+    for task in background_tasks:
+        task.cancel()
+    for task in background_tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     try:
         await engine.dispose()  # DB 커넥션 풀 정리

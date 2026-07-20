@@ -95,7 +95,6 @@ async def withdraw(
     body: WithdrawRequest,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
     ...
 

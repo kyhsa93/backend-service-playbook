@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import PaymentNotFoundError
 from ...domain.payment import Payment
 from ...domain.payment_repository import PaymentRepository
@@ -14,9 +13,8 @@ class CancelPaymentCommand:
 
 
 class CancelPaymentHandler:
-    def __init__(self, repo: PaymentRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: PaymentRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: CancelPaymentCommand) -> Payment:
         payments, _ = await self._repo.find_payments(
@@ -28,6 +26,6 @@ class CancelPaymentHandler:
 
         payment.cancel(cmd.reason)
         await self._repo.save(payment)
-        # PaymentCancelled → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다.
-        await self._outbox_relay.process_pending()
+        # PaymentCancelled → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다
+        # — OutboxPoller/OutboxConsumer가 비동기로 처리한다(domain-events.md).
         return payment

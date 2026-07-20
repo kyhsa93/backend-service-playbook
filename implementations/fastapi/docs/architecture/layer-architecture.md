@@ -58,9 +58,8 @@ class AccountRepository(ABC):
 ```python
 # application/command/deposit_handler.py
 class DepositHandler:
-    def __init__(self, repo: AccountRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, repo: AccountRepository) -> None:
         self._repo = repo
-        self._outbox_relay = outbox_relay
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
         accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
@@ -69,11 +68,10 @@ class DepositHandler:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)   # 비즈니스 로직은 Aggregate에 위임
         await self._repo.save(account)               # Aggregate 저장 + Outbox 적재, 한 트랜잭션
-        await self._outbox_relay.process_pending()    # 커밋 직후 동기 드레인 — domain-events.md 참고
-        return transaction
+        return transaction   # 저장 후 곧바로 반환 — Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer의 몫(domain-events.md)
 ```
 
-Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`, `OutboxRelay`)를 타입으로 받는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다. `NotificationService`는 Command Handler가 아니라, Outbox가 드레인한 이벤트를 처리하는 `application/event/<event>_event_handler.py`가 의존한다([domain-events.md](domain-events.md) 참고).
+Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`)를 타입으로 받는다 — Outbox → SQS 발행/수신을 담당하는 `OutboxPoller`/`OutboxConsumer`는 Command Handler와 전혀 무관하게 독립적으로 주기 실행되므로 생성자에 등장하지 않는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다. `NotificationService`는 Command Handler가 아니라, `OutboxConsumer`가 SQS 수신 시 호출하는 `application/event/<event>_event_handler.py`가 의존한다([domain-events.md](domain-events.md) 참고).
 
 → Command/Query Handler 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
@@ -141,10 +139,9 @@ class RefundEligibilityService:
 ```python
 # application/command/request_refund_handler.py — 두 Repository를 로드해 위임
 class RequestRefundHandler:
-    def __init__(self, payment_repo: PaymentRepository, refund_repo: RefundRepository, outbox_relay: OutboxRelay) -> None:
+    def __init__(self, payment_repo: PaymentRepository, refund_repo: RefundRepository) -> None:
         self._payment_repo = payment_repo
         self._refund_repo = refund_repo
-        self._outbox_relay = outbox_relay
         self._refund_eligibility_service = RefundEligibilityService()
 
     async def execute(self, cmd: RequestRefundCommand) -> Refund:
@@ -165,7 +162,6 @@ class RequestRefundHandler:
             refund.reject(decision.reason or "환불 요청이 거부되었습니다.")
 
         await self._refund_repo.save(refund)
-        await self._outbox_relay.process_pending()
         return refund
 ```
 
@@ -214,7 +210,7 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
     return SesNotificationService(session)        # NotificationService(ABC) ← SesNotificationService(구현체)
 ```
 
-라우트 함수의 파라미터 타입은 ABC(`AccountRepository`, `OutboxRelay`)로 선언되지만, 실제로 주입되는 것은 팩토리가 반환하는 구현체다. `NotificationService`는 라우트가 직접 받지 않는다 — `_outbox_relay()` 팩토리 내부에서만 조립되어 이벤트 핸들러에 전달된다([domain-events.md](domain-events.md) 참고).
+라우트 함수의 파라미터 타입은 ABC(`AccountRepository`)로 선언되지만, 실제로 주입되는 것은 팩토리가 반환하는 구현체다. `NotificationService`는 라우트가 전혀 받지 않는다 — `src/outbox/event_handlers.py`의 `build_event_handlers()` 안에서만 조립되어 `OutboxConsumer`가 SQS 메시지를 처리할 때 이벤트 핸들러에 전달된다([domain-events.md](domain-events.md) 참고).
 
 ---
 
@@ -234,9 +230,8 @@ async def deposit(
     body: DepositRequest,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-    outbox_relay: OutboxRelay = Depends(_outbox_relay),
 ) -> TransactionResponse:
-    transaction = await DepositHandler(repo, outbox_relay).execute(
+    transaction = await DepositHandler(repo).execute(
         DepositCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
     )
     return TransactionResponse(...)

@@ -58,7 +58,9 @@ implementations/fastapi/examples/
     outbox/                            ← 공유 Outbox 패턴 (domain-events.md)
       outbox_model.py                  ← OutboxModel(Base)
       outbox_writer.py                  ← OutboxWriter — Repository.save()가 같은 세션에서 호출
-      outbox_relay.py                   ← OutboxRelay — Command Handler가 save() 직후 동기 호출
+      outbox_poller.py                  ← OutboxPoller — Outbox → SQS 발행, main.py의 lifespan이 백그라운드 task로 기동
+      outbox_consumer.py                ← OutboxConsumer — SQS → EventHandler 수신, 마찬가지로 백그라운드 task
+      event_handlers.py                 ← build_event_handlers() — eventType → 핸들러 dict 조립(composition root)
 
     account/                           ← Bounded Context (도메인) 단위 패키지
       domain/                          ← 프레임워크 무의존

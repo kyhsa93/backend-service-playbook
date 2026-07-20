@@ -113,18 +113,19 @@ CI(`.github/workflows/fastapi.yml`)는 `ruff check .`와 `ruff format --check .`
 `docs/reference.md`·`examples/src/account`·`examples/src/card`의 실제 코드를 기준으로,
 Aggregate(단일 상태 필드 + PENDING/ACTIVE/CANCELLED) + CQRS Command/Query Handler + 도메인
 이벤트 1종(cancel에서 발행) + Repository(ABC/구현체) + Router + Pydantic 스키마 + Alembic
-마이그레이션까지 한 번에 생성하는 Python 스크립트다. FastAPI에는 DI 컨테이너가 없고 OutboxRelay가
-프로세스 전체에 공유 인스턴스 하나뿐이므로(도메인마다 전용 OutboxRelay를 두는 NestJS와 다름),
-새 도메인 디렉토리 생성뿐 아니라 `main.py`(라우터 등록), `account_router.py`(공유 OutboxRelay의
-조립 지점인 `_outbox_relay()`), `migrations/env.py`(Alembic이 감지할 모델 import)까지 함께
-배선해야 한다.
+마이그레이션까지 한 번에 생성하는 Python 스크립트다. FastAPI에는 DI 컨테이너가 없다 —
+eventType → 핸들러 라우팅은 `src/outbox/event_handlers.py`의 `build_event_handlers()` 하나가
+프로세스 전체의 단일 조립 지점(composition root)이므로(OutboxPoller/OutboxConsumer가 이를
+독립적으로 재사용한다 — domain-events.md 참고), 새 도메인 디렉토리 생성뿐 아니라 `main.py`
+(라우터 등록), `event_handlers.py`(공유 composition root인 `build_event_handlers()`),
+`migrations/env.py`(Alembic이 감지할 모델 import)까지 함께 배선해야 한다.
 
 ```bash
-# 기본: ../examples/src/<domain>/ 아래 생성, main.py/account_router.py/migrations는
+# 기본: ../examples/src/<domain>/ 아래 생성, main.py/event_handlers.py/migrations는
 # 건드리지 않고 붙여넣을 스니펫만 출력
 python3 scripts/create_domain.py Coupon
 
-# --wire를 주면 main.py/account_router.py/migrations/env.py/migrations/versions/까지 자동 배선
+# --wire를 주면 main.py/event_handlers.py/migrations/env.py/migrations/versions/까지 자동 배선
 python3 scripts/create_domain.py Coupon --wire
 
 # 다른 프로젝트(이 저장소를 템플릿으로 복제한 프로젝트 등)에 생성하려면 --out으로 지정

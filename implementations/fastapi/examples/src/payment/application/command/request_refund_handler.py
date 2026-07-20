@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from ....outbox.outbox_relay import OutboxRelay
 from ...domain.errors import PaymentNotFoundError
 from ...domain.payment_repository import PaymentRepository
 from ...domain.refund import Refund
@@ -17,12 +16,9 @@ class RequestRefundCommand:
 
 
 class RequestRefundHandler:
-    def __init__(
-        self, payment_repo: PaymentRepository, refund_repo: RefundRepository, outbox_relay: OutboxRelay
-    ) -> None:
+    def __init__(self, payment_repo: PaymentRepository, refund_repo: RefundRepository) -> None:
         self._payment_repo = payment_repo
         self._refund_repo = refund_repo
-        self._outbox_relay = outbox_relay
         # RefundEligibilityService는 프레임워크 의존이 없는 순수 Domain Service다. FastAPI의
         # Depends에 등록하지 않고 직접 인스턴스화해 쓴다(상태 없는 순수 판단 로직이라 매
         # 요청 재사용에 문제가 없다).
@@ -52,7 +48,7 @@ class RequestRefundHandler:
             refund.reject(decision.reason or "환불 요청이 거부되었습니다.")
 
         await self._refund_repo.save(refund)
-        # RefundApproved → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다.
-        # 거부된 경우에는 Domain Event가 없으므로 드레인할 것이 없어 no-op이다.
-        await self._outbox_relay.process_pending()
+        # RefundApproved → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다
+        # — OutboxPoller/OutboxConsumer가 비동기로 처리한다. 거부된 경우에는 Domain Event가
+        # 없으므로 Outbox에 적재될 것이 없다.
         return refund
