@@ -118,7 +118,7 @@ async def find_accounts(self, page: int, take: int, account_id=None, owner_id=No
 - **1 Aggregate Root = 1 구현체, 쓰기/읽기 ABC는 분리 가능**: `SqlAlchemyAccountRepository` 구현체 하나가 쓰기용 `AccountRepository`와 읽기 전용 `AccountQuery` 두 인터페이스를 함께 만족한다 — [cqrs-pattern.md](cqrs-pattern.md) 참조.
 - **인터페이스는 domain/, 구현체는 infrastructure/**.
 - **저장은 `save<Noun>` 하나만 사용, 별도 update 메서드 없음**: root의 `save<Noun>` 네이밍을 그대로 따른다 — `save_account`/`save_card`/`save_payment`/`save_refund`. 신규/기존 판별은 메서드 내부에서 upsert로 처리한다.
-- **조회 메서드는 `find<Noun>s` 하나로 통일**: `AccountQuery.find_accounts()` 하나로 목록/단건 조회를 모두 처리한다 — 단건 조회는 `account_id`+`owner_id` 필터와 `take=1`로 호출한 뒤 첫 항목을 꺼낸다.
+- **조회 메서드는 `find<Noun>s` 하나로 통일**: `AccountQuery.find_accounts()` 하나로 목록/단건 조회를 모두 처리한다 — 단건 조회는 `account_id`+`owner_id` 필터와 `take=1`로 호출한 뒤 첫 항목을 꺼낸다. `find_by_*`/`find_all`/`count*`/bare `save`/bare `delete` 같은 안티패턴은 harness의 `repository-naming` 규칙이 잡아낸다.
 - **동적 필터는 값이 있을 때만 적용**.
 - **삭제는 soft delete**: [persistence.md](persistence.md) 참조.
 

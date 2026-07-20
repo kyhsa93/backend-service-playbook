@@ -22,6 +22,7 @@ from rules import (
     outbox_no_sync_drain,
     repository_abc,
     repository_impl,
+    repository_naming,
     shared_infra,
 )
 from rules.common import collect_py_files
@@ -30,6 +31,7 @@ RULES = [
     file_naming,
     repository_abc,
     repository_impl,
+    repository_naming,
     handler_placement,
     domain_purity,
     directory_structure,

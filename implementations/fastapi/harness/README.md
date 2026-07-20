@@ -13,6 +13,7 @@ harness/
     file_naming.py                규칙별 구현 모듈 (규칙 하나당 파일 하나)
     repository_abc.py
     repository_impl.py
+    repository_naming.py
     handler_placement.py
     domain_purity.py
     directory_structure.py
@@ -48,6 +49,7 @@ python3 harness.py <projectRoot>
 | `file-naming` | `rules/file_naming.py` | 파일명이 `snake_case.py`인지 |
 | `repository-abc` | `rules/repository_abc.py` | ABC Repository(`ABC`/`abstractmethod` + `Repository`) → `domain/` |
 | `repository-impl` | `rules/repository_impl.py` | Repository 구현체(`class XRepository`) → `infrastructure/` |
+| `repository-naming` | `rules/repository_naming.py` | `domain/`의 `*Repository`/`*Query` ABC 추상 메서드명이 `find_by_*`/`find_all`/`count*`/bare `save`/bare `delete` 안티패턴이면 실패 — `find_<noun>s`/`save_<noun>`/`delete_<noun>`만 허용(repository-pattern.md) |
 | `handler-placement` | `rules/handler_placement.py` | `*_handler.py` → `application/command/` 또는 `application/query/` |
 | `domain-purity` | `rules/domain_purity.py` | `domain/`에서 `fastapi`/`sqlalchemy`/`aioboto3` import 금지 |
 | `directory-structure` | `rules/directory_structure.py` | `src/<domain>/{domain,application,interface,infrastructure}` + `application/{command,query}` 존재 |

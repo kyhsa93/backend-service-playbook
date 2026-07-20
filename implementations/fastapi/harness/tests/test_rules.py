@@ -27,6 +27,7 @@ from rules import (  # noqa: E402
     outbox_no_sync_drain,
     repository_abc,
     repository_impl,
+    repository_naming,
     shared_infra,
 )
 from rules.common import collect_py_files  # noqa: E402
@@ -63,6 +64,7 @@ def assert_has_failure(result) -> None:
         (no_notification_dependency_in_command, "no-notification-dependency-in-command/good"),
         (outbox_no_sync_drain, "outbox-no-sync-drain/good"),
         (cqrs_pattern, "cqrs-pattern/good"),
+        (repository_naming, "repository-naming/good"),
     ],
 )
 def test_good_fixture_has_no_failures(rule_module, fixture):
@@ -85,6 +87,11 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (outbox_no_sync_drain, "outbox-no-sync-drain/bad-references-outbox-relay"),
         (outbox_no_sync_drain, "outbox-no-sync-drain/bad-calls-drain-method"),
         (cqrs_pattern, "cqrs-pattern/bad-imports-repository"),
+        (repository_naming, "repository-naming/bad-find-by"),
+        (repository_naming, "repository-naming/bad-find-all"),
+        (repository_naming, "repository-naming/bad-count"),
+        (repository_naming, "repository-naming/bad-bare-save"),
+        (repository_naming, "repository-naming/bad-bare-delete"),
     ],
 )
 def test_bad_fixture_has_failure(rule_module, fixture):

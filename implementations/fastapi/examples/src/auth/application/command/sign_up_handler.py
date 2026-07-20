@@ -18,10 +18,10 @@ class SignUpHandler:
         self._password_hasher = password_hasher
 
     async def execute(self, cmd: SignUpCommand) -> None:
-        existing = await self._repo.find_by_user_id(cmd.user_id)
-        if existing is not None:
+        existing, _ = await self._repo.find_credentials(page=0, take=1, user_id=cmd.user_id)
+        if existing:
             raise UserIdAlreadyExistsError()
 
         password_hash = await self._password_hasher.hash(cmd.password)
         credential = Credential.create(user_id=cmd.user_id, password_hash=password_hash)
-        await self._repo.save(credential)
+        await self._repo.save_credential(credential)

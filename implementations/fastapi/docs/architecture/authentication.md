@@ -177,12 +177,17 @@ class Credential:
 
 ```python
 # src/auth/domain/repository.py — Repository ABC
+# 조회는 account/card 도메인과 동일하게 단일 find_credentials(...)로 통일한다
+# (repository-pattern.md) — user_id 유일성 검사(sign-up)와 단건 조회(sign-in) 모두
+# take=1 + user_id 필터로 표현한다.
 class CredentialRepository(ABC):
     @abstractmethod
-    async def find_by_user_id(self, user_id: str) -> Credential | None: ...
+    async def find_credentials(
+        self, page: int, take: int, credential_id: str | None = None, user_id: str | None = None
+    ) -> tuple[list[Credential], int]: ...
 
     @abstractmethod
-    async def save(self, credential: Credential) -> None: ...
+    async def save_credential(self, credential: Credential) -> None: ...
 ```
 
 ```python
@@ -221,13 +226,13 @@ class SignUpHandler:
         self._password_hasher = password_hasher
 
     async def execute(self, cmd: SignUpCommand) -> None:
-        existing = await self._repo.find_by_user_id(cmd.user_id)
-        if existing is not None:
+        existing, _ = await self._repo.find_credentials(page=0, take=1, user_id=cmd.user_id)
+        if existing:
             raise UserIdAlreadyExistsError()
 
         password_hash = await self._password_hasher.hash(cmd.password)
         credential = Credential.create(user_id=cmd.user_id, password_hash=password_hash)
-        await self._repo.save(credential)
+        await self._repo.save_credential(credential)
 ```
 
 ```python
@@ -239,7 +244,8 @@ class SignInHandler:
         self._auth_service = auth_service
 
     async def execute(self, cmd: SignInCommand) -> str:
-        credential = await self._repo.find_by_user_id(cmd.user_id)
+        credentials, _ = await self._repo.find_credentials(page=0, take=1, user_id=cmd.user_id)
+        credential = credentials[0] if credentials else None
         # user_id 미존재/비밀번호 불일치를 동일한 에러로 응답 — user enumeration 방지
         if credential is None:
             raise InvalidCredentialsError()

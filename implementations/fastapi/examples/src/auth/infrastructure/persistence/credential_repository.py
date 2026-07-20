@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,19 +22,29 @@ class SqlAlchemyCredentialRepository(CredentialRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def find_by_user_id(self, user_id: str) -> Credential | None:
-        stmt = select(CredentialModel).where(CredentialModel.user_id == user_id)
-        row = (await self._session.execute(stmt)).scalar_one_or_none()
-        if row is None:
-            return None
-        return Credential(
-            credential_id=row.id,
-            user_id=row.user_id,
-            password_hash=row.password_hash,
-            created_at=row.created_at,
-        )
+    async def find_credentials(
+        self, page: int, take: int, credential_id: str | None = None, user_id: str | None = None
+    ) -> tuple[list[Credential], int]:
+        stmt = select(CredentialModel)
+        if credential_id:
+            stmt = stmt.where(CredentialModel.id == credential_id)
+        if user_id:
+            stmt = stmt.where(CredentialModel.user_id == user_id)
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self._session.execute(count_stmt)).scalar_one()
+        rows = (await self._session.execute(stmt.offset(page * take).limit(take))).scalars().all()
+        credentials = [
+            Credential(
+                credential_id=row.id,
+                user_id=row.user_id,
+                password_hash=row.password_hash,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+        return credentials, total
 
-    async def save(self, credential: Credential) -> None:
+    async def save_credential(self, credential: Credential) -> None:
         self._session.add(
             CredentialModel(
                 id=credential.credential_id,
