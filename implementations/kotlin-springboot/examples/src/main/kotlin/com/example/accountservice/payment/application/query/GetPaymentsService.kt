@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.application.query
 
+import com.example.accountservice.payment.domain.PaymentFindQuery
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -17,8 +18,8 @@ class GetPaymentsService(
         page: Int,
         take: Int,
     ): GetPaymentsResult {
-        val payments = paymentQuery.findByOwnerId(requesterId, page, take)
-        val count = paymentQuery.countByOwnerId(requesterId)
+        val (payments, count) =
+            paymentQuery.findPayments(PaymentFindQuery(page = page, take = take, ownerId = requesterId))
         return GetPaymentsResult(
             payments =
                 payments.map {

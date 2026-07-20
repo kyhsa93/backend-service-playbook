@@ -1,5 +1,6 @@
 package com.example.accountservice.card.application.query
 
+import com.example.accountservice.card.domain.CardFindQuery
 import com.example.accountservice.card.domain.CardNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,9 +14,9 @@ class GetCardService(
         cardId: String,
         requesterId: String,
     ): GetCardResult {
-        val card =
-            cardQuery.findByCardIdAndOwnerId(cardId, requesterId)
-                ?: throw CardNotFoundException(cardId)
+        val (cards, _) =
+            cardQuery.findCards(CardFindQuery(page = 0, take = 1, cardId = cardId, ownerId = requesterId))
+        val card = cards.firstOrNull() ?: throw CardNotFoundException(cardId)
         return GetCardResult(
             cardId = card.cardId,
             accountId = card.accountId,

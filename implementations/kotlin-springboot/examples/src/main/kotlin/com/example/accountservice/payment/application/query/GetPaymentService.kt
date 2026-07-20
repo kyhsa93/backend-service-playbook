@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.application.query
 
+import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,9 +14,11 @@ class GetPaymentService(
         paymentId: String,
         requesterId: String,
     ): GetPaymentResult {
-        val payment =
-            paymentQuery.findByPaymentIdAndOwnerId(paymentId, requesterId)
-                ?: throw PaymentNotFoundException(paymentId)
+        val (payments, _) =
+            paymentQuery.findPayments(
+                PaymentFindQuery(page = 0, take = 1, paymentId = paymentId, ownerId = requesterId),
+            )
+        val payment = payments.firstOrNull() ?: throw PaymentNotFoundException(paymentId)
         return GetPaymentResult(
             paymentId = payment.paymentId,
             cardId = payment.cardId,

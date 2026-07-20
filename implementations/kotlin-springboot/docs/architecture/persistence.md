@@ -140,9 +140,14 @@ override fun deleteAccount(accountId: String) {
 ```
 
 ```kotlin
-// 조회 쿼리는 이미 deletedAt IS NULL 조건을 적용 중 — 실제 코드 (AccountQuery 읽기 전용 포트 구현)
-override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
-    jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+// 조회 쿼리는 이미 deletedAt IS NULL 조건을 적용 중 — 실제 코드
+// (findAccounts는 AccountRepository/AccountQuery 양쪽이 공유하는 동일 시그니처다)
+private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
+    val select = if (count) "SELECT COUNT(a)" else "SELECT a"
+    val sb = StringBuilder("$select FROM AccountJpaEntity a WHERE a.deletedAt IS NULL")
+    /* ... 나머지 동적 필터 조건 ... */
+    return sb.toString()
+}
 ```
 
 **`close()`(상태 전환)와 soft delete는 서로 다른 생명주기 이벤트로 분리했다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태만 바꾸고 `deletedAt`은 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(모든 조회가 `deletedAt IS NULL`을 조건으로 걸기 때문에, `close()`가 `deletedAt`까지 설정해버리면 종료 직후 계좌를 다시 조회할 방법이 없어진다). 대신 삭제는 `account/application/command/DeleteAccountService.kt`라는 별도 유스케이스(`DELETE /accounts/{accountId}`)로 존재하고, `Account.markDeleted()`가 "이미 CLOSED 상태인 계좌만 삭제 가능"이라는 규칙을 도메인 레벨에서 강제한다 — 활성 계좌를 곧바로 삭제하려 하면 `DeleteRequiresClosedAccountException`(400)을 던진다.

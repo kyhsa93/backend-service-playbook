@@ -53,15 +53,17 @@ class AccountAdapterImpl(
     private val accountQuery: AccountQuery,
 ) : AccountAdapter {
 
-    override fun findAccount(accountId: String, ownerId: String): AccountView? =
-        accountQuery.findByAccountIdAndOwnerId(accountId, ownerId)?.let { account ->
+    override fun findAccount(accountId: String, ownerId: String): AccountView? {
+        val (accounts, _) = accountQuery.findAccounts(AccountFindQuery(page = 0, take = 1, accountId = accountId, ownerId = ownerId))
+        return accounts.firstOrNull()?.let { account ->
             AccountView(accountId = account.accountId, active = account.status == AccountStatus.ACTIVE)
         }
+    }
 }
 ```
 
 - `accountQuery: AccountQuery`는 **Account BC가 공개하는 읽기 포트**다(`account/application/query/AccountQuery`) — Account BC의 쓰기 모델(`AccountRepository`)이나 `domain/`(Aggregate)에는 접근하지 않는다. 이것이 Anticorruption Layer(ACL) 역할이다: Account BC의 내부 모델(`Account` 도메인 클래스, `AccountStatus` enum)이 바뀌어도 `AccountAdapterImpl`의 매핑 로직만 고치면 되고, Card BC의 `AccountView`는 영향받지 않는다.
-- `.let { }` 스코프 함수로 null-safety를 유지한 채 매핑한다 — Account를 찾지 못하면(`AccountQuery`가 계좌 없음을 `null`로 표현) `null`을 그대로 전파한다. Account BC의 예외 타입(`AccountNotFoundException`)이 Card 레이어로 누수되지 않는다.
+- `.let { }` 스코프 함수로 null-safety를 유지한 채 매핑한다 — Account를 찾지 못하면(`AccountQuery.findAccounts`가 빈 목록을 반환) `firstOrNull()`이 `null`이 되고 그대로 전파한다. Account BC의 예외 타입(`AccountNotFoundException`)이 Card 레이어로 누수되지 않는다.
 
 ```kotlin
 // card/application/command/IssueCardService.kt — Adapter를 통해 호출
@@ -76,7 +78,7 @@ class IssueCardService(
         if (!account.active) throw CardIssueRequiresActiveAccountException()
 
         val card = Card.issue(accountId = command.accountId, ownerId = command.requesterId, brand = command.brand)
-        cardRepository.save(card)
+        cardRepository.saveCard(card)
         return IssueCardResult(/* ... */)
     }
 }

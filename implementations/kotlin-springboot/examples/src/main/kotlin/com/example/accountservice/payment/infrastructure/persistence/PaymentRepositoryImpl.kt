@@ -7,7 +7,6 @@ import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentRepository
 import jakarta.persistence.EntityManager
 import jakarta.persistence.Query
-import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
@@ -53,21 +52,8 @@ class PaymentRepositoryImpl(
         outboxWriter.saveAll(payment.pullDomainEvents())
     }
 
-    override fun findByPaymentIdAndOwnerId(
-        paymentId: String,
-        ownerId: String,
-    ): Payment? = jpaRepository.findByPaymentIdAndOwnerId(paymentId, ownerId)?.let(PaymentMapper::toDomain)
-
-    override fun findByOwnerId(
-        ownerId: String,
-        page: Int,
-        take: Int,
-    ): List<Payment> =
-        jpaRepository
-            .findByOwnerIdOrderByCreatedAtDesc(ownerId, PageRequest.of(page, take))
-            .map(PaymentMapper::toDomain)
-
-    override fun countByOwnerId(ownerId: String): Long = jpaRepository.countByOwnerId(ownerId)
+    // PaymentQuery(읽기 전용 포트)는 findPayments를 PaymentRepository와 정확히 같은 시그니처로
+    // 선언하므로(cqrs-pattern.md), 위의 findPayments override가 두 인터페이스를 동시에 만족시킨다.
 
     private fun buildJpql(
         query: PaymentFindQuery,

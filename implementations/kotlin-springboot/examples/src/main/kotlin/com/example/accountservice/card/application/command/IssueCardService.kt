@@ -20,7 +20,7 @@ class IssueCardService(
         if (!account.active) throw CardIssueRequiresActiveAccountException()
 
         val card = Card.issue(accountId = command.accountId, ownerId = command.requesterId, brand = command.brand)
-        cardRepository.save(card)
+        cardRepository.saveCard(card)
         return IssueCardResult(
             cardId = card.cardId,
             accountId = card.accountId,

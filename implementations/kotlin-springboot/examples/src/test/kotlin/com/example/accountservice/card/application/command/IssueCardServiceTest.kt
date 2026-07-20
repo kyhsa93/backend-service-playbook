@@ -28,7 +28,7 @@ class IssueCardServiceTest {
         assertThat(result.accountId).isEqualTo("account-1")
         assertThat(result.ownerId).isEqualTo("owner-1")
         assertThat(result.status).isEqualTo(CardStatus.ACTIVE.name)
-        verify(exactly = 1) { cardRepository.save(any()) }
+        verify(exactly = 1) { cardRepository.saveCard(any()) }
     }
 
     @Test
@@ -38,7 +38,7 @@ class IssueCardServiceTest {
         assertThrows<LinkedAccountNotFoundException> {
             service.issue(IssueCardCommand(accountId = "account-1", brand = "VISA", requesterId = "owner-1"))
         }
-        verify(exactly = 0) { cardRepository.save(any()) }
+        verify(exactly = 0) { cardRepository.saveCard(any()) }
     }
 
     @Test
@@ -49,6 +49,6 @@ class IssueCardServiceTest {
         assertThrows<CardIssueRequiresActiveAccountException> {
             service.issue(IssueCardCommand(accountId = "account-1", brand = "VISA", requesterId = "owner-1"))
         }
-        verify(exactly = 0) { cardRepository.save(any()) }
+        verify(exactly = 0) { cardRepository.saveCard(any()) }
     }
 }

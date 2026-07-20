@@ -100,9 +100,8 @@ class AccountRepositoryImpl(
         if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
     }
 
-    // AccountQuery(읽기 전용 포트) — 시그니처가 달라 별도 오버로드로 구현
-    override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? =
-        jpaRepository.findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
+    // AccountQuery(읽기 전용 포트)는 findAccounts/findTransactions를 AccountRepository와 정확히
+    // 같은 시그니처로 선언하므로, 위의 findAccounts override가 두 인터페이스를 동시에 만족시킨다.
 }
 ```
 

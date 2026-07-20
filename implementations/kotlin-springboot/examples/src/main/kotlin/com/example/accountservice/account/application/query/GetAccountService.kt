@@ -1,5 +1,6 @@
 package com.example.accountservice.account.application.query
 
+import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,9 +14,11 @@ class GetAccountService(
         accountId: String,
         requesterId: String,
     ): GetAccountResult {
-        val account =
-            accountQuery.findByAccountIdAndOwnerId(accountId, requesterId)
-                ?: throw AccountNotFoundException(accountId)
+        val (accounts, _) =
+            accountQuery.findAccounts(
+                AccountFindQuery(page = 0, take = 1, accountId = accountId, ownerId = requesterId),
+            )
+        val account = accounts.firstOrNull() ?: throw AccountNotFoundException(accountId)
         return GetAccountResult(
             accountId = account.accountId,
             ownerId = account.ownerId,

@@ -1,5 +1,6 @@
 package com.example.accountservice.card.application.command
 
+import com.example.accountservice.card.domain.CardFindQuery
 import com.example.accountservice.card.domain.CardRepository
 import com.example.accountservice.card.domain.CardStatus
 import org.springframework.stereotype.Service
@@ -16,14 +17,18 @@ class CancelCardsByAccountService(
     private val cardRepository: CardRepository,
 ) {
     fun cancel(accountId: String) {
-        val cards =
-            cardRepository.findByAccountIdAndStatuses(
-                accountId,
-                listOf(CardStatus.ACTIVE, CardStatus.SUSPENDED),
+        val (cards, _) =
+            cardRepository.findCards(
+                CardFindQuery(
+                    page = 0,
+                    take = 1000,
+                    accountId = accountId,
+                    status = listOf(CardStatus.ACTIVE, CardStatus.SUSPENDED),
+                ),
             )
         for (card in cards) {
             card.cancel()
-            cardRepository.save(card)
+            cardRepository.saveCard(card)
         }
     }
 }

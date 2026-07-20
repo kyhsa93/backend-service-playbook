@@ -84,7 +84,7 @@ class DepositService(
 
 `.firstOrNull()`이 root의 `.pop()` / `.then(r => r.orders.pop())` 패턴에 대응하는 Kotlin 관용구다 — 리스트가 비어 있으면 `null`, `?:`로 즉시 예외를 던진다. Java의 `Optional<T>` 래핑이나 인덱스 접근(`[0]`, `IndexOutOfBoundsException` 위험) 없이 한 줄로 끝난다. 계좌를 조회 후 변경하는 6개 Command Service(`Deposit`/`Withdraw`/`Suspend`/`Close`/`Reactivate`/`Delete`)가 모두 이 패턴을 쓴다. `CreateAccountService`는 신규 Aggregate를 생성하므로 조회 없이 `saveAccount(account)`만 호출한다.
 
-**CQRS 읽기 전용 포트(`AccountQuery`)는 이 문서의 범위가 아니다.** `GetAccountService`/`GetTransactionsService`는 `AccountRepository`(쓰기 모델)가 아니라 `application/query/AccountQuery`에 의존한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다(harness `cqrs-pattern` 규칙이 실제로 검사한다). `AccountQuery`의 메서드 시그니처(`findByAccountIdAndOwnerId`/`findTransactions`/`countTransactions`)는 별개 인터페이스다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+**CQRS 읽기 전용 포트(`AccountQuery`)도 같은 시그니처를 재사용한다.** `GetAccountService`/`GetTransactionsService`는 `AccountRepository`(쓰기 모델)가 아니라 `application/query/AccountQuery`에 의존한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다(harness `cqrs-pattern` 규칙이 실제로 검사한다). `AccountQuery`는 별개 인터페이스지만 `findAccounts(query: AccountFindQuery)`/`findTransactions(query: TransactionFindQuery)`를 `AccountRepository`와 정확히 같은 시그니처로 선언한다 — `AccountRepositoryImpl`이 두 인터페이스를 모두 구현할 때 하나의 override가 양쪽을 동시에 만족시킨다. Card/Payment/Refund의 `*Query` 인터페이스(`CardQuery.findCards`/`PaymentQuery.findPayments`/`RefundQuery.findRefunds`)도 모두 같은 패턴이다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
 
 ---
 
@@ -129,10 +129,8 @@ class AccountRepositoryImpl(
         return transactions to count
     }
 
-    // AccountQuery(읽기 전용 포트) — 시그니처가 AccountRepository와 다르므로 별도 오버로드로 구현한다.
-    override fun findByAccountIdAndOwnerId(accountId: String, ownerId: String): Account? = /* ... */
-    override fun findTransactions(accountId: String, page: Int, take: Int): List<Transaction> = /* ... */
-    override fun countTransactions(accountId: String): Long = /* ... */
+    // AccountQuery(읽기 전용 포트)는 findAccounts/findTransactions를 AccountRepository와 정확히 같은
+    // 시그니처로 선언하므로, 위의 두 override가 두 인터페이스를 동시에 만족시킨다 — 별도 오버로드 불필요.
 }
 ```
 
@@ -165,7 +163,7 @@ private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
 
 - **1 Aggregate = 1 Repository 인터페이스 + 구현체**.
 - **`delete<Noun>` 추가 완료**: `deleteAccount(accountId)`가 실제 코드에 존재하고 `Account.markDeleted()`를 통해 CLOSED 상태만 삭제 가능하도록 강제한다.
-- **`find<Noun>s`/`save<Noun>`으로 통일 완료**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍되었다. `findTransactions`/`countTransactions`도 `findTransactions(query): Pair<...>` 하나로 합쳐졌다.
+- **`find<Noun>s`/`save<Noun>`으로 통일 완료**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍되었다. `findTransactions`/`countTransactions`도 `findTransactions(query): Pair<...>` 하나로 합쳐졌다. 이 통일은 `AccountRepository`(쓰기 모델)뿐 아니라 `AccountQuery`(읽기 전용 포트)에도 그대로 적용되어 있고, Card(`findCards`/`saveCard`)·Payment(`findPayments`/`savePayment`)·Refund(`findRefunds`/`saveRefund`)의 Repository/Query 양쪽 모두 같은 형태다 — 더 이상 `find<Noun>ByXAndY` 같은 전용 조회 메서드가 코드베이스에 남아 있지 않다.
 - **단건 조회는 `take: 1` + `firstOrNull()`**: 전용 findOne 메서드를 만들지 않는다 — Command Service 6곳이 모두 이 패턴을 쓴다.
 - **Repository에 update 메서드 없음**: 상태 변경은 Aggregate 도메인 메서드 + `saveAccount`/`deleteAccount`로 이루어진다.
 - **동적 필터, soft-delete 조회 조건**: 값이 있을 때만 조건을 추가하고, `deletedAt IS NULL`이 모든 조회에 기본 적용된다.

@@ -1,6 +1,7 @@
 package com.example.accountservice.payment.infrastructure
 
 import com.example.accountservice.account.application.query.AccountQuery
+import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.payment.application.adapter.AccountAdapter
 import com.example.accountservice.payment.application.adapter.AccountView
@@ -23,8 +24,10 @@ class PaymentAccountAdapterImpl(
     override fun findAccount(
         accountId: String,
         ownerId: String,
-    ): AccountView? =
-        accountQuery.findByAccountIdAndOwnerId(accountId, ownerId)?.let { account ->
+    ): AccountView? {
+        val (accounts, _) =
+            accountQuery.findAccounts(AccountFindQuery(page = 0, take = 1, accountId = accountId, ownerId = ownerId))
+        return accounts.firstOrNull()?.let { account ->
             AccountView(
                 accountId = account.accountId,
                 active = account.status == AccountStatus.ACTIVE,
@@ -32,4 +35,5 @@ class PaymentAccountAdapterImpl(
                 currency = account.balance.currency,
             )
         }
+    }
 }

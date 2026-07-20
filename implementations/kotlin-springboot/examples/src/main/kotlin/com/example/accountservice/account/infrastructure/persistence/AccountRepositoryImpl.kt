@@ -75,27 +75,9 @@ class AccountRepositoryImpl(
         return transactions to count
     }
 
-    // AccountQuery(읽기 전용 포트) — 시그니처가 AccountRepository와 다르므로 별도 오버로드로 구현한다.
-    // cqrs-pattern.md 참고: Query Service(GetAccountService/GetTransactionsService)는 AccountRepository가
-    // 아니라 이 인터페이스에만 의존한다.
-    override fun findByAccountIdAndOwnerId(
-        accountId: String,
-        ownerId: String,
-    ): Account? =
-        jpaRepository
-            .findByAccountIdAndOwnerIdAndDeletedAtIsNull(accountId, ownerId)
-            ?.let(AccountMapper::toDomain)
-
-    override fun findTransactions(
-        accountId: String,
-        page: Int,
-        take: Int,
-    ): List<Transaction> =
-        transactionJpaRepository
-            .findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))
-            .map(TransactionMapper::toDomain)
-
-    override fun countTransactions(accountId: String): Long = transactionJpaRepository.countByAccountId(accountId)
+    // AccountQuery(읽기 전용 포트)는 findAccounts/findTransactions를 AccountRepository와 정확히 같은
+    // 시그니처로 선언하므로(cqrs-pattern.md), 위의 두 override가 두 인터페이스를 동시에 만족시킨다 —
+    // 별도 오버로드가 필요 없다.
 
     override fun hasTransactionWithReference(
         referenceId: String,

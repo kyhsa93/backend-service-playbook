@@ -1,6 +1,8 @@
 package com.example.accountservice.payment.application.query
 
+import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
+import com.example.accountservice.payment.domain.RefundFindQuery
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -21,10 +23,14 @@ class GetRefundsService(
         page: Int,
         take: Int,
     ): GetRefundsResult {
-        paymentQuery.findByPaymentIdAndOwnerId(paymentId, requesterId) ?: throw PaymentNotFoundException(paymentId)
+        val (payments, _) =
+            paymentQuery.findPayments(
+                PaymentFindQuery(page = 0, take = 1, paymentId = paymentId, ownerId = requesterId),
+            )
+        payments.firstOrNull() ?: throw PaymentNotFoundException(paymentId)
 
-        val refunds = refundQuery.findByPaymentId(paymentId, page, take)
-        val count = refundQuery.countByPaymentId(paymentId)
+        val (refunds, count) =
+            refundQuery.findRefunds(RefundFindQuery(page = page, take = take, paymentId = paymentId))
         return GetRefundsResult(
             refunds =
                 refunds.map {

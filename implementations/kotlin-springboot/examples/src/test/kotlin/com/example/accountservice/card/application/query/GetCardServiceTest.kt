@@ -1,6 +1,7 @@
 package com.example.accountservice.card.application.query
 
 import com.example.accountservice.card.domain.Card
+import com.example.accountservice.card.domain.CardFindQuery
 import com.example.accountservice.card.domain.CardNotFoundException
 import com.example.accountservice.card.domain.CardStatus
 import io.mockk.every
@@ -25,7 +26,8 @@ class GetCardServiceTest {
                 status = CardStatus.ACTIVE,
                 createdAt = LocalDateTime.now(),
             )
-        every { cardQuery.findByCardIdAndOwnerId("card-1", "owner-1") } returns card
+        val findQuery = CardFindQuery(page = 0, take = 1, cardId = "card-1", ownerId = "owner-1")
+        every { cardQuery.findCards(findQuery) } returns (listOf(card) to 1L)
 
         val result = service.getCard("card-1", "owner-1")
 
@@ -35,7 +37,8 @@ class GetCardServiceTest {
 
     @Test
     fun `카드가 없으면 예외를 던진다`() {
-        every { cardQuery.findByCardIdAndOwnerId("card-1", "owner-1") } returns null
+        val findQuery = CardFindQuery(page = 0, take = 1, cardId = "card-1", ownerId = "owner-1")
+        every { cardQuery.findCards(findQuery) } returns (emptyList<Card>() to 0L)
 
         assertThrows<CardNotFoundException> { service.getCard("card-1", "owner-1") }
     }
