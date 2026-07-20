@@ -8,12 +8,14 @@ package harness;
 // 규칙별 회귀 테스트는 test/RuleTest.java + test/testdata/<rule>/ fixture로 검증한다
 // (README.md 참고).
 
+import harness.rules.AggregateIdFormat;
 import harness.rules.AggregateNoPublicSetters;
 import harness.rules.ControllerPlacement;
 import harness.rules.CqrsQueryPurity;
 import harness.rules.DockerfileConventions;
 import harness.rules.DomainLayerIsolation;
 import harness.rules.DomainPurity;
+import harness.rules.ErrorResponseSchema;
 import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
 import harness.rules.InterfaceNoInfrastructure;
@@ -25,12 +27,15 @@ import harness.rules.NoLoggingInDomain;
 import harness.rules.NoSilentCatch;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
+import harness.rules.RateLimitWired;
 import harness.rules.RepositoryAnnotation;
 import harness.rules.RepositoryNaming;
 import harness.rules.SchedulerInInfrastructureOnly;
 import harness.rules.ServiceAnnotation;
 import harness.rules.SharedInfra;
+import harness.rules.SoftDeleteFilter;
 import harness.rules.TransactionBoundary;
+import harness.rules.TypedErrorsOnly;
 
 import java.util.List;
 
@@ -61,7 +66,12 @@ public final class Main {
         NoLoggingInDomain::check,
         SchedulerInInfrastructureOnly::check,
         NoSilentCatch::check,
-        DockerfileConventions::check
+        DockerfileConventions::check,
+        AggregateIdFormat::check,
+        ErrorResponseSchema::check,
+        SoftDeleteFilter::check,
+        TypedErrorsOnly::check,
+        RateLimitWired::check
     );
 
     public static void main(String[] args) {

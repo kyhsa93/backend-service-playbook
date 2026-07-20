@@ -207,6 +207,10 @@ CREATE TABLE accounts (
 | 삭제는 기본적으로 soft delete | `Account.delete()` + `AccountRepository.delete()` + `DeleteAccountService`로 배선됨 — 준수 |
 | 스키마 변경은 마이그레이션으로 관리 | Flyway(`db/migration/`) + `ddl-auto: validate` — 준수 |
 
+## harness 검증
+
+`harness/src/rules/SoftDeleteFilter.java`(rule: `soft-delete-filter`)가 `deletedAt` 컬럼을 가진 `*JpaEntity`를 조회하는 `*RepositoryImpl.java`의 find 메서드에 `deletedAt IS NULL`(또는 동일 의미의 필터)이 있는지 검사한다 — 하드 삭제로 soft-delete된 행이 노출되는 회귀를 잡는다. Entity 클래스에 Hibernate `@SQLRestriction`/`@Where` 전역 필터가 있으면 그쪽을 인정해 RepositoryImpl 검사를 생략한다(두 메커니즘 중 어느 쪽을 쓰든 통과). `deletedAt` 컬럼이 없는 Entity(아직 삭제 유스케이스가 없는 Card/Payment/Refund 등)는 검사 대상에서 자연히 제외된다.
+
 ### 관련 문서
 
 - [repository-pattern.md](repository-pattern.md) — Repository의 `delete<Noun>` 메서드

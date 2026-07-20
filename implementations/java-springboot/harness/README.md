@@ -40,6 +40,11 @@ harness/
       SchedulerInInfrastructureOnly.java
       NoSilentCatch.java
       DockerfileConventions.java
+      AggregateIdFormat.java
+      ErrorResponseSchema.java
+      SoftDeleteFilter.java
+      TypedErrorsOnly.java
+      RateLimitWired.java
   test/
     RuleTest.java                 자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
     testdata/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
@@ -85,6 +90,11 @@ bash implementations/java-springboot/harness.sh <projectRoot>
 | `scheduler-in-infrastructure-only` | `SchedulerInInfrastructureOnly.java` | `domain/`·`application/`에서 `@Scheduled`/`@EnableScheduling` 사용 시 실패 — Scheduler는 infrastructure/에 배치해야 함(scheduling.md). `outbox/OutboxPoller`(공용 인프라 패키지)나 부트스트랩 진입점의 `@EnableScheduling`처럼 domain/application 밖에 있는 정당한 사용은 통과 |
 | `no-silent-catch` | `NoSilentCatch.java` | `application/`·`infrastructure/`에서 완전히 빈 `catch (...) {}` 블록이 있으면 실패 — 예외를 조용히 삼키지 않고 로깅 후 처리하거나 재throw해야 함(observability.md) |
 | `dockerfile-conventions` | `DockerfileConventions.java` | `Dockerfile`이 멀티스테이지(`FROM` 2개 이상)인지, `HEALTHCHECK` 지시문이 있는지, `.dockerignore`가 존재하고 `.git`/빌드 산출물을 제외하는지 확인(container.md). `.java` 파일이 아니라 두 텍스트 파일 자체를 검사하는 유일한 규칙 |
+| `aggregate-id-format` | `AggregateIdFormat.java` | `common/IdGenerator.java`가 `UUID.randomUUID().toString()`의 하이픈을 `.replace("-", "")`로 제거하는지 확인 — Aggregate ID는 32자리 hex, 36자 하이픈 포함 문자열이 아니어야 함(aggregate-id.md). ID 생성이 이 유틸리티 한 곳으로 모여 있어 단일 파일만 검사한다 |
+| `error-response-schema` | `ErrorResponseSchema.java` | `common/web/GlobalExceptionHandler.java`(`@RestControllerAdvice`)의 `@ExceptionHandler` 메서드가 반환하는 `ResponseEntity<Xxx>`의 제네릭 타입을 동적으로 찾아, 그 타입이 정확히 `statusCode`(숫자)/`code`(String)/`message`(String 또는 배열)/`error`(String) 4필드만 갖는지 확인(error-handling.md). 필드명 하드코딩 없이 GlobalExceptionHandler가 실제로 반환하는 타입을 파싱한다 — `record`/일반 `class` 둘 다 인식 |
+| `soft-delete-filter` | `SoftDeleteFilter.java` | `deletedAt` 컬럼을 가진 `*JpaEntity`를 조회하는 `*RepositoryImpl.java`의 find 메서드에 `deletedAt IS NULL`(또는 동일 의미) 필터가 있는지 확인(persistence.md) — 하드 삭제 금지. Entity에 `@SQLRestriction`/`@Where` 전역 필터가 있으면 RepositoryImpl 검사를 생략(둘 중 어느 메커니즘이든 인정). `deletedAt` 컬럼이 없는 Entity(아직 삭제 유스케이스가 없는 Card/Payment/Refund 등)는 검사 대상에서 자연히 제외 |
+| `typed-errors-only` | `TypedErrorsOnly.java` | `domain/`·`application/`에서 `throw new RuntimeException(...)`/`IllegalStateException(...)`/`IllegalArgumentException(...)`/`UnsupportedOperationException(...)`/`Exception(...)`처럼 문자열과 함께 일반 예외를 직접 던지면 실패 — 도메인별 타입화 예외(`AccountException` + `ErrorCode` enum)만 허용(error-handling.md, AGENTS.md "에러는 enum으로 타입화"). 현재 코드에 이 패턴이 없어 순수 회귀 가드 |
+| `rate-limit-wired` | `RateLimitWired.java` | `RateLimitFilter`가 `@Component`로 Spring bean 등록되어 있는지, `RateLimiterConfig.custom()`으로 제한 값을 하드코딩하지 않고 `RateLimiterRegistry`에서 named instance를 동적으로 조회하는지(#181 회귀 가드), `FilterRegistrationBean.setEnabled(false)`로 명시적으로 비활성화되지 않았는지 확인(rate-limiting.md). `interfaces/`의 `@RateLimiter` 애노테이션 사용도 관찰해 PASS로 기록하되, 없어도 실패로 잡지 않음(선택 사항) |
 
 ## 회귀 테스트
 

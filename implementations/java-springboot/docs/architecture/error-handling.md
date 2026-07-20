@@ -126,6 +126,13 @@ root 원칙: Validation 실패의 `code`는 항상 `VALIDATION_FAILED` 고정값
 
 ---
 
+## harness 검증
+
+- `harness/src/rules/ErrorResponseSchema.java`(rule: `error-response-schema`)가 `GlobalExceptionHandler`의 `@ExceptionHandler` 메서드가 반환하는 `ResponseEntity<Xxx>`의 제네릭 타입을 동적으로 찾아, 정확히 `statusCode`(숫자)/`code`(String)/`message`(String 또는 배열)/`error`(String) 4필드만 갖는지 검사한다 — 더 많거나 적은 필드, 오타 필드명은 실패.
+- `harness/src/rules/TypedErrorsOnly.java`(rule: `typed-errors-only`)가 `domain/`·`application/`에서 `throw new RuntimeException(...)` 같은 일반 예외를 문자열과 함께 직접 던지면 실패시킨다 — 도메인별 타입화 예외(`ErrorCode` enum 보유)만 허용한다는 루트 절대 원칙(AGENTS.md "에러는 enum으로 타입화 — free-form 문자열 금지")을 강제한다.
+
+---
+
 ### 관련 문서
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate 내부 예외 throw 패턴

@@ -5,12 +5,14 @@
 // 같은 취지). test/ 디렉토리에서 실행한다고 가정하고 "testdata/..." 상대경로를 그대로 쓴다.
 import harness.Kind;
 import harness.RuleResult;
+import harness.rules.AggregateIdFormat;
 import harness.rules.AggregateNoPublicSetters;
 import harness.rules.ControllerPlacement;
 import harness.rules.CqrsQueryPurity;
 import harness.rules.DockerfileConventions;
 import harness.rules.DomainLayerIsolation;
 import harness.rules.DomainPurity;
+import harness.rules.ErrorResponseSchema;
 import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
 import harness.rules.InterfaceNoInfrastructure;
@@ -22,12 +24,15 @@ import harness.rules.NoLoggingInDomain;
 import harness.rules.NoSilentCatch;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
+import harness.rules.RateLimitWired;
 import harness.rules.RepositoryAnnotation;
 import harness.rules.RepositoryNaming;
 import harness.rules.SchedulerInInfrastructureOnly;
 import harness.rules.ServiceAnnotation;
 import harness.rules.SharedInfra;
+import harness.rules.SoftDeleteFilter;
 import harness.rules.TransactionBoundary;
+import harness.rules.TypedErrorsOnly;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -144,7 +149,27 @@ public final class RuleTest {
         new TestCase("no-silent-catch/bad-empty-catch", () -> assertHasFailure(NoSilentCatch.check("testdata/no-silent-catch/bad-empty-catch"))),
 
         new TestCase("dockerfile-conventions/good", () -> assertNoFailures(DockerfileConventions.check("testdata/dockerfile-conventions/good"))),
-        new TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck", () -> assertHasFailure(DockerfileConventions.check("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck")))
+        new TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck", () -> assertHasFailure(DockerfileConventions.check("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck"))),
+
+        new TestCase("aggregate-id-format/good", () -> assertNoFailures(AggregateIdFormat.check("testdata/aggregate-id-format/good"))),
+        new TestCase("aggregate-id-format/bad-raw-uuid", () -> assertHasFailure(AggregateIdFormat.check("testdata/aggregate-id-format/bad-raw-uuid"))),
+
+        new TestCase("error-response-schema/good", () -> assertNoFailures(ErrorResponseSchema.check("testdata/error-response-schema/good"))),
+        new TestCase("error-response-schema/bad-missing-field", () -> assertHasFailure(ErrorResponseSchema.check("testdata/error-response-schema/bad-missing-field"))),
+        new TestCase("error-response-schema/bad-extra-field", () -> assertHasFailure(ErrorResponseSchema.check("testdata/error-response-schema/bad-extra-field"))),
+
+        new TestCase("soft-delete-filter/good", () -> assertNoFailures(SoftDeleteFilter.check("testdata/soft-delete-filter/good"))),
+        new TestCase("soft-delete-filter/bad-missing-filter", () -> assertHasFailure(SoftDeleteFilter.check("testdata/soft-delete-filter/bad-missing-filter"))),
+        new TestCase("soft-delete-filter/good-global-annotation", () -> assertNoFailures(SoftDeleteFilter.check("testdata/soft-delete-filter/good-global-annotation"))),
+
+        new TestCase("typed-errors-only/good", () -> assertNoFailures(TypedErrorsOnly.check("testdata/typed-errors-only/good"))),
+        new TestCase("typed-errors-only/bad-runtime-exception", () -> assertHasFailure(TypedErrorsOnly.check("testdata/typed-errors-only/bad-runtime-exception"))),
+        new TestCase("typed-errors-only/bad-illegal-state", () -> assertHasFailure(TypedErrorsOnly.check("testdata/typed-errors-only/bad-illegal-state"))),
+
+        new TestCase("rate-limit-wired/good", () -> assertNoFailures(RateLimitWired.check("testdata/rate-limit-wired/good"))),
+        new TestCase("rate-limit-wired/bad-hardcoded", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-hardcoded"))),
+        new TestCase("rate-limit-wired/bad-not-component", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-not-component"))),
+        new TestCase("rate-limit-wired/bad-disabled", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-disabled")))
     );
 
     public static void main(String[] args) {
