@@ -120,14 +120,12 @@ python3 scripts/create_domain.py LoyaltyCategory --project-root /path/to/scratch
 자동으로 수집한다(component scanning, `AccountServiceApplication.kt`에도 도메인 bean을 나열하는
 곳이 없음을 직접 확인함). **다만 kotlin-springboot는 java-springboot와 달리 여기서 완전히 자유롭지
 않다** — java-springboot의 `OutboxConsumer`는 생성자 주입 `List<OutboxEventHandler>`로
-구현체를 자동 수집하지만, 이 저장소의 `outbox/EventHandlerRegistry.kt`(2026-07 async 전환 전에는
-`OutboxRelay.kt`)는 각 Domain Event 핸들러를 생성자에 개별 파라미터로 명시적으로 주입받고 그
+구현체를 자동 수집하지만, 이 저장소의 `outbox/EventHandlerRegistry.kt`는 각 Domain Event 핸들러를 생성자에 개별 파라미터로 명시적으로 주입받고 그
 생성자에서 즉시 구성하는 `Map<eventType, handler>` 리터럴에 핸들러 항목을 직접 추가한다
 (domain-events.md 3단계, 실제 코드로 확인). `common/GlobalExceptionHandler.kt`도 마찬가지로
 도메인 예외마다 `@ExceptionHandler` 메서드를 손으로 등록하는 구조다. 그래서 이 두 파일만은
 새 도메인마다 실제로 고쳐야 하고, `--wire` 옵션이 그 패치(import 삽입 후 재정렬 + 생성자 파라미터
-추가 + `Map` 리터럴/`@ExceptionHandler` 항목 추가)를 자동화한다(async 전환에 맞춰
-`EventHandlerRegistry.kt`의 `Map` 리터럴 구조에 대해서도 다시 검증됨). `--wire` 없이 실행하면
+추가 + `Map` 리터럴/`@ExceptionHandler` 항목 추가)를 자동화한다. `--wire` 없이 실행하면
 두 파일에 붙여넣을 내용만 콘솔에 출력한다 — 기존 파일을 스크립트가 임의로 고치는 걸 원치 않을 수
 있어 기본값은 안전한 쪽이다.
 

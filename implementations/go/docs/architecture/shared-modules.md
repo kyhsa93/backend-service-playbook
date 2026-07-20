@@ -44,7 +44,7 @@ internal/
       service.go                   # Account 전용 알림 구현체
     outbox/                        # OutboxWriter/Poller/Consumer(domain-events.md), 도메인이 늘어나도 공유
       writer.go                    # Repository.Save 트랜잭션 안에서 이벤트를 outbox 행으로 적재
-      poller.go                    # 독립 tick으로 outbox 테이블을 읽어 SQS로 발행 (2026-07 async 전환 — 이전의 동기 drain 방식이던 relay.go는 삭제됨)
+      poller.go                    # 독립 tick으로 outbox 테이블을 읽어 SQS로 발행
       consumer.go                  # SQS long polling → 핸들러 라우팅
       publisher.go
       sqs_client.go

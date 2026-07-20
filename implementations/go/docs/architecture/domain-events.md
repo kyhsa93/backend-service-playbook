@@ -1,6 +1,6 @@
 # 도메인 이벤트 (Go) — 수집, Outbox, Poller/Consumer
 
-원칙은 루트 [domain-events.md](../../../../docs/architecture/domain-events.md)가 규정하는 유일한 경로 — **Outbox 적재는 Repository.Save의 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 `outbox.Poller`가, EventHandler 실행은 SQS를 수신 대기하는 `outbox.Consumer`가** — 를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 이 저장소에 없다(2026-07 async 전환 이전에는 `outbox.Relay.ProcessPending`으로 그렇게 했지만 지금은 제거됐다). `internal/infrastructure/outbox/poller.go`/`consumer.go`가 실제 코드이며, 이 문서는 (1) Aggregate의 이벤트 수집, (2) Outbox 적재(Repository 저장 트랜잭션 내부), (3) Poller/Consumer를 통한 비동기 발행·수신까지 실제 코드를 기준으로 설명한다.
+원칙은 루트 [domain-events.md](../../../../docs/architecture/domain-events.md)가 규정하는 유일한 경로 — **Outbox 적재는 Repository.Save의 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 `outbox.Poller`가, EventHandler 실행은 SQS를 수신 대기하는 `outbox.Consumer`가** — 를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 이 저장소에 없다. `internal/infrastructure/outbox/poller.go`/`consumer.go`가 실제 코드이며, 이 문서는 (1) Aggregate의 이벤트 수집, (2) Outbox 적재(Repository 저장 트랜잭션 내부), (3) Poller/Consumer를 통한 비동기 발행·수신까지 실제 코드를 기준으로 설명한다.
 
 ---
 
@@ -124,7 +124,7 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 }
 ```
 
-**"같은 프로세스 안에서 저장 직후 동기적으로 드레인"하는 방식은 쓰지 않는다.** `implementations/go/harness/outbox_drain_order.go`가 Command Handler(`*_handler.go`, `*_event_handler.go` 제외)가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 참조하거나 `ProcessPending()`/`Poll()`/`drainOnce()`류를 호출하면 FAIL로 잡아낸다(`outbox-drain-order` 규칙, 2026-07 async 전환으로 정반대 방향으로 뒤집힘).
+**"같은 프로세스 안에서 저장 직후 동기적으로 드레인"하는 방식은 쓰지 않는다.** `implementations/go/harness/outbox_drain_order.go`가 Command Handler(`*_handler.go`, `*_event_handler.go` 제외)가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 참조하거나 `ProcessPending()`/`Poll()`/`drainOnce()`류를 호출하면 FAIL로 잡아낸다(`outbox-drain-order` 규칙).
 
 ---
 

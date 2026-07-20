@@ -158,7 +158,7 @@ func (h *AccountSuspendedEventHandler) Handle(ctx context.Context, payload []byt
 }
 ```
 
-`publisher`는 `outbox.Publisher`로, 자체 커넥션으로 Outbox 행을 하나 insert한다. 이 핸들러 자체가 `outbox.Consumer`가 SQS에서 `AccountSuspended` 메시지를 수신했을 때 비동기로 실행되는 것이므로, 여기서 새로 적재한 `account.suspended.v1` 행은 그 자리에서 드레인되지 않는다 — 다음 tick의 `outbox.Poller`가 자연스럽게 집어가 SQS로 발행하고, 그걸 다시 `outbox.Consumer`가 수신해 Card의 반응 유스케이스를 실행한다(2026-07 async 전환 이전에는 `outbox.Relay.ProcessPending`이 한 패스에서 새로 적재된 행까지 반복 처리했지만, 지금은 그런 다중 패스 루프가 없다).
+`publisher`는 `outbox.Publisher`로, 자체 커넥션으로 Outbox 행을 하나 insert한다. 이 핸들러 자체가 `outbox.Consumer`가 SQS에서 `AccountSuspended` 메시지를 수신했을 때 비동기로 실행되는 것이므로, 여기서 새로 적재한 `account.suspended.v1` 행은 그 자리에서 드레인되지 않는다 — 다음 tick의 `outbox.Poller`가 자연스럽게 집어가 SQS로 발행하고, 그걸 다시 `outbox.Consumer`가 수신해 Card의 반응 유스케이스를 실행한다 — 새로 적재된 행을 같은 패스 안에서 반복 처리하는 다중 패스 루프는 없다.
 
 ### Step B — Card가 Integration Event를 구독(반응 유스케이스)
 

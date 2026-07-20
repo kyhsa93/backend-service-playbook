@@ -165,4 +165,4 @@ public ResponseEntity<ErrorResponse> handleRateLimit(RequestNotPermitted e) {
 
 ## harness 검증
 
-`harness/src/rules/RateLimitWired.java`(rule: `rate-limit-wired`)가 `RateLimitFilter`가 정의만 되고 실제로는 적용되지 않는 dead code 회귀를 잡는다: `@Component`로 Spring bean 등록됐는지, `RateLimiterConfig.custom()`으로 제한 값을 필드에 직접 하드코딩하지 않고 `RateLimiterRegistry`에서 named instance를 동적으로 조회하는지(과거 실제 회귀 #181의 재발 방지 — 하드코딩된 `RateLimiterConfig`를 쓰던 걸 이 방식으로 고쳤다), `FilterRegistrationBean.setEnabled(false)`로 명시적으로 비활성화되지 않았는지 확인한다. `interfaces/`의 `@RateLimiter` 애노테이션 사용도 관찰해 기록하되, 전역 Filter만으로도 원칙상 허용되므로 애노테이션이 없다고 실패로 잡지는 않는다.
+`harness/src/rules/RateLimitWired.java`(rule: `rate-limit-wired`)가 `RateLimitFilter`가 정의만 되고 실제로는 적용되지 않는 dead code 회귀를 잡는다: `@Component`로 Spring bean 등록됐는지, `RateLimiterConfig.custom()`으로 제한 값을 필드에 직접 하드코딩하지 않고 `RateLimiterRegistry`에서 named instance를 동적으로 조회하는지, `FilterRegistrationBean.setEnabled(false)`로 명시적으로 비활성화되지 않았는지 확인한다. `interfaces/`의 `@RateLimiter` 애노테이션 사용도 관찰해 기록하되, 전역 Filter만으로도 원칙상 허용되므로 애노테이션이 없다고 실패로 잡지는 않는다.

@@ -38,7 +38,7 @@ class Account:
 
 ## Outbox 패턴 — 실제 구현
 
-이전에는 `repo.save()`가 성공한 직후 커맨드 핸들러가 `notification_service.notify()`를 직접 호출하는 dual-write 구조였다 — 저장과 알림 발송 사이에 프로세스가 죽으면 이벤트가 영원히 유실될 수 있었다. 지금은 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Outbox → SQS 발행/수신을 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`에게 완전히 맡긴다 — root 문서가 규정하는 **Outbox 적재는 Repository.save() 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 Poller가, EventHandler 실행은 큐를 수신 대기하는 Consumer가** 담당하는 경로를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식(2026-07 이전 방식)은 이 저장소에 더 이상 없다.
+`repo.save()`가 성공한 직후 커맨드 핸들러가 `notification_service.notify()`를 직접 호출하는 dual-write 구조는 쓰지 않는다 — 저장과 알림 발송 사이에 프로세스가 죽으면 이벤트가 영원히 유실될 수 있기 때문이다. 대신 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Outbox → SQS 발행/수신을 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`에게 완전히 맡긴다 — root 문서가 규정하는 **Outbox 적재는 Repository.save() 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 Poller가, EventHandler 실행은 큐를 수신 대기하는 Consumer가** 담당하는 경로를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 이 저장소에 없다.
 
 ### 1단계: Repository가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶는다
 

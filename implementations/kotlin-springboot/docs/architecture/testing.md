@@ -145,7 +145,7 @@ class CreateAccountServiceTest {
 }
 ```
 
-Command Service는 `AccountRepository.saveAccount()`를 호출한 뒤 곧바로 반환하므로, Application 단위 테스트는 "저장이 일어났는가"만 검증하면 된다 — Outbox 드레인(`OutboxPoller`/`OutboxConsumer`)은 Command Service가 참조하지 않는 별도 컴포넌트이므로 이 테스트의 mock 대상이 아니다(2026-07 async 전환 전에는 `OutboxRelay.processPending()`이 저장 직후 동기 호출되어 `verifyOrder`로 호출 순서까지 검증했으나, 지금은 그 호출 자체가 없다). `OutboxPoller`/`OutboxConsumer`/`EventHandlerRegistry` 자체의 동작(SQS 발행/수신, 핸들러 라우팅)은 이 파일의 범위가 아니다 — 필요하다면 별도 단위 테스트나 `NotificationE2ETest`(LocalStack SQS/SES 종단 검증)로 다룬다.
+Command Service는 `AccountRepository.saveAccount()`를 호출한 뒤 곧바로 반환하므로, Application 단위 테스트는 "저장이 일어났는가"만 검증하면 된다 — Outbox 드레인(`OutboxPoller`/`OutboxConsumer`)은 Command Service가 참조하지 않는 별도 컴포넌트이므로 이 테스트의 mock 대상이 아니다. `OutboxPoller`/`OutboxConsumer`/`EventHandlerRegistry` 자체의 동작(SQS 발행/수신, 핸들러 라우팅)은 이 파일의 범위가 아니다 — 필요하다면 별도 단위 테스트나 `NotificationE2ETest`(LocalStack SQS/SES 종단 검증)로 다룬다.
 
 이 테스트는 `AccountCreated` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 `Repository.saveAccount()` 안에서 Outbox에 적재되는 시점에 이미 끝난다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/AccountCreatedEventHandler` 등을 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
 

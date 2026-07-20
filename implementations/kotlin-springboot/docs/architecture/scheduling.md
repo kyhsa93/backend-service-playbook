@@ -5,8 +5,7 @@
 ## 현재 상태 — `@Scheduled` 실제 구현: `OutboxPoller`
 
 [domain-events.md](domain-events.md)의 `outbox/OutboxPoller.kt`가 이 문서가 아래에서 다루는
-`@Scheduled(fixedDelay = ...)` + SQS 발행 방식을 **실제로 구현하고 있다**(2026-07 async
-전환 — 이전에는 Command Service가 저장 직후 동기 호출해 드레인하는 `OutboxRelay`였다). 아래
+`@Scheduled(fixedDelay = ...)` + SQS 발행 방식을 **실제로 구현하고 있다**. 아래
 절의 예시 코드는 대부분 `OutboxPoller.kt`/`OutboxConsumer.kt`의 실제 코드이며, 그 외의
 Task Queue(만료 정리, 정산 등) 관련 예시는 여전히 가상 코드다 — 각 코드 블록의 헤더 주석이
 실제/가상 여부를 명시한다.

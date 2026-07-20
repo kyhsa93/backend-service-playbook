@@ -1,6 +1,6 @@
 # 로컬 개발 환경 (Go)
 
-원칙은 루트 [local-dev.md](../../../../docs/architecture/local-dev.md)를 따른다: Docker Compose로 DB를 띄우고, 클라우드 서비스는 LocalStack으로 대체한다. 이 저장소의 Go 예제는 이 패턴을 **SES 알림 기능을 추가하면서 이미 실제로 구현**했고, Outbox → SQS 비동기 전환(2026-07)으로 SQS까지 확장했다 — `implementations/go/examples/docker-compose.yml`과 `localstack/init-ses.sh`/`init-secrets.sh`/`init-sqs.sh`가 그 실물이다. 이 문서는 그 실제 구성을 근거로 설명한다.
+원칙은 루트 [local-dev.md](../../../../docs/architecture/local-dev.md)를 따른다: Docker Compose로 DB를 띄우고, 클라우드 서비스는 LocalStack으로 대체한다. 이 저장소의 Go 예제는 이 패턴을 SES 알림·SQS Outbox 발행/수신까지 포함해 실제로 구현했다 — `implementations/go/examples/docker-compose.yml`과 `localstack/init-ses.sh`/`init-secrets.sh`/`init-sqs.sh`가 그 실물이다. 이 문서는 그 실제 구성을 근거로 설명한다.
 
 ---
 
