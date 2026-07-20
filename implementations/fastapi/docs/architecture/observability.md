@@ -127,7 +127,7 @@ def get_correlation_id() -> str:
 | Infrastructure (`notification_service.py`) | 외부 연동 실패/성공, SQL 성능 이상 |
 | Domain (`account.py`) | **로깅하지 않음** |
 
-`src/account/domain/account.py`는 어떤 로거도 import하지 않는다 — Domain 순수성이 유지된다.
+`src/account/domain/account.py`는 어떤 로거도 import하지 않는다 — Domain 순수성이 유지된다. `domain/`에서 `logging`/`structlog` import 여부는 harness의 `domain-purity` 규칙(fastapi/sqlalchemy/aioboto3와 함께 로깅 라이브러리도 블록리스트에 포함)이 검사한다.
 
 ---
 
@@ -144,7 +144,7 @@ def get_correlation_id() -> str:
 
 - **Domain 레이어에서 로깅 금지**.
 - **구조화된 로그 사용**: JSON + snake_case 필드명. `%s` 문자열 보간 대신 `extra=` 사용.
-- **에러는 반드시 로깅 후 전파**: `logger.exception()` 뒤 예외를 삼키는 경우(`notify()`)는 [domain-events.md](domain-events.md)의 Outbox로 보완한다.
+- **에러는 반드시 로깅 후 전파**: `logger.exception()` 뒤 예외를 삼키는 경우(`notify()`)는 [domain-events.md](domain-events.md)의 Outbox로 보완한다. `application/`·`infrastructure/`의 `except ...: pass`(로깅도 재전파도 없이 조용히 삼키는 패턴)는 harness의 `no-silent-except` 규칙이 잡는다.
 - **Correlation ID로 요청 추적**: `contextvars` 기반, 모든 로그 라인에 자동 포함.
 - **프로덕션에서 DEBUG 비활성화**: 환경별 로그 레벨 설정.
 

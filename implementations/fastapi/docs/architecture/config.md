@@ -159,6 +159,8 @@ class DepositHandler:
 
 `src/account/infrastructure/notification/notification_service.py`와 `src/common/aws_secret_service.py`는 각자 `AwsConfig()`를 인스턴스화해 `client_kwargs()`로 boto3 클라이언트를 구성한다 — 위치(Infrastructure)도 올바르고, `os.getenv`를 산발적으로 호출하는 대신 `AwsConfig`를 통해 구성한다.
 
+`domain/`·`application/`이 `os.environ`/`os.getenv`를 직접 호출하는지는 harness의 `no-direct-env-access-outside-config` 규칙이 검사한다.
+
 ---
 
 ## 원칙

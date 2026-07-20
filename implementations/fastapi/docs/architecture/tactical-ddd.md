@@ -17,6 +17,8 @@
 
 `src/account/domain/account.py`의 `Account`는 비즈니스 규칙과 불변식을 캡슐화하는 일반 클래스다. 외부에서 `account.balance = ...`처럼 속성을 직접 바꿀 수 없게 강제하지는 않지만(Python은 진짜 private이 없다), **모든 상태 변경은 도메인 메서드(`deposit`, `withdraw`, `suspend`, `reactivate`, `close`)를 통해서만 이루어지도록 설계**되어 있고, 호출부(Application Handler)는 이 메서드만 사용한다.
 
+`@property`+`@x.setter` 쌍으로 외부에서 직접 대입 가능한 쓰기용 프로퍼티를 두지 않는 것도 이 컨벤션의 일부다 — harness의 `aggregate-no-public-setters` 규칙이 `domain/` 클래스에 public `@x.setter`가 있는지 AST로 검사한다(Python에 진짜 접근 제어가 없으므로, 이 규칙은 명확히 식별 가능한 `@x.setter` 데코레이터만 좁게 잡는다).
+
 ```python
 # src/account/domain/account.py
 class Account:

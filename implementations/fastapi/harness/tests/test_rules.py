@@ -16,18 +16,26 @@ if HARNESS_DIR not in sys.path:
     sys.path.insert(0, HARNESS_DIR)
 
 from rules import (  # noqa: E402
+    aggregate_no_public_setters,
     cqrs_pattern,
     directory_structure,
+    dockerfile_conventions,
+    domain_layer_isolation,
     domain_purity,
     event_placement,
     file_naming,
     handler_placement,
     layer_dependency,
+    no_cross_aggregate_reference,
+    no_cross_domain_repository_import,
+    no_direct_env_access,
     no_notification_dependency_in_command,
+    no_silent_except,
     outbox_no_sync_drain,
     repository_abc,
     repository_impl,
     repository_naming,
+    scheduler_in_infrastructure_only,
     shared_infra,
 )
 from rules.common import collect_py_files  # noqa: E402
@@ -65,6 +73,14 @@ def assert_has_failure(result) -> None:
         (outbox_no_sync_drain, "outbox-no-sync-drain/good"),
         (cqrs_pattern, "cqrs-pattern/good"),
         (repository_naming, "repository-naming/good"),
+        (domain_layer_isolation, "domain-layer-isolation/good"),
+        (aggregate_no_public_setters, "aggregate-no-public-setters/good"),
+        (no_cross_aggregate_reference, "no-cross-aggregate-reference/good"),
+        (no_direct_env_access, "no-direct-env-access/good"),
+        (no_cross_domain_repository_import, "no-cross-domain-repository-import/good"),
+        (scheduler_in_infrastructure_only, "scheduler-in-infrastructure-only/good"),
+        (no_silent_except, "no-silent-except/good"),
+        (dockerfile_conventions, "dockerfile-conventions/good"),
     ],
 )
 def test_good_fixture_has_no_failures(rule_module, fixture):
@@ -92,6 +108,19 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (repository_naming, "repository-naming/bad-count"),
         (repository_naming, "repository-naming/bad-bare-save"),
         (repository_naming, "repository-naming/bad-bare-delete"),
+        (repository_naming, "repository-naming/bad-update"),
+        (domain_purity, "domain-purity/bad-logging-import"),
+        (domain_layer_isolation, "domain-layer-isolation/bad-imports-infrastructure"),
+        (domain_layer_isolation, "domain-layer-isolation/bad-imports-other-domain-application"),
+        (aggregate_no_public_setters, "aggregate-no-public-setters/bad-setter"),
+        (no_cross_aggregate_reference, "no-cross-aggregate-reference/bad-payment-references-refund"),
+        (no_direct_env_access, "no-direct-env-access/bad-getenv-in-application"),
+        (no_cross_domain_repository_import, "no-cross-domain-repository-import/bad-cross-domain-import"),
+        (scheduler_in_infrastructure_only, "scheduler-in-infrastructure-only/bad-apscheduler-in-application"),
+        (no_silent_except, "no-silent-except/bad-silent-except"),
+        (dockerfile_conventions, "dockerfile-conventions/bad-no-healthcheck"),
+        (dockerfile_conventions, "dockerfile-conventions/bad-single-stage"),
+        (dockerfile_conventions, "dockerfile-conventions/bad-no-dockerignore"),
     ],
 )
 def test_bad_fixture_has_failure(rule_module, fixture):

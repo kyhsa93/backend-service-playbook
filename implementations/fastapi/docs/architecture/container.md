@@ -152,6 +152,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 - **헬스체크 엔드포인트 필수**: `/health/live`, `/health/ready`.
 - **HEALTHCHECK는 표준 라이브러리로**: `curl`/`wget` 설치 없이 `python -c "import urllib.request..."`로 이미지 크기·공격 표면을 최소화한다.
 
+멀티스테이지 빌드(`FROM` 2개 이상)·`HEALTHCHECK` 존재·`.dockerignore` 존재 여부는 harness의 `dockerfile-conventions` 규칙이 `Dockerfile`/`.dockerignore`를 직접 읽어 검사한다.
+
 ---
 
 ### 관련 문서

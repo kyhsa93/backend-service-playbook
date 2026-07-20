@@ -14,6 +14,8 @@ Interface (APIRouter)  →  Application (Handler)  →  Domain (Aggregate, Repos
 - Domain 레이어는 어떤 레이어에도 의존하지 않는다 — `fastapi`, `sqlalchemy`, `aioboto3` import 없음.
 - Infrastructure 레이어는 Domain/Application의 ABC를 구현한다 (의존성 역전) — FastAPI에는 전용 DI 컨테이너가 없으므로, `Depends`의 팩토리 함수가 이 바인딩을 담당한다.
 
+`domain/`이 (같은 도메인이든 다른 도메인이든) `application/`·`infrastructure/`·`interface/`를 import하는지는 harness의 `domain-layer-isolation` 규칙이 AST로 검사한다 — `domain-purity`(프레임워크 이름 블록리스트)보다 넓은, 경로 기반 구조 검사다.
+
 이 저장소의 실제 코드로 각 레이어를 살펴본다 (`examples/src/account/`).
 
 ---
@@ -174,6 +176,10 @@ Domain Service를 잘못 쓰는 패턴, root [domain-service.md](../../../../doc
 
 전체 코드: `examples/src/payment/domain/refund_eligibility_service.py`, `payment.py`, `refund.py`,
 `examples/src/payment/application/command/request_refund_handler.py`.
+
+`Payment`가 `Refund` 클래스를(또는 그 반대를) 필드/생성자 파라미터 타입으로 직접 참조하지 않고
+`payment_id: str` 같은 ID 참조만 쓰는지는 harness의 `no-cross-aggregate-reference` 규칙이
+`src/payment/domain/{payment.py,refund.py}`를 대상으로 검사한다.
 
 ---
 

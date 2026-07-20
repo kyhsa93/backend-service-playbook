@@ -72,6 +72,8 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 **Cron 예외를 반드시 명시적으로 로깅한다.** APScheduler는 job 안에서 발생한 예외를 자동으로 삼키고 다음 tick에서 계속 실행하지만, `try-except` + `logger.exception()` 없이는 실패가 관찰 불가능해진다.
 
+`domain/`·`application/`에 APScheduler/Celery/`asyncio.create_task` 기반 스케줄링이 직접 등장하는지는 harness의 `scheduler-in-infrastructure-only` 규칙이 검사한다 — `src/outbox/outbox_poller.py`의 `asyncio.create_task()` 루프는 `src/outbox/`가 이미 infrastructure에 준하는 공유 디렉토리([shared-modules.md](shared-modules.md))라 대상 밖이다.
+
 ---
 
 ## 멱등성 — at-least-once 전제

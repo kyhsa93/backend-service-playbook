@@ -14,6 +14,9 @@ domain/ 레이어의 Repository/Query ABC 인터페이스는 조회는 `find_<no
   포함되어야 하며 별도 메서드로 두지 않는다
 - 정확히 `save`(bare, 명사 접미사 없음) — `save_account`처럼 명사가 붙으면 통과
 - 정확히 `delete`(bare, 명사 접미사 없음) — `delete_account`처럼 명사가 붙으면 통과
+- `update_`로 시작하는 메서드 — 별도 update 메서드를 두지 않는다. 상태 변경은 Aggregate를
+  `find_<noun>s`로 로드해 도메인 메서드로 변경한 뒤 `save_<noun>`으로 통째로 다시 저장하는
+  것으로 표현한다(부분 업데이트용 별도 메서드 금지)
 """
 
 from __future__ import annotations
@@ -36,6 +39,8 @@ def _violation_reason(name: str) -> str | None:
         return "'save' — bare save 금지, save_<noun>으로 명사를 명시해야 함"
     if name == "delete":
         return "'delete' — bare delete 금지, delete_<noun>으로 명사를 명시해야 함"
+    if name.startswith("update_"):
+        return f"'{name}' — 별도 update_* 메서드 금지, find로 로드 후 도메인 메서드로 변경해 save_<noun>으로 저장"
     return None
 
 

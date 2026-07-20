@@ -8,7 +8,7 @@
 
 ## 원칙
 
-1. **Application Handler는 Adapter 인터페이스를 통해서만 다른 도메인을 호출**한다. 다른 도메인의 Repository나 Handler를 직접 import하지 않는다.
+1. **Application Handler는 Adapter 인터페이스를 통해서만 다른 도메인을 호출**한다. 다른 도메인의 Repository나 Handler를 직접 import하지 않는다 — harness의 `no-cross-bc-repository-in-application` 규칙이 `application/`의 다른 도메인 `domain/repository.py`류 직접 import를 AST로 잡는다(같은 도메인 import는 정상).
 2. **Adapter 인터페이스는 호출하는 쪽의 `application/adapter/`에 ABC로 정의**한다 — Repository/Technical Service와 동일한 위치 원칙([layer-architecture.md](layer-architecture.md)의 "Technical Service 인터페이스" 참조).
 3. **Adapter 구현체는 호출하는 쪽의 `infrastructure/`에 배치**하고, 대상 도메인의 실제 진입점(이 저장소에서는 대상 도메인이 공개한 읽기 인터페이스, 예: `AccountQuery`)을 호출한다.
 4. Adapter 인터페이스는 **호출하는 쪽이 필요로 하는 형태**로만 메서드를 정의한다 — 대상 도메인의 전체 API나 내부 enum을 노출하지 않는다.

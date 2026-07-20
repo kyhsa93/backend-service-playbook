@@ -11,18 +11,26 @@ from __future__ import annotations
 import sys
 
 from rules import (
+    aggregate_no_public_setters,
     cqrs_pattern,
     directory_structure,
+    dockerfile_conventions,
+    domain_layer_isolation,
     domain_purity,
     event_placement,
     file_naming,
     handler_placement,
     layer_dependency,
+    no_cross_aggregate_reference,
+    no_cross_domain_repository_import,
+    no_direct_env_access,
     no_notification_dependency_in_command,
+    no_silent_except,
     outbox_no_sync_drain,
     repository_abc,
     repository_impl,
     repository_naming,
+    scheduler_in_infrastructure_only,
     shared_infra,
 )
 from rules.common import collect_py_files
@@ -41,6 +49,14 @@ RULES = [
     no_notification_dependency_in_command,
     outbox_no_sync_drain,
     cqrs_pattern,
+    domain_layer_isolation,
+    aggregate_no_public_setters,
+    no_cross_aggregate_reference,
+    no_direct_env_access,
+    no_cross_domain_repository_import,
+    scheduler_in_infrastructure_only,
+    no_silent_except,
+    dockerfile_conventions,
 ]
 
 
