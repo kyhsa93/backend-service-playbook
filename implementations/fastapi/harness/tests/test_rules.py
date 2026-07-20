@@ -29,11 +29,15 @@ from rules import (  # noqa: E402
     handler_placement,
     layer_dependency,
     no_cross_aggregate_reference,
+    no_cross_bc_domain_import,
     no_cross_domain_repository_import,
     no_direct_env_access,
+    no_generic_response_keys,
     no_notification_dependency_in_command,
+    no_orm_autosync_in_prod_config,
     no_silent_except,
     outbox_no_sync_drain,
+    query_handler_no_raw_aggregate,
     rate_limit_wired,
     repository_abc,
     repository_impl,
@@ -91,6 +95,10 @@ def assert_has_failure(result) -> None:
         (soft_delete_filter, "soft-delete-filter/good"),
         (typed_errors_only, "typed-errors-only/good"),
         (rate_limit_wired, "rate-limit-wired/good"),
+        (no_generic_response_keys, "no-generic-response-keys/good"),
+        (query_handler_no_raw_aggregate, "query-handler-no-raw-aggregate/good"),
+        (no_cross_bc_domain_import, "no-cross-bc-domain-import/good"),
+        (no_orm_autosync_in_prod_config, "no-orm-autosync-in-prod-config/good"),
     ],
 )
 def test_good_fixture_has_no_failures(rule_module, fixture):
@@ -139,6 +147,10 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (typed_errors_only, "typed-errors-only/bad-generic-exception"),
         (rate_limit_wired, "rate-limit-wired/bad-not-registered"),
         (rate_limit_wired, "rate-limit-wired/bad-not-applied"),
+        (no_generic_response_keys, "no-generic-response-keys/bad-generic-key"),
+        (query_handler_no_raw_aggregate, "query-handler-no-raw-aggregate/bad-returns-raw-aggregate"),
+        (no_cross_bc_domain_import, "no-cross-bc-domain-import/bad-imports-other-bc-domain"),
+        (no_orm_autosync_in_prod_config, "no-orm-autosync-in-prod-config/bad-create-all-in-main"),
     ],
 )
 def test_bad_fixture_has_failure(rule_module, fixture):

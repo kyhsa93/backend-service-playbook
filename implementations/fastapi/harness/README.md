@@ -72,6 +72,10 @@ python3 harness.py <projectRoot>
 | `soft-delete-filter` | `rules/soft_delete_filter.py` | `infrastructure/persistence/`의 SQLAlchemy 모델 중 `updated_at`(상태 변경 가능)이 있는데 `deleted_at`이 없으면 실패, `deleted_at`이 있으면 그 모델을 조회하는 `find_*` 메서드가 `<Model>.deleted_at.is_(None)` 필터를 포함하는지 검사(persistence.md) |
 | `typed-errors-only` | `rules/typed_errors_only.py` | `domain/`·`application/`에서 `raise Exception("...")`/`raise ValueError("...")` 등 내장 제네릭 예외에 문자열 메시지를 실어 던지면 실패 — `domain/errors.py`의 타입화된 예외 클래스를 raise해야 함(AGENTS.md, error-handling.md) |
 | `rate-limit-wired` | `rules/rate_limit_wired.py` | `Limiter`가 정의만 되고 `main.py`에 배선(`app.state.limiter`/`RateLimitExceeded` 핸들러/`SlowAPIMiddleware`)되지 않았거나, 어떤 라우트에도 `@limiter.limit(...)`이 적용되지 않아 죽은 코드로 남아있으면 실패(rate-limiting.md) |
+| `no-generic-response-keys` | `rules/no_generic_response_keys.py` | `interface/rest/`의 Pydantic `BaseModel` 목록 응답 스키마 중 `list[...]` 필드명이 `result`/`data`/`items` 같은 범용 키면 실패 — 도메인 객체명 복수형(`transactions`, `accounts`)이어야 함(api-response.md) |
+| `query-handler-no-raw-aggregate` | `rules/query_handler_no_raw_aggregate.py` | `application/query/`의 `*Handler.execute()` 반환 타입 주석이 `domain/`에서 import한 타입(Aggregate 등)이면 실패 — 전용 Result 타입(`application/query/result.py`)으로 변환해 반환해야 함(api-response.md "Result 객체"). 특정 도메인 이름을 하드코딩하지 않고 "domain/에서 import됐는지"로 구조적으로 판별 |
+| `no-cross-bc-domain-import` | `rules/no_cross_bc_domain_import.py` | `src/<bc>/domain/*.py`가 다른 BC의 `domain/` 패키지를 직접 import하면 실패 — 다른 Aggregate는 ID 참조만 허용, 객체 참조 금지(tactical-ddd.md). `domain-layer-isolation`(레이어 간)과 `no-cross-aggregate-reference`(payment 내부 Aggregate 간) 사이에 남아있던 BC 간 domain↔domain 공백을 닫음 |
+| `no-orm-autosync-in-prod-config` | `rules/no_orm_autosync_in_prod_config.py` | 테스트 전용 파일(`collect_py_files`가 이미 제외)이 아닌 곳에서 `<expr>.metadata.create_all` 호출이 발견되면 실패 — 프로덕션 스키마 변경은 Alembic 마이그레이션으로만 관리해야 함(persistence.md), `create_all`은 테스트 fixture 전용 |
 
 ## 검토했으나 채택하지 않은 규칙
 

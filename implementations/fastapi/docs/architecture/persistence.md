@@ -164,3 +164,5 @@ app = FastAPI(title="Account Service")
 ---
 
 harness `soft-delete-filter` 규칙(`../../harness/rules/soft_delete_filter.py`)이 `infrastructure/persistence/`의 SQLAlchemy 모델 중 `updated_at`(상태 변경 가능)이 있는데 `deleted_at`이 없으면 실패시키고, `deleted_at`이 있는 모델을 조회하는 `find_*` 메서드가 `deleted_at IS NULL` 필터를 포함하는지 검증한다 — 이 규칙이 실제로 `PaymentModel`/`RefundModel`에 `deleted_at`이 빠져 있던 것을 잡아냈다.
+
+harness `no-orm-autosync-in-prod-config` 규칙(`../../harness/rules/no_orm_autosync_in_prod_config.py`)이 테스트 전용 파일이 아닌 곳(`main.py`, `src/database.py` 등 앱 부트스트랩 경로)에서 `Base.metadata.create_all(...)` 호출이 있는지 AST로 검사한다 — 위 "스키마 변경은 Alembic으로 관리한다" 원칙을 기계적으로 강제한다.

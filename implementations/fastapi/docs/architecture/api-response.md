@@ -68,6 +68,8 @@ class GetTransactionsResponse(BaseModel):
 - 키 이름은 **도메인 객체명 복수형** (`transactions`, `accounts`) — `result`, `data`, `items` 같은 범용 키는 사용하지 않는다.
 - `count`는 필터 적용 후 전체 건수이며, 현재 페이지에 반환된 배열 길이(`len(transactions)`)와 같지 않을 수 있다.
 
+harness `no-generic-response-keys` 규칙(`../../harness/rules/no_generic_response_keys.py`)이 `interface/rest/`의 Pydantic `BaseModel` 중 `list[...]` 필드명이 `result`/`data`/`items`면 실패시켜 이 원칙을 기계적으로 강제한다.
+
 ---
 
 ## 단건 조회 응답 형식
@@ -138,6 +140,8 @@ return GetAccountResponse(
 ```
 Account (domain)  →  GetAccountResult (application/query, dataclass)  →  GetAccountResponse (interface/rest, Pydantic BaseModel)
 ```
+
+harness `query-handler-no-raw-aggregate` 규칙(`../../harness/rules/query_handler_no_raw_aggregate.py`)이 `application/query/`의 `*Handler.execute()` 반환 타입 주석이 `domain/`에서 import된 타입(Aggregate 등)이면 실패시켜, 도메인 Aggregate를 응답으로 직접 노출하지 않는다는 원칙을 강제한다. 특정 도메인 이름을 하드코딩하지 않고 "반환 타입이 domain/에서 import됐는지"로 구조적으로 판별한다.
 
 ---
 

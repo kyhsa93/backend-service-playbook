@@ -63,7 +63,7 @@ class Account:
 **핵심 원칙이 지켜지는 방식:**
 - **불변식은 도메인 메서드 진입 시 즉시 검증**: 정지된 계좌 출금(`WithdrawRequiresActiveAccountError`), 잔액 부족(`InsufficientBalanceError`), 음수/0 금액(`InvalidAmountError`) 모두 상태 변경 전에 검증하고 실패 시 즉시 예외를 던진다.
 - **팩토리 classmethod로 생성**: `Account.create()`가 유일한 생성 경로이며, 생성 시점에 `AccountCreated` 이벤트를 함께 기록한다. `Account.__init__`은 (Repository가 DB row를 복원할 때 쓰는) 저수준 생성자다.
-- **다른 Aggregate는 없다**: 이 저장소는 단일 도메인이라 참조가 필요 없지만, 두 번째 Aggregate가 생기면 서로 ID로만 참조하고 객체 참조는 하지 않는다.
+- **다른 Aggregate는 ID로만 참조한다**: 같은 BC 안의 다른 Aggregate(`src/payment/domain/payment.py`의 `Payment`와 `refund.py`의 `Refund`)든, 다른 BC의 Aggregate(`card`가 `payment`의 Aggregate를 참조하는 경우)든 서로 `payment_id: str` 같은 ID로만 참조하고 객체 참조는 하지 않는다 — 루트 [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md) "다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)" 원칙. 같은 BC 내부는 harness `no-cross-aggregate-reference` 규칙(`src/payment/domain/{payment.py,refund.py}` 대상, [layer-architecture.md](layer-architecture.md) "Domain Service" 절 참고)이, BC 사이는 `no-cross-bc-domain-import` 규칙(`../../harness/rules/no_cross_bc_domain_import.py`, `src/<bc>/domain/*.py`가 다른 BC의 `domain/`을 직접 import하면 실패)이 각각 검사한다.
 
 ---
 
