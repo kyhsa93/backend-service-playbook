@@ -4,6 +4,7 @@ import com.example.accountservice.AccountServiceApplication
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailJpaRepository
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,10 +28,13 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ses.SesClient
 import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest
+import software.amazon.awssdk.services.sqs.SqsClient
+import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 
 /**
  * Account 도메인 커맨드(개설/입금/출금/정지/재개/종료) 각각이 Outbox 경로를 통해 SES로 알림
@@ -38,9 +42,10 @@ import java.net.http.HttpResponse
  *
  * [com.example.accountservice.account.interfaces.rest.AccountControllerE2ETest]가 이미 계좌
  * 개설/입금 알림을 커버하지만, 이 클래스는 6개 커맨드 전체를 대상으로 알림 발송을 전담 검증한다 —
- * `outbox/` 도입(OutboxWriter가 Aggregate 저장과 같은 트랜잭션에 이벤트를 커밋하고,
- * OutboxRelay.processPending()이 커밋 직후 동기적으로 이를 드레인해 `application/event/`의
- * `*EventHandler`를 호출하는 경로)에 대한 회귀 테스트이기도 하다.
+ * `outbox/` 도입(OutboxWriter가 Aggregate 저장과 같은 트랜잭션에 이벤트를 커밋하고, OutboxPoller가
+ * 독립적으로 이를 SQS로 발행하고 OutboxConsumer가 수신해 `application/event/`의 `*EventHandler`를
+ * 호출하는 비동기 경로)에 대한 회귀 테스트이기도 하다 — 알림은 HTTP 응답이 돌아온 뒤 최대 몇 초
+ * 뒤에 발송되므로 [awaitEmailSent]로 폴링한다.
  */
 @Testcontainers
 @SpringBootTest(
@@ -60,7 +65,7 @@ class NotificationE2ETest {
         @JvmStatic
         val localstack: LocalStackContainer =
             LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(LocalStackContainer.Service.SES)
+                .withServices(LocalStackContainer.Service.SES, LocalStackContainer.Service.SQS)
 
         @DynamicPropertySource
         @JvmStatic
@@ -74,9 +79,27 @@ class NotificationE2ETest {
             registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
             registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
+            registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
             // rate limiting 자체가 아니라 알림 발송 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
+        }
+
+        // 컨테이너는 이미 떠 있는 상태이므로(정적 @Container 필드), Spring 컨텍스트가 SqsProperties를
+        // 바인딩하기 전에 큐를 직접 만들어 그 URL을 반환한다 — DLQ/RedrivePolicy는 여기서는
+        // 생략한다(테스트 목적상 재시도 관찰이 필요 없다).
+        private fun createDomainEventQueue(): String {
+            val sqsClient =
+                SqsClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SQS))
+                    .build()
+            val queueUrl = sqsClient.createQueue(CreateQueueRequest.builder().queueName("domain-events").build()).queueUrl()
+            sqsClient.close()
+            return queueUrl
         }
 
         @BeforeAll
@@ -153,31 +176,39 @@ class NotificationE2ETest {
         return root["messages"] as? List<Map<String, Any>> ?: emptyList()
     }
 
-    /** DB에 저장된 발송 기록과 LocalStack SES에 실제로 도착한 메시지를 모두 검증한다. */
-    private fun assertEmailSent(
+    /**
+     * DB에 저장된 발송 기록과 LocalStack SES에 실제로 도착한 메시지를 모두 검증한다.
+     *
+     * Outbox → SQS(OutboxPoller, 최대 1초 주기) → OutboxConsumer → EventHandler 경로를 거쳐 비동기로
+     * 처리되므로, HTTP 응답이 돌아온 시점에는 아직 이메일이 발송되지 않았을 수 있다 — 이 저장소가
+     * 실측한 LocalStack+SQS 지연(2~4초)보다 넉넉한 타임아웃으로 폴링한다.
+     */
+    private fun awaitEmailSent(
         accountId: String,
         eventType: String,
         recipient: String,
     ) {
-        val sentEmail =
-            sentEmailJpaRepository
-                .findByAccountId(accountId)
-                .firstOrNull { it.eventType == eventType }
-                ?: throw AssertionError("$eventType 발송 기록이 저장되지 않았습니다: accountId=$accountId")
-        assertThat(sentEmail.recipient).isEqualTo(recipient)
-        assertThat(sentEmail.sesMessageId).isNotBlank()
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val sentEmail =
+                sentEmailJpaRepository
+                    .findByAccountId(accountId)
+                    .firstOrNull { it.eventType == eventType }
+                    ?: throw AssertionError("$eventType 발송 기록이 저장되지 않았습니다: accountId=$accountId")
+            assertThat(sentEmail.recipient).isEqualTo(recipient)
+            assertThat(sentEmail.sesMessageId).isNotBlank()
 
-        val messages = fetchSesMessages()
-        val matched =
-            messages.firstOrNull { it["Id"] == sentEmail.sesMessageId }
-                ?: throw AssertionError("localstack SES에서 sesMessageId=${sentEmail.sesMessageId} 메시지를 찾을 수 없습니다.")
+            val messages = fetchSesMessages()
+            val matched =
+                messages.firstOrNull { it["Id"] == sentEmail.sesMessageId }
+                    ?: throw AssertionError("localstack SES에서 sesMessageId=${sentEmail.sesMessageId} 메시지를 찾을 수 없습니다.")
 
-        @Suppress("UNCHECKED_CAST")
-        val destination = matched["Destination"] as Map<String, Any>
+            @Suppress("UNCHECKED_CAST")
+            val destination = matched["Destination"] as Map<String, Any>
 
-        @Suppress("UNCHECKED_CAST")
-        val toAddresses = destination["ToAddresses"] as List<String>
-        assertThat(toAddresses).contains(recipient)
+            @Suppress("UNCHECKED_CAST")
+            val toAddresses = destination["ToAddresses"] as List<String>
+            assertThat(toAddresses).contains(recipient)
+        }
     }
 
     @Test
@@ -185,7 +216,7 @@ class NotificationE2ETest {
         val email = "notification-created@example.com"
         val accountId = createAccount("notification-owner-1", email)
 
-        assertEmailSent(accountId, "AccountCreated", email)
+        awaitEmailSent(accountId, "AccountCreated", email)
     }
 
     @Test
@@ -197,7 +228,7 @@ class NotificationE2ETest {
         val response = post("/accounts/$accountId/deposit", ownerId, mapOf("amount" to 10000))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
 
-        assertEmailSent(accountId, "MoneyDeposited", email)
+        awaitEmailSent(accountId, "MoneyDeposited", email)
     }
 
     @Test
@@ -210,7 +241,7 @@ class NotificationE2ETest {
         val response = post("/accounts/$accountId/withdraw", ownerId, mapOf("amount" to 4000))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
 
-        assertEmailSent(accountId, "MoneyWithdrawn", email)
+        awaitEmailSent(accountId, "MoneyWithdrawn", email)
     }
 
     @Test
@@ -222,7 +253,7 @@ class NotificationE2ETest {
         val response = post("/accounts/$accountId/suspend", ownerId, emptyMap())
         assertThat(response.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
 
-        assertEmailSent(accountId, "AccountSuspended", email)
+        awaitEmailSent(accountId, "AccountSuspended", email)
     }
 
     @Test
@@ -235,7 +266,7 @@ class NotificationE2ETest {
         val response = post("/accounts/$accountId/reactivate", ownerId, emptyMap())
         assertThat(response.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
 
-        assertEmailSent(accountId, "AccountReactivated", email)
+        awaitEmailSent(accountId, "AccountReactivated", email)
     }
 
     @Test
@@ -247,6 +278,6 @@ class NotificationE2ETest {
         val response = post("/accounts/$accountId/close", ownerId, emptyMap())
         assertThat(response.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
 
-        assertEmailSent(accountId, "AccountClosed", email)
+        awaitEmailSent(accountId, "AccountClosed", email)
     }
 }

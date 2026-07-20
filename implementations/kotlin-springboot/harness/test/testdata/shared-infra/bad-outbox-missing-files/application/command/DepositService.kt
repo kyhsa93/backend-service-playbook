@@ -1,1 +1,1 @@
-class DepositService(private val outboxRelay: OutboxRelay)
+class DepositService(private val outboxWriter: OutboxWriter)

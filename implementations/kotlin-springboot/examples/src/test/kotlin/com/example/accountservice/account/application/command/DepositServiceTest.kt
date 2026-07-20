@@ -5,7 +5,6 @@ import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.DepositRequiresActiveAccountException
-import com.example.accountservice.outbox.OutboxRelay
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -15,11 +14,10 @@ import org.junit.jupiter.api.assertThrows
 
 class DepositServiceTest {
     private val accountRepository = mockk<AccountRepository>(relaxed = true)
-    private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
-    private val service = DepositService(accountRepository, outboxRelay)
+    private val service = DepositService(accountRepository)
 
     @Test
-    fun `계좌가 존재하면 잔액이 증가하고 저장 및 Outbox 드레인이 일어난다`() {
+    fun `계좌가 존재하면 잔액이 증가하고 저장이 일어난다`() {
         val account = Account.create("owner-1", "KRW", "owner-1@example.com")
         every {
             accountRepository.findAccounts(AccountFindQuery(page = 0, take = 1, accountId = account.accountId, ownerId = "owner-1"))
@@ -30,7 +28,6 @@ class DepositServiceTest {
         assertThat(result.type).isEqualTo("DEPOSIT")
         assertThat(account.balance.amount).isEqualTo(500)
         verify(exactly = 1) { accountRepository.saveAccount(account) }
-        verify(exactly = 1) { outboxRelay.processPending() }
     }
 
     @Test

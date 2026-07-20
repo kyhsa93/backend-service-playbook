@@ -17,8 +17,13 @@ logger.atInfo()
 ```
 
 ```kotlin
-// outbox/OutboxRelay.kt — 실제 코드
-.onFailure { logger.error("이벤트 처리 실패: eventType={}, eventId={}", row.eventType, row.eventId, it) }
+// outbox/OutboxPoller.kt — 실제 코드
+logger
+    .atError()
+    .addKeyValue("event_type", row.eventType)
+    .addKeyValue("event_id", row.eventId)
+    .setCause(it)
+    .log("SQS 발행 실패")
 ```
 
 ```kotlin
@@ -26,7 +31,7 @@ logger.atInfo()
 logger.warn("계좌를 찾을 수 없음: {}", e.message)
 ```
 
-`notification/infrastructure/NotificationServiceImpl`은 SLF4J 2.x fluent API(`atInfo().addKeyValue(...)`)로 이미 **snake_case 필드 기반 구조화 로그**를 남긴다 — `account_id`/`event_type` 등이 메시지 문자열에 파묻히지 않고 별도 key-value로 분리되어 있어 모니터링 시스템에서 필드별 검색·집계가 가능하다. `OutboxRelay`/`AccountController`는 아직 파라미터화된 텍스트 로그(`{}` 플레이스홀더)만 쓴다 — 문자열 보간(`"...${accountId}..."`)으로 인한 불필요한 문자열 생성은 피하지만, key-value 구조화까지는 하지 않았다. Correlation ID는 아래에서 다루는 `CorrelationIdFilter`가 MDC로 전파한다.
+`notification/infrastructure/NotificationServiceImpl`/`outbox/OutboxPoller`는 SLF4J 2.x fluent API(`atInfo()`/`atError().addKeyValue(...)`)로 이미 **snake_case 필드 기반 구조화 로그**를 남긴다 — `account_id`/`event_type`/`event_id` 등이 메시지 문자열에 파묻히지 않고 별도 key-value로 분리되어 있어 모니터링 시스템에서 필드별 검색·집계가 가능하다. `AccountController`/`OutboxConsumer`(`logger.error("SQS 수신 실패", e)`)는 아직 파라미터화된 텍스트 로그(`{}` 플레이스홀더 또는 메시지+예외만)만 쓴다 — 문자열 보간(`"...${accountId}..."`)으로 인한 불필요한 문자열 생성은 피하지만, key-value 구조화까지는 하지 않았다. Correlation ID는 아래에서 다루는 `CorrelationIdFilter`가 MDC로 전파한다.
 
 ---
 

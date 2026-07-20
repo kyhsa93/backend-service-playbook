@@ -14,8 +14,10 @@ import org.springframework.stereotype.Component
  * application/event/의 EventHandler는 [OutboxWriter]를 직접 사용할 수 있는 유일한 예외로,
  * 여기서 내부 Domain Event를 외부 BC용 Integration Event로 변환한다(Aggregate가 Integration
  * Event를 직접 만들지 않는다 — 변환 지점은 항상 EventHandler다).
- * [com.example.accountservice.outbox.OutboxRelay.processPending]의 같은 트랜잭션·같은 호출 안에서
- * 적재되므로, 멀티패스 드레인이 이어서 이 새 행을 즉시 처리한다.
+ * 이 핸들러 자체가 [com.example.accountservice.outbox.OutboxConsumer]가 SQS에서 AccountClosedEvent를
+ * 수신했을 때 호출되는 콜백이다 — 여기서 적재한 Integration Event는 같은 호출 안에서 즉시 처리되지
+ * 않고, 다음 [com.example.accountservice.outbox.OutboxPoller] tick(최대 1초 후)에 SQS로 발행되어
+ * 별도로 소비된다(비동기 전환으로 "같은 트랜잭션 안 즉시 재드레인"은 더 이상 성립하지 않는다).
  */
 @Component
 class AccountClosedEventHandler(

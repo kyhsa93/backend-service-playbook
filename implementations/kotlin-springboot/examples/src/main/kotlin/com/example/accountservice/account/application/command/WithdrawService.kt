@@ -3,13 +3,11 @@ package com.example.accountservice.account.application.command
 import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.domain.AccountRepository
-import com.example.accountservice.outbox.OutboxRelay
 import org.springframework.stereotype.Service
 
 @Service
 class WithdrawService(
     private val accountRepository: AccountRepository,
-    private val outboxRelay: OutboxRelay,
 ) {
     fun withdraw(command: WithdrawCommand): TransactionResult {
         val (accounts, _) =
@@ -19,7 +17,6 @@ class WithdrawService(
         val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
         val transaction = account.withdraw(command.amount)
         accountRepository.saveAccount(account)
-        outboxRelay.processPending()
         return TransactionResult(
             transactionId = transaction.transactionId,
             accountId = transaction.accountId,

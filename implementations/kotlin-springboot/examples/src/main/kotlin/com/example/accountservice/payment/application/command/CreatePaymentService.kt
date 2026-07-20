@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.outbox.OutboxRelay
 import com.example.accountservice.payment.application.adapter.AccountAdapter
 import com.example.accountservice.payment.application.adapter.CardAdapter
 import com.example.accountservice.payment.domain.InsufficientBalanceException
@@ -29,7 +28,6 @@ class CreatePaymentService(
     private val paymentRepository: PaymentRepository,
     private val cardAdapter: CardAdapter,
     private val accountAdapter: AccountAdapter,
-    private val outboxRelay: OutboxRelay,
 ) {
     fun create(command: CreatePaymentCommand): CreatePaymentResult {
         val card = cardAdapter.findCard(command.cardId, command.requesterId) ?: throw LinkedCardNotFoundException()
@@ -45,7 +43,6 @@ class CreatePaymentService(
         payment.complete()
 
         paymentRepository.savePayment(payment)
-        outboxRelay.processPending()
 
         return CreatePaymentResult(
             paymentId = payment.paymentId,

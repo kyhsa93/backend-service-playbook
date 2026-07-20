@@ -14,7 +14,7 @@ import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
 import harness.rules.checkNoEventPublisherInCommand
 import harness.rules.checkNotificationE2eTest
-import harness.rules.checkOutboxDrainOrder
+import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkSealedException
@@ -35,7 +35,7 @@ val RULES: List<Rule> = listOf(
     ::checkEventPlacement,
     ::checkNoEventPublisherInCommand,
     ::checkTransactionBoundary,
-    ::checkOutboxDrainOrder,
+    ::checkOutboxNoSyncDrain,
     ::checkCqrsPattern,
     ::checkNotificationE2eTest
 )

@@ -2,11 +2,14 @@
 
 > 프레임워크 무관 원칙은 [root scheduling.md](../../../../docs/architecture/scheduling.md) 참조.
 
-## 현재 상태 — 미구현
+## 현재 상태 — `@Scheduled` 실제 구현: `OutboxPoller`
 
-`examples/`에는 `@Scheduled` 작업이 없다. Account 도메인은 배치가 필요한 유스케이스(만료 정리, 정산 등)가 아직 없기 때문이다.
-
-**주의**: [domain-events.md](domain-events.md)의 `outbox/OutboxRelay.kt`는 이미 실제로 구현되어 있지만, 이 문서가 아래에서 다루는 `@Scheduled(fixedDelay = ...)` + SQS 발행 방식이 **아니다** — Command Service가 저장 직후 동기 호출해 드레인하는 방식을 택했다(domain-events.md의 "OutboxRelay — 커밋 직후 동기 드레인 (구현됨, `@Scheduled` 아님)" 절 참고). 아래 절은 이 저장소에 실제 메시지 큐(SQS 등)를 붙이는 시점에 `OutboxRelay`를 폴링 기반으로 바꾸고 싶다면 참고할 **목표 형태**이지, 지금의 실제 코드가 아니다.
+[domain-events.md](domain-events.md)의 `outbox/OutboxPoller.kt`가 이 문서가 아래에서 다루는
+`@Scheduled(fixedDelay = ...)` + SQS 발행 방식을 **실제로 구현하고 있다**(2026-07 async
+전환 — 이전에는 Command Service가 저장 직후 동기 호출해 드레인하는 `OutboxRelay`였다). 아래
+절의 예시 코드는 대부분 `OutboxPoller.kt`/`OutboxConsumer.kt`의 실제 코드이며, 그 외의
+Task Queue(만료 정리, 정산 등) 관련 예시는 여전히 가상 코드다 — 각 코드 블록의 헤더 주석이
+실제/가상 여부를 명시한다.
 
 ---
 
@@ -23,17 +26,22 @@ implementation("org.springframework.boot:spring-boot-starter-data-jpa")   // 블
 이 조합에서는 `@Scheduled` 메서드가 **전통적인 스레드 풀 기반**으로 실행되는 것이 자연스럽다 — 코루틴(`suspend fun` + `kotlinx-coroutines`)을 도입해도 JPA 호출 자체가 블로킹이라 별도 디스패처(`Dispatchers.IO`)로 감싸야 하고, 이는 스레드 풀을 코루틴으로 한 번 더 감싸는 셈이라 실익이 적다. **코루틴은 WebFlux(리액티브 스택)나 넌블로킹 I/O(코루틴 기반 HTTP 클라이언트, R2DBC 등)와 결합될 때 진가를 발휘한다** — 이 저장소가 그 스택으로 전환하지 않는 한 도입 이유가 없다.
 
 ```kotlin
-// 전통적인 방식 — SQS를 실제로 붙이게 될 때의 목표 형태 (현재 OutboxRelay.kt와는 다름, 위 "주의" 참고)
+// outbox/OutboxPoller.kt — 실제 코드(발췌)
 @Component
-class OutboxRelay(private val outboxJpaRepository: OutboxEventJpaRepository /* ... */) {
+class OutboxPoller(private val outboxEventJpaRepository: OutboxEventJpaRepository /* ... */) {
 
     @Scheduled(fixedDelay = 1000)   // 스레드 풀에서 동기적으로 실행 — JPA 호출과 자연스럽게 맞물림
-    fun relay() {
-        val pending = outboxJpaRepository.findTop100ByProcessedFalseOrderByCreatedAtAsc()
+    @Transactional
+    fun poll() {
+        val pending = outboxEventJpaRepository.findByProcessedFalseOrderByCreatedAtAsc()
         pending.forEach { /* SQS 발행 (블로킹 SDK 호출) */ }
     }
 }
 ```
+
+`OutboxConsumer.kt`처럼 `waitTimeSeconds(5)` 동안 블로킹하며 무한히 반복하는 긴 루프는
+`@Scheduled`로 표현하지 않고 전용 스레드(`SmartLifecycle`)를 쓴다 — domain-events.md 5단계 참고.
+`@Scheduled`는 "일정 주기로 짧게 실행하고 반환"하는 `OutboxPoller`류 작업에만 쓴다.
 
 ---
 
@@ -70,25 +78,22 @@ class SchedulingConfig {
 root 원칙대로, `@Scheduled` 메서드는 비즈니스 로직을 직접 실행하지 않고 **적재(enqueue)만** 한다. 실제 처리는 별도 Consumer/Command Service가 담당한다.
 
 ```kotlin
-// outbox/OutboxRelay.kt — SQS를 실제로 붙이게 될 때의 목표 형태(가상), 현재 실제 코드 아님
-package com.example.accountservice.outbox
-
+// outbox/OutboxPoller.kt — 실제 코드(발췌, 전체 코드는 domain-events.md 4단계)
 @Component
-class OutboxRelay(
-    private val outboxJpaRepository: OutboxEventJpaRepository,
+class OutboxPoller(
+    private val outboxEventJpaRepository: OutboxEventJpaRepository,
     private val sqsClient: SqsClient,
-    @Value("\${app.outbox.queue-url}") private val queueUrl: String,
+    private val sqsProperties: SqsProperties,
 ) {
-    private val logger = KotlinLogging.logger {}
-
     @Scheduled(fixedDelay = 1000)
-    fun relay() {
-        val pending = outboxJpaRepository.findTop100ByProcessedFalseOrderByCreatedAtAsc()
-        pending.forEach { event ->
+    @Transactional
+    fun poll() {
+        val pending = outboxEventJpaRepository.findByProcessedFalseOrderByCreatedAtAsc()
+        for (row in pending) {
             runCatching {
-                sqsClient.sendMessage { it.queueUrl(queueUrl).messageBody(event.payload) }
-                event.markProcessed()
-            }.onFailure { logger.error(it) { "Outbox relay 실패: eventId=${event.eventId}" } }
+                sqsClient.sendMessage(/* queueUrl, messageBody, messageAttributes(eventType/eventId) */)
+            }.onSuccess { row.markProcessed() }
+                .onFailure { logger.error("SQS 발행 실패: eventType=${row.eventType}", it) }
         }
     }
 }

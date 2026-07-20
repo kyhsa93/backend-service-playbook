@@ -4,6 +4,7 @@ import com.example.accountservice.AccountServiceApplication
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailJpaRepository
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,10 +28,13 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ses.SesClient
 import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest
+import software.amazon.awssdk.services.sqs.SqsClient
+import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 
 @Testcontainers
 @SpringBootTest(
@@ -49,7 +53,7 @@ class AccountControllerE2ETest {
         @JvmStatic
         val localstack: LocalStackContainer =
             LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                .withServices(LocalStackContainer.Service.SES)
+                .withServices(LocalStackContainer.Service.SES, LocalStackContainer.Service.SQS)
 
         @DynamicPropertySource
         @JvmStatic
@@ -63,9 +67,26 @@ class AccountControllerE2ETest {
             registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
             registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
+            registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
             // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
+        }
+
+        // 컨테이너는 이미 떠 있는 상태이므로(정적 @Container 필드), Spring 컨텍스트가 SqsProperties를
+        // 바인딩하기 전에 큐를 직접 만들어 그 URL을 반환한다.
+        private fun createDomainEventQueue(): String {
+            val sqsClient =
+                SqsClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SQS))
+                    .build()
+            val queueUrl = sqsClient.createQueue(CreateQueueRequest.builder().queueName("domain-events").build()).queueUrl()
+            sqsClient.close()
+            return queueUrl
         }
 
         @BeforeAll
@@ -186,24 +207,28 @@ class AccountControllerE2ETest {
         val account = createAccount(OWNER_ID, "KRW", email)
         val accountId = account["accountId"] as String
 
-        val messages = fetchSesMessages()
-        val matched =
-            messages.firstOrNull { message ->
-                @Suppress("UNCHECKED_CAST")
-                val destination = message["Destination"] as Map<String, Any>
+        // Outbox → SQS(OutboxPoller) → OutboxConsumer → EventHandler 경로를 거쳐 비동기로 처리되므로,
+        // 응답이 돌아온 시점에는 아직 이메일이 발송되지 않았을 수 있다 — 넉넉한 타임아웃으로 폴링한다.
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val messages = fetchSesMessages()
+            val matched =
+                messages.firstOrNull { message ->
+                    @Suppress("UNCHECKED_CAST")
+                    val destination = message["Destination"] as Map<String, Any>
 
-                @Suppress("UNCHECKED_CAST")
-                val toAddresses = destination["ToAddresses"] as List<String>
-                toAddresses.contains(email)
+                    @Suppress("UNCHECKED_CAST")
+                    val toAddresses = destination["ToAddresses"] as List<String>
+                    toAddresses.contains(email)
+                }
+            assertThat(matched).isNotNull()
+            val messageId = matched!!["Id"] as String
+
+            val sentEmails = sentEmailJpaRepository.findByAccountId(accountId)
+            assertThat(sentEmails).anySatisfy { sentEmail ->
+                assertThat(sentEmail.eventType).isEqualTo("AccountCreated")
+                assertThat(sentEmail.recipient).isEqualTo(email)
+                assertThat(sentEmail.sesMessageId).isEqualTo(messageId)
             }
-        assertThat(matched).isNotNull()
-        val messageId = matched!!["Id"] as String
-
-        val sentEmails = sentEmailJpaRepository.findByAccountId(accountId)
-        assertThat(sentEmails).anySatisfy { sentEmail ->
-            assertThat(sentEmail.eventType).isEqualTo("AccountCreated")
-            assertThat(sentEmail.recipient).isEqualTo(email)
-            assertThat(sentEmail.sesMessageId).isEqualTo(messageId)
         }
     }
 
@@ -215,11 +240,13 @@ class AccountControllerE2ETest {
 
         post("/accounts/$accountId/deposit", OWNER_ID, mapOf("amount" to 10000))
 
-        val sentEmails = sentEmailJpaRepository.findByAccountId(accountId)
-        assertThat(sentEmails).anySatisfy { sentEmail ->
-            assertThat(sentEmail.eventType).isEqualTo("MoneyDeposited")
-            assertThat(sentEmail.recipient).isEqualTo(email)
-            assertThat(sentEmail.sesMessageId).isNotBlank()
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val sentEmails = sentEmailJpaRepository.findByAccountId(accountId)
+            assertThat(sentEmails).anySatisfy { sentEmail ->
+                assertThat(sentEmail.eventType).isEqualTo("MoneyDeposited")
+                assertThat(sentEmail.recipient).isEqualTo(email)
+                assertThat(sentEmail.sesMessageId).isNotBlank()
+            }
         }
     }
 

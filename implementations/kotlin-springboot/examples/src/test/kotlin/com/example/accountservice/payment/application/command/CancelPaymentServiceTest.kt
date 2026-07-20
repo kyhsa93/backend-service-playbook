@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.outbox.OutboxRelay
 import com.example.accountservice.payment.domain.Payment
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
@@ -14,8 +13,7 @@ import org.junit.jupiter.api.assertThrows
 
 class CancelPaymentServiceTest {
     private val paymentRepository = mockk<PaymentRepository>(relaxed = true)
-    private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
-    private val service = CancelPaymentService(paymentRepository, outboxRelay)
+    private val service = CancelPaymentService(paymentRepository)
 
     private fun completedPayment(): Payment {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 500)
@@ -25,7 +23,7 @@ class CancelPaymentServiceTest {
     }
 
     @Test
-    fun `완료된 결제를 취소하면 CANCELLED 상태로 저장되고 Outbox가 드레인된다`() {
+    fun `완료된 결제를 취소하면 CANCELLED 상태로 저장된다`() {
         val payment = completedPayment()
         every {
             paymentRepository.findPayments(PaymentFindQuery(page = 0, take = 1, paymentId = payment.paymentId, ownerId = "owner-1"))
@@ -35,7 +33,6 @@ class CancelPaymentServiceTest {
 
         assertThat(payment.status.name).isEqualTo("CANCELLED")
         verify(exactly = 1) { paymentRepository.savePayment(payment) }
-        verify(exactly = 1) { outboxRelay.processPending() }
     }
 
     @Test

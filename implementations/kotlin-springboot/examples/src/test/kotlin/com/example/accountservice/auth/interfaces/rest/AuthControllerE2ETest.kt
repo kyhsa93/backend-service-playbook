@@ -12,8 +12,15 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.containers.localstack.LocalStackContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.sqs.SqsClient
+import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 
 /**
  * Auth BC E2E 테스트 — 자격증명 검증 없는 JWT 발급 취약점 수정을 검증한다(#190).
@@ -21,6 +28,11 @@ import org.testcontainers.junit.jupiter.Testcontainers
  * sign-up으로 Credential을 저장하고, sign-in이 저장된 해시와 실제로 비교하는지,
  * 아이디 미존재/비밀번호 불일치가 동일한 응답(401 INVALID_CREDENTIALS)으로 통일되는지
  * (user enumeration 방지), 아이디 중복 가입과 비밀번호 길이 검증이 동작하는지 확인한다.
+ *
+ * Auth BC 자체는 Outbox/SQS와 무관하지만, `SqsProperties.domainEventQueueUrl`이
+ * fail-fast(`@NotBlank`)로 검증되므로 전체 앱 컨텍스트를 띄우는 이 테스트도 LocalStack SQS를
+ * 구성해야 한다 — 그렇지 않으면 `OutboxPoller`/`OutboxConsumer` 빈 생성 전에 컨텍스트 자체가
+ * 뜨지 못한다.
  */
 @Testcontainers
 @SpringBootTest(
@@ -33,6 +45,12 @@ class AuthControllerE2ETest {
         @JvmStatic
         val postgres = PostgreSQLContainer("postgres:16-alpine")
 
+        @Container
+        @JvmStatic
+        val localstack: LocalStackContainer =
+            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
+                .withServices(LocalStackContainer.Service.SQS)
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -41,9 +59,28 @@ class AuthControllerE2ETest {
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("spring.jpa.hibernate.ddl-auto") { "create-drop" }
             registry.add("spring.flyway.enabled") { "false" }
+            registry.add("AWS_REGION") { localstack.region }
+            registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
+            registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
+            registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SQS).toString() }
+            registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
             // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
+        }
+
+        private fun createDomainEventQueue(): String {
+            val sqsClient =
+                SqsClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SQS))
+                    .build()
+            val queueUrl = sqsClient.createQueue(CreateQueueRequest.builder().queueName("domain-events").build()).queueUrl()
+            sqsClient.close()
+            return queueUrl
         }
 
         private const val PASSWORD = "password123!"

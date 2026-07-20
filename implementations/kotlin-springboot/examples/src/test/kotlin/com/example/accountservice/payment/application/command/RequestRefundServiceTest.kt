@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.outbox.OutboxRelay
 import com.example.accountservice.payment.domain.Payment
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
@@ -23,8 +22,7 @@ import org.junit.jupiter.api.assertThrows
 class RequestRefundServiceTest {
     private val paymentRepository = mockk<PaymentRepository>(relaxed = true)
     private val refundRepository = mockk<RefundRepository>(relaxed = true)
-    private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
-    private val service = RequestRefundService(paymentRepository, refundRepository, outboxRelay)
+    private val service = RequestRefundService(paymentRepository, refundRepository)
 
     private fun stubPayment(payment: Payment) {
         every {
@@ -33,7 +31,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    fun `완료된 결제에 대해 금액 이하로 환불을 요청하면 승인되고 저장 및 Outbox 드레인이 일어난다`() {
+    fun `완료된 결제에 대해 금액 이하로 환불을 요청하면 승인되고 저장된다`() {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         payment.complete()
         stubPayment(payment)
@@ -45,7 +43,6 @@ class RequestRefundServiceTest {
 
         assertThat(result.status).isEqualTo(RefundStatus.APPROVED.name)
         verify(exactly = 1) { refundRepository.saveRefund(any()) }
-        verify(exactly = 1) { outboxRelay.processPending() }
     }
 
     @Test

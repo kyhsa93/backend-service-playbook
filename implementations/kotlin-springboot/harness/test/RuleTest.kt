@@ -15,7 +15,7 @@ import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
 import harness.rules.checkNoEventPublisherInCommand
 import harness.rules.checkNotificationE2eTest
-import harness.rules.checkOutboxDrainOrder
+import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkSealedException
@@ -78,9 +78,9 @@ val TESTS: List<TestCase> = listOf(
     TestCase("transaction-boundary/bad-has-transactional") { checkTransactionBoundary("testdata/transaction-boundary/bad-has-transactional").assertHasFailure() },
     TestCase("transaction-boundary/bad-repository-impl-missing-transactional") { checkTransactionBoundary("testdata/transaction-boundary/bad-repository-impl-missing-transactional").assertHasFailure() },
 
-    TestCase("outbox-drain-order/good") { checkOutboxDrainOrder("testdata/outbox-drain-order/good").assertNoFailures() },
-    TestCase("outbox-drain-order/bad-missing-process-pending") { checkOutboxDrainOrder("testdata/outbox-drain-order/bad-missing-process-pending").assertHasFailure() },
-    TestCase("outbox-drain-order/bad-wrong-order") { checkOutboxDrainOrder("testdata/outbox-drain-order/bad-wrong-order").assertHasFailure() },
+    TestCase("outbox-no-sync-drain/good") { checkOutboxNoSyncDrain("testdata/outbox-no-sync-drain/good").assertNoFailures() },
+    TestCase("outbox-no-sync-drain/bad-references-relay") { checkOutboxNoSyncDrain("testdata/outbox-no-sync-drain/bad-references-relay").assertHasFailure() },
+    TestCase("outbox-no-sync-drain/bad-calls-process-pending") { checkOutboxNoSyncDrain("testdata/outbox-no-sync-drain/bad-calls-process-pending").assertHasFailure() },
 
     TestCase("notification-e2e-test/good") { checkNotificationE2eTest("testdata/notification-e2e-test/good").assertNoFailures() },
     TestCase("notification-e2e-test/bad-missing") { checkNotificationE2eTest("testdata/notification-e2e-test/bad-missing").assertHasFailure() },

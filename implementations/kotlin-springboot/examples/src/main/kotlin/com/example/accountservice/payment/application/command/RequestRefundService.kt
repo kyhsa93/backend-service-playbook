@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.outbox.OutboxRelay
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import com.example.accountservice.payment.domain.PaymentRepository
@@ -21,7 +20,6 @@ import org.springframework.stereotype.Service
 class RequestRefundService(
     private val paymentRepository: PaymentRepository,
     private val refundRepository: RefundRepository,
-    private val outboxRelay: OutboxRelay,
 ) {
     private val refundEligibilityService = RefundEligibilityService()
 
@@ -46,8 +44,9 @@ class RequestRefundService(
 
         refundRepository.saveRefund(refund)
         // RefundApprovedEvent → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다.
-        // 거부된 경우에는 Domain Event가 없으므로 드레인할 것이 없어 no-op이다.
-        outboxRelay.processPending()
+        // 거부된 경우에는 Domain Event가 없으므로 Outbox에 적재되는 것이 없다. 저장 후에는 여기서
+        // 곧바로 반환한다 — Outbox → 큐 발행/수신은 OutboxPoller/OutboxConsumer가 독립적으로
+        // 담당한다(동기 드레인 금지, domain-events.md).
 
         return RequestRefundResult(
             refundId = refund.refundId,

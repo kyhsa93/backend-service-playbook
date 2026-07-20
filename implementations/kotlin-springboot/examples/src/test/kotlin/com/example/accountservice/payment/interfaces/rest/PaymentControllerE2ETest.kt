@@ -2,6 +2,7 @@ package com.example.accountservice.payment.interfaces.rest
 
 import com.example.accountservice.AccountServiceApplication
 import org.assertj.core.api.Assertions.assertThat
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -15,18 +16,25 @@ import org.springframework.http.ResponseEntity
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.containers.localstack.LocalStackContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.sqs.SqsClient
+import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
+import java.time.Duration
 
 /**
  * Payment BC E2E 테스트 — REST 엔드포인트와 함께 Payment/Refund → Account 크로스 도메인 흐름
  * (동기 Adapter + 비동기 Integration Event)을 실제로 검증한다.
  *
- * `CreatePaymentService`/`CancelPaymentService`/`RequestRefundService`는 Aggregate 저장 트랜잭션
- * 커밋 직후 `OutboxRelay.processPending()`을 동기 호출하고, 그 드레인 루프가 같은 호출 안에서
- * Account BC의 반응(WithdrawByPaymentService/DepositByPaymentService)까지 끝까지 처리하므로,
- * HTTP 응답이 돌아온 시점에는 이미 계좌 잔액 반영이 끝나 있다 — 별도의 폴링/대기가 필요 없다
- * (CardControllerE2ETest와 동일한 동기 검증 스타일).
+ * `CreatePaymentService`/`CancelPaymentService`/`RequestRefundService`는 저장 후 곧바로 반환한다 —
+ * Outbox → SQS(OutboxPoller) → OutboxConsumer 경로를 거쳐 Account BC의 반응
+ * (WithdrawByPaymentService/DepositByPaymentService)이 비동기로 처리되므로, HTTP 응답이 돌아온
+ * 시점에는 아직 계좌 잔액 반영이 끝나 있지 않을 수 있다 — [awaitBalance]로 폴링해서 확인한다.
  */
 @Testcontainers
 @SpringBootTest(
@@ -39,6 +47,12 @@ class PaymentControllerE2ETest {
         @JvmStatic
         val postgres = PostgreSQLContainer("postgres:16-alpine")
 
+        @Container
+        @JvmStatic
+        val localstack: LocalStackContainer =
+            LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
+                .withServices(LocalStackContainer.Service.SQS)
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -47,7 +61,26 @@ class PaymentControllerE2ETest {
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("spring.jpa.hibernate.ddl-auto") { "create-drop" }
             registry.add("spring.flyway.enabled") { "false" }
+            registry.add("AWS_REGION") { localstack.region }
+            registry.add("AWS_ACCESS_KEY_ID") { localstack.accessKey }
+            registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
+            registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SQS).toString() }
+            registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
+        }
+
+        private fun createDomainEventQueue(): String {
+            val sqsClient =
+                SqsClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SQS))
+                    .build()
+            val queueUrl = sqsClient.createQueue(CreateQueueRequest.builder().queueName("domain-events").build()).queueUrl()
+            sqsClient.close()
+            return queueUrl
         }
 
         private const val OWNER_ID = "payment-owner-1"
@@ -129,6 +162,22 @@ class PaymentControllerE2ETest {
         return (balance["amount"] as Number).toLong()
     }
 
+    /**
+     * payment.completed.v1/payment.cancelled.v1/refund.approved.v1 Integration Event가 Outbox →
+     * SQS → OutboxConsumer → WithdrawByPaymentService/DepositByPaymentService 경로를 거쳐 계좌
+     * 잔액에 반영되기까지 최대 몇 초가 걸린다 — 이 저장소가 실측한 LocalStack+SQS 지연(2~4초)보다
+     * 넉넉한 타임아웃으로 폴링한다.
+     */
+    private fun awaitBalance(
+        ownerId: String,
+        accountId: String,
+        expected: Long,
+    ) {
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            assertThat(balanceOf(ownerId, accountId)).isEqualTo(expected)
+        }
+    }
+
     /** 계좌 개설 + 충전 + 카드 발급까지 끝낸 (accountId, cardId) 조합을 만든다. */
     private fun setUpFundedCard(
         ownerId: String,
@@ -146,9 +195,14 @@ class PaymentControllerE2ETest {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         // Card BC는 카드를 직접 정지하는 REST 엔드포인트가 없다 — 계좌를 정지하면 account.suspended.v1을
         // Card BC가 구독해 연결된 카드를 정지시키는 기존 Integration Event 경로(CardControllerE2ETest와
-        // 동일)로 카드를 비활성화한다.
+        // 동일)로 카드를 비활성화한다. 이 경로가 비동기이므로, 결제를 시도하기 전에 카드가 실제로
+        // SUSPENDED로 전환될 때까지 기다린다 — 그렇지 않으면 이 테스트가 타이밍에 따라 간헐적으로
+        // 실패(카드가 아직 ACTIVE라 결제가 성공)할 수 있다.
         val suspendResponse = post("/accounts/$accountId/suspend", OWNER_ID, emptyMap())
         assertThat(suspendResponse.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            assertThat(get("/cards/$cardId", OWNER_ID).body!!["status"]).isEqualTo("SUSPENDED")
+        }
 
         val response = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000))
 
@@ -192,21 +246,20 @@ class PaymentControllerE2ETest {
         assertThat(body["status"]).isEqualTo("COMPLETED")
         assertThat(body["accountId"]).isEqualTo(accountId)
         assertThat(body["amount"]).isEqualTo(1000)
-        // 응답이 돌아온 시점에 이미 OutboxRelay 드레인이 끝나 있으므로 별도 대기 없이 확인한다.
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(9000)
+        awaitBalance(OWNER_ID, accountId, 9000)
     }
 
     @Test
     fun `결제취소하면 204를 반환하고 보상 크레딧으로 잔액이 복구된다`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(9000)
+        awaitBalance(OWNER_ID, accountId, 9000)
 
         val cancelResponse =
             post("/payments/${payment["paymentId"]}/cancel", OWNER_ID, mapOf("reason" to "고객 요청"))
 
         assertThat(cancelResponse.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(10_000)
+        awaitBalance(OWNER_ID, accountId, 10_000)
 
         val paymentAfter = get("/payments/${payment["paymentId"]}", OWNER_ID)
         assertThat(paymentAfter.body!!["status"]).isEqualTo("CANCELLED")
@@ -217,7 +270,7 @@ class PaymentControllerE2ETest {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
         post("/payments/${payment["paymentId"]}/cancel", OWNER_ID, mapOf("reason" to "고객 요청"))
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(10_000)
+        awaitBalance(OWNER_ID, accountId, 10_000)
 
         val refundResponse =
             post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 500, "reason" to "단순 변심"))
@@ -232,7 +285,7 @@ class PaymentControllerE2ETest {
     fun `환불 금액이 결제 금액을 초과하면 201이지만 REJECTED로 응답하고 잔액은 그대로다`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(9000)
+        awaitBalance(OWNER_ID, accountId, 9000)
 
         val refundResponse =
             post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 1500, "reason" to "단순 변심"))
@@ -247,7 +300,7 @@ class PaymentControllerE2ETest {
     fun `완료된 결제에 대해 유효한 환불을 요청하면 201과 APPROVED를 반환하고 크레딧이 비동기로 반영된다`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(9000)
+        awaitBalance(OWNER_ID, accountId, 9000)
 
         val refundResponse =
             post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 500, "reason" to "단순 변심"))
@@ -255,7 +308,7 @@ class PaymentControllerE2ETest {
         assertThat(refundResponse.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(refundResponse.body!!["status"]).isEqualTo("APPROVED")
         assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("환불이 승인되었습니다.")
-        assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(9500)
+        awaitBalance(OWNER_ID, accountId, 9500)
 
         val refunds = get("/payments/${payment["paymentId"]}/refunds", OWNER_ID)
         assertThat(refunds.statusCode).isEqualTo(HttpStatus.OK)

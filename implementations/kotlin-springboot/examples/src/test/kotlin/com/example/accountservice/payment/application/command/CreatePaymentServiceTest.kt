@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.outbox.OutboxRelay
 import com.example.accountservice.payment.application.adapter.AccountAdapter
 import com.example.accountservice.payment.application.adapter.AccountView
 import com.example.accountservice.payment.application.adapter.CardAdapter
@@ -23,11 +22,10 @@ class CreatePaymentServiceTest {
     private val paymentRepository = mockk<PaymentRepository>(relaxed = true)
     private val cardAdapter = mockk<CardAdapter>()
     private val accountAdapter = mockk<AccountAdapter>()
-    private val outboxRelay = mockk<OutboxRelay>(relaxed = true)
-    private val service = CreatePaymentService(paymentRepository, cardAdapter, accountAdapter, outboxRelay)
+    private val service = CreatePaymentService(paymentRepository, cardAdapter, accountAdapter)
 
     @Test
-    fun `카드가 활성이고 잔액이 충분하면 결제가 즉시 완료되고 저장 및 Outbox 드레인이 일어난다`() {
+    fun `카드가 활성이고 잔액이 충분하면 결제가 즉시 완료되고 저장이 일어난다`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns
             CardView(cardId = "card-1", accountId = "account-1", active = true)
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
@@ -38,7 +36,6 @@ class CreatePaymentServiceTest {
         assertThat(result.status).isEqualTo(PaymentStatus.COMPLETED.name)
         assertThat(result.accountId).isEqualTo("account-1")
         verify(exactly = 1) { paymentRepository.savePayment(any()) }
-        verify(exactly = 1) { outboxRelay.processPending() }
     }
 
     @Test
