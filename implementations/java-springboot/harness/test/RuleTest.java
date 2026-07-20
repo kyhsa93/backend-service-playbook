@@ -17,13 +17,17 @@ import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
 import harness.rules.InterfaceNoInfrastructure;
 import harness.rules.NoCrossAggregateReference;
+import harness.rules.NoCrossBcDomainImport;
 import harness.rules.NoCrossBcRepositoryInApplication;
 import harness.rules.NoDirectEnvAccessOutsideConfig;
 import harness.rules.NoEventPublisherInCommand;
+import harness.rules.NoGenericResponseKeys;
 import harness.rules.NoLoggingInDomain;
+import harness.rules.NoOrmAutoSyncInProdConfig;
 import harness.rules.NoSilentCatch;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
+import harness.rules.QueryHandlerNoRawAggregate;
 import harness.rules.RateLimitWired;
 import harness.rules.RepositoryAnnotation;
 import harness.rules.RepositoryNaming;
@@ -169,7 +173,22 @@ public final class RuleTest {
         new TestCase("rate-limit-wired/good", () -> assertNoFailures(RateLimitWired.check("testdata/rate-limit-wired/good"))),
         new TestCase("rate-limit-wired/bad-hardcoded", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-hardcoded"))),
         new TestCase("rate-limit-wired/bad-not-component", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-not-component"))),
-        new TestCase("rate-limit-wired/bad-disabled", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-disabled")))
+        new TestCase("rate-limit-wired/bad-disabled", () -> assertHasFailure(RateLimitWired.check("testdata/rate-limit-wired/bad-disabled"))),
+
+        new TestCase("no-generic-response-keys/good", () -> assertNoFailures(NoGenericResponseKeys.check("testdata/no-generic-response-keys/good"))),
+        new TestCase("no-generic-response-keys/bad-data-field", () -> assertHasFailure(NoGenericResponseKeys.check("testdata/no-generic-response-keys/bad-data-field"))),
+        new TestCase("no-generic-response-keys/bad-items-field", () -> assertHasFailure(NoGenericResponseKeys.check("testdata/no-generic-response-keys/bad-items-field"))),
+
+        new TestCase("query-handler-no-raw-aggregate/good", () -> assertNoFailures(QueryHandlerNoRawAggregate.check("testdata/query-handler-no-raw-aggregate/good"))),
+        new TestCase("query-handler-no-raw-aggregate/bad-service-returns-raw-aggregate", () -> assertHasFailure(QueryHandlerNoRawAggregate.check("testdata/query-handler-no-raw-aggregate/bad-service-returns-raw-aggregate"))),
+        new TestCase("query-handler-no-raw-aggregate/bad-controller-returns-raw-aggregate", () -> assertHasFailure(QueryHandlerNoRawAggregate.check("testdata/query-handler-no-raw-aggregate/bad-controller-returns-raw-aggregate"))),
+
+        new TestCase("no-cross-bc-domain-import/good", () -> assertNoFailures(NoCrossBcDomainImport.check("testdata/no-cross-bc-domain-import/good"))),
+        new TestCase("no-cross-bc-domain-import/bad-card-imports-payment-domain", () -> assertHasFailure(NoCrossBcDomainImport.check("testdata/no-cross-bc-domain-import/bad-card-imports-payment-domain"))),
+
+        new TestCase("no-orm-autosync-in-prod-config/good", () -> assertNoFailures(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/good"))),
+        new TestCase("no-orm-autosync-in-prod-config/bad-prod-update", () -> assertHasFailure(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/bad-prod-update"))),
+        new TestCase("no-orm-autosync-in-prod-config/bad-default-update", () -> assertHasFailure(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/bad-default-update")))
     );
 
     public static void main(String[] args) {

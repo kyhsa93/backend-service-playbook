@@ -45,6 +45,10 @@ harness/
       SoftDeleteFilter.java
       TypedErrorsOnly.java
       RateLimitWired.java
+      NoGenericResponseKeys.java
+      QueryHandlerNoRawAggregate.java
+      NoCrossBcDomainImport.java
+      NoOrmAutoSyncInProdConfig.java
   test/
     RuleTest.java                 자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
     testdata/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
@@ -95,6 +99,10 @@ bash implementations/java-springboot/harness.sh <projectRoot>
 | `soft-delete-filter` | `SoftDeleteFilter.java` | `deletedAt` 컬럼을 가진 `*JpaEntity`를 조회하는 `*RepositoryImpl.java`의 find 메서드에 `deletedAt IS NULL`(또는 동일 의미) 필터가 있는지 확인(persistence.md) — 하드 삭제 금지. Entity에 `@SQLRestriction`/`@Where` 전역 필터가 있으면 RepositoryImpl 검사를 생략(둘 중 어느 메커니즘이든 인정). `deletedAt` 컬럼이 없는 Entity(아직 삭제 유스케이스가 없는 Card/Payment/Refund 등)는 검사 대상에서 자연히 제외 |
 | `typed-errors-only` | `TypedErrorsOnly.java` | `domain/`·`application/`에서 `throw new RuntimeException(...)`/`IllegalStateException(...)`/`IllegalArgumentException(...)`/`UnsupportedOperationException(...)`/`Exception(...)`처럼 문자열과 함께 일반 예외를 직접 던지면 실패 — 도메인별 타입화 예외(`AccountException` + `ErrorCode` enum)만 허용(error-handling.md, AGENTS.md "에러는 enum으로 타입화"). 현재 코드에 이 패턴이 없어 순수 회귀 가드 |
 | `rate-limit-wired` | `RateLimitWired.java` | `RateLimitFilter`가 `@Component`로 Spring bean 등록되어 있는지, `RateLimiterConfig.custom()`으로 제한 값을 하드코딩하지 않고 `RateLimiterRegistry`에서 named instance를 동적으로 조회하는지(#181 회귀 가드), `FilterRegistrationBean.setEnabled(false)`로 명시적으로 비활성화되지 않았는지 확인(rate-limiting.md). `interfaces/`의 `@RateLimiter` 애노테이션 사용도 관찰해 PASS로 기록하되, 없어도 실패로 잡지 않음(선택 사항) |
+| `no-generic-response-keys` | `NoGenericResponseKeys.java` | `*Result`/`*Response`/`*WithCount` 네이밍의 record가 최상위 컴포넌트로 `List<...>` 타입 필드를 `result`/`data`/`items` 같은 범용 이름으로 갖고 있으면 실패 — 목록 응답 필드명은 도메인 객체명 복수형이어야 함(api-response.md). 파일명과 같은 이름의 최상위 record만 파싱하고 중첩 record(내부 클래스)는 검사하지 않는다 — 단건 응답에 중첩된 하위 컬렉션(주문의 line item 등)까지 오탐하지 않기 위함 |
+| `query-handler-no-raw-aggregate` | `QueryHandlerNoRawAggregate.java` | `application/query/`의 Query Service와 `interfaces/*Controller.java`의 `public` 메서드 반환 타입이 `domain/`의 raw Aggregate/Entity 클래스를 직접(또는 `List<...>` 등 제네릭으로 감싸) 노출하면 실패 — 항상 전용 Result/DTO를 반환해야 함(api-response.md). Aggregate/Entity 이름은 하드코딩하지 않고 `<bc>/domain/`의 `public class`(`*Exception`/`*Service` 제외) 선언에서 동적으로 수집한다. `public` 키워드가 명시된 메서드만 스캔한다(Query 인터페이스의 관용적 modifier 생략 메서드는 스캔 대상 밖 — 넓게 매칭하면 `new XxxException(...)` 같은 생성자 호출을 오탐할 위험이 커서 좁은 블록리스트 방식을 택함) |
+| `no-cross-bc-domain-import` | `NoCrossBcDomainImport.java` | `<bc>/domain/*.java`가 다른 BC의 `<otherBc>/domain/*` 타입을 import하면 실패 — "다른 Aggregate는 ID 참조만 허용"(tactical-ddd.md) 원칙은 BC 경계를 넘어서도 적용됨. `no-cross-aggregate-reference`(같은 BC 안의 Payment/Refund만 봄)와 `domain-layer-isolation`(domain/이 자신의 상위 레이어만 봄) 둘 다 놓치던 gap을 닫는 규칙 |
+| `no-orm-autosync-in-prod-config` | `NoOrmAutoSyncInProdConfig.java` | `src/main/resources/application.yml`(기본)과 `application-prod.yml`(prod 프로필) 각각의 `spring.jpa.hibernate.ddl-auto` 값이 `update`/`create`/`create-drop`이면 실패 — 스키마 변경은 Flyway/Liquibase 마이그레이션으로만 관리해야 함(persistence.md). 기본 파일도 검사하는 이유는 `SPRING_PROFILES_ACTIVE` 누락 시 프로덕션에 기본값이 그대로 적용되기 때문. `ddl-auto` 키가 없으면 자동 동기화가 없다는 뜻이므로 PASS |
 
 ## 회귀 테스트
 

@@ -20,13 +20,17 @@ import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
 import harness.rules.InterfaceNoInfrastructure;
 import harness.rules.NoCrossAggregateReference;
+import harness.rules.NoCrossBcDomainImport;
 import harness.rules.NoCrossBcRepositoryInApplication;
 import harness.rules.NoDirectEnvAccessOutsideConfig;
 import harness.rules.NoEventPublisherInCommand;
+import harness.rules.NoGenericResponseKeys;
 import harness.rules.NoLoggingInDomain;
+import harness.rules.NoOrmAutoSyncInProdConfig;
 import harness.rules.NoSilentCatch;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
+import harness.rules.QueryHandlerNoRawAggregate;
 import harness.rules.RateLimitWired;
 import harness.rules.RepositoryAnnotation;
 import harness.rules.RepositoryNaming;
@@ -71,7 +75,11 @@ public final class Main {
         ErrorResponseSchema::check,
         SoftDeleteFilter::check,
         TypedErrorsOnly::check,
-        RateLimitWired::check
+        RateLimitWired::check,
+        NoGenericResponseKeys::check,
+        QueryHandlerNoRawAggregate::check,
+        NoCrossBcDomainImport::check,
+        NoOrmAutoSyncInProdConfig::check
     );
 
     public static void main(String[] args) {

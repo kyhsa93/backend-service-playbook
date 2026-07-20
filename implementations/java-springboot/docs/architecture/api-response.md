@@ -117,6 +117,12 @@ public record AccountFindQuery(int page, int take, String accountId, String owne
 
 ---
 
+## harness 검증
+
+`harness/src/rules/NoGenericResponseKeys.java`(rule: `no-generic-response-keys`)가 `*Result`/`*Response`/`*WithCount` 네이밍 관례를 따르는 record의 최상위 컴포넌트 중 `List<...>` 타입 필드명이 `result`/`data`/`items` 같은 범용 키가 아닌지 확인한다 — 위 "목록 조회 응답 형식" 원칙의 회귀 가드다. 단건 응답 안에 중첩된 하위 컬렉션(주문 자신의 line item 같은 도메인 개념)은 최상위 record가 아니므로 검사 대상이 아니다.
+
+`harness/src/rules/QueryHandlerNoRawAggregate.java`(rule: `query-handler-no-raw-aggregate`)가 `application/query/`의 Query Service와 `interfaces/`의 REST Controller가 정의하는 `public` 메서드의 반환 타입이 `domain/`의 raw Aggregate/Entity 클래스(`Account`/`Transaction`/`Card`/`Payment`/`Refund`/`Credential` 등, 하드코딩이 아니라 `domain/`의 `public class` 선언에서 동적으로 수집)를 직접(또는 `List<...>` 같은 제네릭으로 감싸) 노출하지 않는지 확인한다 — Query Service/Controller는 항상 전용 Result/DTO 타입을 반환해야 한다는 원칙의 회귀 가드다.
+
 ### 관련 문서
 
 - [repository-pattern.md](repository-pattern.md) — Repository 메서드 설계, 단건 조회 패턴
