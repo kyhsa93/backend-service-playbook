@@ -23,7 +23,7 @@ src/
     payment-module.ts
   common/                ← 공유 유틸 (모듈 아님)
   database/              ← DatabaseModule — TypeORM DataSource, TransactionManager (@Global)
-  outbox/                ← OutboxModule — OutboxWriter, EventHandlerRegistry (@Global). OutboxRelay는 도메인별 <domain>/application/event/에 위치, SQS 기반 EventConsumer는 없음(domain-events.md 참고)
+  outbox/                ← OutboxModule (@Global) — OutboxWriter, EventHandlerRegistry, OutboxPoller(DB→SQS), OutboxConsumer(SQS→Handler, long-poll). 모든 도메인이 공유하는 단일 Outbox 경로이며 도메인별 OutboxRelay는 없다(domain-events.md 참고)
   auth/                  ← AuthModule — 인증 공유 모듈
   app-module.ts          ← 루트 모듈: 도메인 모듈 조합
 ```

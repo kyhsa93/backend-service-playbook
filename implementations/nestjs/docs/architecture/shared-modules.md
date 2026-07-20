@@ -44,7 +44,7 @@ src/
 - `src/common/` — 에러 처리, 인터셉터, Correlation ID, Secrets Manager 등 프레임워크 공통 코드. **DatabaseModule 같은 별도 `@Global` 모듈이나 `BaseEntity` 상속 클래스는 없다** — `AccountEntity`/`OutboxEntity`가 각자 컬럼을 인라인 선언한다.
 - `src/config/` — 관심사별 설정 팩토리/헬퍼 함수([config.md](config.md) 참고)
 - `src/database/` — TypeORM `DataSource`, `TransactionManager`. `AppDataSource`는 CLI 마이그레이션과 앱이 공유한다([persistence.md](persistence.md) 참고)
-- `src/outbox/` — `OutboxWriter`, `EventHandlerRegistry`. **`OutboxRelay`는 이 공유 모듈이 아니라 각 도메인의 `application/event/outbox-relay.ts`에 있다** — outbox에 쌓인 이벤트를 실제로 처리하는 핸들러 배선이 도메인마다 다르기 때문이다. SQS 기반 `EventConsumer`는 존재하지 않는다 — 이벤트는 커맨드 저장 직후 같은 프로세스 안에서 동기적으로 드레인된다([domain-events.md](domain-events.md) 참고).
+- `src/outbox/` — `OutboxWriter`, `EventHandlerRegistry`, `OutboxPoller`, `OutboxConsumer`, `SqsClientProvider`. **모든 도메인(Account/Card/Payment 등)이 이 하나의 공유 모듈만 쓴다** — 도메인별 `OutboxRelay`는 없다. `OutboxPoller`가 `outbox` 테이블을 폴링해 SQS로 발행하고, `OutboxConsumer`가 SQS를 long-poll로 소비해 `EventHandlerRegistry`로 라우팅한다. 각 도메인 모듈은 `onModuleInit()`에서 자기 Domain/Integration Event 핸들러를 이 레지스트리 하나에 등록한다([domain-events.md](domain-events.md) 참고).
 - `src/auth/` — 인증/인가 공유 모듈. 별도 에러 메시지 enum(`auth-error-message.ts`) 없이 `UnauthorizedException()`을 직접 던진다.
 
 > **notification은 여기 없다.** SES 이메일 발송(`NotificationService`)은 `AccountModule`만 사용하는 Account 전용 Technical Service이므로 `src/account/application/service/notification-service.ts`(인터페이스) + `src/account/infrastructure/notification/`(구현체·Entity)로 도메인 내부에 둔다 — [domain-service.md](../../../../docs/architecture/domain-service.md)의 Technical Service 배치 원칙 참고. 이후 다른 도메인(Card 등)도 알림이 필요해지면 그때 공유 모듈로의 승격 여부를 다시 판단한다(YAGNI) — 지금 미리 공유 위치로 빼지 않는다.

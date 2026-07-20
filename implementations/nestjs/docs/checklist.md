@@ -141,7 +141,7 @@
 [ ] Repository 구현체의 save 메서드에서 outbox 저장 후 aggregate.clearEvents()를 호출하는가?
 [ ] Domain EventHandler가 @HandleEvent 데코레이터로 eventType을 지정하고 application/event/에 배치되어 있는가?
 [ ] EventHandler가 도메인 Module providers에 등록되어 있는가?
-    → OutboxWriter는 @Global() OutboxModule에서 제공. OutboxRelay는 도메인별 application/event/outbox-relay.ts에 위치하며 도메인 모듈 providers에 등록한다(domain-events.md 참고)
+    → OutboxWriter/EventHandlerRegistry는 @Global() OutboxModule에서 제공. Domain EventHandler는 도메인 모듈 providers에 등록하고, 도메인 모듈의 onModuleInit()에서 EventHandlerRegistry.register()로 eventType과 핸들러를 연결한다 — 도메인별 OutboxRelay는 두지 않는다(domain-events.md 참고)
 [ ] 외부 BC로 알릴 필요가 있는 사건은 Integration Event로 변환해 발행하는가?
     → Domain Event 객체를 그대로 외부로 전달하지 않는다. Application EventHandler가 IntegrationEventV<N>을 구성해 OutboxWriter로 적재
 [ ] Integration Event 클래스가 application/integration-event/<name>-integration-event.ts에 정의되어 있고 버전 접미사(V1 등) 및 eventName 리터럴(`<domain>.<verb-past>.v<N>`)을 포함하는가?

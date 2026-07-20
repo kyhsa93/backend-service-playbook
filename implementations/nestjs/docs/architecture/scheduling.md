@@ -58,7 +58,7 @@
 | 목적 | 필요에 따라 구현하여 사용하는 비동기 작업 (배치, Cron, 분리된 후속 처리) | Command 실행의 **결과(사실)** 를 수신하여 처리 |
 | 의미 단위 | 명령(imperative): "X를 수행하라" | 사실(declarative past): "X가 일어났다" |
 | 핸들러 수 | **1:1** — `taskType`당 정확히 하나의 Task Controller 메서드 | **1:N** — 하나의 이벤트를 여러 EventHandler가 fan-out 구독 |
-| 생산자 | Scheduler (Cron) / Application Service가 `TaskQueue.enqueue` 호출 → `task_outbox` 저장 → `TaskOutboxRelay`가 SQS로 발행 | Aggregate가 `domainEvents`에 push → Repository가 `outbox` 테이블에 저장 → `OutboxRelay`가 SQS로 발행 |
+| 생산자 | Scheduler (Cron) / Application Service가 `TaskQueue.enqueue` 호출 → `task_outbox` 저장 → `TaskOutboxRelay`가 SQS로 발행 | Aggregate가 `domainEvents`에 push → Repository가 `outbox` 테이블에 저장 → `OutboxPoller`가 SQS로 발행 |
 | 예시 | "만료 주문 정리 배치 실행", "알림 재전송", "리포트 생성" | `OrderCancelled` 이벤트에 대해 환불·재고 복원·알림 발송 각 핸들러 구동 |
 | 실패 처리 | visibility timeout 재시도 → DLQ | 동일 (각 핸들러 단위로) |
 | 가이드 | 본 문서 | [domain-events.md](./domain-events.md) |
@@ -521,7 +521,7 @@ export class TaskQueueOutbox extends TaskQueue {
 
 ### `TaskOutboxRelay` — Outbox → SQS 발행
 
-짧은 주기로 `task_outbox`를 폴링하여 미발행 row를 SQS에 보낸다. Domain Event의 `OutboxRelay`와 같은 패턴이다.
+짧은 주기로 `task_outbox`를 폴링하여 미발행 row를 SQS에 보낸다. Domain Event의 `OutboxPoller`와 같은 패턴이다.
 
 ```typescript
 // src/task-queue/task-outbox-relay.ts

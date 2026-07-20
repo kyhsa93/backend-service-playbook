@@ -7,13 +7,17 @@ src/
   database/                            # 데이터베이스 공유 코드 (실제 코드에는 별도 @Global 모듈이나 BaseEntity가 없다)
     data-source.ts                     # TypeORM DataSource 설정 — CLI 마이그레이션과 공유
     transaction-manager.ts             # 트랜잭션 매니저 (AsyncLocalStorage 기반)
-  outbox/                              # Outbox 공유 코드
+  outbox/                              # Outbox 공유 코드 (@Global OutboxModule) — 모든 도메인이 공유하는 유일한 경로
     outbox-module.ts
     outbox.entity.ts                   # Outbox 테이블 Entity
     outbox-writer.ts                   # 트랜잭션 안에서 이벤트 저장 (Repository에서 호출)
+    outbox-poller.ts                   # Outbox → SQS 발행 (@Interval(1000))
+    outbox-consumer.ts                 # SQS → EventHandlerRegistry 라우팅 (long polling)
+    sqs-client-provider.ts             # SQSClient 생성
     event-handler-registry.ts          # eventType → Handler 라우팅
-    # OutboxRelay는 여기 없다 — 도메인마다 <domain>/application/event/outbox-relay.ts에 둔다(아래 참고).
-    # SQS 기반 EventConsumer도 없다 — 저장 직후 같은 프로세스에서 동기 드레인한다(domain-events.md 참고).
+    # 도메인별 OutboxRelay는 없다 — 예전에는 도메인마다 <domain>/application/event/
+    # outbox-relay.ts가 동기 드레인을 담당했지만, 지금은 이 OutboxPoller/OutboxConsumer
+    # 하나로 통합되어 SQS를 경유해 비동기로 처리한다(domain-events.md 참고).
   task-queue/                          # Task Queue 모듈 (공용)
     task-queue-module.ts
     task-queue.ts                      # 인터페이스 (abstract class)
@@ -51,8 +55,9 @@ src/
         <verb>-<noun>-query.ts
         <verb>-<noun>-result.ts
       event/
-        <domain>-event-handler.ts       # outbox 이벤트 타입별 핸들러
-        outbox-relay.ts                 # 저장 직후 동기 드레인 — domain-events.md 참고
+        <domain>-event-handler.ts       # Domain Event 핸들러 — 도메인 모듈의 onModuleInit()에서
+                                         # 공유 outbox/event-handler-registry.ts에 등록한다.
+                                         # 도메인별 outbox-relay.ts는 없다 — domain-events.md 참고
     interface/
       <domain>-controller.ts              # HTTP Controller
       <domain>-task-controller.ts         # Task Controller (@TaskConsumer 메서드 보유)

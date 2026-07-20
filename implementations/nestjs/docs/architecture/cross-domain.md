@@ -85,13 +85,16 @@ await this.transactionManager.run(async () => { await this.cardRepository.saveCa
 [Account] suspend 커맨드
   → Account.suspend() 가 AccountSuspended Domain Event 수집
   → Repository.saveAccount() 가 Outbox에 적재 (eventType="AccountSuspended")
-  → OutboxRelay.processPending() 드레인:
-       패스1: AccountSuspendedHandler(application/event/) 가
-              AccountSuspendedIntegrationEventV1 로 변환해 Outbox에 적재
-              (eventType="account.suspended.v1")
-       패스2: relay 정적 맵에 없는 eventType → EventHandlerRegistry 로 위임
-              → CardIntegrationEventController.onAccountSuspended (interface/integration-event/)
-              → SuspendCardsByAccountCommand → ACTIVE 카드들을 SUSPENDED로
+  → Command Handler는 저장 후 곧바로 반환 (동기 드레인 없음)
+  → OutboxPoller(@Interval(1000)) 가 Outbox 행을 집어 SQS로 발행
+  → OutboxConsumer(long polling) 가 SQS에서 수신 → EventHandlerRegistry.handle('AccountSuspended')
+       → AccountSuspendedHandler(application/event/) 가
+         AccountSuspendedIntegrationEventV1 로 변환해 Outbox에 적재
+         (eventType="account.suspended.v1")
+  → 이 새 Outbox 행도 같은 Poller/Consumer 경로를 다시 거쳐 SQS 왕복 →
+    EventHandlerRegistry.handle('account.suspended.v1')
+       → CardIntegrationEventController.onAccountSuspended (interface/integration-event/)
+       → SuspendCardsByAccountCommand → ACTIVE 카드들을 SUSPENDED로
 ```
 
 핵심 파일:
@@ -100,7 +103,7 @@ await this.transactionManager.run(async () => { await this.cardRepository.saveCa
 |------|------|
 | Integration Event 정의(공개 계약) | `account/application/integration-event/account-suspended-integration-event.ts` (`account.suspended.v1`) |
 | Domain Event → Integration Event 변환 | `account/application/event/account-suspended-handler.ts` (`@HandleEvent`) |
-| Outbox 드레인 + 라우팅 | `account/application/event/outbox-relay.ts` + `outbox/event-handler-registry.ts` |
+| Outbox 드레인(DB→SQS) + 라우팅(SQS→Handler) | `outbox/outbox-poller.ts` + `outbox/outbox-consumer.ts` + `outbox/event-handler-registry.ts` (모든 도메인 공유, 도메인별 relay 없음) |
 | 외부 BC 수신부 | `card/interface/integration-event/card-integration-event-controller.ts` (`@HandleIntegrationEvent`) |
 | 반응 유스케이스 | `card/application/command/suspend-cards-by-account-command-handler.ts` |
 
@@ -146,20 +149,19 @@ export class CardIntegrationEventController {
 }
 ```
 
-HTTP Controller·Task Controller와 같은 **Interface 입력 어댑터**다. 자기 BC의 Command만 호출하고, 예외는 그대로 throw하여 relay가 재시도하게 한다.
+HTTP Controller·Task Controller와 같은 **Interface 입력 어댑터**다. 자기 BC의 Command만 호출하고, 예외는 그대로 throw하여 OutboxConsumer가 메시지를 삭제하지 않고 재시도하게 한다.
 
 ### 라우팅 — 발행 BC가 수신 BC를 import하지 않는 이유
 
-이 저장소의 Outbox는 SQS 홉 없이 **같은 프로세스 안에서 동기적으로** 드레인된다([domain-events.md](domain-events.md) 참조). `OutboxRelay`는 자기 BC(Account)의 Domain Event는 생성자 주입 기반 **정적 맵**으로 처리하고, 맵에 없는 eventType(다른 BC가 발행한 Integration Event)은 **`EventHandlerRegistry`로 위임**한다.
+이 저장소의 Outbox는 도메인별 Relay 없이, 모든 BC가 공유하는 `outbox/` 모듈 하나가 SQS를 거쳐 비동기로 드레인한다([domain-events.md](domain-events.md) 참조). `OutboxPoller`는 eventType과 무관하게 Outbox 행을 그대로 SQS로 실어 나르고, `OutboxConsumer`가 SQS에서 수신한 eventType을 **`EventHandlerRegistry`로 위임**한다 — Account/Card 구분 없이 모든 이벤트가 이 하나의 레지스트리를 거친다.
 
 ```typescript
-// account/application/event/outbox-relay.ts (핵심)
-const handler = this.handlers[row.eventType]
-if (handler) await handler(payload)                 // 자기 BC Domain Event (정적 맵)
-else await this.registry.handle(row.eventType, payload)  // 다른 BC Integration Event (레지스트리)
+// outbox/outbox-consumer.ts (핵심)
+const eventType = message.MessageAttributes?.eventType?.StringValue
+await this.registry.handle(eventType, JSON.parse(message.Body ?? '{}'))
 ```
 
-수신 BC는 자기 모듈의 `onModuleInit`에서 수신부를 등록한다.
+발행 BC(Account)는 자기 모듈의 `onModuleInit`에서 자기 Domain Event 핸들러를 등록하고, 수신 BC(Card)는 같은 방식으로 자기 Integration Event 수신부를 등록한다.
 
 ```typescript
 // card/card-module.ts
@@ -171,7 +173,7 @@ onModuleInit(): void {
 
 이렇게 하면 **Account는 Card를 import하지 않고도** Card에 이벤트를 전달한다. 발행 측과 수신 측의 유일한 접점은 버전이 명시된 이벤트명(`account.suspended.v1`)이다.
 
-`processPending()`은 드레인 도중 적재된 새 행(Domain Event → Integration Event)을 같은 커맨드 처리 안에서 이어서 드레인하도록 **더 진전이 없을 때까지 여러 패스로 반복**한다.
+`AccountSuspendedHandler`가 변환해 새로 적재하는 Integration Event 행(`account.suspended.v1`)은 같은 커맨드 처리 안에서 즉시 이어지지 않는다 — `OutboxPoller`의 다음 tick(최대 1초 후)에 다시 집혀 같은 Poller→SQS→Consumer 경로를 한 번 더 거친다.
 
 ### 멱등성
 

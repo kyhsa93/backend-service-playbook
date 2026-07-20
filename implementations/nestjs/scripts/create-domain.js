@@ -2,8 +2,10 @@
 // 새 도메인 스캐폴딩 생성기 — docs/reference.md의 "실전 구현 템플릿"(Order 예시)을
 // 실제로 코드화해 harness(evaluators/) 전체를 통과시킨 뒤, 도메인 이름만 파라미터로
 // 뽑아 재사용 가능하게 일반화한 것이다. Aggregate(단일 상태 필드) + CQRS
-// CommandHandler/QueryHandler(CommandBus/QueryBus) + 도메인 이벤트 1종 + 전용
-// OutboxRelay + Repository + Controller + DTO + Module까지 한 번에 생성한다.
+// CommandHandler/QueryHandler(CommandBus/QueryBus) + 도메인 이벤트 1종 + 공유
+// outbox 모듈(EventHandlerRegistry)에 핸들러를 등록하는 OnModuleInit + Repository +
+// Controller + DTO + Module까지 한 번에 생성한다. Outbox 드레인은 도메인별 Relay가
+// 아니라 공유 OutboxPoller/OutboxConsumer가 담당한다(domain-events.md 참고).
 //
 // 사용법:
 //   node scripts/create-domain.js <PascalCaseDomainName> [--out <targetSrcDir>] [--wire]
@@ -184,7 +186,6 @@ export abstract class ${n.Domain}Repository {
   files[`${n.domainKebab}/application/command/create-${n.domainKebab}-command-handler.ts`] = `import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
-import { OutboxRelay } from '@/${n.domainKebab}/application/event/outbox-relay'
 import { Create${n.Domain}Command } from '@/${n.domainKebab}/application/command/create-${n.domainKebab}-command'
 import { ${n.Domain} } from '@/${n.domainKebab}/domain/${n.domainKebab}'
 import { ${n.Domain}Repository } from '@/${n.domainKebab}/domain/${n.domainKebab}-repository'
@@ -193,8 +194,7 @@ import { ${n.Domain}Repository } from '@/${n.domainKebab}/domain/${n.domainKebab
 export class Create${n.Domain}CommandHandler implements ICommandHandler<Create${n.Domain}Command, ${n.Domain}> {
   constructor(
     private readonly ${n.domain}Repository: ${n.Domain}Repository,
-    private readonly transactionManager: TransactionManager,
-    private readonly outboxRelay: OutboxRelay
+    private readonly transactionManager: TransactionManager
   ) {}
 
   public async execute(command: Create${n.Domain}Command): Promise<${n.Domain}> {
@@ -202,7 +202,8 @@ export class Create${n.Domain}CommandHandler implements ICommandHandler<Create${
     await this.transactionManager.run(async () => {
       await this.${n.domain}Repository.save${n.Domain}(${n.domain})
     })
-    await this.outboxRelay.processPending()
+    // Outbox 드레인은 공유 OutboxPoller/OutboxConsumer가 독립적으로 주기 실행하며
+    // 처리한다 — Command Handler는 저장이 끝나면 그대로 반환한다.
     return ${n.domain}
   }
 }
@@ -221,7 +222,6 @@ export class Create${n.Domain}CommandHandler implements ICommandHandler<Create${
   files[`${n.domainKebab}/application/command/cancel-${n.domainKebab}-command-handler.ts`] = `import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
-import { OutboxRelay } from '@/${n.domainKebab}/application/event/outbox-relay'
 import { Cancel${n.Domain}Command } from '@/${n.domainKebab}/application/command/cancel-${n.domainKebab}-command'
 import { ${n.Domain}Repository } from '@/${n.domainKebab}/domain/${n.domainKebab}-repository'
 import { ${n.Domain}ErrorMessage as ErrorMessage } from '@/${n.domainKebab}/${n.domainKebab}-error-message'
@@ -230,8 +230,7 @@ import { ${n.Domain}ErrorMessage as ErrorMessage } from '@/${n.domainKebab}/${n.
 export class Cancel${n.Domain}CommandHandler implements ICommandHandler<Cancel${n.Domain}Command> {
   constructor(
     private readonly ${n.domain}Repository: ${n.Domain}Repository,
-    private readonly transactionManager: TransactionManager,
-    private readonly outboxRelay: OutboxRelay
+    private readonly transactionManager: TransactionManager
   ) {}
 
   public async execute(command: Cancel${n.Domain}Command): Promise<void> {
@@ -245,7 +244,8 @@ export class Cancel${n.Domain}CommandHandler implements ICommandHandler<Cancel${
     await this.transactionManager.run(async () => {
       await this.${n.domain}Repository.save${n.Domain}(${n.domain})
     })
-    await this.outboxRelay.processPending()
+    // Outbox 드레인은 공유 OutboxPoller/OutboxConsumer가 독립적으로 주기 실행하며
+    // 처리한다 — Command Handler는 저장이 끝나면 그대로 반환한다.
   }
 }
 `
@@ -303,60 +303,6 @@ export class ${n.Domain}CancelledHandler {
 
   public async handle(event: { ${n.domain}Id: string; reason: string; cancelledAt: string }): Promise<void> {
     this.logger.log({ message: '${n.Domain} 취소됨', ${n.domain}_id: event.${n.domain}Id, reason: event.reason })
-  }
-}
-`
-
-  files[`${n.domainKebab}/application/event/outbox-relay.ts`] = `import { Injectable, Logger } from '@nestjs/common'
-
-import { TransactionManager } from '@/database/transaction-manager'
-import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
-import { OutboxEntity } from '@/outbox/outbox.entity'
-import { ${n.Domain}CancelledHandler } from '@/${n.domainKebab}/application/event/${n.domainKebab}-cancelled-handler'
-
-// 도메인마다 자기 이벤트만 처리하는 전용 OutboxRelay를 둔다 — 이게 이 저장소의
-// 실제 컨벤션이다(harness의 domain-event-outbox.relay-handler-map-incomplete
-// 규칙도 도메인별로 스코프를 검사한다, issue #229).
-@Injectable()
-export class OutboxRelay {
-  private readonly logger = new Logger(OutboxRelay.name)
-  private readonly handlers: Record<string, (payload: object) => Promise<void>>
-
-  constructor(
-    private readonly transactionManager: TransactionManager,
-    private readonly registry: EventHandlerRegistry,
-    ${n.domain}CancelledHandler: ${n.Domain}CancelledHandler
-  ) {
-    this.handlers = {
-      ${n.Domain}Cancelled: (payload) => ${n.domain}CancelledHandler.handle(payload as never)
-    }
-  }
-
-  public async processPending(): Promise<void> {
-    const manager = this.transactionManager.getManager()
-    const MAX_PASSES = 10
-    const failedInThisRun = new Set<string>()
-
-    for (let pass = 0; pass < MAX_PASSES; pass++) {
-      const rows = (await manager.findBy(OutboxEntity, { processed: false }))
-        .filter((row) => !failedInThisRun.has(row.eventId))
-      if (rows.length === 0) return
-
-      let progressed = 0
-      for (const row of rows) {
-        try {
-          const handler = this.handlers[row.eventType]
-          if (handler) await handler(JSON.parse(row.payload))
-          else await this.registry.handle(row.eventType, JSON.parse(row.payload))
-          await manager.update(OutboxEntity, { eventId: row.eventId }, { processed: true })
-          progressed++
-        } catch (error) {
-          failedInThisRun.add(row.eventId)
-          this.logger.error({ message: '이벤트 처리 실패', event_type: row.eventType, event_id: row.eventId, error })
-        }
-      }
-      if (progressed === 0) return
-    }
   }
 }
 `
@@ -627,15 +573,15 @@ export class ${n.Domain}Controller {
 `
 
   // ---- Module ----
-  files[`${n.domainKebab}/${n.domainKebab}-module.ts`] = `import { Module } from '@nestjs/common'
+  files[`${n.domainKebab}/${n.domainKebab}-module.ts`] = `import { Module, OnModuleInit } from '@nestjs/common'
 import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
+import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
 import { AuthModule } from '@/auth/auth-module'
 import { Cancel${n.Domain}CommandHandler } from '@/${n.domainKebab}/application/command/cancel-${n.domainKebab}-command-handler'
 import { Create${n.Domain}CommandHandler } from '@/${n.domainKebab}/application/command/create-${n.domainKebab}-command-handler'
 import { ${n.Domain}CancelledHandler } from '@/${n.domainKebab}/application/event/${n.domainKebab}-cancelled-handler'
-import { OutboxRelay } from '@/${n.domainKebab}/application/event/outbox-relay'
 import { Get${n.Domain}QueryHandler } from '@/${n.domainKebab}/application/query/get-${n.domainKebab}-query-handler'
 import { ${n.Domain}Query } from '@/${n.domainKebab}/application/query/${n.domainKebab}-query'
 import { ${n.Domain}Repository } from '@/${n.domainKebab}/domain/${n.domainKebab}-repository'
@@ -653,16 +599,29 @@ import { ${n.Domain}Controller } from '@/${n.domainKebab}/interface/${n.domainKe
     Cancel${n.Domain}CommandHandler,
     // Query Handlers
     Get${n.Domain}QueryHandler,
-    // Domain Event 후속 처리 + Outbox 드레인
+    // Domain Event 후속 처리 — 실제 Outbox 드레인은 공유 outbox 모듈의
+    // OutboxPoller/OutboxConsumer가 담당하며, 이 핸들러는 아래 onModuleInit에서
+    // EventHandlerRegistry에 등록된다.
     ${n.Domain}CancelledHandler,
-    OutboxRelay,
     // Repositories
     { provide: ${n.Domain}Repository, useClass: ${n.Domain}RepositoryImpl },
     // Query 구현체
     { provide: ${n.Domain}Query, useClass: ${n.Domain}QueryImpl }
   ]
 })
-export class ${n.Domain}Module {}
+export class ${n.Domain}Module implements OnModuleInit {
+  constructor(
+    private readonly registry: EventHandlerRegistry,
+    private readonly ${n.domain}CancelledHandler: ${n.Domain}CancelledHandler
+  ) {}
+
+  // 자기 도메인이 발행하는 Domain Event(OutboxConsumer가 SQS에서 수신했을 때 호출할
+  // 핸들러)를 공유 EventHandlerRegistry에 등록한다 — 도메인별 OutboxRelay는 두지
+  // 않는다(account-module.ts와 동일한 패턴).
+  onModuleInit(): void {
+    this.registry.register('${n.Domain}Cancelled', (payload) => this.${n.domain}CancelledHandler.handle(payload as never))
+  }
+}
 `
 
   return files
