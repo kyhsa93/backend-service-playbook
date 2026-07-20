@@ -24,6 +24,17 @@ dependencyManagement {
     imports {
         mavenBom("org.testcontainers:testcontainers-bom:2.0.5")
     }
+    dependencies {
+        // software.amazon.awssdk:ses는 2.48.3부터 기본 동기 HTTP 클라이언트로
+        // apache5-client(httpclient5 기반)를 함께 끌어온다. 이 apache5-client가 요구하는
+        // httpclient5/httpcore5 버전(5.6.2/5.4.3)이 Spring Boot 3.3.5 BOM이 관리하는 버전
+        // (5.3.1/5.2.5)보다 높아서, BOM이 낮은 버전으로 다운그레이드해버리면 AWS SDK의
+        // Apache5HttpClient가 런타임에 NoClassDefFoundError를 던진다. BOM보다 우선하도록
+        // 명시적으로 버전을 고정한다.
+        dependency("org.apache.httpcomponents.client5:httpclient5:5.6.2")
+        dependency("org.apache.httpcomponents.core5:httpcore5:5.4.3")
+        dependency("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3")
+    }
 }
 
 dependencies {
@@ -36,7 +47,7 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("software.amazon.awssdk:ses:2.29.52")
+    implementation("software.amazon.awssdk:ses:2.48.3")
     implementation("software.amazon.awssdk:secretsmanager:2.29.52")
     implementation("software.amazon.awssdk:sqs:2.29.52")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
