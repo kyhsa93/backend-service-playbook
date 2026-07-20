@@ -81,7 +81,7 @@ src/
   common/                            ← 두 번째 도메인도 그대로 재사용
   config/
   auth/                              ← account/와 동일한 4레이어 구조
-  outbox/                            ← 두 번째 도메인도 같은 Outbox 테이블/Relay를 공유
+  outbox/                            ← 두 번째 도메인도 같은 Outbox 테이블/Poller/Consumer를 공유
   account/                           ← 도메인 패키지
     domain/ application/ infrastructure/ interface/
   user/                              ← 두 번째 도메인 패키지 (가상)

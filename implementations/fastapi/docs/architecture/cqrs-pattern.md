@@ -220,7 +220,7 @@ Bus를 도입해도 Handler 클래스 자체(입력 = `@dataclass` Command/Query
 
 ## EventHandler — Domain Event 후속 처리
 
-Command Handler는 `notify()`를 직접 호출하지 않는다 — `repo.save()`가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Handler는 저장 후 곧바로 반환한다(`OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 호출하지 않는다). Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`가 처리하며, `event_type`별 후속 처리(현재는 알림 발송, 향후 감사 로그·통계 집계 등이 늘어나도 마찬가지)는 `application/event/<event>_event_handler.py`로 분리되어 있다.
+Command Handler는 `notify()`를 직접 호출하지 않는다 — `repo.save()`가 Aggregate 저장과 Outbox 적재를 하나의 트랜잭션으로 묶고, Handler는 저장 후 곧바로 반환한다(`OutboxPoller`/`OutboxConsumer`를 직접 호출하지 않는다). Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 `OutboxPoller`/`OutboxConsumer`가 처리하며, `event_type`별 후속 처리(현재는 알림 발송, 향후 감사 로그·통계 집계 등이 늘어나도 마찬가지)는 `application/event/<event>_event_handler.py`로 분리되어 있다.
 
 → 상세 구현은 [domain-events.md](domain-events.md) 참조.
 

@@ -119,7 +119,7 @@
 [ ] Repository 구현체의 save 메서드에서 Aggregate가 pull_events()로 꺼낸 이벤트를 Outbox 테이블에 같은 트랜잭션으로 저장하는가?
     → Handler가 Technical Service(NotificationService 등)를 직접 호출해 이벤트를 처리하고 있다면, Outbox 경유로 전환 검토 (domain-events.md의 "알려진 격차" 참조)
 [ ] Repository 구현체가 이벤트를 Outbox에 저장한 후 aggregate.pull_events()로 버퍼를 비우는가? (중복 저장 방지)
-[ ] Outbox 폴링/릴레이가 실패해도 처리 완료 표시(processed=True)를 남기지 않아 다음 주기에 재시도되는가? (at-least-once)
+[ ] Outbox 폴링(`OutboxPoller`)이 SQS 발행에 실패해도 처리 완료 표시(processed=True)를 남기지 않아 다음 tick에 재시도되는가? (at-least-once)
 [ ] 이벤트 후속 처리(알림 발송 등)가 멱등하게 구현되어 있는가?
     → 이미 처리된 이벤트인지 Ledger 테이블로 확인 후 처리, 또는 DB unique 제약으로 중복 방지
 [ ] 크로스 도메인 호출이 필요한 경우, 호출하는 쪽의 application/adapter/에 ABC를 정의하고 infrastructure/에 구현체를 두었는가?
@@ -317,7 +317,7 @@
     → requester_id 등은 Interface 레이어에서 검증된 값으로 Command/Query에 실어 전달
 [ ] Scheduler(APScheduler 등)가 infrastructure/scheduling/에 위치하는가?
     → Application/Domain 레이어에 스케줄링 코드를 직접 두지 않는다
-[ ] Scheduler가 비즈니스 로직을 직접 실행하지 않고, Application Handler 호출 또는 Outbox 릴레이만 수행하는가?
+[ ] Scheduler가 비즈니스 로직을 직접 실행하지 않고, Application Handler 호출만 수행하는가?
 [ ] Scheduler의 job 함수가 try-except + logger.exception으로 실패를 명시적으로 로깅하는가?
     → APScheduler는 job 내부 예외를 조용히 삼키므로 직접 로깅하지 않으면 실패가 관찰 불가
 [ ] 여러 인스턴스가 동시에 실행되면 안 되는 배치에 DB row 잠금 또는 분산 락이 적용되어 있는가?

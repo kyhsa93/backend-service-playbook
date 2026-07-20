@@ -64,7 +64,7 @@ DDD 기반 FastAPI(Python) 서버 프로젝트의 설계/구현 가이드이다.
 | 작업 / 키워드 | 읽을 문서 |
 |---------------|----------|
 | 스케줄링, `BackgroundTasks`, APScheduler, Celery 선택 기준 | `docs/architecture/scheduling.md` |
-| Outbox Relay, 배치 작업, 멱등성 | `docs/architecture/scheduling.md` |
+| Outbox Poller/Consumer, 배치 작업, 멱등성 | `docs/architecture/scheduling.md` |
 
 ### 품질 / 검증
 
