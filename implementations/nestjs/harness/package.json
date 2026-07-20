@@ -11,7 +11,7 @@
     "test:meta": "tsx tests/run-meta.ts"
   },
   "dependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
