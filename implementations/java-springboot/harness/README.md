@@ -62,6 +62,7 @@ bash implementations/java-springboot/harness.sh <projectRoot>
 | `transaction-boundary` | `TransactionBoundary.java` | Command Service에 `@Transactional`이 없고, Outbox를 저장하는 `*RepositoryImpl`에는 있는지 확인 |
 | `outbox-drain-order` | `OutboxDrainOrder.java` | Command Service(`application/command/`)가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 참조하거나 `processPending()`/`poll()`/`drainOnce()`를 호출하면 실패 — Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지, domain-events.md) |
 | `cqrs-query-purity` | `CqrsQueryPurity.java` | `application/query/` 하위 파일(주석 제외)이 쓰기용 Repository 타입을 참조하면 실패 — Query Service는 별도 Query 인터페이스(`AccountQuery` 등)만 의존해야 함(cqrs-pattern.md). nestjs harness의 `cqrs-pattern` evaluator를 이식한 규칙 |
+| `repository-naming` | `RepositoryNaming.java` | `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스 메서드가 `findByXxx`류 파생 쿼리, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태) 블록리스트에 걸리면 실패 — `find<Noun>s`/`save<Noun>`/`delete<Noun>` 형태만 허용(repository-pattern.md). `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드는 검사 대상 아님 |
 
 ## 회귀 테스트
 

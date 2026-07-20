@@ -14,6 +14,7 @@ import harness.rules.NoEventPublisherInCommand;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
 import harness.rules.RepositoryAnnotation;
+import harness.rules.RepositoryNaming;
 import harness.rules.ServiceAnnotation;
 import harness.rules.SharedInfra;
 import harness.rules.TransactionBoundary;
@@ -92,7 +93,14 @@ public final class RuleTest {
         new TestCase("outbox-drain-order/bad-calls-poller-directly", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-calls-poller-directly"))),
 
         new TestCase("cqrs-query-purity/good", () -> assertNoFailures(CqrsQueryPurity.check("testdata/cqrs-query-purity/good"))),
-        new TestCase("cqrs-query-purity/bad-repository-reference", () -> assertHasFailure(CqrsQueryPurity.check("testdata/cqrs-query-purity/bad-repository-reference")))
+        new TestCase("cqrs-query-purity/bad-repository-reference", () -> assertHasFailure(CqrsQueryPurity.check("testdata/cqrs-query-purity/bad-repository-reference"))),
+
+        new TestCase("repository-naming/good", () -> assertNoFailures(RepositoryNaming.check("testdata/repository-naming/good"))),
+        new TestCase("repository-naming/bad-findby", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-findby"))),
+        new TestCase("repository-naming/bad-findall", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-findall"))),
+        new TestCase("repository-naming/bad-count", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-count"))),
+        new TestCase("repository-naming/bad-bare-save", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-bare-save"))),
+        new TestCase("repository-naming/bad-bare-delete", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-bare-delete")))
     );
 
     public static void main(String[] args) {

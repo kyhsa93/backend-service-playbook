@@ -17,6 +17,7 @@ import harness.rules.NoEventPublisherInCommand;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
 import harness.rules.RepositoryAnnotation;
+import harness.rules.RepositoryNaming;
 import harness.rules.ServiceAnnotation;
 import harness.rules.SharedInfra;
 import harness.rules.TransactionBoundary;
@@ -39,7 +40,8 @@ public final class Main {
         NoEventPublisherInCommand::check,
         TransactionBoundary::check,
         OutboxDrainOrder::check,
-        CqrsQueryPurity::check
+        CqrsQueryPurity::check,
+        RepositoryNaming::check
     );
 
     public static void main(String[] args) {
