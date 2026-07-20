@@ -31,7 +31,7 @@ func NewPaymentCardAdapter(cards card.Query) *PaymentCardAdapter {
 var _ command.PaymentCardAdapter = (*PaymentCardAdapter)(nil)
 
 func (a *PaymentCardAdapter) FindCard(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) {
-	c, err := a.cards.FindByID(ctx, cardID, ownerID)
+	c, err := card.FindOne(ctx, a.cards, cardID, ownerID)
 	if err != nil {
 		// 상류의 "카드 없음" 에러 타입을 Payment 도메인으로 누수시키지 않고 nil 신호로 번역한다.
 		if errors.Is(err, card.ErrNotFound) {

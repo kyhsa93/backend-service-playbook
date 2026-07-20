@@ -23,7 +23,7 @@ func NewSuspendCardsByAccountHandler(repo card.Repository) *SuspendCardsByAccoun
 }
 
 func (h *SuspendCardsByAccountHandler) Handle(ctx context.Context, cmd SuspendCardsByAccountCommand) error {
-	cards, _, err := h.repo.FindAll(ctx, card.FindQuery{
+	cards, _, err := h.repo.FindCards(ctx, card.FindQuery{
 		AccountID: cmd.AccountID,
 		Status:    []card.Status{card.StatusActive},
 		Take:      1000,
@@ -37,7 +37,7 @@ func (h *SuspendCardsByAccountHandler) Handle(ctx context.Context, cmd SuspendCa
 		if err := c.Suspend(); err != nil {
 			return err
 		}
-		if err := h.repo.Save(ctx, c); err != nil {
+		if err := h.repo.SaveCard(ctx, c); err != nil {
 			return err
 		}
 	}

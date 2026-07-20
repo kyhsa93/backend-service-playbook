@@ -123,7 +123,7 @@ func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) 
 	}
 	return []*account.Account{a}, 1, nil
 }
-func (s *stubRepository) Save(ctx context.Context, a *account.Account) error { return s.saveFn(ctx, a) }
+func (s *stubRepository) SaveAccount(ctx context.Context, a *account.Account) error { return s.saveFn(ctx, a) }
 func (s *stubRepository) FindTransactions(ctx context.Context, accountID string, page, take int) ([]account.Transaction, int, error) {
 	return nil, 0, nil
 }

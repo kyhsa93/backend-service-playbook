@@ -84,11 +84,11 @@ func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []account.Domai
 }
 ```
 
-`internal/infrastructure/persistence/account_repository.go`의 `Save`가 계좌/거래 row를 저장한 것과 **같은 `*sql.Tx`** 안에서 `outboxWriter.SaveAll`을 호출한 뒤 커밋한다 — 커밋이 원자적이므로 "계좌는 바뀌었는데 이벤트는 적재되지 않음"이 애초에 발생할 수 없다:
+`internal/infrastructure/persistence/account_repository.go`의 `SaveAccount`가 계좌/거래 row를 저장한 것과 **같은 `*sql.Tx`** 안에서 `outboxWriter.SaveAll`을 호출한 뒤 커밋한다 — 커밋이 원자적이므로 "계좌는 바뀌었는데 이벤트는 적재되지 않음"이 애초에 발생할 수 없다:
 
 ```go
 // internal/infrastructure/persistence/account_repository.go
-func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error {
+func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	// ...
 	defer tx.Rollback()
@@ -108,7 +108,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error 
 }
 ```
 
-Command Handler는 `repo.Save(ctx, a)`가 끝나면 그대로 반환한다 — outbox나 SQS를 전혀 알지 못한다:
+Command Handler는 `repo.SaveAccount(ctx, a)`가 끝나면 그대로 반환한다 — outbox나 SQS를 전혀 알지 못한다:
 
 ```go
 // internal/application/command/deposit_handler.go
@@ -117,7 +117,7 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 	// ...
 	tx, err := a.Deposit(cmd.Amount, "")
 	// ...
-	if err := h.repo.Save(ctx, a); err != nil { // ← 계좌 상태 + outbox row, 같은 트랜잭션으로 커밋
+	if err := h.repo.SaveAccount(ctx, a); err != nil { // ← 계좌 상태 + outbox row, 같은 트랜잭션으로 커밋
 		return nil, err
 	}
 	return &tx, nil // 여기서 끝난다 — Poller/Consumer가 독립적으로 처리한다.

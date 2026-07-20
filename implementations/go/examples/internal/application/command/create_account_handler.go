@@ -25,7 +25,7 @@ func NewCreateAccountHandler(repo account.Repository) *CreateAccountHandler {
 // domain-events.md).
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
 	a := account.New(cmd.RequesterID, cmd.Email, cmd.Currency)
-	if err := h.repo.Save(ctx, a); err != nil {
+	if err := h.repo.SaveAccount(ctx, a); err != nil {
 		return nil, err
 	}
 	return a, nil

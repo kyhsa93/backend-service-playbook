@@ -24,7 +24,7 @@ func (s *stubPaymentStore) FindPayments(ctx context.Context, q payment.FindQuery
 	return s.findPaymentsFn(ctx, q)
 }
 
-func (s *stubPaymentStore) Save(ctx context.Context, p *payment.Payment) error {
+func (s *stubPaymentStore) SavePayment(ctx context.Context, p *payment.Payment) error {
 	if s.saveFn == nil {
 		return nil
 	}

@@ -56,7 +56,7 @@ func querier(ctx context.Context, db *sql.DB) Querier {
 Repository 구현체는 `db.BeginTx`를 직접 호출하지 않고 `querier(ctx, r.db)`로 현재 트랜잭션 컨텍스트를 받는다:
 
 ```go
-func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error {
+func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
 	q := querier(ctx, r.db)
 	_, err := q.ExecContext(ctx, `INSERT INTO accounts (...) VALUES (...) ON CONFLICT ...`, ...)
 	return err
@@ -70,7 +70,7 @@ err := database.WithTx(ctx, db, func(ctx context.Context) error {
 	if err := paymentRepo.DeletePaymentMethods(ctx, accountID); err != nil {
 		return err
 	}
-	return accountRepo.Save(ctx, a)
+	return accountRepo.SaveAccount(ctx, a)
 })
 ```
 
@@ -78,10 +78,10 @@ err := database.WithTx(ctx, db, func(ctx context.Context) error {
 
 ### 현재 `examples/`의 실제 코드 — 로컬 트랜잭션으로 충분한 범위까지만 구현
 
-`internal/infrastructure/persistence/account_repository.go`의 `Save()`는 위 패턴을 쓰지 않는다. **로컬 트랜잭션을 그 함수 안에서 직접 열고 닫는다**:
+`internal/infrastructure/persistence/account_repository.go`의 `SaveAccount()`는 위 패턴을 쓰지 않는다. **로컬 트랜잭션을 그 함수 안에서 직접 열고 닫는다**:
 
 ```go
-func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error {
+func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

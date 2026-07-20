@@ -35,7 +35,7 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*acc
 	if err != nil {
 		return nil, err
 	}
-	if err := h.repo.Save(ctx, a); err != nil {
+	if err := h.repo.SaveAccount(ctx, a); err != nil {
 		return nil, err
 	}
 	return &tx, nil

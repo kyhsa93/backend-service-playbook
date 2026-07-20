@@ -85,7 +85,7 @@ type GetAccountResponse struct {
 // internal/domain/account/repository.go
 type Repository interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
-	Save(ctx context.Context, account *Account) error
+	SaveAccount(ctx context.Context, account *Account) error
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 ```

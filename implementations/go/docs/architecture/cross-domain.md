@@ -108,7 +108,7 @@ func (h *IssueCardHandler) Handle(ctx context.Context, cmd IssueCardCommand) (*c
 		return nil, card.ErrIssueRequiresActiveAccount
 	}
 	c := card.IssueCard(cmd.AccountID, cmd.RequesterID, cmd.Brand)
-	if err := h.repo.Save(ctx, c); err != nil {
+	if err := h.repo.SaveCard(ctx, c); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -167,7 +167,7 @@ Card 쪽 반응 유스케이스는 순수한 Card 유스케이스다(Account를 
 ```go
 // internal/application/command/suspend_cards_by_account_handler.go (발췌)
 func (h *SuspendCardsByAccountHandler) Handle(ctx context.Context, cmd SuspendCardsByAccountCommand) error {
-	cards, _, err := h.repo.FindAll(ctx, card.FindQuery{
+	cards, _, err := h.repo.FindCards(ctx, card.FindQuery{
 		AccountID: cmd.AccountID,
 		Status:    []card.Status{card.StatusActive}, // ACTIVE만 → 멱등
 		Take:      1000,
@@ -179,7 +179,7 @@ func (h *SuspendCardsByAccountHandler) Handle(ctx context.Context, cmd SuspendCa
 		if err := c.Suspend(); err != nil {
 			return err
 		}
-		if err := h.repo.Save(ctx, c); err != nil {
+		if err := h.repo.SaveCard(ctx, c); err != nil {
 			return err
 		}
 	}

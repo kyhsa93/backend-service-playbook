@@ -25,24 +25,7 @@ func NewCardRepository(db *sql.DB) *CardRepository {
 	return &CardRepository{db: db}
 }
 
-func (r *CardRepository) FindByID(ctx context.Context, cardID, ownerID string) (*card.Card, error) {
-	row := r.db.QueryRowContext(ctx,
-		`SELECT id, account_id, owner_id, brand, status, created_at
-		 FROM cards WHERE id = $1 AND owner_id = $2`,
-		cardID, ownerID,
-	)
-	var id, accountID, ownerIDCol, brand, status string
-	var createdAt time.Time
-	if err := row.Scan(&id, &accountID, &ownerIDCol, &brand, &status, &createdAt); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, card.ErrNotFound
-		}
-		return nil, fmt.Errorf("find card by id: %w", err)
-	}
-	return card.Reconstitute(id, accountID, ownerIDCol, brand, card.Status(status), createdAt), nil
-}
-
-func (r *CardRepository) FindAll(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error) {
+func (r *CardRepository) FindCards(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error) {
 	args := []any{}
 	where := []string{"1 = 1"}
 	i := 1
@@ -108,7 +91,7 @@ func (r *CardRepository) FindAll(ctx context.Context, q card.FindQuery) ([]*card
 	return cards, total, rows.Err()
 }
 
-func (r *CardRepository) Save(ctx context.Context, c *card.Card) error {
+func (r *CardRepository) SaveCard(ctx context.Context, c *card.Card) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO cards (id, account_id, owner_id, brand, status, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())

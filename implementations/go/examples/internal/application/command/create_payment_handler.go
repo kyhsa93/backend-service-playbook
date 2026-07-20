@@ -67,7 +67,7 @@ func (h *CreatePaymentHandler) Handle(ctx context.Context, cmd CreatePaymentComm
 
 	// 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
 	// outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지, domain-events.md).
-	if err := h.repo.Save(ctx, p); err != nil {
+	if err := h.repo.SavePayment(ctx, p); err != nil {
 		return nil, err
 	}
 	return p, nil

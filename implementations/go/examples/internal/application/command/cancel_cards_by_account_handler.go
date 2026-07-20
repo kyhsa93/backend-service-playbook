@@ -22,7 +22,7 @@ func NewCancelCardsByAccountHandler(repo card.Repository) *CancelCardsByAccountH
 }
 
 func (h *CancelCardsByAccountHandler) Handle(ctx context.Context, cmd CancelCardsByAccountCommand) error {
-	cards, _, err := h.repo.FindAll(ctx, card.FindQuery{
+	cards, _, err := h.repo.FindCards(ctx, card.FindQuery{
 		AccountID: cmd.AccountID,
 		Status:    []card.Status{card.StatusActive, card.StatusSuspended},
 		Take:      1000,
@@ -36,7 +36,7 @@ func (h *CancelCardsByAccountHandler) Handle(ctx context.Context, cmd CancelCard
 		if err := c.Cancel(); err != nil {
 			return err
 		}
-		if err := h.repo.Save(ctx, c); err != nil {
+		if err := h.repo.SaveCard(ctx, c); err != nil {
 			return err
 		}
 	}

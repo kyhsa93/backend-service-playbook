@@ -74,7 +74,7 @@ root와 동일하게, Command 트랜잭션 안에서 DB 변경과 Task 적재를
 ```go
 // Application Handler — 목표 형태
 err := database.WithTx(ctx, db, func(ctx context.Context) error {
-	if err := accountRepo.Save(ctx, a); err != nil {
+	if err := accountRepo.SaveAccount(ctx, a); err != nil {
 		return err
 	}
 	return taskOutbox.Enqueue(ctx, "account.archive", []byte(`{"account_id":"`+a.AccountID+`"}`), a.AccountID, "account.archive-"+a.AccountID)

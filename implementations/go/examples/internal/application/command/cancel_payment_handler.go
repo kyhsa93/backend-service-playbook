@@ -36,7 +36,7 @@ func (h *CancelPaymentHandler) Handle(ctx context.Context, cmd CancelPaymentComm
 		return nil, err
 	}
 
-	if err := h.repo.Save(ctx, p); err != nil {
+	if err := h.repo.SavePayment(ctx, p); err != nil {
 		return nil, err
 	}
 	return p, nil

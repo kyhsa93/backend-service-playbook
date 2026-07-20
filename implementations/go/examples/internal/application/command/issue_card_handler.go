@@ -35,7 +35,7 @@ func (h *IssueCardHandler) Handle(ctx context.Context, cmd IssueCardCommand) (*c
 	}
 
 	c := card.IssueCard(cmd.AccountID, cmd.RequesterID, cmd.Brand)
-	if err := h.repo.Save(ctx, c); err != nil {
+	if err := h.repo.SaveCard(ctx, c); err != nil {
 		return nil, err
 	}
 	return c, nil

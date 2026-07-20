@@ -71,7 +71,7 @@ func NewCreateAccountHandler(repo account.Repository) *CreateAccountHandler {
 
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
 	a := account.New(cmd.RequesterID, cmd.Email, cmd.Currency) // 비즈니스 로직은 Aggregate에 위임
-	if err := h.repo.Save(ctx, a); err != nil {                // Aggregate 저장 + Outbox 적재, 한 트랜잭션
+	if err := h.repo.SaveAccount(ctx, a); err != nil {          // Aggregate 저장 + Outbox 적재, 한 트랜잭션
 		return nil, err
 	}
 	// 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
@@ -131,11 +131,11 @@ type Query interface {
 
 type Repository interface {
 	Query
-	Save(ctx context.Context, account *Account) error
+	SaveAccount(ctx context.Context, account *Account) error
 }
 ```
 
-`GetAccountHandler`/`GetTransactionsHandler`는 `account.Query`만 의존성으로 받는다 — 타입 시스템 수준에서 `Save`를 호출할 수 없다. `internal/infrastructure/persistence/account_repository.go`의 `AccountRepository`는 두 인터페이스를 각각 별도로 구현할 필요가 없다: Go의 interface는 구조적 타이핑이므로, `FindAccounts`/`FindTransactions`/`Save` 세 메서드를 갖춘 concrete struct 하나가 `Repository`와 `Query`를 동시에 만족한다(`var _ account.Query = (*AccountRepository)(nil)` 컴파일 타임 검증도 함께 둔다). `internal/interface/http/router.go`는 여전히 단일 `accountRepo` 인스턴스를 조립해 Command Handler에는 `account.Repository`로, Query Handler에는 `account.Query`로 전달한다 — `Repository`가 `Query`를 embed하므로 별도 어댑터 없이 그대로 넘길 수 있다.
+`GetAccountHandler`/`GetTransactionsHandler`는 `account.Query`만 의존성으로 받는다 — 타입 시스템 수준에서 `SaveAccount`를 호출할 수 없다. `internal/infrastructure/persistence/account_repository.go`의 `AccountRepository`는 두 인터페이스를 각각 별도로 구현할 필요가 없다: Go의 interface는 구조적 타이핑이므로, `FindAccounts`/`FindTransactions`/`SaveAccount` 세 메서드를 갖춘 concrete struct 하나가 `Repository`와 `Query`를 동시에 만족한다(`var _ account.Query = (*AccountRepository)(nil)` 컴파일 타임 검증도 함께 둔다). `internal/interface/http/router.go`는 여전히 단일 `accountRepo` 인스턴스를 조립해 Command Handler에는 `account.Repository`로, Query Handler에는 `account.Query`로 전달한다 — `Repository`가 `Query`를 embed하므로 별도 어댑터 없이 그대로 넘길 수 있다.
 
 읽기 모델을 별도 저장소(read replica, 캐시, 검색 인덱스 등)로 분리해야 하는 시점이 오면, `internal/infrastructure/`에 `Query`만 구현하는 별도 read-only 구현체를 추가로 두는 방향으로 확장한다 — 인터페이스가 이미 분리되어 있으므로 Query Handler 쪽 코드는 바뀌지 않는다.
 

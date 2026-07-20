@@ -26,7 +26,7 @@ func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) 
 	return []*account.Account{a}, 1, nil
 }
 
-func (s *stubRepository) Save(ctx context.Context, a *account.Account) error {
+func (s *stubRepository) SaveAccount(ctx context.Context, a *account.Account) error {
 	if s.saveFn == nil {
 		return nil
 	}

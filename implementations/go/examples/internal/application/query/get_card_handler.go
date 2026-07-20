@@ -23,7 +23,7 @@ func NewGetCardHandler(cards card.Query) *GetCardHandler {
 }
 
 func (h *GetCardHandler) Handle(ctx context.Context, q GetCardQuery) (*GetCardResult, error) {
-	c, err := h.cards.FindByID(ctx, q.CardID, q.RequesterID)
+	c, err := card.FindOne(ctx, h.cards, q.CardID, q.RequesterID)
 	if err != nil {
 		return nil, fmt.Errorf("get card: %w", err)
 	}

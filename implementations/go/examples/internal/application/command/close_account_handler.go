@@ -31,5 +31,5 @@ func (h *CloseAccountHandler) Handle(ctx context.Context, cmd CloseAccountComman
 	if err := a.Close(); err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, a)
+	return h.repo.SaveAccount(ctx, a)
 }

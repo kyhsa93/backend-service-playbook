@@ -18,10 +18,10 @@ type Query interface {
 	FindPayments(ctx context.Context, q FindQuery) ([]*Payment, int, error)
 }
 
-// Repository는 Query의 읽기 메서드에 쓰기 메서드(Save)를 더한 Command 전용 인터페이스다.
+// Repository는 Query의 읽기 메서드에 쓰기 메서드(SavePayment)를 더한 Command 전용 인터페이스다.
 type Repository interface {
 	Query
-	Save(ctx context.Context, p *Payment) error
+	SavePayment(ctx context.Context, p *Payment) error
 }
 
 // FindOne은 단건 조회 호출부의 반복되는 패턴(FindPayments를 Take: 1로 호출한 뒤 첫 번째

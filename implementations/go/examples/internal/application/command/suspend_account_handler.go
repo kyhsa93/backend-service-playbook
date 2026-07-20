@@ -31,5 +31,5 @@ func (h *SuspendAccountHandler) Handle(ctx context.Context, cmd SuspendAccountCo
 	if err := a.Suspend(); err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, a)
+	return h.repo.SaveAccount(ctx, a)
 }

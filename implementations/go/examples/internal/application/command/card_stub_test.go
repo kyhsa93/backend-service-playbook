@@ -9,26 +9,18 @@ import (
 
 // stubCardRepository는 테스트별로 필요한 동작만 함수 필드로 주입받는 최소 mock이다.
 type stubCardRepository struct {
-	findAllFn  func(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error)
-	findByIDFn func(ctx context.Context, cardID, ownerID string) (*card.Card, error)
-	saveFn     func(ctx context.Context, c *card.Card) error
+	findAllFn func(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error)
+	saveFn    func(ctx context.Context, c *card.Card) error
 }
 
-func (s *stubCardRepository) FindByID(ctx context.Context, cardID, ownerID string) (*card.Card, error) {
-	if s.findByIDFn == nil {
-		return nil, card.ErrNotFound
-	}
-	return s.findByIDFn(ctx, cardID, ownerID)
-}
-
-func (s *stubCardRepository) FindAll(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error) {
+func (s *stubCardRepository) FindCards(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error) {
 	if s.findAllFn == nil {
 		return nil, 0, nil
 	}
 	return s.findAllFn(ctx, q)
 }
 
-func (s *stubCardRepository) Save(ctx context.Context, c *card.Card) error {
+func (s *stubCardRepository) SaveCard(ctx context.Context, c *card.Card) error {
 	if s.saveFn == nil {
 		return nil
 	}

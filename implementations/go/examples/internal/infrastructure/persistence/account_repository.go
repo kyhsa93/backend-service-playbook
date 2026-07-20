@@ -88,7 +88,7 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuer
 	return accounts, total, rows.Err()
 }
 
-func (r *AccountRepository) Save(ctx context.Context, a *account.Account) error {
+func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

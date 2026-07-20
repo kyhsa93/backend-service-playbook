@@ -30,7 +30,7 @@ Go의 `import` 그래프가 곧 의존 방향이다 — `internal/domain/account
 // internal/domain/account/repository.go — 인터페이스만, 구현 없음
 type Repository interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
-	Save(ctx context.Context, account *Account) error
+	SaveAccount(ctx context.Context, account *Account) error
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 ```
@@ -54,7 +54,7 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 	if err != nil {
 		return nil, err
 	}
-	if err := h.repo.Save(ctx, a); err != nil {                     // 3. Repository로 저장 (Outbox 행도 같은 트랜잭션)
+	if err := h.repo.SaveAccount(ctx, a); err != nil {               // 3. Repository로 저장 (Outbox 행도 같은 트랜잭션)
 		return nil, err
 	}
 	// 저장 후 곧바로 반환한다 — 부가 효과(알림)는 독립적으로 주기 실행되는
@@ -63,7 +63,7 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 }
 ```
 
-root는 Command Service와 Query Service를 **서로 다른 인터페이스**(Repository vs Query)로 분리하라고 요구한다. 이 저장소는 `internal/domain/account/repository.go`에 `Repository`(Command, `Save` 포함)와 `Query`(읽기 메서드만)를 별도 인터페이스로 정의해 이 원칙을 따른다 — Query Handler(`query/get_account_handler.go`, `query/get_transactions_handler.go`)는 `Query`만 의존성으로 받으므로 타입 시스템 수준에서 `Save`를 호출할 수 없다:
+root는 Command Service와 Query Service를 **서로 다른 인터페이스**(Repository vs Query)로 분리하라고 요구한다. 이 저장소는 `internal/domain/account/repository.go`에 `Repository`(Command, `SaveAccount` 포함)와 `Query`(읽기 메서드만)를 별도 인터페이스로 정의해 이 원칙을 따른다 — Query Handler(`query/get_account_handler.go`, `query/get_transactions_handler.go`)는 `Query`만 의존성으로 받으므로 타입 시스템 수준에서 `SaveAccount`를 호출할 수 없다:
 
 ```go
 // internal/domain/account/repository.go
@@ -74,7 +74,7 @@ type Query interface {
 
 type Repository interface {
 	Query
-	Save(ctx context.Context, account *Account) error
+	SaveAccount(ctx context.Context, account *Account) error
 }
 
 // internal/application/query/get_account_handler.go

@@ -34,10 +34,10 @@ type Query interface {
 	HasTransactionWithReference(ctx context.Context, referenceID string, txType TransactionType) (bool, error)
 }
 
-// Repository는 Query의 읽기 메서드에 쓰기 메서드(Save)를 더한 Command 전용 인터페이스다.
+// Repository는 Query의 읽기 메서드에 쓰기 메서드(SaveAccount)를 더한 Command 전용 인터페이스다.
 type Repository interface {
 	Query
-	Save(ctx context.Context, account *Account) error
+	SaveAccount(ctx context.Context, account *Account) error
 }
 
 // FindOne은 단건 조회 호출부의 반복되는 패턴(FindAccounts를 Take: 1로 호출한 뒤

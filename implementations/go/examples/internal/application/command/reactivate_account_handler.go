@@ -31,5 +31,5 @@ func (h *ReactivateAccountHandler) Handle(ctx context.Context, cmd ReactivateAcc
 	if err := a.Reactivate(); err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, a)
+	return h.repo.SaveAccount(ctx, a)
 }

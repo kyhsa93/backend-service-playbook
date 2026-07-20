@@ -108,7 +108,7 @@ func (r *PaymentRepository) FindPayments(ctx context.Context, q payment.FindQuer
 // 수 없다 — Writer를 제네릭화하기 전까지는 이 트랜잭션 안에서 직접 적재한다(Relay는
 // event_type 문자열 기준으로 동작하므로 적재 방식과 무관하게 정상적으로 드레인한다).
 // scripts/create-domain이 생성하는 Repository와 동일한 우회 패턴이다.
-func (r *PaymentRepository) Save(ctx context.Context, p *payment.Payment) error {
+func (r *PaymentRepository) SavePayment(ctx context.Context, p *payment.Payment) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

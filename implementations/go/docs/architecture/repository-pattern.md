@@ -21,7 +21,7 @@ type FindQuery struct {
 
 type Repository interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
-	Save(ctx context.Context, account *Account) error
+	SaveAccount(ctx context.Context, account *Account) error
 	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 ```
@@ -69,13 +69,13 @@ func NewDepositHandler(repo account.Repository) *DepositHandler {
 
 ## 메서드 네이밍 — root 규칙과의 대응
 
-root는 `find<Noun>s`(항상 목록 반환, 단건도 `take:1`로 흉내낸다) / `save<Noun>` / `delete<Noun>` 세 패턴만 쓰라고 한다. 이 저장소의 `account.Repository`는 그 규칙을 그대로 따른다:
+root는 `find<Noun>s`(항상 목록 반환, 단건도 `take:1`로 흉내낸다) / `save<Noun>` / `delete<Noun>` 세 패턴만 쓰라고 한다. 이 저장소의 `account`/`card`/`payment` Repository는 그 규칙을 그대로 따른다 — Command 전용 메서드는 반드시 `Save<Noun>`(`SaveAccount`/`SaveCard`/`SavePayment`/`SaveRefund`)으로 짓는다. 바로 `Save`(Noun 없이)로 두면 어떤 Aggregate를 저장하는지 메서드 이름만으로 알 수 없고, 같은 패키지에 여러 Repository가 생겼을 때(예: Payment BC의 `Repository`/`RefundRepository`) 이름이 충돌한다:
 
 | root 규칙 | 이 저장소의 실제 메서드 | 대응 |
 |---|---|---|
-| `find<Noun>s`(단건도 목록으로) | `FindAccounts(ctx, FindQuery)` | 동일 — 조회는 이 메서드 하나뿐이다. `FindQuery.Take`/필터 필드로 목록/단건을 모두 표현한다 |
+| `find<Noun>s`(단건도 목록으로) | `FindAccounts(ctx, FindQuery)` / `FindCards(ctx, FindQuery)` / `FindPayments(ctx, FindQuery)` | 동일 — 조회는 도메인당 이 메서드 하나뿐이다. `FindQuery.Take`/필터 필드로 목록/단건을 모두 표현하며, 단건 전용 메서드(예 — `FindByID`)는 별도로 두지 않는다 |
 | `delete<Noun>` | 없음 | `Account`는 `Close()`로 상태만 바꾸고 실제로 행을 지우지 않는다 — 계좌 도메인 특성상 "삭제" 유스케이스 자체가 없다 |
-| `save<Noun>` | `Save` | 동일 — upsert(`ON CONFLICT ... DO UPDATE`)로 생성/수정을 겸한다 |
+| `save<Noun>` | `SaveAccount` / `SaveCard` / `SavePayment` / `SaveRefund` | 동일 — upsert(`ON CONFLICT ... DO UPDATE`)로 생성/수정을 겸한다 |
 
 **단건 조회는 별도 메서드가 아니라 `FindAccounts`를 `Take: 1`로 호출해 재사용한다.** java/kotlin-springboot의 `findAccounts(...).stream().findFirst().orElseThrow(...)`와 동일한 역할을 하는 헬퍼가 `internal/domain/account/repository.go`의 `FindOne(ctx, q, accountID, ownerID)`다 — `FindAccounts`를 `FindQuery{AccountID: accountID, OwnerID: ownerID, Take: 1}`로 호출하고, 결과가 없으면 `ErrNotFound`를 반환한다. Go에는 Stream이 없으므로 이 반복 패턴(첫 결과 꺼내기 + 없으면 에러)을 자유 함수로 추출해 각 호출부(Command/Query Handler, `acl/account_adapter.go`)가 중복 없이 재사용한다:
 
@@ -141,5 +141,5 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuer
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계와 Repository의 관계
 - [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, 인터페이스 위치
 - [persistence.md](persistence.md) — 트랜잭션, Soft Delete, 마이그레이션
-- [domain-events.md](domain-events.md) — Repository의 `Save`가 이벤트를 Outbox에 같은 트랜잭션으로 저장하는 지점
+- [domain-events.md](domain-events.md) — Repository의 `Save<Noun>`이 이벤트를 Outbox에 같은 트랜잭션으로 저장하는 지점
 - [aggregate-id.md](aggregate-id.md) — Repository가 ID를 새로 발급하지 않는 원칙

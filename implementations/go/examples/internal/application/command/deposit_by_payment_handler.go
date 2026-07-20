@@ -51,5 +51,5 @@ func (h *DepositByPaymentHandler) Handle(ctx context.Context, cmd DepositByPayme
 	if _, err := a.Deposit(cmd.Amount, cmd.ReferenceID); err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, a)
+	return h.repo.SaveAccount(ctx, a)
 }

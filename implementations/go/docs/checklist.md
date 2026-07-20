@@ -113,8 +113,8 @@
 [ ] Repository가 Aggregate Root 단위로 정의되어 있는가? (테이블/Entity 단위 X)
 [ ] Repository interface가 domain 패키지에, 구현체가 infrastructure 패키지에 있는가?
 [ ] 구현체에 `var _ <domain>.Repository = (*XRepository)(nil)` 컴파일 타임 검증이 있는가?
-[ ] Repository 메서드가 FindByID/FindAll/Save(/필요 시 별도 상태 전환 메서드) 패턴을 따르는가?
-    → root 원칙(find<Noun>s 단일 메서드 + take:1)을 더 엄격히 따르고 싶다면 단일 `Find(ctx, query)`로 통합하는 것도 가능하나, 한 저장소 안에서는 일관성을 유지한다
+[ ] Repository 메서드가 find<Noun>s(단건도 take:1로 통일)/save<Noun>/delete<Noun>(/필요 시 별도 상태 전환 메서드) 패턴을 따르는가?
+    → 단건 조회 전용 메서드(FindByID 등)는 두지 않는다 — 항상 find<Noun>s를 take:1로 호출하는 FindOne 헬퍼로 감싼다(account/card/payment 모두 동일)
 [ ] update<Noun> 성격의 메서드가 있는가?
     → 있다면 제거. 조회 후 Aggregate 도메인 메서드로 상태 변경, Save로 반영
 [ ] Repository 구현체가 DB row를 도메인 Aggregate로 변환하는가? (`Reconstitute(...)` 사용, row를 그대로 반환하지 않는지)
@@ -375,7 +375,7 @@
     → NestJS와 달리 Go는 레이어가 최상위, 도메인이 그 하위에 온다([directory-structure.md](architecture/directory-structure.md) 참고)
 [ ] TD 산출물: 의존성 조립 계획이 어떤 생성자를 어디서(main.go/router.go) 호출하는지 명시하는가? (DI 컨테이너가 없으므로 provide/useClass 대신 생성자 호출 순서로 표현)
 [ ] TD 산출물: Aggregate 설계서가 Root/내부 Entity/내부 VO/외부 참조(ID)/생성 규칙/불변식을 포함하는가?
-[ ] TD 산출물: Repository 인터페이스 정의서가 FindByID/FindAll/Save(/필요 시 상태 전환 메서드) 시그니처를 포함하는가?
+[ ] TD 산출물: Repository 인터페이스 정의서가 find<Noun>s/save<Noun>(/필요 시 상태 전환 메서드) 시그니처를 포함하는가? (단건 조회 전용 메서드는 포함하지 않는다)
 [ ] TD 산출물: Application Handler 정의서가 유스케이스 매핑/처리 흐름/트랜잭션 범위/실패 시 처리를 포함하는가?
 [ ] TD 산출물: Event 흐름도가 동기/비동기 처리 방식과 보상 트랜잭션을 포함하는가?
 [ ] IM 산출물: Vertical Slicing(유스케이스 단위 구현)으로 진행하고 있는가?
