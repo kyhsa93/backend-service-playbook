@@ -10,7 +10,7 @@ Go 전용 문서 — root에는 대응 문서가 없다. NestJS는 `src/common/`
 
 - **`internal/common/`**(`id.go`) — `common.NewID()`(UUID v4 하이픈 제거) 유틸([aggregate-id.md](aggregate-id.md) 참고).
 - **`internal/config/`**(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`) — 관심사별 설정 로딩/검증([config.md](config.md) 참고).
-- **`internal/infrastructure/outbox/`**(`Writer`/`Relay`) — 알림 발송이 유실되면 안 되는 부가효과여서 dual-write 대신 Outbox 패턴이 필요해졌다([domain-events.md](domain-events.md) 참고).
+- **`internal/infrastructure/outbox/`**(`Writer`/`Poller`/`Consumer`) — 알림 발송이 유실되면 안 되는 부가효과여서 dual-write 대신 Outbox 패턴이 필요해졌다([domain-events.md](domain-events.md) 참고).
 - **`internal/infrastructure/auth/`**(`bcrypt_password_hasher.go`/`jwt_service.go`), **`internal/infrastructure/secret/`**(`service.go`) — 인증/Secrets Manager Technical Service 구현체([authentication.md](authentication.md), [secret-manager.md](secret-manager.md) 참고).
 
 이 문서는 그 배치를 도메인이 더 늘어났을 때 어디로 나뉘는지 정리한다.
@@ -42,7 +42,7 @@ internal/
       service.go
     notification/
       service.go                   # Account 전용 알림 구현체
-    outbox/                        # OutboxWriter, OutboxRelay(domain-events.md), 도메인이 늘어나도 공유
+    outbox/                        # OutboxWriter, OutboxPoller/OutboxConsumer(domain-events.md), 도메인이 늘어나도 공유
       writer.go
       relay.go
 
@@ -66,7 +66,7 @@ internal/
 
 - **`internal/common/`** — 어떤 도메인도 참조할 수 있는 프레임워크 무의존 순수 함수(ID 생성 등). Domain 레이어에서 import해도 원칙 2(프레임워크 무의존)를 어기지 않는다 — `common` 패키지 자체가 표준 라이브러리 수준의 순수 함수만 담기 때문이다.
 - **`internal/interface/http/middleware/`** — 이미 [cross-cutting-concerns.md](cross-cutting-concerns.md)가 위치를 정해 둔 HTTP 전용 공유 코드. 도메인마다 반복 구현하지 않고 하나의 체인을 모든 라우터에 적용한다.
-- **`internal/infrastructure/outbox/`** — Account/Card 두 도메인의 Repository가 같은 `outbox.Writer`/`outbox.Relay` 인스턴스를 공유한다([domain-events.md](domain-events.md) 참고). 여러 도메인을 하나의 DB 트랜잭션으로 묶는 `internal/infrastructure/persistence/tx.go`는 그런 시나리오가 아직 없어서 만들지 않았다([persistence.md](persistence.md) 참고).
+- **`internal/infrastructure/outbox/`** — Account/Card 두 도메인의 Repository가 같은 `outbox.Writer` 인스턴스를, `main.go`가 조립하는 단일 `outbox.Poller`/`outbox.Consumer`가 같은 공유 `map[string]outbox.Handler`를 공유한다([domain-events.md](domain-events.md) 참고). 여러 도메인을 하나의 DB 트랜잭션으로 묶는 `internal/infrastructure/persistence/tx.go`는 그런 시나리오가 아직 없어서 만들지 않았다([persistence.md](persistence.md) 참고).
 - **도메인 전용 코드는 공유 패키지로 옮기지 않는다** — `account_repository.go`처럼 특정 도메인만 쓰는 구현체는 그 도메인의 `infrastructure/<concern>/` 하위에 그대로 둔다. "공유"는 두 도메인 이상이 실제로 같은 코드를 필요로 할 때만 성립한다(YAGNI).
 
 ---

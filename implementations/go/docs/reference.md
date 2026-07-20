@@ -30,13 +30,12 @@ internal/
     command/
       create_order_handler.go         ← CreateOrderCommand + CreateOrderHandler
       cancel_order_handler.go         ← CancelOrderCommand + CancelOrderHandler
-      event_relay.go                  ← OutboxRelay 인터페이스 (command 패키지가 필요로 하는 최소 시그니처)
     query/
       get_order_handler.go            ← GetOrderQuery + GetOrderHandler
       get_orders_handler.go           ← GetOrdersQuery + GetOrdersHandler
       result.go                       ← Result 구조체들
     event/
-      order_placed_handler.go         ← Outbox가 드레인한 OrderPlaced를 처리해 알림 발송
+      order_placed_handler.go         ← Outbox Consumer가 실행하는 OrderPlaced 핸들러 — 알림 발송
       order_cancelled_handler.go
 
   infrastructure/
@@ -46,7 +45,9 @@ internal/
       service.go                      ← 이벤트 핸들러가 호출하는 알림 발송(로그/이메일 등)
     outbox/
       writer.go                       ← Repository.Save 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
-      relay.go                        ← Command Handler가 저장 직후 동기 호출해 드레인 (domain-events.md 참고)
+      sqs_client.go                   ← Poller/Consumer가 공유하는 SQS 클라이언트 생성
+      poller.go                       ← Outbox 미처리 행을 주기적으로 읽어 SQS로 발행 (domain-events.md 참고)
+      consumer.go                     ← SQS 수신 → event_type별 Handler 실행 (domain-events.md 참고)
 
   interface/
     http/
@@ -300,27 +301,14 @@ func NewID() string {
 
 ## Application 레이어
 
-### Outbox 포트 — OutboxRelay
-
-```go
-// internal/application/command/event_relay.go
-package command
-
-import "context"
-
-// OutboxRelay는 저장 트랜잭션이 커밋된 직후 outbox에 쌓인 미처리 도메인 이벤트를
-// 모두 드레인하는 포트다. 인터페이스는 사용하는 쪽(command 패키지)에 두고,
-// 구현체(outbox.Relay)는 infrastructure에 둔다.
-//
-// 개별 이벤트 처리 실패는 구현체 내부에서 로깅 후 다음 호출 때 재시도되도록 남겨둔다 —
-// 여기서 반환되는 에러는 그런 개별 실패가 아니라 outbox 테이블 자체를 읽지 못하는 등의
-// 시스템 레벨 실패다.
-type OutboxRelay interface {
-	ProcessPending(ctx context.Context) error
-}
-```
-
 ### CommandHandler
+
+Command Handler는 Repository만 의존성으로 갖는다 — Outbox 발행/수신은 Command Handler와
+무관하게 독립적으로 주기 실행되는 `outbox.Poller`/`outbox.Consumer`의 책임이다(동기 드레인
+금지, [domain-events.md](architecture/domain-events.md) 참고). Repository/Technical
+Service를 인터페이스로 받고 싶을 때는 `command` 패키지가 필요로 하는 최소 시그니처만
+선언하고 사용하는 쪽 패키지에 두는 관용구를 그대로 쓴다 — `examples/`의
+`command.PasswordHasher`/`command.AccountAdapter`가 실제 예시다.
 
 ```go
 // internal/application/command/create_order_handler.go
@@ -346,12 +334,11 @@ type CreateOrderCommand struct {
 }
 
 type CreateOrderHandler struct {
-	repo        order.Repository
-	outboxRelay OutboxRelay
+	repo order.Repository
 }
 
-func NewCreateOrderHandler(repo order.Repository, outboxRelay OutboxRelay) *CreateOrderHandler {
-	return &CreateOrderHandler{repo: repo, outboxRelay: outboxRelay}
+func NewCreateOrderHandler(repo order.Repository) *CreateOrderHandler {
+	return &CreateOrderHandler{repo: repo}
 }
 
 func (h *CreateOrderHandler) Handle(ctx context.Context, cmd CreateOrderCommand) (*order.Order, error) {
@@ -370,11 +357,9 @@ func (h *CreateOrderHandler) Handle(ctx context.Context, cmd CreateOrderCommand)
 	}
 	// Repository.Save가 order/order_item 행과 Outbox 행을 같은 트랜잭션으로 커밋한다
 	// (domain-events.md 참고) — "주문은 생겼는데 이벤트는 유실됨" 실패 모드가 없다.
+	// 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
+	// outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지, domain-events.md).
 	if err := h.repo.Save(ctx, o); err != nil {
-		return nil, fmt.Errorf("create order: %w", err)
-	}
-	// 저장 트랜잭션이 커밋된 직후 Outbox를 동기적으로 드레인한다 — 폴링/스케줄러 없음.
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
 	return o, nil
@@ -399,12 +384,11 @@ type CancelOrderCommand struct {
 }
 
 type CancelOrderHandler struct {
-	repo        order.Repository
-	outboxRelay OutboxRelay
+	repo order.Repository
 }
 
-func NewCancelOrderHandler(repo order.Repository, outboxRelay OutboxRelay) *CancelOrderHandler {
-	return &CancelOrderHandler{repo: repo, outboxRelay: outboxRelay}
+func NewCancelOrderHandler(repo order.Repository) *CancelOrderHandler {
+	return &CancelOrderHandler{repo: repo}
 }
 
 func (h *CancelOrderHandler) Handle(ctx context.Context, cmd CancelOrderCommand) error {
@@ -419,13 +403,10 @@ func (h *CancelOrderHandler) Handle(ctx context.Context, cmd CancelOrderCommand)
 		return err
 	}
 
-	// 3. Repository로 저장 — order 행과 Outbox 행이 같은 트랜잭션으로 커밋된다
+	// 3. Repository로 저장 — order 행과 Outbox 행이 같은 트랜잭션으로 커밋된다.
+	//    저장 후 곧바로 반환한다 — 부가 효과(알림)는 outbox.Poller/outbox.Consumer가
+	//    독립적으로 비동기 처리한다(동기 드레인 금지, domain-events.md).
 	if err := h.repo.Save(ctx, o); err != nil {
-		return fmt.Errorf("cancel order: %w", err)
-	}
-
-	// 4. 저장 트랜잭션이 끝난 직후 Outbox를 동기적으로 드레인해 부가 효과(알림)를 처리한다
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {
 		return fmt.Errorf("cancel order: %w", err)
 	}
 	return nil
@@ -739,7 +720,10 @@ func (r *OrderRepository) findItems(ctx context.Context, orderID string) ([]orde
 }
 ```
 
-### Outbox 구현체 — Writer / Relay
+### Outbox 구현체 — Writer / Poller / Consumer
+
+Outbox 적재(Writer, Repository 트랜잭션 내부)와 발행/수신(Poller, Consumer, 독립 goroutine)은
+서로 다른 컴포넌트다 — 자세한 이유는 [domain-events.md](architecture/domain-events.md) 참고.
 
 ```go
 // internal/infrastructure/outbox/writer.go
@@ -752,8 +736,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/google/uuid"
-
+	"github.com/example/order-service/internal/common"
 	"github.com/example/order-service/internal/domain/order"
 )
 
@@ -774,7 +757,7 @@ func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []order.DomainE
 		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)`,
-			uuid.NewString(), reflect.TypeOf(event).Name(), payload,
+			common.NewID(), reflect.TypeOf(event).Name(), payload,
 		); err != nil {
 			return fmt.Errorf("save outbox event: %w", err)
 		}
@@ -784,70 +767,234 @@ func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []order.DomainE
 ```
 
 ```go
-// internal/infrastructure/outbox/relay.go
+// internal/infrastructure/outbox/sqs_client.go
+package outbox
+
+import (
+	"os"
+
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+)
+
+// NewSQSClient는 환경변수 기반으로 SQS 클라이언트를 생성한다. Poller/Consumer가
+// 이 하나의 클라이언트를 공유한다. AWS_ENDPOINT_URL이 설정되어 있으면 LocalStack
+// 같은 엔드포인트로 우회한다(local-dev.md).
+func NewSQSClient() *sqs.Client {
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
+	if accessKeyID == "" {
+		accessKeyID = "test"
+	}
+	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	if secretAccessKey == "" {
+		secretAccessKey = "test"
+	}
+
+	options := sqs.Options{
+		Region:      region,
+		Credentials: credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
+	}
+	if endpoint := os.Getenv("AWS_ENDPOINT_URL"); endpoint != "" {
+		options.BaseEndpoint = &endpoint
+	}
+	return sqs.New(options)
+}
+```
+
+```go
+// internal/infrastructure/outbox/poller.go
 package outbox
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+)
+
+// Poller는 outbox 테이블의 processed=false 행을 읽어 SQS로 발행한다. Command
+// Handler는 이 struct를 전혀 참조하지 않는다 — Run이 main()의 goroutine으로 독립적으로
+// 주기 실행되는 것 자체가 "저장 직후 같은 프로세스 안에서 동기 드레인"을 제거하는
+// 핵심이다. processed=true는 이제 "SQS로 전달을 끝냈다"는 뜻이고, 그 이후의
+// 재시도/at-least-once 보장은 outbox 테이블이 아니라 SQS의 visibility timeout + DLQ가
+// 담당한다(domain-events.md 참고).
+type Poller struct {
+	db       *sql.DB
+	sqs      *sqs.Client
+	queueURL string
+}
+
+func NewPoller(db *sql.DB, sqsClient *sqs.Client, queueURL string) *Poller {
+	return &Poller{db: db, sqs: sqsClient, queueURL: queueURL}
+}
+
+type outboxRow struct {
+	eventID   string
+	eventType string
+	payload   []byte
+}
+
+// Run은 1초 간격으로 drainOnce를 반복 실행하다가 ctx가 취소되면 멈춘다.
+func (p *Poller) Run(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := p.drainOnce(ctx); err != nil {
+				slog.ErrorContext(ctx, "outbox 폴링 실패", "error", err)
+			}
+		}
+	}
+}
+
+func (p *Poller) drainOnce(ctx context.Context) error {
+	rows, err := p.fetchPending(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := p.publish(ctx, row); err != nil {
+			slog.ErrorContext(ctx, "SQS 발행 실패", "event_type", row.eventType, "event_id", row.eventID, "error", err)
+			// 발행 실패 행은 processed=false로 남겨 다음 tick에서 재시도한다.
+		}
+	}
+	return nil
+}
+
+func (p *Poller) fetchPending(ctx context.Context) ([]outboxRow, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT event_id, event_type, payload FROM outbox WHERE processed = false ORDER BY created_at LIMIT 100`)
+	if err != nil {
+		return nil, fmt.Errorf("query pending outbox rows: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var pending []outboxRow
+	for rows.Next() {
+		var row outboxRow
+		if err := rows.Scan(&row.eventID, &row.eventType, &row.payload); err != nil {
+			return nil, fmt.Errorf("scan outbox row: %w", err)
+		}
+		pending = append(pending, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate outbox rows: %w", err)
+	}
+	return pending, nil
+}
+
+func (p *Poller) publish(ctx context.Context, row outboxRow) error {
+	if _, err := p.sqs.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:    aws.String(p.queueURL),
+		MessageBody: aws.String(string(row.payload)),
+		MessageAttributes: map[string]types.MessageAttributeValue{
+			"eventType": {DataType: aws.String("String"), StringValue: aws.String(row.eventType)},
+		},
+	}); err != nil {
+		return fmt.Errorf("send sqs message: %w", err)
+	}
+	if _, err := p.db.ExecContext(ctx, `UPDATE outbox SET processed = true WHERE event_id = $1`, row.eventID); err != nil {
+		return fmt.Errorf("mark outbox row processed: %w", err)
+	}
+	return nil
+}
+```
+
+```go
+// internal/infrastructure/outbox/consumer.go
+package outbox
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 // Handler는 하나의 event_type을 처리하는 함수다. payload는 Writer.SaveAll이 저장한
 // JSON 원문 그대로 전달된다(역직렬화는 Handler 구현체의 책임).
 type Handler func(ctx context.Context, payload []byte) error
 
-// Relay는 outbox 테이블에서 미처리(processed = false) 행을 모두 읽어 event_type에
-// 매핑된 Handler를 실행한다. Command Handler가 저장(Save) 직후 동기적으로
-// ProcessPending을 호출하는 방식이므로 별도 폴링 goroutine/스케줄러가 없다.
-//
-// 개별 행 처리가 실패하면 로그만 남기고 processed를 true로 표시하지 않는다 — 그 행은
-// 다음 커맨드가 트리거하는 다음 ProcessPending 호출에서 다시 시도된다(at-least-once).
-type Relay struct {
-	db       *sql.DB
+// Consumer는 SQS를 long polling으로 수신 대기하다가 메시지를 받으면 eventType
+// (MessageAttributes)으로 handlers map에서 핸들러를 찾아 호출한다. 핸들러 성공 →
+// 메시지 삭제(ack). 핸들러 실패(또는 등록된 핸들러 없음) → 삭제하지 않는다 — SQS의
+// visibility timeout이 지나면 자동 재전달된다(at-least-once, EventHandler 멱등성 전제).
+type Consumer struct {
+	sqs      *sqs.Client
+	queueURL string
 	handlers map[string]Handler
 }
 
-func NewRelay(db *sql.DB, handlers map[string]Handler) *Relay { return &Relay{db: db, handlers: handlers} }
+func NewConsumer(sqsClient *sqs.Client, queueURL string, handlers map[string]Handler) *Consumer {
+	return &Consumer{sqs: sqsClient, queueURL: queueURL, handlers: handlers}
+}
 
-func (r *Relay) ProcessPending(ctx context.Context) error {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT event_id, event_type, payload FROM outbox WHERE processed = false ORDER BY created_at`)
-	if err != nil {
-		return fmt.Errorf("query pending outbox rows: %w", err)
-	}
-	defer rows.Close()
-
-	type outboxRow struct {
-		eventID, eventType string
-		payload            []byte
-	}
-	var pending []outboxRow
-	for rows.Next() {
-		var row outboxRow
-		if err := rows.Scan(&row.eventID, &row.eventType, &row.payload); err != nil {
-			return fmt.Errorf("scan outbox row: %w", err)
+// Run은 main()의 goroutine으로 단 한 번 시작되는 백그라운드 루프다. ctx가 취소되면
+// 진행 중인 ReceiveMessage를 끝까지 기다린 뒤 종료한다.
+func (c *Consumer) Run(ctx context.Context) {
+	for {
+		if ctx.Err() != nil {
+			return
 		}
-		pending = append(pending, row)
-	}
-
-	for _, row := range pending {
-		if handler, ok := r.handlers[row.eventType]; ok {
-			if err := handler(ctx, row.payload); err != nil {
-				log.Printf("outbox: failed to process event_type=%s event_id=%s: %v", row.eventType, row.eventID, err)
-				continue
+		result, err := c.sqs.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+			QueueUrl:              aws.String(c.queueURL),
+			MaxNumberOfMessages:   10,
+			MessageAttributeNames: []string{"eventType"},
+			WaitTimeSeconds:       5,
+		})
+		if err != nil {
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				return
 			}
+			slog.ErrorContext(ctx, "SQS 수신 실패", "error", err)
+			continue
 		}
-		if _, err := r.db.ExecContext(ctx, `UPDATE outbox SET processed = true WHERE event_id = $1`, row.eventID); err != nil {
-			log.Printf("outbox: failed to mark processed event_id=%s: %v", row.eventID, err)
+		for _, message := range result.Messages {
+			c.handleMessage(ctx, message)
 		}
 	}
-	return nil
+}
+
+func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
+	eventType := ""
+	if attr, ok := message.MessageAttributes["eventType"]; ok && attr.StringValue != nil {
+		eventType = *attr.StringValue
+	}
+
+	handler, ok := c.handlers[eventType]
+	if !ok {
+		slog.ErrorContext(ctx, "등록된 핸들러를 찾지 못함 — 재시도로 남겨둠", "event_type", eventType)
+		return
+	}
+	if err := handler(ctx, []byte(aws.ToString(message.Body))); err != nil {
+		slog.ErrorContext(ctx, "이벤트 처리 실패", "event_type", eventType, "error", err)
+		return
+	}
+	if _, err := c.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+		QueueUrl:      aws.String(c.queueURL),
+		ReceiptHandle: message.ReceiptHandle,
+	}); err != nil {
+		slog.ErrorContext(ctx, "메시지 삭제 실패", "event_type", eventType, "error", err)
+	}
 }
 ```
 
-### Domain Event Handler — Outbox가 드레인한 이벤트를 알림으로 변환
+### Domain Event Handler — Outbox Consumer가 실행하는 이벤트를 알림으로 변환
 
 ```go
 // internal/application/event/order_placed_handler.go
@@ -875,8 +1022,8 @@ func NewOrderPlacedHandler(notifier Notifier) *OrderPlacedHandler {
 	return &OrderPlacedHandler{notifier: notifier}
 }
 
-// Handle은 outbox.Handler 시그니처를 만족한다 — Relay가 event_type="OrderPlaced" 행을
-// 만날 때마다 호출한다.
+// Handle은 outbox.Handler 시그니처를 만족한다 — Consumer가 SQS에서 수신한
+// event_type="OrderPlaced" 메시지마다 호출한다.
 func (h *OrderPlacedHandler) Handle(ctx context.Context, payload []byte) error {
 	var evt order.OrderPlaced
 	if err := json.Unmarshal(payload, &evt); err != nil {
@@ -1156,9 +1303,9 @@ import (
 	"github.com/example/order-service/internal/domain/order"
 )
 
-func NewRouter(repo order.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
-	createOrderHandler := command.NewCreateOrderHandler(repo, outboxRelay)
-	cancelOrderHandler := command.NewCancelOrderHandler(repo, outboxRelay)
+func NewRouter(repo order.Repository) *http.ServeMux {
+	createOrderHandler := command.NewCreateOrderHandler(repo)
+	cancelOrderHandler := command.NewCancelOrderHandler(repo)
 	getOrderHandler := query.NewGetOrderHandler(repo)
 	getOrdersHandler := query.NewGetOrdersHandler(repo)
 
@@ -1209,6 +1356,10 @@ func main() {
 	if databaseURL == "" {
 		log.Fatal("config: DATABASE_URL is required")
 	}
+	queueURL := os.Getenv("SQS_DOMAIN_EVENT_QUEUE_URL")
+	if queueURL == "" {
+		log.Fatal("config: SQS_DOMAIN_EVENT_QUEUE_URL is required")
+	}
 
 	// 2. 인프라 연결
 	db, err := sql.Open("postgres", databaseURL)
@@ -1220,17 +1371,25 @@ func main() {
 	// 3. Infrastructure 조립 — DI 컨테이너 없이 생성자 체이닝 (module-pattern.md)
 	notifier := notification.NewService()
 	outboxWriter := outbox.NewWriter()
-	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
-		"OrderPlaced":    event.NewOrderPlacedHandler(notifier).Handle,
-		"OrderCancelled": event.NewOrderCancelledHandler(notifier).Handle,
-	})
+	sqsClient := outbox.NewSQSClient()
 	orderRepo := persistence.NewOrderRepository(db, outboxWriter)
 
+	// 이 handlers map은 outbox.Consumer가 SQS에서 수신한 메시지의 eventType으로
+	// 핸들러를 찾는 데 쓰인다 — Command Handler는 이 map을 전혀 참조하지 않는다
+	// (동기 드레인 금지, domain-events.md).
+	outboxHandlers := map[string]outbox.Handler{
+		"OrderPlaced":    event.NewOrderPlacedHandler(notifier).Handle,
+		"OrderCancelled": event.NewOrderCancelledHandler(notifier).Handle,
+	}
+	outboxPoller := outbox.NewPoller(db, sqsClient, queueURL)
+	outboxConsumer := outbox.NewConsumer(sqsClient, queueURL, outboxHandlers)
+
 	// 4. Interface 조립
-	mux := httphandler.NewRouter(orderRepo, outboxRelay)
+	mux := httphandler.NewRouter(orderRepo)
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
-	// 5. 시그널 기반 graceful shutdown (graceful-shutdown.md)
+	// 5. 시그널 기반 graceful shutdown (graceful-shutdown.md) — HTTP 서버뿐 아니라
+	// Poller/Consumer 백그라운드 루프도 이 같은 ctx로 정지시킨다.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -1240,6 +1399,12 @@ func main() {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
+
+	// Outbox → SQS 발행(Poller)과 SQS → EventHandler 수신(Consumer)은 HTTP 요청과
+	// 무관하게 독립적으로 주기 실행된다 — Command Handler는 이들을 전혀 참조하지
+	// 않는다(동기 드레인 금지, domain-events.md). ctx가 취소되면 둘 다 스스로 멈춘다.
+	go outboxPoller.Run(ctx)
+	go outboxConsumer.Run(ctx)
 
 	<-ctx.Done()
 	log.Println("shutdown signal received")
@@ -1253,7 +1418,7 @@ func main() {
 }
 ```
 
-의존성 조립 순서는 의존 방향과 정확히 일치한다: `db`(가장 하위) → `notifier`/`outboxWriter`/`outboxRelay`/`orderRepo`(Infrastructure) → `mux`(Interface, 내부에서 Application Handler까지 조립) → `srv`(서버). 어느 한 단계라도 순서를 바꾸면 아직 선언되지 않은 변수를 참조하게 되어 컴파일 자체가 실패한다 — Go 컴파일러가 조립 순서를 강제하는 셈이다.
+의존성 조립 순서는 의존 방향과 정확히 일치한다: `db`(가장 하위) → `notifier`/`outboxWriter`/`sqsClient`/`orderRepo`/`outboxPoller`/`outboxConsumer`(Infrastructure) → `mux`(Interface, 내부에서 Application Handler까지 조립) → `srv`(서버). 어느 한 단계라도 순서를 바꾸면 아직 선언되지 않은 변수를 참조하게 되어 컴파일 자체가 실패한다 — Go 컴파일러가 조립 순서를 강제하는 셈이다.
 
 ---
 
@@ -1288,7 +1453,7 @@ CREATE TABLE order_items (
 
 | 필요해지는 시점 | 도입할 패턴 | 참고 문서 |
 |---|---|---|
-| 알림/이벤트 발행이 유실되면 안 되는 중요한 부가효과가 될 때 | Outbox + Relay (Repository 저장과 같은 트랜잭션에 이벤트 적재) | [domain-events.md](architecture/domain-events.md) |
+| 알림/이벤트 발행이 유실되면 안 되는 중요한 부가효과가 될 때 | Outbox(Repository 저장과 같은 트랜잭션에 이벤트 적재) + Poller/Consumer(비동기 발행·수신) | [domain-events.md](architecture/domain-events.md) |
 | 두 번째 Aggregate와 하나의 트랜잭션으로 묶어야 할 때 | `context.Context` 기반 `database.WithTx` | [persistence.md](architecture/persistence.md) |
 | 읽기 모델을 별도 저장소로 분리해야 할 때 | `application/query/`에 별도 Query 인터페이스 | [layer-architecture.md](architecture/layer-architecture.md), [cqrs-pattern.md](architecture/cqrs-pattern.md) |
 | 실제 인증이 필요할 때 (현재 예제는 헤더를 그대로 신뢰) | JWT + `net/http` 미들웨어 | [authentication.md](architecture/authentication.md) |

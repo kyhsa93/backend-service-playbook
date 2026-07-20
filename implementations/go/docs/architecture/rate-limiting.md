@@ -102,7 +102,7 @@ rateLimitConfig := config.LoadRateLimitConfig()
 limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
 accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-mux, healthHandler := httphandler.NewRouter(accountRepo, outboxRelay, jwtService, limiter)
+mux, healthHandler := httphandler.NewRouter(accountRepo, jwtService, limiter)
 ```
 
 ```go

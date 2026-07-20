@@ -8,7 +8,7 @@
 
 ## 실제 구현 — `signal.NotifyContext` + `Shutdown(ctx)`
 
-`main()`의 나머지 조립(config 검증, DB, Infrastructure, `NewRouter(accountRepo, outboxRelay, jwtService, limiter)` 등)은 [bootstrap.md](bootstrap.md)의 코드 그대로이고, 서버 시작/종료 부분만 아래와 같다:
+`main()`의 나머지 조립(config 검증, DB, Infrastructure, `outboxPoller`/`outboxConsumer`, `NewRouter(accountRepo, jwtService, limiter)` 등)은 [bootstrap.md](bootstrap.md)의 코드 그대로이고, 서버 시작/종료 부분만 아래와 같다:
 
 ```go
 // cmd/server/main.go — 실제 코드 (마지막 부분만 발췌)
@@ -86,7 +86,7 @@ func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
 ```go
 // cmd/server/main.go — 실제 코드(발췌)
 accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-mux, healthHandler := httphandler.NewRouter(accountRepo, outboxRelay, jwtService, limiter)
+mux, healthHandler := httphandler.NewRouter(accountRepo, jwtService, limiter)
 
 // ...
 

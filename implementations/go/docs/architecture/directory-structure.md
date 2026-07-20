@@ -48,7 +48,6 @@ internal/
       suspend_account_handler.go
       reactivate_account_handler.go
       close_account_handler.go
-      event_relay.go                         ← OutboxRelay 포트 인터페이스 (command 패키지가 필요로 하는 최소 시그니처)
       account_adapter.go                     ← Card→Account 동기 조회 포트(ACL 인터페이스) + AccountView
       issue_card_handler.go                  ← 카드 발급 (AccountAdapter로 계좌 활성 여부 동기 확인)
       suspend_cards_by_account_handler.go    ← account.suspended.v1 반응 유스케이스 (멱등)
@@ -91,7 +90,9 @@ internal/
     outbox/                                  ← 도메인 무관 공유 인프라 (shared-modules.md 참고)
       writer.go                              ← Repository.Save 트랜잭션 안에서 Domain Event를 Outbox 행으로 적재
       publisher.go                           ← EventHandler가 Integration Event를 Outbox 행으로 적재
-      relay.go                               ← Command Handler가 저장 직후 동기 호출해 드레인
+      sqs_client.go                          ← Poller/Consumer가 공유하는 SQS 클라이언트 생성
+      poller.go                              ← Outbox 미처리 행을 주기적으로 읽어 SQS로 발행
+      consumer.go                            ← SQS 수신 → event_type별 Handler 실행
 
   interface/
     http/
@@ -134,7 +135,7 @@ go.mod
 | `<domain>/interface/` | `internal/interface/http/` |
 | `common/` | `internal/common/`(`id.go` — ID 생성 등 프레임워크 무관 순수 함수)([aggregate-id.md](aggregate-id.md) 참고) |
 | `database/`(TransactionManager) | 없음 — 현재 `Save()` 내부 로컬 `db.BeginTx()`만 사용. 여러 Repository를 하나의 트랜잭션으로 묶는 컨텍스트 기반 전파가 필요한 시나리오가 아직 없다([persistence.md](persistence.md) 참고) |
-| `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Relay` 구현됨([domain-events.md](domain-events.md) 참고) |
+| `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Poller`/`Consumer` 구현됨([domain-events.md](domain-events.md) 참고) |
 | `task-queue/` | 없음 — 스케줄링/Task Queue 예제 없음([scheduling.md](scheduling.md) 참고) |
 | `config/` | `internal/config/`(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`)([config.md](config.md) 참고) |
 
@@ -152,7 +153,7 @@ go.mod
 | 공개 함수/메서드 | `PascalCase` | `New`, `Deposit`, `FindAccounts` |
 | 비공개 함수/메서드 | `camelCase` | `newTransaction`, `describe` |
 | 에러 | `ErrXxx` | `ErrNotFound`, `ErrInsufficientBalance` |
-| 인터페이스 | 명사(동사+er 지양, 역할 이름 우선) | `Repository`, `OutboxRelay`, `SESClient` |
+| 인터페이스 | 명사(동사+er 지양, 역할 이름 우선) | `Repository`, `AccountAdapter`, `SESClient` |
 
 패키지명은 디렉토리명과 일치시킨다(`internal/domain/account/` → `package account`). 여러 단어로 된 개념은 디렉토리를 중첩해 분리한다(`application/command/` → `package command`) — Go 컨벤션상 패키지명에 언더스코어나 캐멀케이스를 쓰지 않는다.
 

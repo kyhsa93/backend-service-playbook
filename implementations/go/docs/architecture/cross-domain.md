@@ -158,7 +158,7 @@ func (h *AccountSuspendedEventHandler) Handle(ctx context.Context, payload []byt
 }
 ```
 
-`publisher`는 `outbox.Publisher`로, 자체 커넥션으로 Outbox 행을 하나 insert한다. `outbox.Relay.ProcessPending`은 한 패스에서 처리한 핸들러가 새 행(Integration Event)을 적재하면 **진전이 있는 한 패스를 반복**하므로, 같은 요청 안에서 이어서 드레인된다.
+`publisher`는 `outbox.Publisher`로, 자체 커넥션으로 Outbox 행을 하나 insert한다. 이 핸들러 자체가 `outbox.Consumer`가 SQS에서 `AccountSuspended` 메시지를 수신했을 때 비동기로 실행되는 것이므로, 여기서 새로 적재한 `account.suspended.v1` 행은 그 자리에서 드레인되지 않는다 — 다음 tick의 `outbox.Poller`가 자연스럽게 집어가 SQS로 발행하고, 그걸 다시 `outbox.Consumer`가 수신해 Card의 반응 유스케이스를 실행한다(2026-07 async 전환 이전에는 `outbox.Relay.ProcessPending`이 한 패스에서 새로 적재된 행까지 반복 처리했지만, 지금은 그런 다중 패스 루프가 없다).
 
 ### Step B — Card가 Integration Event를 구독(반응 유스케이스)
 
@@ -189,11 +189,11 @@ func (h *SuspendCardsByAccountHandler) Handle(ctx context.Context, cmd SuspendCa
 
 ### Step C — `main.go`(합성 루트)가 event_type 문자열로 두 BC를 연결
 
-Account 패키지도 Card 패키지도 서로를 import하지 않는다. **오직 합성 루트(`main.go`)만** 양쪽을 알고, Outbox의 flat `map[string]outbox.Handler`에서 `account.suspended.v1` 문자열을 Card의 반응 유스케이스에 연결한다 — 언마샬 글루만 여기 두고 실제 로직은 Card Application 핸들러에 위임한다.
+Account 패키지도 Card 패키지도 서로를 import하지 않는다. **오직 합성 루트(`main.go`)만** 양쪽을 알고, Outbox의 flat `map[string]outbox.Handler`에서 `account.suspended.v1` 문자열을 Card의 반응 유스케이스에 연결한다 — 언마샬 글루만 여기 두고 실제 로직은 Card Application 핸들러에 위임한다. 이 map은 `outbox.Consumer`가 SQS에서 수신한 메시지를 실행할 때 참조하는 핸들러 테이블일 뿐이다(비동기 발행은 별도의 `outbox.Poller`가 담당, domain-events.md 참고).
 
 ```go
 // cmd/server/main.go (발췌)
-outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+outboxHandlers := map[string]outbox.Handler{
 	// ... Account의 내부 Domain Event 핸들러들 ...
 	"AccountSuspended": event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
 	"AccountClosed":    event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
@@ -212,7 +212,8 @@ outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
 		}
 		return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
 	},
-})
+}
+outboxConsumer := outbox.NewConsumer(sqsClient, queueURL, outboxHandlers)
 ```
 
 NestJS는 `EventHandlerRegistry` + DI로 이 구독을 풀지만, Go는 `main.go`에서 map에 항목을 추가하는 것이 전부다 — 별도 registry 없이도 Account↔Card 비의존을 유지한다.
@@ -234,5 +235,5 @@ NestJS는 `EventHandlerRegistry` + DI로 이 구독을 풀지만, Go는 `main.go
 
 - [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) — 동기/비동기 선택 기준 (root, 언어 무관)
 - [repository-pattern.md](repository-pattern.md) — 인터페이스/구현체 분리와 컴파일 타임 검증 관용구
-- [domain-events.md](domain-events.md) — Outbox 패턴(Writer/Relay/Publisher)과 멱등성
+- [domain-events.md](domain-events.md) — Outbox 패턴(Writer/Poller/Consumer/Publisher)과 멱등성
 - [module-pattern.md](module-pattern.md) — Adapter/핸들러 배선이 이루어지는 `main.go` 조립 순서

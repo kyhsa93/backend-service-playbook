@@ -29,7 +29,7 @@
     → create_account_handler.go, get_transactions_handler.go
 [ ] Result DTO들이 application/query/result.go(또는 유사 파일)에 모여 있는가?
 [ ] Technical Service 인터페이스(알림, 시크릿, 스토리지 등)가 사용하는 쪽 application 패키지에 정의되어 있는가?
-    → command.OutboxRelay, command.SecretService, command.StorageService
+    → command.AccountAdapter, command.PasswordHasher, command.SecretService, command.StorageService
 [ ] Infrastructure 레이어 파일이 internal/infrastructure/<concern>/<aggregate>_repository.go 형식으로 배치되어 있는가?
     → persistence/account_repository.go, notification/service.go
 [ ] Interface 레이어 파일이 internal/interface/http/<domain>_handler.go, dto.go, router.go로 배치되어 있는가?
@@ -39,7 +39,7 @@
     → 도메인 전용 코드를 공유 패키지로 옮기지 않았는가
 [ ] 타입명이 PascalCase, 공개 함수/메서드가 PascalCase, 비공개 함수/메서드가 camelCase인가?
 [ ] 에러 변수명이 ErrXxx 형식인가? (ErrNotFound, ErrInsufficientBalance 등)
-[ ] 인터페이스명이 동사+er보다 역할 명사를 우선하는가? (Repository, OutboxRelay — Fetcher/Sender류 지양)
+[ ] 인터페이스명이 동사+er보다 역할 명사를 우선하는가? (Repository, AccountAdapter — Fetcher/Sender류 지양)
 [ ] Repository 구현체에 컴파일 타임 인터페이스 검증(`var _ <domain>.Repository = (*XRepository)(nil)`)이 있는가?
 ```
 
@@ -97,8 +97,8 @@
 [ ] Adapter 구현체에도 `var _ Interface = (*Impl)(nil)` 컴파일 타임 검증이 있는가?
 [ ] 도메인 이벤트가 Aggregate 도메인 메서드 내부에서만 생성되는가?
     → Handler가 직접 이벤트 구조체를 만들어 append하고 있지 않은가
-[ ] 이벤트를 Outbox 없이 Handler가 Repository 저장 직후 별도 동기 호출로 알림을 보내고 있다면, 이것이 dual-write 알려진 격차임을 인지했는가?
-    → 실패해도 무방한 부가 기능(이메일 알림 등)이면 현재 패턴이 실용적 절충일 수 있다. 법적 통지처럼 중요한 이벤트라면 Outbox(Repository 저장과 같은 트랜잭션에 이벤트 적재 + 별도 Relay) 패턴 도입을 검토한다
+[ ] 새 도메인의 Handler가 Outbox 없이 Repository 저장 직후 별도 동기 호출로 알림을 보내고 있다면, 이것이 dual-write 위험임을 인지했는가?
+    → 실패해도 무방한 부가 기능(이메일 알림 등)이면 현재 패턴이 실용적 절충일 수 있다. 법적 통지처럼 중요한 이벤트라면 Outbox(Repository 저장과 같은 트랜잭션에 이벤트 적재) + `outbox.Poller`/`outbox.Consumer`(비동기 발행·수신) 패턴 도입을 검토한다(domain-events.md)
 [ ] 패키지 순환 의존(import cycle)이 있는가?
     → Go는 `forwardRef()` 같은 우회 수단이 없다. 공유 개념을 세 번째 패키지로 추출하거나, Adapter로 한쪽 방향을 강제하거나, 비동기(Integration Event) 전환을 검토한다
 ```
@@ -396,7 +396,7 @@
 [ ] 새 규칙에 올바른 예시와 잘못된 예시가 함께 작성되어 있는가?
 [ ] 작성한 예시가 실제 Go 관용구(에러 반환, context.Context 전파, 컴파일 타임 interface 검증 등)와 모순되지 않는가?
 [ ] 문서가 "목표 구현"과 "이 저장소 examples/의 실제 코드"를 명확히 구분해 서술하는가?
-    → 이 저장소의 여러 architecture 문서가 알려진 격차(Outbox 미구현, UUID 하이픈 등)를 의도적으로 남겨두고 있다. 새 문서를 쓸 때도 목표와 현재 상태를 혼동하지 않는다
+    → 이 저장소의 여러 architecture 문서가 알려진 격차(트랜잭션 전파 미구현, UUID 하이픈 등)를 의도적으로 남겨두고 있다(Outbox는 Writer/Poller/Consumer로 이미 완전히 구현되어 있어 더 이상 격차가 아니다). 새 문서를 쓸 때도 목표와 현재 상태를 혼동하지 않는다
 [ ] 작성한 예시가 이 가이드의 다른 규칙(파일 네이밍, import, 에러 처리 등)을 위반하지 않는가?
     → 위반이 있다면 예시를 먼저 수정한 뒤 규칙을 확정
 [ ] 가이드 변경 시 main 브랜치가 아닌 새 브랜치에서 PR을 생성하는가?

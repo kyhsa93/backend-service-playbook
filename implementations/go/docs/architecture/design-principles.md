@@ -13,7 +13,7 @@
 9. **`context.Context`는 모든 레이어 경계를 관통**한다 — 취소, 데드라인, Correlation ID와 트랜잭션이 인자로 명시적으로 전파된다. Node의 `AsyncLocalStorage` 같은 숨은 저장소가 없다([cross-cutting-concerns.md](cross-cutting-concerns.md), [persistence.md](persistence.md)).
 10. **횡단 관심사는 미들웨어 체인**(`func(http.Handler) http.Handler`의 합성)으로 처리한다. 인증/로깅/Correlation ID를 Handler 밖에서 각각 하나의 관심사만 담당하도록 분리한다([cross-cutting-concerns.md](cross-cutting-concerns.md)).
 11. **다른 Bounded Context 호출은 Adapter로 감싼다**: 호출하는 쪽 패키지에 인터페이스, 호출하는 쪽 infrastructure에 구현체를 두고, 다른 도메인의 Repository/Service를 직접 주입하지 않는다([cross-domain.md](cross-domain.md)).
-12. **네이밍은 고정 규칙을 따른다**: 파일 `snake_case.go`, 패키지명은 소문자 단일 단어, 타입은 `PascalCase`, 인터페이스는 동사+er보다 역할 명사(`Repository`, `OutboxRelay`)를 우선한다([directory-structure.md](directory-structure.md)).
+12. **네이밍은 고정 규칙을 따른다**: 파일 `snake_case.go`, 패키지명은 소문자 단일 단어, 타입은 `PascalCase`, 인터페이스는 동사+er보다 역할 명사(`Repository`, `AccountAdapter`)를 우선한다([directory-structure.md](directory-structure.md)).
 13. **캡슐화는 패키지 단위로만 가능**하다 — Go에는 인스턴스 단위 `private`이 없으므로, 외부에 숨기고 싶은 타입은 애초에 별도 패키지로 분리해야 한다([tactical-ddd.md](tactical-ddd.md)).
 14. **테스트는 3단계로 분리**한다: Domain(table-driven, 순수 함수 검증) / Application(수동 stub mock) / E2E(`testcontainers-go`, 실제 DB·SES 연동). 3단계 모두 `examples/`에 구현되어 있다([testing.md](testing.md)).
 

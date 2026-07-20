@@ -75,7 +75,7 @@ migrations/
 
 ## AuthService — 토큰 발급 및 검증
 
-Go 표준 라이브러리에는 JWT 구현이 없으므로 `github.com/golang-jwt/jwt/v5` 같은 최소 의존성을 사용한다. 인터페이스는 Application 레이어의 다른 Technical Service(예: [domain-events.md](domain-events.md)의 `OutboxRelay`)와 동일하게, **인터페이스는 사용하는 레이어 근처에 두고 구현체는 infrastructure에 둔다**.
+Go 표준 라이브러리에는 JWT 구현이 없으므로 `github.com/golang-jwt/jwt/v5` 같은 최소 의존성을 사용한다. 인터페이스는 Application 레이어의 다른 Technical Service(예: 아래의 `PasswordHasher`, [cross-domain.md](cross-domain.md)의 `AccountAdapter`)와 동일하게, **인터페이스는 사용하는 레이어 근처에 두고 구현체는 infrastructure에 둔다**.
 
 ```go
 // internal/infrastructure/auth/jwt_service.go
@@ -160,7 +160,7 @@ type Repository interface {
 }
 ```
 
-`PasswordHasher`는 [domain-service.md](domain-service.md)의 Technical Service 패턴이다 — `OutboxRelay`/`AccountAdapter`와 동일하게, 인터페이스는 그것을 사용하는 `application/command/`에 정의하고 구현체(bcrypt)는 `infrastructure/`에 둔다.
+`PasswordHasher`는 [domain-service.md](domain-service.md)의 Technical Service 패턴이다 — `AccountAdapter`와 동일하게, 인터페이스는 그것을 사용하는 `application/command/`에 정의하고 구현체(bcrypt)는 `infrastructure/`에 둔다.
 
 ```go
 // internal/application/command/password_hasher.go — 포트(인터페이스만)
@@ -294,7 +294,7 @@ root는 "Guard는 Controller 클래스 레벨에 적용, 메서드 레벨은 누
 ```go
 func NewRouter(
 	repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository,
-	accountAdapter command.AccountAdapter, outboxRelay command.OutboxRelay,
+	accountAdapter command.AccountAdapter,
 	jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter,
 ) (http.Handler, *HealthHandler) {
 	// ... accountHTTP, cardHTTP 조립 생략

@@ -30,13 +30,12 @@ internal/
       suspend_account_handler.go
       reactivate_account_handler.go
       close_account_handler.go
-      event_relay.go                ← OutboxRelay 인터페이스 (Technical Service)
     query/
       get_account_handler.go        ← GetAccountQuery + GetAccountHandler
       get_transactions_handler.go
       result.go                     ← Result 구조체
     event/
-      account_created_event_handler.go   ← Outbox가 드레인한 이벤트를 처리 (domain-events.md 참고)
+      account_created_event_handler.go   ← Outbox Consumer가 실행하는 이벤트 핸들러 (domain-events.md 참고)
       money_deposited_event_handler.go
       money_withdrawn_event_handler.go
       account_suspended_event_handler.go
@@ -52,7 +51,7 @@ internal/
 
 ## Command와 CommandHandler
 
-Command는 쓰기 요청을 나타내는 불변 데이터 구조체다. CommandHandler는 Repository(와 필요하면 OutboxRelay 같은 Technical Service)를 의존성으로 갖고 `Handle` 메서드 하나로 유스케이스를 완결한다.
+Command는 쓰기 요청을 나타내는 불변 데이터 구조체다. CommandHandler는 Repository(와 필요하면 Technical Service — `PasswordHasher`, `AccountAdapter` 등)를 의존성으로 갖고 `Handle` 메서드 하나로 유스케이스를 완결한다.
 
 ```go
 // internal/application/command/create_account_handler.go
@@ -63,12 +62,11 @@ type CreateAccountCommand struct {
 }
 
 type CreateAccountHandler struct {
-	repo        account.Repository
-	outboxRelay OutboxRelay
+	repo account.Repository
 }
 
-func NewCreateAccountHandler(repo account.Repository, outboxRelay OutboxRelay) *CreateAccountHandler {
-	return &CreateAccountHandler{repo: repo, outboxRelay: outboxRelay}
+func NewCreateAccountHandler(repo account.Repository) *CreateAccountHandler {
+	return &CreateAccountHandler{repo: repo}
 }
 
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
@@ -76,9 +74,8 @@ func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountComm
 	if err := h.repo.Save(ctx, a); err != nil {                // Aggregate 저장 + Outbox 적재, 한 트랜잭션
 		return nil, err
 	}
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {  // 커밋 직후 동기적으로 Outbox 드레인
-		return nil, err
-	}
+	// 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
+	// outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지, domain-events.md).
 	return a, nil
 }
 ```
@@ -166,9 +163,9 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 
 ```go
 // internal/interface/http/router.go
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
-	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
-	depositHandler := command.NewDepositHandler(repo, outboxRelay)
+func NewRouter(repo account.Repository) *http.ServeMux {
+	createAccountHandler := command.NewCreateAccountHandler(repo)
+	depositHandler := command.NewDepositHandler(repo)
 	// ...
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	// ...
@@ -182,7 +179,7 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.S
 
 ## EventHandler — Domain Event 후속 처리
 
-이 저장소는 root가 요구하는 Outbox 기반 EventHandler를 그대로 구현한다: `internal/infrastructure/persistence/account_repository.go`의 `Save`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋하고, Command Handler는 그 직후 `OutboxRelay.ProcessPending(ctx)`를 동기 호출해 드레인한다. `event_type`별 후속 처리는 `internal/application/event/*_event_handler.go`가 맡는다. 상세는 [domain-events.md](domain-events.md)에서 다룬다.
+이 저장소는 root가 요구하는 Outbox 기반 EventHandler를 그대로 구현한다: `internal/infrastructure/persistence/account_repository.go`의 `Save`가 Aggregate 상태와 Outbox 행을 같은 트랜잭션으로 커밋한다. Command Handler는 저장 후 곧바로 반환하며 Outbox를 동기적으로 드레인하지 않는다 — `outbox.Poller`가 독립적으로 주기 실행되며 Outbox → SQS로 발행하고, `outbox.Consumer`가 SQS를 수신 대기하다가 `event_type`별 후속 처리를 `internal/application/event/*_event_handler.go`에 위임한다. 상세는 [domain-events.md](domain-events.md)에서 다룬다.
 
 ```go
 // internal/application/event/account_created_event_handler.go
@@ -191,7 +188,7 @@ func (h *AccountCreatedEventHandler) Handle(ctx context.Context, payload []byte)
 	if err := json.Unmarshal(payload, &evt); err != nil {
 		return fmt.Errorf("unmarshal AccountCreated: %w", err)
 	}
-	return h.notifier.Notify(ctx, evt) // outbox.Relay가 이 Handle을 event_type="AccountCreated" 행마다 호출한다
+	return h.notifier.Notify(ctx, evt) // outbox.Consumer가 이 Handle을 event_type="AccountCreated" 메시지마다 호출한다
 }
 ```
 
@@ -212,6 +209,6 @@ func (h *AccountCreatedEventHandler) Handle(ctx context.Context, payload []byte)
 ### 관련 문서
 
 - [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, DI 없는 조립
-- [domain-events.md](domain-events.md) — EventHandler, Outbox 패턴과 현재 코드의 편차
+- [domain-events.md](domain-events.md) — EventHandler, Outbox 패턴(Writer/Poller/Consumer)
 - [repository-pattern.md](repository-pattern.md) — Repository 인터페이스 설계
 - [directory-structure.md](directory-structure.md) — `application/command`·`application/query` 배치

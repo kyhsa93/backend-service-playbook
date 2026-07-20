@@ -57,9 +57,8 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 	if err := h.repo.Save(ctx, a); err != nil {                     // 3. Repository로 저장 (Outbox 행도 같은 트랜잭션)
 		return nil, err
 	}
-	if err := h.outboxRelay.ProcessPending(ctx); err != nil {       // 4. 부가 효과(알림) — domain-events.md 참고
-		return nil, err
-	}
+	// 저장 후 곧바로 반환한다 — 부가 효과(알림)는 독립적으로 주기 실행되는
+	// outbox.Poller/outbox.Consumer가 비동기로 처리한다(domain-events.md 참고).
 	return &tx, nil
 }
 ```
@@ -132,19 +131,24 @@ db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 // ...
 notifier := notification.NewService(notification.NewSESClient(), db)
 outboxWriter := outbox.NewWriter()
-outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{ /* ... 이벤트 타입별 핸들러 ... */ })
+sqsClient := outbox.NewSQSClient()
+outboxHandlers := map[string]outbox.Handler{ /* ... 이벤트 타입별 핸들러 ... */ }
+outboxPoller := outbox.NewPoller(db, sqsClient, queueURL)         // Outbox → SQS 발행 (독립 goroutine)
+outboxConsumer := outbox.NewConsumer(sqsClient, queueURL, outboxHandlers) // SQS → Handler 실행 (독립 goroutine)
 accountRepo := persistence.NewAccountRepository(db, outboxWriter) // infrastructure 구현체 생성
-mux := httphandler.NewRouter(accountRepo, outboxRelay)            // domain 인터페이스 타입으로 주입
+mux := httphandler.NewRouter(accountRepo)                         // domain 인터페이스 타입으로 주입
 ```
 
 ```go
 // internal/interface/http/router.go — 여기서 Application 레이어 조립까지 이어짐
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay) *http.ServeMux {
-	depositHandler := command.NewDepositHandler(repo, outboxRelay)
+func NewRouter(repo account.Repository) *http.ServeMux {
+	depositHandler := command.NewDepositHandler(repo)
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	// ...
 }
 ```
+
+Command Handler는 `outboxPoller`/`outboxConsumer`를 전혀 참조하지 않는다 — Repository.Save 후 곧바로 반환하고, Outbox → SQS 발행/수신은 `main()`이 별도 goroutine(`go outboxPoller.Run(ctx)`, `go outboxConsumer.Run(ctx)`)으로 독립 실행한다(domain-events.md 참고).
 
 `persistence.NewAccountRepository(db)`가 반환하는 구체 타입(`*AccountRepository`)은 `NewRouter`의 파라미터 타입(`account.Repository` 인터페이스)으로 암묵적으로 만족된다 — Go는 구조적 타이핑이므로 `implements` 선언이 필요 없다. 리플렉션 기반 DI 컨테이너가 하는 일(타입 이름으로 구현체 찾아 연결)을 **컴파일러가 정적으로 확인 가능한 함수 호출**로 대체한 것이 이 저장소의 방식이며, 도메인이 늘어나도 `main.go`에 생성자 호출을 추가하는 것 이상의 복잡도가 생기지 않는다.
 

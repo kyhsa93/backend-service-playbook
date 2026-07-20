@@ -128,17 +128,13 @@ func (s *stubRepository) FindTransactions(ctx context.Context, accountID string,
 	return nil, 0, nil
 }
 
-type stubOutboxRelay struct{ processed int }
-
-func (s *stubOutboxRelay) ProcessPending(ctx context.Context) error { s.processed++; return nil }
-
 func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 	repo := &stubRepository{
 		findByIDFn: func(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
 			return nil, account.ErrNotFound
 		},
 	}
-	handler := command.NewDepositHandler(repo, &stubOutboxRelay{})
+	handler := command.NewDepositHandler(repo)
 
 	_, err := handler.Handle(context.Background(), command.DepositCommand{AccountID: "missing", Amount: 1000})
 
@@ -147,24 +143,20 @@ func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 	}
 }
 
-func TestDepositHandler_Handle_SavesAndDrainsOutbox(t *testing.T) {
+func TestDepositHandler_Handle_Saves(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
 	saveCalled := false
 	repo := &stubRepository{
 		findByIDFn: func(ctx context.Context, accountID, ownerID string) (*account.Account, error) { return a, nil },
 		saveFn:     func(ctx context.Context, a *account.Account) error { saveCalled = true; return nil },
 	}
-	outboxRelay := &stubOutboxRelay{}
-	handler := command.NewDepositHandler(repo, outboxRelay)
+	handler := command.NewDepositHandler(repo)
 
 	if _, err := handler.Handle(context.Background(), command.DepositCommand{AccountID: a.AccountID, Amount: 1000}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !saveCalled {
 		t.Fatal("want repo.Save to be called")
-	}
-	if outboxRelay.processed == 0 {
-		t.Fatal("want outboxRelay.ProcessPending to be called at least once")
 	}
 }
 ```
@@ -173,7 +165,7 @@ func TestDepositHandler_Handle_SavesAndDrainsOutbox(t *testing.T) {
 
 **원칙:**
 - Repository는 반드시 인터페이스 타입(`account.Repository`)으로 mock — 구체 타입 mock 금지(root 원칙과 동일).
-- 비즈니스 로직(잔액 계산, 상태 전이 검증)은 이미 Domain 단위 테스트에서 검증했으므로 여기서는 반복하지 않는다 — Handler가 Repository/OutboxRelay를 **올바른 순서로 호출하는지**만 본다.
+- 비즈니스 로직(잔액 계산, 상태 전이 검증)은 이미 Domain 단위 테스트에서 검증했으므로 여기서는 반복하지 않는다 — Handler가 Repository를 **올바른 순서로 호출하는지**만 본다. Handler는 Repository.Save 이후 곧바로 반환하므로, Outbox 발행/수신 검증은 이 테스트의 범위가 아니다(독립적으로 주기 실행되는 `outbox.Poller`/`outbox.Consumer`의 책임, domain-events.md 참고).
 
 ---
 

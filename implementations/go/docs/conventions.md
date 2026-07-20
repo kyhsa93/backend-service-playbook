@@ -49,8 +49,8 @@
 - Query: `<Verb><Noun>Query` — `GetAccountQuery`, `GetTransactionsQuery`
 - Result: `<Verb><Noun>Result` — `GetAccountResult`, `GetTransactionsResult`
 - 생성자 함수: `New<Type>` — `NewAccountRepository`, `NewDepositHandler`, `NewRouter`
-- 인터페이스 이름은 동사+er보다 역할 명사를 우선한다 — `Repository`, `OutboxRelay`, `SecretService` (TypeScript의 `<X>Adapter`, `<X>Service`도 이 원칙과 같은 계열이다)
-- 인터페이스는 만족하는 쪽이 아니라 **사용하는 쪽** 패키지에 정의한다 — `command.OutboxRelay`는 `command` 패키지가 필요로 하는 최소 시그니처(`ProcessPending(ctx) error`)만 선언하고, 이를 구현하는 `outbox.Relay`는 그 존재조차 몰라도 된다
+- 인터페이스 이름은 동사+er보다 역할 명사를 우선한다 — `Repository`, `AccountAdapter`, `SecretService` (TypeScript의 `<X>Adapter`, `<X>Service`도 이 원칙과 같은 계열이다)
+- 인터페이스는 만족하는 쪽이 아니라 **사용하는 쪽** 패키지에 정의한다 — `command.PasswordHasher`는 `command` 패키지가 필요로 하는 최소 시그니처(`Hash`/`Verify`)만 선언하고, 이를 구현하는 `bcrypt` 기반 구현체는 그 존재조차 몰라도 된다
 
 ---
 
@@ -83,7 +83,7 @@ var _ account.Repository = (*AccountRepository)(nil)
 ```
 
 **규칙:**
-- Repository, Adapter, Technical Service(OutboxRelay, SecretService, StorageService 등) 구현체에는 항상 `var _ Interface = (*Impl)(nil)`을 둔다.
+- Repository, Adapter, Technical Service(PasswordHasher, SecretService, StorageService 등) 구현체에는 항상 `var _ Interface = (*Impl)(nil)`을 둔다.
 - 이 한 줄이 없어도 프로그램은 똑같이 동작하지만, 리팩토링으로 구현체가 인터페이스를 실수로 만족하지 못하게 되는 것을 컴파일 시점에 잡아준다 — 런타임까지 갈 필요가 없다.
 - Application Handler는 생성자 파라미터를 인터페이스 타입으로 선언한다(`repo account.Repository`, 구체 타입 `*persistence.AccountRepository`가 아니다). `main.go`/`router.go`가 구체 타입 값을 넘기면 Go의 구조적 타이핑이 자동으로 만족 여부를 검사한다 — 별도의 "바인딩 등록" 단계가 없다.
 
@@ -293,8 +293,8 @@ func (h *XxxHandler) Handle(ctx context.Context, cmd/query X) (결과, error)
 ### 생성자 함수 — `New<Type>(의존성...) *Type`
 
 ```go
-func NewDepositHandler(repo account.Repository, outboxRelay OutboxRelay) *DepositHandler {
-	return &DepositHandler{repo: repo, outboxRelay: outboxRelay}
+func NewDepositHandler(repo account.Repository) *DepositHandler {
+	return &DepositHandler{repo: repo}
 }
 ```
 
@@ -660,17 +660,13 @@ func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) 
 func (s *stubRepository) Save(ctx context.Context, a *account.Account) error { return s.saveFn(ctx, a) }
 // FindTransactions 등 나머지 인터페이스 메서드도 최소 구현으로 채운다
 
-type stubOutboxRelay struct{}
-
-func (stubOutboxRelay) ProcessPending(ctx context.Context) error { return nil }
-
 func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 	repo := &stubRepository{
 		findByIDFn: func(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
 			return nil, account.ErrNotFound
 		},
 	}
-	handler := command.NewDepositHandler(repo, stubOutboxRelay{})
+	handler := command.NewDepositHandler(repo)
 
 	_, err := handler.Handle(context.Background(), command.DepositCommand{AccountID: "missing", Amount: 1000})
 
@@ -682,7 +678,7 @@ func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 
 - Repository는 반드시 인터페이스 타입으로 mock한다 — 구체 타입 mock 금지.
 - 인터페이스가 메서드 3~4개 수준으로 작을 때는 수작업 stub이 mocking 프레임워크보다 읽기/디버깅하기 쉽다는 것이 Go 커뮤니티의 일반적인 선호다. `testify/mock` 등을 쓸 수도 있지만 필수는 아니다.
-- 비즈니스 로직(잔액 계산, 상태 전이 검증)은 Domain 단위 테스트에서 이미 검증했으므로 여기서는 반복하지 않는다 — Handler가 Repository/OutboxRelay를 올바른 순서로 호출하는지만 본다.
+- 비즈니스 로직(잔액 계산, 상태 전이 검증)은 Domain 단위 테스트에서 이미 검증했으므로 여기서는 반복하지 않는다 — Handler가 Repository를 올바른 순서로 호출하는지만 본다. Handler는 Repository.Save 이후 곧바로 반환하므로 Outbox 발행/수신 검증은 이 테스트의 범위가 아니다(별도로 주기 실행되는 `outbox.Poller`/`outbox.Consumer`의 책임, domain-events.md 참고).
 
 ### E2E 테스트 — testcontainers-go
 

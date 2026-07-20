@@ -52,14 +52,26 @@ func main() {
 	notifier := notification.NewService(notification.NewSESClient(), db)
 
 	outboxWriter := outbox.NewWriter()
-	outboxRelay := outbox.NewRelay(db, map[string]outbox.Handler{
+	sqsClient := outbox.NewSQSClient()
+	sqsConfig, err := config.LoadSQSConfig()
+	if err != nil {
+		slog.Error("config error", "error", err)
+		os.Exit(1)
+	}
+
+	// 이 handlers map은 outbox.Consumer가 SQS에서 수신한 메시지의 eventType으로
+	// 핸들러를 찾는 데 쓰인다 — Command Handler는 이 map을 전혀 참조하지 않는다
+	// (동기 드레인 금지, domain-events.md).
+	outboxHandlers := map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
 		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
 		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier).Handle,
 		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
-	})
+	}
+	outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)
+	outboxConsumer := outbox.NewConsumer(sqsClient, sqsConfig.QueueURL, outboxHandlers)
 
 	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
 	jwtSecret, err := config.LoadJWTSecret(context.Background(), secretService, os.Getenv("APP_ENV"))
@@ -70,11 +82,12 @@ func main() {
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
 
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-	mux := httphandler.NewRouter(accountRepo, outboxRelay, jwtService)
+	mux := httphandler.NewRouter(accountRepo, jwtService)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
-	// SIGTERM/SIGINT를 받으면 ctx가 취소된다.
+	// SIGTERM/SIGINT를 받으면 ctx가 취소된다 — HTTP 서버뿐 아니라 아래 Poller/Consumer
+	// 백그라운드 루프도 이 같은 ctx로 정지시킨다.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -85,6 +98,12 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	// Outbox → SQS 발행(Poller)과 SQS → EventHandler 수신(Consumer)은 HTTP 요청과
+	// 무관하게 독립적으로 주기 실행된다 — Command Handler는 이들을 전혀 참조하지
+	// 않는다(동기 드레인 금지, domain-events.md). ctx가 취소되면 둘 다 스스로 멈춘다.
+	go outboxPoller.Run(ctx)
+	go outboxConsumer.Run(ctx)
 
 	<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
 	slog.Info("shutdown signal received")
@@ -109,13 +128,13 @@ func main() {
 |---|---|---|
 | 0. 로깅/설정 준비 | `slog.SetDefault(...)`, `config.LoadDatabaseConfig()` | JSON 구조화 로거를 가장 먼저 설정하고, 필수 환경 변수를 검증해 실패 시 `os.Exit(1)`([config.md](config.md), [observability.md](observability.md) 참고) |
 | 1. 인프라 연결 | `sql.Open("postgres", dbConfig.URL)` | DB 커넥션 풀 생성(실제 연결은 lazy). `defer db.Close()`로 `main()` 종료 시 정리 예약 |
-| 2. Infrastructure 조립 | `notification.NewService(...)`, `outbox.NewWriter()`, `outbox.NewRelay(db, handlers)`, `secret.NewService(...)`, `auth.NewJWTService(...)`, `persistence.NewAccountRepository(db, outboxWriter)` | `db` 하나를 여러 Infrastructure 구현체에 주입 — NestJS의 `@Global` DatabaseModule과 달리 그냥 변수를 함수 인자로 넘기는 것뿐이다. JWT secret은 `config.LoadJWTSecret`이 환경(APP_ENV)에 따라 환경 변수 또는 Secrets Manager에서 가져온다([secret-manager.md](secret-manager.md) 참고) |
-| 3. 라우터/Handler 조립 | `httphandler.NewRouter(accountRepo, outboxRelay, jwtService)` | Repository/OutboxRelay/JWTService를 받아 내부에서 Command/Query Handler, `AccountHandler`, 인증·Correlation ID 미들웨어를 조립([router.go](#핵심--routergo가-di-컨테이너-역할을-대신한다) 참고) |
-| 4. 서버 시작 | `go func() { srv.ListenAndServe() }()` | 별도 goroutine에서 시작해 `main()`이 블록되지 않고 곧바로 시그널 대기(`<-ctx.Done()`)로 넘어간다 |
+| 2. Infrastructure 조립 | `notification.NewService(...)`, `outbox.NewWriter()`, `outbox.NewSQSClient()`, `outbox.NewPoller(db, sqsClient, queueURL)`, `outbox.NewConsumer(sqsClient, queueURL, handlers)`, `secret.NewService(...)`, `auth.NewJWTService(...)`, `persistence.NewAccountRepository(db, outboxWriter)` | `db`/`sqsClient` 하나씩을 여러 Infrastructure 구현체에 주입 — NestJS의 `@Global` DatabaseModule과 달리 그냥 변수를 함수 인자로 넘기는 것뿐이다. JWT secret은 `config.LoadJWTSecret`이 환경(APP_ENV)에 따라 환경 변수 또는 Secrets Manager에서 가져온다([secret-manager.md](secret-manager.md) 참고) |
+| 3. 라우터/Handler 조립 | `httphandler.NewRouter(accountRepo, jwtService)` | Repository/JWTService를 받아 내부에서 Command/Query Handler, `AccountHandler`, 인증·Correlation ID 미들웨어를 조립([router.go](#핵심--routergo가-di-컨테이너-역할을-대신한다) 참고). Outbox 발행/수신은 Command Handler와 무관하므로 `NewRouter`에 넘기지 않는다 |
+| 4. 서버 시작 | `go func() { srv.ListenAndServe() }()`, `go outboxPoller.Run(ctx)`, `go outboxConsumer.Run(ctx)` | 각자 독립된 goroutine에서 시작해 `main()`이 블록되지 않고 곧바로 시그널 대기(`<-ctx.Done()`)로 넘어간다. HTTP 서버와 Poller/Consumer는 서로를 모른다 — 셋 다 같은 `ctx`로 종료 시점만 공유한다 |
 | 5. 종료 시그널 대기 | `signal.NotifyContext` + `<-ctx.Done()` | SIGTERM/SIGINT 수신까지 블록 |
-| 6. Graceful Shutdown | `srv.Shutdown(shutdownCtx)` | 새 연결은 거부하고 진행 중인 요청은 완료를 기다린 뒤 종료 — 상세는 [graceful-shutdown.md](graceful-shutdown.md) 참고 |
+| 6. Graceful Shutdown | `srv.Shutdown(shutdownCtx)` | 새 연결은 거부하고 진행 중인 요청은 완료를 기다린 뒤 종료 — 상세는 [graceful-shutdown.md](graceful-shutdown.md) 참고. Poller/Consumer는 `ctx` 취소 시점에 스스로 루프를 멈춘다(별도 Shutdown 호출 불필요) |
 
-의존성 조립 순서는 **의존 방향과 정확히 일치**한다 — `db`(가장 하위) → `notifier`/`outboxWriter`/`outboxRelay`/`secretService`/`jwtService`/Repository(Infrastructure) → Handler(Application, `router.go` 내부) → `mux`(Interface) → `http.Server`. 어느 한 단계라도 순서를 바꾸면 컴파일이 실패한다(아직 만들어지지 않은 변수를 참조하게 되므로) — Go 컴파일러가 조립 순서 자체를 강제하는 셈이다.
+의존성 조립 순서는 **의존 방향과 정확히 일치**한다 — `db`(가장 하위) → `notifier`/`outboxWriter`/`sqsClient`/`outboxPoller`/`outboxConsumer`/`secretService`/`jwtService`/Repository(Infrastructure) → Handler(Application, `router.go` 내부) → `mux`(Interface) → `http.Server`. 어느 한 단계라도 순서를 바꾸면 컴파일이 실패한다(아직 만들어지지 않은 변수를 참조하게 되므로) — Go 컴파일러가 조립 순서 자체를 강제하는 셈이다.
 
 ---
 
@@ -123,10 +142,11 @@ func main() {
 
 ```go
 // internal/interface/http/router.go — 실제 코드(요약)
-func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtService *auth.JWTService) http.Handler {
-	createAccountHandler := command.NewCreateAccountHandler(repo, outboxRelay)
-	depositHandler := command.NewDepositHandler(repo, outboxRelay)
-	// ... 나머지 Command/Query Handler도 동일하게 생성자 호출
+func NewRouter(repo account.Repository, jwtService *auth.JWTService) http.Handler {
+	createAccountHandler := command.NewCreateAccountHandler(repo)
+	depositHandler := command.NewDepositHandler(repo)
+	// ... 나머지 Command/Query Handler도 동일하게 생성자 호출 — Outbox 발행/수신은
+	// Command Handler와 무관하므로 여기서도 outboxPoller/outboxConsumer를 전달하지 않는다
 
 	accountHTTP := NewAccountHandler(createAccountHandler, depositHandler, /* ... */)
 	authHTTP := NewAuthHandler(jwtService)
@@ -145,7 +165,7 @@ func NewRouter(repo account.Repository, outboxRelay command.OutboxRelay, jwtServ
 
 반환 타입이 `*http.ServeMux`가 아니라 `http.Handler`인 이유는 `middleware.CorrelationID`가 `http.Handler`를 반환하기 때문이다 — 호출부(`main.go`, e2e 테스트의 `httptest.NewServer`)는 인터페이스로만 이 값을 쓰므로 영향이 없다. 인증/Correlation ID 미들웨어 상세는 [authentication.md](authentication.md), [cross-cutting-concerns.md](cross-cutting-concerns.md) 참고.
 
-NestJS라면 `@Module({ providers: [...] })`가 이 배선을 선언적으로 대신하고 Nest의 DI 컨테이너가 런타임에 그래프를 풀어낸다. Go는 그런 컨테이너가 없으므로 **`NewRouter`가 곧 배선 코드 그 자체**다 — "이 Handler는 이 Repository와 이 OutboxRelay로 만든다"를 코드로 직접 나열한다. 배선 로직이 커지면(도메인이 늘어나면) `main.go`에서 `NewRouter`로, 다시 `router.go` 내부의 개별 생성자 호출들로 책임이 계층적으로 위임되지만, 그 어디에도 컨테이너·리플렉션·데코레이터는 없다 — 전부 평범한 함수 호출이다. 상세는 [module-pattern.md](module-pattern.md) 참고.
+NestJS라면 `@Module({ providers: [...] })`가 이 배선을 선언적으로 대신하고 Nest의 DI 컨테이너가 런타임에 그래프를 풀어낸다. Go는 그런 컨테이너가 없으므로 **`NewRouter`가 곧 배선 코드 그 자체**다 — "이 Handler는 이 Repository로 만든다"를 코드로 직접 나열한다. 배선 로직이 커지면(도메인이 늘어나면) `main.go`에서 `NewRouter`로, 다시 `router.go` 내부의 개별 생성자 호출들로 책임이 계층적으로 위임되지만, 그 어디에도 컨테이너·리플렉션·데코레이터는 없다 — 전부 평범한 함수 호출이다. 상세는 [module-pattern.md](module-pattern.md) 참고.
 
 ---
 

@@ -55,12 +55,11 @@ root는 "Application Service는 abstract class 타입으로 Repository를 주입
 ```go
 // internal/application/command/deposit_handler.go
 type DepositHandler struct {
-	repo        account.Repository  // 구체 타입이 아니라 인터페이스 타입
-	outboxRelay OutboxRelay
+	repo account.Repository  // 구체 타입이 아니라 인터페이스 타입
 }
 
-func NewDepositHandler(repo account.Repository, outboxRelay OutboxRelay) *DepositHandler {
-	return &DepositHandler{repo: repo, outboxRelay: outboxRelay}
+func NewDepositHandler(repo account.Repository) *DepositHandler {
+	return &DepositHandler{repo: repo}
 }
 ```
 
