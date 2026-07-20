@@ -37,4 +37,4 @@ class DepositByPaymentHandler:
             return
 
         account.deposit(cmd.amount, reference_id=cmd.reference_id)
-        await self._repo.save(account)
+        await self._repo.save_account(account)

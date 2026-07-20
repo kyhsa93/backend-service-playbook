@@ -55,5 +55,5 @@ class CreatePaymentHandler:
         )
         payment.complete()
 
-        await self._repo.save(payment)
+        await self._repo.save_payment(payment)
         return payment

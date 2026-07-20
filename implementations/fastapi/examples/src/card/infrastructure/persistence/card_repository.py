@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,28 +27,41 @@ class SqlAlchemyCardRepository(CardRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def find_by_id(self, card_id: str, owner_id: str) -> Card | None:
-        stmt = select(CardModel).where(
-            CardModel.id == card_id,
-            CardModel.owner_id == owner_id,
-            CardModel.deleted_at.is_(None),
-        )
-        row = (await self._session.execute(stmt)).scalar_one_or_none()
-        if row is None:
-            return None
-        return self._to_domain(row)
+    async def find_cards(
+        self,
+        page: int,
+        take: int,
+        card_id: str | None = None,
+        owner_id: str | None = None,
+        account_id: str | None = None,
+        status: list[str] | None = None,
+    ) -> tuple[list[Card], int]:
+        stmt = select(CardModel).where(CardModel.deleted_at.is_(None))
+        count_stmt = select(func.count()).select_from(CardModel).where(CardModel.deleted_at.is_(None))
 
-    async def find_by_account(self, account_id: str, status: list[str]) -> list[Card]:
-        stmt = select(CardModel).where(
-            CardModel.account_id == account_id,
-            CardModel.deleted_at.is_(None),
-        )
+        if card_id:
+            stmt = stmt.where(CardModel.id == card_id)
+            count_stmt = count_stmt.where(CardModel.id == card_id)
+        if owner_id:
+            stmt = stmt.where(CardModel.owner_id == owner_id)
+            count_stmt = count_stmt.where(CardModel.owner_id == owner_id)
+        if account_id:
+            stmt = stmt.where(CardModel.account_id == account_id)
+            count_stmt = count_stmt.where(CardModel.account_id == account_id)
         if status:
             stmt = stmt.where(CardModel.status.in_(status))
-        rows = (await self._session.execute(stmt.order_by(CardModel.id.desc()))).scalars().all()
-        return [self._to_domain(row) for row in rows]
+            count_stmt = count_stmt.where(CardModel.status.in_(status))
 
-    async def save(self, card: Card) -> None:
+        total = (await self._session.execute(count_stmt)).scalar_one()
+        rows = (
+            (await self._session.execute(stmt.order_by(CardModel.id.desc()).offset(page * take).limit(take)))
+            .scalars()
+            .all()
+        )
+
+        return [self._to_domain(row) for row in rows], total
+
+    async def save_card(self, card: Card) -> None:
         existing = await self._session.get(CardModel, card.card_id)
         if existing:
             existing.status = card.status.value

@@ -32,7 +32,7 @@ async def test_execute_활성_계좌면_카드가_발급되고_저장된다(repo
     assert card.owner_id == "owner-1"
     assert card.status == CardStatus.ACTIVE
     account_adapter.find_account.assert_awaited_once_with("account-1", "owner-1")
-    repo.save.assert_awaited_once_with(card)
+    repo.save_card.assert_awaited_once_with(card)
 
 
 @pytest.mark.asyncio
@@ -43,7 +43,7 @@ async def test_execute_연결할_계좌가_없으면_LinkedAccountNotFoundError(
     with pytest.raises(LinkedAccountNotFoundError):
         await handler.execute(IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA"))
 
-    repo.save.assert_not_awaited()
+    repo.save_card.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -54,4 +54,4 @@ async def test_execute_비활성_계좌면_CardIssueRequiresActiveAccountError(r
     with pytest.raises(CardIssueRequiresActiveAccountError):
         await handler.execute(IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA"))
 
-    repo.save.assert_not_awaited()
+    repo.save_card.assert_not_awaited()

@@ -223,7 +223,7 @@ from .{n.domain} import {n.Domain}
 
 
 class {n.Domain}Query(ABC):
-    """읽기 전용 인터페이스 — Query Handler 전용. `save()` 등 쓰기 메서드를 노출하지 않는다
+    """읽기 전용 인터페이스 — Query Handler 전용. `save_{n.domain}()` 등 쓰기 메서드를 노출하지 않는다
     (cqrs-pattern.md 참고). `{n.Domain}Repository`(쓰기 모델)와 메서드 시그니처를 공유하지만
     별도 계약이다 — Query Handler는 반드시 이 타입으로만 의존해야 한다.
     """
@@ -241,7 +241,7 @@ class {n.Domain}Query(ABC):
 
 class {n.Domain}Repository({n.Domain}Query, ABC):
     @abstractmethod
-    async def save(self, {n.domain}: {n.Domain}) -> None: ...
+    async def save_{n.domain}(self, {n.domain}: {n.Domain}) -> None: ...
 '''
 
     # ---- application/command/ ----
@@ -264,7 +264,7 @@ class Create{n.Domain}Handler:
 
     async def execute(self, cmd: Create{n.Domain}Command) -> {n.Domain}:
         {n.domain} = {n.Domain}.create(owner_id=cmd.requester_id)
-        await self._repo.save({n.domain})
+        await self._repo.save_{n.domain}({n.domain})
         return {n.domain}
 """
 
@@ -293,7 +293,7 @@ class Cancel{n.Domain}Handler:
         if {n.domain} is None:
             raise {n.Domain}NotFoundError(cmd.{n.domain}_id)
         {n.domain}.cancel(cmd.reason)
-        await self._repo.save({n.domain})
+        await self._repo.save_{n.domain}({n.domain})
 """
 
     # ---- application/query/ ----
@@ -431,7 +431,7 @@ class SqlAlchemy{n.Domain}Repository({n.Domain}Repository):
 
         return [self._to_domain(row) for row in rows], total
 
-    async def save(self, {n.domain}: {n.Domain}) -> None:
+    async def save_{n.domain}(self, {n.domain}: {n.Domain}) -> None:
         existing = await self._session.get({n.Domain}Model, {n.domain}.{n.domain}_id)
         if existing:
             existing.status = {n.domain}.status.value

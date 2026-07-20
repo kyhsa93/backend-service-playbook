@@ -2,7 +2,7 @@
 
 전체 도메인 하나(Order)를 본 아키텍처로 구현한 예시다. 새 도메인을 추가할 때 이 템플릿을 복사하여 시작한다.
 
-> 이 문서는 **목표 상태(target state)** 를 보여준다. 저장소의 실제 예시(`examples/src/account/`)는 [architecture/*.md](architecture/) 각 문서의 "알려진 격차" 절에 정리된 것처럼 이 목표의 일부(Alembic 마이그레이션, Repository 조회 메서드 네이밍 등)를 아직 반영하지 않았다 — 새 도메인을 작성할 때는 `examples/`를 그대로 베끼지 말고, 이 문서와 각 architecture 문서의 "올바른 패턴" 절을 기준으로 삼는다. 에러 코드/Outbox/인증은 이미 `examples/`에 반영되어 있다.
+> 이 문서는 **목표 상태(target state)** 를 보여준다. Repository 메서드 네이밍(`find<Noun>s`/`save<Noun>`/`delete<Noun>`)은 `examples/src/account/`·`card/`·`payment/`가 이미 이 목표와 동일하게 반영되어 있다 — 새 도메인을 작성할 때는 이 문서와 `examples/`를 함께 참고한다. 에러 코드/Outbox/인증도 이미 `examples/`에 반영되어 있다.
 
 ---
 
@@ -303,10 +303,10 @@ class OrderRepository(ABC):
     ) -> tuple[list[Order], int]: ...
 
     @abstractmethod
-    async def save(self, order: Order) -> None: ...
+    async def save_order(self, order: Order) -> None: ...
 
     @abstractmethod
-    async def delete(self, order_id: str) -> None: ...
+    async def delete_order(self, order_id: str) -> None: ...
 
 
 class PaymentRepository(ABC):
@@ -346,7 +346,7 @@ class CreateOrderHandler:
 
     async def execute(self, cmd: CreateOrderCommand) -> Order:
         order = Order.create(user_id=cmd.user_id, items=[OrderItem(**item) for item in cmd.items])
-        await self._repo.save(order)   # Outbox 적재까지 save() 내부에서 처리
+        await self._repo.save_order(order)   # Outbox 적재까지 save_order() 내부에서 처리
         return order
 ```
 
@@ -382,7 +382,7 @@ class CancelOrderHandler:
 
         # 여러 Repository에 걸친 쓰기 — 같은 AsyncSession(같은 Depends(get_session))으로 묶인다
         await self._payment_repo.delete_payment_methods(order.order_id)
-        await self._repo.save(order)   # Aggregate 상태 + pull_events()를 Outbox에 함께 저장
+        await self._repo.save_order(order)   # Aggregate 상태 + pull_events()를 Outbox에 함께 저장
 ```
 
 ```python
@@ -406,7 +406,7 @@ class DeleteOrderHandler:
         orders, _ = await self._repo.find_orders(page=0, take=1, order_id=cmd.order_id)
         if not orders:
             raise OrderNotFoundError(cmd.order_id)
-        await self._repo.delete(cmd.order_id)
+        await self._repo.delete_order(cmd.order_id)
 ```
 
 **흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출 → Repository로 저장. Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](architecture/layer-architecture.md) 참조.
@@ -637,7 +637,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
         # DB 모델 → 도메인 Aggregate 변환
         return [self._to_domain(row) for row in rows], count
 
-    async def save(self, order: Order) -> None:
+    async def save_order(self, order: Order) -> None:
         existing = await self._session.get(OrderModel, order.order_id)
         if existing:
             existing.status = order.status.value
@@ -667,7 +667,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
 
         await self._session.flush()
 
-    async def delete(self, order_id: str) -> None:
+    async def delete_order(self, order_id: str) -> None:
         # cascade soft delete — 하위 Entity 먼저
         row = await self._session.get(OrderModel, order_id)
         if row is not None:

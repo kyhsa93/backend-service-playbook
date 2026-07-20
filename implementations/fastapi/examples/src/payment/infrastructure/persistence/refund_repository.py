@@ -60,7 +60,7 @@ class SqlAlchemyRefundRepository(RefundRepository):
 
         return [self._to_domain(row) for row in rows], total
 
-    async def save(self, refund: Refund) -> None:
+    async def save_refund(self, refund: Refund) -> None:
         existing = await self._session.get(RefundModel, refund.refund_id)
         if existing:
             existing.status = refund.status.value

@@ -41,4 +41,4 @@ class WithdrawByPaymentHandler:
             return  # 반응할 대상 계좌가 없으면 조용히 무시한다(예: 계좌가 이미 삭제됨).
 
         account.withdraw(cmd.amount, reference_id=cmd.reference_id)
-        await self._repo.save(account)
+        await self._repo.save_account(account)

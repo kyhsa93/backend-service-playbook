@@ -71,7 +71,7 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
 
         return [self._to_domain(row) for row in rows], total
 
-    async def save(self, payment: Payment) -> None:
+    async def save_payment(self, payment: Payment) -> None:
         existing = await self._session.get(PaymentModel, payment.payment_id)
         if existing:
             existing.status = payment.status.value

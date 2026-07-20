@@ -83,7 +83,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
 
         return [self._to_domain(row) for row in rows], total
 
-    async def save(self, account: Account) -> None:
+    async def save_account(self, account: Account) -> None:
         existing = await self._session.get(AccountModel, account.account_id)
         if existing:
             existing.amount = account.balance.amount

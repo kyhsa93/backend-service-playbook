@@ -24,5 +24,5 @@ class DepositHandler:
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
-        await self._repo.save(account)
+        await self._repo.save_account(account)
         return transaction

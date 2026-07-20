@@ -141,9 +141,11 @@
 [ ] Repository 구현체 클래스명이 SqlAlchemy<Aggregate>Repository 인가?
 [ ] Repository 조회 메서드명이 find_<noun>s 패턴(단건/목록 통일)을 따르는가?
     → find_by_id와 find_all처럼 분리되어 있다면, find_<noun>s(take, page, ...) 하나로 통일하고 단건은 take=1 + 인덱싱으로 조회 (repository-pattern.md의 `AccountQuery.find_accounts` 예시 참조)
+[ ] Repository 저장 메서드명이 save_<noun> 패턴을 따르는가? (bare `save()` 금지)
+    → 예: `save_account`/`save_card`/`save_payment`/`save_refund`
 [ ] Repository에 update_<noun> 메서드가 있는가?
-    → 있다면 제거. 조회 후 Aggregate 도메인 메서드로 수정, save() 하나로 upsert
-[ ] save()가 신규/기존을 판별해 upsert처럼 동작하는가? (session.get()으로 기존 row 조회 후 분기)
+    → 있다면 제거. 조회 후 Aggregate 도메인 메서드로 수정, save_<noun>() 하나로 upsert
+[ ] save_<noun>()가 신규/기존을 판별해 upsert처럼 동작하는가? (session.get()으로 기존 row 조회 후 분기)
 [ ] Handler가 save/delete 내부 cascade 순서를 직접 관리하는가?
     → 있다면 해당 cascade 로직을 Repository 구현체 내부로 이동 (하위 Entity도 함께 save)
 [ ] Repository 구현체가 DB 모델(SQLAlchemy Model)을 도메인 Aggregate 객체로 변환하고 있는가?

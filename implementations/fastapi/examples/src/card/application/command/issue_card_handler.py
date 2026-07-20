@@ -30,5 +30,5 @@ class IssueCardHandler:
             raise CardIssueRequiresActiveAccountError()
 
         card = Card.issue(account_id=cmd.account_id, owner_id=cmd.requester_id, brand=cmd.brand)
-        await self._repo.save(card)
+        await self._repo.save_card(card)
         return card

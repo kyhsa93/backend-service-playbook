@@ -22,4 +22,4 @@ class CloseAccountHandler:
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         account.close()
-        await self._repo.save(account)
+        await self._repo.save_account(account)

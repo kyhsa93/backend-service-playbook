@@ -13,7 +13,8 @@ class CardAdapterImpl(CardAdapter):
         self._card_query = card_query
 
     async def find_card(self, card_id: str, owner_id: str) -> CardView | None:
-        card = await self._card_query.find_by_id(card_id, owner_id)
+        cards, _ = await self._card_query.find_cards(page=0, take=1, card_id=card_id, owner_id=owner_id)
+        card = cards[0] if cards else None
         # 상류의 "카드 없음"(None)을 그대로 Payment 도메인의 None 신호로 전달한다(오염 방지).
         if card is None:
             return None

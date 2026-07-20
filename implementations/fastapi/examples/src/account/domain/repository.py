@@ -26,7 +26,7 @@ class AccountQuery(ABC):
 
 class AccountRepository(AccountQuery, ABC):
     @abstractmethod
-    async def save(self, account: Account) -> None: ...
+    async def save_account(self, account: Account) -> None: ...
 
     @abstractmethod
     async def has_transaction_with_reference(self, reference_id: str, type: str) -> bool:

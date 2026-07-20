@@ -33,7 +33,7 @@ examples/src/
         schemas.py
   outbox/                  ← 공유 인프라: Outbox 패턴 (domain-events.md 참조)
     outbox_model.py       ← OutboxModel(Base) — account_repository.py의 Base를 그대로 재사용
-    outbox_writer.py       ← OutboxWriter — Repository.save()가 같은 세션에서 호출
+    outbox_writer.py       ← OutboxWriter — Repository의 save_<noun>()가 같은 세션에서 호출
     outbox_poller.py       ← OutboxPoller — Outbox → SQS 발행, main.py의 lifespan이 백그라운드 task로 기동
     outbox_consumer.py     ← OutboxConsumer — SQS → EventHandler 수신, 마찬가지로 백그라운드 task
     event_handlers.py      ← build_event_handlers() — eventType → 핸들러 dict 조립(composition root)

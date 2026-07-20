@@ -20,7 +20,9 @@ class SuspendCardsByAccountHandler:
         self._repo = repo
 
     async def execute(self, cmd: SuspendCardsByAccountCommand) -> None:
-        cards = await self._repo.find_by_account(cmd.account_id, [CardStatus.ACTIVE.value])
+        cards, _ = await self._repo.find_cards(
+            page=0, take=1000, account_id=cmd.account_id, status=[CardStatus.ACTIVE.value]
+        )
         for card in cards:
             card.suspend()
-            await self._repo.save(card)
+            await self._repo.save_card(card)

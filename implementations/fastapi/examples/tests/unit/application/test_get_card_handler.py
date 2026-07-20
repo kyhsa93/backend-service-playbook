@@ -15,7 +15,7 @@ def query_repo() -> AsyncMock:
 @pytest.mark.asyncio
 async def test_execute_카드가_있으면_결과를_반환한다(query_repo) -> None:
     card = Card.issue(account_id="account-1", owner_id="owner-1", brand="VISA")
-    query_repo.find_by_id.return_value = card
+    query_repo.find_cards.return_value = ([card], 1)
     handler = GetCardHandler(query_repo)
 
     result = await handler.execute(GetCardQuery(card_id=card.card_id, requester_id="owner-1"))
@@ -23,12 +23,12 @@ async def test_execute_카드가_있으면_결과를_반환한다(query_repo) ->
     assert result.card_id == card.card_id
     assert result.account_id == "account-1"
     assert result.status == "ACTIVE"
-    query_repo.find_by_id.assert_awaited_once_with(card.card_id, "owner-1")
+    query_repo.find_cards.assert_awaited_once_with(page=0, take=1, card_id=card.card_id, owner_id="owner-1")
 
 
 @pytest.mark.asyncio
 async def test_execute_카드가_없으면_CardNotFoundError(query_repo) -> None:
-    query_repo.find_by_id.return_value = None
+    query_repo.find_cards.return_value = ([], 0)
     handler = GetCardHandler(query_repo)
 
     with pytest.raises(CardNotFoundError):

@@ -47,7 +47,7 @@ class RequestRefundHandler:
             # 201 + status: REJECTED로 응답한다.
             refund.reject(decision.reason or "환불 요청이 거부되었습니다.")
 
-        await self._refund_repo.save(refund)
+        await self._refund_repo.save_refund(refund)
         # RefundApproved → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다
         # — OutboxPoller/OutboxConsumer가 비동기로 처리한다. 거부된 경우에는 Domain Event가
         # 없으므로 Outbox에 적재될 것이 없다.

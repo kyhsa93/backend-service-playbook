@@ -22,4 +22,4 @@ class ReactivateAccountHandler:
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         account.reactivate()
-        await self._repo.save(account)
+        await self._repo.save_account(account)

@@ -16,7 +16,8 @@ class GetCardHandler:
         self._query = query
 
     async def execute(self, query: GetCardQuery) -> GetCardResult:
-        card = await self._query.find_by_id(query.card_id, query.requester_id)
+        cards, _ = await self._query.find_cards(page=0, take=1, card_id=query.card_id, owner_id=query.requester_id)
+        card = cards[0] if cards else None
         if card is None:
             raise CardNotFoundError(query.card_id)
         return GetCardResult(
