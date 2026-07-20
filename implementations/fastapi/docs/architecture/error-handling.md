@@ -146,3 +146,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate 내부 에러 throw 패턴
 - [layer-architecture.md](layer-architecture.md) — 레이어별 역할 분리
 - [observability.md](observability.md) — 에러 로깅
+
+---
+
+harness `error-response-schema` 규칙(`../../harness/rules/error_response_schema.py`)이 `@app.exception_handler(...)`가 조립하는 응답 바디의 필드 집합이 `statusCode`/`code`/`message`/`error` 4개와 정확히 일치하는지(더 많지도 적지도 않게) 검증하고, `typed-errors-only` 규칙(`../../harness/rules/typed_errors_only.py`)이 `domain/`·`application/`에서 `raise Exception("...")` 같은 free-form 문자열 예외 대신 타입화된 예외 클래스를 raise하는지 검증한다.

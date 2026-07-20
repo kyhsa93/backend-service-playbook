@@ -123,3 +123,7 @@ Aggregate 내부의 `Transaction`(하위 Entity 성격)도 동일하게 `generat
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate/Entity/Value Object 구분
 - [repository-pattern.md](repository-pattern.md) — Repository에서 Aggregate 저장
+
+---
+
+harness `aggregate-id-format` 규칙(`../../harness/rules/aggregate_id_format.py`)이 `src/common/generate_id.py`가 `uuid.uuid4().hex`를 쓰는지, `str(uuid.uuid4())`(하이픈 포함) 안티패턴이 없는지 기계 검증한다.

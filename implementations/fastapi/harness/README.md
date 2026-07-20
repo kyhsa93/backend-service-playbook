@@ -67,6 +67,11 @@ python3 harness.py <projectRoot>
 | `scheduler-in-infrastructure-only` | `rules/scheduler_in_infrastructure_only.py` | `domain/`·`application/`에 APScheduler/Celery/`asyncio.create_task` 기반 스케줄링이 있으면 실패 — Scheduler는 `infrastructure/`에만 위치(scheduling.md). `src/outbox/`는 이미 infrastructure에 준하는 위치로 대상 밖 |
 | `no-silent-except` | `rules/no_silent_except.py` | AST 기반 — `application/`·`infrastructure/`의 `except ...: pass`(본문이 정확히 `pass` 하나)가 있으면 실패, 로깅 후 전파해야 함(observability.md) |
 | `dockerfile-conventions` | `rules/dockerfile_conventions.py` | `py_files`가 아니라 `<root>/Dockerfile`·`<root>/.dockerignore`를 직접 읽어 검사 — 멀티스테이지(`FROM` 2개 이상), `HEALTHCHECK` 존재, `.dockerignore` 존재+합리적 제외 패턴(container.md) |
+| `aggregate-id-format` | `rules/aggregate_id_format.py` | `src/common/generate_id.py` 단일 파일 검사 — `uuid.uuid4().hex`(하이픈 없는 32자리)를 사용하는지, `str(uuid.uuid4())`(하이픈 포함 36자리) 안티패턴이 없는지(aggregate-id.md) |
+| `error-response-schema` | `rules/error_response_schema.py` | `@app.exception_handler(...)`로 등록된 핸들러가 만드는 응답 바디(`JSONResponse(content=...)`)의 필드 집합이 `statusCode`/`code`/`message`/`error` 4개와 정확히 일치하는지 — dict 리터럴이든 빌더 함수(Pydantic 모델 `.model_dump()`) 경유든 재귀적으로 추적(error-handling.md) |
+| `soft-delete-filter` | `rules/soft_delete_filter.py` | `infrastructure/persistence/`의 SQLAlchemy 모델 중 `updated_at`(상태 변경 가능)이 있는데 `deleted_at`이 없으면 실패, `deleted_at`이 있으면 그 모델을 조회하는 `find_*` 메서드가 `<Model>.deleted_at.is_(None)` 필터를 포함하는지 검사(persistence.md) |
+| `typed-errors-only` | `rules/typed_errors_only.py` | `domain/`·`application/`에서 `raise Exception("...")`/`raise ValueError("...")` 등 내장 제네릭 예외에 문자열 메시지를 실어 던지면 실패 — `domain/errors.py`의 타입화된 예외 클래스를 raise해야 함(AGENTS.md, error-handling.md) |
+| `rate-limit-wired` | `rules/rate_limit_wired.py` | `Limiter`가 정의만 되고 `main.py`에 배선(`app.state.limiter`/`RateLimitExceeded` 핸들러/`SlowAPIMiddleware`)되지 않았거나, 어떤 라우트에도 `@limiter.limit(...)`이 적용되지 않아 죽은 코드로 남아있으면 실패(rate-limiting.md) |
 
 ## 검토했으나 채택하지 않은 규칙
 

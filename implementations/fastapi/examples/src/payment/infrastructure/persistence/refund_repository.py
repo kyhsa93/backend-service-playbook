@@ -21,6 +21,7 @@ class RefundModel(Base):
     decision_note: Mapped[str | None] = mapped_column(nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 
 
 class SqlAlchemyRefundRepository(RefundRepository):
@@ -38,8 +39,8 @@ class SqlAlchemyRefundRepository(RefundRepository):
         payment_id: str | None = None,
         status: list[str] | None = None,
     ) -> tuple[list[Refund], int]:
-        stmt = select(RefundModel)
-        count_stmt = select(func.count()).select_from(RefundModel)
+        stmt = select(RefundModel).where(RefundModel.deleted_at.is_(None))
+        count_stmt = select(func.count()).select_from(RefundModel).where(RefundModel.deleted_at.is_(None))
 
         if refund_id:
             stmt = stmt.where(RefundModel.id == refund_id)

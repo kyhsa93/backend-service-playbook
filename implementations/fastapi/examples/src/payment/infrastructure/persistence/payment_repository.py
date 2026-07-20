@@ -21,6 +21,7 @@ class PaymentModel(Base):
     status: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 
 
 class SqlAlchemyPaymentRepository(PaymentRepository):
@@ -43,8 +44,8 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
         account_id: str | None = None,
         status: list[str] | None = None,
     ) -> tuple[list[Payment], int]:
-        stmt = select(PaymentModel)
-        count_stmt = select(func.count()).select_from(PaymentModel)
+        stmt = select(PaymentModel).where(PaymentModel.deleted_at.is_(None))
+        count_stmt = select(func.count()).select_from(PaymentModel).where(PaymentModel.deleted_at.is_(None))
 
         if payment_id:
             stmt = stmt.where(PaymentModel.id == payment_id)

@@ -16,12 +16,14 @@ if HARNESS_DIR not in sys.path:
     sys.path.insert(0, HARNESS_DIR)
 
 from rules import (  # noqa: E402
+    aggregate_id_format,
     aggregate_no_public_setters,
     cqrs_pattern,
     directory_structure,
     dockerfile_conventions,
     domain_layer_isolation,
     domain_purity,
+    error_response_schema,
     event_placement,
     file_naming,
     handler_placement,
@@ -32,11 +34,14 @@ from rules import (  # noqa: E402
     no_notification_dependency_in_command,
     no_silent_except,
     outbox_no_sync_drain,
+    rate_limit_wired,
     repository_abc,
     repository_impl,
     repository_naming,
     scheduler_in_infrastructure_only,
     shared_infra,
+    soft_delete_filter,
+    typed_errors_only,
 )
 from rules.common import collect_py_files  # noqa: E402
 
@@ -81,6 +86,11 @@ def assert_has_failure(result) -> None:
         (scheduler_in_infrastructure_only, "scheduler-in-infrastructure-only/good"),
         (no_silent_except, "no-silent-except/good"),
         (dockerfile_conventions, "dockerfile-conventions/good"),
+        (aggregate_id_format, "aggregate-id-format/good"),
+        (error_response_schema, "error-response-schema/good"),
+        (soft_delete_filter, "soft-delete-filter/good"),
+        (typed_errors_only, "typed-errors-only/good"),
+        (rate_limit_wired, "rate-limit-wired/good"),
     ],
 )
 def test_good_fixture_has_no_failures(rule_module, fixture):
@@ -121,6 +131,14 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (dockerfile_conventions, "dockerfile-conventions/bad-no-healthcheck"),
         (dockerfile_conventions, "dockerfile-conventions/bad-single-stage"),
         (dockerfile_conventions, "dockerfile-conventions/bad-no-dockerignore"),
+        (aggregate_id_format, "aggregate-id-format/bad-hyphenated-uuid"),
+        (error_response_schema, "error-response-schema/bad-extra-field"),
+        (error_response_schema, "error-response-schema/bad-missing-field"),
+        (soft_delete_filter, "soft-delete-filter/bad-missing-column"),
+        (soft_delete_filter, "soft-delete-filter/bad-missing-filter"),
+        (typed_errors_only, "typed-errors-only/bad-generic-exception"),
+        (rate_limit_wired, "rate-limit-wired/bad-not-registered"),
+        (rate_limit_wired, "rate-limit-wired/bad-not-applied"),
     ],
 )
 def test_bad_fixture_has_failure(rule_module, fixture):

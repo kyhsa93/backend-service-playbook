@@ -175,3 +175,7 @@ class RateLimitConfig:
 - [module-pattern.md](module-pattern.md) — `Limiter`를 `common/`에 둬 순환 import를 피하는 이유
 - [graceful-shutdown.md](graceful-shutdown.md) — `/health/live`/`/health/ready`는 `main.py`에서 rate limit `Depends` 없이 정의되어 있어 이미 제한 대상에서 제외되어 있다
 - [config.md](config.md) — 환경별 제한값 관리
+
+---
+
+harness `rate-limit-wired` 규칙(`../../harness/rules/rate_limit_wired.py`)이 `Limiter`가 정의만 되고 `main.py`에 배선(`app.state.limiter`/`RateLimitExceeded` 핸들러/`SlowAPIMiddleware`)되지 않았거나 어떤 라우트에도 `@limiter.limit(...)`이 적용되지 않아 죽은 코드로 남는 상태를 검증한다.
