@@ -2,6 +2,7 @@ package com.example.accountservice.payment.infrastructure;
 
 import com.example.accountservice.card.application.query.CardQuery;
 import com.example.accountservice.card.domain.Card;
+import com.example.accountservice.card.domain.CardFindQuery;
 import com.example.accountservice.card.domain.CardStatus;
 import com.example.accountservice.payment.application.adapter.CardAdapter;
 import java.util.Optional;
@@ -23,7 +24,12 @@ public class PaymentCardAdapterImpl implements CardAdapter {
 
     @Override
     public Optional<CardView> findCard(String cardId, String ownerId) {
-        return cardQuery.findByCardIdAndOwnerId(cardId, ownerId).map(this::toCardView);
+        return cardQuery
+                .findCards(new CardFindQuery(0, 1, cardId, ownerId, null, null))
+                .cards()
+                .stream()
+                .findFirst()
+                .map(this::toCardView);
     }
 
     private CardView toCardView(Card card) {

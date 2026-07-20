@@ -13,7 +13,7 @@ package com.example.accountservice.account.domain;
 public interface AccountRepository {
     AccountsWithCount findAccounts(AccountFindQuery query);
     void saveAccount(Account account);
-    void delete(String accountId);
+    void deleteAccount(String accountId);
     TransactionsWithCount findTransactions(String accountId, int page, int take);
 }
 ```
@@ -84,7 +84,7 @@ public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, Lo
 public interface AccountRepository {
     AccountsWithCount findAccounts(AccountFindQuery query);
     void saveAccount(Account account);
-    void delete(String accountId);   // soft delete — 실제 구현됨
+    void deleteAccount(String accountId);   // soft delete — 실제 구현됨
     TransactionsWithCount findTransactions(String accountId, int page, int take);
 }
 ```
@@ -117,7 +117,7 @@ Account account = accountRepository
 // AccountRepositoryImpl — 실제 코드
 @Override
 @Transactional
-public void delete(String accountId) {
+public void deleteAccount(String accountId) {
     jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(entity -> {
         Account account = AccountMapper.toDomain(entity);
         account.delete();                          // 도메인 메서드로 불변식(CLOSED만 삭제 가능) 검증 후 deletedAt 설정

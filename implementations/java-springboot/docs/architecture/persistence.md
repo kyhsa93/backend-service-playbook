@@ -109,14 +109,14 @@ public void delete() {
 
 ```java
 // domain/AccountRepository.java — 실제 코드
-void delete(String accountId);
+void deleteAccount(String accountId);
 ```
 
 ```java
 // AccountRepositoryImpl — 실제 코드
 @Override
 @Transactional
-public void delete(String accountId) {
+public void deleteAccount(String accountId) {
     jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(entity -> {
         Account account = AccountMapper.toDomain(entity);
         account.delete();                          // 도메인 메서드로 불변식 검증 후 deletedAt 설정
@@ -138,7 +138,7 @@ public class DeleteAccountService {
                 .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
                 .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
-        accountRepository.delete(command.accountId());
+        accountRepository.deleteAccount(command.accountId());
     }
 }
 ```

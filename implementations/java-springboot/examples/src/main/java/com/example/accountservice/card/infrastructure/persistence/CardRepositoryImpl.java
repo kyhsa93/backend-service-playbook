@@ -2,10 +2,13 @@ package com.example.accountservice.card.infrastructure.persistence;
 
 import com.example.accountservice.card.application.query.CardQuery;
 import com.example.accountservice.card.domain.Card;
+import com.example.accountservice.card.domain.CardFindQuery;
 import com.example.accountservice.card.domain.CardRepository;
-import com.example.accountservice.card.domain.CardStatus;
+import com.example.accountservice.card.domain.CardsWithCount;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class CardRepositoryImpl implements CardRepository, CardQuery {
 
     private final CardJpaRepository jpaRepository;
+    private final EntityManager em;
 
     @Override
     @Transactional
-    public void save(Card card) {
+    public void saveCard(Card card) {
         CardJpaEntity entity =
                 jpaRepository
                         .findByCardId(card.getCardId())
@@ -33,16 +37,63 @@ public class CardRepositoryImpl implements CardRepository, CardQuery {
     }
 
     @Override
-    public List<Card> findByAccountIdAndStatusIn(String accountId, List<CardStatus> statuses) {
-        return jpaRepository
-                .findByAccountIdAndStatusInOrderByCardIdDesc(accountId, statuses)
-                .stream()
-                .map(CardMapper::toDomain)
-                .toList();
+    public CardsWithCount findCards(CardFindQuery query) {
+        String listJpql = buildJpql(query, false);
+        var listQuery =
+                em.createQuery(listJpql, CardJpaEntity.class)
+                        .setFirstResult(query.page() * query.take())
+                        .setMaxResults(query.take());
+        applyParams(listQuery, query);
+        List<Card> cards = listQuery.getResultList().stream().map(CardMapper::toDomain).toList();
+
+        String countJpql = buildJpql(query, true);
+        var countQuery = em.createQuery(countJpql, Long.class);
+        applyParams(countQuery, query);
+        long count = countQuery.getSingleResult();
+
+        return new CardsWithCount(cards, count);
     }
 
-    @Override
-    public Optional<Card> findByCardIdAndOwnerId(String cardId, String ownerId) {
-        return jpaRepository.findByCardIdAndOwnerId(cardId, ownerId).map(CardMapper::toDomain);
+    private String buildJpql(CardFindQuery query, boolean count) {
+        StringBuilder sb =
+                new StringBuilder(
+                        count
+                                ? "SELECT COUNT(c) FROM CardJpaEntity c"
+                                : "SELECT c FROM CardJpaEntity c");
+        List<String> conditions = new ArrayList<>();
+        if (query.cardId() != null && !query.cardId().isBlank()) {
+            conditions.add("c.cardId = :cardId");
+        }
+        if (query.ownerId() != null && !query.ownerId().isBlank()) {
+            conditions.add("c.ownerId = :ownerId");
+        }
+        if (query.accountId() != null && !query.accountId().isBlank()) {
+            conditions.add("c.accountId = :accountId");
+        }
+        if (query.statuses() != null && !query.statuses().isEmpty()) {
+            conditions.add("c.status IN :statuses");
+        }
+        if (!conditions.isEmpty()) {
+            sb.append(" WHERE ").append(String.join(" AND ", conditions));
+        }
+        if (!count) {
+            sb.append(" ORDER BY c.cardId DESC");
+        }
+        return sb.toString();
+    }
+
+    private void applyParams(Query q, CardFindQuery query) {
+        if (query.cardId() != null && !query.cardId().isBlank()) {
+            q.setParameter("cardId", query.cardId());
+        }
+        if (query.ownerId() != null && !query.ownerId().isBlank()) {
+            q.setParameter("ownerId", query.ownerId());
+        }
+        if (query.accountId() != null && !query.accountId().isBlank()) {
+            q.setParameter("accountId", query.accountId());
+        }
+        if (query.statuses() != null && !query.statuses().isEmpty()) {
+            q.setParameter("statuses", query.statuses());
+        }
     }
 }

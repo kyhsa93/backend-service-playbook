@@ -95,7 +95,7 @@ public class IssueCardService {
         }
 
         Card card = Card.issue(command.accountId(), command.requesterId(), command.brand());
-        cardRepository.save(card);
+        cardRepository.saveCard(card);
         return new IssueCardResult(card.getCardId(), card.getAccountId(), card.getOwnerId(),
                 card.getBrand(), card.getStatus().name(), card.getCreatedAt());
     }

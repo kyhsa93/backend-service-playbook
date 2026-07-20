@@ -1,6 +1,7 @@
 package com.example.accountservice.card.application.command;
 
 import com.example.accountservice.card.domain.Card;
+import com.example.accountservice.card.domain.CardFindQuery;
 import com.example.accountservice.card.domain.CardRepository;
 import com.example.accountservice.card.domain.CardStatus;
 import java.util.List;
@@ -19,11 +20,19 @@ public class CancelCardsByAccountService {
 
     public void cancel(CancelCardsByAccountCommand command) {
         List<Card> cards =
-                cardRepository.findByAccountIdAndStatusIn(
-                        command.accountId(), List.of(CardStatus.ACTIVE, CardStatus.SUSPENDED));
+                cardRepository
+                        .findCards(
+                                new CardFindQuery(
+                                        0,
+                                        Integer.MAX_VALUE,
+                                        null,
+                                        null,
+                                        command.accountId(),
+                                        List.of(CardStatus.ACTIVE, CardStatus.SUSPENDED)))
+                        .cards();
         for (Card card : cards) {
             card.cancel();
-            cardRepository.save(card);
+            cardRepository.saveCard(card);
         }
     }
 }

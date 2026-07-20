@@ -2,6 +2,7 @@ package com.example.accountservice.card.application.query;
 
 import com.example.accountservice.card.domain.Card;
 import com.example.accountservice.card.domain.CardException;
+import com.example.accountservice.card.domain.CardFindQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +17,10 @@ public class GetCardService {
     public GetCardResult getCard(String cardId, String requesterId) {
         Card card =
                 cardQuery
-                        .findByCardIdAndOwnerId(cardId, requesterId)
+                        .findCards(new CardFindQuery(0, 1, cardId, requesterId, null, null))
+                        .cards()
+                        .stream()
+                        .findFirst()
                         .orElseThrow(
                                 () ->
                                         new CardException(

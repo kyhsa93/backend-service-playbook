@@ -43,7 +43,7 @@ class IssueCardServiceTest {
         assertThat(result.ownerId()).isEqualTo("owner-1");
         assertThat(result.brand()).isEqualTo("VISA");
         assertThat(result.status()).isEqualTo("ACTIVE");
-        verify(cardRepository).save(any());
+        verify(cardRepository).saveCard(any());
     }
 
     @Test

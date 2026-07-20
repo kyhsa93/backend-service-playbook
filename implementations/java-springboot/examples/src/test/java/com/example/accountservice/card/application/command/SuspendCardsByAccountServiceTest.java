@@ -7,8 +7,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.accountservice.card.domain.Card;
+import com.example.accountservice.card.domain.CardFindQuery;
 import com.example.accountservice.card.domain.CardRepository;
 import com.example.accountservice.card.domain.CardStatus;
+import com.example.accountservice.card.domain.CardsWithCount;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,22 +34,36 @@ class SuspendCardsByAccountServiceTest {
     void 계좌의_ACTIVE_카드를_전부_정지하고_저장한다() {
         Card card1 = Card.issue("account-1", "owner-1", "VISA");
         Card card2 = Card.issue("account-1", "owner-1", "MASTER");
-        when(cardRepository.findByAccountIdAndStatusIn("account-1", List.of(CardStatus.ACTIVE)))
-                .thenReturn(List.of(card1, card2));
+        when(cardRepository.findCards(
+                        new CardFindQuery(
+                                0,
+                                Integer.MAX_VALUE,
+                                null,
+                                null,
+                                "account-1",
+                                List.of(CardStatus.ACTIVE))))
+                .thenReturn(new CardsWithCount(List.of(card1, card2), 2));
 
         service.suspend(new SuspendCardsByAccountCommand("account-1"));
 
-        verify(cardRepository, times(2)).save(org.mockito.ArgumentMatchers.any());
+        verify(cardRepository, times(2)).saveCard(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void ACTIVE_카드가_없으면_아무_것도_저장하지_않는다_멱등성() {
-        when(cardRepository.findByAccountIdAndStatusIn(
-                        eq("account-1"), eq(List.of(CardStatus.ACTIVE))))
-                .thenReturn(List.of());
+        when(cardRepository.findCards(
+                        eq(
+                                new CardFindQuery(
+                                        0,
+                                        Integer.MAX_VALUE,
+                                        null,
+                                        null,
+                                        "account-1",
+                                        List.of(CardStatus.ACTIVE)))))
+                .thenReturn(new CardsWithCount(List.of(), 0));
 
         service.suspend(new SuspendCardsByAccountCommand("account-1"));
 
-        verify(cardRepository, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(cardRepository, never()).saveCard(org.mockito.ArgumentMatchers.any());
     }
 }

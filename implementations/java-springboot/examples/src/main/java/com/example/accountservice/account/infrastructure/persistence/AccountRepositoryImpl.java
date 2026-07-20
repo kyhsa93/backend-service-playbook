@@ -67,7 +67,7 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
 
     @Override
     @Transactional
-    public void delete(String accountId) {
+    public void deleteAccount(String accountId) {
         jpaRepository
                 .findByAccountIdAndDeletedAtIsNull(accountId)
                 .ifPresent(

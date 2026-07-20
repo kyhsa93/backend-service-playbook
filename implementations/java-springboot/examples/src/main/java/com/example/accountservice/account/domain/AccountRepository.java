@@ -5,7 +5,7 @@ public interface AccountRepository {
 
     void saveAccount(Account account);
 
-    void delete(String accountId);
+    void deleteAccount(String accountId);
 
     TransactionsWithCount findTransactions(String accountId, int page, int take);
 
