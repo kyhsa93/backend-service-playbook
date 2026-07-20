@@ -21,7 +21,7 @@ repositories {
 dependencyManagement {
     imports {
         mavenBom "org.testcontainers:testcontainers-bom:2.0.5"
-        mavenBom "software.amazon.awssdk:bom:2.29.29"
+        mavenBom "software.amazon.awssdk:bom:2.48.3"
     }
 }
 
