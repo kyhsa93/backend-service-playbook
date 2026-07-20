@@ -12,3 +12,15 @@ package com.example.accountservice.auth.domain
 interface CredentialRepository {
     fun saveCredential(credential: Credential)
 }
+
+/**
+ * root `repository-pattern.md`의 `find<Noun>s` 통일 규칙에 맞춰 정의한다 —
+ * [com.example.accountservice.auth.application.query.CredentialQuery]가 이 타입을 재사용해
+ * `findCredentials`를 정의한다(AccountFindQuery/PaymentFindQuery와 동일한 패턴). userId는
+ * 유일 키이므로 결과가 최대 1건이지만, 다른 Find Query와 동일하게 page/take를 갖는다.
+ */
+data class CredentialFindQuery(
+    val page: Int,
+    val take: Int,
+    val userId: String? = null,
+)

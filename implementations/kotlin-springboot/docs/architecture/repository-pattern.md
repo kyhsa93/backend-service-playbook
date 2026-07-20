@@ -25,7 +25,7 @@ class CreateAccountService(private val accountRepository: AccountRepository)
 
 ---
 
-## 조회/저장 메서드 네이밍 — `find<Noun>s`/`save<Noun>`으로 통일 완료
+## 조회/저장 메서드 네이밍 — `find<Noun>s`/`save<Noun>`으로 통일 (harness `repository-naming` 규칙으로 강제)
 
 ```kotlin
 // domain/AccountRepository.kt — 실제 코드
@@ -163,7 +163,7 @@ private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
 
 - **1 Aggregate = 1 Repository 인터페이스 + 구현체**.
 - **`delete<Noun>` 추가 완료**: `deleteAccount(accountId)`가 실제 코드에 존재하고 `Account.markDeleted()`를 통해 CLOSED 상태만 삭제 가능하도록 강제한다.
-- **`find<Noun>s`/`save<Noun>`으로 통일 완료**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍되었다. `findTransactions`/`countTransactions`도 `findTransactions(query): Pair<...>` 하나로 합쳐졌다. 이 통일은 `AccountRepository`(쓰기 모델)뿐 아니라 `AccountQuery`(읽기 전용 포트)에도 그대로 적용되어 있고, Card(`findCards`/`saveCard`)·Payment(`findPayments`/`savePayment`)·Refund(`findRefunds`/`saveRefund`)의 Repository/Query 양쪽 모두 같은 형태다 — 더 이상 `find<Noun>ByXAndY` 같은 전용 조회 메서드가 코드베이스에 남아 있지 않다.
+- **`find<Noun>s`/`save<Noun>`으로 통일**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍되었다. `findTransactions`/`countTransactions`도 `findTransactions(query): Pair<...>` 하나로 합쳐졌다. 이 통일은 `AccountRepository`(쓰기 모델)뿐 아니라 `AccountQuery`(읽기 전용 포트)에도 그대로 적용되어 있고, Card(`findCards`/`saveCard`)·Payment(`findPayments`/`savePayment`)·Refund(`findRefunds`/`saveRefund`)·Auth(`CredentialQuery.findCredentials`)의 Repository/Query 양쪽 모두 같은 형태다. 이 규칙은 harness의 `repository-naming` 검사(`domain/`, `application/query/` 안의 `*Repository`/`*Query` 인터페이스 메서드를 스캔, `findBy...`/bare `findAll`/`count*`/`save`/`delete` 를 blocklist로 잡는다)가 자동으로 강제한다 — 문서가 "완료"라고 적어도 실제로 리네이밍이 빠진 인터페이스가 있으면(과거 `CredentialQuery.findByUserId`가 그랬듯) harness FAIL로 드러난다.
 - **단건 조회는 `take: 1` + `firstOrNull()`**: 전용 findOne 메서드를 만들지 않는다 — Command Service 6곳이 모두 이 패턴을 쓴다.
 - **Repository에 update 메서드 없음**: 상태 변경은 Aggregate 도메인 메서드 + `saveAccount`/`deleteAccount`로 이루어진다.
 - **동적 필터, soft-delete 조회 조건**: 값이 있을 때만 조건을 추가하고, `deletedAt IS NULL`이 모든 조회에 기본 적용된다.

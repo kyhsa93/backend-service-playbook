@@ -17,6 +17,7 @@ import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkRepositoryAnnotation
+import harness.rules.checkRepositoryNaming
 import harness.rules.checkSealedException
 import harness.rules.checkServiceAnnotation
 import harness.rules.checkSharedInfra
@@ -37,7 +38,8 @@ val RULES: List<Rule> = listOf(
     ::checkTransactionBoundary,
     ::checkOutboxNoSyncDrain,
     ::checkCqrsPattern,
-    ::checkNotificationE2eTest
+    ::checkNotificationE2eTest,
+    ::checkRepositoryNaming
 )
 
 fun main(args: Array<String>) {

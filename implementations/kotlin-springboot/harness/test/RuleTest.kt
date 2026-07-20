@@ -18,6 +18,7 @@ import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkRepositoryAnnotation
+import harness.rules.checkRepositoryNaming
 import harness.rules.checkSealedException
 import harness.rules.checkServiceAnnotation
 import harness.rules.checkSharedInfra
@@ -86,7 +87,15 @@ val TESTS: List<TestCase> = listOf(
     TestCase("notification-e2e-test/bad-missing") { checkNotificationE2eTest("testdata/notification-e2e-test/bad-missing").assertHasFailure() },
 
     TestCase("cqrs-pattern/good") { checkCqrsPattern("testdata/cqrs-pattern/good").assertNoFailures() },
-    TestCase("cqrs-pattern/bad-query-uses-repository") { checkCqrsPattern("testdata/cqrs-pattern/bad-query-uses-repository").assertHasFailure() }
+    TestCase("cqrs-pattern/bad-query-uses-repository") { checkCqrsPattern("testdata/cqrs-pattern/bad-query-uses-repository").assertHasFailure() },
+
+    TestCase("repository-naming/good") { checkRepositoryNaming("testdata/repository-naming/good").assertNoFailures() },
+    TestCase("repository-naming/good-infra-excluded") { checkRepositoryNaming("testdata/repository-naming/good-infra-excluded").assertNoFailures() },
+    TestCase("repository-naming/bad-findby") { checkRepositoryNaming("testdata/repository-naming/bad-findby").assertHasFailure() },
+    TestCase("repository-naming/bad-findall") { checkRepositoryNaming("testdata/repository-naming/bad-findall").assertHasFailure() },
+    TestCase("repository-naming/bad-count") { checkRepositoryNaming("testdata/repository-naming/bad-count").assertHasFailure() },
+    TestCase("repository-naming/bad-bare-save") { checkRepositoryNaming("testdata/repository-naming/bad-bare-save").assertHasFailure() },
+    TestCase("repository-naming/bad-bare-delete") { checkRepositoryNaming("testdata/repository-naming/bad-bare-delete").assertHasFailure() }
 )
 
 fun main() {

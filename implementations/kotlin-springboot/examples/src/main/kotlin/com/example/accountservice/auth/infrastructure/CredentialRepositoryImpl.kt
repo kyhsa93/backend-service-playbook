@@ -2,6 +2,7 @@ package com.example.accountservice.auth.infrastructure
 
 import com.example.accountservice.auth.application.query.CredentialQuery
 import com.example.accountservice.auth.domain.Credential
+import com.example.accountservice.auth.domain.CredentialFindQuery
 import com.example.accountservice.auth.domain.CredentialRepository
 import com.example.accountservice.auth.infrastructure.persistence.CredentialJpaRepository
 import com.example.accountservice.auth.infrastructure.persistence.CredentialMapper
@@ -22,5 +23,9 @@ class CredentialRepositoryImpl(
         jpaRepository.save(CredentialMapper.toNewEntity(credential))
     }
 
-    override fun findByUserId(userId: String): Credential? = jpaRepository.findByUserId(userId)?.let(CredentialMapper::toDomain)
+    override fun findCredentials(query: CredentialFindQuery): Pair<List<Credential>, Long> {
+        val credential = query.userId?.let { jpaRepository.findByUserId(it) }?.let(CredentialMapper::toDomain)
+        val credentials = listOfNotNull(credential)
+        return credentials to credentials.size.toLong()
+    }
 }

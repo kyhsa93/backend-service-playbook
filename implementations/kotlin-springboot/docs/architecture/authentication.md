@@ -53,7 +53,7 @@ auth/
       SignUpCommand.kt / SignUpService.kt   ← 아이디 중복 확인 → 해싱 → 저장
       SignInCommand.kt / SignInService.kt   ← 해시 조회 → 검증 → 토큰 발급
     query/
-      CredentialQuery.kt               ← 읽기 전용 포트 (findByUserId) — SignUp/SignIn 모두 사용
+      CredentialQuery.kt               ← 읽기 전용 포트 (findCredentials, repository-pattern.md의 find<Noun>s 규칙) — SignUp/SignIn 모두 사용
     service/
       PasswordHasher.kt                ← interface (Technical Service)
   domain/
@@ -122,7 +122,11 @@ class SignUpService(
     private val passwordHasher: PasswordHasher,
 ) {
     fun signUp(command: SignUpCommand) {
-        credentialQuery.findByUserId(command.userId)?.let { throw UserIdAlreadyExistsException() }
+        credentialQuery
+            .findCredentials(CredentialFindQuery(page = 0, take = 1, userId = command.userId))
+            .first
+            .firstOrNull()
+            ?.let { throw UserIdAlreadyExistsException() }
         val passwordHash = passwordHasher.hash(command.password)
         credentialRepository.saveCredential(Credential.create(command.userId, passwordHash))
     }
@@ -137,12 +141,18 @@ class SignInService(
 ) {
     fun signIn(command: SignInCommand): String {
         // 아이디 미존재/비밀번호 불일치를 동일한 예외로 응답 — user enumeration 방지
-        val credential = credentialQuery.findByUserId(command.userId) ?: throw InvalidCredentialsException()
+        val credential =
+            credentialQuery
+                .findCredentials(CredentialFindQuery(page = 0, take = 1, userId = command.userId))
+                .first
+                .firstOrNull() ?: throw InvalidCredentialsException()
         if (!passwordHasher.verify(command.password, credential.passwordHash)) throw InvalidCredentialsException()
         return authService.sign(credential.userId)
     }
 }
 ```
+
+`findCredentials`는 root `repository-pattern.md`의 `find<Noun>s` 통일 규칙을 따른다 — 단건 조회 전용 메서드(`findByUserId`)를 두지 않고 `CredentialFindQuery(take = 1, userId = ...)` + `.first.firstOrNull()`로 처리한다(Account/Card/Payment의 `*Query`와 동일한 패턴). harness의 `repository-naming` 규칙이 `find...By...` 형태의 재도입을 자동으로 잡아낸다.
 
 `SignUpService`/`SignInService`는 둘 다 `POST` 엔드포인트의 유스케이스이므로 (cqrs-pattern.md의 Kotlin 구현 기준대로) `application/command/`에 둔다 — `SignInService`가 DB에 쓰지 않는다는 이유로 `application/query/`에 두지 않는다(그쪽은 `CredentialQuery` 포트 전용).
 

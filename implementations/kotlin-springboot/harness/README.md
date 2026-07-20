@@ -64,6 +64,7 @@ bash implementations/kotlin-springboot/harness.sh <projectRoot>
 | `outbox-no-sync-drain` | `OutboxNoSyncDrain.kt` | Command Service가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 참조하거나 `processPending`/`poll`/`drainOnce`를 호출하면 실패 — Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임(동기 드레인 금지, domain-events.md) |
 | `cqrs-pattern` | `CqrsPattern.kt` | `application/query/` 파일이 쓰기 모델 Repository(`*Repository`)에 의존하면 실패 — 읽기 전용 Query 인터페이스(`AccountQuery` 등)만 사용해야 함 (cqrs-pattern.md). 주석 안의 언급은 제외 |
 | `notification-e2e-test` | `NotificationE2eTest.kt` | `NotificationE2ETest.kt` 존재 확인(다른 규칙은 `test/`를 검사 대상에서 제외하므로 이 회귀 테스트 삭제를 못 잡음) |
+| `repository-naming` | `RepositoryNaming.kt` | `domain/`, `application/query/` 안의 `*Repository`/`*Query` 인터페이스 메서드가 `find<Noun>s`/`save<Noun>`/`delete<Noun>` 네이밍을 따르는지 확인(repository-pattern.md). `findBy...`, bare `findAll`/`count*`/`save`/`delete`를 blocklist로 잡는다 — `infrastructure/`의 구현체·내부 Spring Data JPA 인터페이스(derived query 메서드)는 대상 아님 |
 
 ## 회귀 테스트
 
