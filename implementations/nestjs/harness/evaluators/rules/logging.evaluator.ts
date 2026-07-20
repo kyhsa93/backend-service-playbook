@@ -6,6 +6,10 @@
 // Rules:
 // - console.log/warn/error/debug/info 직접 사용 금지
 // - catch 블록이 비어 있거나 에러를 로깅/재throw하지 않으면 실패
+// - domain/ 레이어에서는 어떤 로깅도 하지 않는다 (NestJS Logger/@nestjs/common
+//   import, console.*, winston 전부 금지) — "Domain 레이어에서는 Logger를
+//   사용하지 않는다. 도메인 로직의 결과는 Application 레이어에서 로깅한다"
+//   (observability.md 레이어별 로깅 기준 표)
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -13,10 +17,14 @@ import * as path from 'node:path'
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 
 const DOC_REF = 'docs/architecture/observability.md'
+const DOMAIN_LOGGING_DOC_REF = `${DOC_REF}#레이어별-로깅-기준`
 const CONSOLE_PATTERN = /\bconsole\.(log|warn|error|debug|info)\s*\(/g
 const EMPTY_CATCH_PATTERN = /catch\s*\([^)]*\)\s*\{\s*\}/g
 const CATCH_BLOCK_PATTERN = /catch\s*\([^)]*\)\s*\{([\s\S]*?)\}/g
 const HANDLED_ERROR_PATTERN = /\b(logger|this\.logger|Logger)\.(error|warn|log|debug)\s*\(|\bthrow\b/
+const NESTJS_LOGGER_NAMED_IMPORT_PATTERN = /import\s*\{[^}]*\bLogger\b[^}]*\}\s*from\s*['"]@nestjs\/common['"]/
+const WINSTON_IMPORT_PATTERN = /from\s*['"]winston['"]/
+const DOMAIN_LOGGER_USAGE_PATTERN = /\bnew\s+Logger\s*\(|\blogger\.(log|error|warn|debug|verbose)\s*\(/
 
 function walkTsFiles(root: string): string[] {
   const out: string[] = []
@@ -93,6 +101,20 @@ export function evaluateLogging(root: string): EvaluatorResult {
         docRef: DOC_REF
       })
       score -= 4
+    }
+
+    if (file.replace(/\\/g, '/').includes('/domain/')) {
+      const usesNestjsLogger = NESTJS_LOGGER_NAMED_IMPORT_PATTERN.test(content) || DOMAIN_LOGGER_USAGE_PATTERN.test(content)
+      const usesWinston = WINSTON_IMPORT_PATTERN.test(content)
+      if (usesNestjsLogger || usesWinston) {
+        failures.push({
+          ruleId: 'logging.no-logging-in-domain',
+          severity: 'high',
+          message: `${rel(file)} — domain 레이어에서 로깅 사용 금지(${usesWinston ? 'winston' : '@nestjs/common Logger'}). 도메인 로직의 결과는 Application 레이어에서 로깅한다`,
+          docRef: DOMAIN_LOGGING_DOC_REF
+        })
+        score -= 4
+      }
     }
   }
 

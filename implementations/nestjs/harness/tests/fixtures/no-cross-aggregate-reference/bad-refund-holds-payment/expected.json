@@ -1,0 +1,5 @@
+{
+  "name": "no-cross-aggregate-reference",
+  "applicable": true,
+  "expectedFailureRuleIds": ["no-cross-aggregate-reference.aggregate-field-reference"]
+}

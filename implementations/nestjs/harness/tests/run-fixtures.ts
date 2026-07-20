@@ -30,6 +30,12 @@ import { evaluatePagination } from '../evaluators/rules/pagination.evaluator'
 import { evaluateDatabaseQueries } from '../evaluators/rules/database-queries.evaluator'
 import { evaluateDomainService } from '../evaluators/rules/domain-service.evaluator'
 import { evaluateAggregateId } from '../evaluators/rules/aggregate-id.evaluator'
+import { evaluateLogging } from '../evaluators/rules/logging.evaluator'
+import { evaluateDomainLayerIsolation } from '../evaluators/rules/domain-layer-isolation.evaluator'
+import { evaluateInterfaceNoInfrastructure } from '../evaluators/rules/interface-no-infrastructure.evaluator'
+import { evaluateAggregateNoPublicSetters } from '../evaluators/rules/aggregate-no-public-setters.evaluator'
+import { evaluateNoCrossAggregateReference } from '../evaluators/rules/no-cross-aggregate-reference.evaluator'
+import { evaluateNoCrossBcRepositoryInApplication } from '../evaluators/rules/no-cross-bc-repository-in-application.evaluator'
 import type { EvaluatorResult } from '../evaluators/shared/types'
 
 type EvaluatorFn = (root: string) => EvaluatorResult
@@ -50,7 +56,13 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   pagination: evaluatePagination,
   'database-queries': evaluateDatabaseQueries,
   'domain-service': evaluateDomainService,
-  'aggregate-id': evaluateAggregateId
+  'aggregate-id': evaluateAggregateId,
+  logging: evaluateLogging,
+  'domain-layer-isolation': evaluateDomainLayerIsolation,
+  'interface-no-infrastructure': evaluateInterfaceNoInfrastructure,
+  'aggregate-no-public-setters': evaluateAggregateNoPublicSetters,
+  'no-cross-aggregate-reference': evaluateNoCrossAggregateReference,
+  'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication
 }
 
 interface Expected {

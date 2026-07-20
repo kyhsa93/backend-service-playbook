@@ -67,6 +67,11 @@ this.logger.error({ message: 'SQS 전송 실패', event_id: event.eventId, error
 
 Domain 레이어에서는 `Logger`를 사용하지 않는다. 도메인 로직의 결과는 Application 레이어에서 로깅한다.
 
+`domain/*.ts`가 `@nestjs/common`의 `Logger`, `winston`, `console.*` 중 하나라도 사용하면
+`harness/evaluators/rules/logging.evaluator.ts`가 `logging.no-logging-in-domain`으로 잡아낸다.
+console 직접 사용(`logging.no-console`)과 빈/미처리 catch 블록(`logging.no-empty-catch`,
+`logging.no-swallowed-error`)도 같은 evaluator가 검증한다.
+
 ## Correlation ID — 요청 추적
 
 분산 환경에서 하나의 요청이 여러 서비스를 거칠 때, 모든 로그에 동일한 Correlation ID를 포함하여 추적한다.

@@ -35,6 +35,11 @@ import { evaluatePagination } from '../rules/pagination.evaluator'
 import { evaluateDatabaseQueries } from '../rules/database-queries.evaluator'
 import { evaluateDomainService } from '../rules/domain-service.evaluator'
 import { evaluateAggregateId } from '../rules/aggregate-id.evaluator'
+import { evaluateDomainLayerIsolation } from '../rules/domain-layer-isolation.evaluator'
+import { evaluateInterfaceNoInfrastructure } from '../rules/interface-no-infrastructure.evaluator'
+import { evaluateAggregateNoPublicSetters } from '../rules/aggregate-no-public-setters.evaluator'
+import { evaluateNoCrossAggregateReference } from '../rules/no-cross-aggregate-reference.evaluator'
+import { evaluateNoCrossBcRepositoryInApplication } from '../rules/no-cross-bc-repository-in-application.evaluator'
 import { aggregate } from '../shared/score'
 import type { EvaluatorResult } from '../shared/types'
 
@@ -72,7 +77,12 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   pagination: evaluatePagination,
   'database-queries': evaluateDatabaseQueries,
   'domain-service': evaluateDomainService,
-  'aggregate-id': evaluateAggregateId
+  'aggregate-id': evaluateAggregateId,
+  'domain-layer-isolation': evaluateDomainLayerIsolation,
+  'interface-no-infrastructure': evaluateInterfaceNoInfrastructure,
+  'aggregate-no-public-setters': evaluateAggregateNoPublicSetters,
+  'no-cross-aggregate-reference': evaluateNoCrossAggregateReference,
+  'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication
 }
 
 interface CliArgs {

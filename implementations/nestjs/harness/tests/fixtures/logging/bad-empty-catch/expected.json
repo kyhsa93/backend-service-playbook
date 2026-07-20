@@ -1,0 +1,5 @@
+{
+  "name": "logging",
+  "applicable": true,
+  "expectedFailureRuleIds": ["logging.no-empty-catch"]
+}

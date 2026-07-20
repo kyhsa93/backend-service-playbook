@@ -44,6 +44,10 @@ Adapter는 **Anticorruption Layer(ACL)** 역할을 한다. 외부 BC의 모델·
 - 외부 BC의 Repository나 Service를 Application 레이어에서 직접 주입하지 않는다.
 - Adapter를 통해 외부 BC의 **쓰기 메서드**를 호출하지 않는다. 쓰기가 필요하면 Integration Event로 전환을 검토한다.
 
+nestjs harness는 `application/**/*.ts`가 다른 BC의 `domain/*-repository.ts`를 직접 import하는지를
+`no-cross-bc-repository-in-application.evaluator.ts`로 검증한다 — 같은 도메인 안의 Repository
+import(정상 패턴)는 대상이 아니다.
+
 ---
 
 ### 비동기 호출 — Integration Event

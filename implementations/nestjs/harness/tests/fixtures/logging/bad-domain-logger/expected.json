@@ -1,0 +1,5 @@
+{
+  "name": "logging",
+  "applicable": true,
+  "expectedFailureRuleIds": ["logging.no-logging-in-domain"]
+}

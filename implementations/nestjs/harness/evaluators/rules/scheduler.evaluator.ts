@@ -1,13 +1,16 @@
-// scheduler evaluator — AST-based enforcement for @Cron Scheduler files.
+// scheduler evaluator — AST-based enforcement for @Cron/@Interval Scheduler files.
 //
 // Rules:
-// - Scheduler with @Cron lives in infrastructure/ (exception: task-queue/ &
-//   outbox/ framework-internal files).
-// - Every @Cron method body has try-catch or uses runSafely() helper.
+// - Scheduler with @Cron or @Interval lives in infrastructure/ (exception:
+//   task-queue/ & outbox/ framework-internal files) — scheduling.md: "단순
+//   @Cron 하나"도 유효한 선택지지만 위치는 항상 Infrastructure. @Interval도
+//   같은 이유(다중 인스턴스에서 타이머가 프레임워크 스케줄러로 동작)로 동일
+//   원칙이 적용된다 ("Interval / Timeout" 섹션).
+// - Every @Cron/@Interval method body has try-catch or uses runSafely() helper.
 // - Domain Scheduler must NOT inject Repository/DataSource/CommandService
 //   (should only depend on TaskQueue abstract).
 //
-// Applicability: if no @Cron decorators exist in src/, evaluator is skipped.
+// Applicability: if no @Cron/@Interval decorators exist in src/, evaluator is skipped.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -33,7 +36,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
   const rel = (f: string) => path.relative(root, f)
 
   // Applicability gate
-  const anyCron = files.some((f) => /@Cron\s*\(/.test(fs.readFileSync(f, 'utf-8')))
+  const anyCron = files.some((f) => /@Cron\s*\(|@Interval\s*\(/.test(fs.readFileSync(f, 'utf-8')))
   if (!anyCron) {
     return { name: 'scheduler', score: 0, maxScore: 0, failures: [] }
   }
@@ -42,7 +45,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
 
   for (const file of files) {
     const methods = listMethodDecorators(file)
-    const cronMethods = methods.filter((m) => m.decorators.some((d) => d.name === 'Cron'))
+    const cronMethods = methods.filter((m) => m.decorators.some((d) => d.name === 'Cron' || d.name === 'Interval'))
     if (cronMethods.length === 0) continue
 
     const layer = classifyLayer(file)
@@ -53,7 +56,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'scheduler.layer',
         severity: 'high',
-        message: `@Cron 사용 Scheduler가 infrastructure/ 외 레이어(${layer})에 위치: ${rel(file)}`,
+        message: `@Cron/@Interval 사용 Scheduler가 infrastructure/ 외 레이어(${layer})에 위치: ${rel(file)}`,
         docRef: 'docs/architecture/scheduling.md#scheduler--cron--taskqueue'
       })
       score -= 4
@@ -64,12 +67,12 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'scheduler.file-suffix',
         severity: 'medium',
-        message: `@Cron 보유 Infrastructure 파일은 *-scheduler.ts 형식이어야 함: ${rel(file)}`
+        message: `@Cron/@Interval 보유 Infrastructure 파일은 *-scheduler.ts 형식이어야 함: ${rel(file)}`
       })
       score -= 2
     }
 
-    // Rule 2: 각 @Cron 메서드가 try-catch 또는 runSafely로 감싸져 있어야 함
+    // Rule 2: 각 @Cron/@Interval 메서드가 try-catch 또는 runSafely로 감싸져 있어야 함
     for (const m of cronMethods) {
       const hasTry = /\btry\s*\{/.test(m.body)
       const hasCatch = /\bcatch\s*\(/.test(m.body)
@@ -78,7 +81,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'scheduler.cron.try-catch',
           severity: 'medium',
-          message: `Cron 메서드 ${m.methodName}에 try-catch(또는 runSafely 헬퍼) 부재: ${rel(file)} — @nestjs/schedule이 예외를 삼킴`,
+          message: `Cron/Interval 메서드 ${m.methodName}에 try-catch(또는 runSafely 헬퍼) 부재: ${rel(file)} — @nestjs/schedule이 예외를 삼킴`,
           docRef: 'docs/architecture/scheduling.md#scheduler--cron--taskqueue'
         })
         score -= 2

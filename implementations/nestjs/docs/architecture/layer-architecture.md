@@ -77,6 +77,12 @@ export abstract class OrderRepository {
 }
 ```
 
+`domain/*.ts`가 (자기 도메인이든 다른 도메인이든) `application/`·`infrastructure/`·`interface/`를
+import하면 `harness/evaluators/rules/domain-layer-isolation.evaluator.ts`가
+`domain-layer-isolation.forbidden-import`로 잡아낸다. 상태 변경을 도메인 메서드로만 노출하지 않고
+public `set x(...)` accessor나 public 비-readonly 필드로 열어두면
+`harness/evaluators/rules/aggregate-no-public-setters.evaluator.ts`가 잡아낸다.
+
 ### Application 레이어 역할 — 조율자
 
 Application Service는 **Command Service**와 **Query Service**로 분리한다.
@@ -294,6 +300,14 @@ Interface 레이어는 REST API 진입점을 제공한다.
 1. 요청 수신
 2. Command Service 또는 Query Service 호출
 3. `.catch()` 로 에러 캐치 → HTTP 예외로 변환
+
+Controller는 Application Service를 NestJS DI로 주입받아 호출하고, `infrastructure/`
+구현체(Repository impl 등)를 직접 import하지 않는다. domain-bearing BC(`domain/`이 있는
+도메인)의 `interface/**/*.ts`가 `infrastructure/`를 직접 import하면
+`harness/evaluators/rules/interface-no-infrastructure.evaluator.ts`가
+`interface-no-infrastructure.forbidden-import`로 잡아낸다 — `common/`처럼 `domain/`이 없는
+횡단 관심사 기술 모듈(`HealthController`가 `ShutdownState`를 직접 참조하는 것 등,
+[graceful-shutdown.md](graceful-shutdown.md) 참고)은 대상이 아니다.
 
 ```typescript
 // interface/order-controller.ts

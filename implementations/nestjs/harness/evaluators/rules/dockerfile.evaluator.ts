@@ -60,6 +60,18 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('medium')
   }
 
+  // HEALTHCHECK — container.md는 "필수는 아니다"(오케스트레이터가 liveness/readiness를
+  // 이미 담당하는 배포 환경)라고 명시하므로 medium(권장)으로만 잡는다.
+  if (!/^\s*HEALTHCHECK\b/m.test(content)) {
+    failures.push({
+      ruleId: 'dockerfile.healthcheck-missing',
+      severity: 'medium',
+      message: 'HEALTHCHECK 지시문이 없습니다. 단독 docker run 환경에서 컨테이너 헬스 상태를 바로 확인하려면 필요합니다(오케스트레이터가 liveness/readiness probe를 이미 담당한다면 생략 가능).',
+      docRef: `${DOC}#원칙`
+    })
+    score -= penaltyFor('medium')
+  }
+
   return {
     name: 'dockerfile',
     score: Math.max(score, 0),

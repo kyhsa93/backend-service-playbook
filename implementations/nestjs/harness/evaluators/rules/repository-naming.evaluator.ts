@@ -79,6 +79,11 @@ const ANTI_PATTERNS: AntiPattern[] = [
     ruleId: 'repository-naming.delete-bare',
     test: (name) => name === 'delete',
     describe: () => `delete: bare delete 금지. 도메인 명사를 포함한 delete<Noun>으로 명명한다 (예: deleteAccount)`
+  },
+  {
+    ruleId: 'repository-naming.update-method',
+    test: (name) => /^update([A-Z]|$)/.test(name),
+    describe: (name) => `${name}: 별도 update 메서드 금지. 조회 후 Aggregate의 도메인 메서드로 상태를 변경하고 save<Noun>으로 저장한다`
   }
 ]
 

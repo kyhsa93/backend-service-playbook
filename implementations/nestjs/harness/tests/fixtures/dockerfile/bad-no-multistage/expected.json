@@ -4,6 +4,7 @@
   "expectedFailureRuleIds": [
     "dockerfile.multistage-required",
     "dockerfile.cmd-node-direct",
-    "dockerfile.prod-deps-only"
+    "dockerfile.prod-deps-only",
+    "dockerfile.healthcheck-missing"
   ]
 }

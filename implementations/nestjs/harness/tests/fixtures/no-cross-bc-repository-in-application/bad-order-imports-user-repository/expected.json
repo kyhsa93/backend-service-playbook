@@ -1,0 +1,5 @@
+{
+  "name": "no-cross-bc-repository-in-application",
+  "applicable": true,
+  "expectedFailureRuleIds": ["no-cross-bc-repository-in-application.cross-domain-repository-import"]
+}

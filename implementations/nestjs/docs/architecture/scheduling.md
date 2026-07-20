@@ -1139,6 +1139,10 @@ test('트랜잭션 롤백 시 row도 롤백된다', async () => {
 async warmupCache() { /* ... */ }
 ```
 
+`@Interval`도 `@Cron`과 같은 이유로 위치가 Infrastructure 레이어로 제한된다 —
+`harness/evaluators/rules/scheduler.evaluator.ts`가 `@Cron`뿐 아니라 `@Interval` 사용도
+검증 대상에 포함한다(`scheduler.layer`/`scheduler.cron.try-catch` 등 동일 ruleId로 잡아낸다).
+
 ## 원칙
 
 - **`@TaskConsumer` 데코레이터로 Task 구독**: `taskType` 문자열 하나로 Scheduler(적재)와 Task Controller(소비)가 연결된다.

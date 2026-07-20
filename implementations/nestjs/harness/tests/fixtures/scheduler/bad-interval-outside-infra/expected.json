@@ -1,0 +1,5 @@
+{
+  "name": "scheduler",
+  "applicable": true,
+  "expectedFailureRuleIds": ["scheduler.layer", "scheduler.file-suffix", "scheduler.cron.try-catch"]
+}

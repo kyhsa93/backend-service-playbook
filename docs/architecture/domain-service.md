@@ -130,6 +130,11 @@ kotlin-springboot의 harness `no-cross-aggregate-reference` 규칙은 `payment/d
 `RefundEligibilityService.evaluate(payment: Payment, refund: Refund)`처럼 Domain Service가 두
 Aggregate를 함수 파라미터로 받는 정당한 패턴은 대상이 아니다.
 
+nestjs harness도 동일한 규칙을 검증한다 — `payment.ts`가 `Refund`를, `refund.ts`가 `Payment`를
+타입으로 직접 import(named import)하는지를 `no-cross-aggregate-reference.evaluator.ts`로 확인한다.
+두 Aggregate가 서로를 `paymentId: string` 같은 ID로만 참조하고 타입 자체는 참조하지 않는지 검증하는
+회귀 가드다.
+
 ---
 
 ### Domain Service vs Application Service vs Technical Service

@@ -1,0 +1,5 @@
+{
+  "name": "aggregate-no-public-setters",
+  "applicable": true,
+  "expectedFailureRuleIds": ["aggregate-no-public-setters.public-mutable-field"]
+}

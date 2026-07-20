@@ -72,6 +72,31 @@ export function classifyLayer(filePath: string): 'domain' | 'application' | 'int
   return 'unknown'
 }
 
+/** Resolve an import specifier to an absolute (string-only, no fs check) path
+ *  usable with classifyLayer()/domainSegment(). Returns null for bare
+ *  package specifiers (e.g. '@nestjs/common', 'typeorm') which aren't
+ *  project-internal. */
+export function resolveImportPath(root: string, fromFile: string, specifier: string): string | null {
+  if (specifier.startsWith('@/')) return path.join(root, 'src', specifier.slice(2))
+  if (specifier.startsWith('.')) return path.resolve(path.dirname(fromFile), specifier)
+  return null
+}
+
+/** First path segment under src/ — e.g. 'src/payment/domain/payment.ts' -> 'payment'. */
+export function domainSegment(root: string, filePath: string): string | null {
+  const rel = path.relative(path.join(root, 'src'), filePath).replace(/\\/g, '/')
+  const [first] = rel.split('/')
+  return first && !first.startsWith('..') ? first : null
+}
+
+/** True if src/<domain>/domain/ exists — distinguishes a real Bounded Context
+ *  (account, payment, ...) from a cross-cutting technical module (common,
+ *  outbox, database, config) that shares the interface/application/infrastructure
+ *  folder names but has no domain/ layer of its own. */
+export function isDomainBearing(root: string, domain: string): boolean {
+  return fs.existsSync(path.join(root, 'src', domain, 'domain'))
+}
+
 /** Method-level decorator summary. */
 export interface MethodDecoratorInfo {
   methodName: string

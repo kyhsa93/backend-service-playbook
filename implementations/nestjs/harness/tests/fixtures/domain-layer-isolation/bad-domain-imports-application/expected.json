@@ -1,0 +1,5 @@
+{
+  "name": "domain-layer-isolation",
+  "applicable": true,
+  "expectedFailureRuleIds": ["domain-layer-isolation.forbidden-import"]
+}
