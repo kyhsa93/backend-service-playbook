@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command;
 
-import com.example.accountservice.outbox.OutboxRelay;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Service;
 public class CancelPaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final OutboxRelay outboxRelay;
 
     public void cancel(CancelPaymentCommand command) {
         Payment payment =
@@ -32,7 +30,7 @@ public class CancelPaymentService {
 
         payment.cancel(command.reason());
         paymentRepository.savePayment(payment);
-        // PaymentCancelledEvent → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다.
-        outboxRelay.processPending();
+        // PaymentCancelledEvent → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다
+        // (OutboxPoller/OutboxConsumer가 비동기로 처리 — 이 메서드는 저장 후 곧바로 반환한다).
     }
 }

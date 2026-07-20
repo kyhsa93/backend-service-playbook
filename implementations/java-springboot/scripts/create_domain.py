@@ -11,7 +11,7 @@ PENDING -> ACTIVE/CANCELLED로 순환하는 최소 Aggregate(create/activate/can
 nestjs의 create-domain.js와 달리 "모듈 등록" 단계가 없다 — Spring은
 @Service/@Component/@Repository/@RestController를 클래스패스 전체에서 자동으로
 수집하므로(component scanning), 새 도메인의 OutboxEventHandler 구현체도
-OutboxRelay가 자동으로 주입받는다. 즉 이 생성기는 파일만 정확히 생성하면 되고,
+OutboxConsumer가 자동으로 주입받는다. 즉 이 생성기는 파일만 정확히 생성하면 되고,
 central wiring 파일을 찾아 고치는 단계가 없다(AccountServiceApplication.java에는
 domain bean을 나열하는 곳이 없음 — 직접 확인함).
 
@@ -401,7 +401,6 @@ import __basepkg__.__pkg__.domain.__Domain__;
 import __basepkg__.__pkg__.domain.__Domain__Exception;
 import __basepkg__.__pkg__.domain.__Domain__FindQuery;
 import __basepkg__.__pkg__.domain.__Domain__Repository;
-import __basepkg__.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -410,7 +409,6 @@ import org.springframework.stereotype.Service;
 public class Cancel__Domain__Service {
 
     private final __Domain__Repository __domain__Repository;
-    private final OutboxRelay outboxRelay;
 
     public void cancel(Cancel__Domain__Command command) {
         __Domain__ __domain__ =
@@ -427,7 +425,8 @@ public class Cancel__Domain__Service {
                                                 "__Domain__을(를) 찾을 수 없습니다."));
         __domain__.cancel(command.reason());
         __domain__Repository.save__Domain__(__domain__);
-        outboxRelay.processPending();
+        // Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer가 독립적으로 처리한다
+        // (domain-events.md) — Command Service는 저장 후 곧바로 반환한다.
     }
 }
 """
@@ -506,8 +505,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Outbox에 쌓인 {@link __Domain__CancelledEvent}(내부 Domain Event)를 처리한다. {@link
- * __basepkg__.outbox.OutboxRelay}가 클래스패스의 모든 {@link OutboxEventHandler} 구현체를 자동으로 수집해 이 핸들러를
+ * Outbox에 쌓인 {@link __Domain__CancelledEvent}(내부 Domain Event)를 처리한다. {@code OutboxConsumer}가
+ * 클래스패스의 모든 {@link OutboxEventHandler} 구현체를 자동으로 수집해, SQS에서 이 이벤트를 수신하면 이 핸들러를
  * 호출한다 — 별도의 수동 등록이 필요 없다(모듈 등록 파일이 없는 이유는 module-pattern.md 참고).
  *
  * <p>스캐폴딩 단계에서는 로깅만 한다 — 실제 후속 처리(알림, 다른 BC로의 Integration Event 발행 등)는 도메인 요구사항이
@@ -920,7 +919,7 @@ def generate(raw_domain_name: str, project_root: Path, base_package: str) -> Non
     print(
         "모듈 등록 단계 없음: Spring이 @Service/@Component/@Repository/@RestController를 "
         "classpath 전체에서 자동 수집한다(component scanning) — OutboxEventHandler 구현체도 "
-        "OutboxRelay가 자동으로 주입받는다. 손으로 고칠 central wiring 파일이 없다."
+        "OutboxConsumer가 자동으로 주입받는다. 손으로 고칠 central wiring 파일이 없다."
     )
     print()
     print(f"다음: cd {project_root} && ./gradlew spotlessApply && ./gradlew build")

@@ -7,7 +7,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.example.accountservice.outbox.OutboxRelay;
 import com.example.accountservice.payment.application.adapter.AccountAdapter;
 import com.example.accountservice.payment.application.adapter.CardAdapter;
 import com.example.accountservice.payment.application.query.GetPaymentResult;
@@ -29,15 +28,11 @@ class CreatePaymentServiceTest {
 
     @Mock private AccountAdapter accountAdapter;
 
-    @Mock private OutboxRelay outboxRelay;
-
     private CreatePaymentService service;
 
     @BeforeEach
     void setUp() {
-        service =
-                new CreatePaymentService(
-                        paymentRepository, cardAdapter, accountAdapter, outboxRelay);
+        service = new CreatePaymentService(paymentRepository, cardAdapter, accountAdapter);
     }
 
     private void stubActiveCardAndAccount(long balanceAmount) {
@@ -51,7 +46,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 활성_카드와_충분한_잔액이면_결제를_완료처리하고_저장및_Outbox_드레인이_일어난다() {
+    void 활성_카드와_충분한_잔액이면_결제를_완료처리하고_저장한다() {
         stubActiveCardAndAccount(5000);
 
         GetPaymentResult result =
@@ -61,7 +56,6 @@ class CreatePaymentServiceTest {
         assertThat(result.accountId()).isEqualTo("account-1");
         assertThat(result.amount()).isEqualTo(1000);
         verify(paymentRepository).savePayment(any());
-        verify(outboxRelay).processPending();
     }
 
     @Test
@@ -73,7 +67,7 @@ class CreatePaymentServiceTest {
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.LINKED_CARD_NOT_FOUND);
-        verifyNoInteractions(paymentRepository, outboxRelay);
+        verifyNoInteractions(paymentRepository);
     }
 
     @Test
@@ -86,7 +80,7 @@ class CreatePaymentServiceTest {
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_REQUIRES_ACTIVE_CARD);
-        verifyNoInteractions(paymentRepository, outboxRelay);
+        verifyNoInteractions(paymentRepository);
     }
 
     @Test
@@ -100,7 +94,7 @@ class CreatePaymentServiceTest {
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.LINKED_ACCOUNT_NOT_FOUND);
-        verifyNoInteractions(paymentRepository, outboxRelay);
+        verifyNoInteractions(paymentRepository);
     }
 
     @Test
@@ -117,7 +111,7 @@ class CreatePaymentServiceTest {
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_REQUIRES_ACTIVE_ACCOUNT);
-        verifyNoInteractions(paymentRepository, outboxRelay);
+        verifyNoInteractions(paymentRepository);
     }
 
     @Test
@@ -129,6 +123,6 @@ class CreatePaymentServiceTest {
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.INSUFFICIENT_BALANCE);
-        verifyNoInteractions(paymentRepository, outboxRelay);
+        verifyNoInteractions(paymentRepository);
     }
 }

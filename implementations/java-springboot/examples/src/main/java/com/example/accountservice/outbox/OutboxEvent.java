@@ -10,7 +10,8 @@ import java.util.UUID;
 
 /**
  * Domain Event를 Aggregate 저장과 같은 트랜잭션에서 영속화하는 Outbox 레코드. account.domain의 도메인 이벤트(record)를 JSON으로
- * 직렬화해 보관하며, {@link OutboxRelay}가 이후 이 테이블을 읽어 핸들러에 전달하고 처리 완료를 표시한다.
+ * 직렬화해 보관하며, {@link OutboxPoller}가 이후 이 테이블을 읽어 SQS로 발행하고 processed를 true로 표시한다 — 그 이후 실제 핸들러 실행은
+ * {@link OutboxConsumer}가 SQS에서 수신했을 때 이뤄진다.
  */
 @Entity
 @Table(name = "outbox")

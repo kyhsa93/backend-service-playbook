@@ -3,12 +3,21 @@ package com.example.accountservice;
 import com.example.accountservice.config.AwsProperties;
 import com.example.accountservice.config.JwtProperties;
 import com.example.accountservice.config.SesProperties;
+import com.example.accountservice.config.SqsProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
+// @EnableScheduling — outbox/OutboxPoller의 @Scheduled(fixedDelay = 1000)을 활성화한다.
 @SpringBootApplication
-@EnableConfigurationProperties({AwsProperties.class, SesProperties.class, JwtProperties.class})
+@EnableScheduling
+@EnableConfigurationProperties({
+    AwsProperties.class,
+    SesProperties.class,
+    JwtProperties.class,
+    SqsProperties.class
+})
 public class AccountServiceApplication {
 
     public static void main(String[] args) {

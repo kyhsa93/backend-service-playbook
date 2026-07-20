@@ -4,7 +4,6 @@ import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountException;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
-import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Service;
 public class SuspendAccountService {
 
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public void suspend(SuspendAccountCommand command) {
         Account account =
@@ -31,6 +29,5 @@ public class SuspendAccountService {
                                                 "계좌를 찾을 수 없습니다."));
         account.suspend();
         accountRepository.saveAccount(account);
-        outboxRelay.processPending();
     }
 }

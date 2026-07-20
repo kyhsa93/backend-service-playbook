@@ -12,7 +12,6 @@ import com.example.accountservice.account.domain.AccountException;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.AccountsWithCount;
-import com.example.accountservice.outbox.OutboxRelay;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,17 +24,15 @@ class DepositServiceTest {
 
     @Mock private AccountRepository accountRepository;
 
-    @Mock private OutboxRelay outboxRelay;
-
     private DepositService service;
 
     @BeforeEach
     void setUp() {
-        service = new DepositService(accountRepository, outboxRelay);
+        service = new DepositService(accountRepository);
     }
 
     @Test
-    void 계좌가_존재하면_잔액이_증가하고_저장_및_Outbox_드레인이_일어난다() {
+    void 계좌가_존재하면_잔액이_증가하고_저장된다() {
         Account account = Account.create("owner-1", "owner-1@example.com", "KRW");
         when(accountRepository.findAccounts(
                         new AccountFindQuery(0, 1, account.getAccountId(), "owner-1", null)))
@@ -47,7 +44,6 @@ class DepositServiceTest {
         assertThat(result.type()).isEqualTo("DEPOSIT");
         assertThat(account.getBalance().amount()).isEqualTo(500);
         verify(accountRepository).saveAccount(account);
-        verify(outboxRelay).processPending();
     }
 
     @Test

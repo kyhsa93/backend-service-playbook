@@ -23,7 +23,7 @@ DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다
 | 작업 / 키워드 | 읽을 문서 |
 |---------------|----------|
 | `@Transactional`, 트랜잭션 전파, `REQUIRES_NEW`, Soft Delete, 마이그레이션(Flyway) | `docs/architecture/persistence.md` |
-| Domain Event, Outbox 패턴, `OutboxWriter`/`OutboxRelay` | `docs/architecture/domain-events.md` |
+| Domain Event, Outbox 패턴, `OutboxWriter`/`OutboxPoller`/`OutboxConsumer` | `docs/architecture/domain-events.md` |
 | Command/Query Service 분리, Handler 기반 CQRS 전환 기준, 읽기 전용 Query 인터페이스 | `docs/architecture/cqrs-pattern.md` |
 | Domain Service, 여러 Aggregate 조율(`RefundEligibilityService`), Technical Service와의 차이 | `docs/architecture/domain-service.md` |
 
@@ -120,7 +120,7 @@ python3 scripts/create_domain.py LoyaltyCategory --out /path/to/scratch-project
 **모듈 등록 단계가 없다** — nestjs(`@Module({ providers: [...] })`)나 Go와 달리, Spring은
 `@Service`/`@Component`/`@Repository`/`@RestController`가 붙은 클래스를 classpath 전체에서
 자동으로 수집한다(component scanning). 새 도메인의 `OutboxEventHandler` 구현체도 공유
-`OutboxRelay`(`outbox/OutboxRelay.java`)가 생성자 주입 `List<OutboxEventHandler>`로 자동
+`OutboxConsumer`(`outbox/OutboxConsumer.java`)가 생성자 주입 `List<OutboxEventHandler>`로 자동
 수집하므로, 손으로 고칠 central wiring 파일이 없다(`AccountServiceApplication.java`에도 도메인
 bean을 나열하는 곳이 없음을 직접 확인함).
 

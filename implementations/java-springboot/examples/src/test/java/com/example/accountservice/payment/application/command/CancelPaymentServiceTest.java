@@ -7,7 +7,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.accountservice.outbox.OutboxRelay;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
@@ -25,17 +24,15 @@ class CancelPaymentServiceTest {
 
     @Mock private PaymentRepository paymentRepository;
 
-    @Mock private OutboxRelay outboxRelay;
-
     private CancelPaymentService service;
 
     @BeforeEach
     void setUp() {
-        service = new CancelPaymentService(paymentRepository, outboxRelay);
+        service = new CancelPaymentService(paymentRepository);
     }
 
     @Test
-    void 완료된_결제를_취소하면_CANCELLED_상태로_저장하고_Outbox_드레인이_일어난다() {
+    void 완료된_결제를_취소하면_CANCELLED_상태로_저장한다() {
         Payment payment = Payment.create("card-1", "account-1", "owner-1", 1000);
         payment.complete();
         when(paymentRepository.findPayments(
@@ -46,7 +43,6 @@ class CancelPaymentServiceTest {
 
         assertThat(payment.getStatus().name()).isEqualTo("CANCELLED");
         verify(paymentRepository).savePayment(payment);
-        verify(outboxRelay).processPending();
     }
 
     @Test

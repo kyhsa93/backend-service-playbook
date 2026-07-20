@@ -88,8 +88,8 @@ public final class RuleTest {
         new TestCase("transaction-boundary/bad-repository-impl-missing-transactional", () -> assertHasFailure(TransactionBoundary.check("testdata/transaction-boundary/bad-repository-impl-missing-transactional"))),
 
         new TestCase("outbox-drain-order/good", () -> assertNoFailures(OutboxDrainOrder.check("testdata/outbox-drain-order/good"))),
-        new TestCase("outbox-drain-order/bad-missing-process-pending", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-missing-process-pending"))),
-        new TestCase("outbox-drain-order/bad-wrong-order", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-wrong-order"))),
+        new TestCase("outbox-drain-order/bad-references-outbox-relay", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-references-outbox-relay"))),
+        new TestCase("outbox-drain-order/bad-calls-poller-directly", () -> assertHasFailure(OutboxDrainOrder.check("testdata/outbox-drain-order/bad-calls-poller-directly"))),
 
         new TestCase("cqrs-query-purity/good", () -> assertNoFailures(CqrsQueryPurity.check("testdata/cqrs-query-purity/good"))),
         new TestCase("cqrs-query-purity/bad-repository-reference", () -> assertHasFailure(CqrsQueryPurity.check("testdata/cqrs-query-purity/bad-repository-reference")))

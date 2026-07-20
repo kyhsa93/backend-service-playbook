@@ -7,7 +7,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.accountservice.outbox.OutboxRelay;
 import com.example.accountservice.payment.application.query.GetRefundResult;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
@@ -29,13 +28,11 @@ class RequestRefundServiceTest {
 
     @Mock private RefundRepository refundRepository;
 
-    @Mock private OutboxRelay outboxRelay;
-
     private RequestRefundService service;
 
     @BeforeEach
     void setUp() {
-        service = new RequestRefundService(paymentRepository, refundRepository, outboxRelay);
+        service = new RequestRefundService(paymentRepository, refundRepository);
     }
 
     private Payment completedPayment(long amount) {
@@ -48,7 +45,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    void 완료된_결제에_결제금액_이하의_환불이면_승인되고_저장및_Outbox_드레인이_일어난다() {
+    void 완료된_결제에_결제금액_이하의_환불이면_승인되고_저장된다() {
         Payment payment = completedPayment(1000);
 
         GetRefundResult result =
@@ -57,7 +54,6 @@ class RequestRefundServiceTest {
 
         assertThat(result.status()).isEqualTo("APPROVED");
         verify(refundRepository).saveRefund(any());
-        verify(outboxRelay).processPending();
     }
 
     @Test
@@ -71,8 +67,6 @@ class RequestRefundServiceTest {
         assertThat(result.status()).isEqualTo("REJECTED");
         assertThat(result.decisionNote()).isEqualTo("환불 금액은 결제 금액을 초과할 수 없습니다.");
         verify(refundRepository).saveRefund(any());
-        // 거부된 경우 Domain Event가 없으므로 Outbox 드레인은 no-op이지만 호출 자체는 일어난다(일관된 흐름 종료 지점).
-        verify(outboxRelay).processPending();
     }
 
     @Test

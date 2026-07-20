@@ -1,7 +1,8 @@
 class DepositService {
-    private final OutboxRelay outboxRelay;
+    private final OutboxPoller outboxPoller;
 
     void deposit() {
         accountRepository.save(account);
+        outboxPoller.poll();
     }
 }

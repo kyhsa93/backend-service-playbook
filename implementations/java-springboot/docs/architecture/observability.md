@@ -15,8 +15,8 @@ log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", ev
 ```
 
 ```java
-// outbox/OutboxRelay.java — 실제 코드
-log.error("이벤트 처리 실패", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
+// outbox/OutboxPoller.java — 실제 코드
+log.error("SQS 발행 실패", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
 ```
 
 ```java

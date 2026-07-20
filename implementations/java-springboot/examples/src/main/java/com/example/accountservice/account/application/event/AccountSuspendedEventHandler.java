@@ -16,9 +16,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>application/event/의 EventHandler는 {@link OutboxWriter}를 직접 사용할 수 있는 유일한 예외다 — 여기서 외부 BC(Card
  * 등)에 공개하는 Integration Event({@code account.suspended.v1})로 변환해 같은 Outbox 트랜잭션에 적재한다(Aggregate가
- * Integration Event를 직접 만들지 않는다 — 변환 지점은 항상 EventHandler다). {@link
- * com.example.accountservice.outbox.OutboxRelay}가 이 핸들러를 실행하는 같은 {@code processPending()} 호출 안에서 여러
- * 패스로 드레인하므로, 새로 적재된 {@code account.suspended.v1}도 이어서 처리된다.
+ * Integration Event를 직접 만들지 않는다 — 변환 지점은 항상 EventHandler다). 새로 적재된 {@code account.suspended.v1} 행은
+ * {@code OutboxPoller}의 다음 폴링 tick에서 SQS로 발행되고, {@code OutboxConsumer}가 수신해 처리한다 — 이 핸들러 자신의 실행과 같은
+ * 호출 안에서 즉시 처리되지 않는다(비동기).
  */
 @Component
 @RequiredArgsConstructor

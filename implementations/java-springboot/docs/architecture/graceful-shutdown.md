@@ -89,7 +89,7 @@ Spring Boot의 graceful shutdown 순서(HTTP 서버 종료 → `ApplicationConte
 `@PreDestroy`로 커스텀 정리 로직을 추가할 경우, 예외를 던지지 않도록 주의한다 — 정리 단계에서 예외가 발생하면 다른 `@PreDestroy` 콜백의 실행이 건너뛰어질 수 있다.
 
 ```java
-// 커스텀 리소스가 있는 경우 (제안 — 이 저장소는 현재 해당 없음)
+// 커스텀 리소스가 있는 경우 (제안)
 @PreDestroy
 public void cleanup() {
     try {
@@ -99,6 +99,46 @@ public void cleanup() {
     }
 }
 ```
+
+---
+
+## 실제 커스텀 리소스 — `OutboxConsumer`의 `SmartLifecycle`
+
+이 저장소에는 위 제안이 실제로 필요한 커스텀 리소스가 있다: SQS를 long polling으로 수신 대기하는 전용 백그라운드 스레드(`OutboxConsumer`, [domain-events.md](domain-events.md) 참고). `@PreDestroy` 대신 `SmartLifecycle`을 썼다 — `@PreDestroy`는 종료 훅만 제공하지만, `SmartLifecycle`은 **시작 훅(`start()`)도 함께 제공**해서 `ApplicationContext` refresh 완료 시점에 자동으로 백그라운드 루프를 기동시킬 수 있다(별도의 `@PostConstruct`/`ApplicationListener` 조합이 필요 없다).
+
+```java
+// outbox/OutboxConsumer.java — 실제 코드(발췌)
+@Component
+public class OutboxConsumer implements SmartLifecycle {
+    private volatile boolean running = false;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "outbox-consumer"));
+
+    @Override
+    public void start() {
+        running = true;
+        executor.submit(this::pollLoop);   // 즉시 반환 — 부트스트랩을 막지 않는다
+    }
+
+    @Override
+    public void stop() {                   // graceful shutdown 시 자동 호출
+        running = false;
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) executor.shutdownNow();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            executor.shutdownNow();
+        }
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+}
+```
+
+`stop()`이 예외를 던지지 않고(`InterruptedException`을 잡아 스레드 인터럽트 플래그만 복구) `awaitTermination(...)`으로 진행 중인 `ReceiveMessage` 호출(최대 `waitTimeSeconds`)이 끝날 때까지 기다리는 것도 위 "`@PreDestroy`에서 예외를 던지지 않는다" 원칙과 동일한 이유다 — `SmartLifecycle.stop()`도 정리 단계에서 예외를 던지면 다른 빈의 종료 콜백 실행에 영향을 줄 수 있다.
 
 ---
 

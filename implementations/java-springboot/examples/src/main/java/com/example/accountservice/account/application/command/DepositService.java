@@ -5,7 +5,6 @@ import com.example.accountservice.account.domain.AccountException;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.Transaction;
-import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +13,6 @@ import org.springframework.stereotype.Service;
 public class DepositService {
 
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public TransactionResult deposit(DepositCommand command) {
         Account account =
@@ -32,7 +30,6 @@ public class DepositService {
                                                 "계좌를 찾을 수 없습니다."));
         Transaction transaction = account.deposit(command.amount());
         accountRepository.saveAccount(account);
-        outboxRelay.processPending();
         return new TransactionResult(
                 transaction.getTransactionId(),
                 transaction.getAccountId(),

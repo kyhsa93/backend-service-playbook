@@ -14,10 +14,13 @@ import static harness.JavaFiles.readText;
 /**
  * [7] shared-infra: outbox·task-queue
  *
- * outbox 트리거는 "OutboxRelay를 실제로 참조하는 코드가 있는가"로 판단한다 — 파일명에
+ * outbox 트리거는 "OutboxWriter를 실제로 참조하는 코드가 있는가"로 판단한다 — 파일명에
  * 우연히 "Outbox"가 들어간 무관한 파일에 낚이지 않기 위함이다(과거 버그: 실제 파일들이
  * 이미 전부 outbox/ 안에 있어서 "밖에 있는 파일 찾기" 조건이 항상 거짓이 되어 SKIP만
- * 하고 outbox 패키지를 실질적으로 검증한 적이 없었다).
+ * 하고 outbox 패키지를 실질적으로 검증한 적이 없었다). OutboxWriter는 동기 드레인(구)이든
+ * Poller/Consumer 기반 비동기 드레인(현재)이든 어느 방식을 쓰든 항상 존재하는 "이벤트를
+ * outbox 테이블에 적재하는" 구성요소이므로 트리거로 쓴다 — OutboxRelay는 async 전환으로
+ * 제거되었으므로 더 이상 트리거로 쓸 수 없다.
  */
 public final class SharedInfra {
     private SharedInfra() {
@@ -34,9 +37,9 @@ public final class SharedInfra {
     }
 
     private static List<Finding> checkOutboxPattern(File root) {
-        boolean usesOutboxRelay = collectJavaFiles(root).stream()
-            .anyMatch(f -> readText(f).contains("OutboxRelay"));
-        if (!usesOutboxRelay) {
+        boolean usesOutboxWriter = collectJavaFiles(root).stream()
+            .anyMatch(f -> readText(f).contains("OutboxWriter"));
+        if (!usesOutboxWriter) {
             return List.of(Finding.skip("outbox 패턴 없음"));
         }
 
@@ -44,15 +47,16 @@ public final class SharedInfra {
         findDirsNamed(root, "outbox", outboxDirs);
 
         if (outboxDirs.isEmpty()) {
-            return List.of(Finding.fail("outbox 패키지", "OutboxRelay를 참조하지만 outbox/ 패키지가 없음"));
+            return List.of(Finding.fail("outbox 패키지", "OutboxWriter를 참조하지만 outbox/ 패키지가 없음"));
         }
 
         boolean hasWriter = outboxDirs.stream().anyMatch(d -> new File(d, "OutboxWriter.java").isFile());
-        boolean hasRelay = outboxDirs.stream().anyMatch(d -> new File(d, "OutboxRelay.java").isFile());
-        if (hasWriter && hasRelay) {
-            return List.of(Finding.pass("outbox 패키지 (OutboxWriter/OutboxRelay 구현 확인)"));
+        boolean hasPoller = outboxDirs.stream().anyMatch(d -> new File(d, "OutboxPoller.java").isFile());
+        boolean hasConsumer = outboxDirs.stream().anyMatch(d -> new File(d, "OutboxConsumer.java").isFile());
+        if (hasWriter && hasPoller && hasConsumer) {
+            return List.of(Finding.pass("outbox 패키지 (OutboxWriter/OutboxPoller/OutboxConsumer 구현 확인)"));
         }
-        return List.of(Finding.fail("outbox 패키지", "outbox/ 패키지는 있으나 OutboxWriter.java/OutboxRelay.java를 찾을 수 없음"));
+        return List.of(Finding.fail("outbox 패키지", "outbox/ 패키지는 있으나 OutboxWriter.java/OutboxPoller.java/OutboxConsumer.java 중 일부를 찾을 수 없음 — Outbox 적재(Writer) + 큐 발행(Poller) + 큐 수신(Consumer)이 모두 있어야 함(domain-events.md)"));
     }
 
     private static List<Finding> checkTaskQueuePattern(File root) {

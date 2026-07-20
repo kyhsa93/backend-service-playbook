@@ -1,18 +1,22 @@
 package com.example.accountservice.account.infrastructure.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.example.accountservice.AccountServiceApplication;
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmail;
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailRepository;
+import com.example.accountservice.support.SqsTestQueue;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +59,18 @@ class NotificationE2ETest {
     @Container
     static LocalStackContainer localstack =
             new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-                    .withServices(LocalStackContainer.Service.SES);
+                    .withServices(LocalStackContainer.Service.SES, LocalStackContainer.Service.SQS);
+
+    // CardControllerE2ETest와 동일한 이유(@DynamicPropertySource Supplier가 여러 번 호출될 수 있음)로
+    // 캐시한다.
+    private static String domainEventQueueUrl;
+
+    private static synchronized String domainEventQueueUrl() {
+        if (domainEventQueueUrl == null) {
+            domainEventQueueUrl = SqsTestQueue.createDomainEventQueue(localstack);
+        }
+        return domainEventQueueUrl;
+    }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -72,6 +87,7 @@ class NotificationE2ETest {
         registry.add("aws.access-key-id", () -> localstack.getAccessKey());
         registry.add("aws.secret-access-key", () -> localstack.getSecretKey());
         registry.add("ses.sender-email", () -> SENDER_EMAIL);
+        registry.add("sqs.domain-event-queue-url", NotificationE2ETest::domainEventQueueUrl);
         // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
         // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
         registry.add(
@@ -136,6 +152,21 @@ class NotificationE2ETest {
         return (List<Map<String, Object>>) body.get("messages");
     }
 
+    // AccountCreatedEventHandler/MoneyDepositedEventHandler(SES 발송)는 더 이상 계좌 생성/입금
+    // 요청과 같은 프로세스 안에서 즉시 실행되지 않는다 — OutboxPoller(1초 주기)가 이 이벤트를 SQS로
+    // 발행하고 OutboxConsumer(long polling)가 수신해야 실행된다. CardControllerE2ETest의
+    // waitForCardStatus와 동일한 이유로 즉시 조회하던 assert를 폴링으로 바꾼다.
+    private SentEmail waitForSentEmail(String accountId, String eventType) {
+        await().atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(200))
+                .until(
+                        () -> sentEmailRepository.findByAccountIdAndEventType(accountId, eventType),
+                        Optional::isPresent);
+        return sentEmailRepository
+                .findByAccountIdAndEventType(accountId, eventType)
+                .orElseThrow(() -> new AssertionError("발송 내역이 저장되지 않았습니다."));
+    }
+
     @Test
     void 계좌_생성시_SES로_이메일이_발송되고_발송_내역이_DB와_localstack에_기록된다() throws Exception {
         ResponseEntity<Map> response =
@@ -143,10 +174,7 @@ class NotificationE2ETest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String accountId = (String) response.getBody().get("accountId");
 
-        SentEmail sentEmail =
-                sentEmailRepository
-                        .findByAccountIdAndEventType(accountId, "AccountCreated")
-                        .orElseThrow(() -> new AssertionError("발송 내역이 저장되지 않았습니다."));
+        SentEmail sentEmail = waitForSentEmail(accountId, "AccountCreated");
         assertThat(sentEmail.getRecipient()).isEqualTo(RECIPIENT_EMAIL);
         assertThat(sentEmail.getSesMessageId()).isNotBlank();
 
@@ -172,10 +200,7 @@ class NotificationE2ETest {
                 post("/accounts/" + accountId + "/deposit", OWNER_ID, Map.of("amount", 10000));
         assertThat(depositResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
-        SentEmail sentEmail =
-                sentEmailRepository
-                        .findByAccountIdAndEventType(accountId, "MoneyDeposited")
-                        .orElseThrow(() -> new AssertionError("발송 내역이 저장되지 않았습니다."));
+        SentEmail sentEmail = waitForSentEmail(accountId, "MoneyDeposited");
         assertThat(sentEmail.getRecipient()).isEqualTo(RECIPIENT_EMAIL);
 
         List<Map<String, Object>> messages = fetchSesMessages();

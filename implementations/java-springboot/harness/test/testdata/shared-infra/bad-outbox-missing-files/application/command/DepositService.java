@@ -1,3 +1,3 @@
 class DepositService {
-    private final OutboxRelay outboxRelay;
+    private final OutboxWriter outboxWriter;
 }

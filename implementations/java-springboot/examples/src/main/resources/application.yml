@@ -41,6 +41,9 @@ aws:
 ses:
   sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
 
+sqs:
+  domain-event-queue-url: ${SQS_DOMAIN_EVENT_QUEUE_URL:http://localhost:4566/000000000000/domain-events}
+
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 

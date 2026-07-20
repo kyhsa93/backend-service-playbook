@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * 외부 BC(Account)가 발행한 {@code account.suspended.v1} Integration Event 수신부. {@link
- * OutboxEventHandler}로 구현하면 {@link com.example.accountservice.outbox.OutboxRelay}가 {@code
- * eventType()} 값으로 자동 라우팅하므로, Account BC가 Card BC를 몰라도 연결된다. 자기 도메인의 유스케이스(Command)만 호출하고, 실패 시 예외를
- * 그대로 던져 Relay가 재시도하게 한다.
+ * OutboxEventHandler}로 구현하면 {@code OutboxConsumer}가 SQS에서 수신한 메시지를 {@code eventType()} 값으로 자동
+ * 라우팅하므로, Account BC가 Card BC를 몰라도 연결된다. 자기 도메인의 유스케이스(Command)만 호출하고, 실패 시 예외를 그대로 던져 메시지를 삭제하지 않게
+ * 한다 — SQS visibility timeout 이후 재수신되어 재시도된다.
  */
 @Component
 @RequiredArgsConstructor

@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command;
 
-import com.example.accountservice.outbox.OutboxRelay;
 import com.example.accountservice.payment.application.adapter.AccountAdapter;
 import com.example.accountservice.payment.application.adapter.CardAdapter;
 import com.example.accountservice.payment.application.query.GetPaymentResult;
@@ -17,7 +16,6 @@ public class CreatePaymentService {
     private final PaymentRepository paymentRepository;
     private final CardAdapter cardAdapter;
     private final AccountAdapter accountAdapter;
-    private final OutboxRelay outboxRelay;
 
     public GetPaymentResult create(CreatePaymentCommand command) {
         // 동기 Adapter(ACL)로 카드가 존재·활성 상태인지 확인 — 응답(결제 가부)에 필요하므로 동기 호출.
@@ -65,7 +63,6 @@ public class CreatePaymentService {
         payment.complete();
 
         paymentRepository.savePayment(payment);
-        outboxRelay.processPending();
         return GetPaymentResult.from(payment);
     }
 }

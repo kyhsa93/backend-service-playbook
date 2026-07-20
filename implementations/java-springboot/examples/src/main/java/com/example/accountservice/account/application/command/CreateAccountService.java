@@ -2,7 +2,6 @@ package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountRepository;
-import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -11,13 +10,11 @@ import org.springframework.stereotype.Service;
 public class CreateAccountService {
 
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account =
                 Account.create(command.requesterId(), command.email(), command.currency());
         accountRepository.saveAccount(account);
-        outboxRelay.processPending();
         return new CreateAccountResult(
                 account.getAccountId(),
                 account.getOwnerId(),

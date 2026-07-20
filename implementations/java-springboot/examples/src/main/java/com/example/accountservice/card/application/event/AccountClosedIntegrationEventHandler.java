@@ -12,8 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 외부 BC(Account)가 발행한 {@code account.closed.v1} Integration Event 수신부. {@link
- * com.example.accountservice.outbox.OutboxRelay}가 {@code eventType()} 값으로 자동 라우팅한다.
+ * 외부 BC(Account)가 발행한 {@code account.closed.v1} Integration Event 수신부. {@code OutboxConsumer}가
+ * SQS에서 수신한 메시지를 {@code eventType()} 값으로 자동 라우팅한다.
  */
 @Component
 @RequiredArgsConstructor

@@ -1,6 +1,5 @@
 package com.example.accountservice.payment.application.command;
 
-import com.example.accountservice.outbox.OutboxRelay;
 import com.example.accountservice.payment.application.query.GetRefundResult;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
@@ -24,7 +23,6 @@ public class RequestRefundService {
 
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
-    private final OutboxRelay outboxRelay;
 
     public GetRefundResult request(RequestRefundCommand command) {
         Payment payment =
@@ -57,9 +55,8 @@ public class RequestRefundService {
         }
 
         refundRepository.saveRefund(refund);
-        // RefundApprovedEvent → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다.
-        // 거부된 경우에는 Domain Event가 없으므로 드레인할 것이 없어 no-op이다.
-        outboxRelay.processPending();
+        // RefundApprovedEvent → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다
+        // (OutboxPoller/OutboxConsumer가 비동기로 처리). 거부된 경우에는 Domain Event가 없다.
         return GetRefundResult.from(refund);
     }
 }
