@@ -119,6 +119,10 @@ npm run evaluate -- /path/to/project --out=report.json
 | `no-cross-aggregate-reference` | `src/payment/domain/`의 `payment.ts`/`refund.ts`가 서로를 타입으로 import(named import)하면 실패 — ID 참조만 허용 | 10 *(auto-gated)* |
 | `no-cross-bc-repository-in-application` | `application/**/*.ts`가 다른 BC의 `domain/*-repository.ts`를 직접 import하면 실패 — Adapter(ACL) 경유 필요 | 15 *(auto-gated)* |
 | `soft-delete-filter` | `*-repository-impl.ts`의 `find` 메서드가 soft-delete 불가능한(BaseEntity 미상속·`@DeleteDateColumn` 없음) Entity를 조회하면 실패, raw SQL(`.query()`)이 soft-delete 가능한 Entity를 `deletedAt IS NULL` 필터 없이 조회하면 실패 | 15 *(auto-gated)* |
+| `no-generic-response-keys` | application/interface 레이어 class에 `count: number`와 나란히 있는 배열 필드가 `result`/`data`/`items`로 명명되면 실패 — 도메인 복수형 명사 강제 | 15 |
+| `query-handler-no-raw-aggregate` | `save<Noun>(param: Type)` 시그니처로 동적 추출한 Aggregate 타입명을 Query 인터페이스/QueryHandler/Controller의 `Promise<X>` 반환 타입·`IQueryHandler<Q, R>`의 R이 그대로 반환하면 실패 — 전용 Result/DTO 강제 | 15 *(auto-gated)* |
+| `no-cross-bc-domain-import` | `src/<bc>/domain/*.ts`가 다른 BC의 `domain/*`를 직접 import하면 실패 — 다른 Aggregate는 ID 참조만 허용(객체 참조 금지), BC 경계를 넘는 경우까지 확장 | 15 *(auto-gated)* |
+| `no-orm-autosync-in-prod-config` | `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})`의 `synchronize`가 리터럴 `true`이거나 `NODE_ENV === 'production'`일 때 true로 평가되면 실패 | 10 *(auto-gated)* |
 
 *auto-gated*: 해당 기능을 사용하는 코드가 없으면 `maxScore=0`으로 집계에서 제외.
 *opt-in*: 환경 변수 명시 시에만 실행.

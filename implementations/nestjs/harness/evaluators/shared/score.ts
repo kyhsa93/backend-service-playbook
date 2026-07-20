@@ -66,10 +66,12 @@ export function aggregate(results: EvaluatorResult[]): AggregateReport {
         || r.name.includes('no-cross-aggregate-reference')
         || r.name.includes('no-cross-bc-repository-in-application')
         || r.name.includes('soft-delete-filter')
+        || r.name.includes('query-handler-no-raw-aggregate')
+        || r.name.includes('no-cross-bc-domain-import')
       ) return 'architecture'
-      if (r.name === 'build' || r.name === 'test-run' || r.name === 'secret-manager' || r.name === 'dockerfile' || r.name === 'local-dev') return 'runtime'
+      if (r.name === 'build' || r.name === 'test-run' || r.name === 'secret-manager' || r.name === 'dockerfile' || r.name === 'local-dev' || r.name === 'no-orm-autosync-in-prod-config') return 'runtime'
       if (r.name.includes('test') || r.name === 'e2e-quality') return 'testing'
-      if (r.name.includes('controller') || r.name.includes('deprecated-api') || r.name === 'pagination' || r.name === 'rate-limiting') return 'api'
+      if (r.name.includes('controller') || r.name.includes('deprecated-api') || r.name === 'pagination' || r.name === 'rate-limiting' || r.name === 'no-generic-response-keys') return 'api'
       if (r.name.includes('dto')) return 'semantics'
       if (r.name === 'database-queries' || r.name === 'domain-service' || r.name === 'aggregate-id' || r.name === 'logging') return 'architecture'
       return null

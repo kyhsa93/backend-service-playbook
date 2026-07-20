@@ -1,0 +1,5 @@
+{
+  "name": "no-generic-response-keys",
+  "applicable": true,
+  "expectedFailureRuleIds": []
+}

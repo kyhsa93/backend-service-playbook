@@ -18,19 +18,20 @@
 | `directory-structure.md` | `src/<domain>/` 하위 4레이어 구조 | ✅ | `structure` | Covered | - |
 | `layer-architecture.md` | Domain 레이어의 NestJS/TypeORM 의존 금지, 레이어 방향성, Domain의 application/infrastructure/interface import 금지, Controller의 infrastructure 직접 import 금지, Aggregate 상태 변경은 도메인 메서드로만(public setter/mutable field 금지) | ✅ | `layer-dependency`, `import-graph`, `domain-layer-isolation`, `interface-no-infrastructure`, `aggregate-no-public-setters` | Covered | - |
 | `design-principles.md` | Application Service는 조율, 비즈니스 로직은 Domain에 위치 | ⚠️ | `checklist`, `layer-dependency` | Partial | 비즈니스 로직 위치는 정적 분석 한계가 있어 Manual 리뷰 병행 |
+| `tactical-ddd.md` (+ 루트 공용) | Aggregate/Entity/Value Object/Domain Event 모델링, 다른 Aggregate는 ID 참조만 허용(객체 참조 금지) — BC 내부·BC 간 모두 | ✅ | `no-cross-aggregate-reference`, `no-cross-bc-domain-import` | Partial | Entity/Value Object 구분의 의미론적 정확성은 Manual 리뷰 병행 |
 | `repository-pattern.md` | Repository abstract class, 직접 인스턴스화 금지, 메서드 네이밍(`find<Noun>s`/`save<Noun>`/`delete<Noun>`), 별도 update 메서드 금지 | ✅ | `repository-pattern`, `repository-naming` | Covered | transaction 관련 규칙은 `transaction` evaluator 후보 |
 | `module-pattern.md` | `@Module` providers 구성, DI 등록 | ✅ | `module-di-ast` | Partial | imports/exports 경계 검증 추가 가능 |
 | `cqrs-pattern.md` | command/query 분리, Query에서 Repository 미사용 | ✅ | `cqrs-pattern` | Covered | handler 단위 CQRS 규칙은 추후 확장 가능 |
-| `../../docs/architecture/domain-service.md` (루트 공용) | Domain Service 위치/책임/네이밍, Aggregate는 다른 Aggregate를 직접 참조하지 않음(ID 참조만) | ✅ | `domain-service`, `no-cross-aggregate-reference` | Partial | 네이밍 의미 검증은 Manual 리뷰 병행. `no-cross-aggregate-reference`는 현재 `payment/`(Payment·Refund) 케이스로 범위를 좁힘 — 다른 BC에 유사 케이스가 생기면 일반화 검토 |
+| `../../docs/architecture/domain-service.md` (루트 공용) | Domain Service 위치/책임/네이밍, Aggregate는 다른 Aggregate를 직접 참조하지 않음(ID 참조만) | ✅ | `domain-service`, `no-cross-aggregate-reference` | Partial | 네이밍 의미 검증은 Manual 리뷰 병행. `no-cross-aggregate-reference`는 현재 `payment/`(Payment·Refund, 같은 BC 안) 케이스로 범위를 좁힘 — BC 경계를 넘는 동일 원칙은 `no-cross-bc-domain-import`(tactical-ddd.md 행 참고)가 담당 |
 | `domain-events.md` | Aggregate event, Outbox, handler 위치, EventBus 직접 호출 금지 | ✅ | `domain-event-outbox` | Covered | integration event 세부 정책은 fixture 확장 필요 |
 | `aggregate-id.md` | Aggregate ID value object, primitive id 직접 사용 제한, `generateId()`의 하이픈 제거 | ✅ | `aggregate-id` | Covered | - |
 | `cross-domain.md` (+ 루트 공용 `cross-domain-communication.md`) | 도메인 간 직접 의존 금지, Adapter 경유, Application에서 타 BC Repository 직접 import 금지 | ✅ | `import-graph`, `no-cross-bc-repository-in-application` | Covered | Adapter 구현체가 실제로 상대 BC의 Query만 호출하는지(Repository·Service 미참조)까지는 Manual 리뷰 병행 |
 | `shared-modules.md` | Shared module 범위, 공통 모듈 남용 방지 | ⚠️ | `structure` | Partial | `shared-module` evaluator 후보 |
-| `persistence.md` | Query/TransactionManager/Migration 규칙, soft-delete 필터(Repository find 메서드가 soft-delete 불가능한 Entity를 조회하지 않는지, raw SQL이 deletedAt 필터를 우회하지 않는지) | ✅ | `database-queries`, `layer-dependency`, `repository-pattern`, `soft-delete-filter` | Partial | 마이그레이션 로직 정확성은 Manual 리뷰 병행 |
+| `persistence.md` | Query/TransactionManager/Migration 규칙, soft-delete 필터(Repository find 메서드가 soft-delete 불가능한 Entity를 조회하지 않는지, raw SQL이 deletedAt 필터를 우회하지 않는지), 운영 환경 ORM auto-schema-sync(`synchronize: true`) 금지 | ✅ | `database-queries`, `layer-dependency`, `repository-pattern`, `soft-delete-filter`, `no-orm-autosync-in-prod-config` | Partial | 마이그레이션 로직 정확성은 Manual 리뷰 병행 |
 | `error-handling.md` | Domain/Application HttpException·raw 문자열 throw 금지, ErrorCode/응답 tuple 규칙, 에러 응답 4필드(statusCode/code/message/error) 스키마 | ✅ | `error-handling` | Covered | - |
 | `authentication.md` | Bearer JWT, Guard, public route 명시 | ✅ | `auth` | Partial | 토큰 유효성 검증 로직은 Manual 리뷰 병행 |
 | `cross-cutting-concerns.md` | Middleware/Guard/Interceptor/Pipe 위치와 적용 | ⚠️ | `dto-validation`, `bootstrap-healthcheck` | Partial | Guard/Interceptor 레벨 적용 규칙은 Manual 리뷰 병행 |
-| `api-response.md` | Pagination DTO, 공통 응답 포맷, limit 제한 | ✅ | `pagination` | Partial | 정렬 파라미터 유효성은 Manual 리뷰 병행 |
+| `api-response.md` | Pagination DTO, 공통 응답 포맷, limit 제한, 목록 응답 범용 키(`result`/`data`/`items`) 금지, Query handler/Controller가 Aggregate를 그대로 반환하지 않고 전용 Result/DTO 반환 | ✅ | `pagination`, `no-generic-response-keys`, `query-handler-no-raw-aggregate` | Partial | 정렬 파라미터 유효성은 Manual 리뷰 병행 |
 | `rate-limiting.md` | Rate limit guard/interceptor/module 설정, 가드가 실제로 적용(전역 등록 또는 `@UseGuards`)됐는지 — 정의만 있고 미적용인 dead code 방지 | ✅ | `rate-limiting` | Partial | ttl/limit 적절성은 Manual 리뷰 병행 |
 | `testing.md` | 테스트 존재, 테스트 실행, E2E mock 최소화, nock/testcontainers 사용 | ✅ | `test-presence`, `test-run`, `e2e-quality` | Partial | 계층별 테스트 패턴·testcontainers 설정 품질은 Manual 리뷰 병행 |
 | `observability.md` | Logger 사용, console 금지, 빈/미처리 catch 블록 금지, Domain 레이어 로깅 전면 금지 | ✅ | `logging` | Covered | 로그 메시지 내용·레벨 적절성은 Manual 리뷰 병행 |
@@ -76,6 +77,10 @@
 | `no-cross-aggregate-reference` | `../../docs/architecture/domain-service.md` (루트 공용) | `payment/domain/`의 Payment·Refund가 서로를 타입으로 참조하는지 검증(ID 참조만 허용) |
 | `no-cross-bc-repository-in-application` | `../../docs/architecture/cross-domain-communication.md` (루트 공용) | Application이 타 BC의 domain/*-repository.ts를 직접 import하는지 검증 |
 | `soft-delete-filter` | `persistence.md` | Repository find 메서드가 soft-delete 불가능한 Entity를 조회하는지, raw SQL이 deletedAt 필터를 우회하는지 검증 |
+| `no-generic-response-keys` | `../../docs/architecture/api-response.md` (루트 공용) | application/interface class의 목록 응답 배열 필드(count 동반)가 result/data/items 범용 키를 쓰는지 검증 |
+| `query-handler-no-raw-aggregate` | `../../docs/architecture/api-response.md` (루트 공용) | Query 인터페이스/QueryHandler/Controller가 Domain Aggregate를 그대로(`Promise<Account>` 등) 반환하는지 검증 |
+| `no-cross-bc-domain-import` | `../../docs/architecture/tactical-ddd.md` (루트 공용) | `src/<bc>/domain/`이 다른 BC의 domain/*를 직접 import하는지 검증(ID 참조만 허용) |
+| `no-orm-autosync-in-prod-config` | `../../docs/architecture/persistence.md` (루트 공용) | DataSource/TypeOrmModule 설정의 `synchronize`가 하드코딩 true이거나 production일 때 true로 평가되는지 검증 |
 | `domain-event-outbox` | `domain-events.md` | Outbox/event handler 규칙 검증 |
 | `build` | 전체 TypeScript 프로젝트 | `tsc --noEmit` 실행 |
 | `test-run` | `testing.md` | opt-in 테스트 실행 |

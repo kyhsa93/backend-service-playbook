@@ -1,0 +1,5 @@
+{
+  "name": "query-handler-no-raw-aggregate",
+  "applicable": true,
+  "expectedFailureRuleIds": []
+}

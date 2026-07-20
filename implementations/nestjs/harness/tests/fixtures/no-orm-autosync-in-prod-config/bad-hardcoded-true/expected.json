@@ -1,0 +1,5 @@
+{
+  "name": "no-orm-autosync-in-prod-config",
+  "applicable": true,
+  "expectedFailureRuleIds": ["no-orm-autosync-in-prod-config.synchronize-hardcoded-true"]
+}

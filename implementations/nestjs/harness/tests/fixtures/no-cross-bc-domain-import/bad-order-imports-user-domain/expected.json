@@ -1,0 +1,5 @@
+{
+  "name": "no-cross-bc-domain-import",
+  "applicable": true,
+  "expectedFailureRuleIds": ["no-cross-bc-domain-import.cross-bc-domain-import"]
+}

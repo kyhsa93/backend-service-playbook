@@ -144,6 +144,8 @@ export class GetOrdersResponseBody {
 - 키 이름은 도메인 객체명 복수형 (`orders`, `users`, `payments`)
 - `result`, `data`, `items` 같은 범용 키를 사용하지 않는다
 
+`harness/evaluators/rules/no-generic-response-keys.evaluator.ts`가 application/interface 레이어 class에서 `count: number`와 나란히 있는 배열 필드가 `result`/`data`/`items`로 명명되어 있으면 `no-generic-response-keys.generic-list-field`로 잡아낸다. Query handler/Controller가 Domain Aggregate를 그대로 반환하는지는 `harness/evaluators/rules/query-handler-no-raw-aggregate.evaluator.ts`가 `query-handler-no-raw-aggregate.raw-aggregate-return`으로 잡아낸다.
+
 ### 단건 조회 응답
 
 ```json

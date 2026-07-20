@@ -95,6 +95,8 @@ export class Account {
 - **상태 변경과 동시에 Domain Event를 `_events`에 push**한다 — Repository가 저장할 때 이 이벤트들을 함께 Outbox에 기록한다 ([domain-events.md](domain-events.md) 참조).
 - **`domainEvents` getter는 배열의 복사본을 반환**한다(`[...this._events]`) — 외부에서 내부 배열을 직접 조작할 수 없게 한다.
 
+**다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)** — 같은 BC 안의 서로 다른 Aggregate뿐 아니라 BC 경계를 넘는 경우도 동일하다. `harness/evaluators/rules/no-cross-aggregate-reference.evaluator.ts`가 같은 BC 안(`payment/domain/`의 Payment·Refund)의 위반을, `harness/evaluators/rules/no-cross-bc-domain-import.evaluator.ts`가 `src/<bc>/domain/*.ts`가 다른 BC의 `domain/*`를 직접 import하는 위반(`no-cross-bc-domain-import.cross-bc-domain-import`)을 잡아낸다.
+
 ## Domain Event — `MoneyDeposited`
 
 도메인 이벤트도 값 객체다. 발생 시점의 사실을 불변으로 기록한다.

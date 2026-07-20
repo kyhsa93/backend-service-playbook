@@ -41,6 +41,10 @@ import { evaluateAggregateNoPublicSetters } from '../rules/aggregate-no-public-s
 import { evaluateNoCrossAggregateReference } from '../rules/no-cross-aggregate-reference.evaluator'
 import { evaluateNoCrossBcRepositoryInApplication } from '../rules/no-cross-bc-repository-in-application.evaluator'
 import { evaluateSoftDeleteFilter } from '../rules/soft-delete-filter.evaluator'
+import { evaluateNoGenericResponseKeys } from '../rules/no-generic-response-keys.evaluator'
+import { evaluateQueryHandlerNoRawAggregate } from '../rules/query-handler-no-raw-aggregate.evaluator'
+import { evaluateNoCrossBcDomainImport } from '../rules/no-cross-bc-domain-import.evaluator'
+import { evaluateNoOrmAutosyncInProdConfig } from '../rules/no-orm-autosync-in-prod-config.evaluator'
 import { aggregate } from '../shared/score'
 import type { EvaluatorResult } from '../shared/types'
 
@@ -84,7 +88,11 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'aggregate-no-public-setters': evaluateAggregateNoPublicSetters,
   'no-cross-aggregate-reference': evaluateNoCrossAggregateReference,
   'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication,
-  'soft-delete-filter': evaluateSoftDeleteFilter
+  'soft-delete-filter': evaluateSoftDeleteFilter,
+  'no-generic-response-keys': evaluateNoGenericResponseKeys,
+  'query-handler-no-raw-aggregate': evaluateQueryHandlerNoRawAggregate,
+  'no-cross-bc-domain-import': evaluateNoCrossBcDomainImport,
+  'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig
 }
 
 interface CliArgs {

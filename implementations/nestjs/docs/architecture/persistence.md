@@ -281,3 +281,5 @@ npx typeorm migration:revert -d src/database/data-source.ts
 - **마이그레이션 파일은 커밋에 포함**: 자동 생성된 파일을 검토한 후 커밋한다.
 - **롤백 가능한 마이그레이션 작성**: `up()`과 `down()` 모두 구현한다.
 - **데이터 마이그레이션은 별도 파일**: 스키마 변경과 데이터 변환을 같은 마이그레이션에 넣지 않는다.
+
+`harness/evaluators/rules/no-orm-autosync-in-prod-config.evaluator.ts`가 `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})`의 `synchronize`가 리터럴 `true`로 하드코딩되어 있으면 `no-orm-autosync-in-prod-config.synchronize-hardcoded-true`로, `NODE_ENV === 'production'`처럼 운영 환경일 때 오히려 true로 평가되는 조건식이면 `no-orm-autosync-in-prod-config.synchronize-true-in-production`으로 잡아낸다.
