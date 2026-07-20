@@ -15,7 +15,7 @@
 
 NestJS는 Repository와 마찬가지로 Adapter 인터페이스를 `abstract class`로 정의한다(NestJS DI 컨테이너가 순수 `interface`를 런타임 토큰으로 쓸 수 없기 때문). **Kotlin/Spring은 Repository 패턴에서와 동일한 이유로 `interface` 자체가 DI 토큰이 된다** — Spring이 클래스패스에서 해당 인터페이스의 유일한 구현체를 찾아 자동 바인딩하므로 `abstract class` 우회가 필요 없다 ([layer-architecture.md](layer-architecture.md) "Domain 레이어" 절 참조).
 
-1. **Application Service는 Adapter 인터페이스를 통해서만 외부 BC를 호출**한다 — 외부 BC의 Service/Repository를 직접 주입하지 않는다.
+1. **Application Service는 Adapter 인터페이스를 통해서만 외부 BC를 호출**한다 — 외부 BC의 Service/Repository를 직접 주입하지 않는다. harness `no-cross-bc-repository-in-application` 규칙이 `application/` 파일의 import를 스캔해, 자신이 속한 도메인이 아닌 다른 도메인의 `domain/*Repository`·`*Query`를 직접 import하면 실패시킨다 — 같은 도메인 안의 import(예: `AccountRepository`를 쓰는 `account/application/`)는 정상 패턴이므로 대상이 아니다.
 2. **Adapter 인터페이스는 호출하는 쪽(Card BC)의 `application/adapter/`에 Kotlin `interface`로 정의**한다.
 3. **Adapter 구현체는 호출하는 쪽의 `infrastructure/`에 `@Component`로 배치**하고, 외부 BC 모듈이 공개(exports에 해당하는 public 빈)한 Service/Query를 생성자로 주입받는다.
 4. Adapter는 **조회 전용** — 외부 BC의 상태 변경 메서드를 호출하지 않는다. 쓰기가 필요하면 Integration Event로 전환한다([root 문서](../../../../docs/architecture/cross-domain-communication.md) 참조).

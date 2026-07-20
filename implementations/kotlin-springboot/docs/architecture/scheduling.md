@@ -151,7 +151,7 @@ class CloseAccountService(
 
 ## 원칙 요약
 
-- **Scheduler는 Infrastructure 레이어**: `outbox/`, `scheduling/` 패키지에 배치. Application/Domain에 `@Scheduled` 사용 금지.
+- **Scheduler는 Infrastructure 레이어**: `outbox/`, `scheduling/` 패키지에 배치. Application/Domain에 `@Scheduled` 사용 금지. harness `scheduler-in-infrastructure-only` 규칙이 `@Scheduled`/`@EnableScheduling`이 `domain/`·`application/`에 나타나면 실패시킨다(`outbox/`와 최상위 부트스트랩 클래스는 두 경로 밖이므로 통과).
 - **코루틴 대신 전통적인 스레드 풀 스케줄링을 사용한다**: Spring MVC + JPA(블로킹 스택)와 자연스럽게 맞물리며, 이 저장소는 리액티브/코루틴 스택으로 전환하지 않았으므로 코루틴 도입 이유가 없다.
 - **Scheduler는 적재만, Consumer가 실행**: 비즈니스 로직을 `@Scheduled` 메서드에 직접 넣지 않는다.
 - **DB 변경과 Task 적재는 같은 트랜잭션(Task Outbox)**: dual-write 문제를 피한다.

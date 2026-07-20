@@ -181,7 +181,7 @@ class AuthService(jwtProperties: JwtProperties) {
 
 ## 설정 접근 패턴
 
-설정 값(`AwsProperties`, `SesProperties` 등)은 Infrastructure 레이어(Repository 구현체, `@Configuration` 클래스)에서만 주입받는다. Domain/Application 레이어의 생성자에 `@ConfigurationProperties` 타입을 주입하지 않는다.
+설정 값(`AwsProperties`, `SesProperties` 등)은 Infrastructure 레이어(Repository 구현체, `@Configuration` 클래스)에서만 주입받는다. Domain/Application 레이어의 생성자에 `@ConfigurationProperties` 타입을 주입하지 않는다. 같은 원칙을 harness `no-direct-env-access-outside-config` 규칙이 더 직접적인 형태로 검사한다 — `domain/`, `application/`에서 `System.getenv(...)`를 직접 호출하면 실패, `config/`(`@ConfigurationProperties` 클래스)와 `infrastructure/`만 환경 변수에 접근할 수 있다.
 
 ```kotlin
 // 올바른 방식 — Infrastructure 레이어에서 설정 접근

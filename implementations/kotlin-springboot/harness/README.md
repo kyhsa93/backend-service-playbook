@@ -12,7 +12,7 @@ harness/
   src/
     Main.kt                      CLI 엔트리 — 규칙 목록 정의 + 결과 집계/출력
     Rule.kt                      공통 타입(Kind, Finding, RuleResult, Rule)
-    KtFiles.kt                   공통 헬퍼(collectKtFiles, relTo, pathContains)
+    KtFiles.kt                   공통 헬퍼(collectKtFiles, relTo, pathContains, segmentBefore)
     rules/
       FileNaming.kt               규칙별 구현 파일 (규칙 하나당 파일 하나)
       RepositoryAnnotation.kt
@@ -28,6 +28,17 @@ harness/
       OutboxNoSyncDrain.kt
       CqrsPattern.kt
       NotificationE2eTest.kt
+      RepositoryNaming.kt
+      DomainLayerIsolation.kt
+      InterfaceNoInfrastructure.kt
+      AggregateNoPublicSetters.kt
+      NoCrossAggregateReference.kt
+      NoDirectEnvAccessOutsideConfig.kt
+      NoCrossBcRepositoryInApplication.kt
+      NoLoggingInDomain.kt
+      SchedulerInInfrastructureOnly.kt
+      NoSilentCatch.kt
+      DockerfileConventions.kt
   test/
     RuleTest.kt                   자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
     testdata/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
@@ -64,7 +75,17 @@ bash implementations/kotlin-springboot/harness.sh <projectRoot>
 | `outbox-no-sync-drain` | `OutboxNoSyncDrain.kt` | Command Service가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 참조하거나 `processPending`/`poll`/`drainOnce`를 호출하면 실패 — Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임(동기 드레인 금지, domain-events.md) |
 | `cqrs-pattern` | `CqrsPattern.kt` | `application/query/` 파일이 쓰기 모델 Repository(`*Repository`)에 의존하면 실패 — 읽기 전용 Query 인터페이스(`AccountQuery` 등)만 사용해야 함 (cqrs-pattern.md). 주석 안의 언급은 제외 |
 | `notification-e2e-test` | `NotificationE2eTest.kt` | `NotificationE2ETest.kt` 존재 확인(다른 규칙은 `test/`를 검사 대상에서 제외하므로 이 회귀 테스트 삭제를 못 잡음) |
-| `repository-naming` | `RepositoryNaming.kt` | `domain/`, `application/query/` 안의 `*Repository`/`*Query` 인터페이스 메서드가 `find<Noun>s`/`save<Noun>`/`delete<Noun>` 네이밍을 따르는지 확인(repository-pattern.md). `findBy...`, bare `findAll`/`count*`/`save`/`delete`를 blocklist로 잡는다 — `infrastructure/`의 구현체·내부 Spring Data JPA 인터페이스(derived query 메서드)는 대상 아님 |
+| `repository-naming` | `RepositoryNaming.kt` | `domain/`, `application/query/` 안의 `*Repository`/`*Query` 인터페이스 메서드가 `find<Noun>s`/`save<Noun>`/`delete<Noun>` 네이밍을 따르는지 확인(repository-pattern.md). `findBy...`, bare `findAll`/`count*`/`save`/`delete`/`update*`를 blocklist로 잡는다 — `infrastructure/`의 구현체·내부 Spring Data JPA 인터페이스(derived query 메서드)는 대상 아님 |
+| `domain-layer-isolation` | `DomainLayerIsolation.kt` | `domain/` 파일이 (자신이 속한 도메인이든 형제 도메인이든) `application/`·`infrastructure/`·`interfaces/` 패키지를 import하면 실패(layer-architecture.md). 도메인 이름을 하드코딩하지 않는 경로 기반(`com.example.accountservice.<아무 도메인>.(application\|infrastructure\|interfaces)`) 구조적 검사 |
+| `interface-no-infrastructure` | `InterfaceNoInfrastructure.kt` | `interfaces/`(REST 컨트롤러 등)가 `infrastructure/`를 직접 import하면 실패 — `application/`만 의존해야 함(layer-architecture.md) |
+| `aggregate-no-public-setters` | `AggregateNoPublicSetters.kt` | `domain/`의 `class X private constructor()` 관용구(Aggregate/Entity)에서 `var` 프로퍼티가 `private set`이 아니면 실패(tactical-ddd.md "모든 프로퍼티가 `private set`"). `data class` Value Object는 애초에 `var`가 없어 대상 아님 |
+| `no-cross-aggregate-reference` | `NoCrossAggregateReference.kt` | `payment/domain/`에서 `Payment`가 `Refund`를, `Refund`가 `Payment`를 필드로 직접 참조하면 실패 — ID 참조(`paymentId: String`)만 허용(domain-service.md `RefundEligibilityService` 예시). `evaluate(payment: Payment, refund: Refund)`처럼 Domain Service가 여러 Aggregate를 함수 파라미터로 받는 것은 대상 아님 |
+| `no-direct-env-access-outside-config` | `NoDirectEnvAccessOutsideConfig.kt` | `domain/`, `application/`에서 `System.getenv(...)` 직접 호출 시 실패 — `config/`(`@ConfigurationProperties`)와 `infrastructure/`만 환경 변수에 접근 가능(config.md) |
+| `no-cross-bc-repository-in-application` | `NoCrossBcRepositoryInApplication.kt` | `application/` 파일이 자신이 속한 도메인이 아닌 다른 도메인의 `domain/*Repository`, `*Query`를 직접 import하면 실패 — 크로스 도메인 조회는 Adapter(`application/adapter/` + `infrastructure/*AdapterImpl`)를 거쳐야 함(cross-domain-communication.md) |
+| `no-logging-in-domain` | `NoLoggingInDomain.kt` | `domain/`에서 SLF4J/`kotlin-logging` 등 로깅 API 사용 시 실패(observability.md "Domain 레이어에서 로깅하지 않는다") |
+| `scheduler-in-infrastructure-only` | `SchedulerInInfrastructureOnly.kt` | `@Scheduled`/`@EnableScheduling`이 `domain/` 또는 `application/`에 있으면 실패(scheduling.md). `outbox/`(공유 인프라)와 최상위 부트스트랩 클래스는 두 경로 밖이므로 통과 |
+| `no-silent-catch` | `NoSilentCatch.kt` | `application/`, `infrastructure/`에서 완전히 빈 `catch (e: Exception) { }` 블록 발견 시 실패(observability.md) — 로깅·rethrow 등 내용이 하나라도 있으면 대상 아님(오탐 방지를 위한 좁은 blocklist) |
+| `dockerfile-conventions` | `DockerfileConventions.kt` | `examples/Dockerfile`을 텍스트로 파싱해 멀티스테이지 빌드(`FROM` 2개 이상)·`HEALTHCHECK` 존재·`.dockerignore`의 빌드 산출물/`.git` 제외 패턴 존재를 확인(container.md) |
 
 ## 회귀 테스트
 

@@ -134,7 +134,7 @@ class AccountRepositoryImpl(
 }
 ```
 
-**Repository에 update 메서드를 별도로 두지 않는다** — `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()`/`markDeleted()` 등 도메인 메서드로 이루어진 뒤 `saveAccount()`로 영속화된다.
+**Repository에 update 메서드를 별도로 두지 않는다** — `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()`/`markDeleted()` 등 도메인 메서드로 이루어진 뒤 `saveAccount()`로 영속화된다. harness `repository-naming` 규칙이 `update`로 시작하는 메서드도 blocklist로 잡아 이 원칙을 강제한다.
 
 **`close()`(상태 전환)와 `markDeleted()`(soft delete)는 서로 다른 생명주기 이벤트다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태를 바꿀 뿐 `deletedAt`을 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(계좌 이력 확인 등). `deleteAccount()`는 반대로 `deletedAt`을 설정해 이후 모든 조회(`deletedAt IS NULL` 조건)에서 제외시킨다. `Account.markDeleted()`는 `status != CLOSED`이면 `DeleteRequiresClosedAccountException`을 던져, 활성 계좌가 종료 절차 없이 곧바로 삭제되는 것을 막는다 — 삭제는 항상 "종료 → 삭제" 두 단계를 거친다.
 

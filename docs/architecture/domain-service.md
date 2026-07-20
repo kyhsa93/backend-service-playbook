@@ -125,6 +125,11 @@ export class RequestRefundCommandHandler {
 전체 코드: `implementations/nestjs/examples/src/payment/domain/refund-eligibility-service.ts`,
 `payment.ts`, `refund.ts`, `application/command/request-refund-command-handler.ts`.
 
+kotlin-springboot의 harness `no-cross-aggregate-reference` 규칙은 `payment/domain/`에서 `Payment`가
+`Refund`를, `Refund`가 `Payment`를 필드로 직접 보유하지 않는지(ID 참조만 허용) 기계적으로 검사한다 —
+`RefundEligibilityService.evaluate(payment: Payment, refund: Refund)`처럼 Domain Service가 두
+Aggregate를 함수 파라미터로 받는 정당한 패턴은 대상이 아니다.
+
 ---
 
 ### Domain Service vs Application Service vs Technical Service

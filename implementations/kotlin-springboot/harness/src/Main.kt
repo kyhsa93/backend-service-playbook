@@ -7,17 +7,27 @@
 // (README.md 참고).
 package harness
 
+import harness.rules.checkAggregateNoPublicSetters
 import harness.rules.checkControllerPlacement
 import harness.rules.checkCqrsPattern
+import harness.rules.checkDockerfileConventions
+import harness.rules.checkDomainLayerIsolation
 import harness.rules.checkDomainPurity
 import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
+import harness.rules.checkInterfaceNoInfrastructure
+import harness.rules.checkNoCrossAggregateReference
+import harness.rules.checkNoCrossBcRepositoryInApplication
+import harness.rules.checkNoDirectEnvAccessOutsideConfig
 import harness.rules.checkNoEventPublisherInCommand
+import harness.rules.checkNoLoggingInDomain
+import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkRepositoryNaming
+import harness.rules.checkSchedulerInInfrastructureOnly
 import harness.rules.checkSealedException
 import harness.rules.checkServiceAnnotation
 import harness.rules.checkSharedInfra
@@ -39,7 +49,17 @@ val RULES: List<Rule> = listOf(
     ::checkOutboxNoSyncDrain,
     ::checkCqrsPattern,
     ::checkNotificationE2eTest,
-    ::checkRepositoryNaming
+    ::checkRepositoryNaming,
+    ::checkDomainLayerIsolation,
+    ::checkInterfaceNoInfrastructure,
+    ::checkAggregateNoPublicSetters,
+    ::checkNoCrossAggregateReference,
+    ::checkNoDirectEnvAccessOutsideConfig,
+    ::checkNoCrossBcRepositoryInApplication,
+    ::checkNoLoggingInDomain,
+    ::checkSchedulerInInfrastructureOnly,
+    ::checkNoSilentCatch,
+    ::checkDockerfileConventions
 )
 
 fun main(args: Array<String>) {

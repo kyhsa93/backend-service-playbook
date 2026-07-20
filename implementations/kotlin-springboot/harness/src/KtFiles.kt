@@ -24,3 +24,14 @@ fun File.relTo(root: File): String =
 /** 경로 문자열이 슬래시로 정규화된 형태에서 특정 세그먼트(예: "/domain/")를 포함하는지. */
 fun File.pathContains(segment: String): Boolean =
     this.path.replace(File.separatorChar, '/').contains(segment)
+
+/**
+ * 경로에서 특정 레이어 디렉토리명(예: "application") 바로 앞 세그먼트를 반환한다 — 이 저장소의
+ * `<domain>/{domain,application,infrastructure,interfaces}/` 구조에서 "이 파일이 어느 도메인/BC에
+ * 속하는가"를 경로만으로 판단할 때 쓴다. 레이어 세그먼트가 없으면(또는 맨 앞이면) null.
+ */
+fun File.segmentBefore(layer: String): String? {
+    val parts = this.path.replace(File.separatorChar, '/').split('/')
+    val idx = parts.indexOf(layer)
+    return if (idx > 0) parts[idx - 1] else null
+}

@@ -8,17 +8,27 @@ package harness.test
 
 import harness.Kind
 import harness.RuleResult
+import harness.rules.checkAggregateNoPublicSetters
 import harness.rules.checkControllerPlacement
 import harness.rules.checkCqrsPattern
+import harness.rules.checkDockerfileConventions
+import harness.rules.checkDomainLayerIsolation
 import harness.rules.checkDomainPurity
 import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
+import harness.rules.checkInterfaceNoInfrastructure
+import harness.rules.checkNoCrossAggregateReference
+import harness.rules.checkNoCrossBcRepositoryInApplication
+import harness.rules.checkNoDirectEnvAccessOutsideConfig
 import harness.rules.checkNoEventPublisherInCommand
+import harness.rules.checkNoLoggingInDomain
+import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkRepositoryNaming
+import harness.rules.checkSchedulerInInfrastructureOnly
 import harness.rules.checkSealedException
 import harness.rules.checkServiceAnnotation
 import harness.rules.checkSharedInfra
@@ -95,7 +105,41 @@ val TESTS: List<TestCase> = listOf(
     TestCase("repository-naming/bad-findall") { checkRepositoryNaming("testdata/repository-naming/bad-findall").assertHasFailure() },
     TestCase("repository-naming/bad-count") { checkRepositoryNaming("testdata/repository-naming/bad-count").assertHasFailure() },
     TestCase("repository-naming/bad-bare-save") { checkRepositoryNaming("testdata/repository-naming/bad-bare-save").assertHasFailure() },
-    TestCase("repository-naming/bad-bare-delete") { checkRepositoryNaming("testdata/repository-naming/bad-bare-delete").assertHasFailure() }
+    TestCase("repository-naming/bad-bare-delete") { checkRepositoryNaming("testdata/repository-naming/bad-bare-delete").assertHasFailure() },
+    TestCase("repository-naming/bad-update") { checkRepositoryNaming("testdata/repository-naming/bad-update").assertHasFailure() },
+
+    TestCase("domain-layer-isolation/good") { checkDomainLayerIsolation("testdata/domain-layer-isolation/good").assertNoFailures() },
+    TestCase("domain-layer-isolation/bad-same-domain-application") { checkDomainLayerIsolation("testdata/domain-layer-isolation/bad-same-domain-application").assertHasFailure() },
+    TestCase("domain-layer-isolation/bad-sibling-domain-infrastructure") { checkDomainLayerIsolation("testdata/domain-layer-isolation/bad-sibling-domain-infrastructure").assertHasFailure() },
+
+    TestCase("interface-no-infrastructure/good") { checkInterfaceNoInfrastructure("testdata/interface-no-infrastructure/good").assertNoFailures() },
+    TestCase("interface-no-infrastructure/bad-imports-infrastructure") { checkInterfaceNoInfrastructure("testdata/interface-no-infrastructure/bad-imports-infrastructure").assertHasFailure() },
+
+    TestCase("aggregate-no-public-setters/good") { checkAggregateNoPublicSetters("testdata/aggregate-no-public-setters/good").assertNoFailures() },
+    TestCase("aggregate-no-public-setters/bad-public-var") { checkAggregateNoPublicSetters("testdata/aggregate-no-public-setters/bad-public-var").assertHasFailure() },
+
+    TestCase("no-cross-aggregate-reference/good") { checkNoCrossAggregateReference("testdata/no-cross-aggregate-reference/good").assertNoFailures() },
+    TestCase("no-cross-aggregate-reference/bad-payment-holds-refund") { checkNoCrossAggregateReference("testdata/no-cross-aggregate-reference/bad-payment-holds-refund").assertHasFailure() },
+    TestCase("no-cross-aggregate-reference/bad-refund-holds-payment") { checkNoCrossAggregateReference("testdata/no-cross-aggregate-reference/bad-refund-holds-payment").assertHasFailure() },
+
+    TestCase("no-direct-env-access-outside-config/good") { checkNoDirectEnvAccessOutsideConfig("testdata/no-direct-env-access-outside-config/good").assertNoFailures() },
+    TestCase("no-direct-env-access-outside-config/bad-getenv-in-application") { checkNoDirectEnvAccessOutsideConfig("testdata/no-direct-env-access-outside-config/bad-getenv-in-application").assertHasFailure() },
+
+    TestCase("no-cross-bc-repository-in-application/good") { checkNoCrossBcRepositoryInApplication("testdata/no-cross-bc-repository-in-application/good").assertNoFailures() },
+    TestCase("no-cross-bc-repository-in-application/bad-cross-domain-repository") { checkNoCrossBcRepositoryInApplication("testdata/no-cross-bc-repository-in-application/bad-cross-domain-repository").assertHasFailure() },
+
+    TestCase("no-logging-in-domain/good") { checkNoLoggingInDomain("testdata/no-logging-in-domain/good").assertNoFailures() },
+    TestCase("no-logging-in-domain/bad-slf4j-in-domain") { checkNoLoggingInDomain("testdata/no-logging-in-domain/bad-slf4j-in-domain").assertHasFailure() },
+
+    TestCase("scheduler-in-infrastructure-only/good") { checkSchedulerInInfrastructureOnly("testdata/scheduler-in-infrastructure-only/good").assertNoFailures() },
+    TestCase("scheduler-in-infrastructure-only/bad-scheduled-in-application") { checkSchedulerInInfrastructureOnly("testdata/scheduler-in-infrastructure-only/bad-scheduled-in-application").assertHasFailure() },
+
+    TestCase("no-silent-catch/good") { checkNoSilentCatch("testdata/no-silent-catch/good").assertNoFailures() },
+    TestCase("no-silent-catch/bad-empty-catch") { checkNoSilentCatch("testdata/no-silent-catch/bad-empty-catch").assertHasFailure() },
+
+    TestCase("dockerfile-conventions/good") { checkDockerfileConventions("testdata/dockerfile-conventions/good").assertNoFailures() },
+    TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck").assertHasFailure() },
+    TestCase("dockerfile-conventions/bad-missing-dockerignore") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-missing-dockerignore").assertHasFailure() }
 )
 
 fun main() {

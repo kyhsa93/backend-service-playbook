@@ -31,6 +31,10 @@ private val ANTI_PATTERNS =
         AntiPattern({ it.startsWith("count") }, "count* 별도 메서드 금지, find<Noun>s가 Pair<List<T>, Long>로 개수를 함께 반환해야 함 ($DOC_REF)"),
         AntiPattern({ it == "save" }, "save(명사 없는 bare 저장) 금지, save<Noun>로 대상 명사를 명시 ($DOC_REF)"),
         AntiPattern({ it == "delete" }, "delete(명사 없는 bare 삭제) 금지, delete<Noun>로 대상 명사를 명시 ($DOC_REF)"),
+        AntiPattern(
+            { it.startsWith("update") },
+            "update 별도 메서드 금지 — 상태 변경은 Aggregate 도메인 메서드(deposit()/suspend() 등)로만 이루어지고 save<Noun>로 영속화해야 함 ($DOC_REF)",
+        ),
     )
 
 /**

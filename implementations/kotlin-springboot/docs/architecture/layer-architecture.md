@@ -10,7 +10,7 @@ interfaces/rest (@RestController)  →  application/{command,query} (@Service)  
                                                                         infrastructure/persistence (@Repository, AccountRepositoryImpl)
 ```
 
-`account/domain/`은 Spring 어노테이션도 JPA(`jakarta.persistence`) 애노테이션도 없는 순수 Kotlin으로 작성되고(JPA 매핑은 `infrastructure/persistence/`의 `AccountJpaEntity`/`MoneyEmbeddable` + Mapper가 전담, [directory-structure.md](directory-structure.md) 참고), `infrastructure/persistence/AccountRepositoryImpl`이 `domain/AccountRepository` 인터페이스를 구현해 의존성을 역전시킨다. harness의 `domain-purity`(도메인에 `@Service`/`@Component`/`@Repository`/`@Controller` 및 `jakarta.persistence` import 금지), `service-annotation`(`@Service`는 application/ 안에만), `repository-annotation`(`@Repository`는 infrastructure/ 안에만) 검사가 이 의존 방향을 실제로 강제한다.
+`account/domain/`은 Spring 어노테이션도 JPA(`jakarta.persistence`) 애노테이션도 없는 순수 Kotlin으로 작성되고(JPA 매핑은 `infrastructure/persistence/`의 `AccountJpaEntity`/`MoneyEmbeddable` + Mapper가 전담, [directory-structure.md](directory-structure.md) 참고), `infrastructure/persistence/AccountRepositoryImpl`이 `domain/AccountRepository` 인터페이스를 구현해 의존성을 역전시킨다. harness의 `domain-purity`(도메인에 `@Service`/`@Component`/`@Repository`/`@Controller` 및 `jakarta.persistence` import 금지), `service-annotation`(`@Service`는 application/ 안에만), `repository-annotation`(`@Repository`는 infrastructure/ 안에만) 검사가 이 의존 방향을 실제로 강제한다. `domain-layer-isolation` 규칙은 애노테이션 블록리스트보다 넓은 경로 기반 검사로 같은 원칙을 한 번 더 강제한다 — `domain/` 파일이 (자신이 속한 도메인이든 형제 도메인이든) `application/`·`infrastructure/`·`interfaces/` 패키지를 import 자체를 못 하게 막는다. `interface-no-infrastructure` 규칙은 반대쪽 끝(`interfaces/`)에서 `infrastructure/`를 건너뛰고 직접 import하는 것을 막는다 — `interfaces/`는 `application/`만 의존해야 한다.
 
 ---
 

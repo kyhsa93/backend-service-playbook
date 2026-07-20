@@ -124,7 +124,8 @@ Node의 `AsyncLocalStorage`와 동일한 역할을 JVM 스레드 모델에서는
 
 ## 원칙 요약
 
-- **Domain 레이어에서 로깅 금지**: `Account`, `Money`, `Transaction`은 로거를 import하지 않는다.
+- **Domain 레이어에서 로깅 금지**: `Account`, `Money`, `Transaction`은 로거를 import하지 않는다. harness `no-logging-in-domain` 규칙이 `domain/`에서 SLF4J/`kotlin-logging` 사용을 기계적으로 검사한다.
+- **빈 catch 블록 금지**: 예외를 잡고도 로깅도 재던지기도 하지 않으면 실패가 조용히 묻힌다. harness `no-silent-catch` 규칙이 `application/`, `infrastructure/`의 완전히 빈 `catch (e: Exception) { }` 블록을 좁게(오탐 방지를 위해 정말로 내용이 없는 블록만) 검사한다.
 - **`NotificationServiceImpl`은 구조화 로그를 쓴다**: `logger.atInfo().addKeyValue(...)`로 snake_case 필드를 남긴다. `OutboxPoller`/`OutboxConsumer`의 실패 로깅은 이미 같은 방식이다 — `EventHandlerRegistry`/`AccountController`의 `{}` 플레이스홀더 로그를 같은 방식으로 승격하는 것은 남은 개선 여지다.
 - **`kotlin-logging` 도입 검토**: 지연 평가 + `::class.java` 보일러플레이트 제거 — 아직 도입하지 않았다.
 - **MDC로 Correlation ID 전파**: `CorrelationIdFilter`가 요청 진입점에서 설정하면 이후 모든 로그에 자동 포함.
