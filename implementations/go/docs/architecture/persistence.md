@@ -159,6 +159,18 @@ migrations/
 
 ---
 
+## Soft Delete 필터는 harness가 자동 검사한다
+
+`deleted_at` 컬럼을 가진 테이블(마이그레이션 SQL 기준)을 대상으로 하는 `Find*`/`FindAll`
+쿼리가 `deleted_at IS NULL` 필터를 빠뜨리는 회귀는
+`implementations/go/harness/soft_delete_filter.go`(`soft-delete-filter` 규칙)가 자동으로
+검사한다 — `root/migrations/*.sql`(`.down.sql` 제외)에서 어떤 테이블이 실제로
+`deleted_at` 컬럼을 갖는지 먼저 파악한 뒤, 그 테이블을 대상으로 하는
+`internal/infrastructure/persistence/*_repository.go`의 각 조회 메서드 본문에 필터가
+있는지 텍스트로 확인한다(정적 SQL 문자열이든 동적 WHERE 절 빌더의 seed 값이든 상관없다).
+컬럼 자체가 없는 테이블(현재는 accounts를 제외한 모든 테이블)을 대상으로 하는 메서드는
+검사 대상에서 제외된다.
+
 ### 관련 문서
 
 - [repository-pattern.md](repository-pattern.md) — Repository 인터페이스/구현 분리

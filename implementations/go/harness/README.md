@@ -26,7 +26,13 @@ harness/
   scheduler_in_infrastructure_only.go
   no_silent_catch.go
   dockerfile_conventions.go
+  aggregate_id_format.go
+  error_response_schema.go
+  soft_delete_filter.go
+  typed_errors_only.go
+  rate_limit_wired.go
   import_paths.go                go/parser 기반 import 경로 추출 헬퍼(여러 규칙이 공유)
+  text_block.go                  괄호/중괄호 균형 추출 헬퍼(문자열 리터럴 내부는 건너뜀, 여러 규칙이 공유)
   *_test.go                      규칙별 회귀 테스트 (표준 testing 패키지)
   testdata/<rule>/good/          해당 규칙을 통과해야 하는 최소 fixture
   testdata/<rule>/bad-*/         해당 규칙을 위반해 실패해야 하는 fixture
@@ -68,6 +74,11 @@ go run . <projectRoot>
 | `scheduler-in-infrastructure-only` | `scheduler_in_infrastructure_only.go` | `time.Ticker`/`time.NewTicker`/cron 라이브러리 참조가 `internal/domain/`·`internal/application/`에 없는지(`internal/infrastructure/`에서만 허용) — `scheduling.md` |
 | `no-silent-catch` | `no_silent_catch.go` | `if err != nil { }`처럼 완전히 빈 블록으로 에러를 조용히 삼키는 곳이 없는지 — `observability.md` |
 | `dockerfile-conventions` | `dockerfile_conventions.go` | `examples/Dockerfile`이 멀티스테이지(FROM 2개 이상)+`HEALTHCHECK`를 갖추고, 옆의 `.dockerignore`가 `.git`/`.env` 등을 제외하는지 — `container.md` |
+| `aggregate-id-format` | `aggregate_id_format.go` | `internal/common/id.go`의 `NewID()`가 UUID v4 문자열을 하이픈 제거 없이 그대로 반환하지 않는지(`strings.ReplaceAll(..., "-", "")` 류의 하이픈 제거 코드가 있는지, 혹은 `hex.EncodeToString` 같이 애초에 하이픈이 생기지 않는 방식인지) — 단일 파일 검사 — `aggregate-id.md` |
+| `error-response-schema` | `error_response_schema.go` | `internal/interface/http/**`에서 `json:"statusCode"` 태그를 가진 struct(에러 응답 후보)를 찾아, json 필드 구성이 정확히 `statusCode`/`code`/`message`/`error` 4개인지(더 많아도/적어도/이름이 달라도 FAIL) — `error-handling.md` |
+| `soft-delete-filter` | `soft_delete_filter.go` | `root/migrations/*.sql`(`.down.sql` 제외)에서 `deleted_at` 컬럼을 가진 테이블을 먼저 파악한 뒤, `internal/infrastructure/persistence/*_repository.go`의 각 `Find*`/`FindAll` 메서드가 그 테이블을 대상으로 하면 `deleted_at IS NULL` 필터(정적 SQL이든 동적 WHERE 빌더 seed든 텍스트 검색으로 판단)를 포함하는지 — 컬럼이 없는 테이블 대상 메서드는 대상에서 제외 — `persistence.md` |
+| `typed-errors-only` | `typed_errors_only.go` | `internal/domain/`·`internal/application/`에서 `errors.New(...)`가 `domain/<bc>/errors.go` 밖(application/는 위치 무관 전부)에서 호출되지 않는지, `fmt.Errorf(...)`가 항상 `%w`로 기존 typed error를 감싸는지(감싸지 않는 free-form 메시지는 FAIL) — AGENTS.md("에러는 enum으로 타입화") |
+| `rate-limit-wired` | `rate_limit_wired.go` | `internal/interface/http/middleware/` 아래 이름에 `RateLimit`이 들어간 함수/메서드가 정의만 되어 있고 router.go/main.go 등 조립 지점 어디에서도 호출되지 않는 죽은 코드가 아닌지 — `rate-limiting.md` |
 
 **구현하지 않은 규칙:** `aggregate-no-public-setters`는 이 저장소의 실제 Aggregate(Account/Card/Payment/Refund/Credential)가 모두 필드를 **전부 exported**로 선언하는 컨벤션을 쓴다(Go는 필드 단위 접근 제어가 없고, 이 저장소는 "비공개 필드 + 접근자 메서드"가 아니라 "공개 필드 + 도메인 메서드로 상태 전이"를 선택했다) — 그래서 애초에 "숨겨야 할 비공개 필드"라는 전제가 성립하지 않는다. "다른 패키지가 도메인 메서드를 우회해 필드를 직접 대입하는지"를 잡으려면 각 대입식이 실제로 Aggregate 타입 변수를 대상으로 하는지 타입 추론이 필요한데, 필드 이름(`Status`, `Amount` 등)이 DTO/테스트 코드에서도 흔히 재사용되는 이 저장소 스타일상 정규식 기반으로는 오탐률이 지나치게 높아 규칙을 추가하지 않았다.
 

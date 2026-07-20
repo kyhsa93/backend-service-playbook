@@ -32,6 +32,11 @@ var rules = []func(string) RuleResult{
 	checkSchedulerInInfrastructureOnly,
 	checkNoSilentCatch,
 	checkDockerfileConventions,
+	checkAggregateIDFormat,
+	checkErrorResponseSchema,
+	checkSoftDeleteFilter,
+	checkTypedErrorsOnly,
+	checkRateLimitWired,
 }
 
 func main() {

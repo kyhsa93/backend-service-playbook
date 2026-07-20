@@ -1,0 +1,14 @@
+CREATE TABLE accounts (
+  id          VARCHAR(36)  PRIMARY KEY,
+  owner_id    VARCHAR(36)  NOT NULL,
+  status      VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at  TIMESTAMP    NULL
+);
+
+CREATE TABLE transactions (
+  id          VARCHAR(36)  PRIMARY KEY,
+  account_id  VARCHAR(36)  NOT NULL,
+  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

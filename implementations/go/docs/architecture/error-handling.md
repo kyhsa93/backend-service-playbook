@@ -162,6 +162,13 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 
 ---
 
+## 응답 스키마는 harness가 자동 검사한다
+
+에러 응답이 `statusCode`/`code`/`message`/`error` 4개 필드를 정확히 갖는지(필드가 더 많거나
+적거나 이름이 다른 경우 모두 위반)는 `implementations/go/harness/error_response_schema.go`
+(`error-response-schema` 규칙)가 자동으로 검사한다 — `internal/interface/http/**`에서
+`json:"statusCode"` 태그를 가진 struct를 에러 응답 후보로 찾아 json 필드 집합을 비교한다.
+
 ### 관련 문서
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate 메서드 내부에서 에러 반환하는 패턴

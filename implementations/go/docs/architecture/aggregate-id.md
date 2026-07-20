@@ -91,6 +91,15 @@ _, err = tx.ExecContext(ctx,
 
 ---
 
+## 하이픈 제거는 harness가 자동 검사한다
+
+`common.NewID()`가 UUID v4를 하이픈 제거 없이 그대로 반환하는 회귀는
+`implementations/go/harness/aggregate_id_format.go`(`aggregate-id-format` 규칙)가 자동으로
+검사한다 — `internal/common/id.go`의 `NewID()` 구현이 `strings.ReplaceAll(..., "-", "")` 류의
+하이픈 제거 코드를 갖는지(또는 `hex.EncodeToString`처럼 애초에 하이픈이 생기지 않는 방식인지)
+텍스트 검색으로 확인하고, `uuid.New().String()`/`uuid.NewString()`을 가공 없이 그대로
+반환하면 FAIL로 잡아낸다.
+
 ### 관련 문서
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate 생성자 패턴, `New`/`Reconstitute` 분리

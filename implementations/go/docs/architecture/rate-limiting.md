@@ -259,6 +259,14 @@ if !limiter.Allow() {
 
 ---
 
+## 실제 배선 여부는 harness가 자동 검사한다
+
+rate limit 미들웨어가 정의만 되어 있고 router.go/main.go 같은 조립 지점 어디에서도
+호출되지 않는(죽은 코드가 되는) 회귀는 `implementations/go/harness/rate_limit_wired.go`
+(`rate-limit-wired` 규칙)가 자동으로 검사한다 — `internal/interface/http/middleware/`
+아래 이름에 `RateLimit`이 들어간 함수/메서드를 찾아, 정의 파일과 테스트 파일을 제외한
+나머지 소스 어딘가에서 실제로 호출되는지 확인한다.
+
 ### 관련 문서
 
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — 미들웨어 체인 합성 패턴, 파이프라인 순서
