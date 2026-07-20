@@ -111,7 +111,7 @@ Account account = accountRepository
 
 `Transaction`(하위 Entity) 목록 조회도 동일한 이유로 `findTransactions`/`countTransactions` 두 메서드였던 것을 `findTransactions` 하나로 병합해 `TransactionsWithCount`를 반환한다.
 
-**harness 검증**: `harness/src/rules/RepositoryNaming.java`(rule: `repository-naming`)가 `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스의 메서드 이름을 블록리스트로 검사한다 — `findByXxx`류 Spring Data 파생 쿼리 스타일, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태)를 잡아낸다. `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드(`AccountJpaRepository.findByAccountId` 등)는 검사 대상이 아니다 — 구현 세부사항이라 정당하게 파생 쿼리 스타일을 쓸 수 있다.
+**harness 검증**: `harness/src/rules/RepositoryNaming.java`(rule: `repository-naming`)가 `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스의 메서드 이름을 블록리스트로 검사한다 — `findByXxx`류 Spring Data 파생 쿼리 스타일, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태), `update`로 시작하는 메서드(루트 원칙 "Repository에 수정(update) 메서드 금지 — 조회 후 Aggregate의 도메인 메서드로 수정, save<Noun>으로 저장")를 잡아낸다. `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드(`AccountJpaRepository.findByAccountId` 등)는 검사 대상이 아니다 — 구현 세부사항이라 정당하게 파생 쿼리 스타일을 쓸 수 있다.
 
 **`delete<Noun>` 메서드 — soft delete로 실제 구현됨**: 계좌 "종료"(`Account.close()` — `status = CLOSED`)와 "삭제"(`Account.delete()` — `deletedAt` 설정)는 서로 다른 개념이다. `delete()`는 종료(CLOSED)된 계좌에만 허용되며, 도메인 메서드 `Account.delete()`가 이 불변식을 검증한다:
 

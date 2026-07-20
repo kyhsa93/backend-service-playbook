@@ -243,6 +243,12 @@ depositService.deposit(new DepositCommand(accountId, requesterId, request.amount
 
 ---
 
+## harness 검증
+
+`harness/src/rules/DomainLayerIsolation.java`(rule: `domain-layer-isolation`)가 `<domain>/domain/` 파일의 import 문을 검사해 자기 자신 또는 형제 도메인의 `application/`·`infrastructure/`·`interfaces/`를 참조하면 실패시킨다 — 특정 Spring 어노테이션 이름을 하드코딩하는 `domain-purity` 규칙보다 더 구조적인(패키지 경로 기반) 검사다. `harness/src/rules/InterfaceNoInfrastructure.java`(rule: `interface-no-infrastructure`)는 `interfaces/`(REST Controller 등)가 `infrastructure/`를 직접 import하면 실패시킨다 — `interfaces/rest -> application -> domain` 의존 방향을 지키려면 `application/`을 거쳐야 한다.
+
+---
+
 ### 관련 문서
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate, Entity, Value Object 상세

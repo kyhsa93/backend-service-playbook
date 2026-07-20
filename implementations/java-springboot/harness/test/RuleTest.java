@@ -5,16 +5,26 @@
 // 같은 취지). test/ 디렉토리에서 실행한다고 가정하고 "testdata/..." 상대경로를 그대로 쓴다.
 import harness.Kind;
 import harness.RuleResult;
+import harness.rules.AggregateNoPublicSetters;
 import harness.rules.ControllerPlacement;
 import harness.rules.CqrsQueryPurity;
+import harness.rules.DockerfileConventions;
+import harness.rules.DomainLayerIsolation;
 import harness.rules.DomainPurity;
 import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
+import harness.rules.InterfaceNoInfrastructure;
+import harness.rules.NoCrossAggregateReference;
+import harness.rules.NoCrossBcRepositoryInApplication;
+import harness.rules.NoDirectEnvAccessOutsideConfig;
 import harness.rules.NoEventPublisherInCommand;
+import harness.rules.NoLoggingInDomain;
+import harness.rules.NoSilentCatch;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
 import harness.rules.RepositoryAnnotation;
 import harness.rules.RepositoryNaming;
+import harness.rules.SchedulerInInfrastructureOnly;
 import harness.rules.ServiceAnnotation;
 import harness.rules.SharedInfra;
 import harness.rules.TransactionBoundary;
@@ -100,7 +110,41 @@ public final class RuleTest {
         new TestCase("repository-naming/bad-findall", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-findall"))),
         new TestCase("repository-naming/bad-count", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-count"))),
         new TestCase("repository-naming/bad-bare-save", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-bare-save"))),
-        new TestCase("repository-naming/bad-bare-delete", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-bare-delete")))
+        new TestCase("repository-naming/bad-bare-delete", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-bare-delete"))),
+        new TestCase("repository-naming/bad-update", () -> assertHasFailure(RepositoryNaming.check("testdata/repository-naming/bad-update"))),
+
+        new TestCase("domain-layer-isolation/good", () -> assertNoFailures(DomainLayerIsolation.check("testdata/domain-layer-isolation/good"))),
+        new TestCase("domain-layer-isolation/bad-imports-application", () -> assertHasFailure(DomainLayerIsolation.check("testdata/domain-layer-isolation/bad-imports-application"))),
+        new TestCase("domain-layer-isolation/bad-imports-sibling-infrastructure", () -> assertHasFailure(DomainLayerIsolation.check("testdata/domain-layer-isolation/bad-imports-sibling-infrastructure"))),
+
+        new TestCase("interface-no-infrastructure/good", () -> assertNoFailures(InterfaceNoInfrastructure.check("testdata/interface-no-infrastructure/good"))),
+        new TestCase("interface-no-infrastructure/bad-imports-infrastructure", () -> assertHasFailure(InterfaceNoInfrastructure.check("testdata/interface-no-infrastructure/bad-imports-infrastructure"))),
+
+        new TestCase("aggregate-no-public-setters/good", () -> assertNoFailures(AggregateNoPublicSetters.check("testdata/aggregate-no-public-setters/good"))),
+        new TestCase("aggregate-no-public-setters/bad-javabean-setter", () -> assertHasFailure(AggregateNoPublicSetters.check("testdata/aggregate-no-public-setters/bad-javabean-setter"))),
+        new TestCase("aggregate-no-public-setters/bad-lombok-setter", () -> assertHasFailure(AggregateNoPublicSetters.check("testdata/aggregate-no-public-setters/bad-lombok-setter"))),
+
+        new TestCase("no-cross-aggregate-reference/good", () -> assertNoFailures(NoCrossAggregateReference.check("testdata/no-cross-aggregate-reference/good"))),
+        new TestCase("no-cross-aggregate-reference/bad-payment-references-refund", () -> assertHasFailure(NoCrossAggregateReference.check("testdata/no-cross-aggregate-reference/bad-payment-references-refund"))),
+
+        new TestCase("no-direct-env-access-outside-config/good", () -> assertNoFailures(NoDirectEnvAccessOutsideConfig.check("testdata/no-direct-env-access-outside-config/good"))),
+        new TestCase("no-direct-env-access-outside-config/bad-getenv-in-application", () -> assertHasFailure(NoDirectEnvAccessOutsideConfig.check("testdata/no-direct-env-access-outside-config/bad-getenv-in-application"))),
+
+        new TestCase("no-cross-bc-repository-in-application/good", () -> assertNoFailures(NoCrossBcRepositoryInApplication.check("testdata/no-cross-bc-repository-in-application/good"))),
+        new TestCase("no-cross-bc-repository-in-application/bad-cross-domain-repository", () -> assertHasFailure(NoCrossBcRepositoryInApplication.check("testdata/no-cross-bc-repository-in-application/bad-cross-domain-repository"))),
+        new TestCase("no-cross-bc-repository-in-application/bad-cross-domain-query", () -> assertHasFailure(NoCrossBcRepositoryInApplication.check("testdata/no-cross-bc-repository-in-application/bad-cross-domain-query"))),
+
+        new TestCase("no-logging-in-domain/good", () -> assertNoFailures(NoLoggingInDomain.check("testdata/no-logging-in-domain/good"))),
+        new TestCase("no-logging-in-domain/bad-slf4j-in-domain", () -> assertHasFailure(NoLoggingInDomain.check("testdata/no-logging-in-domain/bad-slf4j-in-domain"))),
+
+        new TestCase("scheduler-in-infrastructure-only/good", () -> assertNoFailures(SchedulerInInfrastructureOnly.check("testdata/scheduler-in-infrastructure-only/good"))),
+        new TestCase("scheduler-in-infrastructure-only/bad-scheduled-in-application", () -> assertHasFailure(SchedulerInInfrastructureOnly.check("testdata/scheduler-in-infrastructure-only/bad-scheduled-in-application"))),
+
+        new TestCase("no-silent-catch/good", () -> assertNoFailures(NoSilentCatch.check("testdata/no-silent-catch/good"))),
+        new TestCase("no-silent-catch/bad-empty-catch", () -> assertHasFailure(NoSilentCatch.check("testdata/no-silent-catch/bad-empty-catch"))),
+
+        new TestCase("dockerfile-conventions/good", () -> assertNoFailures(DockerfileConventions.check("testdata/dockerfile-conventions/good"))),
+        new TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck", () -> assertHasFailure(DockerfileConventions.check("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck")))
     );
 
     public static void main(String[] args) {

@@ -104,6 +104,12 @@ Technical Service 배치 원칙(도메인 내부가 기본값, YAGNI)과 `Notifi
 
 ---
 
+## harness 검증
+
+`harness/src/rules/NoCrossAggregateReference.java`(rule: `no-cross-aggregate-reference`)가 `payment/domain/Payment.java`는 `Refund` 타입을, `payment/domain/Refund.java`는 `Payment` 타입을 필드/파라미터로 직접 참조하지 않는지 확인한다 — 두 Aggregate는 `paymentId` 같은 ID 문자열로만 서로를 참조해야 하고(위 `RefundEligibilityService` 설명 참고), 조율 로직은 Domain Service 자리로만 가야 한다. 현재 이 저장소에서 한 BC 안에 Aggregate가 둘 이상인 유일한 실제 사례(Payment BC)에 한정한 규칙이다.
+
+---
+
 ### 관련 문서
 
 - [domain-service.md (root)](../../../../docs/architecture/domain-service.md) — 프레임워크 무관 원칙

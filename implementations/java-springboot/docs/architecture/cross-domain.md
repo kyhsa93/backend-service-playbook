@@ -197,6 +197,12 @@ public class AccountSuspendedIntegrationEventHandler implements OutboxEventHandl
 
 ---
 
+## harness 검증
+
+`harness/src/rules/NoCrossBcRepositoryInApplication.java`(rule: `no-cross-bc-repository-in-application`)가 한 도메인의 `application/` 파일에서 다른 도메인의 `domain/*Repository`나 `application/query/*Query` 인터페이스를 직접 import하면 실패시킨다 — 파일 경로에서 소속 도메인을 판별해, 다른 도메인 것이면 위반이다. `payment/infrastructure/PaymentAccountAdapterImpl.java`처럼 Adapter 구현체가 `infrastructure/`에서 다른 도메인의 Query 인터페이스를 주입받는 것은(ACL 패턴 자체) 검사 대상이 아니다 — 이 규칙이 막는 것은 `application/`이 Adapter를 건너뛰고 직접 다른 BC의 Repository/Query를 참조하는 경우다.
+
+---
+
 ### 관련 문서
 
 - [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) — 동기(Adapter) vs 비동기(Integration Event) 선택 기준, Context Map 대응

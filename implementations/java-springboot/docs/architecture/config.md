@@ -163,6 +163,12 @@ public class CreateAccountService {
 
 ---
 
+## harness 검증
+
+`harness/src/rules/NoDirectEnvAccessOutsideConfig.java`(rule: `no-direct-env-access-outside-config`)가 `domain/`·`application/`에서 `System.getenv(...)`를 직접 호출하면 실패시킨다 — 환경 변수 접근은 `@ConfigurationProperties`로 감싸 `config/`(최상위 공용 패키지) 또는 `infrastructure/`에서만 해야 한다.
+
+---
+
 ### 관련 문서
 
 - [container.md](container.md) — 컨테이너 환경 변수 주입

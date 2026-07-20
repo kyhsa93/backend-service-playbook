@@ -28,6 +28,18 @@ harness/
       NoEventPublisherInCommand.java
       TransactionBoundary.java
       OutboxDrainOrder.java
+      CqrsQueryPurity.java
+      RepositoryNaming.java
+      DomainLayerIsolation.java
+      InterfaceNoInfrastructure.java
+      AggregateNoPublicSetters.java
+      NoCrossAggregateReference.java
+      NoDirectEnvAccessOutsideConfig.java
+      NoCrossBcRepositoryInApplication.java
+      NoLoggingInDomain.java
+      SchedulerInInfrastructureOnly.java
+      NoSilentCatch.java
+      DockerfileConventions.java
   test/
     RuleTest.java                 자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
     testdata/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
@@ -62,7 +74,17 @@ bash implementations/java-springboot/harness.sh <projectRoot>
 | `transaction-boundary` | `TransactionBoundary.java` | Command Service에 `@Transactional`이 없고, Outbox를 저장하는 `*RepositoryImpl`에는 있는지 확인 |
 | `outbox-drain-order` | `OutboxDrainOrder.java` | Command Service(`application/command/`)가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 참조하거나 `processPending()`/`poll()`/`drainOnce()`를 호출하면 실패 — Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지, domain-events.md) |
 | `cqrs-query-purity` | `CqrsQueryPurity.java` | `application/query/` 하위 파일(주석 제외)이 쓰기용 Repository 타입을 참조하면 실패 — Query Service는 별도 Query 인터페이스(`AccountQuery` 등)만 의존해야 함(cqrs-pattern.md). nestjs harness의 `cqrs-pattern` evaluator를 이식한 규칙 |
-| `repository-naming` | `RepositoryNaming.java` | `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스 메서드가 `findByXxx`류 파생 쿼리, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태) 블록리스트에 걸리면 실패 — `find<Noun>s`/`save<Noun>`/`delete<Noun>` 형태만 허용(repository-pattern.md). `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드는 검사 대상 아님 |
+| `repository-naming` | `RepositoryNaming.java` | `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스 메서드가 `findByXxx`류 파생 쿼리, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태), `update`로 시작하는 메서드(별도 update 메서드 자체가 금지) 블록리스트에 걸리면 실패 — `find<Noun>s`/`save<Noun>`/`delete<Noun>` 형태만 허용(repository-pattern.md). `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드는 검사 대상 아님 |
+| `domain-layer-isolation` | `DomainLayerIsolation.java` | `<domain>/domain/` 파일이 자기 자신 또는 형제 도메인의 `application/`·`infrastructure/`·`interfaces/`를 import하면 실패 — import 문의 패키지 경로만 보는 구조적 검사라 특정 프레임워크 이름을 하드코딩하지 않는다(layer-architecture.md) |
+| `interface-no-infrastructure` | `InterfaceNoInfrastructure.java` | `interfaces/`(REST Controller 등) 파일이 `infrastructure/`를 직접 import하면 실패 — `application/`(Command/Query Service)만 거쳐야 함(layer-architecture.md) |
+| `aggregate-no-public-setters` | `AggregateNoPublicSetters.java` | `domain/`의 `class` 선언 파일에 JavaBean 스타일 `public void setX(...)` 또는 Lombok `@Setter`가 있으면 실패 — 상태 변경은 이름 있는 도메인 메서드로만(tactical-ddd.md). 현재 Aggregate는 이미 이 패턴을 안 쓰므로 회귀 가드 성격 |
+| `no-cross-aggregate-reference` | `NoCrossAggregateReference.java` | `payment/domain/Payment.java`가 `Refund` 타입을, `payment/domain/Refund.java`가 `Payment` 타입을 필드/파라미터로 직접 참조하면 실패 — ID 문자열 참조만 허용(domain-service.md). 두 Aggregate가 공존하는 실제 사례(Payment BC)에 한정한 블록리스트 |
+| `no-direct-env-access-outside-config` | `NoDirectEnvAccessOutsideConfig.java` | `domain/`·`application/`에서 `System.getenv(...)` 직접 호출 시 실패 — 환경 변수 접근은 `@ConfigurationProperties`로 감싸 `config/`(또는 `infrastructure/`)에서만(config.md) |
+| `no-cross-bc-repository-in-application` | `NoCrossBcRepositoryInApplication.java` | 한 도메인의 `application/` 파일이 다른 도메인의 `domain/*Repository`·`application/query/*Query` 인터페이스를 직접 import하면 실패 — 크로스 도메인 읽기는 호출하는 쪽이 소유한 Adapter(ACL)를 거쳐야 함(cross-domain-communication.md) |
+| `no-logging-in-domain` | `NoLoggingInDomain.java` | `domain/`에서 `org.slf4j`/`@Slf4j`/`LoggerFactory` 사용 시 실패 — Domain 레이어 로깅 금지(observability.md) |
+| `scheduler-in-infrastructure-only` | `SchedulerInInfrastructureOnly.java` | `domain/`·`application/`에서 `@Scheduled`/`@EnableScheduling` 사용 시 실패 — Scheduler는 infrastructure/에 배치해야 함(scheduling.md). `outbox/OutboxPoller`(공용 인프라 패키지)나 부트스트랩 진입점의 `@EnableScheduling`처럼 domain/application 밖에 있는 정당한 사용은 통과 |
+| `no-silent-catch` | `NoSilentCatch.java` | `application/`·`infrastructure/`에서 완전히 빈 `catch (...) {}` 블록이 있으면 실패 — 예외를 조용히 삼키지 않고 로깅 후 처리하거나 재throw해야 함(observability.md) |
+| `dockerfile-conventions` | `DockerfileConventions.java` | `Dockerfile`이 멀티스테이지(`FROM` 2개 이상)인지, `HEALTHCHECK` 지시문이 있는지, `.dockerignore`가 존재하고 `.git`/빌드 산출물을 제외하는지 확인(container.md). `.java` 파일이 아니라 두 텍스트 파일 자체를 검사하는 유일한 규칙 |
 
 ## 회귀 테스트
 

@@ -145,6 +145,12 @@ management:
 
 ---
 
+## harness 검증
+
+`harness/src/rules/NoLoggingInDomain.java`(rule: `no-logging-in-domain`)가 `domain/`에서 `org.slf4j`/`@Slf4j`/`LoggerFactory` 사용을 찾으면 실패시킨다 — 위 "Domain 레이어에서 로깅 금지" 원칙의 자동 검증이다. `harness/src/rules/NoSilentCatch.java`(rule: `no-silent-catch`)는 `application/`·`infrastructure/`에서 완전히 빈 `catch (...) {}` 블록(로깅도 재throw도 없는 형태)을 찾으면 실패시킨다 — "에러는 반드시 로깅" 원칙이 조용히 깨지는 가장 흔한 경로를 잡는다. 둘 다 좁은 블록리스트 방식이라 정당한 예외 처리 코드를 오탐하지 않는다.
+
+---
+
 ### 관련 문서
 
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — Correlation ID 주입 위치 (`Filter`)

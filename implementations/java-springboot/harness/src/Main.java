@@ -8,16 +8,26 @@ package harness;
 // 규칙별 회귀 테스트는 test/RuleTest.java + test/testdata/<rule>/ fixture로 검증한다
 // (README.md 참고).
 
+import harness.rules.AggregateNoPublicSetters;
 import harness.rules.ControllerPlacement;
 import harness.rules.CqrsQueryPurity;
+import harness.rules.DockerfileConventions;
+import harness.rules.DomainLayerIsolation;
 import harness.rules.DomainPurity;
 import harness.rules.EventPlacement;
 import harness.rules.FileNaming;
+import harness.rules.InterfaceNoInfrastructure;
+import harness.rules.NoCrossAggregateReference;
+import harness.rules.NoCrossBcRepositoryInApplication;
+import harness.rules.NoDirectEnvAccessOutsideConfig;
 import harness.rules.NoEventPublisherInCommand;
+import harness.rules.NoLoggingInDomain;
+import harness.rules.NoSilentCatch;
 import harness.rules.OutboxDrainOrder;
 import harness.rules.PackageStructure;
 import harness.rules.RepositoryAnnotation;
 import harness.rules.RepositoryNaming;
+import harness.rules.SchedulerInInfrastructureOnly;
 import harness.rules.ServiceAnnotation;
 import harness.rules.SharedInfra;
 import harness.rules.TransactionBoundary;
@@ -41,7 +51,17 @@ public final class Main {
         TransactionBoundary::check,
         OutboxDrainOrder::check,
         CqrsQueryPurity::check,
-        RepositoryNaming::check
+        RepositoryNaming::check,
+        DomainLayerIsolation::check,
+        InterfaceNoInfrastructure::check,
+        AggregateNoPublicSetters::check,
+        NoCrossAggregateReference::check,
+        NoDirectEnvAccessOutsideConfig::check,
+        NoCrossBcRepositoryInApplication::check,
+        NoLoggingInDomain::check,
+        SchedulerInInfrastructureOnly::check,
+        NoSilentCatch::check,
+        DockerfileConventions::check
     );
 
     public static void main(String[] args) {

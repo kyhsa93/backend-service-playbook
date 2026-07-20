@@ -146,6 +146,12 @@ public void close(CloseAccountCommand command) {
 
 ---
 
+## harness 검증
+
+`harness/src/rules/SchedulerInInfrastructureOnly.java`(rule: `scheduler-in-infrastructure-only`)가 `domain/`·`application/`에서 `@Scheduled`/`@EnableScheduling` 사용을 찾으면 실패시킨다 — 위 "Scheduler는 Infrastructure 레이어에 배치" 원칙의 자동 검증이다. 블록리스트 방식(domain/application에서만 금지)이라, `outbox/OutboxPoller.java`(공용 인프라 패키지지만 도메인별 `infrastructure/` 하위가 아닌 최상위 `outbox/`에 위치)와 `AccountServiceApplication.java`의 `@EnableScheduling`(부트스트랩 진입점, 최상위 패키지)처럼 이 저장소의 실제 정당한 사용은 통과한다.
+
+---
+
 ### 관련 문서
 
 - [domain-events.md](domain-events.md) — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`의 실제 구현(`@Scheduled` 폴링 + SQS를 통한 비동기 드레인), 멱등성 3단계

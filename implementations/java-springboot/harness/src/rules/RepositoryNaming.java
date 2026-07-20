@@ -19,6 +19,10 @@ import static harness.JavaFiles.relTo;
  * 메서드)는 검사 대상이 아니다 — 그쪽은 구현 세부사항이라 derived-query 스타일 메서드가 정당하게 존재할 수
  * 있다.
  *
+ * <p>{@code update}로 시작하는 메서드도 블록리스트에 포함한다 — root 문서가 "Repository에 수정(update)
+ * 메서드 금지 — 조회 후 Aggregate의 도메인 메서드로 수정, save&lt;Noun&gt;으로 저장"을 명시하기 때문이다
+ * (repository-pattern.md).
+ *
  * <p>블록리스트 방식(좁고 정밀한 매칭)만 쓴다 — 폭넓은 긍정 매칭 문법을 쓰면 {@code
  * hasTransactionWithReference} 같은 정당한 메서드가 오탐될 수 있다. 이 규칙은 5개 언어 구현 전체에서
  * 발견된 실제 회귀(Card의 {@code findByAccountIdAndStatusIn} + bare {@code save} 등)를 다시는 조용히
@@ -92,6 +96,9 @@ public final class RepositoryNaming {
         }
         if (methodName.equals("delete")) {
             return "'" + methodName + "'는 대상 명사 없는 bare delete";
+        }
+        if (methodName.startsWith("update")) {
+            return "'" + methodName + "'는 Repository에 금지된 별도 update 메서드 — 조회 후 Aggregate의 도메인 메서드로 수정하고 save<Noun>으로 저장해야 함";
         }
         return null;
     }
