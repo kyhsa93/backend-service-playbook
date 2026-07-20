@@ -129,16 +129,40 @@ const tmplRepository = `package {{.DomainLower}}
 
 import "context"
 
-// Query는 읽기 전용 조회 메서드만 노출하는 Query 전용 인터페이스다. Query Handler는
-// 쓰기 메서드(Save)에 접근할 수 없도록 이 인터페이스에만 의존해야 한다(cqrs-pattern.md).
-type Query interface {
-	FindByID(ctx context.Context, {{.DomainCamel}}ID, ownerID string) (*{{.Domain}}, error)
+type FindQuery struct {
+	Page      int
+	Take      int
+	{{.Domain}}ID string
+	OwnerID   string
 }
 
-// Repository는 Query의 읽기 메서드에 쓰기 메서드(Save)를 더한 Command 전용 인터페이스다.
+// Query는 읽기 전용 조회 메서드만 노출하는 Query 전용 인터페이스다. Query Handler는
+// 쓰기 메서드(Save{{.Domain}})에 접근할 수 없도록 이 인터페이스에만 의존해야 한다(cqrs-pattern.md).
+//
+// 조회는 root의 find<Noun>s 컨벤션에 맞춰 Find{{.Domain}}s 단일 메서드로 통일한다 — 단건
+// 조회 전용 메서드는 두지 않는다. 호출부는 FindOne(이 패키지가 제공하는 헬퍼)로
+// Find{{.Domain}}s를 Take: 1로 호출하고 첫 결과를 꺼낸다(account.FindOne과 동일한 관용구).
+type Query interface {
+	Find{{.Domain}}s(ctx context.Context, q FindQuery) ([]*{{.Domain}}, int, error)
+}
+
+// Repository는 Query의 읽기 메서드에 쓰기 메서드(Save{{.Domain}})를 더한 Command 전용 인터페이스다.
 type Repository interface {
 	Query
-	Save(ctx context.Context, {{.Recv}} *{{.Domain}}) error
+	Save{{.Domain}}(ctx context.Context, {{.Recv}} *{{.Domain}}) error
+}
+
+// FindOne은 단건 조회 호출부의 반복되는 패턴(Find{{.Domain}}s를 Take: 1로 호출한 뒤 첫 번째
+// 결과를 꺼내고, 없으면 ErrNotFound)을 감싼 헬퍼다(account.FindOne과 동일한 관용구).
+func FindOne(ctx context.Context, q Query, {{.DomainCamel}}ID, ownerID string) (*{{.Domain}}, error) {
+	items, _, err := q.Find{{.Domain}}s(ctx, FindQuery{ {{.Domain}}ID: {{.DomainCamel}}ID, OwnerID: ownerID, Take: 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, ErrNotFound
+	}
+	return items[0], nil
 }
 `
 
@@ -170,8 +194,8 @@ func NewCreate{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Create{{.Dom
 // domain-events.md).
 func (h *Create{{.Domain}}Handler) Handle(ctx context.Context, cmd Create{{.Domain}}Command) (*{{.DomainLower}}.{{.Domain}}, error) {
 	{{.Recv}} := {{.DomainLower}}.New(cmd.OwnerID)
-	// Repository.Save가 {{.DomainLower}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(domain-events.md).
-	if err := h.repo.Save(ctx, {{.Recv}}); err != nil {
+	// Repository.Save{{.Domain}}이 {{.DomainLower}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(domain-events.md).
+	if err := h.repo.Save{{.Domain}}(ctx, {{.Recv}}); err != nil {
 		return nil, fmt.Errorf("create {{.DomainLower}}: %w", err)
 	}
 	return {{.Recv}}, nil
@@ -205,7 +229,7 @@ func NewCancel{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Cancel{{.Dom
 // 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
 // domain-events.md).
 func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Domain}}Command) error {
-	{{.Recv}}, err := h.repo.FindByID(ctx, cmd.{{.Domain}}ID, cmd.OwnerID)
+	{{.Recv}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, cmd.{{.Domain}}ID, cmd.OwnerID)
 	if err != nil {
 		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
 	}
@@ -215,7 +239,7 @@ func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Doma
 		return err
 	}
 
-	if err := h.repo.Save(ctx, {{.Recv}}); err != nil {
+	if err := h.repo.Save{{.Domain}}(ctx, {{.Recv}}); err != nil {
 		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
 	}
 	return nil
@@ -249,7 +273,7 @@ func NewGet{{.Domain}}Handler(repo {{.DomainLower}}.Query) *Get{{.Domain}}Handle
 }
 
 func (h *Get{{.Domain}}Handler) Handle(ctx context.Context, q Get{{.Domain}}Query) (*Get{{.Domain}}Result, error) {
-	{{.Recv}}, err := h.repo.FindByID(ctx, q.{{.Domain}}ID, q.OwnerID)
+	{{.Recv}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, q.{{.Domain}}ID, q.OwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("get {{.DomainLower}}: %w", err)
 	}
@@ -319,6 +343,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"{{.ModulePath}}/internal/common"
@@ -339,28 +364,63 @@ func New{{.Domain}}Repository(db *sql.DB) *{{.Domain}}Repository {
 	return &{{.Domain}}Repository{db: db}
 }
 
-func (r *{{.Domain}}Repository) FindByID(ctx context.Context, {{.DomainCamel}}ID, ownerID string) (*{{.DomainLower}}.{{.Domain}}, error) {
-	row := r.db.QueryRowContext(ctx,
-		` + "`" + `SELECT id, owner_id, status, created_at FROM {{.DomainsLower}} WHERE id = $1 AND owner_id = $2` + "`" + `,
-		{{.DomainCamel}}ID, ownerID,
-	)
-	var id, ownerIDCol, status string
-	var createdAt time.Time
-	if err := row.Scan(&id, &ownerIDCol, &status, &createdAt); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, {{.DomainLower}}.ErrNotFound
-		}
-		return nil, fmt.Errorf("find {{.DomainLower}} by id: %w", err)
+func (r *{{.Domain}}Repository) Find{{.Domain}}s(ctx context.Context, q {{.DomainLower}}.FindQuery) ([]*{{.DomainLower}}.{{.Domain}}, int, error) {
+	args := []any{}
+	where := []string{"1 = 1"}
+	i := 1
+
+	if q.{{.Domain}}ID != "" {
+		where = append(where, fmt.Sprintf("id = $%d", i))
+		args = append(args, q.{{.Domain}}ID)
+		i++
 	}
-	return {{.DomainLower}}.Reconstitute(id, ownerIDCol, {{.DomainLower}}.Status(status), createdAt), nil
+	if q.OwnerID != "" {
+		where = append(where, fmt.Sprintf("owner_id = $%d", i))
+		args = append(args, q.OwnerID)
+		i++
+	}
+	whereClause := strings.Join(where, " AND ")
+
+	var total int
+	if err := r.db.QueryRowContext(ctx,
+		fmt.Sprintf(` + "`" + `SELECT COUNT(*) FROM {{.DomainsLower}} WHERE %s` + "`" + `, whereClause), args...,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count {{.DomainsLower}}: %w", err)
+	}
+
+	take := q.Take
+	if take <= 0 {
+		take = 20
+	}
+	args = append(args, take, q.Page*take)
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf(` + "`" + `SELECT id, owner_id, status, created_at FROM {{.DomainsLower}}
+		 WHERE %s ORDER BY id DESC LIMIT $%d OFFSET $%d` + "`" + `, whereClause, i, i+1),
+		args...,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("find {{.DomainsLower}}: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var items []*{{.DomainLower}}.{{.Domain}}
+	for rows.Next() {
+		var id, ownerID, status string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &ownerID, &status, &createdAt); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, {{.DomainLower}}.Reconstitute(id, ownerID, {{.DomainLower}}.Status(status), createdAt))
+	}
+	return items, total, rows.Err()
 }
 
-// Save는 {{.Domain}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(dual-write 회피,
+// Save{{.Domain}}은 {{.Domain}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(dual-write 회피,
 // domain-events.md). 공유 outbox.Writer(internal/infrastructure/outbox/writer.go)는
 // 현재 []account.DomainEvent에 고정된 시그니처라 다른 도메인의 이벤트 슬라이스를 그대로
-// 넘길 수 없다 — Writer를 제네릭화하기 전까지는 이 트랜잭션 안에서 직접 적재한다(Relay는
+// 넘길 수 없다 — Writer를 제네릭화하기 전까지는 이 트랜잭션 안에서 직접 적재한다(Poller/Consumer는
 // event_type 문자열 기준으로 동작하므로 적재 방식과 무관하게 정상적으로 드레인한다).
-func (r *{{.Domain}}Repository) Save(ctx context.Context, {{.Recv}} *{{.DomainLower}}.{{.Domain}}) error {
+func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.Recv}} *{{.DomainLower}}.{{.Domain}}) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

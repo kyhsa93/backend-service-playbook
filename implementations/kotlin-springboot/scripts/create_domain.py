@@ -394,6 +394,7 @@ class Cancel{D}Service(
     files[f"{p}/application/query/{D}Query.kt"] = f"""package com.example.accountservice.{p}.application.query
 
 import com.example.accountservice.{p}.domain.{D}
+import com.example.accountservice.{p}.domain.{D}FindQuery
 
 /**
  * 읽기 전용 포트 — Query Service가 의존하는 좁은 인터페이스.
@@ -401,12 +402,14 @@ import com.example.accountservice.{p}.domain.{D}
  * root cqrs-pattern.md가 규정하는 `<Domain>Query` 네이밍/배치(application/query/)를 따른다.
  * 쓰기 모델([com.example.accountservice.{p}.domain.{D}Repository])과 분리해, Query Service가
  * save 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제한다.
+ *
+ * 조회는 {D}Repository(쓰기 모델)와 정확히 같은 시그니처(`find{n.Domains}`)를 재사용한다 —
+ * root repository-pattern.md의 find<Noun>s 통일 규칙이 Query 포트에도 그대로 적용된다.
+ * 단건 조회는 전용 메서드를 두지 않고 `{D}FindQuery({d}Id = ..., ownerId = ...)` +
+ * `.firstOrNull()`로 처리한다.
  */
 interface {D}Query {{
-    fun findBy{D}IdAndOwnerId(
-        {d}Id: String,
-        ownerId: String,
-    ): {D}?
+    fun find{n.Domains}(query: {D}FindQuery): List<{D}>
 }}
 """
 
@@ -424,6 +427,7 @@ data class Get{D}Result(
 
     files[f"{p}/application/query/Get{D}Service.kt"] = f"""package com.example.accountservice.{p}.application.query
 
+import com.example.accountservice.{p}.domain.{D}FindQuery
 import com.example.accountservice.{p}.domain.{D}NotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -438,7 +442,7 @@ class Get{D}Service(
         ownerId: String,
     ): Get{D}Result {{
         val {d} =
-            {d}Query.findBy{D}IdAndOwnerId({d}Id, ownerId)
+            {d}Query.find{n.Domains}({D}FindQuery({d}Id = {d}Id, ownerId = ownerId)).firstOrNull()
                 ?: throw {D}NotFoundException({d}Id)
         return Get{D}Result(
             {d}Id = {d}.{d}Id,
@@ -613,14 +617,6 @@ class {D}RepositoryImpl(
         // 저장되거나(dual-write), 반대로 유실되는 경우가 생기지 않는다(domain-events.md).
         outboxWriter.saveAll({d}.pullDomainEvents())
     }}
-
-    override fun findBy{D}IdAndOwnerId(
-        {d}Id: String,
-        ownerId: String,
-    ): {D}? =
-        jpaRepository
-            .findBy{D}IdAndOwnerId({d}Id, ownerId)
-            ?.let({D}Mapper::toDomain)
 }}
 """
 
