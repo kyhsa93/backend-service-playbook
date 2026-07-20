@@ -21,7 +21,7 @@ repositories {
 dependencyManagement {
     imports {
         mavenBom "org.testcontainers:testcontainers-bom:2.0.5"
-        mavenBom "software.amazon.awssdk:bom:2.29.29"
+        mavenBom "software.amazon.awssdk:bom:2.48.3"
     }
 }
 
@@ -38,6 +38,12 @@ dependencies {
     implementation 'software.amazon.awssdk:ses'
     implementation 'software.amazon.awssdk:secretsmanager'
     implementation 'software.amazon.awssdk:sqs'
+    // AWS SDK v2의 apache-client 모듈이 내부적으로 Apache HttpClient 5(Apache5HttpClient)를 사용한다.
+    // Spring Boot의 dependency-management BOM이 org.apache.httpcomponents.client5:httpclient5를
+    // 더 낮은 버전으로 downgrade시켜 AWS SDK가 요구하는 클래스(예: TlsSocketStrategy, 5.4+)가
+    // 런타임에 없어 NoClassDefFoundError가 발생하므로, AWS SDK가 요청하는 버전으로 명시 고정한다.
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.6.2'
+    implementation 'org.apache.httpcomponents.core5:httpcore5:5.4.3'
     implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.4.0'
     runtimeOnly 'org.postgresql:postgresql'
@@ -51,7 +57,8 @@ dependencies {
     // AuthControllerE2ETest가 sign-in 실패(401) 응답을 검증한다 — 기본 TestRestTemplate
     // 요청 팩토리(JDK HttpURLConnection 기반)는 POST 요청에 401이 오면 "cannot retry due to
     // server authentication" 예외를 던지는 알려진 제약이 있어, 이 문제가 없는 httpclient5로 교체한다.
-    testImplementation 'org.apache.httpcomponents.client5:httpclient5'
+    // (httpclient5 자체는 위 implementation 블록에서 AWS SDK용으로 이미 선언되어 있어 테스트
+    // classpath에도 전이적으로 포함된다.)
     // Outbox가 OutboxPoller/OutboxConsumer를 거쳐 SQS로 비동기 처리되므로, 커맨드 응답 이후에도
     // 크로스 BC 반응(Card 상태 전환, Account 잔액 변경 등)이 완결되기까지 폴링-타임아웃이 필요하다.
     testImplementation 'org.awaitility:awaitility:4.2.2'
