@@ -58,7 +58,7 @@
 | `docs/architecture/design-principles.md` | 이 저장소의 핵심 설계 원칙 13개를 압축한 TL;DR 인덱스 |
 | `docs/architecture/module-pattern.md` | Spring DI 컨테이너 메커니즘(스테레오타입 애노테이션, 생성자 주입, `@Bean`/`@Configuration`, `@Profile`)과 NestJS `@Module`의 근본적 차이(모듈 경계가 컴파일 타임에 강제되지 않음), 순환 의존 시 `@Lazy` vs BC 경계 재설계 |
 | `docs/architecture/rate-limiting.md` | Resilience4j `RateLimiter` 기반 `Filter` 구현 예시. `build.gradle`에 `resilience4j-spring-boot3` 의존성이 있고 `RateLimitFilter`가 모든 비-actuator 요청에 적용된다 |
-| `docs/architecture/shared-modules.md` | `common/`/`config/`/`database/`/`outbox/`/`auth/` 공유 코드 배치 컨벤션. 현재 최상위 도메인 패키지가 `account` 하나뿐이라(notification은 account 내부 Technical Service) 공유 패키지가 실재하지 않음을 확인하고, 새로 추가할 때의 권장 배치를 제시 |
+| `docs/architecture/shared-modules.md` | `common/`/`config/`/`database/`/`outbox/`/`auth/` 공유 코드 배치 컨벤션. 최상위 도메인 패키지는 `account`/`card`/`payment` 세 개이고(notification은 account 내부 Technical Service), 그 세 도메인이 실제로 공유하는 `common/`/`config/`/`outbox/`가 이미 존재함을 확인한다. `database/`만 아직 필요한 시나리오가 없어 없음 |
 
 ---
 

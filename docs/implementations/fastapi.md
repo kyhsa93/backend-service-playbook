@@ -75,7 +75,7 @@
 - `implementations/fastapi/docs/architecture/design-principles.md` — 이 저장소 다른 21개 문서를 관통하는 핵심 설계 원칙 13개 요약
 - `implementations/fastapi/docs/architecture/module-pattern.md` — DI 컨테이너/모듈 데코레이터가 없는 FastAPI에서 Python 패키지 트리와 `Depends` 팩토리 함수가 NestJS의 `@Module`/`providers`를 대체하는 방식, 순환 import 해소
 - `implementations/fastapi/docs/architecture/rate-limiting.md` — `slowapi` 기반 Rate Limiting 구현 가이드 (`examples/`에 실제 구현됨: 전역 `default_limits` + 쓰기 엔드포인트별 `@limiter.limit()`)
-- `implementations/fastapi/docs/architecture/shared-modules.md` — 도메인에 속하지 않는 공유 코드(`src/common/`, `src/config/`, `src/auth/`, `src/outbox/`, `src/database.py`)의 위치 규칙 — Account/Card 두 도메인이 실제로 공유한다
+- `implementations/fastapi/docs/architecture/shared-modules.md` — 도메인에 속하지 않는 공유 코드(`src/common/`, `src/config/`, `src/auth/`, `src/outbox/`, `src/database.py`)의 위치 규칙 — Account/Card/Payment 세 도메인이 실제로 공유한다
 
 ---
 

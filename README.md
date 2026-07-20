@@ -23,7 +23,6 @@ implementations/
   kotlin-springboot/  Kotlin Spring Boot 구현 가이드 + 예시 + harness
   fastapi/            FastAPI (Python) 구현 가이드 + 예시 + harness
 
-harness.sh          언어 무관 구조·파일 배치 검증 스크립트
 CLAUDE.md           AI 에이전트용 문서 인덱스 (키워드 → 문서)
 AGENTS.md           AI 에이전트 작업 가이드 (워크플로우·원칙)
 ```

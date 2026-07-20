@@ -2,7 +2,7 @@
 
 ## 현재 상태 — `common/`/`config/`/`auth/`/`secret/`/`outbox/` 모두 존재
 
-`examples/src/main/kotlin/com/example/accountservice/`를 확인한 결과, 현재 트리는 `account/`, `notification/`(Technical Service)에 더해 **공유 패키지 다섯 개**(`common/`, `config/`, `auth/`, `secret/`, `outbox/`)를 모두 갖추고 있다.
+`examples/src/main/kotlin/com/example/accountservice/`를 확인한 결과, 현재 트리는 `account/`(1번째 도메인), `card/`(2번째 도메인), `payment/`(3번째 도메인 — Payment/Refund, `RefundEligibilityService`), `notification/`(Account BC 소속 Technical Service)에 더해 **공유 패키지 다섯 개**(`common/`, `config/`, `auth/`, `secret/`, `outbox/`)를 모두 갖추고 있다.
 
 ```
 com.example.accountservice/
@@ -12,7 +12,9 @@ com.example.accountservice/
   auth/               ← AuthService/JwtAuthenticationFilter/SecurityConfig + Credential Aggregate (authentication.md)
   secret/             ← SecretService/SecretServiceImpl/SecretsEnvironmentPostProcessor (secret-manager.md)
   outbox/             ← OutboxEvent/OutboxWriter/OutboxPoller/OutboxConsumer/EventHandlerRegistry (domain-events.md)
-  account/           ← Bounded Context
+  account/           ← Bounded Context (1번째 도메인)
+  card/              ← Bounded Context (2번째 도메인)
+  payment/           ← Bounded Context (3번째 도메인 — Payment/Refund, RefundEligibilityService)
   notification/      ← Technical Service (Account BC 소속, 별도 BC 아님)
 ```
 
@@ -61,8 +63,15 @@ com.example.accountservice/
     OutboxConsumer.kt                  ← SmartLifecycle, SQS long polling → EventHandlerRegistry로 라우팅
     EventHandlerRegistry.kt            ← eventType → 핸들러 매핑(Map 기반, when 분기 아님)
 
-  account/                         ← Bounded Context
+  account/                         ← Bounded Context (1번째 도메인)
     domain/ application/ infrastructure/ interfaces/
+
+  card/                            ← Bounded Context (2번째 도메인 — account와 Integration Event로 통신)
+    domain/ application/ infrastructure/ interfaces/
+
+  payment/                         ← Bounded Context (3번째 도메인 — Payment/Refund)
+    domain/ application/ infrastructure/ interfaces/
+    domain/RefundEligibilityService.kt   ← 여러 Aggregate(Payment/Refund)를 조율하는 Domain Service — domain-service.md 참고
 
   notification/                    ← Technical Service (Account BC 소속)
     application/ infrastructure/

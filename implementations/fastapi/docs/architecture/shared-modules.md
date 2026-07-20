@@ -37,15 +37,20 @@ examples/src/
     outbox_poller.py       ← OutboxPoller — Outbox → SQS 발행, main.py의 lifespan이 백그라운드 task로 기동
     outbox_consumer.py     ← OutboxConsumer — SQS → EventHandler 수신, 마찬가지로 백그라운드 task
     event_handlers.py      ← build_event_handlers() — eventType → 핸들러 dict 조립(composition root)
-  account/                ← 유일한 도메인 (Bounded Context)
+  account/                ← 1번째 도메인 (Bounded Context)
     domain/
     application/
       event/               ← EventHandler — event_type별로 하나씩, Outbox 페이로드를 역직렬화해 NotificationService 호출
     infrastructure/
     interface/
+  card/                   ← 2번째 도메인 (Bounded Context) — account와 Integration Event로 통신
+    domain/ application/ infrastructure/ interface/
+  payment/                ← 3번째 도메인 (Bounded Context) — Payment/Refund
+    domain/ application/ infrastructure/ interface/
+    domain/refund_eligibility_service.py   ← 여러 Aggregate(Payment/Refund)를 조율하는 Domain Service — domain-service.md 참고
 ```
 
-`outbox/`는 Account 하나뿐인 지금도 도메인에 속하지 않는 순수 기술적 관심사(Outbox 테이블 관리, 이벤트 드레인)이므로 `account/` 패키지 안이 아니라 이 최상위 공유 위치에 둔다 — "지금 당장 하나만 써도" 기준(아래 판단 기준 절)에 해당하는 사례다. `common/`, `config/`, `auth/`도 같은 이유로 도메인 바깥에 있다 — Account의 비즈니스 규칙과 무관한 순수 기술/횡단 관심사이기 때문이다.
+`outbox/`는 도메인에 속하지 않는 순수 기술적 관심사(Outbox 테이블 관리, 이벤트 드레인)이므로 어느 도메인 패키지 안이 아니라 이 최상위 공유 위치에 두고, Account/Card/Payment 세 도메인이 모두 같은 인스턴스를 공유한다. `common/`, `config/`, `auth/`도 같은 이유로 도메인 바깥에 있다 — 특정 도메인의 비즈니스 규칙과 무관한 순수 기술/횡단 관심사이기 때문이다.
 
 ```python
 # src/database.py — 실제 코드, 도메인에 속하지 않는 공유 인프라
@@ -65,15 +70,15 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         await session.commit()
 ```
 
-`database.py`가 모듈 파일 하나로 충분한 이유는 도메인이 Account 하나뿐이기 때문이다 — [directory-structure.md](directory-structure.md)의 "공용 인프라 배치 기준" 절이 이미 이 점을 명시하고 있다. NestJS 구현은 같은 역할을 `src/database/`라는 별도 패키지(`DatabaseModule`, `@Global()`)로 분리한다 — FastAPI에는 "전역으로 등록"하는 모듈 개념 자체가 없으므로, `engine`/`SessionLocal`을 모듈 최상위 변수로 두고 어디서든 import하는 것 자체가 이미 "전역 공유"다.
+`database.py`가 모듈 파일 하나로 충분한 이유는 Account/Card/Payment 세 도메인 모두 같은 `engine`/`SessionLocal`을 공유하기 때문이다 — 도메인이 늘어나도 트랜잭션 경계를 도메인별로 분리해야 할 시나리오가 아직 없어 별도 패키지로 쪼개지 않았다([directory-structure.md](directory-structure.md)의 "공용 인프라 배치 기준" 절 참고). NestJS 구현은 같은 역할을 `src/database/`라는 별도 패키지(`DatabaseModule`, `@Global()`)로 분리한다 — FastAPI에는 "전역으로 등록"하는 모듈 개념 자체가 없으므로, `engine`/`SessionLocal`을 모듈 최상위 변수로 두고 어디서든 import하는 것 자체가 이미 "전역 공유"다.
 
 ## `auth/`는 flat 구조가 아니라 `account/`와 동일한 4레이어 구조를 따른다
 
 이 절은 예전에 `auth/jwt_service.py`, `auth/dependencies.py`처럼 flat한 구조를 제안했었다. **실제로 구현된 `src/auth/`는 그렇지 않다** — 도메인 패키지(`account/`)와 동일하게 `domain/`, `application/service/`, `infrastructure/`, `interface/rest/` 4레이어로 나뉘어 있다(위 "현재 상태" 트리 참조). 공유 코드라고 해서 레이어 분리 원칙이 느슨해지지 않는다 — `auth/`도 하나의 작은 Bounded Context처럼 조직된다.
 
-## 두 번째 도메인이 추가될 때의 참고 구조
+## 도메인이 늘어날 때의 구조 — Card/Payment로 이미 확인됨
 
-도메인이 둘 이상이 되어도 `database.py`/`common/`/`config/`/`auth/`/`outbox/`는 그대로 공유되고, 새 도메인은 `account/`와 나란히 같은 4레이어 패키지로 추가된다.
+`card/`(2번째 도메인), `payment/`(3번째 도메인)가 추가된 뒤에도 `database.py`/`common/`/`config/`/`auth/`/`outbox/`는 그대로 공유되고, 새 도메인은 `account/`와 나란히 같은 4레이어 패키지로 추가되었다 — 예상이 아니라 실제로 이렇게 되었다.
 
 ```
 src/

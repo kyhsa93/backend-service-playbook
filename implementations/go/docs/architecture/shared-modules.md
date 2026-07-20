@@ -6,7 +6,7 @@ Go 전용 문서 — root에는 대응 문서가 없다. NestJS는 `src/common/`
 
 ## 현재 상태 — `common/`/`config/`/`infrastructure/auth/`/`infrastructure/outbox/` 모두 존재
 
-`internal/` 트리를 확인하면(directory-structure.md 참고), Account/Card/Credential 세 도메인이 함께 쓰는 공유 패키지가 이미 여러 개 있다:
+`internal/` 트리를 확인하면(directory-structure.md 참고), Account/Card/Payment/Credential 네 도메인이 함께 쓰는 공유 패키지가 이미 여러 개 있다:
 
 - **`internal/common/`**(`id.go`) — `common.NewID()`(UUID v4 하이픈 제거) 유틸([aggregate-id.md](aggregate-id.md) 참고).
 - **`internal/config/`**(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`) — 관심사별 설정 로딩/검증([config.md](config.md) 참고).
@@ -42,9 +42,12 @@ internal/
       service.go
     notification/
       service.go                   # Account 전용 알림 구현체
-    outbox/                        # OutboxWriter, OutboxPoller/OutboxConsumer(domain-events.md), 도메인이 늘어나도 공유
-      writer.go
-      relay.go
+    outbox/                        # OutboxWriter/Poller/Consumer(domain-events.md), 도메인이 늘어나도 공유
+      writer.go                    # Repository.Save 트랜잭션 안에서 이벤트를 outbox 행으로 적재
+      poller.go                    # 독립 tick으로 outbox 테이블을 읽어 SQS로 발행 (2026-07 async 전환 — 이전의 동기 drain 방식이던 relay.go는 삭제됨)
+      consumer.go                  # SQS long polling → 핸들러 라우팅
+      publisher.go
+      sqs_client.go
 
   interface/
     http/
@@ -57,6 +60,7 @@ internal/
   domain/
     account/                       # Account Bounded Context
     card/                          # Card Bounded Context
+    payment/                       # Payment/Refund Bounded Context — EvaluateRefundEligibility(도메인 서비스, 여러 Aggregate 조율)
     credential/                    # 인증/가입 Aggregate
 
   application/
@@ -66,7 +70,7 @@ internal/
 
 - **`internal/common/`** — 어떤 도메인도 참조할 수 있는 프레임워크 무의존 순수 함수(ID 생성 등). Domain 레이어에서 import해도 원칙 2(프레임워크 무의존)를 어기지 않는다 — `common` 패키지 자체가 표준 라이브러리 수준의 순수 함수만 담기 때문이다.
 - **`internal/interface/http/middleware/`** — 이미 [cross-cutting-concerns.md](cross-cutting-concerns.md)가 위치를 정해 둔 HTTP 전용 공유 코드. 도메인마다 반복 구현하지 않고 하나의 체인을 모든 라우터에 적용한다.
-- **`internal/infrastructure/outbox/`** — Account/Card 두 도메인의 Repository가 같은 `outbox.Writer` 인스턴스를, `main.go`가 조립하는 단일 `outbox.Poller`/`outbox.Consumer`가 같은 공유 `map[string]outbox.Handler`를 공유한다([domain-events.md](domain-events.md) 참고). 여러 도메인을 하나의 DB 트랜잭션으로 묶는 `internal/infrastructure/persistence/tx.go`는 그런 시나리오가 아직 없어서 만들지 않았다([persistence.md](persistence.md) 참고).
+- **`internal/infrastructure/outbox/`** — Account/Card/Payment 세 도메인의 Repository가 같은 `outbox.Writer` 인스턴스를, `main.go`가 조립하는 단일 `outbox.Poller`/`outbox.Consumer`가 같은 공유 `map[string]outbox.Handler`를 공유한다([domain-events.md](domain-events.md) 참고). 여러 도메인을 하나의 DB 트랜잭션으로 묶는 `internal/infrastructure/persistence/tx.go`는 그런 시나리오가 아직 없어서 만들지 않았다([persistence.md](persistence.md) 참고).
 - **도메인 전용 코드는 공유 패키지로 옮기지 않는다** — `account_repository.go`처럼 특정 도메인만 쓰는 구현체는 그 도메인의 `infrastructure/<concern>/` 하위에 그대로 둔다. "공유"는 두 도메인 이상이 실제로 같은 코드를 필요로 할 때만 성립한다(YAGNI).
 
 ---

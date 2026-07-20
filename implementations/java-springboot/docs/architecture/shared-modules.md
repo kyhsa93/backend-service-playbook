@@ -4,7 +4,7 @@
 
 ## 현재 실제 상태 — `common/`/`config/`/`outbox/`/`auth/` 모두 존재
 
-`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `auth/`(인증/가입), `common/`, `config/`, `outbox/`다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다.
+`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `payment/`(3번째 도메인 — Payment/Refund, `RefundEligibilityService`), `auth/`(인증/가입), `common/`, `config/`, `outbox/`다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다.
 
 여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`)다. `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 아직 없다 — [layer-architecture.md](layer-architecture.md)가 설명하듯 그런 트랜잭션 전파가 필요한 시나리오가 아직 없기 때문이다.
 
@@ -58,6 +58,10 @@ com.example.accountservice/
 
   card/                     # 2번째 도메인 — account와 Integration Event로 통신
     domain/ application/ infrastructure/ interfaces/
+
+  payment/                  # 3번째 도메인 — Payment/Refund, 여러 Aggregate를 조율하는 Domain Service 예시
+    domain/ application/ infrastructure/ interfaces/
+    domain/RefundEligibilityService.java   # 여러 Aggregate(Payment/Refund)를 조율하는 Domain Service — domain-service.md 참고
 
   AccountServiceApplication.java
 ```

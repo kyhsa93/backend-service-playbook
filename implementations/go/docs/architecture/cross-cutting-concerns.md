@@ -120,7 +120,7 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 
 ## HTTP 요청 로깅 (응답 후처리 단계)
 
-이 저장소는 개별 도메인 이벤트 로깅(`notification/service.go`의 발송 성공, `outbox/relay.go`의 처리 실패 — [observability.md](observability.md) 참고)뿐 아니라, 모든 요청에 대해 일관되게 메서드/경로/상태 코드/소요 시간을 남기는 응답 로깅 미들웨어도 갖추고 있다:
+이 저장소는 개별 도메인 이벤트 로깅(`notification/service.go`의 발송 성공, `outbox/poller.go`/`outbox/consumer.go`의 발행·처리 실패 — [observability.md](observability.md) 참고)뿐 아니라, 모든 요청에 대해 일관되게 메서드/경로/상태 코드/소요 시간을 남기는 응답 로깅 미들웨어도 갖추고 있다:
 
 ```go
 // internal/interface/http/middleware/logging_middleware.go — 실제 코드(요약)

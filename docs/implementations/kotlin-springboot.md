@@ -59,7 +59,7 @@ Kotlin Spring Boot는 JVM 기반 서버로, Spring의 성숙한 생태계(JPA, D
 | — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/design-principles.md` — 핵심 설계 원칙 15개 요약 |
 | — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/module-pattern.md` — Spring DI 컨테이너, `@Component`/`@Service`/`@Bean`, 순환 의존 회피 |
 | — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/rate-limiting.md` — Resilience4j `RateLimiter` 기반 Filter. `build.gradle.kts`에 `resilience4j-spring-boot3` 의존성이 있고 `RateLimitingFilter`가 적용되어 있다 |
-| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/shared-modules.md` — `common/`/`config/`/`auth/`/`outbox/` 공유 패키지 컨벤션 (현재 `examples/`는 `account/`/`notification/`뿐) |
+| — (Kotlin Spring Boot 전용) | `implementations/kotlin-springboot/docs/architecture/shared-modules.md` — `common/`/`config/`/`auth/`/`secret/`/`outbox/` 공유 패키지 컨벤션. 최상위 도메인 패키지는 `account/`/`card/`/`payment/` 세 개(notification은 account 내부 Technical Service)이며 다섯 공유 패키지 모두 실재한다 |
 
 ---
 
