@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.3.5'
+    id 'org.springframework.boot' version '4.1.0'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'com.diffplug.spotless' version '6.25.0'
 }
@@ -26,13 +26,20 @@ dependencyManagement {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // Spring Boot 4의 기본 JSON 스택은 Jackson 3(tools.jackson.*)이다. 이 프로젝트의 기존 코드
+    // (OutboxWriter, 각 EventHandler 등)는 Jackson 2(com.fasterxml.jackson.databind.ObjectMapper)를
+    // 생성자 주입으로 사용하므로, Jackson 3 전면 마이그레이션 대신 Spring이 공식 제공하는 Jackson 2
+    // 호환 모듈(spring-boot-jackson2)로 전환해 기존 ObjectMapper 빈 타입을 유지한다.
+    implementation('org.springframework.boot:spring-boot-starter-web') {
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-jackson'
+    }
+    implementation 'org.springframework.boot:spring-boot-jackson2'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'software.amazon.awssdk:ses'
@@ -45,15 +52,26 @@ dependencies {
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.6.2'
     implementation 'org.apache.httpcomponents.core5:httpcore5:5.4.3'
     implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
-    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.4.0'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot4:2.4.0'
     runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.testcontainers:junit-jupiter'
-    testImplementation 'org.testcontainers:postgresql'
-    testImplementation 'org.testcontainers:localstack'
+    // Spring Boot 4의 모듈 분리로 TestRestTemplate/@AutoConfigureTestRestTemplate이
+    // spring-boot-starter-test에서 spring-boot-resttestclient 모듈로 이동했고, 이 모듈은
+    // spring-boot-restclient를 스스로 끌어오지 않아(spring-projects/spring-boot#48588) 둘 다
+    // 명시적으로 선언해야 한다.
+    testImplementation 'org.springframework.boot:spring-boot-resttestclient'
+    testImplementation 'org.springframework.boot:spring-boot-restclient'
+    // Testcontainers 2.x부터 모듈 아티팩트가 testcontainers-<module> 접두사로 이름이 바뀌었다
+    // (org.testcontainers:junit-jupiter -> org.testcontainers:testcontainers-junit-jupiter 등).
+    // 이전 이름은 testcontainers-bom 2.0.5에 더 이상 없어 Spring Boot 4에서 버전 관리가 사라지며
+    // 빌드가 깨진다(Boot 3.3.5의 spring-boot-dependencies가 예전 이름에 우연히 fallback 버전을
+    // 제공해 왔을 뿐, 실제로는 testcontainers-bom 2.0.5가 적용되지 않고 있었다).
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-localstack'
     // AuthControllerE2ETest가 sign-in 실패(401) 응답을 검증한다 — 기본 TestRestTemplate
     // 요청 팩토리(JDK HttpURLConnection 기반)는 POST 요청에 401이 오면 "cannot retry due to
     // server authentication" 예외를 던지는 알려진 제약이 있어, 이 문제가 없는 httpclient5로 교체한다.
