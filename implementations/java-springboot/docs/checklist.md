@@ -220,9 +220,10 @@
 [ ] Domain Event가 Aggregate 내부 도메인 메서드에서만 생성되는가?
     → Command Service가 직접 이벤트를 생성하지 않는다
 [ ] Command Service가 ApplicationEventPublisher.publishEvent()를 직접 호출하지 않는가?
-    → 호출한다면 회귀다. Repository.save() 내부에서 Outbox 테이블에 이벤트를 저장하고, Command Service는 저장 직후 OutboxRelay.processPending()만 호출한다 — domain-events.md 참고
+    → 호출한다면 회귀다. Repository.save() 내부에서 Outbox 테이블에 이벤트를 저장하고, Command Service는 저장 직후 곧바로 반환한다 — 드레인은 완전히 별도 프로세스인 OutboxPoller/OutboxConsumer가 담당한다(domain-events.md 참고)
 [ ] Repository.save()가 Aggregate 저장과 Outbox 저장을 하나의 @Transactional 안에서 원자적으로 처리하는가?
-[ ] OutboxRelay가 outbox/ 패키지에 있고, Command Service가 저장 직후 동기 호출하는가? (`@Scheduled` 폴링이 아니다 — domain-events.md 참고)
+[ ] Command Service(application/command/)가 OutboxPoller/OutboxConsumer 심볼을 참조하거나 processPending()/poll()/drainOnce()를 호출하지 않는가? (harness의 outbox-drain-order 규칙이 회귀를 잡는다 — domain-events.md 참고)
+[ ] OutboxPoller가 outbox/ 패키지에 있고 @Scheduled(fixedDelay=1000)로 DB→SQS를 폴링하는가? OutboxConsumer가 SmartLifecycle로 SQS→Handler를 비동기 처리하는가? (domain-events.md 참고)
 [ ] @EnableScheduling이 @SpringBootApplication 클래스에 선언되어 있는가?
     → 없으면 @Scheduled가 조용히 무효화된다
 [ ] @Scheduled 메서드가 예외를 명시적으로 로깅하는가? (조용히 삼켜지지 않도록)

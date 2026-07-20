@@ -7,17 +7,20 @@
 root는 `AsyncLocalStorage`/`ThreadLocal` 기반 수동 TransactionManager를 설명하지만, Spring은 이를 선언적 `@Transactional`(AOP 프록시 기반)로 완전히 대체한다. 별도의 TransactionManager 클래스를 직접 구현할 필요가 없다.
 
 ```java
-// application/command/CreateAccountService.java — 실제 코드
-@Service
+// account/infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드(일부)
+@Repository
 @RequiredArgsConstructor
-@Transactional
-public class CreateAccountService {
-    private final AccountRepository accountRepository;
-    // 메서드 전체가 하나의 물리 트랜잭션으로 실행된다
+public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
+    @Transactional
+    public void saveAccount(Account account) {
+        // Account 저장 + Outbox 적재가 하나의 물리 트랜잭션으로 실행된다 (domain-events.md 참고)
+    }
 }
 ```
 
 `@Transactional`이 메서드에 진입하는 순간 Spring이 트랜잭션을 시작하고, 정상 반환 시 커밋, unchecked 예외(`RuntimeException` 하위) 발생 시 롤백한다. 트랜잭션 컨텍스트는 스레드 로컬로 전파되므로, 같은 호출 스택 안에서 여러 Repository를 호출해도 자동으로 같은 트랜잭션에 묶인다 — root의 `AsyncLocalStorage`가 하는 역할을 Spring 프록시가 대신한다.
+
+**유일한 물리 트랜잭션 경계는 이 `Repository.save*()` 메서드다.** `CreateAccountService` 등 Command Service 자신은 `@Transactional`을 전혀 갖지 않는다 — 저장(및 그 안의 Outbox 적재)이 끝나면 Command Service는 곧바로 반환하고, Outbox 드레인은 완전히 별도의 프로세스(`OutboxPoller`/`OutboxConsumer`, [domain-events.md](domain-events.md) 참고)가 나중에(최대 1초 뒤) 담당한다. Command Service에 `@Transactional`을 다시 붙이는 것은 회귀다.
 
 ---
 
@@ -43,13 +46,15 @@ public class NotificationServiceImpl implements NotificationService {
 }
 ```
 
-**왜 `REQUIRES_NEW`인가**: 이 메서드는 `AccountCreatedEventHandler` 같은 `outbox/OutboxEventHandler` 구현체를 거쳐, `OutboxRelay.processPending()`(그 자체가 `@Transactional`)의 트랜잭션 안에서 호출된다 — 계좌 저장 트랜잭션은 그 시점에 이미 커밋되어 끝난 뒤다([domain-events.md](domain-events.md) 참고). `sendEmail()`이 `processPending()`의 트랜잭션을 그대로 이어받았다면(`REQUIRED`, 기본값), SES 호출 실패 시 발생한 예외가 그 트랜잭션을 **rollback-only**로 표시해버린다 — `OutboxRelay`가 개별 이벤트를 try-catch로 감싸 다음 이벤트 처리를 계속하더라도, Spring은 예외가 프록시 경계를 넘는 순간 트랜잭션을 rollback-only로 표시하므로 이번 배치에서 이미 성공적으로 처리한 다른 이벤트들의 `processed=true` 커밋까지 함께 실패한다. `REQUIRES_NEW`는 별도의 물리 트랜잭션을 열어 이 전이를 차단해, 한 이벤트의 발송 실패가 같은 배치의 다른 이벤트 처리 결과를 오염시키지 않게 한다.
+**왜 `REQUIRES_NEW`인가**: 이 메서드는 `AccountCreatedEventHandler` 같은 `outbox/OutboxEventHandler` 구현체를 거쳐, `OutboxConsumer.handleMessage()`가 호출한다 — 계좌 저장 트랜잭션은 그 시점에 이미 커밋되어 끝난 뒤고, SQS 수신도 별도 프로세스/스레드에서 일어난다([domain-events.md](domain-events.md) 참고). `OutboxConsumer`의 dispatch 경로는 `OutboxPoller.poll()`과 달리 **`@Transactional`이 아니다** — 메시지 하나마다 개별적으로 처리되고 여러 메시지를 하나의 물리 트랜잭션으로 묶지 않으므로, `sendEmail()`을 호출하는 시점에는 애초에 오염시킬 "상위 배치 트랜잭션"이 없다. 그럼에도 `REQUIRES_NEW`를 유지하는 이유는 방어적이다: SES 호출 + `SentEmail` 기록을 담당하는 이 Technical Service는 호출자의 트랜잭션 상태와 무관하게 항상 자신만의 물리 트랜잭션에서 커밋/롤백해야 한다는 원칙을 명시적으로 강제한다 — 향후 누군가 `AccountSuspendedEventHandler.handle()` 같은 호출부나 `OutboxConsumer`의 dispatch 경로에 `@Transactional`을 다시 추가하더라도(예: 여러 메시지를 한 트랜잭션으로 묶는 최적화), SES 호출 실패가 그 트랜잭션을 rollback-only로 오염시키는 회귀를 `REQUIRES_NEW`가 계속 차단한다.
 
 | 전파 속성 | 동작 | 이 저장소에서 사용 위치 |
 |---|---|---|
-| `REQUIRED`(기본값) | 기존 트랜잭션이 있으면 참여, 없으면 새로 시작 | `CreateAccountService`, `DepositService` 등 모든 Command Service, `OutboxRelay.processPending()` |
+| `REQUIRED`(기본값) | 기존 트랜잭션이 있으면 참여, 없으면 새로 시작 | `AccountRepositoryImpl.saveAccount()` 등 Repository 구현체, `OutboxPoller.poll()` |
 | `REQUIRES_NEW` | 항상 새 물리 트랜잭션 시작, 기존 트랜잭션은 일시 중단 | `NotificationServiceImpl.sendEmail()` |
 | `readOnly = true` | dirty checking/flush 생략 (성능 최적화, 전파 속성은 아님) | 모든 Query Service |
+
+Command Service 자신(`CreateAccountService` 등)은 `@Transactional`을 갖지 않는다 — 위 "트랜잭션 전파" 절 참고.
 
 ---
 

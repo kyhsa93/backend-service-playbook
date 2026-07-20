@@ -12,13 +12,11 @@
 @RequiredArgsConstructor
 public class CreateAccountService {
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
         accountRepository.saveAccount(account);   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
-        outboxRelay.processPending();       // 커밋 직후 동기 드레인 — domain-events.md 참고
-        return new CreateAccountResult(...);
+        return new CreateAccountResult(...);       // 저장 후 곧바로 반환 — 드레인은 OutboxPoller/OutboxConsumer가 비동기로 담당(domain-events.md 참고)
     }
 }
 ```
@@ -160,7 +158,7 @@ Command/Result 객체를 Java `record`로 표현하면 불변성과 `equals`/`ha
 
 ## EventHandler — Outbox 경유로 구현됨
 
-CQRS의 `event/` 패키지 역할은 이 저장소에서 `account/application/event/`의 `*EventHandler`(예: `AccountCreatedEventHandler`)가 맡는다. 이들은 `@EventListener`가 아니라 `outbox/OutboxEventHandler` 인터페이스를 구현하며, `OutboxRelay`가 Outbox 테이블에서 읽은 이벤트를 라우팅해 호출한다. 상세 경로(Repository의 Outbox 저장, Command Service의 `processPending()` 호출 시점)는 [domain-events.md](domain-events.md)를 참고한다.
+CQRS의 `event/` 패키지 역할은 이 저장소에서 `account/application/event/`의 `*EventHandler`(예: `AccountCreatedEventHandler`)가 맡는다. 이들은 `@EventListener`가 아니라 `outbox/OutboxEventHandler` 인터페이스를 구현하며, `OutboxConsumer`가 SQS에서 수신한 이벤트를 타입별로 라우팅해 호출한다. 상세 경로(Repository의 Outbox 저장, `OutboxPoller`의 SQS 발행 시점)는 [domain-events.md](domain-events.md)를 참고한다.
 
 ---
 

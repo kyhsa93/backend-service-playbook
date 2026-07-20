@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-`examples/`에 `@Scheduled`/`@EnableScheduling` 사용처가 전혀 없다 — 이 저장소는 주기적 배치 작업이 필요한 유스케이스(예: 만료 계좌 정리)를 아직 갖고 있지 않다. [domain-events.md](domain-events.md)의 `OutboxRelay`는 `@Scheduled` 폴링이 아니라 Command Service가 저장 직후 동기 호출하는 방식을 택했다(같은 문서의 "root 대비 의도적 차이" 참고) — 그래서 실제로는 `@Scheduled`를 도입하는 계기가 되지 않았다. 아래는 여전히 미구현인 "만료 계좌 정리 배치" 같은 진짜 주기적 작업이 생길 때 참고할 목표 형태다.
+`examples/`는 `@Scheduled`/`@EnableScheduling`을 실제로 쓴다 — `outbox/OutboxPoller.poll()`이 `@Scheduled(fixedDelay = 1000)`으로 Outbox 테이블을 폴링해 SQS로 발행하고, `AccountServiceApplication`에 `@EnableScheduling`이 선언되어 있다([domain-events.md](domain-events.md) 참고). 다만 이 저장소는 그 이상의 "일반적인 배치 작업" 유스케이스(예: 만료 계좌 정리처럼 비즈니스 로직 자체를 주기 실행하는 것)는 아직 갖고 있지 않다 — `OutboxPoller`는 Outbox 드레인 전용이고, SQS 수신은 블로킹 long-poll 성격이라 `@Scheduled`가 아니라 `OutboxConsumer`(`SmartLifecycle` 전용 백그라운드 스레드)가 담당한다([domain-events.md](domain-events.md) 참고). 아래는 여전히 미구현인 "만료 계좌 정리 배치" 같은 진짜 주기적 비즈니스 작업이 생길 때 참고할 목표 형태다.
 
 ---
 
@@ -19,9 +19,9 @@
 ## `@EnableScheduling` — 애플리케이션 진입점에 활성화
 
 ```java
-// AccountServiceApplication.java — 추가 필요
+// AccountServiceApplication.java — 실제 코드
 @SpringBootApplication
-@EnableScheduling
+@EnableScheduling   // outbox/OutboxPoller의 @Scheduled(fixedDelay = 1000)을 활성화한다
 public class AccountServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(AccountServiceApplication.class, args);
@@ -29,7 +29,7 @@ public class AccountServiceApplication {
 }
 ```
 
-`@EnableScheduling`이 없으면 `@Scheduled` 애노테이션은 아무 효과가 없다 — 조용히 무시되므로 누락하기 쉽다.
+`@EnableScheduling`이 없으면 `@Scheduled` 애노테이션은 아무 효과가 없다 — 조용히 무시되므로 누락하기 쉽다. 이 저장소는 실제로 `OutboxPoller.poll()` 하나가 이 애노테이션에 의존한다 — 앞으로 배치 작업이 추가되면 같은 `@EnableScheduling` 하나로 함께 활성화된다.
 
 ---
 
@@ -74,10 +74,10 @@ public class AccountCleanupScheduler {
 | 속성 | 의미 | 사용 예 |
 |---|---|---|
 | `cron = "0 0 3 * * *"` | 특정 시각에 실행 (cron 표현식) | 일 1회 배치 |
-| `fixedDelay = 1000` | 이전 실행 **종료** 후 1초 뒤 재실행 | 별도 프로세스로 Outbox를 폴링해야 하는 경우(단, 이 저장소의 실제 `OutboxRelay`는 `@Scheduled` 폴링이 아니라 Command Service가 저장 직후 동기 호출하는 방식이다 — [domain-events.md](domain-events.md) 참고) |
+| `fixedDelay = 1000` | 이전 실행 **종료** 후 1초 뒤 재실행 | 별도 프로세스로 Outbox를 폴링하는 경우 — 이 저장소의 실제 `OutboxPoller.poll()`이 정확히 이 속성을 쓴다([domain-events.md](domain-events.md) 참고) |
 | `fixedRate = 1000` | 이전 실행 **시작** 후 1초 뒤 재실행 (겹칠 수 있음) | 드물게 사용 — 겹침 위험 인지 필요 |
 
-폴링 성격의 Relay/Consumer는 `fixedDelay`가 안전하다 — 이전 폴링이 끝나기 전에 다음 폴링이 겹쳐 시작되는 것을 방지한다.
+폴링 성격의 Poller는 `fixedDelay`가 안전하다 — 이전 폴링이 끝나기 전에 다음 폴링이 겹쳐 시작되는 것을 방지한다. Spring의 기본 스케줄러는 단일 스레드이므로 이 보장은 프레임워크가 대신 해준다(nestjs의 `isPolling` 플래그와 동일한 효과). 반면 SQS 수신처럼 `waitTimeSeconds`로 초 단위 블로킹이 반복되는 긴 루프는 `@Scheduled` 스레드 풀에 계속 물려두면 다른 스케줄 작업의 실행을 지연시킬 위험이 있다 — 이 저장소의 `OutboxConsumer`는 그래서 `@Scheduled`가 아니라 전용 단일 스레드 `ExecutorService` + `SmartLifecycle`을 쓴다([domain-events.md](domain-events.md) 참고).
 
 ---
 
@@ -120,7 +120,7 @@ public void close(CloseAccountCommand command) {
 }
 ```
 
-`accountRepository.saveAccount()`와 `taskOutboxRepository.save()`가 같은 `@Transactional` 메서드 안에 있으므로 Spring이 하나의 물리 트랜잭션으로 커밋/롤백한다 — 별도의 분산 트랜잭션 처리가 필요 없다. "DB 변경과 적재를 같은 트랜잭션에 묶는다"는 원리는 [domain-events.md](domain-events.md)의 `OutboxWriter`/`OutboxRelay`와 동일하다 — 다만 그쪽은 저장 직후 동기 호출로 드레인하고, `TaskOutboxRelay`는 (배치라는 성격상) `@Scheduled` 폴링으로 드레인한다는 차이가 있다.
+`accountRepository.saveAccount()`와 `taskOutboxRepository.save()`가 같은 `@Transactional` 메서드 안에 있으므로 Spring이 하나의 물리 트랜잭션으로 커밋/롤백한다 — 별도의 분산 트랜잭션 처리가 필요 없다. "DB 변경과 적재를 같은 트랜잭션에 묶는다"는 원리는 [domain-events.md](domain-events.md)의 `OutboxWriter`/`OutboxPoller`와 동일하다 — 실제로 지금은 둘 다 저장은 같은 트랜잭션에서 하고, 드레인은 `@Scheduled` 폴링(`OutboxPoller.poll()`, `fixedDelay=1000`)으로 비동기 처리한다는 점까지 같다. 제안된 `TaskOutboxRelay`도 같은 패턴을 그대로 따르면 된다.
 
 ---
 
@@ -148,6 +148,6 @@ public void close(CloseAccountCommand command) {
 
 ### 관련 문서
 
-- [domain-events.md](domain-events.md) — `OutboxWriter`/`OutboxRelay`의 실제 구현(동기 드레인, `@Scheduled` 아님), 멱등성 3단계
+- [domain-events.md](domain-events.md) — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`의 실제 구현(`@Scheduled` 폴링 + SQS를 통한 비동기 드레인), 멱등성 3단계
 - [layer-architecture.md](layer-architecture.md) — 레이어 배치 원칙
 - [graceful-shutdown.md](graceful-shutdown.md) — Scheduler의 종료 시 처리

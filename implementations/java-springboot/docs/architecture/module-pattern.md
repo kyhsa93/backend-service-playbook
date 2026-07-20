@@ -23,7 +23,7 @@ Spring은 `@Component`의 특수화(specialization)로 레이어를 구분한다
 |---|---|---|
 | `@Service` | Application 레이어의 유스케이스 조율 서비스 | `CreateAccountService`, `GetAccountService` 등 |
 | `@Repository` | Infrastructure 레이어의 Repository 구현체 | `AccountRepositoryImpl` |
-| `@Component` | 그 외 일반 빈 (Outbox 이벤트 핸들러, Technical Service 구현체) | `AccountCreatedEventHandler`, `OutboxRelay`, `NotificationServiceImpl` |
+| `@Component` | 그 외 일반 빈 (Outbox 이벤트 핸들러, Technical Service 구현체) | `AccountCreatedEventHandler`, `OutboxPoller`, `OutboxConsumer`, `NotificationServiceImpl` |
 | `@Configuration` | `@Bean` 팩토리 메서드를 담는 설정 클래스 | `SesConfig` |
 | `@RestController` | HTTP 진입점 | `AccountController` |
 
@@ -36,12 +36,13 @@ Spring은 `@Component`의 특수화(specialization)로 레이어를 구분한다
 이 저장소 전체에서 필드 주입(`@Autowired private final X x;`)은 한 건도 없다 — 모든 클래스가 Lombok `@RequiredArgsConstructor`로 `final` 필드 생성자 주입을 사용한다.
 
 ```java
-// account/application/command/CreateAccountService.java — 실제 코드
-@Service
+// account/application/event/AccountSuspendedEventHandler.java — 실제 코드
+@Component
 @RequiredArgsConstructor
-public class CreateAccountService {
-    private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
+public class AccountSuspendedEventHandler implements OutboxEventHandler {
+    private final NotificationService notificationService;
+    private final OutboxWriter outboxWriter;
+    private final ObjectMapper objectMapper;
     // Lombok이 생성자를 자동 생성 — @Autowired 불필요
     // (Spring 4.3+는 생성자가 하나뿐인 클래스에 @Autowired 생략을 허용한다)
 }
@@ -50,7 +51,7 @@ public class CreateAccountService {
 생성자 주입을 쓰는 이유:
 - **`final` 필드 강제** — 의존성이 생성 이후 재할당될 수 없다. 필드 주입은 필드를 `final`로 선언할 수 없다.
 - **불변 의존성 = 순환 의존을 컴파일이 아니라 기동 시점에 즉시 드러낸다** — 아래 참고.
-- **테스트에서 mock 주입이 단순하다** — `new CreateAccountService(mockRepository, mockOutboxRelay)`로 Spring 컨테이너 없이 직접 생성 가능([testing.md](testing.md) 참고).
+- **테스트에서 mock 주입이 단순하다** — `new AccountSuspendedEventHandler(mockNotificationService, mockOutboxWriter, mockObjectMapper)`로 Spring 컨테이너 없이 직접 생성 가능([testing.md](testing.md) 참고).
 
 ---
 

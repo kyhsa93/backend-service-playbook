@@ -67,7 +67,7 @@ import static net.logstash.logback.argument.StructuredArguments.kv;
 log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", response.messageId()));
 ```
 
-`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. `NotificationServiceImpl`/`OutboxRelay`/`AccountController` 세 곳 모두 이 방식을 쓴다 — 새로운 로깅 호출을 추가할 때도 이 패턴을 그대로 따른다.
+`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. `NotificationServiceImpl`/`OutboxPoller`/`OutboxConsumer`/`AccountController` 모두 이 방식을 쓴다 — 새로운 로깅 호출을 추가할 때도 이 패턴을 그대로 따른다.
 
 ---
 
@@ -76,7 +76,7 @@ log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", ev
 | 레이어 | 로깅 대상 | 이 저장소의 현재 상태 |
 |--------|----------|------|
 | Interfaces (Controller) | 요청 에러 | 있음 — `AccountController`의 `@ExceptionHandler`가 `log.warn(...)`으로 기록한 뒤 응답 변환 |
-| Application (Service) | 비즈니스 이벤트, 외부 호출 결과 | 부분적 — `outbox.OutboxRelay`만 로깅, Command Service들은 로깅 없음 |
+| Application (Service) | 비즈니스 이벤트, 외부 호출 결과 | 부분적 — `outbox.OutboxPoller`/`outbox.OutboxConsumer`만 로깅, Command Service들은 로깅 없음 |
 | Infrastructure | 외부 연동 실패/재시도 | `NotificationServiceImpl`(SES 발송 성공/실패) |
 | Domain | **로깅 금지** | 준수 — `Account`는 로거를 import하지 않는다 |
 

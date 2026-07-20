@@ -74,7 +74,8 @@ com.example.accountservice/
     OutboxEventJpaRepository.java
     OutboxEventHandler.java            ← 이벤트 타입별 Handler가 구현하는 인터페이스
     OutboxWriter.java                  ← Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
-    OutboxRelay.java                   ← Command Service가 저장 직후 동기 호출 — @Scheduled 폴링 아님(domain-events.md 참고)
+    OutboxPoller.java                  ← @Scheduled(fixedDelay=1000) — Outbox 테이블을 폴링해 SQS로 발행(domain-events.md 참고)
+    OutboxConsumer.java                ← SmartLifecycle — SQS 수신 후 OutboxEventHandler로 라우팅(domain-events.md 참고)
 
     interfaces/
       rest/
@@ -407,7 +408,6 @@ package com.example.accountservice.account.application.command;
 
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountRepository;
-import com.example.accountservice.outbox.OutboxRelay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -416,15 +416,13 @@ import org.springframework.stereotype.Service;
 public class CreateAccountService {
 
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
         // 비즈니스 로직은 Aggregate에 위임 — Service는 조율만 한다
         Account account = Account.create(command.ownerId(), command.email(), command.currency());
-        // Repository.save() 내부(@Transactional)에서 Account + Outbox를 같은 트랜잭션으로 저장 (domain-events.md)
-        accountRepository.save(account);
-        // 커밋 직후 동기적으로 Outbox를 드레인한다 — @Scheduled 폴링이 아니다
-        outboxRelay.processPending();
+        // Repository.saveAccount() 내부(@Transactional)에서 Account + Outbox를 같은 트랜잭션으로 저장 (domain-events.md)
+        accountRepository.saveAccount(account);
+        // 저장이 끝나면 곧바로 반환한다 — Outbox 드레인은 별도 프로세스(OutboxPoller/OutboxConsumer)가 담당한다
         return new CreateAccountResult(account.getAccountId(), account.getOwnerId(), account.getBalance().amount(), account.getBalance().currency());
     }
 }
@@ -435,22 +433,22 @@ public class CreateAccountService {
 public class DepositService {
 
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public TransactionResult deposit(DepositCommand command) {
-        Account account = accountRepository.findByAccountIdAndOwnerId(command.accountId(), command.requesterId())
+        Account account = accountRepository
+                .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
+                .accounts().stream().findFirst()
                 .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
 
         var transaction = account.deposit(command.amount());
-        accountRepository.save(account);
-        outboxRelay.processPending();
+        accountRepository.saveAccount(account);
 
         return new TransactionResult(transaction.getTransactionId(), transaction.getType().name(), transaction.getAmount().amount(), transaction.getCreatedAt());
     }
 }
 ```
 
-**Command Service가 `ApplicationEventPublisher.publishEvent()`를 호출하지 않는다** — `examples/`가 이미 이 패턴을 실제로 구현하고 있다([domain-events.md](architecture/domain-events.md)). 이벤트는 `Repository.save()` 내부에서 Outbox로 저장되고(아래 Infrastructure 절 참고), Command Service는 저장 직후 `outboxRelay.processPending()`을 동기 호출해 드레인한다.
+**Command Service가 `ApplicationEventPublisher.publishEvent()`를 호출하지 않는다** — `examples/`가 이미 이 패턴을 실제로 구현하고 있다([domain-events.md](architecture/domain-events.md)). 이벤트는 `Repository.saveAccount()` 내부에서 Outbox로 저장되고(아래 Infrastructure 절 참고), Command Service는 저장 직후 곧바로 반환한다 — Outbox 드레인은 `OutboxRelay`가 아니라 완전히 별도 프로세스인 `OutboxPoller`(`@Scheduled` 폴링)/`OutboxConsumer`(SQS 수신)가 나중에(최대 1초 뒤) 담당한다.
 
 ### Query 인터페이스 — Repository와 별개 (cqrs-pattern.md gap 교정)
 
@@ -523,7 +521,7 @@ public record GetTransactionsResult(List<TransactionSummary> transactions, long 
 
 ### Domain Event Handler — Outbox 경유 (in-process 이벤트 버스 아님)
 
-Repository의 저장 트랜잭션 안에서 `OutboxWriter`가 도메인 이벤트를 `outbox` 테이블에 함께 적재하고, Command Service가 저장이 끝난 직후 `OutboxRelay.processPending()`을 동기 호출해 미처리 이벤트를 전부 드레인한다. 실제 발송은 이벤트 타입별 Handler가 맡는다 — domain-events.md 참고.
+Repository의 저장 트랜잭션 안에서 `OutboxWriter`가 도메인 이벤트를 `outbox` 테이블에 함께 적재한다. Command Service는 저장이 끝나면 곧바로 반환하고, 드레인은 완전히 별도의 프로세스가 담당한다 — `OutboxPoller`(`@Scheduled(fixedDelay=1000)`)가 미처리 이벤트를 SQS로 발행하고, `OutboxConsumer`(SmartLifecycle 백그라운드 스레드)가 SQS를 수신해 이벤트 타입별 Handler를 호출한다. 상세는 domain-events.md 참고.
 
 ```java
 // application/event/AccountCreatedEventHandler.java
@@ -558,7 +556,7 @@ public class AccountCreatedEventHandler implements OutboxEventHandler {
 }
 ```
 
-실패 시 로그를 남기고 재시도를 위해 `processed`를 갱신하지 않는 책임은 개별 Handler가 아니라 `outbox/OutboxRelay`가 진다(모든 Handler에 동일한 try-catch를 반복하지 않기 위함) — `outbox/OutboxRelay.java` 참고.
+발행 실패 시 로그를 남기고 재시도를 위해 `processed`를 갱신하지 않는 책임은 개별 Handler가 아니라 `outbox/OutboxPoller`가 진다. 수신 후 Handler 처리 실패 시 SQS 메시지를 삭제하지 않고 재시도(at-least-once)에 맡기는 책임은 `outbox/OutboxConsumer`가 진다 — 두 경우 모두 모든 Handler에 동일한 try-catch를 반복하지 않기 위함이다.
 
 ---
 
@@ -751,32 +749,35 @@ public class OutboxEvent {
 ```
 
 ```java
-// infrastructure/outbox/OutboxRelay.java — @Scheduled 폴링 후 메시지 큐 발행
-package com.example.accountservice.account.infrastructure.outbox;
+// outbox/OutboxPoller.java — 실제 코드(일부). @Scheduled 폴링 후 SQS로 발행
+package com.example.accountservice.outbox;
 
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
-public class OutboxRelay {
+public class OutboxPoller {
 
-    private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
+    private static final Logger log = LoggerFactory.getLogger(OutboxPoller.class);
     private final OutboxEventJpaRepository outboxJpaRepository;
+    private final SqsClient sqsClient;
 
     @Scheduled(fixedDelay = 1000)   // 이전 폴링 종료 후 1초 뒤 재실행
-    public void relay() {
-        var pending = outboxJpaRepository.findTop100ByProcessedFalseOrderByCreatedAtAsc();
+    @Transactional   // payload가 @Lob 컬럼이라 조회와 반복이 같은 트랜잭션 안에서 이루어져야 한다(domain-events.md 참고)
+    public void poll() {
+        var pending = outboxJpaRepository.findByProcessedFalseOrderByCreatedAtAsc();
         for (OutboxEvent event : pending) {
             try {
-                // 메시지 큐(SQS 등)로 발행 — 상세는 domain-events.md 3단계 참고
+                sqsClient.sendMessage(/* eventType을 MessageAttribute로, payload를 body로 발행 */);
                 event.markProcessed();
                 outboxJpaRepository.save(event);
             } catch (Exception e) {
-                log.error("Outbox relay 실패: eventId={}", event.getEventId(), e);
+                log.error("SQS 발행 실패: eventId={}", event.getEventId(), e);
                 // processed가 갱신되지 않으므로 다음 폴링에서 재시도된다
             }
         }
@@ -784,7 +785,9 @@ public class OutboxRelay {
 }
 ```
 
-`@EnableScheduling`이 `AccountServiceApplication`에 선언되어 있어야 이 `@Scheduled` 메서드가 동작한다([scheduling.md](architecture/scheduling.md) 참고).
+`OutboxConsumer`(`SmartLifecycle`, 전용 백그라운드 스레드)가 이 SQS 큐를 long polling으로 수신해 `eventType`으로 `OutboxEventHandler` 구현체를 찾아 호출한다 — Command Service는 이 둘 중 어느 것도 참조하지 않는다. 상세는 [domain-events.md](architecture/domain-events.md) 참고.
+
+`@EnableScheduling`이 `AccountServiceApplication`에 선언되어 있어야 `OutboxPoller.poll()`의 `@Scheduled` 메서드가 동작한다([scheduling.md](architecture/scheduling.md) 참고).
 
 ---
 
@@ -992,7 +995,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableConfigurationProperties({JwtProperties.class})
-@EnableScheduling   // OutboxRelay 등 @Scheduled 활성화 — scheduling.md
+@EnableScheduling   // OutboxPoller 등 @Scheduled 활성화 — scheduling.md
 public class AccountServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(AccountServiceApplication.class, args);

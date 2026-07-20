@@ -6,7 +6,7 @@
 
 `examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `auth/`(인증/가입), `common/`, `config/`, `outbox/`다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다.
 
-여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxRelay`/`OutboxEventHandler`)다. `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 아직 없다 — [layer-architecture.md](layer-architecture.md)가 설명하듯 그런 트랜잭션 전파가 필요한 시나리오가 아직 없기 때문이다.
+여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`)다. `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 아직 없다 — [layer-architecture.md](layer-architecture.md)가 설명하듯 그런 트랜잭션 전파가 필요한 시나리오가 아직 없기 때문이다.
 
 상세는 [directory-structure.md](directory-structure.md)의 실제 트리를 참고한다 — 이 문서는 그 배치를 NestJS의 공유 모듈 구조와 대응시켜 설명한다.
 
@@ -42,7 +42,8 @@ com.example.accountservice/
     OutboxEventJpaRepository.java
     OutboxEventHandler.java   # 이벤트 타입별 Handler가 구현하는 인터페이스
     OutboxWriter.java         # Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
-    OutboxRelay.java          # Command Service가 저장 직후 동기 호출 — @Scheduled 폴링 아님
+    OutboxPoller.java         # @Scheduled(fixedDelay=1000) — Outbox 테이블을 폴링해 SQS로 발행
+    OutboxConsumer.java       # SmartLifecycle — SQS 수신 후 OutboxEventHandler로 라우팅
 
   auth/                     # 인증/가입 — authentication.md 참고
     domain/                   # Credential Aggregate(userId + bcrypt 해시)
@@ -73,7 +74,7 @@ com.example.accountservice/
 |---|---|---|
 | `src/common/` (필터, 인터셉터, 유틸) | `common/` 패키지 — `@Component`/순수 유틸 혼재 | 있음 — `IdGenerator`, `web/`의 Filter·Interceptor, `SecretService`(secret-manager.md 참고) |
 | `src/database/` (`@Global` — DataSource, TransactionManager) | `database/` 패키지 — 단, Spring은 `@Global` 개념 자체가 불필요 | 없음 (JPA `DataSource`는 auto-configuration이 이미 전역 제공, 여러 Repository를 묶는 트랜잭션 유틸도 필요한 시나리오가 아직 없음 — layer-architecture.md 참고) |
-| `src/outbox/` (`@Global` — OutboxWriter/Relay/Consumer) | `outbox/` 패키지 | 있음 — `OutboxWriter`/`OutboxRelay`/`OutboxEventHandler`(domain-events.md 참고) |
+| `src/outbox/` (`@Global` — OutboxWriter/Poller/Consumer) | `outbox/` 패키지 | 있음 — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`(domain-events.md 참고) |
 | `src/auth/` (인증 공유 모듈) | `auth/` 패키지 | 있음 — `Credential` Aggregate + `SignInService`/`SignUpService`(authentication.md 참고) |
 
 **`@Global` 데코레이터가 Spring에는 없는 이유**: NestJS는 기본적으로 모듈 스코프가 닫혀 있어 `@Global`로 명시해야 모든 모듈에서 `imports` 없이 주입 가능해진다. Spring Boot는 애초에 전역 스코프가 기본값이다([module-pattern.md](module-pattern.md) "근본적 차이" 참고) — `database/`에 `DataSource` `@Bean`을 두면 별도 표시 없이 이미 어디서든 주입 가능하다. 즉 Spring에서는 "공유 모듈"이 NestJS처럼 특별한 선언을 요구하는 개념이 아니라, **그냥 패키지를 나누는 정리 방식**일 뿐이다.

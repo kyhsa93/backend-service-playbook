@@ -119,13 +119,11 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
 @RequiredArgsConstructor
 public class CreateAccountService {
     private final AccountRepository accountRepository;
-    private final OutboxRelay outboxRelay;
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
-        accountRepository.saveAccount(account);      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션(persistence.md 참고)
-        outboxRelay.processPending();          // 커밋 직후 동기적으로 Outbox 드레인 — domain-events.md 참고
-        return new CreateAccountResult(/* ... */);
+        accountRepository.saveAccount(account);   // @Transactional은 이 Repository 메서드 쪽에 있다 — Account 저장 + Outbox 적재, 한 트랜잭션(persistence.md 참고)
+        return new CreateAccountResult(/* ... */);   // 저장이 끝나면 곧바로 반환 — Outbox 드레인은 별도 프로세스(OutboxPoller/OutboxConsumer, domain-events.md 참고)
     }
 }
 ```

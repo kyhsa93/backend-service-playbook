@@ -64,7 +64,6 @@ public class RequestRefundService {
 
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
-    private final OutboxRelay outboxRelay;
 
     public GetRefundResult request(RequestRefundCommand command) {
         Payment payment = /* paymentRepository.findPayments(...)로 소유권 검증 후 로드 */;
@@ -77,9 +76,8 @@ public class RequestRefundService {
             refund.reject(decision.reason());
         }
 
-        refundRepository.saveRefund(refund);
-        outboxRelay.processPending();
-        return GetRefundResult.from(refund);
+        refundRepository.saveRefund(refund);   // @Transactional — Refund 저장 + Outbox 적재, 한 트랜잭션(persistence.md 참고)
+        return GetRefundResult.from(refund);   // 저장 후 곧바로 반환 — 드레인은 OutboxPoller/OutboxConsumer가 비동기로 담당(domain-events.md 참고)
     }
 }
 ```

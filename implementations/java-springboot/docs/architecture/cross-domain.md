@@ -181,11 +181,11 @@ public class AccountSuspendedIntegrationEventHandler implements OutboxEventHandl
 }
 ```
 
-`OutboxRelay`(공유 인프라, `outbox/` 패키지)는 `List<OutboxEventHandler> eventHandlers`를 Spring이 자동으로 모아 생성자 주입한다 — **Account BC는 Card BC를 전혀 import하지 않는다.** Card BC가 `@Component`로 `OutboxEventHandler`를 구현해 `eventType()`에 `"account.suspended.v1"`을 반환하기만 하면, `OutboxRelay`가 이벤트 타입 문자열로 자동 라우팅한다. 이것이 nestjs 구현의 `EventHandlerRegistry.register()`(명시적 등록)를 대신하는 Spring 관용구다 — Bean 자동 스캔이 등록을 대신한다.
+`OutboxConsumer`(공유 인프라, `outbox/` 패키지)는 `List<OutboxEventHandler> eventHandlers`를 Spring이 자동으로 모아 생성자 주입한다 — **Account BC는 Card BC를 전혀 import하지 않는다.** Card BC가 `@Component`로 `OutboxEventHandler`를 구현해 `eventType()`에 `"account.suspended.v1"`을 반환하기만 하면, `OutboxConsumer`가 이벤트 타입 문자열(SQS MessageAttribute)로 자동 라우팅한다. 이것이 nestjs 구현의 `EventHandlerRegistry.register()`(명시적 등록)를 대신하는 Spring 관용구다 — Bean 자동 스캔이 등록을 대신한다.
 
 - `AccountIntegrationEventPayload`는 Card BC가 소유하는 로컬 뷰(record)다 — Account BC의 Integration Event 클래스를 import하지 않고 필요한 `accountId` 필드만 읽는다.
 - `SuspendCardsByAccountService.suspend()`는 해당 계좌의 **ACTIVE 카드만** 골라 정지하므로, at-least-once 전달로 같은 이벤트가 재수신돼도 멱등하다.
-- `OutboxRelay.processPending()`은 한 번의 호출 안에서 여러 패스로 드레인한다 — `AccountSuspendedEventHandler`가 새로 적재한 `account.suspended.v1` 행도 (Domain Event 처리 직후) 같은 호출에서 이어서 처리되므로, `SuspendAccountService.suspend()`가 반환하는 시점에는 Card BC 반응까지 이미 끝나 있다.
+- `AccountSuspendedEventHandler`(Domain Event 처리)가 새로 적재하는 `account.suspended.v1` 행은 **같은 호출 안에서 즉시 처리되지 않는다** — `OutboxPoller`의 다음 폴링 tick(최대 1초 뒤)에 SQS로 발행되고, `OutboxConsumer`가 그걸 수신해야 비로소 Card BC의 `AccountSuspendedIntegrationEventHandler`가 호출된다. 즉 `SuspendAccountService.suspend()`가 반환하는 시점에는 Card BC 반응이 아직 끝나 있지 않다 — 완전히 비동기다([domain-events.md](domain-events.md) 참고).
 
 ### 관련 코드
 

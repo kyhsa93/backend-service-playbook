@@ -117,55 +117,44 @@ class AccountTest {
 // src/test/java/.../account/application/command/CreateAccountServiceTest.java — 실제 코드
 package com.example.accountservice.account.application.command;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+
 import com.example.accountservice.account.domain.AccountRepository;
-import com.example.accountservice.outbox.OutboxRelay;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-
 @ExtendWith(MockitoExtension.class)
 class CreateAccountServiceTest {
 
-    @Mock
-    private AccountRepository accountRepository;
-
-    @Mock
-    private OutboxRelay outboxRelay;
+    @Mock private AccountRepository accountRepository;
 
     private CreateAccountService service;
 
     @BeforeEach
     void setUp() {
-        service = new CreateAccountService(accountRepository, outboxRelay);
+        service = new CreateAccountService(accountRepository);
     }
 
     @Test
     void 계좌_생성_시_저장되고_결과에_초기_잔액_0이_담긴다() {
-        CreateAccountResult result = service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
+        CreateAccountResult result =
+                service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
 
         assertThat(result.ownerId()).isEqualTo("owner-1");
         assertThat(result.balance().amount()).isEqualTo(0);
-        verify(accountRepository).save(any());
-    }
-
-    @Test
-    void 계좌_저장_직후_OutboxRelay가_드레인을_한_번_호출한다() {
-        service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
-
-        verify(outboxRelay).processPending();
+        verify(accountRepository).saveAccount(any());
     }
 }
 ```
 
 - **`@ExtendWith(MockitoExtension.class)` + `@Mock`**: Mockito가 인터페이스(`AccountRepository`)를 프록시로 mock한다 — Java 인터페이스는 원래 mock이 쉬우므로(Kotlin처럼 `final` 클래스 mock 문제가 없다) 별도 인라인 mock 라이브러리가 필요 없다.
 - **Repository mock은 인터페이스 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지" 원칙이 Java에서는 인터페이스 그대로 대응된다. `AccountRepositoryImpl`(구체 클래스)을 mock하지 않는다.
-- `AccountRepository.save()`가 Outbox 저장까지 책임지므로(domain-events.md 참고), Command Service 단위 테스트는 `accountRepository.save()` 직후 `outboxRelay.processPending()`이 정확히 한 번 호출되는지만 검증하면 충분하다 — Outbox 행 내용 자체(직렬화된 이벤트 payload)는 `AccountRepositoryImpl`/`OutboxWriter`를 대상으로 한 별도 테스트에서 검증한다.
+- `AccountRepository.saveAccount()`가 Outbox 저장까지 책임지므로(domain-events.md 참고), Command Service 단위 테스트는 `accountRepository.saveAccount()`가 정확히 한 번 호출되는지만 검증하면 충분하다 — Command Service 자신은 `OutboxPoller`/`OutboxConsumer`를 전혀 참조하지 않으므로(회귀 시 `outbox-drain-order` harness 규칙이 잡는다) 드레인 호출을 mock 검증할 필요 자체가 없다. Outbox 행 내용 자체(직렬화된 이벤트 payload)는 `AccountRepositoryImpl`/`OutboxWriter`를 대상으로 한 별도 테스트에서 검증한다.
 - Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
 
 ---
