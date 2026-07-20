@@ -46,6 +46,6 @@ import { PaymentModule } from '@/payment/payment-module'
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationIdMiddleware).forRoutes('*')
+    consumer.apply(CorrelationIdMiddleware).forRoutes('{*splat}')
   }
 }
