@@ -25,7 +25,7 @@ func NewSignUpHandler(repo credential.Repository, passwordHasher PasswordHasher)
 // 아이디 중복은 그대로 클라이언트에 알려준다 — 가입 단계에서는 user enumeration
 // 방지보다 "이미 쓰이는 아이디입니다" UX가 우선이다(nestjs 구현과 동일한 판단).
 func (h *SignUpHandler) Handle(ctx context.Context, cmd SignUpCommand) error {
-	_, err := h.repo.FindByUserID(ctx, cmd.UserID)
+	_, err := credential.FindOne(ctx, h.repo, cmd.UserID)
 	if err == nil {
 		return credential.ErrUserIDAlreadyExists
 	}
@@ -37,5 +37,5 @@ func (h *SignUpHandler) Handle(ctx context.Context, cmd SignUpCommand) error {
 	if err != nil {
 		return err
 	}
-	return h.repo.Save(ctx, credential.New(cmd.UserID, passwordHash))
+	return h.repo.SaveCredential(ctx, credential.New(cmd.UserID, passwordHash))
 }

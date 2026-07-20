@@ -28,7 +28,7 @@ func NewSignInHandler(repo credential.Repository, passwordHasher PasswordHasher,
 // enumeration). 이 메서드가 이 취약점 수정의 핵심이다: 이전에는 이 검증 자체가
 // 아예 없어 누구든 임의의 userId로 토큰을 발급받을 수 있었다.
 func (h *SignInHandler) Handle(ctx context.Context, cmd SignInCommand) (string, error) {
-	c, err := h.repo.FindByUserID(ctx, cmd.UserID)
+	c, err := credential.FindOne(ctx, h.repo, cmd.UserID)
 	if err != nil {
 		if errors.Is(err, credential.ErrNotFound) {
 			return "", credential.ErrInvalidCredentials

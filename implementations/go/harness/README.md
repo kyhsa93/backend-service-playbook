@@ -41,6 +41,7 @@ go run . <projectRoot>
 | `file-naming` | `file_naming.go` | 파일명이 `snake_case.go`인지 |
 | `directory-structure` | `directory_structure.go` | `internal/{domain,application,infrastructure,interface}` + `application/{command,query}` 존재 |
 | `repository-placement` | `repository_placement.go` | Repository interface → `domain/`, 구현체(`var _ ... = (*Impl)(nil)`) → `infrastructure/` |
+| `repository-naming` | `repository_naming.go` | `domain/` 레이어 Repository·Query interface의 메서드명이 `find<Noun>s`/`save<Noun>`/`delete<Noun>` 컨벤션을 따르는지(`FindBy*`, 바레 `FindAll`/`Save`/`Delete`, `Count*` 블록리스트) — `repository-pattern.md` |
 | `handler-placement` | `handler_placement.go` | `*_handler.go` → `application/command\|query/` 또는 `interface/http/` |
 | `file-placement` | `file_placement.go` | `*_task_controller.go` → `interface/`, `*_scheduler.go` → `infrastructure/` |
 | `shared-infra` | `shared_infra.go` | `OutboxWriter` 참조 시 `outbox/`에 `Writer`/`Poller`/`Consumer` 타입 구현 확인, `*task_queue*` 참조 시 `task-queue/` 배치 확인 |

@@ -16,6 +16,7 @@ var rules = []func(string) RuleResult{
 	checkFileNaming,
 	checkDirectoryStructure,
 	checkRepositoryPlacement,
+	checkRepositoryNaming,
 	checkHandlerPlacement,
 	checkFilePlacement,
 	checkSharedInfra,
