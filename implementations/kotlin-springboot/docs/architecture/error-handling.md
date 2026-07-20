@@ -158,3 +158,4 @@ class GlobalExceptionHandler {
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate 내부에서 예외 throw
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — 에러 변환이 일어나는 파이프라인 위치
+- harness `error-response-schema`/`typed-errors-only` 규칙(`../../harness/README.md`) — `ErrorResponse`가 정확히 4필드인지, domain/application이 `RuntimeException("...")` 같은 free-form 문자열 예외 대신 sealed class 타입화 예외만 쓰는지 기계 검증

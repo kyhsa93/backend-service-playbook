@@ -168,3 +168,4 @@ resilience4j:
 - [cross-cutting-concerns.md](cross-cutting-concerns.md) — Filter 체인 순서, `@Order` 배치
 - [error-handling.md](error-handling.md) — 에러 응답 4필드 구조
 - [conventions.md](../conventions.md) — REST API 컨벤션 전반
+- harness `rate-limit-wired` 규칙(`../../harness/README.md`) — `RateLimiter`를 참조하는 Filter가 실제로 제한 로직을 호출하고 Spring 빈으로 등록되어 요청 파이프라인에 적용되는지(죽은 코드가 아닌지) 기계 검증

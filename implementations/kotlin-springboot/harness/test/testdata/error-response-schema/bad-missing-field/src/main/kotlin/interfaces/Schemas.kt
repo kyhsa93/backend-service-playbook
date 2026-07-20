@@ -1,0 +1,7 @@
+package com.example.accountservice.account.interfaces.rest
+
+data class ErrorResponse(
+    val statusCode: Int,
+    val code: String,
+    val message: String,
+)

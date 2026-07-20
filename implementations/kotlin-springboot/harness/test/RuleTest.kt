@@ -8,12 +8,14 @@ package harness.test
 
 import harness.Kind
 import harness.RuleResult
+import harness.rules.checkAggregateIdFormat
 import harness.rules.checkAggregateNoPublicSetters
 import harness.rules.checkControllerPlacement
 import harness.rules.checkCqrsPattern
 import harness.rules.checkDockerfileConventions
 import harness.rules.checkDomainLayerIsolation
 import harness.rules.checkDomainPurity
+import harness.rules.checkErrorResponseSchema
 import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
 import harness.rules.checkInterfaceNoInfrastructure
@@ -26,13 +28,16 @@ import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
+import harness.rules.checkRateLimitWired
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkRepositoryNaming
 import harness.rules.checkSchedulerInInfrastructureOnly
 import harness.rules.checkSealedException
 import harness.rules.checkServiceAnnotation
 import harness.rules.checkSharedInfra
+import harness.rules.checkSoftDeleteFilter
 import harness.rules.checkTransactionBoundary
+import harness.rules.checkTypedErrorsOnly
 import kotlin.system.exitProcess
 
 private fun assertTrue(condition: Boolean, message: String) {
@@ -139,7 +144,25 @@ val TESTS: List<TestCase> = listOf(
 
     TestCase("dockerfile-conventions/good") { checkDockerfileConventions("testdata/dockerfile-conventions/good").assertNoFailures() },
     TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck").assertHasFailure() },
-    TestCase("dockerfile-conventions/bad-missing-dockerignore") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-missing-dockerignore").assertHasFailure() }
+    TestCase("dockerfile-conventions/bad-missing-dockerignore") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-missing-dockerignore").assertHasFailure() },
+
+    TestCase("aggregate-id-format/good") { checkAggregateIdFormat("testdata/aggregate-id-format/good").assertNoFailures() },
+    TestCase("aggregate-id-format/bad-raw-uuid") { checkAggregateIdFormat("testdata/aggregate-id-format/bad-raw-uuid").assertHasFailure() },
+
+    TestCase("error-response-schema/good") { checkErrorResponseSchema("testdata/error-response-schema/good").assertNoFailures() },
+    TestCase("error-response-schema/bad-missing-field") { checkErrorResponseSchema("testdata/error-response-schema/bad-missing-field").assertHasFailure() },
+    TestCase("error-response-schema/bad-wrong-type") { checkErrorResponseSchema("testdata/error-response-schema/bad-wrong-type").assertHasFailure() },
+
+    TestCase("soft-delete-filter/good") { checkSoftDeleteFilter("testdata/soft-delete-filter/good").assertNoFailures() },
+    TestCase("soft-delete-filter/good-sql-restriction") { checkSoftDeleteFilter("testdata/soft-delete-filter/good-sql-restriction").assertNoFailures() },
+    TestCase("soft-delete-filter/bad-missing-filter") { checkSoftDeleteFilter("testdata/soft-delete-filter/bad-missing-filter").assertHasFailure() },
+
+    TestCase("typed-errors-only/good") { checkTypedErrorsOnly("testdata/typed-errors-only/good").assertNoFailures() },
+    TestCase("typed-errors-only/bad-runtime-exception") { checkTypedErrorsOnly("testdata/typed-errors-only/bad-runtime-exception").assertHasFailure() },
+
+    TestCase("rate-limit-wired/good") { checkRateLimitWired("testdata/rate-limit-wired/good").assertNoFailures() },
+    TestCase("rate-limit-wired/bad-not-registered") { checkRateLimitWired("testdata/rate-limit-wired/bad-not-registered").assertHasFailure() },
+    TestCase("rate-limit-wired/bad-no-acquire-call") { checkRateLimitWired("testdata/rate-limit-wired/bad-no-acquire-call").assertHasFailure() }
 )
 
 fun main() {

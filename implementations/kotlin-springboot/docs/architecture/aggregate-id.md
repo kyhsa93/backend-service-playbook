@@ -124,3 +124,4 @@ companion object {
 
 - [tactical-ddd.md](tactical-ddd.md) — Aggregate 팩토리 함수 패턴
 - [repository-pattern.md](repository-pattern.md) — Repository에서 Aggregate 저장
+- harness `aggregate-id-format` 규칙(`../../harness/README.md`) — `GenerateId.kt`가 하이픈 제거 없이 `UUID.randomUUID().toString()`을 그대로 반환하지 않는지 기계 검증

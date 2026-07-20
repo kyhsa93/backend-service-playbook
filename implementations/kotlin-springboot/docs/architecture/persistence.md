@@ -108,7 +108,7 @@ class Account protected constructor() : BaseEntity() { /* createdAt/updatedAt/de
 
 ## Soft Delete — 배선 완료
 
-`deletedAt` 컬럼은 `Account`, `Transaction` 모두에 존재하고, `AccountRepository.deleteAccount(accountId)`가 실제 실행 경로를 제공한다.
+`deletedAt` 컬럼은 `Account`에 존재하고, `AccountRepository.deleteAccount(accountId)`가 실제 실행 경로를 제공한다. `Transaction`은 생성 후 불변인 원장(ledger) 성격이라 삭제 유스케이스 자체가 없고 `deletedAt` 컬럼도 없다 — 삭제 경로가 없으므로 hard delete 위험도 없다. `Card`/`Payment`/`Refund`도 아직 삭제 유스케이스가 없어 `deletedAt` 컬럼이 없다 — harness `soft-delete-filter` 규칙(아래)은 `deletedAt` 컬럼이 실제로 존재하는 Entity에만 필터 검사를 적용하고, 컬럼 자체가 없는 Entity는 대상에서 제외한다.
 
 ```kotlin
 // domain/AccountRepository.kt — 실제 코드
@@ -216,3 +216,4 @@ CREATE TABLE accounts (
 - [repository-pattern.md](repository-pattern.md) — Repository 인터페이스/구현 분리, delete 메서드 설계
 - [layer-architecture.md](layer-architecture.md) — 트랜잭션 경계와 레이어 역할
 - [testing.md](testing.md) — 테스트에서의 `ddl-auto: create-drop` 사용
+- harness `soft-delete-filter` 규칙(`../../harness/README.md`) — `deletedAt` 컬럼이 있는 Entity의 조회 쿼리가 실제로 그 컬럼을 필터링하는지(또는 `@SQLRestriction`/`@Where` 전역 필터가 있는지) 기계 검증

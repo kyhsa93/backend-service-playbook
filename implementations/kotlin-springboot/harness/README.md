@@ -39,6 +39,11 @@ harness/
       SchedulerInInfrastructureOnly.kt
       NoSilentCatch.kt
       DockerfileConventions.kt
+      AggregateIdFormat.kt
+      ErrorResponseSchema.kt
+      SoftDeleteFilter.kt
+      TypedErrorsOnly.kt
+      RateLimitWired.kt
   test/
     RuleTest.kt                   자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
     testdata/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
@@ -86,6 +91,11 @@ bash implementations/kotlin-springboot/harness.sh <projectRoot>
 | `scheduler-in-infrastructure-only` | `SchedulerInInfrastructureOnly.kt` | `@Scheduled`/`@EnableScheduling`이 `domain/` 또는 `application/`에 있으면 실패(scheduling.md). `outbox/`(공유 인프라)와 최상위 부트스트랩 클래스는 두 경로 밖이므로 통과 |
 | `no-silent-catch` | `NoSilentCatch.kt` | `application/`, `infrastructure/`에서 완전히 빈 `catch (e: Exception) { }` 블록 발견 시 실패(observability.md) — 로깅·rethrow 등 내용이 하나라도 있으면 대상 아님(오탐 방지를 위한 좁은 blocklist) |
 | `dockerfile-conventions` | `DockerfileConventions.kt` | `examples/Dockerfile`을 텍스트로 파싱해 멀티스테이지 빌드(`FROM` 2개 이상)·`HEALTHCHECK` 존재·`.dockerignore`의 빌드 산출물/`.git` 제외 패턴 존재를 확인(container.md) |
+| `aggregate-id-format` | `AggregateIdFormat.kt` | 프로젝트 안의 `GenerateId.kt`(ID 생성 유틸)가 `UUID.randomUUID().toString()`을 하이픈 제거 없이 그대로 반환하지 않는지 확인 — 32자리 hex(하이픈 없음) 대신 하이픈 포함 UUID가 Aggregate ID로 쓰이는 것을 막는다(aggregate-id.md) |
+| `error-response-schema` | `ErrorResponseSchema.kt` | `*ErrorResponse` data class가 정확히 `statusCode`(숫자)/`code`(String)/`message`(String 또는 배열)/`error`(String) 4필드만 갖는지 확인 — 필드명은 JSON 직렬화 이름과 그대로 매핑되므로 대소문자까지 정확히 일치해야 한다(error-handling.md) |
+| `soft-delete-filter` | `SoftDeleteFilter.kt` | `deletedAt` soft-delete 컬럼을 가진 JPA Entity라면, 그 Entity를 조회하는 `*RepositoryImpl.kt`의 find 쿼리가 `deletedAt IS NULL`(또는 `findBy...DeletedAtIsNull` derived query, 또는 Entity의 `@SQLRestriction`/`@Where` 전역 필터)을 갖는지 확인 — hard delete 금지 원칙 위반(삭제된 행이 계속 조회됨)을 잡는다(persistence.md). `deletedAt` 컬럼이 아예 없는 Entity(삭제 유스케이스 자체가 없는 도메인)는 대상 아님 |
+| `typed-errors-only` | `TypedErrorsOnly.kt` | `domain/`, `application/`에서 `throw RuntimeException("...")`/`throw IllegalStateException("...")` 같은 free-form 문자열을 가진 제네릭 예외 생성 시 실패 — `sealed class *Exception` 계층의 타입화된 하위 클래스만 throw해야 한다(root AGENTS.md "에러는 enum으로 타입화", error-handling.md). outbox/(infrastructure 성격) 등 domain/application 밖의 기술적 예외는 대상 아님 |
+| `rate-limit-wired` | `RateLimitWired.kt` | Resilience4j `RateLimiter`를 참조하는 `OncePerRequestFilter` 클래스가 `acquirePermission()` 등 실제 제한 로직을 호출하고, `@Component` 등으로 스스로 빈 등록되거나 `FilterRegistrationBean`/`addFilterBefore`로 명시 등록되어 있는지 확인 — 둘 중 하나라도 없으면 정의만 되어 있고 요청 파이프라인에 실제로 적용되지 않는 죽은 코드다(rate-limiting.md) |
 
 ## 회귀 테스트
 
