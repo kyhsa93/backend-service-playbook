@@ -3,6 +3,7 @@ import * as path from 'node:path'
 
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
+import { findClassDecorator } from '../shared/ast-utils'
 
 const DOC = 'docs/architecture/rate-limiting.md'
 
@@ -60,12 +61,26 @@ export function evaluateRateLimiting(root: string): EvaluatorResult {
     score -= penaltyFor('high')
   }
 
-  // APP_GUARD + ThrottlerGuard 전역 등록
-  if (!/APP_GUARD/.test(allContent) || !/ThrottlerGuard/.test(allContent)) {
+  // APP_GUARD + ThrottlerGuard가 실제로 적용되어 있는지 확인 — 정의(설치·import)만 있고 실제
+  // 등록이 안 된 dead code를 걸러내기 위해, 파일 전체를 이어붙인 문자열이 아니라 실제 @Module
+  // 데코레이터 본문(providers 배열) 또는 컨트롤러의 @UseGuards(ThrottlerGuard) 중 하나에 한정해
+  // 검사한다. 둘 중 하나도 없으면 ThrottlerModule 설정만 있고 미적용 상태로 본다.
+  const moduleFiles = files.filter((f) => /@Module\s*\(/.test(fs.readFileSync(f, 'utf-8')))
+  const wiredGlobally = moduleFiles.some((f) => {
+    const decoratorText = findClassDecorator(f, 'Module')
+    return decoratorText !== null && /APP_GUARD/.test(decoratorText) && /ThrottlerGuard/.test(decoratorText)
+  })
+
+  const wiredViaUseGuards = files.some((f) => {
+    const content = fs.readFileSync(f, 'utf-8')
+    return /@Controller\s*\(/.test(content) && /@UseGuards\([^)]*ThrottlerGuard[^)]*\)/.test(content)
+  })
+
+  if (!wiredGlobally && !wiredViaUseGuards) {
     failures.push({
       ruleId: 'rate-limiting.app-guard-missing',
       severity: 'medium',
-      message: '{ provide: APP_GUARD, useClass: ThrottlerGuard } 전역 가드 등록이 없습니다.',
+      message: '{ provide: APP_GUARD, useClass: ThrottlerGuard } 전역 가드 등록(@Module providers)이나 컨트롤러의 @UseGuards(ThrottlerGuard) 적용이 없습니다 — ThrottlerModule 설정만 있고 실제로 적용되지 않은(dead code) 상태일 수 있습니다.',
       docRef: DOC
     })
     score -= penaltyFor('medium')

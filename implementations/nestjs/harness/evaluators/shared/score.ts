@@ -65,6 +65,7 @@ export function aggregate(results: EvaluatorResult[]): AggregateReport {
         || r.name.includes('aggregate-no-public-setters')
         || r.name.includes('no-cross-aggregate-reference')
         || r.name.includes('no-cross-bc-repository-in-application')
+        || r.name.includes('soft-delete-filter')
       ) return 'architecture'
       if (r.name === 'build' || r.name === 'test-run' || r.name === 'secret-manager' || r.name === 'dockerfile' || r.name === 'local-dev') return 'runtime'
       if (r.name.includes('test') || r.name === 'e2e-quality') return 'testing'

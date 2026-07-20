@@ -53,7 +53,9 @@ import { getThrottlerConfig } from '@/config/throttle.config'
 export class AppModule {}
 ```
 
-`APP_GUARD`로 등록하면 모든 엔드포인트에 자동 적용된다. 여러 throttler를 동시에 등록하여 단기/중기/장기 제한을 중첩할 수 있다. `getThrottlerConfig()`는 `database.config.ts`/`app.config.ts`와 같은 `ConfigModule`을 거치지 않는 순수 함수([config.md](config.md) 패턴)다 — `ThrottlerModule.forRoot()`는 `AppModule`의 `imports` 배열이 평가되는 시점(DI 컨테이너 조립 이전)에 값이 필요해 `ConfigService` 주입이 불가능하기 때문에, `data-source.ts`의 `getDatabaseUrl()`과 동일한 이유로 직접 호출 방식을 쓴다.
+`APP_GUARD`로 등록하면 모든 엔드포인트에 자동 적용된다. 여러 throttler를 동시에 등록하여 단기/중기/장기 제한을 중첩할 수 있다.
+
+`ThrottlerModule.forRoot()`만 설정하고 `APP_GUARD`(또는 컨트롤러의 `@UseGuards(ThrottlerGuard)`)로 실제 가드를 적용하지 않으면(정의만 있고 미적용인 dead code 상태) `harness/evaluators/rules/rate-limiting.evaluator.ts`가 `rate-limiting.app-guard-missing`으로 잡아낸다 — `@Module` 데코레이터 본문 또는 컨트롤러의 `@UseGuards()` 안에서 실제로 연결됐는지를 확인한다(단순히 파일 어딘가에 `APP_GUARD`/`ThrottlerGuard` 문자열이 있는 것만으로는 통과하지 않는다). `getThrottlerConfig()`는 `database.config.ts`/`app.config.ts`와 같은 `ConfigModule`을 거치지 않는 순수 함수([config.md](config.md) 패턴)다 — `ThrottlerModule.forRoot()`는 `AppModule`의 `imports` 배열이 평가되는 시점(DI 컨테이너 조립 이전)에 값이 필요해 `ConfigService` 주입이 불가능하기 때문에, `data-source.ts`의 `getDatabaseUrl()`과 동일한 이유로 직접 호출 방식을 쓴다.
 
 ## 엔드포인트별 커스텀 제한 (확장 패턴 — 미적용)
 

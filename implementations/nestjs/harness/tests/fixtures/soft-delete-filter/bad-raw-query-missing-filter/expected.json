@@ -1,0 +1,5 @@
+{
+  "name": "soft-delete-filter",
+  "applicable": true,
+  "expectedFailureRuleIds": ["soft-delete-filter.raw-query-missing-filter"]
+}

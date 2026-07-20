@@ -23,15 +23,15 @@
 | `cqrs-pattern.md` | command/query 분리, Query에서 Repository 미사용 | ✅ | `cqrs-pattern` | Covered | handler 단위 CQRS 규칙은 추후 확장 가능 |
 | `../../docs/architecture/domain-service.md` (루트 공용) | Domain Service 위치/책임/네이밍, Aggregate는 다른 Aggregate를 직접 참조하지 않음(ID 참조만) | ✅ | `domain-service`, `no-cross-aggregate-reference` | Partial | 네이밍 의미 검증은 Manual 리뷰 병행. `no-cross-aggregate-reference`는 현재 `payment/`(Payment·Refund) 케이스로 범위를 좁힘 — 다른 BC에 유사 케이스가 생기면 일반화 검토 |
 | `domain-events.md` | Aggregate event, Outbox, handler 위치, EventBus 직접 호출 금지 | ✅ | `domain-event-outbox` | Covered | integration event 세부 정책은 fixture 확장 필요 |
-| `aggregate-id.md` | Aggregate ID value object, primitive id 직접 사용 제한 | ✅ | `aggregate-id` | Partial | ID 생성 런타임 동작은 Manual 리뷰 병행 |
+| `aggregate-id.md` | Aggregate ID value object, primitive id 직접 사용 제한, `generateId()`의 하이픈 제거 | ✅ | `aggregate-id` | Covered | - |
 | `cross-domain.md` (+ 루트 공용 `cross-domain-communication.md`) | 도메인 간 직접 의존 금지, Adapter 경유, Application에서 타 BC Repository 직접 import 금지 | ✅ | `import-graph`, `no-cross-bc-repository-in-application` | Covered | Adapter 구현체가 실제로 상대 BC의 Query만 호출하는지(Repository·Service 미참조)까지는 Manual 리뷰 병행 |
 | `shared-modules.md` | Shared module 범위, 공통 모듈 남용 방지 | ⚠️ | `structure` | Partial | `shared-module` evaluator 후보 |
-| `persistence.md` | Query/TransactionManager/Migration 규칙 | ✅ | `database-queries`, `layer-dependency`, `repository-pattern` | Partial | 마이그레이션 로직 정확성은 Manual 리뷰 병행 |
-| `error-handling.md` | Domain HttpException 금지, ErrorCode/응답 tuple 규칙 | ✅ | `error-handling` | Covered | - |
+| `persistence.md` | Query/TransactionManager/Migration 규칙, soft-delete 필터(Repository find 메서드가 soft-delete 불가능한 Entity를 조회하지 않는지, raw SQL이 deletedAt 필터를 우회하지 않는지) | ✅ | `database-queries`, `layer-dependency`, `repository-pattern`, `soft-delete-filter` | Partial | 마이그레이션 로직 정확성은 Manual 리뷰 병행 |
+| `error-handling.md` | Domain/Application HttpException·raw 문자열 throw 금지, ErrorCode/응답 tuple 규칙, 에러 응답 4필드(statusCode/code/message/error) 스키마 | ✅ | `error-handling` | Covered | - |
 | `authentication.md` | Bearer JWT, Guard, public route 명시 | ✅ | `auth` | Partial | 토큰 유효성 검증 로직은 Manual 리뷰 병행 |
 | `cross-cutting-concerns.md` | Middleware/Guard/Interceptor/Pipe 위치와 적용 | ⚠️ | `dto-validation`, `bootstrap-healthcheck` | Partial | Guard/Interceptor 레벨 적용 규칙은 Manual 리뷰 병행 |
 | `api-response.md` | Pagination DTO, 공통 응답 포맷, limit 제한 | ✅ | `pagination` | Partial | 정렬 파라미터 유효성은 Manual 리뷰 병행 |
-| `rate-limiting.md` | Rate limit guard/interceptor/module 설정 | ✅ | `rate-limiting` | Partial | ttl/limit 적절성은 Manual 리뷰 병행 |
+| `rate-limiting.md` | Rate limit guard/interceptor/module 설정, 가드가 실제로 적용(전역 등록 또는 `@UseGuards`)됐는지 — 정의만 있고 미적용인 dead code 방지 | ✅ | `rate-limiting` | Partial | ttl/limit 적절성은 Manual 리뷰 병행 |
 | `testing.md` | 테스트 존재, 테스트 실행, E2E mock 최소화, nock/testcontainers 사용 | ✅ | `test-presence`, `test-run`, `e2e-quality` | Partial | 계층별 테스트 패턴·testcontainers 설정 품질은 Manual 리뷰 병행 |
 | `observability.md` | Logger 사용, console 금지, 빈/미처리 catch 블록 금지, Domain 레이어 로깅 전면 금지 | ✅ | `logging` | Covered | 로그 메시지 내용·레벨 적절성은 Manual 리뷰 병행 |
 | `config.md` | 환경 변수 validation, ConfigModule 설정, process.env 직접 참조 제한 | ✅ | `config-validation` | Covered | `config-validation.process-env-direct-access`가 `src/config/*.config.ts` 외부(Domain·Application 포함) 전체의 `process.env` 직접 참조를 이미 막고 있어, Domain/Application만 금지·Infrastructure는 허용하는 더 느슨한 규칙은 별도로 추가하지 않음(현재 코드베이스에 Infrastructure의 `process.env` 직접 사용 사례 없음 — 실제로는 config/ 함수를 경유) |
@@ -62,7 +62,7 @@
 | `controller-path` | `conventions.md`, API 관련 문서 | 동사 prefix controller path 금지 |
 | `checklist` | `checklist.md` | 체크리스트 기반 복합 룰 |
 | `cqrs-pattern` | `cqrs-pattern.md` | command/query 분리 검증 |
-| `error-handling` | `error-handling.md` | 예외/에러 코드 규칙 검증 |
+| `error-handling` | `error-handling.md` | 예외/에러 코드 규칙, 에러 응답 4필드 스키마 검증 |
 | `test-presence` | `testing.md` | 테스트 파일 존재 검증 |
 | `dto-validation` | `cross-cutting-concerns.md`, API 관련 문서 | DTO validation decorator 검증 |
 | `task-queue` | `scheduling.md` | TaskConsumer 패턴 검증 |
@@ -75,6 +75,7 @@
 | `aggregate-no-public-setters` | `layer-architecture.md` | domain/ class의 public setter · public 비-readonly 필드 금지 |
 | `no-cross-aggregate-reference` | `../../docs/architecture/domain-service.md` (루트 공용) | `payment/domain/`의 Payment·Refund가 서로를 타입으로 참조하는지 검증(ID 참조만 허용) |
 | `no-cross-bc-repository-in-application` | `../../docs/architecture/cross-domain-communication.md` (루트 공용) | Application이 타 BC의 domain/*-repository.ts를 직접 import하는지 검증 |
+| `soft-delete-filter` | `persistence.md` | Repository find 메서드가 soft-delete 불가능한 Entity를 조회하는지, raw SQL이 deletedAt 필터를 우회하는지 검증 |
 | `domain-event-outbox` | `domain-events.md` | Outbox/event handler 규칙 검증 |
 | `build` | 전체 TypeScript 프로젝트 | `tsc --noEmit` 실행 |
 | `test-run` | `testing.md` | opt-in 테스트 실행 |
@@ -86,11 +87,11 @@
 | `bootstrap-healthcheck` | `bootstrap.md`, `graceful-shutdown.md` | enableShutdownHooks, ValidationPipe 필수 검증 |
 | `dockerfile` | `container.md` | 멀티스테이지 빌드, CMD node 직접 실행, .dockerignore, HEALTHCHECK 존재(권장, medium) |
 | `local-dev` | `local-dev.md` | docker-compose postgres 서비스, healthcheck, env 파일 |
-| `rate-limiting` | `rate-limiting.md` | ThrottlerModule 설정, APP_GUARD ThrottlerGuard 전역 등록 |
+| `rate-limiting` | `rate-limiting.md` | ThrottlerModule 설정, APP_GUARD/ThrottlerGuard의 실제 적용(dead code 아님) 검증 |
 | `pagination` | `api-response.md` | page/take DTO 데코레이터, 범용 응답 키 금지 |
 | `database-queries` | `persistence.md` | @PrimaryGeneratedColumn 금지, BaseEntity 상속, TransactionManager 존재 |
 | `domain-service` | `domain-service.md` (루트 공용, `../../docs/architecture/`) | Domain Service에 @Injectable() 금지 |
-| `aggregate-id` | `aggregate-id.md` | @PrimaryGeneratedColumn 금지, char(32) PrimaryColumn, generateId() 존재 |
+| `aggregate-id` | `aggregate-id.md` | @PrimaryGeneratedColumn 금지, char(32) PrimaryColumn, generateId() 존재 및 하이픈 제거 검증 |
 
 ## Guide-Harness sync policy
 

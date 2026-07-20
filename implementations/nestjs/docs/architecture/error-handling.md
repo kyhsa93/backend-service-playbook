@@ -48,6 +48,8 @@ import { OrderErrorMessage as ErrorMessage } from '@/order/order-error-message'
 if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
 ```
 
+Domain/Application 레이어에서 `throw new Error(...)`의 인자가 `<Domain>ErrorMessage` enum 참조가 아닌 raw 문자열이면 `harness/evaluators/rules/error-handling.evaluator.ts`가 각각 `checklist.step7.domain.no-generic-error` / `checklist.step7.application.no-generic-error`로 잡아낸다.
+
 ### 에러 메시지 — enum으로 정의 (free-form 문자열 X)
 
 ```typescript
@@ -115,6 +117,8 @@ import { OrderErrorCode as ErrorCode } from '@/order/order-error-code'
 | `code` | `string` | `<Domain>ErrorCode` enum 값. 클라이언트 분기 처리의 기준 |
 | `message` | `string` | `<Domain>ErrorMessage` enum에 정의된 에러 메시지 (사용자 표시용) |
 | `error` | `string` | HTTP 상태 텍스트 |
+
+전역 예외 필터가 구성하는 에러 응답 객체가 이 4개 필드(`statusCode`/`code`/`message`/`error`)와 정확히 일치하지 않으면(필드 누락 또는 추가) `harness/evaluators/rules/error-handling.evaluator.ts`가 `error-handling.response-schema.field-mismatch`로 잡아낸다.
 
 Validation 실패 시 (class-validator) — 프레임워크가 던지는 케이스로 `code`는 `VALIDATION_FAILED` 고정:
 

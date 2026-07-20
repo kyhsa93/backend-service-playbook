@@ -36,6 +36,7 @@ import { evaluateInterfaceNoInfrastructure } from '../evaluators/rules/interface
 import { evaluateAggregateNoPublicSetters } from '../evaluators/rules/aggregate-no-public-setters.evaluator'
 import { evaluateNoCrossAggregateReference } from '../evaluators/rules/no-cross-aggregate-reference.evaluator'
 import { evaluateNoCrossBcRepositoryInApplication } from '../evaluators/rules/no-cross-bc-repository-in-application.evaluator'
+import { evaluateSoftDeleteFilter } from '../evaluators/rules/soft-delete-filter.evaluator'
 import type { EvaluatorResult } from '../evaluators/shared/types'
 
 type EvaluatorFn = (root: string) => EvaluatorResult
@@ -62,7 +63,8 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'interface-no-infrastructure': evaluateInterfaceNoInfrastructure,
   'aggregate-no-public-setters': evaluateAggregateNoPublicSetters,
   'no-cross-aggregate-reference': evaluateNoCrossAggregateReference,
-  'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication
+  'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication,
+  'soft-delete-filter': evaluateSoftDeleteFilter
 }
 
 interface Expected {

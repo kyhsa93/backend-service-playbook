@@ -1,0 +1,5 @@
+{
+  "name": "error-handling",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step7.domain.no-generic-error"]
+}

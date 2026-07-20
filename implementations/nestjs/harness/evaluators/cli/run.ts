@@ -40,6 +40,7 @@ import { evaluateInterfaceNoInfrastructure } from '../rules/interface-no-infrast
 import { evaluateAggregateNoPublicSetters } from '../rules/aggregate-no-public-setters.evaluator'
 import { evaluateNoCrossAggregateReference } from '../rules/no-cross-aggregate-reference.evaluator'
 import { evaluateNoCrossBcRepositoryInApplication } from '../rules/no-cross-bc-repository-in-application.evaluator'
+import { evaluateSoftDeleteFilter } from '../rules/soft-delete-filter.evaluator'
 import { aggregate } from '../shared/score'
 import type { EvaluatorResult } from '../shared/types'
 
@@ -82,7 +83,8 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'interface-no-infrastructure': evaluateInterfaceNoInfrastructure,
   'aggregate-no-public-setters': evaluateAggregateNoPublicSetters,
   'no-cross-aggregate-reference': evaluateNoCrossAggregateReference,
-  'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication
+  'no-cross-bc-repository-in-application': evaluateNoCrossBcRepositoryInApplication,
+  'soft-delete-filter': evaluateSoftDeleteFilter
 }
 
 interface CliArgs {

@@ -28,6 +28,8 @@ export function generateId(): string {
 }
 ```
 
+`randomUUID()`를 하이픈 제거 없이 그대로 반환하면 `harness/evaluators/rules/aggregate-id.evaluator.ts`가 `aggregate-id.generate-id-raw-uuid`로 잡아낸다.
+
 ### Aggregate에서 사용
 
 ```typescript

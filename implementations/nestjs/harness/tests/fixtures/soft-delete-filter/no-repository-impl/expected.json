@@ -1,0 +1,5 @@
+{
+  "name": "soft-delete-filter",
+  "applicable": false,
+  "expectedFailureRuleIds": []
+}

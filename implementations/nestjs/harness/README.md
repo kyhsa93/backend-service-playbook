@@ -92,7 +92,7 @@ npm run evaluate -- /path/to/project --out=report.json
 | `controller-path` | `@Controller('create…')` 같은 동사 prefix 금지 | 25 |
 | `checklist` | `docs/checklist.md` 기반 기계 룰 모음 | 100 |
 | `cqrs-pattern` | `command/`·`query/` 분리, Query에서 Repository 미사용 | 25 |
-| `error-handling` | Domain HttpException 금지, Application throw new Error 금지, `<domain>-error-code.ts` 존재/네이밍/메시지 1:1, `generateErrorResponse` 3-튜플 | 25 |
+| `error-handling` | Domain/Application 둘 다 throw new Error 금지(raw 문자열, ErrorMessage enum 참조 강제), Domain HttpException 금지, `<domain>-error-code.ts` 존재/네이밍/메시지 1:1, `generateErrorResponse` 3-튜플, 전역 예외 필터의 에러 응답 객체가 정확히 4개 필드(statusCode/code/message/error) | 25 |
 | `test-presence` | `test/` 또는 `*.spec.ts` 존재 | 25 |
 | `dto-validation` | DTO에 `class-validator` 데코레이터 부착 | 25 |
 | `task-queue` | `@TaskConsumer` 사용 시 Interface 레이어, CommandService 주입 등 | 20 *(auto-gated)* |
@@ -107,17 +107,18 @@ npm run evaluate -- /path/to/project --out=report.json
 | `e2e-quality` | `test/*.e2e-spec.ts` 존재 시: `jest.mock()` 사용 금지(high, -4/건), nock·testcontainers 패키지 미보유 시 경고(medium, -2) | 20 *(auto-gated)* |
 | `dockerfile` | `Dockerfile` 존재 시: 멀티스테이지(AS build) 필수, `CMD ["node", ...]` 직접 실행, `npm ci --omit=dev`, `.dockerignore` 존재, `HEALTHCHECK` 존재(권장) | 15 *(auto-gated)* |
 | `local-dev` | `docker-compose.yml` 존재 시: postgres 서비스, healthcheck, env 파일 존재 | 15 *(auto-gated)* |
-| `rate-limiting` | `@nestjs/throttler` 사용 시: `ThrottlerModule.forRoot/Async`, `APP_GUARD + ThrottlerGuard` 전역 등록 | 10 *(auto-gated)* |
+| `rate-limiting` | `@nestjs/throttler` 사용 시: `ThrottlerModule.forRoot/Async`, `APP_GUARD + ThrottlerGuard`가 실제 `@Module` providers 또는 컨트롤러 `@UseGuards()`로 적용(dead code 아님) | 10 *(auto-gated)* |
 | `pagination` | pagination DTO(page+take 필드) 존재 시: `@Type(() => Number)` + `@IsInt()` 데코레이터, 범용 응답 키(data/items/result) 금지 | 15 *(auto-gated)* |
 | `database-queries` | `*.entity.ts` 존재 시: `@PrimaryGeneratedColumn()` 금지, `BaseEntity` 상속, `TransactionManager` 파일 존재 | 20 *(auto-gated)* |
 | `domain-service` | `src/<domain>/domain/*-service.ts` 존재 시: `@Injectable()` 및 NestJS 라우팅 데코레이터 금지 | 10 *(auto-gated)* |
-| `aggregate-id` | `*.entity.ts` 존재 시: `@PrimaryGeneratedColumn()` 금지, `@PrimaryColumn({ type: 'char', length: 32 })` 필수, `generateId()` 함수 존재 | 15 *(auto-gated)* |
+| `aggregate-id` | `*.entity.ts` 존재 시: `@PrimaryGeneratedColumn()` 금지, `@PrimaryColumn({ type: 'char', length: 32 })` 필수, `generateId()` 함수 존재 및 `randomUUID()`의 하이픈 제거(`.replace(/-/g, '')`) 여부 | 15 *(auto-gated)* |
 | `logging` | `console.*` 직접 사용 금지, 빈/미처리 catch 블록 금지, domain/ 레이어에서 `@nestjs/common` Logger·winston·console 로깅 전면 금지 | 15 |
 | `domain-layer-isolation` | `src/<domain>/domain/*.ts`가 (자기/타 도메인 불문) application/infrastructure/interface를 import하면 실패 — 경로 기반, import-graph보다 넓은 범위 | 20 *(auto-gated)* |
 | `interface-no-infrastructure` | domain-bearing BC의 `interface/**/*.ts`(Controller)가 `infrastructure/`를 직접 import하면 실패 — Application을 거쳐야 함. `common/`처럼 `domain/`이 없는 횡단 관심사 모듈은 대상 아님 | 15 *(auto-gated)* |
 | `aggregate-no-public-setters` | `src/<domain>/domain/*.ts` class에 public `set x(...)` accessor 또는 public 비-readonly 필드가 있으면 실패 | 15 *(auto-gated)* |
 | `no-cross-aggregate-reference` | `src/payment/domain/`의 `payment.ts`/`refund.ts`가 서로를 타입으로 import(named import)하면 실패 — ID 참조만 허용 | 10 *(auto-gated)* |
 | `no-cross-bc-repository-in-application` | `application/**/*.ts`가 다른 BC의 `domain/*-repository.ts`를 직접 import하면 실패 — Adapter(ACL) 경유 필요 | 15 *(auto-gated)* |
+| `soft-delete-filter` | `*-repository-impl.ts`의 `find` 메서드가 soft-delete 불가능한(BaseEntity 미상속·`@DeleteDateColumn` 없음) Entity를 조회하면 실패, raw SQL(`.query()`)이 soft-delete 가능한 Entity를 `deletedAt IS NULL` 필터 없이 조회하면 실패 | 15 *(auto-gated)* |
 
 *auto-gated*: 해당 기능을 사용하는 코드가 없으면 `maxScore=0`으로 집계에서 제외.
 *opt-in*: 환경 변수 명시 시에만 실행.

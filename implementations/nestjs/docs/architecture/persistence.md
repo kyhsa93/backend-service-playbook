@@ -245,6 +245,8 @@ public async deleteOrder(orderId: string): Promise<void> {
 }
 ```
 
+`harness/evaluators/rules/soft-delete-filter.evaluator.ts`가 Repository 구현체(`*-repository-impl.ts`)의 `find` 메서드가 soft-delete 컬럼(`@DeleteDateColumn` 또는 `BaseEntity` 상속)이 없는 Entity를 조회하면 `soft-delete-filter.entity-not-soft-deletable`로, raw SQL(`.query()`)이 soft-delete 가능한 Entity를 `deletedAt IS NULL` 필터 없이 조회하면(TypeORM의 자동 필터를 우회) `soft-delete-filter.raw-query-missing-filter`로 잡아낸다.
+
 ### 마이그레이션 — TypeORM CLI
 
 스키마 변경은 TypeORM 마이그레이션으로 관리한다. Entity를 수정한 후 마이그레이션 파일을 생성하고, 배포 시 실행한다.

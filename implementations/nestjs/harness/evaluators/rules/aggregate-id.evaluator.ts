@@ -67,11 +67,11 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
   }
 
   // generateId() 함수 존재 여부 확인
-  const hasGenerateId = files.some((f) => {
+  const generateIdFile = files.find((f) => {
     const content = fs.readFileSync(f, 'utf-8')
     return /export\s+(function\s+generateId|const\s+generateId)/.test(content)
   })
-  if (!hasGenerateId) {
+  if (!generateIdFile) {
     failures.push({
       ruleId: 'aggregate-id.generate-id-missing',
       severity: 'medium',
@@ -79,6 +79,22 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
       docRef: DOC
     })
     score -= penaltyFor('medium')
+  } else {
+    // generateId()가 있다면 실제로 하이픈을 제거하는지 확인 — randomUUID()를 하이픈 포함 그대로
+    // 반환하면 32자리 hex 규칙(가이드) 위반. .replace(/-/g, '') 또는 .replaceAll('-', '')로
+    // 제거하는지 정규식으로 확인한다 (런타임 동작이라 AST만으로는 값 검증이 안 되므로 소스 패턴 검사).
+    const content = fs.readFileSync(generateIdFile, 'utf-8')
+    const stripsHyphens = /\.replace\s*\(\s*\/-\/g\s*,\s*(['"`])\1\s*\)/.test(content)
+      || /\.replaceAll\s*\(\s*['"`]-['"`]\s*,\s*(['"`])\1\s*\)/.test(content)
+    if (/randomUUID\s*\(/.test(content) && !stripsHyphens) {
+      failures.push({
+        ruleId: 'aggregate-id.generate-id-raw-uuid',
+        severity: 'high',
+        message: `${rel(generateIdFile)}의 generateId()가 randomUUID()를 하이픈 제거 없이 그대로 반환합니다 — .replace(/-/g, '')로 하이픈을 제거해 32자리 hex 문자열을 만드세요.`,
+        docRef: DOC
+      })
+      score -= penaltyFor('high')
+    }
   }
 
   return {
