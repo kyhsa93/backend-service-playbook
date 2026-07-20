@@ -37,6 +37,9 @@ var rules = []func(string) RuleResult{
 	checkSoftDeleteFilter,
 	checkTypedErrorsOnly,
 	checkRateLimitWired,
+	checkNoGenericResponseKeys,
+	checkQueryHandlerNoRawAggregate,
+	checkNoCrossBCDomainImport,
 }
 
 func main() {

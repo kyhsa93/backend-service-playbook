@@ -54,6 +54,8 @@ type GetTransactionsResponse struct {
 
 `Count`는 페이지 크기가 아니라 **필터 적용 후 전체 건수**다. `internal/infrastructure/persistence/account_repository.go`의 `FindTransactions`는 `SELECT COUNT(*)`를 별도로 실행해 `total`을 구하고, `FindAccounts`도 동일한 패턴(`COUNT(*)` 쿼리 + `LIMIT/OFFSET` 쿼리 두 번 실행)을 따른다.
 
+`result`/`data`/`items` 같은 범용 키 사용 금지는 `implementations/go/harness/no_generic_response_keys.go`(`no-generic-response-keys` 규칙)가 자동으로 검사한다 — `internal/interface/**`의 struct 선언에 `json:"result"`/`json:"data"`/`json:"items"` 태그가 붙은 필드가 있으면 FAIL로 잡아낸다.
+
 ---
 
 ## 단건 조회 응답 — 범용 래퍼 없음
@@ -155,6 +157,8 @@ func (h *GetAccountHandler) Handle(ctx context.Context, q GetAccountQuery) (*Get
 ```
 
 `interface/http/account_handler.go`가 다시 `GetAccountResult`를 `GetAccountResponse`(JSON DTO)로 매핑한다 — Domain → Application Result → Interface DTO 세 단계를 거치며, 각 단계가 얇은 필드 매핑이라도 레이어 경계를 명확히 유지한다.
+
+Query Handler가 raw Aggregate를 그대로 반환하지 않는지는 `implementations/go/harness/query_handler_no_raw_aggregate.go`(`query-handler-no-raw-aggregate` 규칙)가 자동으로 검사한다 — `internal/application/query/*.go`의 `Handle()`이 `internal/domain/<bc>` 패키지로 qualify된 포인터 타입(예: `*account.Account`)을 반환하면 FAIL로 잡아낸다.
 
 ---
 

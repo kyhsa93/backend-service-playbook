@@ -155,7 +155,7 @@ migrations/
 
 `test/account_e2e_test.go`의 `TestMain`이 컨테이너 기동 후 up 파일들을 순서대로 읽어 실행한다(`os.ReadFile(filepath.Join("..", "migrations", migration))`) — 파일명을 하드코딩한 목록으로 나열하므로 `.down.sql` 파일이 섞여 있어도 up 실행 경로에는 영향이 없다. 각 `NNNN_*.sql`에는 짝이 되는 `NNNN_*.down.sql`이 있어, 해당 up 파일이 만든 테이블/컬럼/인덱스를 생성 역순으로 제거한다 — 예를 들어 `0001_init.down.sql`은 `transactions`를 먼저 지우고(외래키가 `accounts`를 참조하므로) `accounts`를 그다음에 지운다. `golang-migrate/migrate` 같은 버전 추적 도구(`schema_migrations` 테이블)는 여전히 도입하지 않았다 — down 파일을 실제로 적용하는 것은 운영자가 수동으로 실행하는 몫이며, 이 저장소는 그 실행 메커니즘 자체를 자동화하지 않는다.
 
-`synchronize`/`ddl-auto: update` 같은 자동 스키마 동기화에 대응하는 개념(`database/sql`은애초에 ORM이 아니므로 자동 동기화 기능 자체가 없다)은 Go에는 없다 — 항상 마이그레이션 파일을 통해서만 스키마가 바뀐다는 점에서 오히려 root 원칙(운영 환경에서는 반드시 마이그레이션 사용)을 구조적으로 지키기 쉽다.
+`synchronize`/`ddl-auto: update` 같은 자동 스키마 동기화에 대응하는 개념(`database/sql`은 애초에 ORM이 아니므로 자동 동기화 기능 자체가 없다)은 Go에는 없다 — 항상 마이그레이션 파일을 통해서만 스키마가 바뀐다는 점에서 오히려 root 원칙(운영 환경에서는 반드시 마이그레이션 사용)을 구조적으로 지키기 쉽다. 그래서 harness에는 `no-orm-autosync-in-prod-config`에 해당하는 규칙이 없다 — 검사할 ORM 자동 동기화 설정 자체가 이 스택에 존재하지 않기 때문이다(`implementations/go/harness/README.md`의 "구현하지 않은 규칙" 참고).
 
 ---
 

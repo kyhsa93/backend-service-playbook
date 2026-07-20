@@ -31,6 +31,9 @@ harness/
   soft_delete_filter.go
   typed_errors_only.go
   rate_limit_wired.go
+  no_generic_response_keys.go
+  query_handler_no_raw_aggregate.go
+  no_cross_bc_domain_import.go
   import_paths.go                go/parser 기반 import 경로 추출 헬퍼(여러 규칙이 공유)
   text_block.go                  괄호/중괄호 균형 추출 헬퍼(문자열 리터럴 내부는 건너뜀, 여러 규칙이 공유)
   *_test.go                      규칙별 회귀 테스트 (표준 testing 패키지)
@@ -79,8 +82,14 @@ go run . <projectRoot>
 | `soft-delete-filter` | `soft_delete_filter.go` | `root/migrations/*.sql`(`.down.sql` 제외)에서 `deleted_at` 컬럼을 가진 테이블을 먼저 파악한 뒤, `internal/infrastructure/persistence/*_repository.go`의 각 `Find*`/`FindAll` 메서드가 그 테이블을 대상으로 하면 `deleted_at IS NULL` 필터(정적 SQL이든 동적 WHERE 빌더 seed든 텍스트 검색으로 판단)를 포함하는지 — 컬럼이 없는 테이블 대상 메서드는 대상에서 제외 — `persistence.md` |
 | `typed-errors-only` | `typed_errors_only.go` | `internal/domain/`·`internal/application/`에서 `errors.New(...)`가 `domain/<bc>/errors.go` 밖(application/는 위치 무관 전부)에서 호출되지 않는지, `fmt.Errorf(...)`가 항상 `%w`로 기존 typed error를 감싸는지(감싸지 않는 free-form 메시지는 FAIL) — AGENTS.md("에러는 enum으로 타입화") |
 | `rate-limit-wired` | `rate_limit_wired.go` | `internal/interface/http/middleware/` 아래 이름에 `RateLimit`이 들어간 함수/메서드가 정의만 되어 있고 router.go/main.go 등 조립 지점 어디에서도 호출되지 않는 죽은 코드가 아닌지 — `rate-limiting.md` |
+| `no-generic-response-keys` | `no_generic_response_keys.go` | `internal/interface/**`의 struct 선언 중 `json:"result"`/`json:"data"`/`json:"items"` 태그를 가진 필드가 없는지 — 목록 응답 키는 도메인 객체명 복수형(`orders`/`accounts`/`payments`)이어야 한다 — `api-response.md` |
+| `query-handler-no-raw-aggregate` | `query_handler_no_raw_aggregate.go` | `internal/application/query/*.go`의 `Handle()` 메서드가 성공 시 반환하는 타입이 그 파일이 import하는 `internal/domain/<bc>` 패키지로 qualify된 포인터 타입(예: `*account.Account`)이 아닌지 — Query Handler는 전용 Result 타입만 반환해야 한다 — `api-response.md` |
+| `no-cross-bc-domain-import` | `no_cross_bc_domain_import.go` | `internal/domain/<bc>/*.go`가 다른 BC의 `internal/domain/<other-bc>` 패키지를 import하지 않는지(같은 BC 안의 `no-cross-aggregate-reference`를 BC 경계 전체로 일반화) — `tactical-ddd.md` |
 
-**구현하지 않은 규칙:** `aggregate-no-public-setters`는 이 저장소의 실제 Aggregate(Account/Card/Payment/Refund/Credential)가 모두 필드를 **전부 exported**로 선언하는 컨벤션을 쓴다(Go는 필드 단위 접근 제어가 없고, 이 저장소는 "비공개 필드 + 접근자 메서드"가 아니라 "공개 필드 + 도메인 메서드로 상태 전이"를 선택했다) — 그래서 애초에 "숨겨야 할 비공개 필드"라는 전제가 성립하지 않는다. "다른 패키지가 도메인 메서드를 우회해 필드를 직접 대입하는지"를 잡으려면 각 대입식이 실제로 Aggregate 타입 변수를 대상으로 하는지 타입 추론이 필요한데, 필드 이름(`Status`, `Amount` 등)이 DTO/테스트 코드에서도 흔히 재사용되는 이 저장소 스타일상 정규식 기반으로는 오탐률이 지나치게 높아 규칙을 추가하지 않았다.
+**구현하지 않은 규칙:**
+
+- `no-orm-autosync-in-prod-config`(persistence.md가 금지하는 ORM `synchronize`/`ddl-auto: update` 자동 스키마 동기화) — Go는 `database/sql` + `lib/pq`로 SQL을 직접 다루며 이 저장소에 ORM 자체가 없다. `synchronize`/`ddl-auto: update`에 대응하는 개념이 애초에 존재하지 않으므로(`docs/architecture/persistence.md` 158번째 줄에 이미 명시) 검사할 대상이 없다 — 항상 `migrations/*.sql` 파일을 통해서만 스키마가 바뀌는 구조이기 때문에 오히려 구조적으로 원칙을 지킨다.
+- `aggregate-no-public-setters`는 이 저장소의 실제 Aggregate(Account/Card/Payment/Refund/Credential)가 모두 필드를 **전부 exported**로 선언하는 컨벤션을 쓴다(Go는 필드 단위 접근 제어가 없고, 이 저장소는 "비공개 필드 + 접근자 메서드"가 아니라 "공개 필드 + 도메인 메서드로 상태 전이"를 선택했다) — 그래서 애초에 "숨겨야 할 비공개 필드"라는 전제가 성립하지 않는다. "다른 패키지가 도메인 메서드를 우회해 필드를 직접 대입하는지"를 잡으려면 각 대입식이 실제로 Aggregate 타입 변수를 대상으로 하는지 타입 추론이 필요한데, 필드 이름(`Status`, `Amount` 등)이 DTO/테스트 코드에서도 흔히 재사용되는 이 저장소 스타일상 정규식 기반으로는 오탐률이 지나치게 높아 규칙을 추가하지 않았다.
 
 ## 회귀 테스트
 
