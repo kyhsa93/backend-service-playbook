@@ -166,3 +166,5 @@ data class AccountCreatedEvent(
 - [repository-pattern.md](repository-pattern.md) — Aggregate 단위 Repository
 - [domain-events.md](domain-events.md) — Domain Event 발행·수신, Outbox
 - [error-handling.md](error-handling.md) — sealed class 예외 계층 상세
+- harness `no-cross-aggregate-reference` 규칙(`../../harness/README.md`) — 같은 BC 안(`payment/domain/`)에서 Payment가 Refund를, Refund가 Payment를 필드로 직접 참조하면 기계 검증으로 실패시킨다
+- harness `no-cross-bc-domain-import` 규칙(`../../harness/README.md`) — "다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)" 원칙이 서로 다른 BC 사이에도 적용됨을 검사한다 — `<bc>/domain/` 파일이 다른 BC의 `domain/` 패키지를 직접 import하면 실패시킨다

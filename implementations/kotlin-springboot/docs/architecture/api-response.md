@@ -113,3 +113,5 @@ fun getAccount(accountId: String, requesterId: String): GetAccountResult {
 - [repository-pattern.md](repository-pattern.md) — Repository 메서드 설계
 - [layer-architecture.md](layer-architecture.md) — Query Service, Result 객체
 - [cqrs-pattern.md](cqrs-pattern.md) — Command/Query 분리
+- harness `no-generic-response-keys` 규칙(`../../harness/README.md`) — 목록 응답 `data class`의 `List<...>` 프로퍼티가 `result`/`data`/`items` 같은 범용 키를 쓰면 기계 검증으로 실패시킨다
+- harness `query-handler-no-raw-aggregate` 규칙(`../../harness/README.md`) — Query Service/Controller가 raw Domain Aggregate를 반환 타입으로 그대로 노출하면 기계 검증으로 실패시킨다

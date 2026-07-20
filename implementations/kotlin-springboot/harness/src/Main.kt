@@ -19,14 +19,18 @@ import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
 import harness.rules.checkInterfaceNoInfrastructure
 import harness.rules.checkNoCrossAggregateReference
+import harness.rules.checkNoCrossBcDomainImport
 import harness.rules.checkNoCrossBcRepositoryInApplication
 import harness.rules.checkNoDirectEnvAccessOutsideConfig
 import harness.rules.checkNoEventPublisherInCommand
+import harness.rules.checkNoGenericResponseKeys
 import harness.rules.checkNoLoggingInDomain
+import harness.rules.checkNoOrmAutosyncInProdConfig
 import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
+import harness.rules.checkQueryHandlerNoRawAggregate
 import harness.rules.checkRateLimitWired
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkRepositoryNaming
@@ -69,7 +73,11 @@ val RULES: List<Rule> = listOf(
     ::checkErrorResponseSchema,
     ::checkSoftDeleteFilter,
     ::checkTypedErrorsOnly,
-    ::checkRateLimitWired
+    ::checkRateLimitWired,
+    ::checkNoGenericResponseKeys,
+    ::checkQueryHandlerNoRawAggregate,
+    ::checkNoCrossBcDomainImport,
+    ::checkNoOrmAutosyncInProdConfig
 )
 
 fun main(args: Array<String>) {

@@ -20,14 +20,18 @@ import harness.rules.checkEventPlacement
 import harness.rules.checkFileNaming
 import harness.rules.checkInterfaceNoInfrastructure
 import harness.rules.checkNoCrossAggregateReference
+import harness.rules.checkNoCrossBcDomainImport
 import harness.rules.checkNoCrossBcRepositoryInApplication
 import harness.rules.checkNoDirectEnvAccessOutsideConfig
 import harness.rules.checkNoEventPublisherInCommand
+import harness.rules.checkNoGenericResponseKeys
 import harness.rules.checkNoLoggingInDomain
+import harness.rules.checkNoOrmAutosyncInProdConfig
 import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
+import harness.rules.checkQueryHandlerNoRawAggregate
 import harness.rules.checkRateLimitWired
 import harness.rules.checkRepositoryAnnotation
 import harness.rules.checkRepositoryNaming
@@ -162,7 +166,23 @@ val TESTS: List<TestCase> = listOf(
 
     TestCase("rate-limit-wired/good") { checkRateLimitWired("testdata/rate-limit-wired/good").assertNoFailures() },
     TestCase("rate-limit-wired/bad-not-registered") { checkRateLimitWired("testdata/rate-limit-wired/bad-not-registered").assertHasFailure() },
-    TestCase("rate-limit-wired/bad-no-acquire-call") { checkRateLimitWired("testdata/rate-limit-wired/bad-no-acquire-call").assertHasFailure() }
+    TestCase("rate-limit-wired/bad-no-acquire-call") { checkRateLimitWired("testdata/rate-limit-wired/bad-no-acquire-call").assertHasFailure() },
+
+    TestCase("no-generic-response-keys/good") { checkNoGenericResponseKeys("testdata/no-generic-response-keys/good").assertNoFailures() },
+    TestCase("no-generic-response-keys/bad-result-key") { checkNoGenericResponseKeys("testdata/no-generic-response-keys/bad-result-key").assertHasFailure() },
+    TestCase("no-generic-response-keys/bad-data-key") { checkNoGenericResponseKeys("testdata/no-generic-response-keys/bad-data-key").assertHasFailure() },
+    TestCase("no-generic-response-keys/bad-items-key") { checkNoGenericResponseKeys("testdata/no-generic-response-keys/bad-items-key").assertHasFailure() },
+
+    TestCase("query-handler-no-raw-aggregate/good") { checkQueryHandlerNoRawAggregate("testdata/query-handler-no-raw-aggregate/good").assertNoFailures() },
+    TestCase("query-handler-no-raw-aggregate/bad-service-returns-aggregate") { checkQueryHandlerNoRawAggregate("testdata/query-handler-no-raw-aggregate/bad-service-returns-aggregate").assertHasFailure() },
+    TestCase("query-handler-no-raw-aggregate/bad-controller-returns-aggregate") { checkQueryHandlerNoRawAggregate("testdata/query-handler-no-raw-aggregate/bad-controller-returns-aggregate").assertHasFailure() },
+
+    TestCase("no-cross-bc-domain-import/good") { checkNoCrossBcDomainImport("testdata/no-cross-bc-domain-import/good").assertNoFailures() },
+    TestCase("no-cross-bc-domain-import/bad-card-imports-account-domain") { checkNoCrossBcDomainImport("testdata/no-cross-bc-domain-import/bad-card-imports-account-domain").assertHasFailure() },
+
+    TestCase("no-orm-autosync-in-prod-config/good") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/good").assertNoFailures() },
+    TestCase("no-orm-autosync-in-prod-config/bad-ddl-auto-update") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/bad-ddl-auto-update").assertHasFailure() },
+    TestCase("no-orm-autosync-in-prod-config/bad-ddl-auto-create-drop") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/bad-ddl-auto-create-drop").assertHasFailure() }
 )
 
 fun main() {

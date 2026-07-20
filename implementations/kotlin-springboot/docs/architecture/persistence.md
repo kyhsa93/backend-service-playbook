@@ -217,3 +217,4 @@ CREATE TABLE accounts (
 - [layer-architecture.md](layer-architecture.md) — 트랜잭션 경계와 레이어 역할
 - [testing.md](testing.md) — 테스트에서의 `ddl-auto: create-drop` 사용
 - harness `soft-delete-filter` 규칙(`../../harness/README.md`) — `deletedAt` 컬럼이 있는 Entity의 조회 쿼리가 실제로 그 컬럼을 필터링하는지(또는 `@SQLRestriction`/`@Where` 전역 필터가 있는지) 기계 검증
+- harness `no-orm-autosync-in-prod-config` 규칙(`../../harness/README.md`) — `src/main/resources/application*.yml`의 `spring.jpa.hibernate.ddl-auto`가 `validate`/`none`이 아니면(즉 `update`/`create`/`create-drop`이 프로덕션 설정에 남아 있으면) 기계 검증으로 실패시킨다
