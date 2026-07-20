@@ -121,6 +121,8 @@ func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountComm
 }
 ```
 
+이 금지 규칙은 `implementations/go/harness/no_direct_env_access.go`(`no-direct-env-access-outside-config` 규칙)가 자동으로 검사한다 — `internal/domain/`, `internal/application/`이 `os.Getenv`/`os.LookupEnv`를 직접 호출하면 FAIL로 잡아낸다(`internal/config/`, `internal/infrastructure/`는 대상 아님).
+
 ---
 
 ## `.env` 파일은 로컬 전용

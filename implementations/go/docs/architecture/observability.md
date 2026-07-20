@@ -91,6 +91,10 @@ slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Lev
 | `internal/infrastructure/` | 외부 연동 실패/재시도 | `notification/service.go`(발송 성공 로그), `outbox/poller.go`/`outbox/consumer.go`(발행·처리 실패 로그) 모두 `slog` 사용 |
 | `internal/interface/http/` | 요청 에러 | `writeAccountError`가 500 에러 시 서버 측 로그도 남긴다(아래 참고) |
 
+`internal/domain/`의 로깅 금지는 `implementations/go/harness/no_logging_in_domain.go`(`no-logging-in-domain` 규칙)가 자동으로 검사한다 — `log`, `log/slog`, 대표적인 서드파티 로거(logrus/zap/zerolog) 중 하나라도 `internal/domain/**/*.go`가 import하면 FAIL로 잡아낸다.
+
+에러를 확인만 하고 로깅도 반환도 하지 않는 완전히 빈 `if err != nil { }` 블록("조용히 삼키기")은 `implementations/go/harness/no_silent_catch.go`(`no-silent-catch` 규칙)가 잡아낸다 — errcheck(golangci-lint 기본 세트)는 에러를 아예 확인하지 않는 경우만 잡고, 확인은 했지만 빈 블록으로 버리는 이 패턴은 잡지 못하므로 그 갭을 메운다.
+
 `account_handler.go`의 `writeAccountError`는 500 에러를 클라이언트에 반환할 때 서버 측 로그도 남긴다:
 
 ```go

@@ -229,6 +229,8 @@ NestJS는 `EventHandlerRegistry` + DI로 이 구독을 풀지만, Go는 `main.go
 - **비동기 반응 유스케이스는 멱등하게** 만든다 — at-least-once 전달을 전제로 이미 처리된 상태는 건드리지 않는다.
 - **`context.Context`를 그대로 전파**한다 — Adapter 호출도 Repository 호출과 동일하게 취소/데드라인을 존중해야 한다.
 
+첫 번째 원칙(다른 도메인의 Repository를 Application 레이어에 직접 주입하지 않는다)은 `implementations/go/harness/cross_bc_application_import.go`(`no-cross-bc-repository-in-application` 규칙)가 자동으로 검사한다 — `internal/application/`의 한 파일이 서로 다른 Bounded Context의 `internal/domain/<bc>/` 패키지를 동시에 import하면 FAIL로 잡아낸다(같은 BC의 domain 패키지 하나만 import하는 것은 정상).
+
 ---
 
 ### 관련 문서

@@ -89,7 +89,7 @@ if err != nil {
 
 `Repository`에 update 메서드가 별도로 없는 것은 root 원칙과 일치한다 — 상태 변경은 항상 Aggregate 메서드(`Deposit`, `Suspend` 등) 호출 후 `Save()`로 반영한다.
 
-이 메서드 네이밍 규칙은 `implementations/go/harness/repository_naming.go`가 자동으로 검사한다(`repository-naming` 규칙) — `domain/` 레이어 Repository·Query interface에 `FindByID`류(`FindBy*`), 바레 `FindAll`/`Save`/`Delete`, 별도 `Count*` 메서드가 있으면 FAIL로 잡아낸다. 새 도메인을 손으로 추가하며 이 컨벤션을 어겨도 `harness.sh`가 조용히 통과시키지 않는다.
+이 메서드 네이밍 규칙은 `implementations/go/harness/repository_naming.go`가 자동으로 검사한다(`repository-naming` 규칙) — `domain/` 레이어 Repository·Query interface에 `FindByID`류(`FindBy*`), 바레 `FindAll`/`Save`/`Delete`, 별도 `Count*`·`Update*` 메서드가 있으면 FAIL로 잡아낸다. 새 도메인을 손으로 추가하며 이 컨벤션을 어겨도 `harness.sh`가 조용히 통과시키지 않는다.
 
 ---
 

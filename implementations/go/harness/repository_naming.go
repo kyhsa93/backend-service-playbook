@@ -18,7 +18,9 @@ import (
 //
 // 방식은 블록리스트다 — "find<Noun>s가 아닌 모든 것"을 잡는 문법을 만들면
 // HasTransactionWithReference 같은 정상 메서드까지 오탐한다. 대신 실제로 반복 발생한
-// 안티패턴(FindByID류, FindAll, Count*, 바레 Save/Delete)만 정밀 타겟팅한다.
+// 안티패턴(FindByID류, FindAll, Count*, 바레 Save/Delete, Update*)만 정밀 타겟팅한다.
+// Update*는 repository-pattern.md가 명시적으로 금지한다 — 상태 변경은 Repository의
+// 별도 update 메서드가 아니라 조회 후 Aggregate 도메인 메서드로 해야 한다.
 var (
 	// type XRepository interface { ... } / type XQuery interface { ... } — repository_placement.go의
 	// repositoryInterfaceDecl과 동일한 관용구를 Query까지 확장.
@@ -29,6 +31,7 @@ var (
 
 	findByPattern = regexp.MustCompile(`^FindBy\w*$`)
 	countPattern  = regexp.MustCompile(`^Count\w*$`)
+	updatePattern = regexp.MustCompile(`^Update\w*$`)
 )
 
 // repositoryNamingViolation은 하나의 위반 메서드명에 대한 이유를 반환한다.
@@ -41,6 +44,8 @@ func repositoryNamingViolation(method string) string {
 		return "명사 없는 FindAll — find<Noun>s 형태로 대상을 명시해야 한다(docs/architecture/repository-pattern.md)"
 	case countPattern.MatchString(method):
 		return "별도 Count 메서드(" + method + ") — count는 find<Noun>s 결과에 함께 반환해야 하며 별도 메서드를 두지 않는다(docs/architecture/repository-pattern.md)"
+	case updatePattern.MatchString(method):
+		return "Repository에 수정(update) 메서드(" + method + ") — 상태 변경은 조회 후 Aggregate의 도메인 메서드로 수행하고 save<Noun>으로 저장해야 한다(docs/architecture/repository-pattern.md)"
 	case method == "Save":
 		return "명사 없는 Save — save<Noun> 형태로 대상을 명시해야 한다(docs/architecture/repository-pattern.md)"
 	case method == "Delete":

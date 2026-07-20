@@ -248,17 +248,25 @@ import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/example/account-service/internal/infrastructure/auth"
 )
 
 type contextKey string
 
 const userIDKey contextKey = "userID"
 
+// TokenVerifier는 이 미들웨어가 필요로 하는 최소 포트다.
+// internal/infrastructure/auth.JWTService.Verify(token string) (string, error)가
+// 이미 이 시그니처를 구조적으로 만족하므로, 인터페이스는 사용하는 곳(여기) 근처에
+// 선언하고 구체 타입 import는 하지 않는다 — interface/ 레이어가 infrastructure/를
+// 직접 import하지 않게 하기 위함이다(layer-architecture.md, harness의
+// interface-no-infrastructure 규칙).
+type TokenVerifier interface {
+	Verify(token string) (string, error)
+}
+
 // RequireAuth는 Authorization: Bearer 헤더를 검증하고, 통과하면 context에
 // userID를 주입한 뒤 next를 호출한다. 검증 실패 시 401을 반환하고 next를 호출하지 않는다.
-func RequireAuth(jwtService *auth.JWTService) func(http.Handler) http.Handler {
+func RequireAuth(verifier TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authorization := r.Header.Get("Authorization")
@@ -267,7 +275,7 @@ func RequireAuth(jwtService *auth.JWTService) func(http.Handler) http.Handler {
 				return
 			}
 			token := strings.TrimPrefix(authorization, "Bearer ")
-			userID, err := jwtService.Verify(token)
+			userID, err := verifier.Verify(token)
 			if err != nil {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
@@ -292,10 +300,20 @@ func UserIDFromContext(ctx context.Context) (string, bool) {
 root는 "Guard는 Controller 클래스 레벨에 적용, 메서드 레벨은 누락 위험"이라고 규정한다. Go에는 클래스가 없으므로, **라우트 그룹 전체를 미들웨어로 감싸는 것**으로 동일한 효과를 낸다. 실제 `internal/interface/http/router.go`(발췌, 계좌/카드 라우트는 생략):
 
 ```go
+// tokenService는 sign-in 시 토큰 발급(command.TokenIssuer)과 인증 미들웨어의 토큰
+// 검증(middleware.TokenVerifier)을 하나로 묶는다. *auth.JWTService가 두 시그니처를
+// 이미 구조적으로 만족하므로, interface/ 레이어(이 파일)는 그 구체 타입을 직접
+// import하지 않고 이 인터페이스로만 받는다 — 실제 조립(*auth.JWTService 생성)은
+// infrastructure/를 자유롭게 import할 수 있는 cmd/server/main.go가 담당한다.
+type tokenService interface {
+	command.TokenIssuer
+	middleware.TokenVerifier
+}
+
 func NewRouter(
 	repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository,
 	accountAdapter command.AccountAdapter,
-	jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter,
+	jwtService tokenService, passwordHasher command.PasswordHasher, limiter *rate.Limiter,
 ) (http.Handler, *HealthHandler) {
 	// ... accountHTTP, cardHTTP 조립 생략
 
@@ -326,6 +344,8 @@ func NewRouter(
 
 - 인증이 필요한 라우트를 **하나의 `http.ServeMux`로 묶고 미들웨어로 감싸는 것**이 "메서드별로 미들웨어를 따로 붙이는 실수"를 방지하는 Go식 방법이다. 새 엔드포인트를 이 서브 mux에 추가하기만 하면 자동으로 인증이 적용된다.
 - 인증 불필요 엔드포인트(`/auth/sign-up`, `/auth/sign-in`, `/health/*`)는 `RequireAuth`로 감싸지 않은 mux에 등록한다.
+
+`internal/interface/http/`가 `internal/infrastructure/`를 직접 import하지 않는지는 `implementations/go/harness/interface_no_infrastructure.go`(`interface-no-infrastructure` 규칙)가 자동으로 검사한다 — `TokenVerifier`/`tokenService` 인터페이스를 거치지 않고 `*auth.JWTService`를 직접 import하도록 되돌리면 FAIL로 잡아낸다.
 
 ---
 

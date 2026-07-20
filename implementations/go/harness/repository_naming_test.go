@@ -48,6 +48,13 @@ func TestCheckRepositoryNaming(t *testing.T) {
 		}
 	})
 
+	t.Run("bad-update", func(t *testing.T) {
+		result := checkRepositoryNaming("testdata/repository-naming/bad-update")
+		if countKind(result, Fail) == 0 {
+			t.Fatalf("want at least 1 failure, got %+v", result.Findings)
+		}
+	})
+
 	t.Run("good-infra-ignored", func(t *testing.T) {
 		// infrastructure/persistence/의 구현체는 FindByID/Save 같은 이름이어도 이
 		// 규칙의 대상이 아니다 — Repository/Query interface 선언만 검사한다.

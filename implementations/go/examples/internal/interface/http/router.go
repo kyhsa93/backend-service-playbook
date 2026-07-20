@@ -11,9 +11,20 @@ import (
 	"github.com/example/account-service/internal/domain/card"
 	"github.com/example/account-service/internal/domain/credential"
 	"github.com/example/account-service/internal/domain/payment"
-	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/interface/http/middleware"
 )
+
+// tokenService는 NewRouter가 인증 배선을 위해 필요로 하는 두 포트(sign-in 시 토큰
+// 발급용 command.TokenIssuer, 인증 미들웨어의 토큰 검증용 middleware.TokenVerifier)를
+// 하나로 묶는다. internal/infrastructure/auth.JWTService가 이미 두 시그니처를 구조적으로
+// 만족하므로, interface/ 레이어는 그 구체 타입을 직접 import하지 않고 이 인터페이스로만
+// 받는다(layer-architecture.md — interface/는 infrastructure/에 직접 의존하지 않는다).
+// 실제 구현체(*auth.JWTService) 조립은 infrastructure/를 자유롭게 import할 수 있는
+// cmd/server/main.go(합성 루트)가 담당한다.
+type tokenService interface {
+	command.TokenIssuer
+	middleware.TokenVerifier
+}
 
 // PaymentStore는 Payment BC의 핸들러들이 나눠 필요로 하는 네 포트(Payment
 // Repository/Query, Refund Repository/Query)를 하나로 묶는다 — 같은 concrete
@@ -30,7 +41,7 @@ type PaymentStore interface {
 // limiter는 호출자가 조립한다(main()은 config.LoadRateLimitConfig()로, 테스트는 임계값이
 // 훨씬 높은 limiter로) — rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
 // 운영값과 테스트값을 분리하기 위해서다.
-func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService *auth.JWTService, passwordHasher command.PasswordHasher, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
+func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
 	createAccountHandler := command.NewCreateAccountHandler(repo)
 	depositHandler := command.NewDepositHandler(repo)
 	withdrawHandler := command.NewWithdrawHandler(repo)

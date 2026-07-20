@@ -8,6 +8,8 @@
 
 Go 표준 라이브러리에는 Cron 표현식 파서가 없다(`@nestjs/schedule`의 `@Cron('0 0 * * *')` 상당 기능 부재). 단순 주기 작업은 `time.Ticker`로 충분하고, Cron 표현식이 꼭 필요하면 `github.com/robfig/cron/v3` 같은 최소 의존성 라이브러리를 추가한다.
 
+`time.Ticker`/`time.NewTicker`/cron 라이브러리가 `internal/infrastructure/`에만 등장하는지는 `implementations/go/harness/scheduler_in_infrastructure_only.go`(`scheduler-in-infrastructure-only` 규칙)가 자동으로 검사한다 — `internal/domain/`이나 `internal/application/`에서 이 구성요소를 참조하면 FAIL로 잡아낸다(`internal/infrastructure/outbox/poller.go`가 이미 정당하게 쓰고 있는 Ticker는 대상 밖이라 통과한다).
+
 ```go
 // internal/infrastructure/scheduling/account_cleanup_scheduler.go — 목표 형태
 package scheduling

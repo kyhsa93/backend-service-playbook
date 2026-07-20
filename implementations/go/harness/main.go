@@ -23,6 +23,15 @@ var rules = []func(string) RuleResult{
 	checkEventPlacement,
 	checkOutboxDrainOrder,
 	checkCQRSPattern,
+	checkDomainLayerIsolation,
+	checkInterfaceNoInfrastructure,
+	checkNoCrossAggregateReference,
+	checkNoDirectEnvAccess,
+	checkCrossBCRepositoryInApplication,
+	checkNoLoggingInDomain,
+	checkSchedulerInInfrastructureOnly,
+	checkNoSilentCatch,
+	checkDockerfileConventions,
 }
 
 func main() {
