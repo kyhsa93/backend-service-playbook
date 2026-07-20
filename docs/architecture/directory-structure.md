@@ -167,7 +167,7 @@ src/
 |---------|----------|
 | `common/` | 순수 유틸 함수 — ID 생성, DB 위반 판별 등. 프레임워크 무의존. |
 | `database/` | DB 연결, TransactionManager — 모든 도메인 Repository에서 공유 |
-| `outbox/` | OutboxWriter, OutboxRelay, EventConsumer, EventHandlerRegistry |
+| `outbox/` | OutboxWriter, OutboxPoller(Outbox → 메시지 큐 발행), OutboxConsumer(큐 수신 → Handler 실행), EventHandlerRegistry |
 | `task-queue/` | TaskQueue 인터페이스/구현, Consumer, 멱등성 Ledger |
 | `config/` | 환경 변수 로드·검증. 관심사별 설정 파일 분리. |
 

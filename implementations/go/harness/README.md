@@ -43,9 +43,9 @@ go run . <projectRoot>
 | `repository-placement` | `repository_placement.go` | Repository interface → `domain/`, 구현체(`var _ ... = (*Impl)(nil)`) → `infrastructure/` |
 | `handler-placement` | `handler_placement.go` | `*_handler.go` → `application/command\|query/` 또는 `interface/http/` |
 | `file-placement` | `file_placement.go` | `*_task_controller.go` → `interface/`, `*_scheduler.go` → `infrastructure/` |
-| `shared-infra` | `shared_infra.go` | `OutboxRelay` 참조 시 `outbox/`에 `Writer`/`Relay` 타입 구현 확인, `*task_queue*` 참조 시 `task-queue/` 배치 확인 |
+| `shared-infra` | `shared_infra.go` | `OutboxWriter` 참조 시 `outbox/`에 `Writer`/`Poller`/`Consumer` 타입 구현 확인, `*task_queue*` 참조 시 `task-queue/` 배치 확인 |
 | `event-placement` | `event_placement.go` | `*_event_handler.go` → `application/event/`, `*_integration_event.go` → `application/integration-event/` |
-| `outbox-drain-order` | `outbox_drain_order.go` | `OutboxRelay`를 참조하는 Command Handler가 `Save(...)` 호출 뒤에 `ProcessPending(...)`을 호출하는지(순서 포함) — domain-events.md의 핵심 불변식 |
+| `outbox-drain-order` | `outbox_drain_order.go` | Command Handler(`*_handler.go`, `*_event_handler.go` 제외)가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 참조하거나 `ProcessPending`/`Poll`/`drainOnce`류를 호출하면 실패 — 저장 후 곧바로 반환해야 하며 Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지, domain-events.md) |
 | `cqrs-pattern` | `cqrs_pattern.go` | `application/command`·`application/query` 디렉토리 존재, `application/query/` 파일이 쓰기 전용 `Repository` 타입을 참조하지 않는지(nestjs의 `cqrs-pattern.evaluator.ts` 이식) |
 
 ## 회귀 테스트
