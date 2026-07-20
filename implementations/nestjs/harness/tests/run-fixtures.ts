@@ -15,6 +15,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { evaluateRepositoryPattern } from '../evaluators/rules/repository-pattern.evaluator'
+import { evaluateRepositoryNaming } from '../evaluators/rules/repository-naming.evaluator'
 import { evaluateTaskQueue } from '../evaluators/rules/task-queue.evaluator'
 import { evaluateScheduler } from '../evaluators/rules/scheduler.evaluator'
 import { evaluateDeprecatedApi } from '../evaluators/rules/deprecated-api.evaluator'
@@ -35,6 +36,7 @@ type EvaluatorFn = (root: string) => EvaluatorResult
 
 const EVALUATORS: Record<string, EvaluatorFn> = {
   'repository-pattern': evaluateRepositoryPattern,
+  'repository-naming': evaluateRepositoryNaming,
   'task-queue': evaluateTaskQueue,
   scheduler: evaluateScheduler,
   'deprecated-api': evaluateDeprecatedApi,

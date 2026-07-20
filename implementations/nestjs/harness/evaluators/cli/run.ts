@@ -5,6 +5,7 @@ import * as path from 'node:path'
 
 import { evaluateLayerDependency } from '../rules/layer-dependency.evaluator'
 import { evaluateRepositoryPattern } from '../rules/repository-pattern.evaluator'
+import { evaluateRepositoryNaming } from '../rules/repository-naming.evaluator'
 import { evaluateControllerPath } from '../rules/controller-path.evaluator'
 import { evaluateChecklist } from '../rules/checklist.evaluator'
 import { evaluateStructure } from '../rules/structure.evaluator'
@@ -44,6 +45,7 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'file-naming': evaluateFileNaming,
   'layer-dependency': evaluateLayerDependency,
   'repository-pattern': evaluateRepositoryPattern,
+  'repository-naming': evaluateRepositoryNaming,
   'controller-path': evaluateControllerPath,
   checklist: evaluateChecklist,
   'cqrs-pattern': evaluateCqrsPattern,

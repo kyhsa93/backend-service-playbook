@@ -1,0 +1,5 @@
+{
+  "name": "repository-naming",
+  "applicable": true,
+  "expectedFailureRuleIds": ["repository-naming.find-all-bare"]
+}

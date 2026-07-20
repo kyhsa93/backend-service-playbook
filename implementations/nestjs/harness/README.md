@@ -88,6 +88,7 @@ npm run evaluate -- /path/to/project --out=report.json
 | `structure` | 4레이어 디렉토리 + `src/task-queue/` 조건부 | 25 |
 | `layer-dependency` | Domain에 NestJS/TypeORM 금지 등 | 25 |
 | `repository-pattern` | abstract class 여부, 직접 인스턴스화 금지 | 25 |
+| `repository-naming` | `src/<domain>/domain/*-repository.ts`의 abstract 메서드 네이밍 — `find...By...`/`findAll`/`count*`/bare `save`/bare `delete` 금지 (블록리스트) | 15 *(auto-gated)* |
 | `controller-path` | `@Controller('create…')` 같은 동사 prefix 금지 | 25 |
 | `checklist` | `docs/checklist.md` 기반 기계 룰 모음 | 100 |
 | `cqrs-pattern` | `command/`·`query/` 분리, Query에서 Repository 미사용 | 25 |

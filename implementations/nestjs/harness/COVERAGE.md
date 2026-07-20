@@ -18,7 +18,7 @@
 | `directory-structure.md` | `src/<domain>/` 하위 4레이어 구조 | ✅ | `structure` | Covered | - |
 | `layer-architecture.md` | Domain 레이어의 NestJS/TypeORM 의존 금지, 레이어 방향성 | ✅ | `layer-dependency`, `import-graph` | Covered | 더 세밀한 application/interface/infrastructure 의존 규칙은 필요 시 확장 |
 | `design-principles.md` | Application Service는 조율, 비즈니스 로직은 Domain에 위치 | ⚠️ | `checklist`, `layer-dependency` | Partial | 비즈니스 로직 위치는 정적 분석 한계가 있어 Manual 리뷰 병행 |
-| `repository-pattern.md` | Repository abstract class, 직접 인스턴스화 금지 | ✅ | `repository-pattern` | Covered | transaction 관련 규칙은 `transaction` evaluator 후보 |
+| `repository-pattern.md` | Repository abstract class, 직접 인스턴스화 금지, 메서드 네이밍(`find<Noun>s`/`save<Noun>`/`delete<Noun>`) | ✅ | `repository-pattern`, `repository-naming` | Covered | transaction 관련 규칙은 `transaction` evaluator 후보 |
 | `module-pattern.md` | `@Module` providers 구성, DI 등록 | ✅ | `module-di-ast` | Partial | imports/exports 경계 검증 추가 가능 |
 | `cqrs-pattern.md` | command/query 분리, Query에서 Repository 미사용 | ✅ | `cqrs-pattern` | Covered | handler 단위 CQRS 규칙은 추후 확장 가능 |
 | `../../docs/architecture/domain-service.md` (루트 공용) | Domain Service 위치/책임/네이밍 | ✅ | `domain-service` | Partial | 네이밍 의미 검증은 Manual 리뷰 병행 |
@@ -58,6 +58,7 @@
 | `structure` | `directory-structure.md` | 4레이어 디렉토리 구조 검증 |
 | `layer-dependency` | `layer-architecture.md` | Domain 레이어 의존성 위반 검증 |
 | `repository-pattern` | `repository-pattern.md` | Repository 형태와 직접 생성 금지 검증 |
+| `repository-naming` | `repository-pattern.md` | Repository abstract 메서드 네이밍(`find...By...`/`findAll`/`count*`/bare `save`/bare `delete` 블록리스트) 검증 |
 | `controller-path` | `conventions.md`, API 관련 문서 | 동사 prefix controller path 금지 |
 | `checklist` | `checklist.md` | 체크리스트 기반 복합 룰 |
 | `cqrs-pattern` | `cqrs-pattern.md` | command/query 분리 검증 |

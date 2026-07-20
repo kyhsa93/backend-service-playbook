@@ -53,6 +53,9 @@ constructor(private readonly orderRepository: OrderRepository) {}
 - 단건 조회 시 Service에서 `take: 1`로 호출 후 `.then(r => r.<noun>s.pop())` 패턴 사용
 - **Repository에 수정(update) 메서드 금지** — 조회 후 Aggregate의 도메인 메서드로 수정, `save<Noun>`으로 저장
 
+`find...By...` 형태, bare `findAll`, 별도 `count*` 메서드, bare `save`/`delete`는
+`harness/evaluators/rules/repository-naming.evaluator.ts`가 `repository-naming.*` ruleId로 잡아낸다.
+
 ### 도메인 경계 — Mapping Table 양방향 접근
 
 두 도메인 사이의 경계는 **mapping table**로 정의한다.
