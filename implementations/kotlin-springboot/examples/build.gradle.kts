@@ -41,7 +41,7 @@ dependencies {
     implementation("software.amazon.awssdk:sqs:2.29.52")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
     implementation("io.github.resilience4j:resilience4j-spring-boot3:2.2.0")
-    implementation("net.logstash.logback:logstash-logback-encoder:7.4")
+    implementation("net.logstash.logback:logstash-logback-encoder:9.0")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
     runtimeOnly("org.postgresql:postgresql")
