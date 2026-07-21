@@ -1,39 +1,39 @@
-# 스케줄링 / 배치 작업
+# Scheduling / Batch Jobs
 
-주기적 작업과 배치 처리에 관한 원칙이다.
+Principles for periodic work and batch processing.
 
-> **이 문서 범위**: 스케줄링의 프레임워크 무관 원칙과 패턴을 다룬다. 최소 요구사항 세 가지만 있으면 시작할 수 있고, 아래 상세 패턴은 대규모·다중 인스턴스·트랜잭션 정합성이 중요한 케이스의 참고 설계다.
-
----
-
-## 최소 요구사항
-
-1. **Scheduler는 Infrastructure 레이어에 배치**한다. 비즈니스 로직이 있는 Application 레이어에 두지 않는다.
-2. **Task 핸들러는 멱등**하다. 메시지 큐는 at-least-once 전달이므로 동일 Task가 두 번 실행되어도 결과가 동일해야 한다.
-3. **메시지 큐를 쓴다면 DLQ를 기본**으로 한다. 무한 재시도를 막고 독성 메시지를 격리한다.
+> **Scope of this doc**: covers scheduling's framework-agnostic principles and patterns. You can get started with just the 3 minimum requirements below; the detailed patterns further down are a reference design for cases where scale, multiple instances, and transactional consistency matter.
 
 ---
 
-## Scheduler 역할 분리
+## Minimum requirements
 
-Scheduler는 **비즈니스 로직을 직접 실행하지 않는다**. Task를 큐에 적재(enqueue)하는 것만 한다. 실제 실행은 Task Consumer가 큐에서 메시지를 수신하여 Command Service를 호출한다.
+1. **Place the Scheduler in the Infrastructure layer.** Never put it in the Application layer, where the business logic lives.
+2. **A Task handler is idempotent.** Since a message queue is at-least-once delivery, the same Task can run twice, and the result must be the same either way.
+3. **If you use a message queue, a DLQ is the default.** It stops infinite retries and isolates a poison message.
+
+---
+
+## Separating the Scheduler's role
+
+A Scheduler **never runs business logic directly**. All it does is enqueue a Task onto the queue. The actual run happens when a Task Consumer receives the message from the queue and calls a Command Service.
 
 ```
-[Scheduler] --(enqueue)--> [task_outbox] --(Relay)--> [메시지 큐] --(Consumer)--> [TaskController] --(호출)--> [CommandService]
+[Scheduler] --(enqueue)--> [task_outbox] --(Relay)--> [message queue] --(Consumer)--> [TaskController] --(calls)--> [CommandService]
 ```
 
-**이유**:
-- **다중 인스턴스 안전성**: 여러 인스턴스가 동시에 Cron을 실행해도, FIFO 큐의 deduplication으로 1건만 처리된다.
-- **재시도 내장**: Consumer 실패 시 visibility timeout 경과 후 자동 재수신 → `maxReceiveCount` 초과 시 DLQ.
-- **백프레셔**: 작업량이 폭증해도 큐에 쌓여 Consumer 처리 속도에 맞춰 소비된다.
-- **관찰 가능성**: 큐 지표(메시지 수, 처리 지연, DLQ 수)로 배치 상태를 추적한다.
+**Why**:
+- **Safe with multiple instances**: even if several instances run the same Cron at the same moment, the FIFO queue's deduplication means only one gets processed.
+- **Retries built in**: on a Consumer failure, it's automatically received again once the visibility timeout passes → goes to the DLQ once `maxReceiveCount` is exceeded.
+- **Backpressure**: even if the workload spikes, it just piles up in the queue and gets consumed at the Consumer's processing rate.
+- **Observability**: track batch status via queue metrics (message count, processing lag, DLQ count).
 
 ```typescript
 // infrastructure/<concern>-scheduler.ts
 class OrderCleanupScheduler {
   constructor(private readonly taskQueue: TaskQueue) {}
 
-  // Cron 핸들러는 enqueue만 한다
+  // the Cron handler only enqueues
   async enqueueDailyCleanup(): Promise<void> {
     const dedupId = `order.cleanup-expired-${new Date().toISOString().slice(0, 10)}`
     await this.taskQueue.enqueue(
@@ -47,22 +47,22 @@ class OrderCleanupScheduler {
 
 ---
 
-## Task Outbox 패턴
+## The Task Outbox pattern
 
-Command Service에서 DB 변경과 Task 적재가 **원자적으로 묶여야 한다**. 메시지 큐에 직접 SendMessage를 호출하면 dual-write 문제가 발생한다 — DB는 commit됐는데 메시지 전송이 실패하거나, 메시지는 전송됐는데 DB가 롤백되는 불일치.
+A DB change and enqueuing a Task in a Command Service **must be bundled atomically**. Calling SendMessage directly on the message queue creates a dual-write problem — the DB commits but the message send fails, or the message sends but the DB rolls back, leaving an inconsistency.
 
-Domain Event의 Outbox 패턴과 동일한 이유로, **Task도 `task_outbox` 테이블 write → Relay 발행** 경로를 따른다.
+For the same reason as a Domain Event's Outbox pattern, **a Task also follows the path: write to the `task_outbox` table → the Relay publishes it**.
 
 ```
-Command 트랜잭션 내부:
-  DB 변경 + task_outbox row insert
-  → 트랜잭션 commit
-  → TaskOutboxRelay가 폴링하여 메시지 큐에 발행
-  → Task Consumer가 수신하여 실행
+Inside the Command transaction:
+  the DB change + inserting a task_outbox row
+  → the transaction commits
+  → TaskOutboxRelay polls it and publishes to the message queue
+  → a Task Consumer receives it and runs it
 ```
 
 ```typescript
-// Application Service — DB 변경과 Task 적재가 같은 트랜잭션 안에서
+// An Application Service — the DB change and enqueuing the Task happen in the same transaction
 await transactionManager.run(async () => {
   await orderRepository.saveOrder(order)
   await taskQueue.enqueue(
@@ -73,23 +73,23 @@ await transactionManager.run(async () => {
 })
 ```
 
-Scheduler(Cron)처럼 트랜잭션 문맥이 없는 곳에서 호출할 때도 같은 경로를 사용한다. 단일 row insert이므로 자연스럽게 atomic이며, 경로가 통일되어 운영이 단순해진다.
+Use the same path even when calling this from somewhere with no transaction context, like a Scheduler (Cron). It's a single row insert, so it's naturally atomic, and having one unified path keeps operations simple.
 
 ---
 
-## Task Controller — Interface 레이어
+## The Task Controller — the Interface layer
 
-Task Controller는 **Interface 레이어의 입력 어댑터**다. HTTP Controller가 HTTP 요청을 받아 Application Service에 위임하듯, Task Controller는 메시지 큐 메시지를 받아 CommandService를 호출한다.
+A Task Controller is an **input adapter in the Interface layer**. Just as an HTTP Controller receives an HTTP request and delegates to an Application Service, a Task Controller receives a message-queue message and calls a CommandService.
 
 ```
-HTTP Controller   ← HTTP 요청    → CommandService
-Task Controller   ← 메시지 큐    → CommandService
+HTTP Controller   ← an HTTP request    → CommandService
+Task Controller   ← a message queue    → CommandService
 ```
 
-**원칙:**
-- **로직 없이 Command 위임**: Task Controller는 CommandService의 메서드를 호출할 뿐이다. 조건 분기나 비즈니스 규칙을 넣지 않는다.
-- **에러를 그대로 던진다**: HTTP Controller의 catch + 에러 변환 패턴을 쓰지 않는다. 예외는 Consumer가 catch하여 재시도/DLQ에 위임한다. 예외를 삼키면 실패가 소실된다.
-- **DB 직접 접근 금지**: CommandService만 주입한다. 멱등성 Ledger 처리는 프레임워크에 위임한다.
+**Principles:**
+- **Delegate to a Command with no logic**: a Task Controller only calls a CommandService's method. Never put conditional branching or business rules in it.
+- **Throw the error as-is**: never use the HTTP Controller's catch-plus-error-conversion pattern. The Consumer catches the exception and hands it off to retry/DLQ. Swallowing the exception loses the failure.
+- **No direct DB access**: only inject the CommandService. Delegate idempotency-ledger handling to the framework.
 
 ```typescript
 // interface/<domain>-task-controller.ts
@@ -101,45 +101,45 @@ class OrderTaskController {
   }
 
   async archive(payload: ArchiveOrderCommand): Promise<void> {
-    await this.orderCommandService.archiveOrder(payload)  // 예외는 그대로 위로
+    await this.orderCommandService.archiveOrder(payload)  // the exception propagates as-is
   }
 }
 ```
 
 ---
 
-## MessageGroupId 전략
+## The MessageGroupId strategy
 
-FIFO 큐에서 **같은 MessageGroupId를 가진 메시지는 순차 처리**된다. GroupId가 **병렬성의 경계**다.
+In a FIFO queue, **messages with the same MessageGroupId are processed in order**. The GroupId is the **boundary of parallelism**.
 
-| 상황 | groupId 설정 |
+| Situation | groupId setting |
 |------|-------------|
-| Cron 전역 배치 (일 1회 등) | Task 카테고리: `'order.cleanup'` |
-| Aggregate 단위 순차성 필요 | Aggregate ID: `orderId` |
-| 순서 무관 + 고처리량 | 랜덤 UUID 또는 `taskType + random` |
+| A global Cron batch (once a day, etc.) | The Task category: `'order.cleanup'` |
+| Needs sequential processing per Aggregate | The Aggregate ID: `orderId` |
+| Order doesn't matter + high throughput | A random UUID, or `taskType + random` |
 
-같은 group은 직렬, 다른 group은 병렬. **필요한 최소 수준의 순차성만** groupId에 담는다.
+The same group runs serially; different groups run in parallel. Put **only the minimum level of ordering you actually need** into the groupId.
 
 ---
 
-## 멱등성
+## Idempotency
 
-메시지 큐는 **at-least-once delivery**를 보장한다. 같은 Task가 두 번 이상 실행될 수 있다. Task 핸들러는 반드시 멱등하게 구현해야 한다.
+A message queue guarantees **at-least-once delivery**. The same Task can run more than once. A Task handler must always be implemented idempotently.
 
-3단계 전략은 [domain-events.md — 이벤트 핸들러 멱등성](domain-events.md#이벤트-핸들러-멱등성)과 동일한 모델을 따른다:
+The 3-level strategy follows the same model as [domain-events.md — Event-handler idempotency](domain-events.md#event-handler-idempotency):
 
-| 수준 | 상황 | 구현 방식 |
+| Level | Situation | Implementation |
 |------|------|----------|
-| Level 1 — 본질적 멱등 | 반복 실행해도 결과가 동일 | 별도 장치 불필요 |
-| Level 2 — Ledger | 부작용이 있는 핸들러 | 처리 기록을 DB에 저장, 중복 시 skip |
-| Level 3 — 강한 원자성 | "성공한 경우에만 기록" 필요 | 핸들러 로직과 ledger를 같은 트랜잭션으로 묶음 |
+| Level 1 — inherently idempotent | Produces the same result even if run repeatedly | No extra mechanism needed |
+| Level 2 — a ledger | A handler with side effects | Record that it was processed in the DB, skip on a duplicate |
+| Level 3 — strong atomicity | Needs "record only if it succeeded" | Wrap the handler logic and the ledger in the same transaction |
 
 ```typescript
-// Level 1 — 본질적 멱등: 만료 상태 기반으로 처리하므로 여러 번 실행해도 동일
+// Level 1 — inherently idempotent: handled based on the expired state, so it's the same result no matter how many times it runs
 async cleanupExpiredOrders(): Promise<void> {
   const { orders } = await orderRepository.findOrders({ status: ['expired'], take: 100, page: 0 })
   for (const order of orders) {
-    order.archive()  // 이미 archive면 내부에서 무시
+    order.archive()  // internally a no-op if it's already archived
     await orderRepository.saveOrder(order)
   }
 }
@@ -147,66 +147,66 @@ async cleanupExpiredOrders(): Promise<void> {
 
 ---
 
-## Cron 다중 인스턴스 안전성
+## Cron safety with multiple instances
 
-여러 인스턴스가 같은 시점에 Cron을 실행해도 **날짜 기반 deduplicationId**로 중복 적재를 방지한다.
+Even if several instances run a Cron at the same moment, a **date-based deduplicationId** prevents a duplicate enqueue.
 
 ```typescript
-// 날짜 단위 dedupId — 5분 FIFO 중복 제거 윈도우 내에서 1건만 처리됨
+// a day-granularity dedupId — only one gets processed within the FIFO 5-minute dedup window
 const dedupId = `order.cleanup-expired-${new Date().toISOString().slice(0, 10)}`
 await taskQueue.enqueue('order.cleanup-expired', {}, { groupId: 'order.cleanup', deduplicationId: dedupId })
 ```
 
-같은 날 여러 인스턴스가 enqueue해도 `deduplicationId`가 동일하므로 FIFO 큐에 1건만 들어간다.
+Even if multiple instances enqueue on the same day, the `deduplicationId` is identical, so only one ends up in the FIFO queue.
 
-**주의**: Cron 핸들러에서 발생한 예외는 많은 스케줄링 라이브러리가 자동으로 삼킨다. **명시적 try-catch + 로깅**이 없으면 실패가 관찰 불가능해진다.
+**Watch out**: many scheduling libraries automatically swallow an exception thrown in a Cron handler. Without an **explicit try-catch + logging**, a failure becomes unobservable.
 
 ```typescript
 async enqueueDailyCleanup(): Promise<void> {
   try {
     await this.taskQueue.enqueue(/* ... */)
   } catch (error) {
-    logger.error({ message: 'Cron enqueue 실패', error })
-    // 예외를 재throw하지 않아도 됨 — 다음 Cron tick에서 재시도
+    logger.error({ message: 'Cron enqueue failed', error })
+    // no need to rethrow — it'll be retried on the next Cron tick
   }
 }
 ```
 
 ---
 
-## DLQ 모니터링
+## Monitoring the DLQ
 
-DLQ에 쌓인 메시지는 **코드 버그나 독성 페이로드의 증거**다.
+Messages piling up in the DLQ are **evidence of a code bug or a poison payload**.
 
-- `maxReceiveCount` 초과 시 DLQ로 이동
-- DLQ 메시지 수 > 0 알람 설정
-- 원인 수정 후 DLQ → 원래 큐로 redrive
-
----
-
-## payload 크기 제한
-
-SQS는 단일 메시지 최대 256KB다.
-
-- **작은 메타데이터만 payload에 담는다**: `{ orderId: 'o1' }` 수준.
-- **대용량 데이터는 S3에 offload**하고 key만 담는다: `{ orderId: 'o1', payloadS3Key: 'tasks/abc.json' }`.
+- Moves to the DLQ once `maxReceiveCount` is exceeded
+- Set an alarm for DLQ message count > 0
+- After fixing the root cause, redrive the DLQ back into the original queue
 
 ---
 
-## 원칙 요약
+## Payload size limits
 
-- **Scheduler는 Infrastructure 레이어**: Application/Domain에 스케줄링 데코레이터 사용 금지.
-- **Scheduler는 적재만**: Cron 핸들러는 `TaskQueue.enqueue`만 호출. 비즈니스 로직 직접 실행 금지.
-- **Task Controller는 Interface 레이어**: HTTP Controller와 동일한 입력 어댑터. 에러를 그대로 던진다.
-- **적재는 Outbox 경유**: DB 변경과 Task 적재의 원자성 보장. dual-write 문제 차단.
-- **Command는 멱등하게**: at-least-once 전달이므로 반복 실행에도 결과가 동일해야 한다.
-- **DLQ 필수**: 모든 Task 큐에 DLQ를 설정하고 알람으로 감시한다.
-- **Cron 예외는 명시적 로깅**: 스케줄링 프레임워크가 예외를 삼키는 경우가 많으므로 직접 로깅한다.
+SQS caps a single message at 256KB.
+
+- **Put only small metadata in the payload**: something like `{ orderId: 'o1' }`.
+- **Offload large data to S3** and put only the key in the payload: `{ orderId: 'o1', payloadS3Key: 'tasks/abc.json' }`.
 
 ---
 
-### 관련 문서
+## Summary of principles
 
-- [domain-events.md](domain-events.md) — Task Queue vs Domain Event 구분, 멱등성 3단계
-- [layer-architecture.md](layer-architecture.md) — 트랜잭션 전파 (AsyncLocalStorage)
-- [graceful-shutdown.md](graceful-shutdown.md) — Consumer Graceful Shutdown
+- **The Scheduler is in the Infrastructure layer**: never use a scheduling decorator in Application/Domain.
+- **The Scheduler only enqueues**: the Cron handler only calls `TaskQueue.enqueue`. Never run business logic directly.
+- **The Task Controller is in the Interface layer**: the same kind of input adapter as an HTTP Controller. It throws errors as-is.
+- **Enqueuing goes through the Outbox**: guarantees atomicity between the DB change and enqueuing the Task. Blocks the dual-write problem.
+- **A Command is idempotent**: since delivery is at-least-once, running it repeatedly must produce the same result.
+- **A DLQ is required**: set a DLQ on every Task queue and watch it with an alarm.
+- **Log a Cron exception explicitly**: since the scheduling framework often swallows the exception, log it yourself.
+
+---
+
+### Related docs
+
+- [domain-events.md](domain-events.md) — Task Queue vs. Domain Event, the 3-level idempotency strategy
+- [layer-architecture.md](layer-architecture.md) — transaction propagation (AsyncLocalStorage)
+- [graceful-shutdown.md](graceful-shutdown.md) — graceful shutdown for a Consumer

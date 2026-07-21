@@ -1,47 +1,47 @@
-# 인증 패턴
+# Authentication Pattern
 
 ---
 
-## 인증 흐름
+## Authentication flow
 
 ```
-[토큰 발급]
-클라이언트 → POST /auth/sign-in (credentials)
-           → AuthService: 인증 정보 검증 → Access Token 발급
-           → 클라이언트: { accessToken }
+[Issuing a token]
+Client → POST /auth/sign-in (credentials)
+           → AuthService: verifies the credentials → issues an access token
+           → Client: { accessToken }
 
-[인증 요청]
-클라이언트 → Authorization: Bearer <access_token> 헤더 포함
-          → Interface 레이어 (Guard/Filter): 헤더에서 토큰 추출 → 검증
-          → request.user에 사용자 정보 할당 → Handler로 전달
+[An authenticated request]
+Client → includes an Authorization: Bearer <access_token> header
+          → Interface layer (Guard/Filter): extracts the token from the header → verifies it
+          → assigns the user info to request.user → passes it to the Handler
 ```
 
 ---
 
-## 레이어 배치 원칙
+## Layer-placement principle
 
-**인증은 Interface 레이어에서만 처리한다.** Domain 레이어와 Application 레이어는 인증 컨텍스트에 의존하지 않는다.
+**Authentication is handled only in the Interface layer.** The Domain and Application layers never depend on the authentication context.
 
 ```
-Interface 레이어: 토큰 추출 → 검증 → request.user 할당
-Application 레이어: command/query에 userId 등 필요한 정보만 포함
-Domain 레이어: 인증 개념 없음. 순수 비즈니스 로직
+Interface layer: extracts the token → verifies it → assigns request.user
+Application layer: a command/query only includes what it needs, like the userId
+Domain layer: no concept of authentication. Pure business logic
 ```
 
-잘못된 패턴 — Application/Domain 레이어에서 토큰 검증:
+A wrong pattern — verifying the token in the Application/Domain layer:
 
 ```typescript
-// 금지 — Application Service에서 토큰 직접 검증
+// forbidden — verifying the token directly in an Application Service
 public async cancelOrder(token: string, command: CancelOrderCommand) {
-  const user = await this.authService.verify(token)  // ← Interface 레이어 역할
+  const user = await this.authService.verify(token)  // ← this is the Interface layer's job
   ...
 }
 ```
 
-올바른 패턴 — Interface 레이어에서 userId만 추출해서 전달:
+The correct pattern — the Interface layer extracts only the userId and passes it along:
 
 ```typescript
-// Interface 레이어: 토큰에서 userId 추출 후 Command에 포함
+// Interface layer: extract the userId from the token and include it in the Command
 public async cancelOrder(
   @Req() req: { user: { userId: string } },
   @Body() body: CancelOrderRequestBody
@@ -52,12 +52,12 @@ public async cancelOrder(
 
 ---
 
-## JWT Bearer 토큰 패턴
+## The JWT Bearer token pattern
 
-### 토큰 발급
+### Issuing a token
 
 ```typescript
-// application layer (개념)
+// application layer (conceptual)
 export class AuthService {
   public async sign(payload: { userId: string }): Promise<string> {
     return jwt.sign(payload, jwtSecret, { expiresIn: '1h' })
@@ -65,10 +65,10 @@ export class AuthService {
 }
 ```
 
-### 토큰 검증
+### Verifying a token
 
 ```typescript
-// interface layer (개념)
+// interface layer (conceptual)
 export class AuthGuard {
   public async canActivate(request: Request): Promise<boolean> {
     const authorization = request.headers['authorization']
@@ -88,50 +88,50 @@ export class AuthGuard {
 
 ---
 
-## 토큰 payload 설계
+## Designing the token payload
 
-JWT payload에는 **최소한의 정보**만 담는다.
+Put only **the minimum amount of information** in the JWT payload.
 
 ```typescript
-// 올바른 방식 — ID만 포함
+// correct — includes only the ID
 { userId: 'user-abc123', iat: 1234567890, exp: 1234571490 }
 
-// 잘못된 방식 — 민감 정보 또는 자주 변하는 정보 포함
+// wrong — includes sensitive info or info that changes often
 { userId: '...', email: '...', role: '...', permissions: [...] }
 ```
 
-**이유:**
-- payload는 서명만 되고 암호화되지 않는다 (base64 디코딩으로 읽을 수 있음)
-- 역할/권한은 토큰 발급 후 변경될 수 있다. 토큰에 담으면 변경이 즉시 반영되지 않는다.
-- 필요한 사용자 정보는 Request 처리 시점에 DB에서 조회한다.
+**Why:**
+- The payload is only signed, not encrypted (it can be read by base64-decoding it)
+- Roles/permissions can change after a token is issued. Putting them in the token means a change isn't reflected immediately.
+- Look up whatever user info is needed from the DB at request-handling time.
 
 ---
 
-## 인증 필요/불필요 엔드포인트 구분
+## Distinguishing endpoints that need auth from ones that don't
 
 ```
-인증 필요: @UseGuards(AuthGuard) → 모든 도메인 API
-인증 불필요: Guard 없음 → POST /auth/sign-in, GET /health/*
+Needs auth: @UseGuards(AuthGuard) → every domain API
+Doesn't need auth: no Guard → POST /auth/sign-in, GET /health/*
 ```
 
-Guard는 **Controller 클래스 레벨**에서 적용한다. 메서드 레벨은 누락 위험이 있다.
+Apply the Guard at the **Controller class level**. Applying it per-method risks missing one.
 
 ```typescript
-// 올바른 방식 — 클래스 레벨
+// correct — at the class level
 @UseGuards(AuthGuard)
-export class OrderController { /* 모든 메서드에 인증 적용 */ }
+export class OrderController { /* auth applies to every method */ }
 
-// 지양 — 메서드별 적용 (누락 가능)
+// avoid — applying it per method (can be missed)
 export class OrderController {
   @UseGuards(AuthGuard)
   getOrder() { /* ... */ }
-  deleteOrder() { /* ... 누락 */ }
+  deleteOrder() { /* ... missing it */ }
 }
 ```
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — 요청 파이프라인에서 인증 위치
-- [layer-architecture.md](layer-architecture.md) — Interface 레이어 역할
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — where auth sits in the request pipeline
+- [layer-architecture.md](layer-architecture.md) — the Interface layer's role

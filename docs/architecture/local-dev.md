@@ -1,16 +1,16 @@
-# 로컬 개발 환경
+# Local Development Environment
 
-로컬 개발 시 외부 인프라(DB, 캐시, AWS 서비스 등)를 **Docker Compose**로 실행하고, 클라우드 서비스(S3, SQS, Secrets Manager, SES 등)는 **LocalStack**으로 대체한다. 언어/프레임워크에 관계없이 동일한 구성을 사용한다.
+For local development, run external infrastructure (DB, cache, AWS services, etc.) via **Docker Compose**, and replace cloud services (S3, SQS, Secrets Manager, SES, etc.) with **LocalStack**. Use the same setup regardless of language/framework.
 
-## 디렉토리 구조
+## Directory structure
 
 ```
 project-root/
-  docker-compose.yml                 ← 로컬 인프라 정의
+  docker-compose.yml                 ← defines the local infrastructure
   localstack/
-    init-<service>.sh                ← LocalStack 초기화 스크립트 (버킷/큐/시크릿 생성 등)
-  .env.development                   ← 로컬 개발용 환경 변수 (호스트에서 앱을 직접 실행할 때)
-  .env.docker                        ← 앱을 컨테이너로 실행할 때 사용하는 환경 변수 (선택)
+    init-<service>.sh                ← LocalStack init scripts (creating buckets/queues/secrets, etc.)
+  .env.development                   ← env vars for local dev (running the app directly on the host)
+  .env.docker                        ← env vars used when running the app as a container (optional)
 ```
 
 ## docker-compose.yml
@@ -35,7 +35,7 @@ services:
     image: localstack/localstack
     ports: ['4566:4566']
     environment:
-      SERVICES: s3,sqs,secretsmanager   # 실제 사용하는 서비스만 나열
+      SERVICES: s3,sqs,secretsmanager   # list only the services you actually use
       DEFAULT_REGION: us-east-1
     volumes: ['./localstack:/etc/localstack/init/ready.d']
     healthcheck:
@@ -57,33 +57,33 @@ volumes:
   db-data:
 ```
 
-> `redis` 등 프로젝트에 필요한 추가 인프라도 같은 방식(이미지 + healthcheck)으로 추가한다.
+> Add any other infrastructure your project needs, like `redis`, the same way (an image + a healthcheck).
 
-## 서비스 구성
+## Service layout
 
-| 서비스 | 용도 | 포트 |
+| Service | Purpose | Port |
 |---|---|---|
-| `database` | RDBMS (Postgres/MySQL 등) | 5432 / 3306 |
-| `localstack` | 클라우드 서비스 대체 (S3, SQS, Secrets Manager, SES 등) | 4566 |
-| `app` | 애플리케이션 자체 (선택적) | 프로젝트별 |
+| `database` | An RDBMS (Postgres/MySQL, etc.) | 5432 / 3306 |
+| `localstack` | Replaces cloud services (S3, SQS, Secrets Manager, SES, etc.) | 4566 |
+| `app` | The application itself (optional) | project-specific |
 
-## Health Check — 모든 인프라 서비스에 필수
+## Health checks — required for every infrastructure service
 
-`app` 서비스는 `depends_on`에서 `condition: service_healthy`를 사용해, 인프라가 준비된 뒤에만 기동되도록 한다. `localstack`처럼 컨테이너 프로세스는 떠 있어도 내부 서비스 초기화가 끝나지 않은 경우가 있으므로, healthcheck는 실제 서비스 API를 호출하는 형태로 작성한다 (`pg_isready`, `awslocal s3 ls` 등).
+Have the `app` service use `condition: service_healthy` in `depends_on`, so it only starts once the infrastructure is ready. A container process like `localstack` can be up while its internal services haven't finished initializing yet, so write the healthcheck to actually call the real service API (`pg_isready`, `awslocal s3 ls`, etc.).
 
-## profiles — 앱 서비스 선택적 실행
+## profiles — running the app service optionally
 
-`app` 서비스에 `profiles: [app]`을 설정하여 **기본 실행 시 인프라만 기동**하고, 앱은 로컬에서 직접 실행(`npm run start:dev`, `go run`, `./gradlew bootRun`, `uvicorn` 등)한다. 앱도 컨테이너로 실행하려면 `--profile app`을 사용한다.
+Set `profiles: [app]` on the `app` service so that **the default run only starts the infrastructure**, and the app itself is run directly on the host (`npm run start:dev`, `go run`, `./gradlew bootRun`, `uvicorn`, etc.). To also run the app as a container, use `--profile app`.
 
 ```bash
-# 인프라만 기동 (기본 — 개발 시)
+# start only the infrastructure (default — during development)
 docker compose up -d
 
-# 인프라 + 앱 함께 기동
+# start infrastructure + the app together
 docker compose --profile app up -d
 ```
 
-## LocalStack 초기화 스크립트
+## LocalStack init scripts
 
 ```bash
 #!/bin/sh
@@ -93,12 +93,12 @@ awslocal s3 mb s3://app-files
 awslocal sqs create-queue --queue-name app-events
 ```
 
-- 필요한 리소스(S3 버킷, SQS 큐, Secrets Manager 시크릿, SES 발신자 검증 등)를 생성하는 스크립트를 `localstack/` 아래에 둔다.
-- `/etc/localstack/init/ready.d/`에 마운트하면 LocalStack 기동 완료 시 자동 실행된다.
-- 실행 권한 필요: `chmod +x localstack/init-*.sh`.
-- SES를 사용하는 경우 **발신자 이메일 검증(`awslocal ses verify-email-identity`)을 반드시 여기서 해야 한다** — LocalStack의 SES 에뮬레이터도 실제 SES처럼 미검증 발신자의 발송을 거부한다.
+- Put scripts that create whatever resources you need (an S3 bucket, an SQS queue, a Secrets Manager secret, SES sender verification, etc.) under `localstack/`.
+- Mounting them to `/etc/localstack/init/ready.d/` runs them automatically once LocalStack finishes starting.
+- They need execute permission: `chmod +x localstack/init-*.sh`.
+- If you use SES, **sender-email verification (`awslocal ses verify-email-identity`) must be done here** — LocalStack's SES emulator, like real SES, rejects sends from an unverified sender.
 
-## .env.development — 호스트에서 앱을 직접 실행할 때
+## .env.development — running the app directly on the host
 
 ```env
 # Database
@@ -119,24 +119,24 @@ PORT=3000
 NODE_ENV=development
 ```
 
-## .env.docker — 앱이 컨테이너로 실행될 때
+## .env.docker — when the app runs as a container
 
-앱이 Docker Compose 네트워크 안에서 실행되면 `localhost` 대신 **서비스명**으로 연결해야 한다. Docker Compose 네트워크 내에서는 서비스명이 호스트명으로 해석된다.
+When the app runs inside the Docker Compose network, it needs to connect using the **service name** instead of `localhost`. Inside the Docker Compose network, a service name resolves as a hostname.
 
 ```env
 DATABASE_HOST=database
 AWS_ENDPOINT_URL=http://localstack:4566
 ```
 
-## AWS SDK에서 LocalStack 연동
+## Integrating with LocalStack from the AWS SDK
 
-`AWS_ENDPOINT_URL` 환경 변수가 설정되면 해당 엔드포인트로 연결하고, 설정되지 않으면 실제 클라우드 엔드포인트/기본 자격증명 체인을 사용한다. 로컬/테스트에서는 자격증명도 항상 명시적으로 고정값(`test`/`test`)을 넣어, SDK의 기본 자격증명 탐색(IMDS 등)으로 인한 지연을 피한다.
+If the `AWS_ENDPOINT_URL` environment variable is set, connect to that endpoint; if not, use the real cloud endpoint/the default credential chain. In local/test, always set explicit fixed credentials (`test`/`test`) too, to avoid the delay caused by the SDK's default credential discovery (IMDS, etc.).
 
 ```typescript
-// SES/S3/Secrets Manager 등 AWS 클라이언트 생성 — 개념
+// creating an AWS client for SES/S3/Secrets Manager, etc. — conceptual
 const client = createAwsClient({
   region: process.env.AWS_REGION ?? 'us-east-1',
-  endpoint: process.env.AWS_ENDPOINT_URL,           // 있으면 LocalStack, 없으면 기본
+  endpoint: process.env.AWS_ENDPOINT_URL,           // LocalStack if set, otherwise the default
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test'
@@ -144,44 +144,44 @@ const client = createAwsClient({
 })
 ```
 
-## 실행 방법
+## How to run it
 
 ```bash
-# 1. 인프라 기동
+# 1. Start the infrastructure
 docker compose up -d
 
-# 2. 앱 실행 (로컬)
-<프로젝트별 실행 명령>
+# 2. Run the app (locally)
+<the project's own run command>
 
-# --- 또는 ---
+# --- or ---
 
-# 전체 컨테이너 기동 (앱 포함)
+# start every container (including the app)
 docker compose --profile app up -d
 
-# 로그 확인
+# check the logs
 docker compose logs -f app
 
-# 전체 종료
+# shut everything down
 docker compose --profile app down
 
-# 전체 종료 + 데이터 삭제
+# shut everything down + delete the data
 docker compose --profile app down -v
 ```
 
 ---
 
-## 원칙
+## Principles
 
-- **로컬 개발 시 외부 서비스에 직접 연결하지 않는다**: DB는 Docker Compose, 클라우드 서비스는 LocalStack을 사용한다.
-- **모든 인프라 서비스에 healthcheck를 설정한다**: 인프라가 준비된 후에 앱이 기동되도록 한다.
-- **profiles로 앱 서비스를 분리한다**: 기본 실행은 인프라만, `--profile app`으로 앱 포함.
-- **환경 변수로 엔드포인트를 분기한다**: `AWS_ENDPOINT_URL`이 있으면 LocalStack, 없으면 실제 클라우드.
-- **초기화 스크립트는 프로젝트에 포함한다**: `localstack/init-*.sh`를 커밋해 모든 개발자가 같은 환경을 재현할 수 있도록 한다.
-- **LocalStack 이미지 버전을 고정한다**: 최신 태그가 예고 없이 라이선스 정책이나 동작을 바꿀 수 있으므로 구체적인 버전 태그를 사용한다.
-- **docker-compose.yml은 개발 전용이다**: 운영 인프라는 별도로 관리한다 (Terraform 등).
+- **Never connect directly to an external service during local development**: use Docker Compose for the DB, and LocalStack for cloud services.
+- **Set a healthcheck on every infrastructure service**: so the app only starts once the infrastructure is ready.
+- **Separate out the app service via profiles**: the default run is infrastructure-only; add `--profile app` to include the app.
+- **Branch the endpoint via an environment variable**: LocalStack if `AWS_ENDPOINT_URL` is set, the real cloud otherwise.
+- **Keep the init scripts in the project**: commit `localstack/init-*.sh` so every developer can reproduce the same environment.
+- **Pin the LocalStack image version**: the `latest` tag can change its licensing policy or behavior without notice, so use a specific version tag.
+- **docker-compose.yml is for development only**: manage production infrastructure separately (Terraform, etc.).
 
-### 관련 문서
+### Related docs
 
-- [config.md](config.md) — 환경 변수 검증, 민감값 관리
-- [secret-manager.md](secret-manager.md) — Secrets Manager 로컬 대체
-- [container.md](container.md) — 앱 자체의 컨테이너 이미지
+- [config.md](config.md) — env-var validation, managing sensitive values
+- [secret-manager.md](secret-manager.md) — the local stand-in for Secrets Manager
+- [container.md](container.md) — the app's own container image

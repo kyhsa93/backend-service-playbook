@@ -1,37 +1,37 @@
-# 영속성 패턴 — 트랜잭션, Entity 공통 컬럼, Soft Delete, 마이그레이션
+# Persistence Patterns — Transactions, Common Entity Columns, Soft Delete, Migrations
 
-Repository 구현체([repository-pattern.md](repository-pattern.md))가 실제로 데이터를 다룰 때 따르는 공통 규칙이다. ORM/쿼리 빌더의 구체적인 문법은 언어/프레임워크마다 다르지만, 아래 패턴 자체는 동일하게 적용된다.
+These are the common rules a Repository implementation ([repository-pattern.md](repository-pattern.md)) follows when it actually handles data. The concrete syntax of the ORM/query builder differs per language/framework, but the patterns themselves apply the same way everywhere.
 
 ---
 
-## 트랜잭션 전파 — Unit of Work
+## Transaction propagation — Unit of Work
 
-여러 Repository에 걸친 쓰기 작업을 하나의 트랜잭션으로 묶는다. 트랜잭션 객체를 모든 호출에 명시적으로 전달하는 대신, **컨텍스트-로컬 저장소**(언어별로 Node의 `AsyncLocalStorage`, Go의 `context.Context`, Java/Kotlin의 `ThreadLocal`, Python의 `contextvars` 등)를 사용해 암묵적으로 전파한다.
+Wrap a write operation that spans multiple Repositories in a single transaction. Instead of explicitly passing a transaction object into every call, propagate it implicitly using **context-local storage** (per language: Node's `AsyncLocalStorage`, Go's `context.Context`, Java/Kotlin's `ThreadLocal`, Python's `contextvars`, etc.).
 
-### TransactionManager (Infrastructure 레이어)
+### TransactionManager (Infrastructure layer)
 
 ```typescript
-// database/transaction-manager — 개념
+// database/transaction-manager — conceptual
 class TransactionManager {
   private readonly storage = createContextLocalStorage<TransactionClient>()
 
-  // 트랜잭션 내에서 콜백을 실행한다
+  // runs the callback within a transaction
   async run<T>(fn: () => Promise<T>): Promise<T> {
     return this.dataSource.transaction((client) =>
       this.storage.run(client, fn)
     )
   }
 
-  // 트랜잭션 컨텍스트가 있으면 tx client, 없으면 기본 client를 반환한다
+  // returns the tx client if a transaction context exists, otherwise the default client
   getClient(): TransactionClient {
     return this.storage.getStore() ?? this.dataSource.defaultClient
   }
 }
 ```
 
-### Repository 구현체에서 사용
+### Using it in a Repository implementation
 
-Repository 구현체는 `transactionManager.getClient()`로 현재 트랜잭션 컨텍스트를 자동으로 전파받는다. 트랜잭션 밖에서 호출되면 기본 클라이언트로 동작하므로 별도 분기가 필요 없다.
+A Repository implementation automatically picks up the current transaction context via `transactionManager.getClient()`. If it's called outside a transaction, it just uses the default client, so no separate branching is needed.
 
 ```typescript
 class OrderRepositoryImpl implements OrderRepository {
@@ -44,34 +44,34 @@ class OrderRepositoryImpl implements OrderRepository {
 }
 ```
 
-### 여러 Repository를 묶을 때
+### Wrapping multiple Repositories together
 
 ```typescript
 async cancelOrder(command: CancelOrderCommand): Promise<void> {
   const order = await this.orderRepository
     .findOrders({ orderId: command.orderId, take: 1, page: 0 })
     .then((r) => r.orders.pop())
-  if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+  if (!order) throw new Error(ErrorMessage['Order not found.'])
 
   order.cancel(command.reason)
 
   await this.transactionManager.run(async () => {
     await this.paymentRepository.deletePaymentMethods(order.orderId)
-    await this.orderRepository.saveOrder(order)   // 내부에서 outbox 저장도 함께
+    await this.orderRepository.saveOrder(order)   // saving to the outbox happens inside this too
   })
 }
 ```
 
-단일 Repository만 호출하는 경우 `run()`으로 감쌀 필요 없이 바로 호출한다 — Repository 구현체 내부에서 여러 테이블을 조작하더라도 `getClient()`가 이미 있는 트랜잭션 컨텍스트를 재사용한다.
+When calling just one Repository, there's no need to wrap it in `run()` — call it directly. Even if a Repository implementation touches multiple tables internally, `getClient()` reuses whatever transaction context already exists.
 
 ---
 
-## Entity 공통 컬럼 — createdAt, updatedAt, deletedAt
+## Common Entity columns — createdAt, updatedAt, deletedAt
 
-모든 테이블은 `createdAt`, `updatedAt`, `deletedAt` 컬럼을 포함한다. 공통 컬럼은 베이스 클래스/믹스인으로 정의해 모든 Entity가 상속·재사용하도록 한다.
+Every table includes `createdAt`, `updatedAt`, and `deletedAt` columns. Define the common columns in a base class/mixin so every Entity inherits and reuses them.
 
 ```typescript
-// database/base-entity — 개념
+// database/base-entity — conceptual
 abstract class BaseEntity {
   createdAt: Date
   updatedAt: Date
@@ -81,33 +81,33 @@ abstract class BaseEntity {
 
 ---
 
-## Soft Delete
+## Soft delete
 
-데이터 삭제 시 실제 삭제(hard delete)가 아닌 `deletedAt`에 타임스탬프를 기록하는 soft delete를 기본으로 사용한다.
+When deleting data, the default is a soft delete — recording a timestamp in `deletedAt` — rather than an actual (hard) delete.
 
 ```typescript
-// 올바른 방식 — soft delete
+// correct — soft delete
 async deleteOrder(orderId: string): Promise<void> {
   const client = this.transactionManager.getClient()
   await client.softDelete(OrderTable, { orderId })
 }
 
-// 잘못된 방식 — hard delete
+// wrong — hard delete
 async deleteOrder(orderId: string): Promise<void> {
   const client = this.transactionManager.getClient()
-  await client.delete(OrderTable, { orderId })   // 실제 삭제 — 사용 금지
+  await client.delete(OrderTable, { orderId })   // actually deletes it — do not use
 }
 ```
 
-- **조회 시 기본적으로 `deletedAt IS NULL` 조건이 적용**되어야 한다 (ORM의 soft-delete 기능을 쓰거나, 쿼리에 조건을 명시적으로 추가).
-- 삭제된 데이터 조회가 필요한 경우에만 별도 옵션(`withDeleted` 등)으로 명시적으로 포함한다.
-- 하위 엔티티도 함께 soft delete해야 한다면 Repository 구현체 내부에서 명시적으로 순서대로 처리한다 (부모 테이블의 FK 제약 등을 고려해 자식부터 삭제).
+- **A `deletedAt IS NULL` condition must apply by default on lookups** (either use the ORM's soft-delete feature, or add the condition to the query explicitly).
+- Only include soft-deleted data explicitly, via a separate option (`withDeleted`, etc.), when it's actually needed.
+- If child entities also need to be soft-deleted together, handle it explicitly and in order inside the Repository implementation (delete children first, accounting for FK constraints on the parent table, etc.).
 
 ---
 
-## 마이그레이션
+## Migrations
 
-스키마 변경은 마이그레이션 파일로 관리한다. `synchronize`/`ddl-auto: update` 같은 자동 스키마 동기화는 **개발 환경 전용**이며, 운영 환경에서는 반드시 마이그레이션을 사용한다 (프로덕션에서 자동 동기화를 켜두면 배포 시 의도치 않은 스키마 변경이 발생할 수 있다).
+Manage schema changes through migration files. Automatic schema sync (`synchronize`/`ddl-auto: update`) is **for development environments only** — production must always use migrations (leaving auto-sync on in production can cause unintended schema changes on deploy).
 
 ```
 migrations/
@@ -116,33 +116,33 @@ migrations/
 ```
 
 ```bash
-# 마이그레이션 생성 — 스키마 변경 사항을 감지하거나 수동 작성
+# Generate a migration — either detect schema changes or write it manually
 <migration-tool> generate create_order
 
-# 마이그레이션 실행
+# Run migrations
 <migration-tool> migrate up
 
-# 마이그레이션 롤백 (마지막 1개)
+# Roll back a migration (the last one)
 <migration-tool> migrate down
 ```
 
-### 원칙
+### Principles
 
-- **스키마 변경 후 반드시 마이그레이션 생성**: 자동 동기화는 로컬 개발에서만 사용한다.
-- **마이그레이션 파일은 커밋에 포함**: 자동 생성된 파일도 검토 후 커밋한다.
-- **롤백 가능한 마이그레이션 작성**: up/down(또는 동등한 대칭 오퍼레이션)을 모두 구현한다.
-- **데이터 마이그레이션은 스키마 변경과 분리**: 같은 마이그레이션 파일에 스키마 변경과 데이터 변환을 함께 넣지 않는다.
+- **Always generate a migration after a schema change**: auto-sync is only for local development.
+- **Migration files are committed**: even auto-generated ones are reviewed, then committed.
+- **Write migrations that can be rolled back**: implement both up/down (or an equivalent symmetric pair of operations).
+- **Keep data migrations separate from schema changes**: don't put a schema change and a data transformation in the same migration file.
 
 ---
 
-## 원칙 요약
+## Summary of principles
 
-- **트랜잭션은 컨텍스트-로컬 저장소로 암묵 전파**한다. 모든 호출에 트랜잭션 객체를 명시적으로 넘기지 않는다.
-- **모든 테이블에 createdAt/updatedAt/deletedAt을 둔다.**
-- **삭제는 기본적으로 soft delete**를 사용한다. hard delete는 예외적인 경우에만 명시적으로 사용한다.
-- **스키마 변경은 마이그레이션으로 관리**한다. 자동 동기화는 로컬 전용이다.
+- **Propagate transactions implicitly via context-local storage.** Never pass a transaction object explicitly into every call.
+- **Every table has createdAt/updatedAt/deletedAt.**
+- **Deletion defaults to soft delete.** Only use a hard delete explicitly, in an exceptional case.
+- **Manage schema changes through migrations.** Auto-sync is local-only.
 
-### 관련 문서
+### Related docs
 
-- [repository-pattern.md](repository-pattern.md) — Repository 인터페이스/구현 분리
-- [domain-events.md](domain-events.md) — Outbox 저장도 같은 트랜잭션에서 처리
+- [repository-pattern.md](repository-pattern.md) — separating the Repository interface from its implementation
+- [domain-events.md](domain-events.md) — saving to the outbox in the same transaction

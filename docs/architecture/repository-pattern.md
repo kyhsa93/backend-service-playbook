@@ -1,104 +1,104 @@
-# Repository 패턴
+# Repository Pattern
 
-### Aggregate Root 단위 Repository
+### One Repository per Aggregate Root
 
-- **1 Aggregate Root = 1 Repository 인터페이스 + 1 Repository 구현체**
-- 인터페이스(abstract class)는 `domain/` 레이어에, 구현체는 `infrastructure/` 레이어에 배치한다.
-- Aggregate 내부의 하위 Entity는 Aggregate Root의 Repository를 통해 함께 저장/조회한다.
+- **1 Aggregate Root = 1 Repository interface + 1 Repository implementation**
+- Place the interface (an abstract class) in the `domain/` layer, and the implementation in the `infrastructure/` layer.
+- A child Entity inside an Aggregate is saved/loaded together, through the Aggregate Root's Repository.
 
 ```
 src/
   order/
     domain/
-      order-repository.ts          ← abstract class (인터페이스)
+      order-repository.ts          ← abstract class (the interface)
     infrastructure/
-      order-repository-impl.ts     ← extends OrderRepository (구현체)
+      order-repository-impl.ts     ← extends OrderRepository (the implementation)
 ```
 
-### DI 바인딩 — abstract class를 토큰으로 사용
+### DI binding — using an abstract class as the token
 
-Application Service는 abstract class 타입으로 Repository를 주입받는다. 구현체는 Infrastructure 레이어에서 DI 컨테이너를 통해 바인딩한다.
+An Application Service is injected with the Repository typed as the abstract class. The implementation is bound in the Infrastructure layer via the DI container.
 
 ```typescript
-// Application Service — abstract class 타입으로 주입받음
+// Application Service — injected typed as the abstract class
 constructor(private readonly orderRepository: OrderRepository) {}
 
-// Infrastructure — 구현체 바인딩 (프레임워크별 방식)
+// Infrastructure — binding the implementation (the mechanism differs per framework)
 // OrderRepository → OrderRepositoryImpl
 ```
 
-→ 프레임워크별 DI 연결 방법은 `docs/implementations/` 참조
+→ See `docs/implementations/` for how DI wiring works per framework
 
-### Repository 메서드 네이밍 규칙
+### Repository method-naming rules
 
-| 목적 | 메서드명 패턴 | 예시 |
+| Purpose | Method-name pattern | Example |
 |------|--------------|------|
-| 목록 조회 | `find<Noun>s` | `findOrders`, `findUsers` |
-| 저장/업서트 | `save<Noun>` | `saveOrder`, `saveUser` |
-| 삭제 | `delete<Noun>` | `deleteOrder`, `deleteUser` |
+| List lookup | `find<Noun>s` | `findOrders`, `findUsers` |
+| Save/upsert | `save<Noun>` | `saveOrder`, `saveUser` |
+| Delete | `delete<Noun>` | `deleteOrder`, `deleteUser` |
 
-- **조회는 항상 `find<Noun>s` 하나만** — 단건/목록 구분 없이 목록 조회 메서드를 사용
-- 단건 조회 시 Service에서 `take: 1`로 호출 후 `.then(r => r.<noun>s.pop())` 패턴 사용
-- **Repository에 수정(update) 메서드 금지** — 조회 후 Aggregate의 도메인 메서드로 수정, `save<Noun>`으로 저장
+- **Lookup is always the single `find<Noun>s`** — use the list-lookup method whether it's a single record or a list
+- For a single-record lookup, the Service calls it with `take: 1` and uses the `.then(r => r.<noun>s.pop())` pattern
+- **A Repository must not have an update method** — look it up, modify it via the Aggregate's domain method, and save it via `save<Noun>`
 
-### 공통 컬럼 — createdAt, updatedAt, deletedAt
+### Common columns — createdAt, updatedAt, deletedAt
 
-모든 Entity는 생성/수정/삭제 시각을 기록하는 공통 컬럼을 포함한다.
+Every Entity has common columns recording when it was created/modified/deleted.
 
 ```typescript
-// 공통 컬럼 (프레임워크 무관 개념)
-createdAt : datetime  — 생성 시각 (자동 설정)
-updatedAt : datetime  — 최종 수정 시각 (자동 갱신)
-deletedAt : datetime | null  — 삭제 시각 (null이면 미삭제)
+// common columns (a framework-agnostic concept)
+createdAt : datetime  — creation time (set automatically)
+updatedAt : datetime  — last-modified time (updated automatically)
+deletedAt : datetime | null  — deletion time (null means not deleted)
 ```
 
-이 세 컬럼은 공통 BaseEntity 추상 클래스를 만들어 상속하게 한다. 프레임워크별 구현은 `docs/implementations/` 참조.
+These three columns are put in a common BaseEntity abstract class for other Entities to inherit. See `docs/implementations/` for the per-framework implementation.
 
 ---
 
-### Soft Delete
+### Soft delete
 
-데이터 삭제 시 **행을 실제로 제거(hard delete)하지 않는다**. `deletedAt`에 타임스탬프를 기록하는 soft delete를 사용한다.
+When deleting data, **never actually remove the row (a hard delete)**. Use a soft delete that records a timestamp in `deletedAt`.
 
-**이유:**
-- 이력 추적 및 감사(audit) 가능
-- 실수로 인한 데이터 삭제 복구 가능
-- 참조 무결성 오류 없이 안전하게 삭제 처리
+**Why:**
+- Enables history tracking and auditing
+- Lets you recover from an accidental deletion
+- Handles deletion safely with no referential-integrity errors
 
 ```typescript
-// Repository 구현체 — soft delete
+// A Repository implementation — soft delete
 public async deleteOrder(orderId: string): Promise<void> {
   await db.softDelete(OrderEntity, { orderId })  // deletedAt = now()
 }
 
-// 조회 시 삭제된 데이터 자동 제외 (deletedAt IS NULL)
+// A lookup automatically excludes deleted data (deletedAt IS NULL)
 public async findOrders(query: FindOrdersQuery): Promise<{ orders: Order[]; count: number }> {
-  // 대부분의 ORM이 deletedAt IS NULL 조건을 자동 적용
+  // most ORMs apply the deletedAt IS NULL condition automatically
 }
 
-// 삭제된 데이터를 포함하여 조회해야 하는 경우
+// When you need to look up data including deleted rows
 public async findOrdersIncludingDeleted(orderId: string): Promise<Order | undefined> {
-  // withDeleted 옵션 등 ORM별 방식 사용
+  // use whatever the ORM offers, e.g. a withDeleted option
 }
 ```
 
-하위 엔티티도 **함께 soft delete**해야 한다. Repository 구현체 내부에서 처리하며, Service는 `delete<Noun>` 한 번만 호출한다:
+A child entity must **also be soft-deleted together**. This is handled inside the Repository implementation; the Service calls `delete<Noun>` just once:
 
 ```typescript
 public async deleteOrder(orderId: string): Promise<void> {
-  await db.softDelete(OrderItemEntity, { orderId })  // 하위 엔티티 먼저
-  await db.softDelete(OrderEntity, { orderId })       // Aggregate Root
+  await db.softDelete(OrderItemEntity, { orderId })  // child entity first
+  await db.softDelete(OrderEntity, { orderId })       // then the Aggregate Root
 }
 ```
 
 ---
 
-### 동적 필터 패턴
+### The dynamic filter pattern
 
-조회 조건이 optional인 경우, 값이 있을 때만 조건을 추가하는 방식으로 동적 where를 구성한다.
+When a lookup condition is optional, build a dynamic `where` clause that only adds a condition when its value is present.
 
 ```typescript
-// Repository 구현체 — 조건부 where 체이닝
+// A Repository implementation — conditional where-clause chaining
 public async findOrders(query: {
   orderId?: string
   userId?: string
@@ -110,40 +110,40 @@ public async findOrders(query: {
 
   if (query.orderId) conditions.orderId = query.orderId
   if (query.userId)  conditions.userId  = query.userId
-  if (query.status?.length) conditions.status = query.status  // IN 조건
+  if (query.status?.length) conditions.status = query.status  // an IN condition
 
-  // 결과는 항상 { orders: Order[]; count: number } 반환
+  // the result is always { orders: Order[]; count: number }
 }
 ```
 
-**원칙:**
-- 각 조건은 값이 있을 때만 적용 (`if (query.field)` 가드)
-- 배열 조건은 빈 배열(`[]`)도 적용 대상에서 제외 (`if (arr?.length)`)
-- 조건이 없으면 전체 조회 — 항상 `take`/`page`로 페이지네이션 적용
+**Principles:**
+- Only apply a condition when its value is present (an `if (query.field)` guard)
+- For an array condition, also exclude an empty array (`[]`) from being applied (`if (arr?.length)`)
+- With no conditions, it's a full lookup — always apply pagination via `take`/`page`
 
 ---
 
-### 도메인 경계 — Mapping Table 양방향 접근
+### Domain boundaries — bidirectional access via a mapping table
 
-두 도메인 사이의 경계는 **mapping table**로 정의한다.
-mapping table은 연결된 **양쪽 도메인 Repository 구현체 모두**에서 조회/저장/삭제할 수 있어야 한다.
-각 Repository 구현체는 **자신의 도메인 식별자**로 mapping table에 접근한다.
+The boundary between two domains is defined by a **mapping table**.
+A mapping table must be lookup-able/savable/deletable from **both connected domains' Repository implementations**.
+Each Repository implementation accesses the mapping table using **its own domain's identifier**.
 
 ```
 user ──── userGroupMap ──── group ──── groupRoleMap ──── role
-   user 측 식별자: userId          group 측 식별자: groupId
-   group 측 식별자: groupId         role 측 식별자: roleId
+   user-side identifier: userId          group-side identifier: groupId
+   group-side identifier: groupId         role-side identifier: roleId
 ```
 
-### Repository의 Cascade 저장/삭제
+### Cascading saves/deletes in a Repository
 
-`save<Noun>` / `delete<Noun>` 호출 시 Repository 구현체 내부에서 **하위 엔티티와 연결된 mapping table을 함께 처리**한다.
-Service는 cascade 순서를 직접 관리하지 않고, 도메인 단위의 단일 메서드만 호출한다.
+When `save<Noun>` / `delete<Noun>` is called, a Repository implementation internally **handles the connected mapping table together with the child entities**.
+The Service never manages the cascade order directly — it only calls a single domain-level method.
 
 ```typescript
-// infrastructure/group-repository-impl.ts 내부
+// inside infrastructure/group-repository-impl.ts
 public async deleteGroup(groupId: string): Promise<void> {
-  // FK 참조 순서: mapping tables 먼저 → main entity 순으로 삭제
+  // FK reference order: mapping tables first → then the main entity
   await deleteGroupRoleMap(groupId)
   await deleteUserGroupMap(groupId)
   await deleteGroup(groupId)
@@ -152,9 +152,9 @@ public async deleteGroup(groupId: string): Promise<void> {
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계 상세
-- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향
-- [domain-events.md](domain-events.md) — Repository에서 Domain Event → Outbox 저장
-- [persistence.md](persistence.md) — 트랜잭션 전파, Soft Delete, 마이그레이션
+- [tactical-ddd.md](tactical-ddd.md) — details on Aggregate Root design
+- [layer-architecture.md](layer-architecture.md) — the layer dependency direction
+- [domain-events.md](domain-events.md) — saving a Domain Event → the Outbox from a Repository
+- [persistence.md](persistence.md) — transaction propagation, soft delete, migrations

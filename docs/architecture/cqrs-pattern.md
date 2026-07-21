@@ -1,51 +1,51 @@
-# CQRS 패턴
+# The CQRS Pattern
 
-CQRS(Command Query Responsibility Segregation)는 **쓰기(Command)와 읽기(Query)의 책임을 분리**하는 패턴이다.
-기존 아키텍처의 원칙(Domain 레이어 무의존, Aggregate 비즈니스 규칙 캡슐화, Repository 패턴)은 동일하게 유지한다.
+CQRS (Command Query Responsibility Segregation) is a pattern that **separates the responsibilities of writing (Command) and reading (Query)**.
+It keeps the same principles as the base architecture (the Domain layer is independent, an Aggregate encapsulates business rules, the Repository pattern).
 
-> 기본 아키텍처([layer-architecture.md](layer-architecture.md))에서 Application Service를 Command Service / Query Service로 분리하는 것도 CQRS의 경량 적용이다. 이 문서는 **Handler 기반 CQRS** — Command Bus / Query Bus를 도입해 각 유스케이스를 독립 Handler 클래스로 분리하는 패턴을 설명한다.
+> Splitting an Application Service into a Command Service / Query Service in the base architecture ([layer-architecture.md](layer-architecture.md)) is already a lightweight application of CQRS. This doc describes **Handler-based CQRS** — the pattern of introducing a Command Bus / Query Bus and splitting each use case into an independent Handler class.
 
 ---
 
-### 적용 기준
+### When to adopt it
 
-| 상황 | 권장 |
+| Situation | Recommendation |
 |---|---|
-| 유스케이스가 많아 Service 클래스가 비대해질 때 | Handler 기반 CQRS 적용 |
-| 쓰기와 읽기 모델을 완전히 다른 저장소로 분리할 때 | Handler 기반 CQRS 적용 |
-| 유스케이스가 적고 Service 클래스가 단순할 때 | 기본 아키텍처(Service 분리)로 충분 |
+| There are many use cases and the Service class is getting bloated | Adopt Handler-based CQRS |
+| The write and read models need to be fully separate stores | Adopt Handler-based CQRS |
+| There are few use cases and the Service class stays simple | The base architecture (splitting the Service) is enough |
 
 ---
 
-### 디렉토리 구조
+### Directory structure
 
 ```
 src/
   <domain>/
-    domain/                              # 변경 없음
+    domain/                              # unchanged
       <aggregate-root>.ts
       <domain-event>.ts
       <aggregate>-repository.ts
     application/
       command/
-        <verb>-<noun>-command.ts          # Command 객체 (입력)
-        <verb>-<noun>-command-handler.ts  # CommandHandler (쓰기 로직)
+        <verb>-<noun>-command.ts          # a Command object (the input)
+        <verb>-<noun>-command-handler.ts  # a CommandHandler (the write logic)
       query/
-        <domain>-query.ts                 # Query 인터페이스 (abstract class) — 변경 없음
-        <verb>-<noun>-query.ts            # Query 객체 (입력)
-        <verb>-<noun>-query-handler.ts    # QueryHandler (읽기 로직)
-        <verb>-<noun>-result.ts           # 결과 객체
+        <domain>-query.ts                 # the Query interface (abstract class) — unchanged
+        <verb>-<noun>-query.ts            # a Query object (the input)
+        <verb>-<noun>-query-handler.ts    # a QueryHandler (the read logic)
+        <verb>-<noun>-result.ts           # the result object
       event/
-        <domain-event>-handler.ts         # EventHandler (이벤트 후속 처리)
+        <domain-event>-handler.ts         # an EventHandler (follow-up event processing)
     interface/
-      <domain>-controller.ts             # CommandBus / QueryBus 호출
+      <domain>-controller.ts             # calls the CommandBus / QueryBus
 ```
 
 ---
 
-### Command와 CommandHandler
+### Command and CommandHandler
 
-Command는 쓰기 요청을 나타내는 **불변 데이터 객체**다. CommandHandler가 이를 처리한다.
+A Command is an **immutable data object** representing a write request. A CommandHandler processes it.
 
 ```typescript
 // application/command/cancel-order-command.ts
@@ -71,7 +71,7 @@ export class CancelOrderCommandHandler {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
-    if (!order) throw new Error('주문을 찾을 수 없습니다.')
+    if (!order) throw new Error('Order not found.')
 
     order.cancel(command.reason)
 
@@ -84,9 +84,9 @@ export class CancelOrderCommandHandler {
 
 ---
 
-### Query와 QueryHandler
+### Query and QueryHandler
 
-Query는 읽기 요청을 나타내는 데이터 객체다. QueryHandler가 **읽기 전용 모델**(Query 인터페이스)을 통해 처리한다.
+A Query is a data object representing a read request. A QueryHandler processes it via a **read-only model** (the Query interface).
 
 ```typescript
 // application/query/get-orders-query.ts
@@ -108,16 +108,16 @@ export class GetOrdersQueryHandler {
 }
 ```
 
-QueryHandler는 `OrderRepository`(쓰기 모델)가 아닌 `OrderQuery`(읽기 전용 인터페이스)를 사용한다. Aggregate 복원 없이 DB에서 직접 조회한다.
+A QueryHandler uses `OrderQuery` (a read-only interface), not `OrderRepository` (the write model). It queries the DB directly, with no Aggregate reconstitution.
 
 ---
 
-### Interface 레이어 — Bus 호출
+### The Interface layer — calling the Bus
 
-Controller는 Service 대신 **CommandBus / QueryBus**를 통해 적절한 Handler로 요청을 라우팅한다.
+Instead of a Service, the Controller routes the request to the right Handler through the **CommandBus / QueryBus**.
 
 ```typescript
-// interface/<domain>-controller.ts (개념)
+// interface/<domain>-controller.ts (conceptual)
 public async cancelOrder(param: CancelOrderRequestParam): Promise<void> {
   return commandBus.execute(new CancelOrderCommand(param))
     .catch((error) => { throw convertToHttpError(error) })
@@ -133,65 +133,65 @@ public async getOrders(query: GetOrdersRequestQuerystring): Promise<GetOrdersRes
 
 ### EventHandler
 
-Domain Event는 in-process 이벤트 버스를 사용하지 않는다. **Outbox → 메시지 큐 → EventConsumer** 경로로 전달된다.
+A Domain Event doesn't use an in-process event bus. It's delivered via the **Outbox → message queue → EventConsumer** path.
 
 ```typescript
 // application/event/order-cancelled-handler.ts
 export class OrderCancelledHandler {
   public async handle(event: { orderId: string; reason: string }): Promise<void> {
-    // 후속 처리 (로깅, 알림, Integration Event 발행 등)
+    // follow-up processing (logging, notifications, publishing an Integration Event, etc.)
   }
 }
 ```
 
-→ 이벤트 발행·수신 상세는 [domain-events.md](domain-events.md) 참조
+→ See [domain-events.md](domain-events.md) for details on publishing/receiving events
 
 ---
 
-### 읽기 모델 (Query 인터페이스)
+### The read model (the Query interface)
 
-QueryHandler는 Aggregate가 아닌 **읽기 전용 모델**을 통해 조회한다.
+A QueryHandler looks things up through a **read-only model**, not the Aggregate.
 
 ```typescript
-// application/query/order-query.ts — Query 인터페이스 (abstract class)
+// application/query/order-query.ts — the Query interface (abstract class)
 export abstract class OrderQuery {
   abstract getOrders(query: GetOrdersQuery): Promise<GetOrdersResult>
   abstract getOrder(query: GetOrderQuery): Promise<GetOrderResult>
 }
 
-// infrastructure/order-query-impl.ts — 구현체 (DB 직접 접근)
+// infrastructure/order-query-impl.ts — the implementation (direct DB access)
 export class OrderQueryImpl extends OrderQuery {
   public async getOrders(query: GetOrdersQuery): Promise<GetOrdersResult> {
-    // Aggregate 복원 없이 읽기에 최적화된 쿼리
+    // a query optimized for reading, with no Aggregate reconstitution
   }
 }
 ```
 
-DI 바인딩:
+DI binding:
 
 ```
-OrderQuery (abstract)  ←  OrderQueryImpl (구현체)
+OrderQuery (abstract)  ←  OrderQueryImpl (the implementation)
 ```
 
 ---
 
-### 기존 아키텍처와의 비교
+### Compared with the base architecture
 
-| | 기본 아키텍처 | Handler 기반 CQRS |
+| | Base architecture | Handler-based CQRS |
 |---|---|---|
-| 쓰기 진입점 | CommandService 메서드 | CommandHandler.execute() |
-| 읽기 진입점 | QueryService 메서드 | QueryHandler.execute() |
-| 라우팅 | Service 직접 호출 | CommandBus / QueryBus |
-| 유스케이스 단위 | Service 메서드 | Handler 클래스 |
-| 읽기/쓰기 분리 | Service 클래스 분리 | Handler + 별도 읽기 모델 |
-| 적합한 규모 | 단순~중간 | 중간~복잡 |
+| Write entry point | A CommandService method | CommandHandler.execute() |
+| Read entry point | A QueryService method | QueryHandler.execute() |
+| Routing | Calling the Service directly | CommandBus / QueryBus |
+| Use-case unit | A Service method | A Handler class |
+| Read/write separation | Splitting the Service class | A Handler + a separate read model |
+| Fits at | Simple to medium scale | Medium to complex scale |
 
-두 방식 모두 Domain 레이어 독립성, Aggregate 캡슐화, Repository 패턴은 동일하게 유지한다.
+Both approaches keep Domain-layer independence, Aggregate encapsulation, and the Repository pattern exactly the same.
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [layer-architecture.md](layer-architecture.md) — 기본 아키텍처 (Service 분리)
-- [domain-events.md](domain-events.md) — EventHandler와 Outbox 패턴
-- [repository-pattern.md](repository-pattern.md) — Repository 패턴
+- [layer-architecture.md](layer-architecture.md) — the base architecture (splitting the Service)
+- [domain-events.md](domain-events.md) — EventHandler and the Outbox pattern
+- [repository-pattern.md](repository-pattern.md) — the Repository pattern

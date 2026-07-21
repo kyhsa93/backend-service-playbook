@@ -1,104 +1,105 @@
-# Bounded Context 간 통신 패턴
+# Communication Patterns Between Bounded Contexts
 
-같은 프로세스 내 다른 BC를 호출할 때는 **동기(Adapter)** 와 **비동기(Integration Event)** 두 가지 방식 중 하나를 선택한다.
+When calling another BC within the same process, choose one of two approaches: **synchronous (Adapter)** or **asynchronous (Integration Event)**.
 
-### 선택 기준
+### Decision criteria
 
-| 판단 기준 | 동기 (Adapter) | 비동기 (Integration Event) |
+| Question | Synchronous (Adapter) | Asynchronous (Integration Event) |
 |----------|--------------|--------------------------|
-| 응답이 현재 요청 처리에 필요한가? | 예 | 아니오 |
-| 호출 대상 BC가 상태를 변경하는가? | 아니오 (조회만) | 예 |
-| 실패 시 현재 트랜잭션을 롤백해야 하는가? | 예 | 아니오 (최종 일관성 허용) |
-| 호출 방향이 단방향인가? | 대체로 양방향 가능 | 단방향 (이벤트 발행) |
+| Is the response needed to handle the current request? | Yes | No |
+| Does the called BC change state? | No (read-only) | Yes |
+| Must the current transaction roll back on failure? | Yes | No (eventual consistency is acceptable) |
+| Is the call direction one-way? | Usually can go either way | One-way (publishing an event) |
 
-> 조회가 아닌 **상태 변경**이 외부 BC에서 필요하다면, 동기 호출로 두 BC를 하나의 트랜잭션으로 묶지 않는다. Integration Event를 통해 각 BC가 독립적으로 처리하게 한다.
+> If a **state change** — not a read — is needed in an external BC, don't wrap the two BCs in one transaction via a synchronous call. Let each BC process it independently via an Integration Event.
 
-### 패턴 선택 흐름
+### Pattern-selection flow
 
 ```
-현재 요청의 응답에 외부 BC 데이터가 필요한가?
-  └─ 예 → Adapter 패턴 (동기 조회)
-  └─ 아니오 → 내 BC의 도메인 작업 완료 후 외부 BC에 알릴 필요가 있는가?
-                └─ 예 → Integration Event (비동기)
-                └─ 아니오 → 외부 BC 호출 불필요
+Does the current request's response need data from an external BC?
+  └─ Yes → the Adapter pattern (synchronous lookup)
+  └─ No → does an external BC need to be notified once my BC's domain work finishes?
+                └─ Yes → an Integration Event (asynchronous)
+                └─ No → no external BC call is needed
 ```
 
 ---
 
-### 동기 호출 — Adapter 패턴 (ACL)
+### Synchronous calls — the Adapter pattern (ACL)
 
-외부 BC의 서비스를 **현재 요청 내에서 즉시 조회**해야 할 때 사용한다.
+Used when you need to **look something up immediately, within the current request**, from an external BC's service.
 
-Adapter는 **Anticorruption Layer(ACL)** 역할을 한다. 외부 BC의 모델·인터페이스가 변경되어도 내부 도메인 모델은 영향받지 않는다.
+The Adapter acts as an **Anticorruption Layer (ACL)**. Even if the external BC's model/interface changes, the internal domain model is unaffected.
 
 ```
-[주문 BC Application] → UserAdapter (interface) → UserAdapterImpl → [사용자 BC Service]
-                         (내 application/adapter/)  (내 infrastructure/)
+[Order BC Application] → UserAdapter (interface) → UserAdapterImpl → [User BC Service]
+                         (my application/adapter/)  (my infrastructure/)
 ```
 
-**적합한 상황:**
-- 주문 상세 응답에 사용자 이름을 함께 포함해야 하는 경우
-- 결제 처리 전 잔액 조회가 필요한 경우
+**Fits when:**
+- An order-detail response needs to include the user's name
+- Checking the balance before processing a payment
 
-**주의:**
-- 외부 BC의 Repository나 Service를 Application 레이어에서 직접 주입하지 않는다.
-- Adapter를 통해 외부 BC의 **쓰기 메서드**를 호출하지 않는다. 쓰기가 필요하면 Integration Event로 전환을 검토한다.
+**Watch out for:**
+- Never inject an external BC's Repository or Service directly into the Application layer.
+- Never call an external BC's **write methods** through an Adapter. If a write is needed, consider switching to an Integration Event.
 
-nestjs harness는 `application/**/*.ts`가 다른 BC의 `domain/*-repository.ts`를 직접 import하는지를
-`no-cross-bc-repository-in-application.evaluator.ts`로 검증한다 — 같은 도메인 안의 Repository
-import(정상 패턴)는 대상이 아니다.
+The nestjs harness checks whether `application/**/*.ts` directly imports another BC's `domain/*-repository.ts` via
+`no-cross-bc-repository-in-application.evaluator.ts` — importing a Repository within the same domain (the normal
+pattern) isn't a target.
 
 ---
 
-### 비동기 호출 — Integration Event
+### Asynchronous calls — Integration Events
 
-내 BC의 도메인 작업이 완료된 후 **외부 BC가 이에 반응해 상태를 변경**해야 할 때 사용한다.
+Used when, after my BC's domain work completes, **an external BC needs to react and change its state**.
 
 ```
-[주문 BC] → Domain Event → Application EventHandler → Integration Event → Outbox → 메시지 큐
+[Order BC] → Domain Event → Application EventHandler → Integration Event → Outbox → message queue
                                                                                       ↓
-                                                              [결제 BC] ← IntegrationEventController
+                                                              [Payment BC] ← IntegrationEventController
 ```
 
-**적합한 상황:**
-- 주문 취소 후 결제 BC에서 환불을 처리해야 하는 경우
-- 주문 완료 후 알림 BC에서 이메일을 발송해야 하는 경우
+**Fits when:**
+- After an order is cancelled, the Payment BC needs to process a refund
+- After an order completes, the Notification BC needs to send an email
 
-**주의:**
-- Integration Event는 내부 Domain Event를 그대로 외부에 노출하지 않는다. Application EventHandler가 변환 지점이다.
-- 수신 측은 at-least-once 전달을 전제로 멱등하게 구현한다.
+**Watch out for:**
+- An Integration Event never exposes an internal Domain Event to the outside as-is. The Application EventHandler is the conversion point.
+- The receiving side assumes at-least-once delivery and implements handling idempotently.
 
-**실제 예시 — 보상 트랜잭션(compensating action):** 결제 BC가 동기 Adapter로 계좌 활성·잔액을
-확인한 뒤 결제를 완료 처리하면(`payment.completed.v1`), 계좌 BC가 이를 구독해 실제 차감(`withdraw`)을
-수행한다 — 동기 조회 시점과 비동기 차감 시점 사이에는 짧은 최종 일관성(eventual consistency) 구간이
-있다. 이후 결제가 취소되면(`payment.cancelled.v1`) 계좌 BC가 같은 방식으로 구독해 `deposit()`으로
-**이미 차감된 금액을 되돌리는 보상 크레딧**을 실행한다 — 별도의 트랜잭션 롤백이 아니라 새로운
-비동기 이벤트로 앞선 상태변경을 상쇄하는, BC 간 보상 트랜잭션의 전형적인 형태다. 환불 승인
-(`refund.approved.v1`)도 동일한 반응(크레딧)을 재사용한다. nestjs 구현:
+**A real example — a compensating action:** after the Payment BC checks the account's active status and
+balance via a synchronous Adapter and marks the payment complete (`payment.completed.v1`), the Account BC
+subscribes to that and performs the actual deduction (`withdraw`) — there's a brief eventual-consistency window
+between the synchronous check and the asynchronous deduction. If the payment is later cancelled
+(`payment.cancelled.v1`), the Account BC subscribes the same way and runs `deposit()` as a **compensating credit
+that reverses the amount already deducted** — not a separate transaction rollback, but a classic form of a
+cross-BC compensating transaction that offsets an earlier state change with a new asynchronous event. Refund
+approval (`refund.approved.v1`) reuses the same reaction (a credit). nestjs implementation:
 `implementations/nestjs/examples/src/account/interface/integration-event/account-integration-event-controller.ts`,
 `implementations/nestjs/examples/src/payment/application/event/`.
 
 ---
 
-### 두 패턴 혼용
+### Mixing both patterns
 
-하나의 유스케이스에서 두 패턴을 모두 사용할 수 있다.
+One use case can use both patterns together.
 
 ```typescript
-// 주문 취소 — 동기 조회 + 비동기 후속 처리
+// Cancelling an order — a synchronous lookup + asynchronous follow-up
 public async cancelOrder(command: CancelOrderCommand): Promise<void> {
-  // 1. Adapter로 동기 조회 (응답에 필요)
+  // 1. A synchronous lookup via an Adapter (needed for the response)
   const user = await this.userAdapter.findUsers({ userId: command.userId, take: 1, page: 0 })
                   .then((r) => r.users.pop())
-  if (!user) throw new Error('사용자를 찾을 수 없습니다.')
+  if (!user) throw new Error('User not found.')
 
   const order = await this.orderRepository.findOrders({ orderId: command.orderId, take: 1, page: 0 })
                   .then((r) => r.orders.pop())
-  if (!order) throw new Error('주문을 찾을 수 없습니다.')
+  if (!order) throw new Error('Order not found.')
 
   order.cancel(command.reason)
 
-  // 2. save → Domain Event → Integration Event (결제 BC에 환불 요청은 비동기)
+  // 2. save → Domain Event → Integration Event (requesting a refund from the Payment BC is asynchronous)
   await this.transactionManager.run(async () => {
     await this.orderRepository.saveOrder(order)
   })
@@ -107,18 +108,18 @@ public async cancelOrder(command: CancelOrderCommand): Promise<void> {
 
 ---
 
-### Context Map 패턴과의 대응
+### Mapping to Context Map patterns
 
-| Context Map 패턴 | 구현 방식 |
+| Context Map pattern | Implementation |
 |----------------|----------|
-| ACL (Anticorruption Layer) | Adapter 패턴 — 외부 모델 오염 방지 |
-| OHS/PL (Open Host Service / Published Language) | Integration Event 발행 — 버전 명시(`order.cancelled.v1`) |
-| Conformist | Adapter 없이 외부 BC 모델을 직접 사용 (권장하지 않음) |
-| Customer-Supplier | Adapter + Integration Event 조합 |
+| ACL (Anticorruption Layer) | The Adapter pattern — prevents contamination from an external model |
+| OHS/PL (Open Host Service / Published Language) | Publishing an Integration Event — with an explicit version (`order.cancelled.v1`) |
+| Conformist | Using an external BC's model directly, with no Adapter (not recommended) |
+| Customer-Supplier | A combination of Adapter + Integration Event |
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [strategic-ddd.md](strategic-ddd.md) — Context Map 패턴 개요
-- [domain-events.md](domain-events.md) — Integration Event 발행·수신 상세
+- [strategic-ddd.md](strategic-ddd.md) — an overview of Context Map patterns
+- [domain-events.md](domain-events.md) — details on publishing/receiving Integration Events

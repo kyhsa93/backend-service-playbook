@@ -1,56 +1,56 @@
-# NestJS 구현체
+# NestJS Implementation
 
-## 개요
+## Overview
 
-[NestJS](https://nestjs.com/)는 TypeScript 기반 Node.js 서버 프레임워크로, 모듈 시스템과 DI 컨테이너를 내장한다.
-이 플레이북의 원칙을 NestJS로 구체적으로 구현한 가이드와 실행 가능한 예제는 이 저장소 안의 `implementations/nestjs/`에 있다.
+[NestJS](https://nestjs.com/) is a TypeScript-based Node.js server framework with a built-in module system and DI container.
+The concrete guide and runnable examples implementing this playbook's principles with NestJS live in `implementations/nestjs/` in this repo.
 
-**→ [implementations/nestjs/CLAUDE.md](../../implementations/nestjs/CLAUDE.md)** — NestJS 구현 상세 가이드 진입점
-**→ [implementations/nestjs/examples/](../../implementations/nestjs/examples/)** — Account/Card/Payment 세 Bounded Context의 전체 구현 예시
-**→ [implementations/nestjs/harness/](../../implementations/nestjs/harness/)** — 가이드 준수 여부를 검증하는 자동 evaluator
+**→ [implementations/nestjs/CLAUDE.md](../../implementations/nestjs/CLAUDE.md)** — entry point for the detailed NestJS implementation guide
+**→ [implementations/nestjs/examples/](../../implementations/nestjs/examples/)** — full implementation example of the three Account/Card/Payment Bounded Contexts
+**→ [implementations/nestjs/harness/](../../implementations/nestjs/harness/)** — automated evaluator that checks guide compliance
 
 ---
 
-## NestJS-specific 구현 커버리지
+## NestJS-specific implementation coverage
 
-| 원칙 문서 (루트, 공용) | NestJS 구현 문서 |
+| Principle doc (root, shared) | NestJS implementation doc |
 |---|---|
-| [layer-architecture.md](../architecture/layer-architecture.md) | `implementations/nestjs/docs/architecture/layer-architecture.md` — @Injectable, @Module, DI 바인딩 |
-| [directory-structure.md](../architecture/directory-structure.md) | `implementations/nestjs/docs/architecture/directory-structure.md` — 4계층 디렉토리 배치, 파일 네이밍 |
-| [aggregate-id.md](../architecture/aggregate-id.md) | `implementations/nestjs/docs/architecture/aggregate-id.md` — generateId(), 하이픈 제거 32자리 hex |
-| [repository-pattern.md](../architecture/repository-pattern.md) | `implementations/nestjs/docs/architecture/repository-pattern.md` — TypeORM, @InjectRepository, NestJS DI 연결 |
-| [persistence.md](../architecture/persistence.md) | `implementations/nestjs/docs/architecture/persistence.md` — TypeORM QueryBuilder, TransactionManager(AsyncLocalStorage), 마이그레이션 |
+| [layer-architecture.md](../architecture/layer-architecture.md) | `implementations/nestjs/docs/architecture/layer-architecture.md` — @Injectable, @Module, DI binding |
+| [directory-structure.md](../architecture/directory-structure.md) | `implementations/nestjs/docs/architecture/directory-structure.md` — 4-layer directory layout, file naming |
+| [aggregate-id.md](../architecture/aggregate-id.md) | `implementations/nestjs/docs/architecture/aggregate-id.md` — generateId(), 32-char hyphen-free hex |
+| [repository-pattern.md](../architecture/repository-pattern.md) | `implementations/nestjs/docs/architecture/repository-pattern.md` — TypeORM, @InjectRepository, NestJS DI wiring |
+| [persistence.md](../architecture/persistence.md) | `implementations/nestjs/docs/architecture/persistence.md` — TypeORM QueryBuilder, TransactionManager (AsyncLocalStorage), migrations |
 | [domain-events.md](../architecture/domain-events.md) | `implementations/nestjs/docs/architecture/domain-events.md` — @HandleEvent, OutboxWriter, OutboxPoller, OutboxConsumer, SQS |
 | [cqrs-pattern.md](../architecture/cqrs-pattern.md) | `implementations/nestjs/docs/architecture/cqrs-pattern.md` — @nestjs/cqrs, CommandBus, QueryBus |
 | [error-handling.md](../architecture/error-handling.md) | `implementations/nestjs/docs/architecture/error-handling.md` — generateErrorResponse, HttpExceptionFilter |
 | [api-response.md](../architecture/api-response.md) | `implementations/nestjs/docs/architecture/api-response.md` — page/take DTO, class-validator |
 | [authentication.md](../architecture/authentication.md) | `implementations/nestjs/docs/architecture/authentication.md` — JWT, AuthGuard |
 | [cross-cutting-concerns.md](../architecture/cross-cutting-concerns.md) | `implementations/nestjs/docs/architecture/cross-cutting-concerns.md` — Middleware, Guard, Interceptor, Pipe |
-| [scheduling.md](../architecture/scheduling.md) | `implementations/nestjs/docs/architecture/scheduling.md` — @Cron, SQS Task Queue, 멱등성 |
+| [scheduling.md](../architecture/scheduling.md) | `implementations/nestjs/docs/architecture/scheduling.md` — @Cron, SQS Task Queue, idempotency |
 | [observability.md](../architecture/observability.md) | `implementations/nestjs/docs/architecture/observability.md` — structured log, Correlation ID |
 | [graceful-shutdown.md](../architecture/graceful-shutdown.md) | `implementations/nestjs/docs/architecture/graceful-shutdown.md` — enableShutdownHooks |
-| [container.md](../architecture/container.md) | `implementations/nestjs/docs/architecture/container.md` — 멀티스테이지 빌드 |
-| [config.md](../architecture/config.md) | `implementations/nestjs/docs/architecture/config.md` — ConfigModule, class-validator 환경변수 검증 |
-| [secret-manager.md](../architecture/secret-manager.md) | `implementations/nestjs/docs/architecture/secret-manager.md` — SecretsManagerClient, TTL 캐시 |
+| [container.md](../architecture/container.md) | `implementations/nestjs/docs/architecture/container.md` — multi-stage build |
+| [config.md](../architecture/config.md) | `implementations/nestjs/docs/architecture/config.md` — ConfigModule, class-validator env-var validation |
+| [secret-manager.md](../architecture/secret-manager.md) | `implementations/nestjs/docs/architecture/secret-manager.md` — SecretsManagerClient, TTL cache |
 | [local-dev.md](../architecture/local-dev.md) | `implementations/nestjs/docs/architecture/local-dev.md` — docker-compose, LocalStack |
-| [file-storage.md](../architecture/file-storage.md) | `implementations/nestjs/docs/architecture/file-storage.md` — StorageService, Presigned URL, S3 |
-| [tactical-ddd.md](../architecture/tactical-ddd.md) | `implementations/nestjs/docs/architecture/tactical-ddd.md` — Money(Value Object), Account(Aggregate Root) 실제 코드 |
-| [domain-service.md](../architecture/domain-service.md) | 루트 문서에 실제 동작하는 cross-Aggregate 예시로 직접 인용됨 — `RefundEligibilityService`(`examples/src/payment/domain/refund-eligibility-service.ts`)가 `Payment`+`Refund` 두 Aggregate를 조율하는 판단을 담당한다. 별도의 nestjs 전용 문서는 없다(아래 각주). |
+| [file-storage.md](../architecture/file-storage.md) | `implementations/nestjs/docs/architecture/file-storage.md` — StorageService, presigned URL, S3 |
+| [tactical-ddd.md](../architecture/tactical-ddd.md) | `implementations/nestjs/docs/architecture/tactical-ddd.md` — real code for Money (Value Object), Account (Aggregate Root) |
+| [domain-service.md](../architecture/domain-service.md) | Directly cited in the root doc as a real working cross-Aggregate example — `RefundEligibilityService` (`examples/src/payment/domain/refund-eligibility-service.ts`) is responsible for a judgment that coordinates the two Aggregates `Payment` and `Refund`. There is no separate nestjs-specific doc (see footnote below). |
 | [testing.md](../architecture/testing.md) | `implementations/nestjs/docs/architecture/testing.md` — jest, SQLite in-memory / testcontainers E2E |
-| [conventions.md](../conventions.md) | `implementations/nestjs/docs/conventions.md` — 파일 네이밍, import 규칙, TypeScript 타이핑 패턴 |
-| — (NestJS 전용, 대응하는 루트 문서 없음) | `implementations/nestjs/docs/architecture/module-pattern.md` — @Module, providers, exports, 순환 의존 |
-| — (NestJS 전용) | `implementations/nestjs/docs/architecture/bootstrap.md` — main.ts, NestFactory, Swagger |
-| — (NestJS 전용) | `implementations/nestjs/docs/architecture/shared-modules.md` — 공유 모듈 구조 |
-| — (NestJS 전용) | `implementations/nestjs/docs/architecture/design-principles.md` — 핵심 설계 원칙 요약 |
-| — (NestJS 전용) | `implementations/nestjs/docs/architecture/cross-domain.md` — Adapter 패턴 구현 상세 (원칙은 [cross-domain-communication.md](../architecture/cross-domain-communication.md) 참고) |
+| [conventions.md](../conventions.md) | `implementations/nestjs/docs/conventions.md` — file naming, import rules, TypeScript typing patterns |
+| — (NestJS-specific, no corresponding root doc) | `implementations/nestjs/docs/architecture/module-pattern.md` — @Module, providers, exports, circular dependencies |
+| — (NestJS-specific) | `implementations/nestjs/docs/architecture/bootstrap.md` — main.ts, NestFactory, Swagger |
+| — (NestJS-specific) | `implementations/nestjs/docs/architecture/shared-modules.md` — shared module structure |
+| — (NestJS-specific) | `implementations/nestjs/docs/architecture/design-principles.md` — summary of core design principles |
+| — (NestJS-specific) | `implementations/nestjs/docs/architecture/cross-domain.md` — Adapter pattern implementation details (see [cross-domain-communication.md](../architecture/cross-domain-communication.md) for the principle) |
 
-`cross-domain-communication.md`, `strategic-ddd.md`는 NestJS 전용 버전이 루트 문서와 순수 중복이라 제거했다 — 루트 문서를 그대로 참조한다. `domain-service.md`도 마찬가지로 별도 nestjs 전용 문서를 두지 않지만, 위 표의 행이 가리키듯 이제 루트 문서 자체가 nestjs의 실제 코드를 인용하고 있다(순수 중복이 아니라 근거가 있는 참조).
+The NestJS-specific versions of `cross-domain-communication.md` and `strategic-ddd.md` were removed since they were pure duplicates of the root docs — they just reference the root docs directly. `domain-service.md` likewise has no separate NestJS-specific doc, but as the table row indicates, the root doc itself now cites nestjs's real code (a grounded reference, not a pure duplicate).
 
 ---
 
-## NestJS 선택 이유
+## Why NestJS
 
-- TypeScript 네이티브 — 타입 안전성, DI 컨테이너가 데코레이터 기반으로 통합
-- 모듈 시스템이 Bounded Context 경계와 자연스럽게 대응 (`1 BC = 1 NestJS Module`)
-- abstract class 기반 DI 토큰이 Repository 패턴(의존성 역전)에 적합
-- `@nestjs/cqrs` 패키지로 CQRS Handler 패턴을 선택적으로 적용 가능
+- TypeScript-native — type safety, with a decorator-based DI container built in
+- The module system maps naturally onto Bounded Context boundaries (`1 BC = 1 NestJS Module`)
+- Abstract-class-based DI tokens suit the Repository pattern (dependency inversion) well
+- The `@nestjs/cqrs` package lets you optionally apply the CQRS Handler pattern
