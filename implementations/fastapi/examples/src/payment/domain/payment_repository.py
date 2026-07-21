@@ -9,9 +9,8 @@ class PaymentQuery(ABC):
     (cqrs-pattern.md 참고). `PaymentRepository`(쓰기 모델)와 계약을 공유하지만 별도 타입이며,
     Query Handler는 반드시 이 타입으로만 의존해야 한다(account 도메인의 AccountQuery와 동일).
 
-    조회 메서드는 단일 `find_payments(...)`로 통일한다(issue #236 — Account Repository가
-    find_by_id/find_all로 나뉘어 있던 것을 단일 메서드+선택적 필터 키워드 인자로 통일한
-    것과 동일한 컨벤션). `take=1`로 단건 조회를 표현한다.
+    조회 메서드는 단일 `find_payments(...)`로 통일한다 — account 도메인의 AccountQuery와
+    동일하게, 단일 메서드+선택적 필터 키워드 인자로 표현한다. `take=1`로 단건 조회를 표현한다.
 
     `since`/`until`은 매월 카드 사용내역 발송 배치(card.application.adapter.payment_adapter의
     PaymentAdapter)가 "지난 한 달" 범위로 결제를 집계하기 위해 추가됐다 — 새 메서드를

@@ -36,14 +36,16 @@ EXCLUDE_DIR_NAMES = {
     ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode",
 }
 
-INCLUDE_SUFFIXES = {".md", ".ts", ".go", ".java", ".kt", ".py"}
+INCLUDE_SUFFIXES = {".md", ".ts", ".go", ".java", ".kt", ".py", ".yml", ".yaml"}
 
 # Category 1: session/issue meta-narration.
 CATEGORY_1 = re.compile(
     "|".join([
         r"이번\s*패스", r"이전\s*세션", r"이전\s*버전", r"이전\s*감사",
         r"지난\s*세션", r"지난\s*라운드", r"회귀\s*#\d+", r"과거\s*실제",
-    ])
+        r"(?:issue|이슈)\s*#\d+",
+    ]),
+    re.IGNORECASE,
 )
 
 # Category 2: before/after temporal framing and completion labels.

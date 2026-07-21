@@ -18,10 +18,9 @@ FORBIDDEN_CALL = re.compile(r"\.\s*(?:process_pending|run_forever|poll|drain_onc
 
 
 def _strip_comments(src: str) -> str:
-    # 이 규칙이 "왜 OutboxPoller를 호출하면 안 되는지" 설명하는 주석/docstring 자체를
-    # 위반으로 오탐하는 것을 막는다 — 이 저장소에서 실제로 있었던 유사 사고(issue #229류,
-    # 문자열 "OutboxRelay"가 주석에 등장해 다른 규칙을 오탐시킨 사례)를 반영한 방어적
-    # 처리다. `#` 줄 주석과 triple-quoted 문자열(모듈/클래스/메서드 docstring) 둘 다 제거한다
+    # 이 규칙이 "왜 OutboxPoller를 호출하면 안 되는지" 설명하는 주석/docstring 자체가
+    # 문자열 "OutboxRelay" 등을 언급한다는 이유만으로 위반 오탐되지 않도록 방어한다.
+    # `#` 줄 주석과 triple-quoted 문자열(모듈/클래스/메서드 docstring) 둘 다 제거한다
     # — Python docstring은 문법적으로 문자열 리터럴이라 `#` 제거만으로는 걸러지지 않는다.
     without_docstrings = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", src)
     return re.sub(r"#.*$", "", without_docstrings, flags=re.MULTILINE)
