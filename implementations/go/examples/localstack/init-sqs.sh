@@ -15,3 +15,17 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes \
 
 awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
+
+# Task Queue(Scheduler → task_outbox → 이 큐 → Task Consumer)는 domain-events와 개념적으로
+# 구분되는 별도 큐다("사실이 일어났다" vs "명령: X를 수행하라",
+# docs/architecture/domain-events.md) — 같은 큐에 event_type/task_type을 섞지 않는다.
+# DLQ 파라미터는 domain-events와 동일하게 맞춘다(scheduling.md).
+awslocal sqs create-queue --queue-name task-queue-dlq
+
+TASK_DLQ_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/task-queue-dlq \
+  --attribute-names QueueArn \
+  --query 'Attributes.QueueArn' --output text)
+
+awslocal sqs create-queue --queue-name task-queue \
+  --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$TASK_DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'

@@ -14,4 +14,6 @@ var (
 	ErrReactivateRequiresSuspendedAccount = errors.New("account must be suspended to reactivate")
 	ErrAlreadyClosed                      = errors.New("account already closed")
 	ErrBalanceNotZero                     = errors.New("balance must be zero to close account")
+	ErrInterestRequiresActiveAccount      = errors.New("account must be active to receive interest")
+	ErrInvalidInterestDate                = errors.New("invalid interest posting date")
 )

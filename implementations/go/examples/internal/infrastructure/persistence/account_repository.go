@@ -62,7 +62,7 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuer
 
 	args = append(args, q.Take, q.Page*q.Take)
 	rows, err := r.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT id, owner_id, email, amount, currency, status, created_at, updated_at
+		fmt.Sprintf(`SELECT id, owner_id, email, amount, currency, status, created_at, updated_at, last_interest_paid_at
 		 FROM accounts WHERE %s ORDER BY id DESC LIMIT $%d OFFSET $%d`, whereClause, i, i+1),
 		args...,
 	)
@@ -76,14 +76,15 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuer
 		var id, ownerID, email, currency, status string
 		var amount int64
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&id, &ownerID, &email, &amount, &currency, &status, &createdAt, &updatedAt); err != nil {
+		var lastInterestPaidAt sql.NullTime
+		if err := rows.Scan(&id, &ownerID, &email, &amount, &currency, &status, &createdAt, &updatedAt, &lastInterestPaidAt); err != nil {
 			return nil, 0, err
 		}
 		balance, err := account.NewMoney(amount, currency)
 		if err != nil {
 			return nil, 0, err
 		}
-		accounts = append(accounts, account.Reconstitute(id, ownerID, email, balance, account.Status(status), createdAt, updatedAt))
+		accounts = append(accounts, account.Reconstitute(id, ownerID, email, balance, account.Status(status), createdAt, updatedAt, lastInterestPaidAt.Time))
 	}
 	return accounts, total, rows.Err()
 }
@@ -95,11 +96,16 @@ func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var lastInterestPaidAt any
+	if !a.LastInterestPaidAt.IsZero() {
+		lastInterestPaidAt = a.LastInterestPaidAt
+	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO accounts (id, owner_id, email, amount, currency, status, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
-		 ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, status = EXCLUDED.status, updated_at = NOW()`,
-		a.AccountID, a.OwnerID, a.Email, a.Balance.Amount, a.Balance.Currency, string(a.Status),
+		`INSERT INTO accounts (id, owner_id, email, amount, currency, status, updated_at, last_interest_paid_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+		 ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, status = EXCLUDED.status,
+		   updated_at = NOW(), last_interest_paid_at = EXCLUDED.last_interest_paid_at`,
+		a.AccountID, a.OwnerID, a.Email, a.Balance.Amount, a.Balance.Currency, string(a.Status), lastInterestPaidAt,
 	)
 	if err != nil {
 		return fmt.Errorf("save account: %w", err)

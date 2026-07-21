@@ -11,11 +11,19 @@ import (
 // FindAccounts 구현이 이를 단건 결과([]*account.Account 길이 0 또는 1)로 감싸 반환한다.
 type stubRepository struct {
 	findByIDFn                    func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
+	findAllFn                     func(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error)
 	saveFn                        func(ctx context.Context, a *account.Account) error
 	hasTransactionWithReferenceFn func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error)
 }
 
+// FindAccounts는 두 가지 시나리오를 지원한다: findAllFn이 설정돼 있으면(예:
+// ApplyDailyInterestHandler처럼 Status 필터로 여러 계좌를 순회하는 배치) 그대로
+// 위임하고, 그렇지 않으면 기존 findByIDFn 기반의 단건 조회 흉내(FindOne이 감싸는
+// 시나리오)로 폴백한다.
 func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
+	if s.findAllFn != nil {
+		return s.findAllFn(ctx, q)
+	}
 	a, err := s.findByIDFn(ctx, q.AccountID, q.OwnerID)
 	if err != nil {
 		return nil, 0, err

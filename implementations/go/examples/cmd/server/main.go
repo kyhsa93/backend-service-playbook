@@ -25,8 +25,11 @@ import (
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
+	"github.com/example/account-service/internal/infrastructure/scheduling"
 	"github.com/example/account-service/internal/infrastructure/secret"
+	taskqueue "github.com/example/account-service/internal/infrastructure/task-queue"
 	httphandler "github.com/example/account-service/internal/interface/http"
+	taskinterface "github.com/example/account-service/internal/interface/task"
 )
 
 func main() {
@@ -102,6 +105,11 @@ func main() {
 		"PaymentCompleted": event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
 		"PaymentCancelled": event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
 		"RefundApproved":   event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
+		// 일일 이자 지급 배치(Task Queue)가 발생시키는 Domain Event. Task Queue
+		// (account.apply-interest, 아래 taskHandlers map)와는 별개의 흐름이다 —
+		// 이 이벤트는 "이자가 지급됐다"는 사실을 이메일로 알리는 통상적인 Domain
+		// Event 소비다(scheduling.md, "Task vs Domain Event 구분").
+		"InterestPaid": event.NewInterestPaidEventHandler(notifier).Handle,
 		// Card BC가 Account의 Integration Event에 반응한다(비동기). 언마샬 글루만 여기 두고
 		// 실제 유스케이스는 Card Application 핸들러에 위임한다.
 		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
@@ -153,6 +161,31 @@ func main() {
 	outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)
 	outboxConsumer := outbox.NewConsumer(sqsClient, sqsConfig.QueueURL, outboxHandlers)
 
+	// Task Queue 의존성 — Domain/Integration Event(outbox, 위)와는 별도의 테이블·큐를
+	// 쓴다(scheduling.md, domain-events.md의 "Task Queue vs Domain Event" 구분을
+	// 인프라까지 그대로 유지). SQS 클라이언트 자체는 리전/자격증명만 다루는 저수준
+	// 객체라 outbox와 공유해도 무방하다 — 큐 URL만 다르게 넘긴다.
+	interestConfig := config.LoadInterestConfig()
+	taskWriter := taskqueue.NewWriter(db)
+	interestScheduler := scheduling.NewInterestScheduler(taskWriter)
+	statementScheduler := scheduling.NewStatementScheduler(taskWriter)
+
+	applyInterestHandler := command.NewApplyDailyInterestHandler(accountRepo, interestConfig.DailyRate)
+	cardPaymentAdapter := acl.NewCardPaymentAdapter(paymentRepo)
+	sendStatementHandler := command.NewSendCardUsageStatementHandler(cardRepo, accountAdapter, cardPaymentAdapter, notifier)
+
+	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
+	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
+
+	// taskqueue.Consumer가 taskType 문자열로 이 map에서 Task Controller를 찾아 호출한다
+	// (outboxHandlers와 동일한 라우팅 관용구).
+	taskHandlers := map[string]taskqueue.Handler{
+		"account.apply-interest":    interestTaskController.HandleApplyInterest,
+		"card.send-usage-statement": statementTaskController.HandleSendStatement,
+	}
+	taskPoller := taskqueue.NewPoller(db, sqsClient, sqsConfig.TaskQueueURL)
+	taskConsumer := taskqueue.NewConsumer(sqsClient, sqsConfig.TaskQueueURL, taskHandlers)
+
 	secretService := secret.NewService(secret.NewSecretsManagerClient(), 5*time.Minute)
 	jwtSecret, err := config.LoadJWTSecret(context.Background(), secretService, os.Getenv("APP_ENV"))
 	if err != nil {
@@ -187,6 +220,14 @@ func main() {
 	// 않는다(동기 드레인 금지, domain-events.md). ctx가 취소되면 둘 다 스스로 멈춘다.
 	go outboxPoller.Run(ctx)
 	go outboxConsumer.Run(ctx)
+
+	// Task Queue의 Poller/Consumer도 outbox와 동일하게 독립적인 백그라운드 루프다.
+	// Scheduler(interest/statement)는 그 자체가 Task를 만드는 또 하나의 독립 goroutine
+	// 이다 — enqueue만 하고 비즈니스 로직은 절대 실행하지 않는다(scheduling.md).
+	go taskPoller.Run(ctx)
+	go taskConsumer.Run(ctx)
+	go interestScheduler.Run(ctx)
+	go statementScheduler.Run(ctx)
 
 	<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
 	slog.Info("shutdown signal received")

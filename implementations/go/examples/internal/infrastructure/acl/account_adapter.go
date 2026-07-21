@@ -40,5 +40,6 @@ func (a *AccountAdapter) FindAccount(ctx context.Context, accountID, ownerID str
 	return &command.AccountView{
 		AccountID: acc.AccountID,
 		Active:    acc.Status == account.StatusActive,
+		Email:     acc.Email,
 	}, nil
 }

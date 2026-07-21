@@ -76,6 +76,43 @@ func TestCard_Suspend(t *testing.T) {
 	}
 }
 
+func TestCard_MarkStatementSent(t *testing.T) {
+	t.Run("처음_보내는_기간이면_true를_반환하고_기록된다", func(t *testing.T) {
+		c := card.IssueCard("acc-1", "owner-1", "VISA")
+
+		if changed := c.MarkStatementSent("2026-07"); !changed {
+			t.Fatal("MarkStatementSent() = false, want true for first send")
+		}
+		if c.LastStatementSentMonth != "2026-07" {
+			t.Fatalf("LastStatementSentMonth = %q, want %q", c.LastStatementSentMonth, "2026-07")
+		}
+	})
+
+	t.Run("같은_기간을_다시_보내면_멱등하게_false를_반환한다", func(t *testing.T) {
+		c := card.IssueCard("acc-1", "owner-1", "VISA")
+		_ = c.MarkStatementSent("2026-07")
+
+		if changed := c.MarkStatementSent("2026-07"); changed {
+			t.Fatal("MarkStatementSent() = true on repeat period, want false (idempotent no-op)")
+		}
+		if c.LastStatementSentMonth != "2026-07" {
+			t.Fatalf("LastStatementSentMonth = %q, want %q", c.LastStatementSentMonth, "2026-07")
+		}
+	})
+
+	t.Run("다음_기간이면_다시_true를_반환한다", func(t *testing.T) {
+		c := card.IssueCard("acc-1", "owner-1", "VISA")
+		_ = c.MarkStatementSent("2026-07")
+
+		if changed := c.MarkStatementSent("2026-08"); !changed {
+			t.Fatal("MarkStatementSent() = false for a new period, want true")
+		}
+		if c.LastStatementSentMonth != "2026-08" {
+			t.Fatalf("LastStatementSentMonth = %q, want %q", c.LastStatementSentMonth, "2026-08")
+		}
+	})
+}
+
 func TestCard_Cancel(t *testing.T) {
 	tests := []struct {
 		name    string

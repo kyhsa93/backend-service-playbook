@@ -11,6 +11,10 @@ type TransactionType string
 const (
 	TransactionTypeDeposit    TransactionType = "DEPOSIT"
 	TransactionTypeWithdrawal TransactionType = "WITHDRAWAL"
+	// TransactionTypeInterest는 Account.ApplyInterest가 만드는 이자 지급 거래다 —
+	// 사용자가 직접 요청하지 않는 시스템 기동(Task Queue 배치) 거래라는 점에서
+	// Deposit/Withdrawal과 구분된다(docs/architecture/scheduling.md).
+	TransactionTypeInterest TransactionType = "INTEREST"
 )
 
 type Transaction struct {

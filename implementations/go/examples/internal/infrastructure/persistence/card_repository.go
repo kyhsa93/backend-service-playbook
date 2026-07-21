@@ -70,7 +70,7 @@ func (r *CardRepository) FindCards(ctx context.Context, q card.FindQuery) ([]*ca
 	}
 	args = append(args, take, q.Page*take)
 	rows, err := r.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT id, account_id, owner_id, brand, status, created_at
+		fmt.Sprintf(`SELECT id, account_id, owner_id, brand, status, created_at, last_statement_sent_month
 		 FROM cards WHERE %s ORDER BY id DESC LIMIT $%d OFFSET $%d`, whereClause, i, i+1),
 		args...,
 	)
@@ -83,20 +83,26 @@ func (r *CardRepository) FindCards(ctx context.Context, q card.FindQuery) ([]*ca
 	for rows.Next() {
 		var id, accountID, ownerID, brand, status string
 		var createdAt time.Time
-		if err := rows.Scan(&id, &accountID, &ownerID, &brand, &status, &createdAt); err != nil {
+		var lastStatementSentMonth sql.NullString
+		if err := rows.Scan(&id, &accountID, &ownerID, &brand, &status, &createdAt, &lastStatementSentMonth); err != nil {
 			return nil, 0, err
 		}
-		cards = append(cards, card.Reconstitute(id, accountID, ownerID, brand, card.Status(status), createdAt))
+		cards = append(cards, card.Reconstitute(id, accountID, ownerID, brand, card.Status(status), createdAt, lastStatementSentMonth.String))
 	}
 	return cards, total, rows.Err()
 }
 
 func (r *CardRepository) SaveCard(ctx context.Context, c *card.Card) error {
+	var lastStatementSentMonth any
+	if c.LastStatementSentMonth != "" {
+		lastStatementSentMonth = c.LastStatementSentMonth
+	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO cards (id, account_id, owner_id, brand, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
-		 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()`,
-		c.CardID, c.AccountID, c.OwnerID, c.Brand, string(c.Status), c.CreatedAt,
+		`INSERT INTO cards (id, account_id, owner_id, brand, status, created_at, updated_at, last_statement_sent_month)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+		 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW(),
+		   last_statement_sent_month = EXCLUDED.last_statement_sent_month`,
+		c.CardID, c.AccountID, c.OwnerID, c.Brand, string(c.Status), c.CreatedAt, lastStatementSentMonth,
 	)
 	if err != nil {
 		return fmt.Errorf("save card: %w", err)

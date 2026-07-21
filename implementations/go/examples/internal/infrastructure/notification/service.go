@@ -57,6 +57,26 @@ func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	return nil
 }
 
+// NotifyCardStatement는 월간 카드 사용내역 명세서 이메일을 발송하고 발송 내역을
+// sent_emails에 저장한다 — Notify(계좌 Domain Event → 이메일)와 동일한 send() 경로를
+// 재사용한다(scheduling.md, "Task Controller는 로직 없이 Command로 위임" 원칙에 맞춰
+// 이 Service 자체가 Card BC 전용 알림 메커니즘을 새로 만들지 않고 기존 것을 공유한다).
+// send()는 account.DomainEvent에 의존하지 않는 순수 (eventType, emailContent) 시그니처라
+// account 패키지 없이도 재사용할 수 있다.
+func (s *Service) NotifyCardStatement(ctx context.Context, accountID, recipient, cardID, period string, paymentCount int, totalAmount int64) error {
+	content := emailContent{
+		accountID: accountID,
+		recipient: recipient,
+		subject:   fmt.Sprintf("[Card] %s 카드 이용내역 안내 (%s)", cardID, period),
+		body: fmt.Sprintf("%s 기간 동안 카드(%s) 이용내역: %d건, 합계 %d원",
+			period, cardID, paymentCount, totalAmount),
+	}
+	if err := s.send(ctx, "CardUsageStatement", content); err != nil {
+		return fmt.Errorf("notify card statement: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) send(ctx context.Context, eventType string, content emailContent) error {
 	output, err := s.sesClient.SendEmail(ctx, &ses.SendEmailInput{
 		Source:      aws.String(SenderEmail()),
@@ -114,6 +134,14 @@ func describe(event account.DomainEvent) (string, emailContent, bool) {
 			recipient: e.Email,
 			subject:   "[Account] 출금이 완료되었습니다",
 			body: fmt.Sprintf("%d %s이 출금되었습니다. 출금 후 잔액: %d %s",
+				e.Amount.Amount, e.Amount.Currency, e.BalanceAfter.Amount, e.BalanceAfter.Currency),
+		}, true
+	case account.InterestPaid:
+		return "InterestPaid", emailContent{
+			accountID: e.AccountID,
+			recipient: e.Email,
+			subject:   "[Account] 이자가 지급되었습니다",
+			body: fmt.Sprintf("%d %s의 이자가 지급되었습니다. 지급 후 잔액: %d %s",
 				e.Amount.Amount, e.Amount.Currency, e.BalanceAfter.Amount, e.BalanceAfter.Currency),
 		}, true
 	case account.AccountSuspended:
