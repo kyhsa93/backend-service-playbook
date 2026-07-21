@@ -4,15 +4,18 @@
 // Repository(도메인 인터페이스 + infrastructure 구현체) + HTTP Handler + DTO까지
 // 한 번에 생성한다.
 //
-// 사용법:
+// 이 디렉토리는 examples/harness와 마찬가지로 독립된 Go module이다 — 반드시 이 디렉토리
+// 안에서 실행한다(implementations/go/에는 이들을 묶는 go.mod/go.work가 없다).
 //
-//	go run ./scripts/create-domain <PascalCaseDomainName> [--out <targetRoot>] [--wire]
+// 사용법 (scripts/create-domain/ 안에서):
+//
+//	go run . <PascalCaseDomainName> [--out <targetRoot>] [--wire]
 //
 // 예:
 //
-//	go run ./scripts/create-domain Coupon
+//	go run . Coupon
 //	  -> examples/internal/... 아래에 생성(스크립트 기본 대상), main.go/router.go는 안 건드림
-//	go run ./scripts/create-domain Coupon --out /tmp/scratch-app --wire
+//	go run . Coupon --out /tmp/scratch-app --wire
 //	  -> 지정한 루트 아래 생성 + cmd/server/main.go, internal/interface/http/router.go에
 //	     저장소/핸들러/라우트까지 자동 삽입
 //
@@ -39,7 +42,7 @@ import (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "사용법: go run ./scripts/create-domain <PascalCaseDomainName> [--out <targetRoot>] [--wire]")
+	fmt.Fprintln(os.Stderr, "사용법 (scripts/create-domain/ 안에서): go run . <PascalCaseDomainName> [--out <targetRoot>] [--wire]")
 }
 
 // defaultTargetRoot는 이 스크립트 파일 자신의 위치를 기준으로 ../../examples를 가리킨다 —
