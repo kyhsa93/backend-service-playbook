@@ -411,6 +411,7 @@ export class OrderTaskController {
 - **payload 타입은 메서드 시그니처에 명시**: 호출 계약을 명확히 한다. 필요 시 class-validator로 런타임 검증을 추가한다. (하단 [payload 검증](#payload-검증) 참조)
 - **Interface DTO 규칙 적용**: payload 타입을 Application의 Command 클래스로 그대로 쓰거나, 필요 시 Interface DTO로 `extends`하여 thin wrapper로 둔다. (HTTP RequestBody와 동일한 방식 — [layer-architecture.md](./layer-architecture.md#interface-dto) 참조)
 - **에러 처리는 HTTP Controller와 다름**: HTTP Controller의 `.catch(error => { logger.error; throw generateErrorResponse(...) })` 패턴을 쓰지 **않는다**. Task Controller는 **예외를 그대로 위로 던진다** — `TaskQueueConsumer`가 catch하여 메시지를 삭제하지 않고, visibility timeout 후 재수신/재시도 → DLQ 경로를 밟는다. `.catch`로 감싸면 예외가 삼켜져 메시지가 정상 삭제되고 실패가 소실된다.
+- **`@nestjs/cqrs` 방식 도메인에서는 `CommandBus`를 직접 주입한다**: 위 예시는 Service 방식 도메인 기준이다. 도메인이 이미 CommandHandler 기반([cqrs-pattern.md](cqrs-pattern.md) 참고)이라면, Task Controller도 HTTP Controller와 동일하게 `CommandBus`를 주입해 `commandBus.execute(new XxxCommand(...))`로 호출한다 — 오직 Task Controller만을 위해 CommandBus에 위임하기만 하는 `CommandService` 래퍼를 별도로 만들지 않는다. 한 도메인 안에서 두 방식을 섞지 않는다.
 
 ```typescript
 // ❌ HTTP Controller 패턴을 흉내내면 안 됨 — 실패가 소실됨

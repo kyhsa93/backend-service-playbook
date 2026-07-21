@@ -24,7 +24,6 @@ import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdra
 import { AccountQuery } from '@/account/application/query/account-query'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
-import { AccountCommandService } from '@/account/application/service/account-command-service'
 import { NotificationService } from '@/account/application/service/notification-service'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
@@ -70,8 +69,6 @@ import { AuthModule } from '@/auth/auth-module'
     AccountTaskController,
     // Cron → TaskQueue.enqueue만 수행 (Infrastructure 레이어)
     AccountInterestScheduler,
-    // Task Controller가 주입받는 얇은 Command Service (CommandBus 위임)
-    AccountCommandService,
     // Event Handlers
     AccountCreatedHandler,
     MoneyDepositedHandler,

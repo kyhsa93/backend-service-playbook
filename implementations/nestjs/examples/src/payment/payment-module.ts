@@ -21,7 +21,6 @@ import { GetRefundsQueryHandler } from '@/payment/application/query/get-refunds-
 import { PaymentQuery } from '@/payment/application/query/payment-query'
 import { RefundQuery } from '@/payment/application/query/refund-query'
 import { CardStatementNotificationService } from '@/payment/application/service/card-statement-notification-service'
-import { PaymentCommandService } from '@/payment/application/service/payment-command-service'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
@@ -72,8 +71,6 @@ import { PaymentTaskController } from '@/payment/interface/payment-task-controll
     PaymentTaskController,
     // Cron → TaskQueue.enqueue만 수행 (Infrastructure 레이어)
     CardStatementScheduler,
-    // Task Controller가 주입받는 얇은 Command Service (CommandBus 위임)
-    PaymentCommandService,
     // Repositories
     { provide: PaymentRepository, useClass: PaymentRepositoryImpl },
     { provide: RefundRepository, useClass: RefundRepositoryImpl },

@@ -117,7 +117,10 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       const hasDataSource = params.some((p) => /\bDataSource\b/.test(p.typeText))
       const hasRepository = params.some((p) => /\bRepository<.+>/.test(p.typeText))
       const hasExecLog = params.some((p) => /\bTaskExecutionLog\b/.test(p.typeText))
-      const hasCommandService = params.some((p) => /CommandService\b/.test(p.typeText))
+      // Service 방식 도메인은 CommandService를, @nestjs/cqrs 방식 도메인은 HTTP Controller와
+      // 동일하게 CommandBus를 직접 주입한다 — 둘 다 "Command로 위임"이라는 동일한 제약을 만족한다
+      // (scheduling.md#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어).
+      const hasCommandService = params.some((p) => /CommandService\b|\bCommandBus\b/.test(p.typeText))
 
       if (hasDataSource) {
         failures.push({
@@ -153,7 +156,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'task-queue.controller.command-service-injection',
           severity: 'medium',
-          message: `Task Controller에 CommandService 주입 없음: ${rel(file)}`
+          message: `Task Controller에 CommandService/CommandBus 주입 없음: ${rel(file)}`
         })
         score -= 3
       }
