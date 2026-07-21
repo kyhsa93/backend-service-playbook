@@ -23,3 +23,12 @@ export function getDomainEventQueueUrl(): string {
   if (!url) throw new Error('SQS_DOMAIN_EVENT_QUEUE_URL 환경 변수가 설정되지 않았습니다.')
   return url
 }
+
+// TaskOutboxRelay가 발행하고 TaskQueueConsumer가 수신하는 공유 Task Queue(SQS FIFO).
+// Domain Event 큐와 별도 큐다 — "명령(Task): X를 수행하라" vs "사실(Domain Event): X가
+// 일어났다"는 소비 모델이 다른 개념이라 섞지 않는다(docs/architecture/scheduling.md#task-vs-domain-event).
+export function getTaskQueueUrl(): string {
+  const url = process.env.SQS_TASK_QUEUE_URL
+  if (!url) throw new Error('SQS_TASK_QUEUE_URL 환경 변수가 설정되지 않았습니다.')
+  return url
+}

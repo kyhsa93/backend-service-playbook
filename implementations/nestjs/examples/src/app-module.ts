@@ -19,6 +19,7 @@ import { getThrottlerConfig } from '@/config/throttle.config'
 import { AppDataSource } from '@/database/data-source'
 import { OutboxModule } from '@/outbox/outbox-module'
 import { PaymentModule } from '@/payment/payment-module'
+import { TaskQueueModule } from '@/task-queue/task-queue-module'
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { PaymentModule } from '@/payment/payment-module'
       migrationsRun: true
     }),
     OutboxModule,
+    TaskQueueModule,
     AuthModule,
     AccountModule,
     CardModule,

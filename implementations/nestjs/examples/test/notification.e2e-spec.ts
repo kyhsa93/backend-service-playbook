@@ -18,7 +18,10 @@ import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
+import { TaskQueueModule } from '@/task-queue/task-queue-module'
 import { createDomainEventQueue } from './support/sqs-test-queue'
+import { createTaskQueue } from './support/task-queue-test-queue'
 
 interface SesMessage {
   Id: string
@@ -61,6 +64,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     // 이제 같은 프로세스 안에서 즉시 실행되지 않는다 — OutboxPoller가 이 이벤트를 SQS로
     // 발행하고 OutboxConsumer가 수신해야 실행된다. 그래서 SES뿐 아니라 SQS도 필요하다.
     process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sesEndpoint)
+    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sesEndpoint)
 
     const verificationClient = new SESClient({
       region: 'us-east-1',
@@ -76,10 +80,11 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: postgres.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity],
+          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity],
           synchronize: true
         }),
         OutboxModule,
+        TaskQueueModule,
         AuthModule,
         AccountModule
       ]
@@ -103,6 +108,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SES_SENDER_EMAIL
     delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
+    delete process.env.SQS_TASK_QUEUE_URL
     await app?.close()
     await postgres?.stop()
     await localstack?.stop()
