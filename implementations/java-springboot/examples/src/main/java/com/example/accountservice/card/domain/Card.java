@@ -2,6 +2,7 @@ package com.example.accountservice.card.domain;
 
 import com.example.accountservice.common.IdGenerator;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 
 /**
  * Card Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 영속성 매핑은
@@ -16,6 +17,8 @@ public class Card {
     private String brand;
     private CardStatus status;
     private LocalDateTime createdAt;
+    // 이번 달 카드 사용내역 안내를 이미 보냈는지 판단하는 Level 2 Ledger 필드 — shouldSendStatement() 참고.
+    private YearMonth lastStatementSentMonth;
 
     private Card() {}
 
@@ -29,7 +32,8 @@ public class Card {
             String ownerId,
             String brand,
             CardStatus status,
-            LocalDateTime createdAt) {
+            LocalDateTime createdAt,
+            YearMonth lastStatementSentMonth) {
         Card card = new Card();
         card.cardId = cardId;
         card.accountId = accountId;
@@ -37,6 +41,7 @@ public class Card {
         card.brand = brand;
         card.status = status;
         card.createdAt = createdAt;
+        card.lastStatementSentMonth = lastStatementSentMonth;
         return card;
     }
 
@@ -66,6 +71,20 @@ public class Card {
                     CardException.ErrorCode.CARD_ALREADY_SUSPENDED, "이미 정지된 카드입니다.");
         }
         this.status = CardStatus.SUSPENDED;
+    }
+
+    /**
+     * 이번 달 카드 사용내역 안내를 아직 보내지 않은, 안내 대상 카드인지 판단한다 — Level 2 Ledger 멱등성을 Aggregate 필드에 인라인한
+     * 설계다(domain-events.md 멱등성 3단계, account/domain/Account.java의 lastInterestPaidAt과 동일한 이유).
+     * 해지/정지된 카드는 대상에서 제외한다 — ACTIVE 카드만 매월 안내를 받는다.
+     */
+    public boolean shouldSendStatement(YearMonth month) {
+        return this.status == CardStatus.ACTIVE && !month.equals(this.lastStatementSentMonth);
+    }
+
+    /** 이번 달 안내를 보냈음을 기록한다 — 같은 달에 배치가 at-least-once로 재실행돼도 재발송하지 않는다. */
+    public void markStatementSent(YearMonth month) {
+        this.lastStatementSentMonth = month;
     }
 
     public void cancel() {
@@ -98,5 +117,9 @@ public class Card {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public YearMonth getLastStatementSentMonth() {
+        return lastStatementSentMonth;
     }
 }

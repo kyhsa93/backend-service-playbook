@@ -34,7 +34,10 @@ class IssueCardServiceTest {
     @Test
     void 연결_계좌가_활성이면_카드를_발급하고_저장한다() {
         when(accountAdapter.findAccount("account-1", "owner-1"))
-                .thenReturn(Optional.of(new AccountAdapter.AccountView("account-1", true)));
+                .thenReturn(
+                        Optional.of(
+                                new AccountAdapter.AccountView(
+                                        "account-1", true, "owner-1@example.com")));
 
         IssueCardResult result =
                 service.issue(new IssueCardCommand("account-1", "VISA", "owner-1"));
@@ -61,7 +64,10 @@ class IssueCardServiceTest {
     @Test
     void 연결_계좌가_비활성이면_예외를_던지고_저장하지_않는다() {
         when(accountAdapter.findAccount("account-1", "owner-1"))
-                .thenReturn(Optional.of(new AccountAdapter.AccountView("account-1", false)));
+                .thenReturn(
+                        Optional.of(
+                                new AccountAdapter.AccountView(
+                                        "account-1", false, "owner-1@example.com")));
 
         assertThatThrownBy(
                         () -> service.issue(new IssueCardCommand("account-1", "VISA", "owner-1")))

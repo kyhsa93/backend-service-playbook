@@ -1,9 +1,11 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Account Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 영속성 매핑은
@@ -19,6 +21,8 @@ public class Account {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime deletedAt;
+    // 오늘 이미 이자를 지급받았는지 판단하는 Level 1(본질적 멱등) 필드 — payInterest() 참고.
+    private LocalDate lastInterestPaidAt;
 
     private final List<Object> domainEvents = new ArrayList<>();
     private final List<Transaction> pendingTransactions = new ArrayList<>();
@@ -37,7 +41,8 @@ public class Account {
             AccountStatus status,
             LocalDateTime createdAt,
             LocalDateTime updatedAt,
-            LocalDateTime deletedAt) {
+            LocalDateTime deletedAt,
+            LocalDate lastInterestPaidAt) {
         Account account = new Account();
         account.accountId = accountId;
         account.ownerId = ownerId;
@@ -47,6 +52,7 @@ public class Account {
         account.createdAt = createdAt;
         account.updatedAt = updatedAt;
         account.deletedAt = deletedAt;
+        account.lastInterestPaidAt = lastInterestPaidAt;
         return account;
     }
 
@@ -138,6 +144,42 @@ public class Account {
                         this.balance,
                         transaction.getCreatedAt()));
         return transaction;
+    }
+
+    // 고정 일 이자율 0.01%(=1/10000) — 정수 나눗셈으로 floor(balance * 0.0001)과 동일한 결과를 부동소수점
+    // 오차 없이 계산한다. 향후 계좌 등급별로 이율이 달라질 필요가 생기면 외부 설정으로 옮기는 것을 검토한다.
+    private static final long DAILY_INTEREST_RATE_DENOMINATOR = 10_000;
+
+    /**
+     * 활성 계좌에 일 단위 고정 이자(잔액 × 0.01%, 원 미만 절사)를 지급한다. 매일 1회 배치가 호출하는 시스템 주도 동작이라 사용자 Command 표면 없이
+     * Aggregate 메서드로 직접 모델링한다 — 정기 이자 지급은 "요청"이 아니라 계좌 스스로의 정기 행동이다.
+     *
+     * <p>{@code lastInterestPaidAt}로 "오늘 이미 이자를 지급했는지"를 판단하는 Level 1(본질적 멱등) 설계다(domain-events.md
+     * 멱등성 3단계, scheduling.md 참고) — 같은 날 배치가 at-least-once로 재실행돼도 이 필드가 오늘 날짜 이상이면 그냥 아무 일도 하지 않는다.
+     * 이자가 0으로 계산되는 계좌(잔액이 너무 작음)는 Transaction을 만들지 않고 lastInterestPaidAt도 갱신하지 않는다 — 재실행해도 항상 같은(0)
+     * 결과이므로 별도 장치 없이도 여전히 멱등하다.
+     *
+     * @return 이자가 지급되었으면 그 거래, 이미 오늘 지급했거나 이자가 0이면 empty
+     */
+    public Optional<Transaction> payInterest(LocalDate today) {
+        if (this.status != AccountStatus.ACTIVE) {
+            return Optional.empty();
+        }
+        if (this.lastInterestPaidAt != null && !this.lastInterestPaidAt.isBefore(today)) {
+            return Optional.empty();
+        }
+        long interestAmount = this.balance.amount() / DAILY_INTEREST_RATE_DENOMINATOR;
+        if (interestAmount <= 0) {
+            return Optional.empty();
+        }
+        Money interest = new Money(interestAmount, this.balance.currency());
+        this.balance = this.balance.add(interest);
+        this.lastInterestPaidAt = today;
+        this.updatedAt = LocalDateTime.now();
+        Transaction transaction =
+                Transaction.create(this.accountId, TransactionType.INTEREST, interest, null);
+        this.pendingTransactions.add(transaction);
+        return Optional.of(transaction);
     }
 
     public void suspend() {
@@ -238,5 +280,9 @@ public class Account {
 
     public LocalDateTime getDeletedAt() {
         return deletedAt;
+    }
+
+    public LocalDate getLastInterestPaidAt() {
+        return lastInterestPaidAt;
     }
 }

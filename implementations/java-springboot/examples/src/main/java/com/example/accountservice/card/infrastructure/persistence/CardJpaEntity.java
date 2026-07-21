@@ -42,6 +42,12 @@ public class CardJpaEntity {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    // card/domain/Card.shouldSendStatement()의 "이번 달 안내를 이미 보냈는지" 판단 필드 — YearMonth를
+    // "yyyy-MM" 문자열로 저장한다(변환은 CardMapper 전담, MoneyEmbeddable과 동일하게 인프라 레이어가 JDK
+    // 값 타입 변환을 담당).
+    @Column(length = 7)
+    private String lastStatementSentMonth;
+
     protected CardJpaEntity() {}
 
     CardJpaEntity(
@@ -51,7 +57,8 @@ public class CardJpaEntity {
             String ownerId,
             String brand,
             CardStatus status,
-            LocalDateTime createdAt) {
+            LocalDateTime createdAt,
+            String lastStatementSentMonth) {
         this.id = id;
         this.cardId = cardId;
         this.accountId = accountId;
@@ -59,11 +66,13 @@ public class CardJpaEntity {
         this.brand = brand;
         this.status = status;
         this.createdAt = createdAt;
+        this.lastStatementSentMonth = lastStatementSentMonth;
     }
 
-    /** 기존 row(id 보존)에 도메인 Card의 최신 상태를 반영한다 — status 전이 저장에 사용. */
-    void applyMutableState(CardStatus status) {
+    /** 기존 row(id 보존)에 도메인 Card의 최신 상태를 반영한다 — status 전이·안내 발송 기록 저장에 사용. */
+    void applyMutableState(CardStatus status, String lastStatementSentMonth) {
         this.status = status;
+        this.lastStatementSentMonth = lastStatementSentMonth;
     }
 
     Long getId() {
@@ -92,5 +101,9 @@ public class CardJpaEntity {
 
     LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    String getLastStatementSentMonth() {
+        return lastStatementSentMonth;
     }
 }

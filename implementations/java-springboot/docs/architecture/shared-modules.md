@@ -4,9 +4,9 @@
 
 ## 현재 실제 상태 — `common/`/`config/`/`outbox/`/`auth/` 모두 존재
 
-`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `payment/`(3번째 도메인 — Payment/Refund, `RefundEligibilityService`), `auth/`(인증/가입), `common/`, `config/`, `outbox/`다. `notification`(Technical Service)은 `account`만 사용하므로 최상위가 아니라 `account/` 내부(`account/application/service/`, `account/infrastructure/notification/`)에 있다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다.
+`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `payment/`(3번째 도메인 — Payment/Refund, `RefundEligibilityService`), `auth/`(인증/가입), `common/`, `config/`, `outbox/`, `taskqueue/`다. `notification`(Technical Service)은 `account`/`card` 각자 안에 있다 — 최상위가 아니라 각 도메인 내부(`account/application/service/`+`account/infrastructure/notification/`, `card/application/service/`+`card/infrastructure/notification/`)에 별도 인터페이스+구현체를 갖는다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다(두 도메인이 "이메일 발송"이라는 같은 개념을 쓰지만, 구현체는 서로 다른 발송 이력 테이블을 가지므로 공유 인스턴스를 두지 않는다).
 
-여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`)다. `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 아직 없다 — [layer-architecture.md](layer-architecture.md)가 설명하듯 그런 트랜잭션 전파가 필요한 시나리오가 아직 없기 때문이다.
+여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), `taskqueue/`(`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — scheduling.md 참고, `outbox/`와 형제 구조지만 Task 전용 별도 테이블·큐)다. `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 아직 없다 — [layer-architecture.md](layer-architecture.md)가 설명하듯 그런 트랜잭션 전파가 필요한 시나리오가 아직 없기 때문이다.
 
 상세는 [directory-structure.md](directory-structure.md)의 실제 트리를 참고한다 — 이 문서는 그 배치를 NestJS의 공유 모듈 구조와 대응시켜 설명한다.
 
@@ -45,6 +45,14 @@ com.example.accountservice/
     OutboxPoller.java         # @Scheduled(fixedDelay=1000) — Outbox 테이블을 폴링해 SQS로 발행
     OutboxConsumer.java       # SmartLifecycle — SQS 수신 후 OutboxEventHandler로 라우팅
 
+  taskqueue/                # scheduling.md 참고 — outbox/와 형제, Task Queue 전용
+    TaskOutboxEntry.java      # @Entity — task_outbox 테이블 매핑 (groupId/deduplicationId 포함)
+    TaskOutboxJpaRepository.java
+    TaskHandler.java          # taskType별 핸들러가 구현하는 인터페이스 — 구현체는 각 도메인 interfaces/task/
+    TaskOutboxWriter.java     # Scheduler(또는 Command Service)가 task_outbox 행으로 적재
+    TaskOutboxPoller.java     # @Scheduled(fixedDelay=1000) — task_outbox를 폴링해 Task Queue(SQS FIFO)로 발행
+    TaskConsumer.java         # SmartLifecycle — Task Queue 수신 후 TaskHandler로 라우팅
+
   auth/                     # 인증/가입 — authentication.md 참고
     domain/                   # Credential Aggregate(userId + bcrypt 해시)
     application/              # SignInService/SignUpService
@@ -55,9 +63,15 @@ com.example.accountservice/
     domain/ application/ infrastructure/ interfaces/
     application/service/NotificationService.java        # 도메인 스코프 Technical Service
     infrastructure/notification/                          # 구현체 — account만 사용, 공유 패키지 아님
+    infrastructure/scheduling/InterestPaymentScheduler.java  # scheduling.md Feature 1
+    interfaces/task/PayInterestTaskController.java            # scheduling.md Feature 1
 
   card/                     # 2번째 도메인 — account와 Integration Event로 통신
     domain/ application/ infrastructure/ interfaces/
+    application/service/NotificationService.java        # 도메인 스코프 Technical Service — account와 별개 구현
+    infrastructure/notification/                          # 구현체 — card만 사용, 공유 패키지 아님
+    infrastructure/scheduling/CardStatementScheduler.java    # scheduling.md Feature 2
+    interfaces/task/SendCardStatementTaskController.java     # scheduling.md Feature 2
 
   payment/                  # 3번째 도메인 — Payment/Refund, 여러 Aggregate를 조율하는 Domain Service 예시
     domain/ application/ infrastructure/ interfaces/
@@ -79,6 +93,7 @@ com.example.accountservice/
 | `src/common/` (필터, 인터셉터, 유틸) | `common/` 패키지 — `@Component`/순수 유틸 혼재 | 있음 — `IdGenerator`, `web/`의 Filter·Interceptor, `SecretService`(secret-manager.md 참고) |
 | `src/database/` (`@Global` — DataSource, TransactionManager) | `database/` 패키지 — 단, Spring은 `@Global` 개념 자체가 불필요 | 없음 (JPA `DataSource`는 auto-configuration이 이미 전역 제공, 여러 Repository를 묶는 트랜잭션 유틸도 필요한 시나리오가 아직 없음 — layer-architecture.md 참고) |
 | `src/outbox/` (`@Global` — OutboxWriter/Poller/Consumer) | `outbox/` 패키지 | 있음 — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`(domain-events.md 참고) |
+| (NestJS에 대응 패키지 없음 — Task Queue는 domain-events.md의 Outbox와 별도 신규 개념) | `taskqueue/` 패키지 | 있음 — `TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler`(scheduling.md 참고) |
 | `src/auth/` (인증 공유 모듈) | `auth/` 패키지 | 있음 — `Credential` Aggregate + `SignInService`/`SignUpService`(authentication.md 참고) |
 
 **`@Global` 데코레이터가 Spring에는 없는 이유**: NestJS는 기본적으로 모듈 스코프가 닫혀 있어 `@Global`로 명시해야 모든 모듈에서 `imports` 없이 주입 가능해진다. Spring Boot는 애초에 전역 스코프가 기본값이다([module-pattern.md](module-pattern.md) "근본적 차이" 참고) — `database/`에 `DataSource` `@Bean`을 두면 별도 표시 없이 이미 어디서든 주입 가능하다. 즉 Spring에서는 "공유 모듈"이 NestJS처럼 특별한 선언을 요구하는 개념이 아니라, **그냥 패키지를 나누는 정리 방식**일 뿐이다.
