@@ -38,4 +38,6 @@ class CardJpaEntity(
     var status: CardStatus = CardStatus.ACTIVE,
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
+    @Column
+    var lastStatementSentMonth: String? = null,
 )

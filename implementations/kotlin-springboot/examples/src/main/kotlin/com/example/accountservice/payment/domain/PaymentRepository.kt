@@ -1,5 +1,7 @@
 package com.example.accountservice.payment.domain
 
+import java.time.LocalDateTime
+
 /**
  * Payment 쓰기 모델 포트 — Command Service가 의존하는 인터페이스.
  *
@@ -22,4 +24,11 @@ data class PaymentFindQuery(
     val take: Int,
     val paymentId: String? = null,
     val ownerId: String? = null,
+    // Card BC의 PaymentAdapter(카드 사용내역 명세서 집계) 전용 필터 — cardId + 기간 + 상태로 좁혀서
+    // "이 카드로 최근에 발생한 완료 결제"만 집계한다. 기존 REST 목록 조회(ownerId만 사용)에는 영향
+    // 없다(모두 nullable, 기본값 없으면 필터가 적용되지 않음).
+    val cardId: String? = null,
+    val status: List<PaymentStatus>? = null,
+    val createdFrom: LocalDateTime? = null,
+    val createdTo: LocalDateTime? = null,
 )

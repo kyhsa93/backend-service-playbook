@@ -1,5 +1,7 @@
 package com.example.accountservice.account.domain
 
+import java.time.LocalDate
+
 interface AccountRepository {
     fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
 
@@ -31,6 +33,10 @@ data class AccountFindQuery(
     val accountId: String? = null,
     val ownerId: String? = null,
     val status: List<String>? = null,
+    // PayInterestService 전용 필터 — 이미 이 날짜에 이자를 받은 계좌(lastInterestPaidAt = 이 값)를
+    // 조회 단계에서 걸러낸다. Card의 CardFindQuery.excludeStatementMonth와 동일한 취지다: 이미
+    // 처리된 행을 애플리케이션 레이어의 루프에서 스킵하는 대신 쿼리 자체가 걸러낸다.
+    val excludeInterestPaidDate: LocalDate? = null,
 )
 
 data class TransactionFindQuery(

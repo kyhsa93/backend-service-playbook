@@ -25,4 +25,7 @@ data class CardFindQuery(
     val ownerId: String? = null,
     val accountId: String? = null,
     val status: List<CardStatus>? = null,
+    // SendMonthlyCardStatementsService 전용 필터 — 이미 이번 달("yyyy-MM") 명세서를 보낸 카드
+    // (lastStatementSentMonth = 이 값)를 조회 단계에서 걸러낸다.
+    val excludeStatementMonth: String? = null,
 )

@@ -21,7 +21,7 @@ class IssueCardServiceTest {
     @Test
     fun `계좌가 활성 상태면 카드를 발급하고 저장한다`() {
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
-            AccountView(accountId = "account-1", active = true)
+            AccountView(accountId = "account-1", active = true, email = "owner-1@example.com")
 
         val result = service.issue(IssueCardCommand(accountId = "account-1", brand = "VISA", requesterId = "owner-1"))
 
@@ -44,7 +44,7 @@ class IssueCardServiceTest {
     @Test
     fun `연결 계좌가 비활성 상태면 예외를 던진다`() {
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
-            AccountView(accountId = "account-1", active = false)
+            AccountView(accountId = "account-1", active = false, email = "owner-1@example.com")
 
         assertThrows<CardIssueRequiresActiveAccountException> {
             service.issue(IssueCardCommand(accountId = "account-1", brand = "VISA", requesterId = "owner-1"))

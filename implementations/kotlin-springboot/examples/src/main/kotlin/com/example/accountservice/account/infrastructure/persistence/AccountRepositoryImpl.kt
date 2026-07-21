@@ -93,6 +93,11 @@ class AccountRepositoryImpl(
         if (!query.accountId.isNullOrBlank()) sb.append(" AND a.accountId = :accountId")
         if (!query.ownerId.isNullOrBlank()) sb.append(" AND a.ownerId = :ownerId")
         if (!query.status.isNullOrEmpty()) sb.append(" AND a.status IN :status")
+        if (query.excludeInterestPaidDate !=
+            null
+        ) {
+            sb.append(" AND (a.lastInterestPaidAt IS NULL OR a.lastInterestPaidAt <> :excludeInterestPaidDate)")
+        }
         if (!count) sb.append(" ORDER BY a.accountId DESC")
         return sb.toString()
     }
@@ -104,5 +109,6 @@ class AccountRepositoryImpl(
         if (!query.accountId.isNullOrBlank()) q.setParameter("accountId", query.accountId)
         if (!query.ownerId.isNullOrBlank()) q.setParameter("ownerId", query.ownerId)
         if (!query.status.isNullOrEmpty()) q.setParameter("status", query.status.map { AccountStatus.valueOf(it) })
+        if (query.excludeInterestPaidDate != null) q.setParameter("excludeInterestPaidDate", query.excludeInterestPaidDate)
     }
 }

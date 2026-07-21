@@ -63,6 +63,10 @@ class PaymentRepositoryImpl(
         val sb = StringBuilder("$select FROM PaymentJpaEntity p WHERE 1 = 1")
         if (!query.paymentId.isNullOrBlank()) sb.append(" AND p.paymentId = :paymentId")
         if (!query.ownerId.isNullOrBlank()) sb.append(" AND p.ownerId = :ownerId")
+        if (!query.cardId.isNullOrBlank()) sb.append(" AND p.cardId = :cardId")
+        if (!query.status.isNullOrEmpty()) sb.append(" AND p.status IN :status")
+        if (query.createdFrom != null) sb.append(" AND p.createdAt >= :createdFrom")
+        if (query.createdTo != null) sb.append(" AND p.createdAt < :createdTo")
         if (!count) sb.append(" ORDER BY p.paymentId DESC")
         return sb.toString()
     }
@@ -73,5 +77,9 @@ class PaymentRepositoryImpl(
     ) {
         if (!query.paymentId.isNullOrBlank()) q.setParameter("paymentId", query.paymentId)
         if (!query.ownerId.isNullOrBlank()) q.setParameter("ownerId", query.ownerId)
+        if (!query.cardId.isNullOrBlank()) q.setParameter("cardId", query.cardId)
+        if (!query.status.isNullOrEmpty()) q.setParameter("status", query.status)
+        if (query.createdFrom != null) q.setParameter("createdFrom", query.createdFrom)
+        if (query.createdTo != null) q.setParameter("createdTo", query.createdTo)
     }
 }

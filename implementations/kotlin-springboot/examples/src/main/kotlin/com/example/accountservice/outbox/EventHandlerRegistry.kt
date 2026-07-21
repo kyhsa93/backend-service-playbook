@@ -4,6 +4,7 @@ import com.example.accountservice.account.application.event.AccountClosedEventHa
 import com.example.accountservice.account.application.event.AccountCreatedEventHandler
 import com.example.accountservice.account.application.event.AccountReactivatedEventHandler
 import com.example.accountservice.account.application.event.AccountSuspendedEventHandler
+import com.example.accountservice.account.application.event.InterestPaidEventHandler
 import com.example.accountservice.account.application.event.MoneyDepositedEventHandler
 import com.example.accountservice.account.application.event.MoneyWithdrawnEventHandler
 import com.example.accountservice.account.application.integrationevent.AccountClosedIntegrationEventV1
@@ -12,6 +13,7 @@ import com.example.accountservice.account.domain.AccountClosedEvent
 import com.example.accountservice.account.domain.AccountCreatedEvent
 import com.example.accountservice.account.domain.AccountReactivatedEvent
 import com.example.accountservice.account.domain.AccountSuspendedEvent
+import com.example.accountservice.account.domain.InterestPaidEvent
 import com.example.accountservice.account.domain.MoneyDepositedEvent
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import com.example.accountservice.account.interfaces.integrationevent.AccountIntegrationEventController
@@ -43,7 +45,7 @@ import org.springframework.stereotype.Component
  * 없는 단일 Spring 컨텍스트이므로 그렇게 나눌 필요가 없다 — 기존 `OutboxRelay`도 항상 계좌/결제
  * 도메인 핸들러를 전부 한 곳에서 알고 있었다).
  *
- * Account 6개 Domain Event Handler는 Outbox 행의 `eventId`를 그대로 전달받는다 — 이 값이
+ * Account 7개 Domain Event Handler는 Outbox 행의 `eventId`를 그대로 전달받는다 — 이 값이
  * `NotificationService`의 Level 2(Ledger) 중복 발송 방지 키(`sourceEventId`)로 쓰인다
  * (domain-events.md). Payment/Refund Domain Event Handler와 Integration Event Controller는
  * `eventId`를 쓰지 않으므로 람다에서 무시한다.
@@ -57,6 +59,7 @@ class EventHandlerRegistry(
     private val accountSuspendedEventHandler: AccountSuspendedEventHandler,
     private val accountReactivatedEventHandler: AccountReactivatedEventHandler,
     private val accountClosedEventHandler: AccountClosedEventHandler,
+    private val interestPaidEventHandler: InterestPaidEventHandler,
     // Card BC의 Integration Event 수신부. outbox/는 어느 BC에도 속하지 않는 공유 인프라이므로
     // 이 파일이 Card를 참조하는 것 자체는 원칙 위반이 아니다(Account가 Card를 참조하지만 않으면 된다).
     private val cardIntegrationEventController: CardIntegrationEventController,
@@ -89,6 +92,9 @@ class EventHandlerRegistry(
             },
             "AccountClosedEvent" to { eventId, payload ->
                 accountClosedEventHandler.handle(objectMapper.readValue(payload, AccountClosedEvent::class.java), eventId)
+            },
+            "InterestPaidEvent" to { eventId, payload ->
+                interestPaidEventHandler.handle(objectMapper.readValue(payload, InterestPaidEvent::class.java), eventId)
             },
             AccountSuspendedIntegrationEventV1.EVENT_NAME to { _, payload ->
                 val event = objectMapper.readValue(payload, AccountSuspendedIntegrationEventV1::class.java)

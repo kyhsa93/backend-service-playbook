@@ -27,7 +27,7 @@ class AccountAdapterImpl(
         val (accounts, _) =
             accountQuery.findAccounts(AccountFindQuery(page = 0, take = 1, accountId = accountId, ownerId = ownerId))
         return accounts.firstOrNull()?.let { account ->
-            AccountView(accountId = account.accountId, active = account.status == AccountStatus.ACTIVE)
+            AccountView(accountId = account.accountId, active = account.status == AccountStatus.ACTIVE, email = account.email)
         }
     }
 }

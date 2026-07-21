@@ -25,6 +25,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
+import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 import java.time.Duration
 
 /**
@@ -68,6 +69,7 @@ class CardControllerE2ETest {
             registry.add("AWS_SECRET_ACCESS_KEY") { localstack.secretKey }
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SQS).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
+            registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
             // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
             // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
@@ -83,6 +85,31 @@ class CardControllerE2ETest {
                     ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SQS))
                     .build()
             val queueUrl = sqsClient.createQueue(CreateQueueRequest.builder().queueName("domain-events").build()).queueUrl()
+            sqsClient.close()
+            return queueUrl
+        }
+
+        // SqsProperties.taskQueueUrl도 @NotBlank(config.md fail-fast)이므로, Task Queue 경로를
+        // 실제로 쓰지 않는 이 테스트도 컨텍스트 기동을 위해 FIFO 큐를 만들어 둔다(TaskQueueE2ETest와
+        // 동일한 방식).
+        private fun createTaskQueue(): String {
+            val sqsClient =
+                SqsClient
+                    .builder()
+                    .region(Region.of(localstack.region))
+                    .credentialsProvider(
+                        StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.accessKey, localstack.secretKey)),
+                    ).endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.SQS))
+                    .build()
+            val queueUrl =
+                sqsClient
+                    .createQueue(
+                        CreateQueueRequest
+                            .builder()
+                            .queueName("task-queue.fifo")
+                            .attributes(mapOf(QueueAttributeName.FIFO_QUEUE to "true"))
+                            .build(),
+                    ).queueUrl()
             sqsClient.close()
             return queueUrl
         }

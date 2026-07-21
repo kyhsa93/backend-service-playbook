@@ -39,6 +39,7 @@ ses:
 
 sqs:
   domain-event-queue-url: ${SQS_DOMAIN_EVENT_QUEUE_URL:}
+  task-queue-url: ${SQS_TASK_QUEUE_URL:}
 
 resilience4j:
   ratelimiter:

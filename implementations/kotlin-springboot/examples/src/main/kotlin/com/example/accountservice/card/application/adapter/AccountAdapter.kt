@@ -16,7 +16,11 @@ interface AccountAdapter {
     ): AccountView?
 }
 
+// email은 매월 카드 사용내역 명세서(SendMonthlyCardStatementsService)의 발송 대상을 얻기 위해
+// 추가됐다 — Card 자신은 email을 갖지 않으므로(계좌 소유자 정보이지 카드 정보가 아니다) 매번
+// Account BC에 동기 조회한다.
 data class AccountView(
     val accountId: String,
     val active: Boolean,
+    val email: String,
 )

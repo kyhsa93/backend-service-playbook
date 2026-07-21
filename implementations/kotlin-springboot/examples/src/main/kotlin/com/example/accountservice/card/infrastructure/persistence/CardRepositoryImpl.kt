@@ -61,6 +61,9 @@ class CardRepositoryImpl(
         if (!query.ownerId.isNullOrBlank()) sb.append(" AND c.ownerId = :ownerId")
         if (!query.accountId.isNullOrBlank()) sb.append(" AND c.accountId = :accountId")
         if (!query.status.isNullOrEmpty()) sb.append(" AND c.status IN :status")
+        if (!query.excludeStatementMonth.isNullOrBlank()) {
+            sb.append(" AND (c.lastStatementSentMonth IS NULL OR c.lastStatementSentMonth <> :excludeStatementMonth)")
+        }
         if (!count) sb.append(" ORDER BY c.cardId DESC")
         return sb.toString()
     }
@@ -73,5 +76,6 @@ class CardRepositoryImpl(
         if (!query.ownerId.isNullOrBlank()) q.setParameter("ownerId", query.ownerId)
         if (!query.accountId.isNullOrBlank()) q.setParameter("accountId", query.accountId)
         if (!query.status.isNullOrEmpty()) q.setParameter("status", query.status)
+        if (!query.excludeStatementMonth.isNullOrBlank()) q.setParameter("excludeStatementMonth", query.excludeStatementMonth)
     }
 }
