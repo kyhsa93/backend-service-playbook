@@ -1,9 +1,9 @@
-package com.example.accountservice.account.infrastructure.notification
+package com.example.accountservice.notification.infrastructure
 
-import com.example.accountservice.account.application.service.NotificationService
-import com.example.accountservice.account.infrastructure.notification.persistence.SentEmail
-import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailJpaRepository
 import com.example.accountservice.config.SesProperties
+import com.example.accountservice.notification.application.service.NotificationService
+import com.example.accountservice.notification.infrastructure.persistence.SentEmail
+import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import software.amazon.awssdk.services.ses.SesClient

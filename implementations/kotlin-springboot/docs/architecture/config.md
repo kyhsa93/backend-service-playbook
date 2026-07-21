@@ -120,7 +120,7 @@ class SecretManagerConfig(private val awsProperties: AwsProperties) {
 ```
 
 ```kotlin
-// account/infrastructure/notification/NotificationServiceImpl.kt — 실제 코드, SesProperties 생성자 주입
+// notification/infrastructure/NotificationServiceImpl.kt — 실제 코드, SesProperties 생성자 주입
 @Component
 class NotificationServiceImpl(
     private val sesClient: SesClient,

@@ -66,7 +66,7 @@ class StorageServiceImpl(
 }
 ```
 
-`S3Presigner`는 `SesClient`(→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/account/infrastructure/notification/SesConfig.kt))와 동일한 방식으로 `@Configuration` 클래스에서 Bean 등록하고, `AWS_ENDPOINT_URL`이 설정되어 있으면 LocalStack으로 분기한다.
+`S3Presigner`는 `SesClient`(→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/notification/infrastructure/SesConfig.kt))와 동일한 방식으로 `@Configuration` 클래스에서 Bean 등록하고, `AWS_ENDPOINT_URL`이 설정되어 있으면 LocalStack으로 분기한다.
 
 ```kotlin
 // storage/infrastructure/StorageConfig.kt

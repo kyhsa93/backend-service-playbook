@@ -1,4 +1,4 @@
-package com.example.accountservice.account.infrastructure.notification.persistence
+package com.example.accountservice.notification.infrastructure.persistence
 
 import com.example.accountservice.common.generateId
 import jakarta.persistence.Column

@@ -5,7 +5,7 @@
 ## AWS Secrets Manager + TTL 캐시
 
 ```kotlin
-// account/infrastructure/notification/NotificationServiceImpl.kt — 실제 코드
+// notification/infrastructure/NotificationServiceImpl.kt — 실제 코드
 @Component
 class NotificationServiceImpl(
     private val sesClient: SesClient,
@@ -64,7 +64,7 @@ class SecretServiceImpl(private val client: SecretsManagerClient) : SecretServic
 
 `ConcurrentHashMap`을 쓰는 이유: Tomcat은 요청마다 스레드를 배정하므로 여러 스레드가 동시에 `getSecret()`을 호출할 수 있다 — `HashMap`은 스레드 세이프하지 않아 동시 갱신 시 캐시가 깨질 수 있다. `data class CacheEntry`로 값과 만료 시각을 묶어 Kotlin다운 불변 캐시 항목을 표현한다.
 
-`SesClient`(→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/account/infrastructure/notification/SesConfig.kt))와 동일한 방식으로 `SecretsManagerClient`도 `AWS_ENDPOINT_URL`이 있으면 LocalStack, 없으면 실제 AWS로 분기하는 `@Configuration` Bean을 둔다. `AwsProperties`([config.md](config.md) 참조)를 생성자로 주입받아 개별 `@Value` 대신 타입-세이프하게 값을 얻는다.
+`SesClient`(→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/notification/infrastructure/SesConfig.kt))와 동일한 방식으로 `SecretsManagerClient`도 `AWS_ENDPOINT_URL`이 있으면 LocalStack, 없으면 실제 AWS로 분기하는 `@Configuration` Bean을 둔다. `AwsProperties`([config.md](config.md) 참조)를 생성자로 주입받아 개별 `@Value` 대신 타입-세이프하게 값을 얻는다.
 
 ```kotlin
 // secret/infrastructure/SecretManagerConfig.kt — 실제 코드

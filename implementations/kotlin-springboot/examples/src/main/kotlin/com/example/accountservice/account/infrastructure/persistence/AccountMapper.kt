@@ -17,6 +17,7 @@ internal object AccountMapper {
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt,
             deletedAt = entity.deletedAt,
+            lastInterestPaidAt = entity.lastInterestPaidAt,
         )
 
     /** 신규 Account를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
@@ -31,6 +32,7 @@ internal object AccountMapper {
             createdAt = account.createdAt,
             updatedAt = account.updatedAt,
             deletedAt = account.deletedAt,
+            lastInterestPaidAt = account.lastInterestPaidAt,
         )
 
     /** 기존 엔티티(PK 보존)에 도메인 Account의 최신 상태를 반영한다 — update 대상. */
@@ -43,6 +45,7 @@ internal object AccountMapper {
         entity.status = account.status
         entity.updatedAt = account.updatedAt
         entity.deletedAt = account.deletedAt
+        entity.lastInterestPaidAt = account.lastInterestPaidAt
         return entity
     }
 }

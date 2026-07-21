@@ -36,6 +36,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
+      SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/task-queue.fifo
     depends_on:
       database:
         condition: service_healthy

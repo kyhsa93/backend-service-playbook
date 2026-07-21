@@ -15,6 +15,7 @@ internal object CardMapper {
             brand = entity.brand,
             status = entity.status,
             createdAt = entity.createdAt,
+            lastStatementSentMonth = entity.lastStatementSentMonth,
         )
 
     /** 신규 Card를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
@@ -27,14 +28,16 @@ internal object CardMapper {
             brand = card.brand,
             status = card.status,
             createdAt = card.createdAt,
+            lastStatementSentMonth = card.lastStatementSentMonth,
         )
 
-    /** 기존 엔티티(PK 보존)에 도메인 Card의 최신 상태(status)를 반영한다 — update 대상. */
+    /** 기존 엔티티(PK 보존)에 도메인 Card의 최신 상태(status/lastStatementSentMonth)를 반영한다 — update 대상. */
     fun updateEntity(
         entity: CardJpaEntity,
         card: Card,
     ): CardJpaEntity {
         entity.status = card.status
+        entity.lastStatementSentMonth = card.lastStatementSentMonth
         return entity
     }
 }

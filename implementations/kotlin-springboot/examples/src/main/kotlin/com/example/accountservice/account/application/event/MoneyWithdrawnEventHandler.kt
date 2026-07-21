@@ -1,7 +1,7 @@
 package com.example.accountservice.account.application.event
 
-import com.example.accountservice.account.application.service.NotificationService
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
+import com.example.accountservice.notification.application.service.NotificationService
 import org.springframework.stereotype.Component
 
 /**

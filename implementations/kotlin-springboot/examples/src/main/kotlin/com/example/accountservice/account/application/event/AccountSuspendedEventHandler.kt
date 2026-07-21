@@ -1,8 +1,8 @@
 package com.example.accountservice.account.application.event
 
 import com.example.accountservice.account.application.integrationevent.AccountSuspendedIntegrationEventV1
-import com.example.accountservice.account.application.service.NotificationService
 import com.example.accountservice.account.domain.AccountSuspendedEvent
+import com.example.accountservice.notification.application.service.NotificationService
 import com.example.accountservice.outbox.OutboxWriter
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
