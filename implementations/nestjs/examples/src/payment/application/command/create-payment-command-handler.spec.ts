@@ -36,7 +36,7 @@ describe('CreatePaymentCommandHandler', () => {
 
   it('execute_when_카드_활성_계좌_잔액_충분_then_결제를_생성하고_COMPLETED로_저장한다', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: true })
-    accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true, balanceAmount: 10000, currency: 'KRW' })
+    accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true, balanceAmount: 10000, currency: 'KRW', email: 'owner1@example.com' })
 
     const payment = await handler.execute(command())
 
@@ -63,7 +63,7 @@ describe('CreatePaymentCommandHandler', () => {
 
   it('execute_when_계좌가_비활성이면_then_에러를_throw한다', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: true })
-    accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: false, balanceAmount: 10000, currency: 'KRW' })
+    accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: false, balanceAmount: 10000, currency: 'KRW', email: 'owner1@example.com' })
 
     await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['활성 상태의 계좌로만 결제할 수 있습니다.'])
     expect(paymentRepository.savePayment).not.toHaveBeenCalled()
@@ -71,7 +71,7 @@ describe('CreatePaymentCommandHandler', () => {
 
   it('execute_when_잔액이_부족하면_then_에러를_throw한다', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: true })
-    accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true, balanceAmount: 1000, currency: 'KRW' })
+    accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true, balanceAmount: 1000, currency: 'KRW', email: 'owner1@example.com' })
 
     await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['계좌 잔액이 부족하여 결제할 수 없습니다.'])
     expect(paymentRepository.savePayment).not.toHaveBeenCalled()

@@ -47,6 +47,7 @@ export class AccountRepositoryImpl extends AccountRepository {
         email: row.email,
         balance: new Money({ amount: row.amount, currency: row.currency }),
         status: row.status as AccountStatus,
+        lastInterestPaidAt: row.lastInterestPaidAt,
         createdAt: row.createdAt
       })),
       count
@@ -62,6 +63,7 @@ export class AccountRepositoryImpl extends AccountRepository {
       amount: account.balance.amount,
       currency: account.balance.currency,
       status: account.status,
+      lastInterestPaidAt: account.lastInterestPaidAt,
       createdAt: account.createdAt
     })
 

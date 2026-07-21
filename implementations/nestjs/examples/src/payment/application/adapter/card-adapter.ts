@@ -9,4 +9,8 @@ export abstract class CardAdapter {
     readonly cardId: string
     readonly ownerId: string
   }): Promise<{ cardId: string; accountId: string; active: boolean } | null>
+
+  // payment.send-card-statements Task가 통계를 낼 대상(모든 ACTIVE 카드)을 얻기 위한
+  // 배치 전용 조회다. findCard()와 달리 특정 ownerId 스코프가 없다.
+  abstract findActiveCards(): Promise<{ cardId: string; accountId: string; ownerId: string }[]>
 }

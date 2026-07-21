@@ -7,5 +7,5 @@ export abstract class AccountAdapter {
   abstract findAccount(query: {
     readonly accountId: string
     readonly ownerId: string
-  }): Promise<{ accountId: string; active: boolean; balanceAmount: number; currency: string } | null>
+  }): Promise<{ accountId: string; active: boolean; balanceAmount: number; currency: string; email: string } | null>
 }

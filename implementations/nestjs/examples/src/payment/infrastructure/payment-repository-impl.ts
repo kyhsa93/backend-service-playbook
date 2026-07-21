@@ -72,4 +72,22 @@ export class PaymentRepositoryImpl extends PaymentRepository {
       payment.clearEvents()
     }
   }
+
+  public async summarizePayments(query: {
+    readonly cardId: string
+    readonly status: PaymentStatus[]
+    readonly createdAtFrom: Date
+    readonly createdAtTo: Date
+  }): Promise<{ count: number; totalAmount: number }> {
+    const row = await this.paymentRepo.createQueryBuilder('payment')
+      .select('COUNT(*)', 'count')
+      .addSelect('COALESCE(SUM(payment.amount), 0)', 'totalAmount')
+      .where('payment.cardId = :cardId', { cardId: query.cardId })
+      .andWhere('payment.status IN (:...status)', { status: query.status })
+      .andWhere('payment.createdAt >= :createdAtFrom', { createdAtFrom: query.createdAtFrom })
+      .andWhere('payment.createdAt < :createdAtTo', { createdAtTo: query.createdAtTo })
+      .getRawOne<{ count: string; totalAmount: string }>()
+
+    return { count: Number(row?.count ?? 0), totalAmount: Number(row?.totalAmount ?? 0) }
+  }
 }

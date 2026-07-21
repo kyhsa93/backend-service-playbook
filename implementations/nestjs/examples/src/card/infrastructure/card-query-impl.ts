@@ -4,6 +4,7 @@ import { Repository } from 'typeorm'
 
 import { CardQuery } from '@/card/application/query/card-query'
 import { GetCardResult } from '@/card/application/query/card-result'
+import { CardStatus } from '@/card/card-enum'
 import { CardEntity } from '@/card/infrastructure/entity/card.entity'
 import { CardErrorMessage as ErrorMessage } from '@/card/card-error-message'
 
@@ -30,5 +31,10 @@ export class CardQueryImpl extends CardQuery {
       status: row.status,
       createdAt: row.createdAt
     }
+  }
+
+  public async getActiveCards(): Promise<{ cardId: string; accountId: string; ownerId: string }[]> {
+    const rows = await this.cardRepo.find({ where: { status: CardStatus.ACTIVE } })
+    return rows.map((row) => ({ cardId: row.cardId, accountId: row.accountId, ownerId: row.ownerId }))
   }
 }

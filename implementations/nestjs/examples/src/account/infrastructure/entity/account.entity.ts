@@ -21,4 +21,9 @@ export class AccountEntity extends BaseEntity {
 
   @Column()
   status: string
+
+  // account.apply-daily-interest Task의 Level 1 멱등성 상태 — 오늘 이미 이자를
+  // 지급했는지 판단하는 유일한 소스(account/domain/account.ts의 applyInterest() 참고).
+  @Column({ type: 'timestamp', nullable: true })
+  lastInterestPaidAt: Date | null
 }

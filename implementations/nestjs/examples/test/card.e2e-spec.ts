@@ -19,7 +19,10 @@ import { CardEntity } from '@/card/infrastructure/entity/card.entity'
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
+import { TaskQueueModule } from '@/task-queue/task-queue-module'
 import { createDomainEventQueue } from './support/sqs-test-queue'
+import { createTaskQueue } from './support/task-queue-test-queue'
 
 describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
   let container: StartedPostgreSqlContainer
@@ -91,6 +94,7 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
     process.env.AWS_ACCESS_KEY_ID = 'test'
     process.env.AWS_SECRET_ACCESS_KEY = 'test'
     process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
+    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -99,10 +103,11 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, CardEntity, OutboxEntity, SentEmailEntity, CredentialEntity],
+          entities: [AccountEntity, TransactionEntity, CardEntity, OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity],
           synchronize: true
         }),
         OutboxModule,
+        TaskQueueModule,
         AuthModule,
         AccountModule,
         CardModule
@@ -137,6 +142,7 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
     delete process.env.AWS_ACCESS_KEY_ID
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
+    delete process.env.SQS_TASK_QUEUE_URL
     await app?.close()
     await container?.stop()
     await localstack?.stop()

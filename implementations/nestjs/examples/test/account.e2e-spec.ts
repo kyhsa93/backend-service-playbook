@@ -16,7 +16,10 @@ import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity
 import { jwtConfig } from '@/config/jwt.config'
 import { OutboxEntity } from '@/outbox/outbox.entity'
 import { OutboxModule } from '@/outbox/outbox-module'
+import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
+import { TaskQueueModule } from '@/task-queue/task-queue-module'
 import { createDomainEventQueue } from './support/sqs-test-queue'
+import { createTaskQueue } from './support/task-queue-test-queue'
 
 // Outbox 드레인이 OutboxPoller(주기 폴링)+OutboxConsumer(SQS 수신)로 완전히 비동기화됨에
 // 따라, OutboxModule을 import하는 모든 e2e 스펙은 실제 SQS(LocalStack)가 필요하다 —
@@ -56,6 +59,7 @@ describe('AccountController (e2e)', () => {
     process.env.AWS_ACCESS_KEY_ID = 'test'
     process.env.AWS_SECRET_ACCESS_KEY = 'test'
     process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
+    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -64,10 +68,11 @@ describe('AccountController (e2e)', () => {
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: container.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity],
+          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity],
           synchronize: true
         }),
         OutboxModule,
+        TaskQueueModule,
         AuthModule,
         AccountModule
       ]
@@ -96,6 +101,7 @@ describe('AccountController (e2e)', () => {
     delete process.env.AWS_ACCESS_KEY_ID
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
+    delete process.env.SQS_TASK_QUEUE_URL
     await app?.close()
     await container?.stop()
     await localstack?.stop()
