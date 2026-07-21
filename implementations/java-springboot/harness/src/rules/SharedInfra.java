@@ -26,7 +26,10 @@ public final class SharedInfra {
     private SharedInfra() {
     }
 
-    private static final Set<String> EXCLUDED_DIRS = Set.of("test");
+    // build/는 컴파일된 .class 파일이 패키지 구조를 그대로 미러링하므로, 제외하지 않으면
+    // findDirsNamed가 src와 build 양쪽에서 같은 이름의 디렉토리를 중복으로 찾는다
+    // (JavaFiles.java와 동일한 이유로 제외).
+    private static final Set<String> EXCLUDED_DIRS = Set.of("test", ".git", "build");
 
     public static RuleResult check(String rootPath) {
         File root = new File(rootPath);

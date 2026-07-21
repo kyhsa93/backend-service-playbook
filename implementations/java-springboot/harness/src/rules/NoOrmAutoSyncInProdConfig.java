@@ -39,7 +39,10 @@ public final class NoOrmAutoSyncInProdConfig {
     private NoOrmAutoSyncInProdConfig() {
     }
 
-    private static final Set<String> EXCLUDED_DIRS = Set.of("test", ".git");
+    // build/는 Gradle이 src/main/resources를 그대로 복사해 넣는 산출물 디렉토리라, 제외하지
+    // 않으면 같은 파일이 build/resources에도 잡혀 중복 스캔되고, 빌드 시점에 따라 stale한
+    // 사본을 검사 대상으로 고를 위험도 있다(JavaFiles.java와 동일한 이유로 제외).
+    private static final Set<String> EXCLUDED_DIRS = Set.of("test", ".git", "build");
     private static final Set<String> DEFAULT_NAMES = Set.of("application.yml", "application.yaml");
     private static final Set<String> PROD_NAMES = Set.of(
         "application-prod.yml", "application-prod.yaml",

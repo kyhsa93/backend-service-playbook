@@ -16,7 +16,10 @@ public final class PackageStructure {
     private PackageStructure() {
     }
 
-    private static final Set<String> EXCLUDED_DIRS = Set.of("test", ".git");
+    // build/는 컴파일된 .class 파일이 패키지 구조를 그대로 미러링하므로, 제외하지 않으면
+    // 실제 소스와 build/classes 양쪽에서 같은 도메인이 중복으로 잡힌다(JavaFiles.java와
+    // 동일한 이유로 제외).
+    private static final Set<String> EXCLUDED_DIRS = Set.of("test", ".git", "build");
 
     public static RuleResult check(String rootPath) {
         File root = new File(rootPath);
