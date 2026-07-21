@@ -1,6 +1,9 @@
 package payment
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type FindQuery struct {
 	Page      int
@@ -10,6 +13,11 @@ type FindQuery struct {
 	CardID    string
 	AccountID string
 	Status    []Status
+	// CreatedFrom/CreatedTo는 created_at 범위 필터다(둘 다 zero time.Time이면 무제한).
+	// CreatedFrom은 포함(>=), CreatedTo는 배제(<) 경계다 — 카드 월간 사용내역
+	// 집계(scheduling.md)가 "이번 기간에 포함되는 결제"를 걸러내는 데 쓴다.
+	CreatedFrom time.Time
+	CreatedTo   time.Time
 }
 
 // Query는 읽기 전용 조회 메서드만 노출하는 Query 전용 인터페이스다(account.Query,

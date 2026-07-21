@@ -64,6 +64,16 @@ func (r *PaymentRepository) FindPayments(ctx context.Context, q payment.FindQuer
 		}
 		where = append(where, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ",")))
 	}
+	if !q.CreatedFrom.IsZero() {
+		where = append(where, fmt.Sprintf("created_at >= $%d", i))
+		args = append(args, q.CreatedFrom)
+		i++
+	}
+	if !q.CreatedTo.IsZero() {
+		where = append(where, fmt.Sprintf("created_at < $%d", i))
+		args = append(args, q.CreatedTo)
+		i++
+	}
 
 	whereClause := strings.Join(where, " AND ")
 

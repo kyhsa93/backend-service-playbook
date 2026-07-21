@@ -9,4 +9,5 @@ var (
 	ErrCancelledCardCannotBeSuspended = errors.New("cancelled card cannot be suspended")
 	ErrAlreadySuspended               = errors.New("card already suspended")
 	ErrAlreadyCancelled               = errors.New("card already cancelled")
+	ErrInvalidStatementPeriod         = errors.New("invalid card statement period")
 )

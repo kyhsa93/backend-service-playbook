@@ -38,6 +38,17 @@ type MoneyWithdrawn struct {
 
 func (MoneyWithdrawn) isAccountDomainEvent() {}
 
+type InterestPaid struct {
+	AccountID     string
+	Email         string
+	TransactionID string
+	Amount        Money
+	BalanceAfter  Money
+	CreatedAt     time.Time
+}
+
+func (InterestPaid) isAccountDomainEvent() {}
+
 type AccountSuspended struct {
 	AccountID   string
 	Email       string

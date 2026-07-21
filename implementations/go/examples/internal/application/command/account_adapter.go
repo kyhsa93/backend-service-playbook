@@ -8,6 +8,11 @@ import "context"
 type AccountView struct {
 	AccountID string
 	Active    bool
+	// Email은 카드 사용내역 명세서 발송(SendCardUsageStatementHandler)이 통지 대상
+	// 주소를 얻기 위해 필요로 한다 — 카드 발급 시(IssueCardHandler)는 쓰이지 않지만,
+	// AccountView는 Card BC가 계좌에 대해 갖는 유일한 읽기 모델이므로 새 필드를
+	// 추가하는 편이 같은 목적의 View 타입을 중복 선언하는 것보다 낫다.
+	Email string
 }
 
 // AccountAdapter는 Card BC가 계좌를 동기 조회하기 위한 포트(ACL 인터페이스)다.

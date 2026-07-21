@@ -33,7 +33,10 @@ import (
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
+	"github.com/example/account-service/internal/infrastructure/scheduling"
+	taskqueue "github.com/example/account-service/internal/infrastructure/task-queue"
 	httphandler "github.com/example/account-service/internal/interface/http"
+	taskinterface "github.com/example/account-service/internal/interface/task"
 )
 
 var (
@@ -41,6 +44,11 @@ var (
 	testDB         *sql.DB
 	localstackHTTP string // LocalStack 컨테이너의 base URL (예: http://localhost:32771)
 	testJWTService *auth.JWTService
+
+	// 스케줄링 e2e 테스트(scheduling_e2e_test.go)가 실제 tick을 기다리지 않고 Cron
+	// 핸들러를 직접 호출할 수 있도록 노출한다(scheduling.md 예시와 동일한 테스트 패턴).
+	testInterestScheduler  *scheduling.InterestScheduler
+	testStatementScheduler *scheduling.StatementScheduler
 )
 
 const (
@@ -84,7 +92,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -160,6 +168,7 @@ func runTests(m *testing.M) int {
 		"PaymentCompleted":   event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
 		"PaymentCancelled":   event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
 		"RefundApproved":     event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
+		"InterestPaid":       event.NewInterestPaidEventHandler(notifier).Handle,
 		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountSuspendedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
@@ -210,6 +219,27 @@ func runTests(m *testing.M) int {
 	go outbox.NewPoller(db, sqsClient, queueURL).Run(ctx)
 	go outbox.NewConsumer(sqsClient, queueURL, outboxHandlers).Run(ctx)
 
+	// Task Queue 인프라 — main.go와 동일한 조립을 테스트에서도 재현한다(domain-events
+	// 큐와 개념적으로 구분되는 별도 SQS 큐, docs/architecture/domain-events.md의
+	// "Task Queue vs Domain Event").
+	taskQueueURL := setupTaskQueue(ctx, sqsClient)
+	taskWriter := taskqueue.NewWriter(db)
+	testInterestScheduler = scheduling.NewInterestScheduler(taskWriter)
+	testStatementScheduler = scheduling.NewStatementScheduler(taskWriter)
+
+	applyInterestHandler := command.NewApplyDailyInterestHandler(repo, 0.0001)
+	cardPaymentAdapter := acl.NewCardPaymentAdapter(paymentRepo)
+	sendStatementHandler := command.NewSendCardUsageStatementHandler(cardRepo, accountAdapter, cardPaymentAdapter, notifier)
+	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
+	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
+
+	taskHandlers := map[string]taskqueue.Handler{
+		"account.apply-interest":    interestTaskController.HandleApplyInterest,
+		"card.send-usage-statement": statementTaskController.HandleSendStatement,
+	}
+	go taskqueue.NewPoller(db, sqsClient, taskQueueURL).Run(ctx)
+	go taskqueue.NewConsumer(sqsClient, taskQueueURL, taskHandlers).Run(ctx)
+
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 	testPasswordHasher := auth.NewBcryptPasswordHasher()
 
@@ -253,6 +283,34 @@ func setupDomainEventQueue(ctx context.Context, sqsClient *sqs.Client) string {
 	})
 	if err != nil {
 		panic(fmt.Sprintf("failed to create domain-events queue: %v", err))
+	}
+	return *queueOut.QueueUrl
+}
+
+// setupTaskQueue는 setupDomainEventQueue와 동일한 이유로, localstack/init-sqs.sh가
+// 만드는 task-queue/task-queue-dlq를 testcontainers-go LocalStack에도 직접 재현한다.
+func setupTaskQueue(ctx context.Context, sqsClient *sqs.Client) string {
+	dlqOut, err := sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("task-queue-dlq")})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create task-queue-dlq: %v", err))
+	}
+
+	dlqAttrs, err := sqsClient.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
+		QueueUrl:       dlqOut.QueueUrl,
+		AttributeNames: []types.QueueAttributeName{types.QueueAttributeNameQueueArn},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to read task-queue-dlq ARN: %v", err))
+	}
+	dlqArn := dlqAttrs.Attributes[string(types.QueueAttributeNameQueueArn)]
+
+	redrivePolicy := fmt.Sprintf(`{"deadLetterTargetArn":"%s","maxReceiveCount":"3"}`, dlqArn)
+	queueOut, err := sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{
+		QueueName:  aws.String("task-queue"),
+		Attributes: map[string]string{string(types.QueueAttributeNameRedrivePolicy): redrivePolicy},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create task-queue: %v", err))
 	}
 	return *queueOut.QueueUrl
 }

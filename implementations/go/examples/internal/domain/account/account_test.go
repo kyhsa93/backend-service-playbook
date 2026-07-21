@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/example/account-service/internal/domain/account"
 )
@@ -232,6 +233,129 @@ func TestAccount_Close(t *testing.T) {
 		_ = a.Close()
 		if err := a.Close(); !errors.Is(err, account.ErrAlreadyClosed) {
 			t.Fatalf("Close() error = %v, want ErrAlreadyClosed", err)
+		}
+	})
+}
+
+func TestAccount_ApplyInterest(t *testing.T) {
+	today := time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC)
+
+	t.Run("정지된_계좌는_에러", func(t *testing.T) {
+		a := account.New("owner-1", "a@example.com", "KRW")
+		_ = a.Suspend()
+
+		_, applied, err := a.ApplyInterest(0.01, today)
+		if !errors.Is(err, account.ErrInterestRequiresActiveAccount) {
+			t.Fatalf("ApplyInterest() error = %v, want ErrInterestRequiresActiveAccount", err)
+		}
+		if applied {
+			t.Fatal("applied = true, want false")
+		}
+	})
+
+	t.Run("잔액이_충분하면_이자가_지급되고_잔액에_반영된다", func(t *testing.T) {
+		a := account.New("owner-1", "a@example.com", "KRW")
+		_, _ = a.Deposit(1_000_000, "")
+		a.ClearEvents()
+
+		tx, applied, err := a.ApplyInterest(0.0001, today) // floor(1_000_000 * 0.0001) = 100
+		if err != nil {
+			t.Fatalf("ApplyInterest() unexpected error: %v", err)
+		}
+		if !applied {
+			t.Fatal("applied = false, want true")
+		}
+		if tx.Type != account.TransactionTypeInterest {
+			t.Fatalf("tx.Type = %v, want TransactionTypeInterest", tx.Type)
+		}
+		if tx.Amount.Amount != 100 {
+			t.Fatalf("tx.Amount.Amount = %d, want 100", tx.Amount.Amount)
+		}
+		if a.Balance.Amount != 1_000_100 {
+			t.Fatalf("Balance.Amount = %d, want 1000100", a.Balance.Amount)
+		}
+		if !a.LastInterestPaidAt.Equal(today) {
+			t.Fatalf("LastInterestPaidAt = %v, want %v", a.LastInterestPaidAt, today)
+		}
+
+		events := a.DomainEvents()
+		if len(events) != 1 {
+			t.Fatalf("want 1 event, got %d", len(events))
+		}
+		if _, ok := events[0].(account.InterestPaid); !ok {
+			t.Fatalf("want InterestPaid, got %T", events[0])
+		}
+	})
+
+	t.Run("계산된_이자가_0이면_스킵되고_상태가_바뀌지_않는다", func(t *testing.T) {
+		a := account.New("owner-1", "a@example.com", "KRW")
+		_, _ = a.Deposit(10, "") // floor(10 * 0.0001) = 0
+		a.ClearEvents()
+
+		tx, applied, err := a.ApplyInterest(0.0001, today)
+		if err != nil {
+			t.Fatalf("ApplyInterest() unexpected error: %v", err)
+		}
+		if applied {
+			t.Fatal("applied = true, want false")
+		}
+		if tx != (account.Transaction{}) {
+			t.Fatalf("tx = %+v, want zero value", tx)
+		}
+		if a.Balance.Amount != 10 {
+			t.Fatalf("Balance.Amount = %d, want unchanged 10", a.Balance.Amount)
+		}
+		if !a.LastInterestPaidAt.IsZero() {
+			t.Fatal("LastInterestPaidAt should remain zero when interest is 0")
+		}
+		if len(a.DomainEvents()) != 0 {
+			t.Fatalf("want 0 events, got %d", len(a.DomainEvents()))
+		}
+	})
+
+	t.Run("같은_날짜에_재실행하면_멱등하게_스킵된다", func(t *testing.T) {
+		a := account.New("owner-1", "a@example.com", "KRW")
+		_, _ = a.Deposit(1_000_000, "")
+
+		_, applied1, err := a.ApplyInterest(0.0001, today)
+		if err != nil || !applied1 {
+			t.Fatalf("first ApplyInterest() = (applied=%v, err=%v), want (true, nil)", applied1, err)
+		}
+		balanceAfterFirst := a.Balance.Amount
+		a.ClearEvents()
+
+		// at-least-once 재수신을 흉내낸 두 번째 호출 — 같은 날짜라 no-op이어야 한다.
+		_, applied2, err := a.ApplyInterest(0.0001, today)
+		if err != nil {
+			t.Fatalf("second ApplyInterest() unexpected error: %v", err)
+		}
+		if applied2 {
+			t.Fatal("second ApplyInterest() applied = true, want false (idempotent no-op)")
+		}
+		if a.Balance.Amount != balanceAfterFirst {
+			t.Fatalf("Balance.Amount changed on second call: %d != %d", a.Balance.Amount, balanceAfterFirst)
+		}
+		if len(a.DomainEvents()) != 0 {
+			t.Fatalf("want 0 events on idempotent no-op, got %d", len(a.DomainEvents()))
+		}
+	})
+
+	t.Run("다음_날짜에는_다시_지급된다", func(t *testing.T) {
+		a := account.New("owner-1", "a@example.com", "KRW")
+		_, _ = a.Deposit(1_000_000, "")
+
+		_, applied1, _ := a.ApplyInterest(0.0001, today)
+		if !applied1 {
+			t.Fatal("first ApplyInterest() should apply")
+		}
+
+		tomorrow := today.AddDate(0, 0, 1)
+		_, applied2, err := a.ApplyInterest(0.0001, tomorrow)
+		if err != nil {
+			t.Fatalf("second ApplyInterest() unexpected error: %v", err)
+		}
+		if !applied2 {
+			t.Fatal("second ApplyInterest() on a new day should apply")
 		}
 	})
 }
