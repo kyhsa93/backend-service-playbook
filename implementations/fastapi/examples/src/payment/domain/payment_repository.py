@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from .payment import Payment
 
@@ -11,6 +12,11 @@ class PaymentQuery(ABC):
     조회 메서드는 단일 `find_payments(...)`로 통일한다(issue #236 — Account Repository가
     find_by_id/find_all로 나뉘어 있던 것을 단일 메서드+선택적 필터 키워드 인자로 통일한
     것과 동일한 컨벤션). `take=1`로 단건 조회를 표현한다.
+
+    `since`/`until`은 매월 카드 사용내역 발송 배치(card.application.adapter.payment_adapter의
+    PaymentAdapter)가 "지난 한 달" 범위로 결제를 집계하기 위해 추가됐다 — 새 메서드를
+    만들지 않고 기존 find_payments()에 선택적 필터를 얹는 것으로 표현한다(반대로 새
+    `count_*` 메서드를 추가하면 repository-naming 규칙이 금지하는 패턴이 된다).
     """
 
     @abstractmethod
@@ -23,6 +29,8 @@ class PaymentQuery(ABC):
         card_id: str | None = None,
         account_id: str | None = None,
         status: list[str] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[list[Payment], int]: ...
 
 

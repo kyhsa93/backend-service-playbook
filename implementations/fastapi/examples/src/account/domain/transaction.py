@@ -7,7 +7,7 @@ from typing import Literal
 from ...common.generate_id import generate_id
 from .money import Money
 
-TransactionType = Literal["DEPOSIT", "WITHDRAWAL"]
+TransactionType = Literal["DEPOSIT", "WITHDRAWAL", "INTEREST"]
 
 
 @dataclass(frozen=True)

@@ -18,4 +18,6 @@ class AccountAdapterImpl(AccountAdapter):
         # 상류의 "계좌 없음"(None)을 그대로 Card 도메인의 None 신호로 전달한다 (오염 방지).
         if account is None:
             return None
-        return AccountView(account_id=account.account_id, active=account.status == AccountStatus.ACTIVE)
+        return AccountView(
+            account_id=account.account_id, active=account.status == AccountStatus.ACTIVE, email=account.email
+        )

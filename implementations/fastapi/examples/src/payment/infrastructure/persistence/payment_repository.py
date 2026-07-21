@@ -43,6 +43,8 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
         card_id: str | None = None,
         account_id: str | None = None,
         status: list[str] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[list[Payment], int]:
         stmt = select(PaymentModel).where(PaymentModel.deleted_at.is_(None))
         count_stmt = select(func.count()).select_from(PaymentModel).where(PaymentModel.deleted_at.is_(None))
@@ -62,6 +64,12 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
         if status:
             stmt = stmt.where(PaymentModel.status.in_(status))
             count_stmt = count_stmt.where(PaymentModel.status.in_(status))
+        if since:
+            stmt = stmt.where(PaymentModel.created_at >= since)
+            count_stmt = count_stmt.where(PaymentModel.created_at >= since)
+        if until:
+            stmt = stmt.where(PaymentModel.created_at < until)
+            count_stmt = count_stmt.where(PaymentModel.created_at < until)
 
         total = (await self._session.execute(count_stmt)).scalar_one()
         rows = (

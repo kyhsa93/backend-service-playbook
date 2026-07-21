@@ -17,11 +17,13 @@ from slowapi.errors import RateLimitExceeded  # noqa: E402
 from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
 
 from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa: E402
+from src.account.infrastructure.scheduling.interest_scheduler import start_interest_scheduler  # noqa: E402
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
 from src.auth.domain.errors import InvalidCredentialsError, UserIdAlreadyExistsError  # noqa: E402
 from src.auth.infrastructure.jwt_auth_service import set_jwt_secret  # noqa: E402
 from src.auth.interface.rest.auth_router import router as auth_router  # noqa: E402
 from src.card.domain.errors import CardError, CardNotFoundError, LinkedAccountNotFoundError  # noqa: E402
+from src.card.infrastructure.scheduling.statement_scheduler import start_statement_scheduler  # noqa: E402
 from src.card.interface.rest.card_router import router as card_router  # noqa: E402
 from src.common.aws_secret_service import AwsSecretService  # noqa: E402
 from src.common.correlation import generate_correlation_id, set_correlation_id  # noqa: E402
@@ -36,6 +38,8 @@ from src.payment.domain.errors import (  # noqa: E402
 )
 from src.payment.domain.errors import LinkedCardNotFoundError, PaymentError, PaymentNotFoundError  # noqa: E402
 from src.payment.interface.rest.payment_router import router as payment_router  # noqa: E402
+from src.task_queue.task_consumer import TaskConsumer  # noqa: E402
+from src.task_queue.task_outbox_poller import TaskOutboxPoller  # noqa: E402
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -57,10 +61,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Handler는 더 이상 이 둘을 호출하지 않는다(domain-events.md — 동기 드레인 금지).
     outbox_poller = OutboxPoller(SessionLocal)
     outbox_consumer = OutboxConsumer(SessionLocal)
+    # TaskOutboxPoller(Task Outbox → Task 큐 발행)와 TaskConsumer(Task 큐 → TaskController
+    # 수신)도 동일한 원칙으로 앱 기동 시 한 번만 띄운다(scheduling.md). Scheduler
+    # 자체(interest_scheduler/statement_scheduler)는 APScheduler가 내부적으로 자기 이벤트
+    # 루프에서 Cron tick을 돌리므로 asyncio.create_task가 아니라 scheduler.start()로 기동한다.
+    task_outbox_poller = TaskOutboxPoller(SessionLocal)
+    task_consumer = TaskConsumer(SessionLocal)
     background_tasks = [
         asyncio.create_task(outbox_poller.run_forever()),
         asyncio.create_task(outbox_consumer.run_forever()),
+        asyncio.create_task(task_outbox_poller.run_forever()),
+        asyncio.create_task(task_consumer.run_forever()),
     ]
+    interest_scheduler = start_interest_scheduler(SessionLocal)
+    statement_scheduler = start_statement_scheduler(SessionLocal)
     logger.info("app_started")
 
     yield  # --- 이 사이에 요청을 처리한다 ---
@@ -69,8 +83,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app_state["is_shutting_down"] = True  # readiness를 즉시 503으로 전환
     logger.info("shutdown_initiated")
 
+    # scheduler.shutdown(wait=True) — 진행 중인 job이 끝날 때까지 기다린 뒤 종료한다
+    # (graceful-shutdown.md, fastapi scheduling.md의 APScheduler 종료 관례).
+    interest_scheduler.shutdown(wait=True)
+    statement_scheduler.shutdown(wait=True)
+
     # 백그라운드 task를 취소하고 완전히 끝날 때까지 기다린다 — dangling task를 남기지 않는다.
-    # OutboxConsumer가 대기 중이던 receive_message(최대 WaitTimeSeconds)는 즉시 중단된다.
+    # OutboxConsumer/TaskConsumer가 대기 중이던 receive_message(최대 WaitTimeSeconds)는
+    # 즉시 중단된다.
     for task in background_tasks:
         task.cancel()
     for task in background_tasks:

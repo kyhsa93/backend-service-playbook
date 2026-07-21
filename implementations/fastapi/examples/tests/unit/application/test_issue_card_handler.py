@@ -23,7 +23,9 @@ def account_adapter() -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_execute_활성_계좌면_카드가_발급되고_저장된다(repo, account_adapter) -> None:
-    account_adapter.find_account.return_value = AccountView(account_id="account-1", active=True)
+    account_adapter.find_account.return_value = AccountView(
+        account_id="account-1", active=True, email="owner1@example.com"
+    )
     handler = IssueCardHandler(repo, account_adapter)
 
     card = await handler.execute(IssueCardCommand(requester_id="owner-1", account_id="account-1", brand="VISA"))
@@ -48,7 +50,9 @@ async def test_execute_연결할_계좌가_없으면_LinkedAccountNotFoundError(
 
 @pytest.mark.asyncio
 async def test_execute_비활성_계좌면_CardIssueRequiresActiveAccountError(repo, account_adapter) -> None:
-    account_adapter.find_account.return_value = AccountView(account_id="account-1", active=False)
+    account_adapter.find_account.return_value = AccountView(
+        account_id="account-1", active=False, email="owner1@example.com"
+    )
     handler = IssueCardHandler(repo, account_adapter)
 
     with pytest.raises(CardIssueRequiresActiveAccountError):

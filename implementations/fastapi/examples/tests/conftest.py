@@ -8,9 +8,13 @@ from collections.abc import Awaitable, Callable
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/account")
 os.environ.setdefault("JWT_SECRET", "test-secret")
 # SqsConfig()도 validate_env()가 fail-fast로 검증한다 — 실제 큐 URL은 SQS를 쓰는 e2e
-# 테스트 파일(test_card_e2e.py/test_payment_e2e.py/test_notification_e2e.py)의 fixture가
-# LocalStack 컨테이너를 띄운 뒤 os.environ을 덮어써서 교체한다.
+# 테스트 파일(test_card_e2e.py/test_payment_e2e.py/test_notification_e2e.py/
+# test_scheduling_e2e.py)의 fixture가 LocalStack 컨테이너를 띄운 뒤 os.environ을 덮어써서
+# 교체한다.
 os.environ.setdefault("SQS_DOMAIN_EVENT_QUEUE_URL", "http://localhost:4566/000000000000/domain-events")
+# TaskOutboxPoller/TaskConsumer가 쓰는 전용 Task 큐 — main.py가 이 둘을 lifespan에서 기동하므로
+# `import main`이 일어나는 모든 e2e 테스트 파일에서 validate_env()가 이 값을 요구한다.
+os.environ.setdefault("SQS_TASK_QUEUE_URL", "http://localhost:4566/000000000000/tasks.fifo")
 
 # e2e 테스트는 같은 프로세스 안에서 같은 클라이언트 IP로 수십 개 요청을 짧은 시간에 보낸다 —
 # 운영 기본값(RATE_LIMIT_WRITE=20/minute 등)을 그대로 쓰면 slowapi가 테스트 도중에도
@@ -77,3 +81,40 @@ async def stop_outbox_background_tasks(tasks: list[asyncio.Task]) -> None:
             await task
         except asyncio.CancelledError:
             pass
+
+
+def start_task_queue_background_tasks(session_factory) -> list[asyncio.Task]:
+    """`start_outbox_background_tasks()`와 동일한 이유로, TaskOutboxPoller/TaskConsumer를
+    직접 백그라운드 task로 띄운다 — APScheduler 기반 Scheduler 자체(interest_scheduler/
+    statement_scheduler)는 `main.py`의 lifespan에서만 시작되므로 e2e 테스트에서는 실행되지
+    않는다. 테스트는 실제 Cron tick을 기다리는 대신 `TaskOutboxWriter.enqueue()`를 직접
+    호출해 스케줄된 두 경로(정기 이자 지급/매월 카드 사용내역 발송)를 트리거한다.
+    """
+    from src.task_queue.task_consumer import TaskConsumer
+    from src.task_queue.task_outbox_poller import TaskOutboxPoller
+
+    poller = TaskOutboxPoller(session_factory)
+    consumer = TaskConsumer(session_factory)
+    return [asyncio.create_task(poller.run_forever()), asyncio.create_task(consumer.run_forever())]
+
+
+stop_task_queue_background_tasks = stop_outbox_background_tasks
+
+
+def create_task_queue(localstack) -> str:
+    """TaskOutboxPoller가 발행하고 TaskConsumer가 수신하는 `tasks.fifo` 큐 + DLQ를 생성한다
+    — `localstack/init-sqs.sh`와 동일한 구성(FIFO, maxReceiveCount=3). 반환값은 애플리케이션이
+    접속할 큐 URL이다."""
+    client = localstack.get_client("sqs")
+    dlq = client.create_queue(QueueName="tasks-dlq.fifo", Attributes={"FifoQueue": "true"})
+    dlq_arn = client.get_queue_attributes(QueueUrl=dlq["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"][
+        "QueueArn"
+    ]
+    main_queue = client.create_queue(
+        QueueName="tasks.fifo",
+        Attributes={
+            "FifoQueue": "true",
+            "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "3"}),
+        },
+    )
+    return main_queue["QueueUrl"]

@@ -7,6 +7,7 @@ from src.card.domain.errors import (
     CardAlreadyCancelledError,
     CardAlreadySuspendedError,
 )
+from src.card.domain.events import CardStatementSent
 
 
 def make_active_card() -> Card:
@@ -71,3 +72,41 @@ def test_cancel_이미_해지된_카드는_다시_해지할_수_없다() -> None
 
     with pytest.raises(CardAlreadyCancelledError):
         card.cancel()
+
+
+def test_send_statement_처음_발송하면_CardStatementSent_이벤트가_수집되고_월이_기록된다() -> None:
+    card = make_active_card()
+
+    card.send_statement("2026-07", payment_count=3, total_amount=15000, email="owner1@example.com")
+
+    assert card.last_statement_sent_month == "2026-07"
+    events = card.pull_events()
+    assert len(events) == 1
+    assert isinstance(events[0], CardStatementSent)
+    assert events[0].card_id == card.card_id
+    assert events[0].payment_count == 3
+    assert events[0].total_amount == 15000
+    assert events[0].email == "owner1@example.com"
+
+
+def test_send_statement_같은_달에_두_번_호출하면_두_번째는_완전한_no_op이다() -> None:
+    card = make_active_card()
+    card.send_statement("2026-07", payment_count=3, total_amount=15000, email="owner1@example.com")
+    card.pull_events()
+
+    card.send_statement("2026-07", payment_count=99, total_amount=999999, email="owner1@example.com")
+
+    assert card.pull_events() == []
+
+
+def test_send_statement_다음_달에_다시_호출하면_새_이벤트가_수집된다() -> None:
+    card = make_active_card()
+    card.send_statement("2026-07", payment_count=3, total_amount=15000, email="owner1@example.com")
+    card.pull_events()
+
+    card.send_statement("2026-08", payment_count=1, total_amount=500, email="owner1@example.com")
+
+    assert card.last_statement_sent_month == "2026-08"
+    events = card.pull_events()
+    assert len(events) == 1
+    assert events[0].period == "2026-08"

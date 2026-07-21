@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,8 @@ class AccountModel(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
+    # 정기 이자 지급 배치의 Level 1 멱등성 마커 — Account.apply_interest() 참고.
+    last_interest_paid_at: Mapped[date | None] = mapped_column(nullable=True, default=None)
 
 
 class TransactionModel(Base):
@@ -88,6 +90,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
         if existing:
             existing.amount = account.balance.amount
             existing.status = account.status.value
+            existing.last_interest_paid_at = account.last_interest_paid_at
             existing.updated_at = datetime.utcnow()
         else:
             self._session.add(
@@ -98,6 +101,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
                     amount=account.balance.amount,
                     currency=account.balance.currency,
                     status=account.status.value,
+                    last_interest_paid_at=account.last_interest_paid_at,
                 )
             )
 
@@ -166,4 +170,5 @@ class SqlAlchemyAccountRepository(AccountRepository):
             status=AccountStatus(row.status),
             created_at=row.created_at,
             updated_at=row.updated_at,
+            last_interest_paid_at=row.last_interest_paid_at,
         )
