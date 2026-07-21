@@ -1,0 +1,27 @@
+"impl:nestjs":
+  - changed-files:
+      - any-glob-to-any-file: "implementations/nestjs/**"
+
+"impl:go":
+  - changed-files:
+      - any-glob-to-any-file: "implementations/go/**"
+
+"impl:java-springboot":
+  - changed-files:
+      - any-glob-to-any-file: "implementations/java-springboot/**"
+
+"impl:kotlin-springboot":
+  - changed-files:
+      - any-glob-to-any-file: "implementations/kotlin-springboot/**"
+
+"impl:fastapi":
+  - changed-files:
+      - any-glob-to-any-file: "implementations/fastapi/**"
+
+"docs":
+  - changed-files:
+      - any-glob-to-any-file: "**/*.md"
+
+"ci":
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
