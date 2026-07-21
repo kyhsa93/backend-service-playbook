@@ -31,6 +31,13 @@ func TestCheckDockerfileConventions(t *testing.T) {
 		}
 	})
 
+	t.Run("bad-no-user", func(t *testing.T) {
+		result := checkDockerfileConventions("testdata/dockerfile-conventions/bad-no-user")
+		if countKind(result, Fail) == 0 {
+			t.Fatalf("want at least 1 failure, got %+v", result.Findings)
+		}
+	})
+
 	t.Run("no-dockerfile", func(t *testing.T) {
 		result := checkDockerfileConventions("testdata/dockerfile-conventions/no-dockerfile")
 		if countKind(result, Skip) == 0 {

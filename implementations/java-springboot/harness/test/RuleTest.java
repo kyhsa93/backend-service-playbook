@@ -154,6 +154,7 @@ public final class RuleTest {
 
         new TestCase("dockerfile-conventions/good", () -> assertNoFailures(DockerfileConventions.check("testdata/dockerfile-conventions/good"))),
         new TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck", () -> assertHasFailure(DockerfileConventions.check("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck"))),
+        new TestCase("dockerfile-conventions/bad-no-user", () -> assertHasFailure(DockerfileConventions.check("testdata/dockerfile-conventions/bad-no-user"))),
 
         new TestCase("aggregate-id-format/good", () -> assertNoFailures(AggregateIdFormat.check("testdata/aggregate-id-format/good"))),
         new TestCase("aggregate-id-format/bad-raw-uuid", () -> assertHasFailure(AggregateIdFormat.check("testdata/aggregate-id-format/bad-raw-uuid"))),

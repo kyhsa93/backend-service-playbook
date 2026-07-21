@@ -9,7 +9,8 @@
 검사 항목:
 (a) `FROM` 라인이 2개 이상 — 멀티스테이지 빌드
 (b) `HEALTHCHECK` 인스트럭션 존재
-(c) `.dockerignore`가 Dockerfile과 같은 디렉토리에 존재하고, 최소한의 제외 패턴
+(c) `USER` 인스트럭션 존재 — non-root로 실행되는지
+(d) `.dockerignore`가 Dockerfile과 같은 디렉토리에 존재하고, 최소한의 제외 패턴
     (`.git`, 가상환경 디렉토리, 테스트 디렉토리 중 하나 이상)을 포함
 """
 
@@ -22,6 +23,7 @@ from .common import RuleResult, failed, passed, skipped
 
 FROM_RE = re.compile(r"^\s*FROM\s+\S+", re.MULTILINE)
 HEALTHCHECK_RE = re.compile(r"^\s*HEALTHCHECK\b", re.MULTILINE)
+USER_RE = re.compile(r"^\s*USER\s+\S+", re.MULTILINE)
 REASONABLE_EXCLUDES = (".git", ".venv", "venv", "__pycache__", "tests", "test")
 
 
@@ -62,6 +64,11 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         result.add(passed(f"{label} (HEALTHCHECK 존재)"))
     else:
         result.add(failed(label, "HEALTHCHECK 인스트럭션이 없음(container.md)"))
+
+    if USER_RE.search(content):
+        result.add(passed(f"{label} (non-root USER 존재)"))
+    else:
+        result.add(failed(label, "USER 인스트럭션이 없음 — 컨테이너가 root로 실행됨(container.md)"))
 
     dockerignore_path = os.path.join(dockerfile_dir, ".dockerignore")
     dockerignore_label = os.path.relpath(dockerignore_path, root)

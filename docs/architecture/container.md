@@ -30,6 +30,9 @@ RUN npm ci --omit=dev             # 프로덕션 의존성만 설치
 
 COPY --from=build /app/dist ./dist  # 컴파일된 결과만 복사
 
+# node:alpine 이미지는 이 목적을 위한 non-root 사용자(uid 1000)를 기본 제공한다.
+USER node
+
 EXPOSE 3000
 
 CMD ["node", "dist/main.js"]
@@ -114,6 +117,7 @@ GET /health/ready  → 200: 트래픽 수신 가능 / 503: 종료 중 또는 초
 ## 원칙
 
 - **멀티스테이지 빌드 필수**: 빌드 도구와 devDependencies는 프로덕션 이미지에 포함하지 않는다.
+- **non-root 사용자로 실행**: 컨테이너가 루트 권한 없이 실행되도록 전용 사용자로 전환한다(베이스 이미지가 기본 제공하면 그것을 쓰고, 없으면 직접 만든다).
 - **.dockerignore 유지**: `node_modules`, `dist`, `.env*`, `.git`은 반드시 제외한다.
 - **CMD에 exec form 사용**: `["node", "..."]` — SIGTERM 즉시 수신.
 - **환경 변수는 이미지 외부에서 주입**: 이미지는 환경 무관하게 동일해야 한다.

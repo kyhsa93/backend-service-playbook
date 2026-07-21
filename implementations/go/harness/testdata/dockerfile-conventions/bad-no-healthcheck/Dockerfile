@@ -4,4 +4,5 @@ RUN go build -o /bin/server ./cmd/server
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /bin/server /bin/server
+USER nonroot:nonroot
 ENTRYPOINT ["/bin/server"]

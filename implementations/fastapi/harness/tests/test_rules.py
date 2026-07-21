@@ -139,6 +139,7 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (dockerfile_conventions, "dockerfile-conventions/bad-no-healthcheck"),
         (dockerfile_conventions, "dockerfile-conventions/bad-single-stage"),
         (dockerfile_conventions, "dockerfile-conventions/bad-no-dockerignore"),
+        (dockerfile_conventions, "dockerfile-conventions/bad-no-user"),
         (aggregate_id_format, "aggregate-id-format/bad-hyphenated-uuid"),
         (error_response_schema, "error-response-schema/bad-extra-field"),
         (error_response_schema, "error-response-schema/bad-missing-field"),

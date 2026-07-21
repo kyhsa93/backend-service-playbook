@@ -17,6 +17,7 @@ import static harness.JavaFiles.readText;
  *   <li>멀티스테이지 빌드 — {@code FROM} 줄이 2개 이상(container.md: "멀티스테이지 빌드로 최종
  *   이미지에 빌드 도구/소스가 남지 않게 한다")</li>
  *   <li>{@code HEALTHCHECK} 지시문 존재</li>
+ *   <li>{@code USER} 지시문 존재 — non-root로 실행되는지</li>
  *   <li>{@code .dockerignore} 존재 + 최소한의 제외 패턴(빌드 산출물/VCS/시크릿) 포함</li>
  * </ul>
  */
@@ -26,6 +27,7 @@ public final class DockerfileConventions {
 
     private static final Pattern FROM_LINE = Pattern.compile("(?m)^\\s*FROM\\s+", Pattern.CASE_INSENSITIVE);
     private static final Pattern HEALTHCHECK_LINE = Pattern.compile("(?m)^\\s*HEALTHCHECK\\s+", Pattern.CASE_INSENSITIVE);
+    private static final Pattern USER_LINE = Pattern.compile("(?m)^\\s*USER\\s+\\S+", Pattern.CASE_INSENSITIVE);
 
     public static RuleResult check(String rootPath) {
         RuleResult result = new RuleResult("dockerfile-conventions");
@@ -50,6 +52,12 @@ public final class DockerfileConventions {
             result.add(Finding.pass("Dockerfile (HEALTHCHECK 확인)"));
         } else {
             result.add(Finding.fail("Dockerfile", "HEALTHCHECK 지시문 없음(container.md)"));
+        }
+
+        if (USER_LINE.matcher(content).find()) {
+            result.add(Finding.pass("Dockerfile (non-root USER 확인)"));
+        } else {
+            result.add(Finding.fail("Dockerfile", "USER 지시문 없음 — 컨테이너가 root로 실행됨(container.md)"));
         }
 
         File dockerignore = new File(rootPath, ".dockerignore");

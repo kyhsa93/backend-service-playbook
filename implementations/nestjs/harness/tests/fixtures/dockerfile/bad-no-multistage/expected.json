@@ -5,6 +5,7 @@
     "dockerfile.multistage-required",
     "dockerfile.cmd-node-direct",
     "dockerfile.prod-deps-only",
+    "dockerfile.non-root-user-missing",
     "dockerfile.healthcheck-missing"
   ]
 }

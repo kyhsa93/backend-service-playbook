@@ -149,6 +149,7 @@ val TESTS: List<TestCase> = listOf(
     TestCase("dockerfile-conventions/good") { checkDockerfileConventions("testdata/dockerfile-conventions/good").assertNoFailures() },
     TestCase("dockerfile-conventions/bad-single-stage-no-healthcheck") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-single-stage-no-healthcheck").assertHasFailure() },
     TestCase("dockerfile-conventions/bad-missing-dockerignore") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-missing-dockerignore").assertHasFailure() },
+    TestCase("dockerfile-conventions/bad-no-user") { checkDockerfileConventions("testdata/dockerfile-conventions/bad-no-user").assertHasFailure() },
 
     TestCase("aggregate-id-format/good") { checkAggregateIdFormat("testdata/aggregate-id-format/good").assertNoFailures() },
     TestCase("aggregate-id-format/bad-raw-uuid") { checkAggregateIdFormat("testdata/aggregate-id-format/bad-raw-uuid").assertHasFailure() },

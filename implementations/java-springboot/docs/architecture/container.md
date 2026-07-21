@@ -172,7 +172,7 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
 
 ## harness 검증
 
-`harness/src/rules/DockerfileConventions.java`(rule: `dockerfile-conventions`)가 `Dockerfile`/`.dockerignore`(plain text, `.java` 파일이 아닌 유일한 규칙)을 검사한다 — `FROM` 줄이 2개 이상(멀티스테이지)인지, `HEALTHCHECK` 지시문이 있는지, `.dockerignore`가 존재하고 `.git`·빌드 산출물(`build`/`.gradle`/`target`)을 제외하는지 확인한다.
+`harness/src/rules/DockerfileConventions.java`(rule: `dockerfile-conventions`)가 `Dockerfile`/`.dockerignore`(plain text, `.java` 파일이 아닌 유일한 규칙)을 검사한다 — `FROM` 줄이 2개 이상(멀티스테이지)인지, `HEALTHCHECK` 지시문이 있는지, `USER` 지시문이 있는지(non-root 실행), `.dockerignore`가 존재하고 `.git`·빌드 산출물(`build`/`.gradle`/`target`)을 제외하는지 확인한다.
 
 ---
 

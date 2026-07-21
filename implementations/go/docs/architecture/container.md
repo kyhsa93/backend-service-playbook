@@ -171,12 +171,13 @@ func main() {
 
 - **정적 바이너리 + `scratch`/`distroless`**: `CGO_ENABLED=0`으로 완전한 정적 링크를 만들고, 런타임이 필요 없는 최소 base 이미지를 사용한다.
 - **멀티스테이지 빌드 필수**: Go SDK와 소스 코드는 프로덕션 이미지에 포함하지 않는다.
+- **non-root 사용자로 실행**: `USER nonroot:nonroot` — `distroless/static`이 기본 제공하는 사용자를 그대로 쓴다.
 - **ENTRYPOINT는 exec form**: 셸 래퍼 없이 바이너리를 직접 PID 1로 실행한다.
 - **환경 변수는 이미지 외부에서 주입**한다.
 - **헬스체크 엔드포인트 필수**: liveness + readiness를 `net/http`로 직접 구현한다.
 - **Dockerfile HEALTHCHECK는 전용 정적 바이너리로 구현**: distroless에는 curl/wget이 없으므로 `cmd/healthcheck`를 빌드해 포함하고 exec form으로 실행한다.
 
-멀티스테이지 빌드(FROM 2개 이상)·HEALTHCHECK 존재·`.dockerignore` 존재+`.git`/`.env` 제외 여부는 `implementations/go/harness/dockerfile_conventions.go`(`dockerfile-conventions` 규칙)가 `examples/Dockerfile`과 `examples/.dockerignore`를 직접 읽어 자동으로 검사한다 — 다른 규칙과 달리 Go 소스 트리를 재귀 탐색하지 않고 이 두 파일만 대상으로 한다.
+멀티스테이지 빌드(FROM 2개 이상)·HEALTHCHECK 존재·USER 존재(non-root 실행)·`.dockerignore` 존재+`.git`/`.env` 제외 여부는 `implementations/go/harness/dockerfile_conventions.go`(`dockerfile-conventions` 규칙)가 `examples/Dockerfile`과 `examples/.dockerignore`를 직접 읽어 자동으로 검사한다 — 다른 규칙과 달리 Go 소스 트리를 재귀 탐색하지 않고 이 두 파일만 대상으로 한다.
 
 ---
 

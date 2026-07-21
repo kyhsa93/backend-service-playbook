@@ -11,6 +11,7 @@ import (
 var (
 	fromLine        = regexp.MustCompile(`(?mi)^\s*FROM\s+\S+`)
 	healthcheckLine = regexp.MustCompile(`(?mi)^\s*HEALTHCHECK\b`)
+	userLine        = regexp.MustCompile(`(?mi)^\s*USER\s+\S+`)
 )
 
 // dockerignoreExcludes — container.md/local-dev.md가 요구하는 최소 제외 대상.
@@ -52,6 +53,12 @@ func checkDockerfileConventions(root string) RuleResult {
 		result.Findings = append(result.Findings, passFinding("Dockerfile (HEALTHCHECK 있음)"))
 	} else {
 		result.Findings = append(result.Findings, failFinding("Dockerfile", "HEALTHCHECK 인스트럭션이 없음(docs/architecture/container.md)"))
+	}
+
+	if userLine.MatchString(src) {
+		result.Findings = append(result.Findings, passFinding("Dockerfile (non-root USER 있음)"))
+	} else {
+		result.Findings = append(result.Findings, failFinding("Dockerfile", "USER 지시문이 없음 — 컨테이너가 root로 실행됨(docs/architecture/container.md)"))
 	}
 
 	dockerignorePath := filepath.Join(root, ".dockerignore")

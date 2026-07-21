@@ -26,6 +26,10 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 
+# node:alpine 이미지는 이 목적을 위한 non-root 사용자(uid 1000)를 기본 제공한다 —
+# 별도로 addgroup/adduser를 만들 필요가 없다.
+USER node
+
 EXPOSE 3000
 
 # 오케스트레이터(Kubernetes 등)가 이미 liveness/readiness probe를 담당하는 배포 환경에서는
@@ -56,6 +60,7 @@ localstack
 | Base 이미지 | `node:20-alpine` — 경량 이미지 |
 | Build 스테이지 | 전체 의존성 설치 + TypeScript 빌드 |
 | Production 스테이지 | `--omit=dev`로 프로덕션 의존성만 설치, `dist/` 복사 |
+| USER | `node` — `node:20-alpine`이 기본 제공하는 non-root 사용자 |
 | EXPOSE | 3000 (환경 변수 `PORT`로 변경 가능) |
 | HEALTHCHECK | `wget`(busybox, `node:20-alpine`에 기본 포함)으로 `/health/live` 조회 — [graceful-shutdown.md](graceful-shutdown.md)의 liveness 엔드포인트 |
 | CMD | `node dist/main.js` — `npm run start:prod`보다 프로세스 시그널 처리에 유리 |
@@ -63,6 +68,7 @@ localstack
 ### 원칙
 
 - **멀티스테이지 빌드 필수**: devDependencies와 소스 코드가 프로덕션 이미지에 포함되지 않도록 한다.
+- **non-root 사용자로 실행**: `USER node` — `node:alpine`이 기본 제공하는 사용자를 그대로 쓴다. 컨테이너가 루트 권한 없이 실행되도록 하는 최소 권한 원칙이다.
 - **.dockerignore 유지**: `node_modules`, `dist`, `.env*`, `.git` 등을 빌드 컨텍스트에서 제외한다.
 - **CMD에 `node`를 직접 사용**: `npm run`은 중간에 npm 프로세스가 끼어 SIGTERM 전달이 지연될 수 있다.
 - **환경 변수는 이미지에 포함하지 않는다**: `.env` 파일은 `.dockerignore`로 제외하고, 실행 시 `--env-file` 또는 오케스트레이션 도구에서 주입한다.

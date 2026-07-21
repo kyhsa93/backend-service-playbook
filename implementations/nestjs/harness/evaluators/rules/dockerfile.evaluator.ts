@@ -49,6 +49,21 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('medium')
   }
 
+  // non-root 사용자로 실행 — 마지막 스테이지에 USER 지시문이 있는지 확인한다.
+  // 스테이지가 여러 개면 각 스테이지 블록 중 마지막 것만 봐야 한다(Build 스테이지에는
+  // USER가 없는 게 정상이라 전체 content에서 찾으면 오탐 없이 통과해버릴 위험이 없어
+  // 단순 검사로 충분하다 — production 스테이지 자체가 USER 없이 CMD/ENTRYPOINT로
+  // 끝나면 지금 이 파일처럼 놓치기 쉽다).
+  if (!/^\s*USER\s+\S+/m.test(content)) {
+    failures.push({
+      ruleId: 'dockerfile.non-root-user-missing',
+      severity: 'high',
+      message: 'Dockerfile에 USER 지시문이 없습니다 — 컨테이너가 root로 실행됩니다. non-root 사용자로 전환해야 합니다(node:alpine은 USER node로 기본 제공되는 사용자를 바로 쓸 수 있습니다).',
+      docRef: DOC
+    })
+    score -= penaltyFor('high')
+  }
+
   // .dockerignore 존재
   if (!fs.existsSync(path.join(root, '.dockerignore'))) {
     failures.push({

@@ -21,6 +21,10 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 
+# node:alpine 이미지는 이 목적을 위한 non-root 사용자(uid 1000)를 기본 제공한다 —
+# 별도로 addgroup/adduser를 만들 필요가 없다.
+USER node
+
 EXPOSE 3000
 
 # 오케스트레이터(Kubernetes 등)가 이미 liveness/readiness probe를 담당하는 배포 환경에서는
