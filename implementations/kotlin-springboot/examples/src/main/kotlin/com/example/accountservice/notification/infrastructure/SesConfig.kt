@@ -1,4 +1,4 @@
-package com.example.accountservice.account.infrastructure.notification
+package com.example.accountservice.notification.infrastructure
 
 import com.example.accountservice.config.AwsProperties
 import org.springframework.context.annotation.Bean
