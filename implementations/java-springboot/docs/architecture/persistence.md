@@ -60,7 +60,7 @@ Command Service 자신(`CreateAccountService` 등)은 `@Transactional`을 갖지
 
 ## 여러 Repository 저장을 하나의 트랜잭션으로 묶기 — 실제 예시(계좌 간 송금)
 
-`saveAccount()` 하나로는 부족한 유스케이스가 처음 생긴 것이 계좌 간 송금(Transfer)이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. `AccountRepository`에 전용 메서드를 추가해 트랜잭션 경계를 여전히 Repository에 둔다(Command Service에는 두지 않는다):
+`saveAccount()` 하나로는 부족한 대표 유스케이스가 계좌 간 송금(Transfer)이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. `AccountRepository`에 전용 메서드를 추가해 트랜잭션 경계를 여전히 Repository에 둔다(Command Service에는 두지 않는다):
 
 ```java
 // account/domain/AccountRepository.java — 실제 코드

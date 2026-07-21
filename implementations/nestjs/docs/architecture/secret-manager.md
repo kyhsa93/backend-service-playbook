@@ -77,7 +77,7 @@ const password = dbSecret.password
 
 ### 설정 팩토리에서 SecretService 사용 — 실제 코드 (`config/jwt.config.ts`)
 
-시크릿을 앱 기동 시 한 번 조회하여 `ConfigModule`에 주입하는 패턴. 이 저장소는 `database.config.ts`가 아니라 `jwt.config.ts`에 이 패턴을 적용했다 — DB 접속 정보는 여전히 환경 변수(`DATABASE_URL`) 하나로 관리하고, 민감값인 JWT secret만 Secrets Manager로 옮겼다.
+시크릿을 앱 기동 시 한 번 조회하여 `ConfigModule`에 주입하는 패턴. 이 저장소는 `database.config.ts`가 아니라 `jwt.config.ts`에 이 패턴을 적용한다 — DB 접속 정보는 환경 변수(`DATABASE_URL`) 하나로 관리하고, 민감값인 JWT secret만 Secrets Manager에서 조회한다.
 
 ```typescript
 // config/jwt.config.ts

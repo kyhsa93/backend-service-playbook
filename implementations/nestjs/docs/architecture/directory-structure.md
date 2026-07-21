@@ -15,9 +15,8 @@ src/
     outbox-consumer.ts                 # SQS → EventHandlerRegistry 라우팅 (long polling)
     sqs-client-provider.ts             # SQSClient 생성
     event-handler-registry.ts          # eventType → Handler 라우팅
-    # 도메인별 OutboxRelay는 없다 — 예전에는 도메인마다 <domain>/application/event/
-    # outbox-relay.ts가 동기 드레인을 담당했지만, 지금은 이 OutboxPoller/OutboxConsumer
-    # 하나로 통합되어 SQS를 경유해 비동기로 처리한다(domain-events.md 참고).
+    # 도메인별 OutboxRelay는 없다 — 이 OutboxPoller/OutboxConsumer 하나로 통합되어
+    # 모든 도메인의 이벤트가 SQS를 경유해 비동기로 처리된다(domain-events.md 참고).
   task-queue/                          # Task Queue 모듈 (공용)
     task-queue-module.ts
     task-queue.ts                      # 인터페이스 (abstract class)

@@ -56,7 +56,7 @@ implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 </configuration>
 ```
 
-**로컬은 사람이 읽기 쉬운 평문, 운영은 JSON** — `springProfile`로 분기한다. JSON 인코더가 MDC의 `correlation_id`를 자동으로 로그 필드에 포함시킨다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter` 참고). 게이팅 프로필은 `prod`/`!prod`다 — [secret-manager.md](secret-manager.md)의 `SecretsEnvironmentPostProcessor`와 같은 프로필명·극성을 쓴다(이전에는 이 파일만 `local`/`!local`을 썼는데, 어디서도 `local` 프로필을 활성화하지 않아 실제로는 항상 JSON 인코더가 적용되는 잠재 버그였다 — `prod`/`!prod`로 통일해 활성 프로필이 없는 로컬 실행에서도 `!prod`가 매칭되어 평문 로깅이 기본값이 되도록 고쳤다).
+**로컬은 사람이 읽기 쉬운 평문, 운영은 JSON** — `springProfile`로 분기한다. JSON 인코더가 MDC의 `correlation_id`를 자동으로 로그 필드에 포함시킨다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter` 참고). 게이팅 프로필은 `prod`/`!prod`다 — [secret-manager.md](secret-manager.md)의 `SecretsEnvironmentPostProcessor`와 같은 프로필명·극성을 쓴다. 활성 프로필이 없는 로컬 실행에서도 `!prod`가 매칭되어 평문 로깅이 기본값이 된다 — `local`/`!local`처럼 어디서도 활성화하지 않는 프로필명을 쓰면 항상 JSON 인코더만 적용되는 잠재 버그가 생기므로 피한다.
 
 ### 필드 네이밍 — snake_case로 구조화 인자 전달
 

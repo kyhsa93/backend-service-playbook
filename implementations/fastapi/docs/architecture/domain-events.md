@@ -181,7 +181,7 @@ class OutboxPoller:
             await session.commit()
 ```
 
-`outbox_event_id`를 SQS `MessageBody`에 실어 보내는 시점이 이전(동기 드레인 시절 `OutboxRelay`가 핸들러 호출 직전에 주입)과 달라졌다 — 이제는 `OutboxPoller`가 **발행 시점**에 이미 페이로드에 심어 넣는다. `OutboxConsumer`가 이 값을 그대로 핸들러에 전달하므로, 각 EventHandler 코드는 바뀌지 않았다(`payload["outbox_event_id"]`를 읽는 위치는 동일).
+`outbox_event_id`는 `OutboxPoller`가 **발행 시점**에 페이로드에 심어 넣는다. `OutboxConsumer`가 이 값을 그대로 핸들러에 전달하므로, 각 EventHandler 코드는 `payload["outbox_event_id"]`를 읽기만 하면 된다.
 
 ### 3단계: `OutboxConsumer` — SQS → EventHandler 수신 (실제 코드)
 
@@ -259,7 +259,7 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
     }
 ```
 
-예전에는 `interface/rest/account_router.py`의 `_outbox_relay()` 팩토리가 **요청마다** 이 조립을 다시 했다(HTTP 요청 스코프 `Depends(get_session)`에 묶여 있었기 때문) — 이제는 `src/outbox/`의 이 함수 하나로 고정되어 `OutboxConsumer`가 메시지마다 재사용한다. `application/event/`의 EventHandler 코드 자체(`account_created_event_handler.py` 등)는 바뀌지 않았다 — payload(dict)를 받아 처리하는 시그니처가 동일하기 때문이다.
+이 조립은 `src/outbox/`의 함수 하나로 고정되어 있고, `OutboxConsumer`가 메시지마다 재사용한다 — HTTP 요청 스코프에 묶이지 않는다. `application/event/`의 EventHandler 코드(`account_created_event_handler.py` 등)는 payload(dict)를 받아 처리하는 시그니처만 있으면 되므로 이 조립 방식과 무관하게 그대로 재사용된다.
 
 `SesNotificationService.notify()`(`src/account/infrastructure/notification/notification_service.py`)는 SES 발송 실패를 잡아 로깅만 하고 삼킨다 — 이 실패는 `OutboxConsumer._handle_message()`의 `try/except`에도 걸리므로, 어느 계층에서 잡히든 결과는 같다: 메시지가 삭제되지 않아 SQS가 재전달한다. `notify()`는 실제 발송 전에 `outbox_event_id` 기준으로 이미 처리된 이벤트인지부터 확인한다(Ledger 멱등성, 아래 참조).
 
@@ -342,7 +342,7 @@ class AccountSuspendedEventHandler:
 
 수신 측(Card BC)은 `interface/integration_event/card_integration_event_controller.py`가 담당한다 — HTTP Router와 동일한 위치(`interface/`)의 입력 경계이며, 자기 도메인의 Command Handler만 호출한다. 조립은 `src/outbox/event_handlers.py`의 `build_event_handlers()`가 맡는다 — Account 자신의 6개 Domain Event 핸들러와 Card의 두 Integration Event 반응 핸들러를 같은 `handlers` dict에 등록한다(FastAPI에는 NestJS의 `EventHandlerRegistry` 같은 모듈 간 느슨한 등록 메커니즘이 없다).
 
-이 배선 덕에 `POST /accounts/{id}/suspend` 요청은 다음 순서로 완결된다 — 단, **이제는 하나의 HTTP 요청·트랜잭션 안에서 완결되지 않는다**:
+이 배선 덕에 `POST /accounts/{id}/suspend` 요청은 다음 순서로 완결된다 — 하나의 HTTP 요청·트랜잭션 안에서 완결되지 않고, 여러 단계에 걸쳐 비동기로 진행된다:
 1. HTTP 요청 안에서 `AccountSuspended` Domain Event가 Outbox에 적재되고 응답이 반환된다.
 2. 다음 `OutboxPoller` tick(최대 1초 뒤)이 이 행을 SQS로 발행한다.
 3. `OutboxConsumer`가 이를 수신해 `AccountSuspendedEventHandler`를 호출 — 알림을 보내고, `account.suspended.v1` Integration Event를 같은(그 메시지 처리를 위해 새로 연) 세션의 Outbox에 추가로 적재한다.

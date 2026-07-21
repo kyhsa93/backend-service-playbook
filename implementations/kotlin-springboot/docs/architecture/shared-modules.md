@@ -130,10 +130,10 @@ NestJS는 `DatabaseModule`/`OutboxModule`을 `@Global()`로 선언해 모든 모
 
 ## 원칙
 
-- **`common/`/`config/`/`auth/`/`secret/`/`outbox/`/`notification/`/`taskqueue/` 일곱 공유 패키지 모두 이미 있다** — 인증, Secrets Manager 연동, Outbox, 두 번째 알림 소비자(Card), Task Queue가 실제로 필요해지면서 차례로 추가/승격되었다. `GlobalExceptionHandler`/`RateLimitingFilter`처럼 아직 필요해지지 않은 항목만 배치 기준을 미리 정해둔 상태다.
+- **`common/`/`config/`/`auth/`/`secret/`/`outbox/`/`notification/`/`taskqueue/` 일곱 공유 패키지 모두 실사용처를 갖는다** — 인증, Secrets Manager 연동, Outbox, 두 번째 알림 소비자(Card), Task Queue가 각각의 실사용처다. `GlobalExceptionHandler`/`RateLimitingFilter`처럼 실사용처가 아직 없는 항목은 배치 기준만 미리 정해둔 상태다.
 - **판단 기준은 "재사용 여부"와 "비즈니스 불변식 소유 여부"** — 둘 다 아니면 공유 패키지, 후자면 BC 안에 남긴다.
 - **`@Global` 같은 별도 선언이 필요 없다** — 컴포넌트 스캔 루트 하위면 패키지 위치와 무관하게 주입 가능하다.
-- **BC 소속 Technical Service를 성급하게 공유 패키지로 승격하지 않는다** — 실제로 두 번째 소비자가 생겼을 때 판단한다(`notification/`이 그 기준대로 승격된 실례다).
+- **BC 소속 Technical Service를 성급하게 공유 패키지로 승격하지 않는다** — 실제로 두 번째 소비자가 있을 때만 최상위로 둔다(`notification/`이 Account와 Card 둘 다 실사용처인 실례다).
 
 ### 관련 문서
 

@@ -134,7 +134,7 @@ go.mod
 | `<domain>/infrastructure/` | `internal/infrastructure/<concern>/` (persistence, notification 등 관심사별 하위 패키지) |
 | `<domain>/interface/` | `internal/interface/http/` |
 | `common/` | `internal/common/`(`id.go` — ID 생성 등 프레임워크 무관 순수 함수)([aggregate-id.md](aggregate-id.md) 참고) |
-| `database/`(TransactionManager) | `internal/infrastructure/database/`(`WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`) — 계좌 간 송금(Transfer)이 여러 Repository 저장을 하나의 트랜잭션으로 묶어야 하는 첫 실사용처였다([persistence.md](persistence.md) 참고) |
+| `database/`(TransactionManager) | `internal/infrastructure/database/`(`WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`) — 계좌 간 송금(Transfer)이 여러 Repository 저장을 하나의 트랜잭션으로 묶는 실사용처다([persistence.md](persistence.md) 참고) |
 | `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Poller`/`Consumer` 구현됨([domain-events.md](domain-events.md) 참고) |
 | `task-queue/` | `internal/infrastructure/task-queue/`(`Writer`/`Poller`/`Consumer`) — 정기 이자 지급/카드 명세서 발송 배치가 실사용처다([scheduling.md](scheduling.md) 참고) |
 | `config/` | `internal/config/`(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`)([config.md](config.md) 참고) |
@@ -161,7 +161,7 @@ go.mod
 
 ## 공용 인프라는 실제로 필요해질 때만 추가한다
 
-root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다(YAGNI). 다섯 모두 지금은 실제로 존재한다 — 각각 그 필요를 만든 실사용처가 생겼을 때 추가됐다: `outbox/`는 알림 발송이 유실되면 안 되는 부가효과 때문에, `task-queue/`는 정기 이자 지급/카드 명세서 발송 배치 때문에, `database/`는 계좌 간 송금이 두 Account 저장을 하나의 트랜잭션으로 묶어야 했기 때문이다. 이 순서 자체가 이 저장소의 YAGNI 원칙이 실제로 어떻게 지켜지는지 보여주는 기록이다 — 다음에 새로운 공용 인프라가 필요해지면 같은 방식(실사용처가 생긴 뒤에 추가)을 따른다.
+root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다(YAGNI). 다섯 모두 실사용처를 갖는다: `outbox/`는 알림 발송이 유실되면 안 되는 부가효과의 실사용처이고, `task-queue/`는 정기 이자 지급/카드 명세서 발송 배치의 실사용처이며, `database/`는 계좌 간 송금이 두 Account 저장을 하나의 트랜잭션으로 묶는 실사용처다. 새로운 공용 인프라가 필요해지면 같은 원칙(실사용처가 있을 때만 추가)을 따른다.
 
 ---
 

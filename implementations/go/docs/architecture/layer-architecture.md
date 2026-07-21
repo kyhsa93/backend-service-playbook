@@ -156,7 +156,7 @@ Command Handler는 `outboxPoller`/`outboxConsumer`를 전혀 참조하지 않는
 
 ## Go 트랜잭션 전파 — `context.Context` vs AsyncLocalStorage
 
-root는 여러 Repository를 하나의 트랜잭션으로 묶을 때 컨텍스트-로컬 저장소(Node: AsyncLocalStorage)를 권장한다. Go의 관용적 대응은 `context.Context`에 값으로 담아 전파하는 것이며, `internal/infrastructure/database/`(`WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`)가 실제로 이를 구현한다 — 계좌 간 송금(Transfer)이 출금 계좌+입금 계좌 저장을 하나의 트랜잭션으로 묶어야 하는 첫 실사용처다. `AccountRepository.SaveAccount()`는 앰비언트 트랜잭션이 있으면 참여하고, 없으면(기존 단독 호출부처럼) 스스로 열고 커밋한다. 상세는 [persistence.md](persistence.md) 참고.
+root는 여러 Repository를 하나의 트랜잭션으로 묶을 때 컨텍스트-로컬 저장소(Node: AsyncLocalStorage)를 권장한다. Go의 관용적 대응은 `context.Context`에 값으로 담아 전파하는 것이며, `internal/infrastructure/database/`(`WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`)가 실제로 이를 구현한다 — 계좌 간 송금(Transfer)이 출금 계좌+입금 계좌 저장을 하나의 트랜잭션으로 묶는 실사용처다. `AccountRepository.SaveAccount()`는 앰비언트 트랜잭션이 있으면 참여하고, 없으면(기존 단독 호출부처럼) 스스로 열고 커밋한다. 상세는 [persistence.md](persistence.md) 참고.
 
 ---
 

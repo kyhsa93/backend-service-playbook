@@ -32,7 +32,7 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
 
 FastAPI가 `Depends(get_session)`을 같은 요청 내에서 캐싱하므로, 두 팩토리는 실제로 동일한 `AsyncSession` 인스턴스를 받는다. 여러 Repository/Service에 걸친 쓰기를 하나의 트랜잭션으로 묶을 때 root가 요구하는 "Unit of Work" 개념이 이 캐싱 동작으로 충족된다 — 언어별로는 `AsyncLocalStorage`/`contextvars`를 쓰는 대신, FastAPI의 요청 스코프 의존성 캐싱이 같은 역할을 한다.
 
-라우트 함수가 성공적으로 반환되면 `get_session()`의 `yield` 다음 줄(`await session.commit()`)이 실행된다. 예외가 발생하면 `except` 블록이 명시적으로 롤백한다 — 애초에는 이 `except`가 없어 `async with SessionLocal()`이 세션을 롤백 없이 그냥 닫는 gap이 있었지만, 계좌 간 송금(Transfer)이 한 요청 안에서 서로 다른 두 Aggregate 인스턴스를 순차로 저장하는 첫 유스케이스가 되면서(두 번째 저장이 예외를 던지면 첫 번째 저장이 세션에 이미 flush된 채로 남을 수 있다) 이 gap이 실제 위험이 됐고, 그래서 명시적 롤백을 추가했다.
+라우트 함수가 성공적으로 반환되면 `get_session()`의 `yield` 다음 줄(`await session.commit()`)이 실행된다. 예외가 발생하면 `except` 블록이 명시적으로 롤백한다 — `async with SessionLocal()` 자체는 예외 시 세션을 롤백 없이 그냥 닫으므로, 이 `except`가 없으면 계좌 간 송금(Transfer)처럼 한 요청 안에서 서로 다른 두 Aggregate 인스턴스를 순차로 저장하는 유스케이스에서 위험해진다(두 번째 저장이 예외를 던지면 첫 번째 저장이 세션에 이미 flush된 채로 남을 수 있다).
 
 ---
 

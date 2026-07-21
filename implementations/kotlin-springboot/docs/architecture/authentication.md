@@ -158,7 +158,7 @@ class SignInService(
 
 ---
 
-## JWT 발급 — AuthService (변경 없음)
+## JWT 발급 — AuthService
 
 ```kotlin
 // auth/application/AuthService.kt
@@ -180,7 +180,7 @@ class AuthService(jwtProperties: JwtProperties) {
 
 ---
 
-## JWT 검증 — Spring Security Filter (변경 없음)
+## JWT 검증 — Spring Security Filter
 
 `OncePerRequestFilter`를 상속해 `Authorization: Bearer <token>` 헤더를 검증하고 `SecurityContextHolder`에 인증 정보를 채운다.
 

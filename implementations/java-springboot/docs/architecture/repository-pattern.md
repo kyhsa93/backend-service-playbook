@@ -97,7 +97,7 @@ public record AccountsWithCount(List<Account> accounts, long count) {}
 public record TransactionsWithCount(List<Transaction> transactions, long count) {}
 ```
 
-**단건 조회는 별도 메서드가 아니라 `findAccounts`를 `take: 1`로 호출해 재사용한다.** 이전에는 `findByAccountIdAndOwnerId` 같은 Spring Data 파생 쿼리 스타일의 전용 단건 조회 메서드가 별도로 있었으나, root의 "조회 경로를 하나로 통일" 원칙에 맞춰 제거했다. Application Service가 호출 지점에서 `take: 1`로 조회한 뒤 첫 번째 결과를 직접 꺼낸다:
+**단건 조회는 별도 메서드가 아니라 `findAccounts`를 `take: 1`로 호출해 재사용한다** — root의 "조회 경로를 하나로 통일" 원칙에 따라, `findByAccountIdAndOwnerId` 같은 Spring Data 파생 쿼리 스타일의 전용 단건 조회 메서드는 두지 않는다. Application Service가 호출 지점에서 `take: 1`로 조회한 뒤 첫 번째 결과를 직접 꺼낸다:
 
 ```java
 // application/command/DepositService.java — 실제 코드

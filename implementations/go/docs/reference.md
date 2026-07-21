@@ -2,7 +2,7 @@
 
 전체 도메인 하나(`Order`)를 본 아키텍처로 구현한 예시다. 새 도메인을 추가할 때 이 템플릿을 복사해서 시작한다. 이 저장소의 `examples/`(Account 도메인)도 동일한 구조를 실제로 쓰고 있으니 함께 참고한다.
 
-> 이 템플릿은 [aggregate-id.md](architecture/aggregate-id.md)가 규정하는 올바른 ID 형식(하이픈 제거 32자리 hex)과 [error-handling.md](architecture/error-handling.md)의 sentinel error 패턴을 그대로 따르는 **목표 상태(target-state)** 코드다. `examples/`의 Account 도메인 코드 자체에는 몇 가지 알려진 격차(uuid 하이픈 미제거 등)가 있는데, 이 문서는 그 격차를 재현하지 않는다 — 각 격차와 이유는 해당 `architecture/*.md` 문서에 명시되어 있다. Outbox 기반 이벤트 발행(아래 참고)은 더 이상 격차가 아니다 — `examples/`가 이미 이 패턴을 실제로 구현하고 있으며, 이 템플릿은 그 실제 구조를 `Order` 도메인으로 옮긴 것이다.
+> 이 템플릿은 [aggregate-id.md](architecture/aggregate-id.md)가 규정하는 올바른 ID 형식(하이픈 제거 32자리 hex)과 [error-handling.md](architecture/error-handling.md)의 sentinel error 패턴을 그대로 따르는 **목표 상태(target-state)** 코드다. `examples/`의 Account 도메인 코드 자체에는 몇 가지 알려진 격차(uuid 하이픈 미제거 등)가 있는데, 이 문서는 그 격차를 재현하지 않는다 — 각 격차와 이유는 해당 `architecture/*.md` 문서에 명시되어 있다. Outbox 기반 이벤트 발행(아래 참고)은 `examples/`가 이미 실제로 구현하고 있는 패턴이며, 이 템플릿은 그 구조를 `Order` 도메인으로 옮긴 것이다.
 
 ---
 

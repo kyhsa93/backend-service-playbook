@@ -6,11 +6,11 @@
 
 root 원칙: **Repository가 Aggregate와 이벤트를 같은 트랜잭션에서 Outbox 테이블에 저장 → 큐 발행 → 큐 수신 시 핸들러 실행**. 이 저장소는 이 경로를 문자 그대로 구현한다 — **Command Service가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 쓰지 않는다.**
 
-1. **`OutboxWriter`가 Repository 구현체의 트랜잭션 안에서 outbox 테이블에 이벤트를 적재한다** (변경 없음 — 아래 1~2단계).
+1. **`OutboxWriter`가 Repository 구현체의 트랜잭션 안에서 outbox 테이블에 이벤트를 적재한다** (아래 1~2단계).
 2. **`OutboxPoller`(`@Scheduled(fixedDelay = 1000)`)가 독립적으로 1초 주기로 outbox 테이블을 읽어 SQS로 발행한다.** Command Service는 이 클래스를 전혀 참조하지 않는다.
 3. **`OutboxConsumer`(전용 단일 스레드에서 도는 long-polling 루프, `SmartLifecycle`로 시작/종료 관리)가 SQS를 수신 대기하다가 메시지를 받으면 `eventType`으로 `OutboxEventHandler` 구현체를 찾아 호출한다.**
 
-Command Service는 `accountRepository.saveAccount(account)` 호출 뒤 곧바로 반환한다 — Outbox → SQS 발행/수신은 언제 일어나는지 Command Service가 전혀 알지 못한다(최대 1초 뒤 발행 + SQS long-poll 지연). `harness/src/rules/OutboxDrainOrder.java`가 Command Service(`application/command/`)에서 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 심볼 참조나 `processPending()`/`poll()`/`drainOnce()` 호출을 찾으면 실패시킨다 — 예전에는 반대로 "호출해야 한다"는 규칙이었지만, 동기 드레인을 전면 제거하며 뒤집혔다.
+Command Service는 `accountRepository.saveAccount(account)` 호출 뒤 곧바로 반환한다 — Outbox → SQS 발행/수신은 언제 일어나는지 Command Service가 전혀 알지 못한다(최대 1초 뒤 발행 + SQS long-poll 지연). `harness/src/rules/OutboxDrainOrder.java`가 Command Service(`application/command/`)에서 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 심볼 참조나 `processPending()`/`poll()`/`drainOnce()` 호출을 찾으면 실패시킨다 — Command Service는 저장 후 곧바로 반환해야 하고, Outbox 드레인을 동기적으로 호출해서는 안 된다.
 
 ```java
 // application/command/CreateAccountService.java — 실제 코드
@@ -32,7 +32,7 @@ public class CreateAccountService {
 
 ---
 
-## 1단계: Aggregate에서 이벤트 수집 (변경 없음)
+## 1단계: Aggregate에서 이벤트 수집
 
 ```java
 // domain/Account.java — 실제 코드
@@ -53,11 +53,11 @@ public List<Object> pullDomainEvents() {
 }
 ```
 
-`@Transient`가 이 필드를 JPA 컬럼 매핑에서 제외한다 — 이벤트는 영속 상태가 아니라 "아직 전달되지 않은 사실의 목록"이다. 이 수집 패턴은 Outbox 도입 전후, 그리고 동기 드레인 → 비동기 전환 전후로도 전혀 바뀌지 않았다.
+`@Transient`가 이 필드를 JPA 컬럼 매핑에서 제외한다 — 이벤트는 영속 상태가 아니라 "아직 전달되지 않은 사실의 목록"이다.
 
 ---
 
-## 2단계: Repository가 Aggregate + Outbox를 한 트랜잭션으로 저장 (변경 없음)
+## 2단계: Repository가 Aggregate + Outbox를 한 트랜잭션으로 저장
 
 ```java
 // outbox/OutboxEvent.java — 실제 코드
@@ -77,7 +77,7 @@ public class OutboxEvent {
     private String payload;                     // ObjectMapper로 직렬화한 JSON
 
     @Column(nullable = false)
-    private boolean processed = false;          // 의미가 바뀌었다 — 아래 3단계 참고
+    private boolean processed = false;          // "SQS로 전달을 끝냈다"는 의미 — 아래 3단계 참고
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -133,13 +133,13 @@ public class AccountRepositoryImpl implements AccountRepository {
 }
 ```
 
-**Command Service는 `ApplicationEventPublisher`/`@EventListener`에 의존하지 않는다.** 9개 Command Service(Account 6개 + Payment 3개) 모두 `ApplicationEventPublisher` 의존성이 없고, 클래스 레벨 `@Transactional`도 붙지 않으며, **이제는 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 필드도 갖지 않는다** — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`(혹은 각 BC의 동등한 Repository 구현체)다.
+**Command Service는 `ApplicationEventPublisher`/`@EventListener`에 의존하지 않는다.** Account/Card/Payment 어느 BC의 Command Service도 `ApplicationEventPublisher` 의존성이 없고, 클래스 레벨 `@Transactional`도 붙지 않으며, `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 필드도 갖지 않는다 — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`(혹은 각 BC의 동등한 Repository 구현체)다.
 
 ---
 
-## 3단계: `OutboxPoller` — Outbox → SQS 발행 (신규, `@Scheduled`)
+## 3단계: `OutboxPoller` — Outbox → SQS 발행 (`@Scheduled`)
 
-Outbox 테이블에서 `processed=false`인 행을 읽어 SQS로 발행하고, **발행에 성공한 즉시** `processed=true`로 표시한다. `processed`의 의미가 "핸들러가 처리를 끝냈다"에서 "SQS로 전달을 끝냈다"로 바뀌었다 — 이후의 재시도/at-least-once 보장은 outbox 테이블이 아니라 SQS의 visibility timeout + DLQ가 담당한다.
+Outbox 테이블에서 `processed=false`인 행을 읽어 SQS로 발행하고, **발행에 성공한 즉시** `processed=true`로 표시한다. `processed`는 "SQS로 전달을 끝냈다"는 의미다 — 그 이후의 재시도/at-least-once 보장은 outbox 테이블이 아니라 SQS의 visibility timeout + DLQ가 담당한다.
 
 ```java
 // outbox/OutboxPoller.java — 실제 코드(발췌)
@@ -190,7 +190,7 @@ public class AccountServiceApplication { ... }
 
 ---
 
-## 4단계: `OutboxConsumer` — SQS → `OutboxEventHandler` 수신 (신규, long polling)
+## 4단계: `OutboxConsumer` — SQS → `OutboxEventHandler` 수신 (long polling)
 
 SQS를 long polling(`ReceiveMessageRequest.waitTimeSeconds(5)`)으로 수신 대기하다가 메시지를 받으면 `eventType`(`MessageAttributes`)으로 Spring이 자동 수집한 `List<OutboxEventHandler>`에서 핸들러를 찾아 호출한다. **`OutboxRelay`가 하던 "클래스패스 전체에서 `OutboxEventHandler` 구현체 자동 수집" 배선은 그대로 재사용된다** — 주입 대상만 `OutboxRelay`에서 `OutboxConsumer`로 바뀌었을 뿐, 각 도메인의 `OutboxEventHandler` 구현체 자체는 손댈 필요가 없다.
 
@@ -267,9 +267,9 @@ public class OutboxConsumer implements SmartLifecycle {
 
 ---
 
-## `OutboxEventHandler` — 변경 없음
+## `OutboxEventHandler`
 
-이벤트 타입별 Handler는 `application/event/`에 위치하며, `outbox/OutboxEventHandler` 인터페이스를 구현한다. 이 인터페이스와 각 도메인의 구현체(`AccountCreatedEventHandler` 등)는 동기 드레인 → 비동기 전환에도 **전혀 바뀌지 않았다** — 라우팅 주체만 `OutboxRelay`에서 `OutboxConsumer`로 바뀌었다.
+이벤트 타입별 Handler는 `application/event/`에 위치하며, `outbox/OutboxEventHandler` 인터페이스를 구현한다. 이 인터페이스와 각 도메인의 구현체(`AccountCreatedEventHandler` 등)는 `OutboxConsumer`가 이벤트 타입으로 라우팅을 결정하는 방식과 무관하게 동일한 시그니처(`eventType()`/`handle(payload)`)만 만족하면 된다.
 
 ```java
 // outbox/OutboxEventHandler.java — 실제 코드
@@ -393,7 +393,7 @@ private void waitForCardStatus(String cardId, String expected, String ownerId) {
 
 ## 이벤트 핸들러 멱등성
 
-SQS는 at-least-once 전달을 보장한다. 같은 메시지가 **중복 수신**될 수 있으므로 모든 `OutboxEventHandler`는 **멱등(idempotent)** 하게 구현해야 한다 — 이 요구사항은 동기 드레인 시절(테이블 재드레인에 의한 at-least-once)에도 이미 성립했고, SQS 전환으로 전달 매체가 바뀌었을 뿐 원칙은 동일하다.
+SQS는 at-least-once 전달을 보장한다. 같은 메시지가 **중복 수신**될 수 있으므로 모든 `OutboxEventHandler`는 **멱등(idempotent)** 하게 구현해야 한다.
 
 현재 Handler들은 이미 **Level 1(본질적 멱등)**에 근접한다 — 이메일 재발송이 시스템 상태를 망가뜨리지는 않는다(단, 중복 이메일 발송 자체는 발생할 수 있다). 완전한 멱등성을 원하면 Level 2(Ledger)를 적용한다. 이 저장소는 이미 `account/infrastructure/notification/persistence/SentEmail`(발송 이력 Entity)을 갖고 있으므로, `eventId` 컬럼만 추가하면 Ledger 역할을 겸할 수 있다. `DepositByPaymentService`/`WithdrawByPaymentService`는 `referenceId` 기준 Level 2 Ledger(`hasTransactionWithReference`)를 실제로 쓴다.
 
@@ -409,10 +409,10 @@ SQS는 at-least-once 전달을 보장한다. 같은 메시지가 **중복 수신
 
 ## 원칙 요약
 
-- **Aggregate가 이벤트를 수집**하는 방식(`domainEvents` + `pullDomainEvents()`)은 root와 일치 — 유지된다.
-- **발행/수신 메커니즘은 SQS 경유 비동기로 완전히 교체되었다**: `AccountRepositoryImpl.saveAccount()`의 Outbox 저장(같은 트랜잭션, 변경 없음) → `OutboxPoller`(`@Scheduled(fixedDelay=1000)`, 신규)가 SQS로 발행 → `OutboxConsumer`(long polling, `SmartLifecycle`, 신규)가 수신해 `application/event/`의 `OutboxEventHandler` 구현체 호출.
-- **Command Service는 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 전혀 참조하지 않는다** — 저장 직후 곧바로 반환한다. `harness`의 `outbox-drain-order` 규칙이 회귀(누군가 다시 동기 호출을 추가하는 것)를 방지한다.
-- **`OutboxEventHandler` 인터페이스와 각 도메인 구현체는 바뀌지 않았다** — Spring의 `List<OutboxEventHandler>` 자동 수집을 `OutboxConsumer`가 그대로 재사용한다.
+- **Aggregate가 이벤트를 수집**하는 방식(`domainEvents` + `pullDomainEvents()`)은 root와 일치한다.
+- **발행/수신 메커니즘은 SQS 경유 비동기다**: `AccountRepositoryImpl.saveAccount()`의 Outbox 저장(같은 트랜잭션) → `OutboxPoller`(`@Scheduled(fixedDelay=1000)`)가 SQS로 발행 → `OutboxConsumer`(long polling, `SmartLifecycle`)가 수신해 `application/event/`의 `OutboxEventHandler` 구현체 호출.
+- **Command Service는 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 전혀 참조하지 않는다** — 저장 직후 곧바로 반환한다. `harness`의 `outbox-drain-order` 규칙이 동기 호출 추가를 방지한다.
+- **`OutboxEventHandler` 인터페이스와 각 도메인 구현체는 라우팅 메커니즘과 무관하다** — Spring의 `List<OutboxEventHandler>` 자동 수집을 `OutboxConsumer`가 그대로 재사용한다.
 - **EventHandler는 아직 완전히 멱등하지 않다** — 본질적 멱등(이메일 재발송은 안전)에는 해당하지만, `SentEmail`에 `eventId`를 추가하는 Level 2 Ledger는 후속 과제다.
 
 ### 관련 문서

@@ -115,7 +115,7 @@ func (r *AccountRepository) saveAccount(ctx context.Context, tx *sql.Tx, a *acco
 
 ### 실사용처 — `TransferHandler`(계좌 간 송금)
 
-여러 Repository(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)를 하나의 트랜잭션으로 묶어야 하는 첫 실제 유스케이스는 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다:
+여러 Repository(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)를 하나의 트랜잭션으로 묶어야 하는 대표 유스케이스가 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다:
 
 ```go
 // internal/application/command/transfer_handler.go — 실제 코드

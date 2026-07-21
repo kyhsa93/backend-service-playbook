@@ -28,7 +28,7 @@ class AccountRepositoryImpl(
 
 Spring AOP가 `@Transactional` 메서드 진입 시 트랜잭션을 시작해 현재 스레드에 커넥션을 바인딩하고(`TransactionSynchronizationManager`), 같은 스레드에서 호출되는 모든 Repository 메서드가 자동으로 같은 커넥션/트랜잭션을 사용한다 — root의 `getClient()` 패턴에 해당하는 것을 Spring이 내부적으로 수행한다.
 
-**여러 Repository를 하나의 트랜잭션으로 묶는 실제 예시** — 계좌 간 송금(Transfer)이 이 저장소 최초의 실제 유스케이스다(출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다). `TransferService`(Command Service) 자신은 `@Transactional`을 갖지 않는다 — 경계는 여전히 Repository에 있다:
+**여러 Repository를 하나의 트랜잭션으로 묶는 실제 예시** — 계좌 간 송금(Transfer)이 대표 유스케이스다(출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다). `TransferService`(Command Service) 자신은 `@Transactional`을 갖지 않는다 — 경계는 여전히 Repository에 있다:
 
 ```kotlin
 // domain/AccountRepository.kt — 실제 코드

@@ -316,7 +316,7 @@ export class EventHandlerRegistry {
 }
 ```
 
-각 도메인 모듈이 자기 도메인의 Domain Event Handler와, 다른 BC가 발행하는 Integration Event 수신부를 이 레지스트리 하나에 등록한다 — 예전에는 도메인마다 별도 `OutboxRelay`가 생성자 주입 고정 맵으로 이 라우팅을 담당했다.
+각 도메인 모듈이 자기 도메인의 Domain Event Handler와, 다른 BC가 발행하는 Integration Event 수신부를 이 레지스트리 하나에 등록한다.
 
 ```typescript
 // account/account-module.ts — 실제 코드(발췌)

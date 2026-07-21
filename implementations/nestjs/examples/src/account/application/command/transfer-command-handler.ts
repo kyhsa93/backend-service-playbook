@@ -40,8 +40,8 @@ export class TransferCommandHandler implements ICommandHandler<TransferCommand, 
     // transferId는 이 송금 전용의 새 영속 Aggregate를 두지 않고, 두 Transaction 행을
     // 상관관계 짓는 referenceId로만 쓴다(reference_id, type) 조합이 이미 유니크하므로
     // source(WITHDRAWAL)/target(DEPOSIT) 두 행이 같은 transferId를 공유해도 충돌하지
-    // 않는다. 접미사 없이 32자리 원본 그대로 쓴다(과거 정기이체 벤치마크에서 접미사를
-    // 붙였다가 컬럼 길이를 넘긴 전례가 있다).
+    // 않는다. 접미사 없이 32자리 원본 그대로 쓴다 — referenceId 컬럼이 VARCHAR(36)이므로
+    // 접미사를 붙이면 그 한도를 넘길 수 있다.
     const transferId = generateId()
     const sourceTransaction = source.withdraw(amount, transferId)
     const targetTransaction = target.deposit(amount, transferId)

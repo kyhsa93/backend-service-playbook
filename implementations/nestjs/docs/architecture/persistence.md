@@ -88,7 +88,7 @@ export class OrderRepositoryImpl extends OrderRepository {
 
 #### Command Handler에서 사용 — 실제 코드(계좌 간 송금)
 
-여러 Repository 저장(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)을 하나의 트랜잭션으로 묶어야 하는 실제 유스케이스는 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. 이 Handler는 기존 `TransactionManager`를 그대로 재사용한다 — 새 인프라가 필요 없었다.
+여러 Repository 저장(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)을 하나의 트랜잭션으로 묶어야 하는 실제 유스케이스는 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. 이 Handler는 기존 `TransactionManager`를 그대로 재사용한다 — 새 인프라가 필요 없다.
 
 ```typescript
 // application/command/transfer-command-handler.ts
