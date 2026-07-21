@@ -33,6 +33,7 @@ public class AccountAdapterImpl implements AccountAdapter {
                         account ->
                                 new AccountView(
                                         account.getAccountId(),
-                                        account.getStatus() == AccountStatus.ACTIVE));
+                                        account.getStatus() == AccountStatus.ACTIVE,
+                                        account.getEmail()));
     }
 }

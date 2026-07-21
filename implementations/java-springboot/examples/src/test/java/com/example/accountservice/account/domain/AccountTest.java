@@ -3,6 +3,7 @@ package com.example.accountservice.account.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 class AccountTest {
@@ -197,5 +198,70 @@ class AccountTest {
 
         assertThat(transactions).hasSize(1);
         assertThat(account.pullPendingTransactions()).isEmpty();
+    }
+
+    @Test
+    void 잔액이_충분하면_이자를_지급하고_INTEREST_거래를_남긴다() {
+        Account account = createAccount();
+        account.deposit(1_000_000);
+        account.pullPendingTransactions();
+
+        var result = account.payInterest(LocalDate.of(2026, 7, 21));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getType()).isEqualTo(TransactionType.INTEREST);
+        assertThat(result.get().getAmount().amount()).isEqualTo(100); // 1_000_000 / 10_000
+        assertThat(account.getBalance().amount()).isEqualTo(1_000_100);
+        assertThat(account.getLastInterestPaidAt()).isEqualTo(LocalDate.of(2026, 7, 21));
+        assertThat(account.pullPendingTransactions()).hasSize(1);
+    }
+
+    @Test
+    void 같은_날_이자를_두번_지급하면_두번째는_아무_일도_하지_않는다() {
+        Account account = createAccount();
+        account.deposit(1_000_000);
+        LocalDate today = LocalDate.of(2026, 7, 21);
+        account.payInterest(today);
+
+        var result = account.payInterest(today);
+
+        assertThat(result).isEmpty();
+        assertThat(account.getBalance().amount()).isEqualTo(1_000_100);
+    }
+
+    @Test
+    void 잔액이_작아서_이자가_0으로_계산되면_거래를_남기지_않는다() {
+        Account account = createAccount();
+        account.deposit(50); // 50 / 10_000 = 0
+
+        var result = account.payInterest(LocalDate.of(2026, 7, 21));
+
+        assertThat(result).isEmpty();
+        assertThat(account.getBalance().amount()).isEqualTo(50);
+        assertThat(account.getLastInterestPaidAt()).isNull();
+    }
+
+    @Test
+    void 정지된_계좌는_이자를_지급받지_않는다() {
+        Account account = createAccount();
+        account.deposit(1_000_000);
+        account.suspend();
+
+        var result = account.payInterest(LocalDate.of(2026, 7, 21));
+
+        assertThat(result).isEmpty();
+        assertThat(account.getBalance().amount()).isEqualTo(1_000_000);
+    }
+
+    @Test
+    void 다음날에는_다시_이자를_지급받을_수_있다() {
+        Account account = createAccount();
+        account.deposit(1_000_000);
+        account.payInterest(LocalDate.of(2026, 7, 21));
+
+        var result = account.payInterest(LocalDate.of(2026, 7, 22));
+
+        assertThat(result).isPresent();
+        assertThat(account.getBalance().amount()).isEqualTo(1_000_200);
     }
 }

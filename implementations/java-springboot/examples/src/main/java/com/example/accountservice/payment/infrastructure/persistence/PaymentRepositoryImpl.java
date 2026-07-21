@@ -2,12 +2,15 @@ package com.example.accountservice.payment.infrastructure.persistence;
 
 import com.example.accountservice.outbox.OutboxWriter;
 import com.example.accountservice.payment.application.query.PaymentQuery;
+import com.example.accountservice.payment.application.query.PaymentUsageSummary;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
 import com.example.accountservice.payment.domain.PaymentRepository;
+import com.example.accountservice.payment.domain.PaymentStatus;
 import com.example.accountservice.payment.domain.PaymentsWithCount;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +60,23 @@ public class PaymentRepositoryImpl implements PaymentRepository, PaymentQuery {
         jpaRepository.save(entity);
         // Aggregate 저장과 같은 물리 트랜잭션 안에서 Outbox에 이벤트를 기록한다(domain-events.md 참고).
         outboxWriter.saveAll(payment.pullDomainEvents());
+    }
+
+    @Override
+    public PaymentUsageSummary summarizeCardUsage(
+            String cardId, LocalDateTime from, LocalDateTime to) {
+        String jpql =
+                "SELECT COUNT(p), COALESCE(SUM(p.amount), 0) FROM PaymentJpaEntity p "
+                        + "WHERE p.cardId = :cardId AND p.status = :status "
+                        + "AND p.createdAt >= :from AND p.createdAt < :to";
+        Object[] result =
+                em.createQuery(jpql, Object[].class)
+                        .setParameter("cardId", cardId)
+                        .setParameter("status", PaymentStatus.COMPLETED)
+                        .setParameter("from", from)
+                        .setParameter("to", to)
+                        .getSingleResult();
+        return new PaymentUsageSummary((Long) result[0], (Long) result[1]);
     }
 
     private String buildJpql(PaymentFindQuery query, boolean count) {

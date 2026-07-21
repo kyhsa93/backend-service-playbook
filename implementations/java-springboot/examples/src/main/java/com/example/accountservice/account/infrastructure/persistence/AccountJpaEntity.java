@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -47,6 +48,10 @@ public class AccountJpaEntity {
 
     @Column private LocalDateTime deletedAt;
 
+    // account/domain/Account.payInterest()의 "오늘 이미 이자를 지급했는지" 판단 필드(Level 1 멱등성) —
+    // account/domain/Account.java 참고.
+    @Column private LocalDate lastInterestPaidAt;
+
     protected AccountJpaEntity() {}
 
     AccountJpaEntity(
@@ -58,7 +63,8 @@ public class AccountJpaEntity {
             AccountStatus status,
             LocalDateTime createdAt,
             LocalDateTime updatedAt,
-            LocalDateTime deletedAt) {
+            LocalDateTime deletedAt,
+            LocalDate lastInterestPaidAt) {
         this.id = id;
         this.accountId = accountId;
         this.ownerId = ownerId;
@@ -68,6 +74,7 @@ public class AccountJpaEntity {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
+        this.lastInterestPaidAt = lastInterestPaidAt;
     }
 
     /** 기존 row(id 보존)에 도메인 Account의 최신 상태를 반영한다 — update 저장에 사용. */
@@ -76,12 +83,14 @@ public class AccountJpaEntity {
             MoneyEmbeddable balance,
             AccountStatus status,
             LocalDateTime updatedAt,
-            LocalDateTime deletedAt) {
+            LocalDateTime deletedAt,
+            LocalDate lastInterestPaidAt) {
         this.email = email;
         this.balance = balance;
         this.status = status;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
+        this.lastInterestPaidAt = lastInterestPaidAt;
     }
 
     Long getId() {
@@ -118,5 +127,9 @@ public class AccountJpaEntity {
 
     LocalDateTime getDeletedAt() {
         return deletedAt;
+    }
+
+    LocalDate getLastInterestPaidAt() {
+        return lastInterestPaidAt;
     }
 }

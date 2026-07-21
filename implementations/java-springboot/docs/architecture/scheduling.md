@@ -2,158 +2,277 @@
 
 > 프레임워크 무관 원칙은 루트 [scheduling.md](../../../../docs/architecture/scheduling.md) 참고.
 
-## 현재 상태
+## 현재 상태 — 실제 구현됨
 
-`examples/`는 `@Scheduled`/`@EnableScheduling`을 실제로 쓴다 — `outbox/OutboxPoller.poll()`이 `@Scheduled(fixedDelay = 1000)`으로 Outbox 테이블을 폴링해 SQS로 발행하고, `AccountServiceApplication`에 `@EnableScheduling`이 선언되어 있다([domain-events.md](domain-events.md) 참고). 다만 이 저장소는 그 이상의 "일반적인 배치 작업" 유스케이스(예: 만료 계좌 정리처럼 비즈니스 로직 자체를 주기 실행하는 것)는 아직 갖고 있지 않다 — `OutboxPoller`는 Outbox 드레인 전용이고, SQS 수신은 블로킹 long-poll 성격이라 `@Scheduled`가 아니라 `OutboxConsumer`(`SmartLifecycle` 전용 백그라운드 스레드)가 담당한다([domain-events.md](domain-events.md) 참고). 아래는 여전히 미구현인 "만료 계좌 정리 배치" 같은 진짜 주기적 비즈니스 작업이 생길 때 참고할 목표 형태다.
+`examples/`는 두 개의 실제 주기적 비즈니스 배치를 갖는다 — 둘 다 root의 `Scheduler → task_outbox → Relay → 메시지 큐 → Consumer → TaskController → CommandService` 경로를 문자 그대로 구현한다:
+
+1. **정기 이자 지급**(Feature 1) — 매일 새벽 3시, 모든 ACTIVE 계좌에 잔액의 0.01% 이자를 지급한다. `account/infrastructure/scheduling/InterestPaymentScheduler` → `account/interfaces/task/PayInterestTaskController` → `account/application/command/PayInterestService` → `Account.payInterest()`(Level 1 본질적 멱등, `lastInterestPaidAt`).
+2. **월간 카드 사용내역 발송**(Feature 2) → `card/infrastructure/scheduling/CardStatementScheduler` → `card/interfaces/task/SendCardStatementTaskController` → `card/application/command/SendCardStatementService` → Payment BC 사용내역 집계(ACL) + SES 발송, `Card.markStatementSent()`(Level 2 Ledger, `lastStatementSentMonth`).
+
+두 Scheduler 모두 `taskqueue/TaskOutboxWriter`(공용 인프라 패키지, `outbox/`와 형제)를 통해 적재하고, `taskqueue/TaskOutboxPoller`(`@Scheduled(fixedDelay=1000)`)가 드레인해 Task Queue(SQS **FIFO**)로 발행하며, `taskqueue/TaskConsumer`(`SmartLifecycle` 전용 백그라운드 스레드)가 수신해 `taskType`으로 등록된 `TaskHandler`(각 도메인의 Task Controller)를 호출한다. Domain/Integration Event 큐(`outbox/`, 표준 큐)와 완전히 분리된 별도 큐·별도 테이블(`task_outbox`)이다 — Task(명령: "X를 수행하라")와 Domain Event(사실: "X가 일어났다")는 개념적으로 다르기 때문이다([domain-events.md](domain-events.md) 참고).
 
 ---
 
 ## 최소 요구사항
 
-1. **Scheduler는 Infrastructure 레이어에 배치**한다 — `@Component` + `@Scheduled`, `application/`이 아니라 `infrastructure/`에 둔다.
-2. **Task 핸들러는 멱등**하다.
-3. **메시지 큐를 쓴다면 DLQ를 기본**으로 한다.
+1. **Scheduler는 Infrastructure 레이어에 배치**한다 — `@Component` + `@Scheduled`, `application/`이 아니라 `<domain>/infrastructure/scheduling/`에 둔다. 실제로 `InterestPaymentScheduler`/`CardStatementScheduler` 모두 이 위치다.
+2. **Task 핸들러는 멱등**하다 — `Account.payInterest()`(Level 1)와 `Card.markStatementSent()`(Level 2)가 실제 예시다.
+3. **메시지 큐를 쓴다면 DLQ를 기본**으로 한다 — `task-queue-dlq.fifo` + `maxReceiveCount=3`.
 
 ---
 
-## `@EnableScheduling` — 애플리케이션 진입점에 활성화
+## Task Outbox 실제 경로
+
+Command 트랜잭션 문맥이 없는 Scheduler(Cron)가 호출 주체이므로, root가 요구하는 "DB 변경과 Task 적재를 같은 트랜잭션에" 원칙은 여기서는 **단일 row insert 자체가 원자적 적재 단위**가 되는 형태로 나타난다(`taskOutboxRepository.save()` 한 줄):
 
 ```java
-// AccountServiceApplication.java — 실제 코드
-@SpringBootApplication
-@EnableScheduling   // outbox/OutboxPoller의 @Scheduled(fixedDelay = 1000)을 활성화한다
-public class AccountServiceApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(AccountServiceApplication.class, args);
+// account/infrastructure/scheduling/InterestPaymentScheduler.java — 실제 코드
+@Component
+@RequiredArgsConstructor
+public class InterestPaymentScheduler {
+
+    private static final String TASK_TYPE = "account.pay-interest";
+    private static final String GROUP_ID = "account.interest";
+
+    private final TaskOutboxWriter taskOutboxWriter;
+
+    @Scheduled(cron = "0 0 3 * * *") // 매일 새벽 3시
+    public void enqueueDailyInterestPayment() {
+        try {
+            LocalDate today = LocalDate.now();
+            String dedupId = TASK_TYPE + "-" + today;
+            taskOutboxWriter.enqueue(TASK_TYPE, new Payload(today), GROUP_ID, dedupId);
+        } catch (Exception e) {
+            log.error("이자 지급 Task 적재 실패", e);
+            // 예외를 재throw하지 않는다 — 다음 tick(다음날 새벽 3시)에 다시 시도된다.
+        }
     }
+
+    private record Payload(LocalDate date) {}
 }
 ```
 
-`@EnableScheduling`이 없으면 `@Scheduled` 애노테이션은 아무 효과가 없다 — 조용히 무시되므로 누락하기 쉽다. 이 저장소는 실제로 `OutboxPoller.poll()` 하나가 이 애노테이션에 의존한다 — 앞으로 배치 작업이 추가되면 같은 `@EnableScheduling` 하나로 함께 활성화된다.
-
----
-
-## Scheduler는 적재만 — `@Scheduled`가 직접 비즈니스 로직을 실행하지 않는다
-
-root 원칙: Scheduler는 Task를 큐에 적재(enqueue)하는 것만 하고, 실제 실행은 Consumer가 담당한다.
-
 ```java
-// infrastructure/scheduling/AccountCleanupScheduler.java — 제안
+// taskqueue/TaskOutboxWriter.java — 실제 코드
 @Component
 @RequiredArgsConstructor
-public class AccountCleanupScheduler {
-    private static final Logger log = LoggerFactory.getLogger(AccountCleanupScheduler.class);
+public class TaskOutboxWriter {
+    private final TaskOutboxJpaRepository taskOutboxJpaRepository;
+    private final ObjectMapper objectMapper;
 
-    private final SqsClient sqsClient;
-
-    @Value("${app.task-queue.url}")
-    private String queueUrl;
-
-    @Scheduled(cron = "0 0 3 * * *")   // 매일 새벽 3시
-    public void enqueueDailyCleanup() {
+    public void enqueue(String taskType, Object payload, String groupId, String deduplicationId) {
         try {
-            String dedupId = "account.cleanup-expired-" + LocalDate.now();
-            sqsClient.sendMessage(SendMessageRequest.builder()
-                    .queueUrl(queueUrl)
-                    .messageBody("{}")
-                    .messageGroupId("account.cleanup")
-                    .messageDeduplicationId(dedupId)     // 날짜 기반 — 다중 인스턴스가 동시에 적재해도 1건만 처리
-                    .build());
-        } catch (Exception e) {
-            log.error("Cron enqueue 실패", e);
-            // 예외를 재throw하지 않는다 — 다음 tick에서 재시도
+            taskOutboxJpaRepository.save(TaskOutboxEntry.create(
+                    taskType, objectMapper.writeValueAsString(payload), groupId, deduplicationId));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Task 페이로드 직렬화 실패: " + taskType, e);
         }
     }
 }
 ```
 
-**`@Scheduled` 예외 처리 — 명시적 try-catch 필수**: Spring의 `@Scheduled` 메서드가 던진 예외는 기본적으로 로그에 스택트레이스만 남기고 **다음 스케줄 실행을 막지 않지만, 예외 발생 자체가 조용히 지나가기 쉽다** — `log.error`로 명시적으로 기록하지 않으면 실패가 관찰 불가능해진다.
+일반 Command Service(트랜잭션 문맥이 있는 경우, root 예시의 `CloseAccountService` 같은 케이스)도 같은 `TaskOutboxWriter.enqueue()`를 `@Transactional` 메서드 안에서 호출하면 Aggregate 저장과 Task 적재가 같은 물리 트랜잭션으로 묶인다 — 지금은 두 Feature 모두 Scheduler에서만 호출하므로 이 저장소에 아직 그 조합 예시는 없다.
 
-**`cron` vs `fixedDelay`/`fixedRate`**:
-
-| 속성 | 의미 | 사용 예 |
-|---|---|---|
-| `cron = "0 0 3 * * *"` | 특정 시각에 실행 (cron 표현식) | 일 1회 배치 |
-| `fixedDelay = 1000` | 이전 실행 **종료** 후 1초 뒤 재실행 | 별도 프로세스로 Outbox를 폴링하는 경우 — 이 저장소의 실제 `OutboxPoller.poll()`이 정확히 이 속성을 쓴다([domain-events.md](domain-events.md) 참고) |
-| `fixedRate = 1000` | 이전 실행 **시작** 후 1초 뒤 재실행 (겹칠 수 있음) | 드물게 사용 — 겹침 위험 인지 필요 |
-
-폴링 성격의 Poller는 `fixedDelay`가 안전하다 — 이전 폴링이 끝나기 전에 다음 폴링이 겹쳐 시작되는 것을 방지한다. Spring의 기본 스케줄러는 단일 스레드이므로 이 보장은 프레임워크가 대신 해준다(nestjs의 `isPolling` 플래그와 동일한 효과). 반면 SQS 수신처럼 `waitTimeSeconds`로 초 단위 블로킹이 반복되는 긴 루프는 `@Scheduled` 스레드 풀에 계속 물려두면 다른 스케줄 작업의 실행을 지연시킬 위험이 있다 — 이 저장소의 `OutboxConsumer`는 그래서 `@Scheduled`가 아니라 전용 단일 스레드 `ExecutorService` + `SmartLifecycle`을 쓴다([domain-events.md](domain-events.md) 참고).
+`taskqueue/TaskOutboxEntry`(`@Entity`, `task_outbox` 테이블)는 `outbox/OutboxEvent`와 동일한 구조지만 `groupId`/`deduplicationId` 컬럼이 추가되어 있다 — FIFO 큐의 `MessageGroupId`/`MessageDeduplicationId`로 그대로 전달되기 때문이다(아래 "Cron 다중 인스턴스 안전성" 참고).
 
 ---
 
-## 다중 인스턴스 안전성 — `@Scheduled`의 근본적 한계
-
-**Spring의 `@Scheduled`는 기본적으로 인스턴스마다 독립 실행된다** — 이 애플리케이션이 여러 인스턴스(Pod, ECS Task)로 스케일 아웃되면, 같은 cron 표현식이 모든 인스턴스에서 동시에 실행된다. 위 예시의 `messageDeduplicationId`(날짜 기반)가 이 문제를 FIFO 큐의 중복 제거 기능으로 해결하는 이유다 — 여러 인스턴스가 같은 날 enqueue해도 큐에는 1건만 들어간다.
-
-큐를 아직 도입하지 않은 단순한 배치라면 `ShedLock`(`net.javacrumbs.shedlock`) 같은 분산 락 라이브러리로 "이 tick은 하나의 인스턴스만 실행"을 보장할 수 있다:
-
-```groovy
-// build.gradle — ShedLock 도입 시 대안
-implementation 'net.javacrumbs.shedlock:shedlock-spring:5.16.0'
-implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:5.16.0'
-```
+## `TaskOutboxPoller`/`TaskConsumer` — `outbox/OutboxPoller`/`OutboxConsumer`와 동일한 구조
 
 ```java
-@Scheduled(cron = "0 0 3 * * *")
-@SchedulerLock(name = "accountCleanup", lockAtMostFor = "10m")
-public void enqueueDailyCleanup() { /* ... */ }
-```
+// taskqueue/TaskOutboxPoller.java — 실제 코드(발췌)
+@Component
+@RequiredArgsConstructor
+public class TaskOutboxPoller {
 
-**두 방식의 선택 기준**: 이미 메시지 큐(SQS 등)를 쓰고 있다면 FIFO dedup이 자연스럽다(root의 Task Outbox 경로와 일치). 큐가 없는 단순 배치라면 ShedLock이 인프라 추가 없이(DB 테이블 하나로) 같은 효과를 낸다.
+    private final TaskOutboxJpaRepository taskOutboxJpaRepository;
+    private final SqsClient sqsClient;
+    private final SqsProperties sqsProperties;
 
----
-
-## Task Outbox 패턴 — DB 변경과 Task 적재의 원자성
-
-Command Service에서 DB 변경과 Task 적재가 원자적으로 묶여야 한다면, [domain-events.md](domain-events.md)와 동일한 Outbox 경로를 Task에도 적용한다:
-
-```java
-// application/command/CloseAccountService.java 내부에서 (제안)
-@Transactional
-public void close(CloseAccountCommand command) {
-    Account account = accountRepository
-            .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
-            .accounts().stream().findFirst().orElseThrow(/* ... */);
-    account.close();
-    accountRepository.saveAccount(account);   // Account 저장 + (Outbox 저장, domain-events.md 참고)
-    taskOutboxRepository.save(TaskOutboxEntry.of("account.archive", account.getAccountId()));  // 같은 트랜잭션
+    @Scheduled(fixedDelay = 1000)
+    @Transactional   // payload가 @Lob 컬럼이라 outbox/OutboxPoller와 동일한 이유로 필요
+    public void poll() {
+        List<TaskOutboxEntry> pending = taskOutboxJpaRepository.findByProcessedFalseOrderByCreatedAtAsc();
+        for (TaskOutboxEntry entry : pending) {
+            try {
+                sqsClient.sendMessage(SendMessageRequest.builder()
+                        .queueUrl(sqsProperties.taskQueueUrl())
+                        .messageBody(entry.getPayload())
+                        .messageGroupId(entry.getGroupId())              // FIFO 전용
+                        .messageDeduplicationId(entry.getDeduplicationId())  // FIFO 전용
+                        .messageAttributes(Map.of("taskType", MessageAttributeValue.builder()
+                                .dataType("String").stringValue(entry.getTaskType()).build()))
+                        .build());
+                entry.markProcessed();
+                taskOutboxJpaRepository.save(entry);
+            } catch (Exception e) {
+                log.error("Task Queue 발행 실패", kv("task_type", entry.getTaskType()), e);
+                // processed=false로 남아 다음 tick에서 재시도된다.
+            }
+        }
+    }
 }
 ```
 
-`accountRepository.saveAccount()`와 `taskOutboxRepository.save()`가 같은 `@Transactional` 메서드 안에 있으므로 Spring이 하나의 물리 트랜잭션으로 커밋/롤백한다 — 별도의 분산 트랜잭션 처리가 필요 없다. "DB 변경과 적재를 같은 트랜잭션에 묶는다"는 원리는 [domain-events.md](domain-events.md)의 `OutboxWriter`/`OutboxPoller`와 동일하다 — 실제로 지금은 둘 다 저장은 같은 트랜잭션에서 하고, 드레인은 `@Scheduled` 폴링(`OutboxPoller.poll()`, `fixedDelay=1000`)으로 비동기 처리한다는 점까지 같다. 제안된 `TaskOutboxRelay`도 같은 패턴을 그대로 따르면 된다.
+```java
+// taskqueue/TaskConsumer.java — 실제 코드(발췌)
+@Component
+public class TaskConsumer implements SmartLifecycle {
+
+    private final Map<String, TaskHandler> handlers;   // taskType() -> handler, 생성자에서 한 번 구성
+    private final ExecutorService executor =
+            Executors.newSingleThreadExecutor(r -> new Thread(r, "task-consumer"));
+    private volatile boolean running = false;
+
+    public TaskConsumer(SqsClient sqsClient, SqsProperties sqsProperties, List<TaskHandler> taskHandlers) {
+        this.handlers = taskHandlers.stream()
+                .collect(Collectors.toMap(TaskHandler::taskType, Function.identity()));
+    }
+
+    @Override public void start() { running = true; executor.submit(this::pollLoop); }
+    @Override public void stop() { /* outbox/OutboxConsumer와 동일한 graceful shutdown */ }
+
+    private void handleMessage(String queueUrl, Message message) {
+        String taskType = /* message.messageAttributes().get("taskType").stringValue() */ null;
+        try {
+            TaskHandler handler = handlers.get(taskType);
+            if (handler == null) throw new IllegalStateException("등록된 Task Handler가 없습니다: " + taskType);
+            handler.handle(message.body());
+            sqsClient.deleteMessage(/* ack */);
+        } catch (Exception e) {
+            log.error("Task 처리 실패", kv("task_type", taskType), e);
+            // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
+        }
+    }
+}
+```
+
+`outbox/OutboxConsumer`와 완전히 같은 이유로 `@Scheduled`가 아니라 전용 단일 스레드 `ExecutorService` + `SmartLifecycle`을 쓴다 — `waitTimeSeconds(5)`의 블로킹 long polling을 `@Scheduled` 스레드 풀에 물려두면 `TaskOutboxPoller`/`OutboxPoller` 같은 다른 스케줄 작업의 실행을 지연시킬 위험이 있다(자세한 이유는 [domain-events.md — 백그라운드 루프 설계](domain-events.md#백그라운드-루프-설계--왜-scheduled가-아니라-smartlifecycle--전용-스레드인가) 참고).
+
+**핸들러 라우팅은 `Collectors.toMap`(taskType당 정확히 하나의 핸들러)이다.** `outbox/OutboxConsumer`가 한때 이벤트 타입당 여러 핸들러를 등록해야 하는 요구로 `Collectors.groupingBy`로 바뀐 적이 있는 것과 달리, Task는 "누가 이 명령을 수행하는가"가 항상 정확히 하나의 Task Controller로 결정된다(Task Controller는 HTTP Controller처럼 정확히 하나의 엔드포인트다) — 여러 핸들러가 같은 `taskType`을 두고 경쟁할 개념적 이유가 없으므로 `toMap`이 맞는 설계다.
 
 ---
 
-## DLQ — SQS 설정
+## Task Controller — Interface 레이어, 실제 코드
 
 ```java
-// SQS 큐 생성 시 (Terraform/CDK 등 인프라 코드에서, 애플리케이션 코드 범위 밖)
-// RedrivePolicy: { maxReceiveCount: 3, deadLetterTargetArn: "<dlq-arn>" }
+// account/interfaces/task/PayInterestTaskController.java — 실제 코드
+@Component
+@RequiredArgsConstructor
+public class PayInterestTaskController implements TaskHandler {
+
+    private final PayInterestService payInterestService;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    public String taskType() {
+        return "account.pay-interest";
+    }
+
+    @Override
+    public void handle(String payload) throws Exception {
+        Payload parsed = objectMapper.readValue(payload, Payload.class);
+        payInterestService.payInterest(new PayInterestCommand(parsed.date()));
+        // 예외를 그대로 던진다 — catch/변환하지 않는다. TaskConsumer가 재시도/DLQ를 판단한다.
+    }
+
+    private record Payload(LocalDate date) {}
+}
 ```
 
-`maxReceiveCount` 초과 시 DLQ로 자동 이동한다 — 애플리케이션 코드는 이 설정에 관여하지 않지만, DLQ 메시지 수에 대한 CloudWatch 알람은 반드시 구성해야 한다(root 원칙).
+`HTTP Controller ↔ CommandService` 관계와 완전히 동일하게, Task Controller는 조건 분기나 비즈니스 규칙 없이 위임만 한다. **HTTP Controller의 `@RestControllerAdvice`(`GlobalExceptionHandler`) 같은 catch/에러 응답 변환 계층이 없다** — 그게 root 원칙("에러를 그대로 던진다")의 핵심이다. `PayInterestTaskController`/`SendCardStatementTaskController` 둘 다 `try`/`catch` 없이 CommandService 호출 한 줄이다.
+
+payload는 Scheduler와 Task Controller가 필드명만 맞춘 별도의 로컬 `record`로 각각 정의한다(타입을 공유하지 않는다) — `infrastructure`가 `interfaces`의 타입을 참조하면 레이어 의존 방향(Interface → Application, Infrastructure → Domain/Application이지 Interface 참조 아님)이 깨지기 때문이다.
+
+---
+
+## Cron 다중 인스턴스 안전성 — FIFO 큐 + 날짜/월 기반 dedup
+
+이 저장소는 root가 제시한 두 옵션(FIFO dedup vs ShedLock) 중 **FIFO dedup**을 실제로 채택했다 — 이미 `outbox/` 패턴으로 SQS를 쓰고 있어 인프라 추가 없이 자연스럽다. Task Queue만 FIFO이고 Domain Event 큐(`outbox/`)는 표준 큐로 남아 있다(용도가 다르므로).
+
+| Scheduler | dedupId | groupId |
+|---|---|---|
+| `InterestPaymentScheduler` | `account.pay-interest-<오늘 날짜>` | `account.interest` |
+| `CardStatementScheduler` | `card.send-statement-<이번 달>` | `card.statement` |
+
+같은 날/같은 달 여러 인스턴스가 동시에 tick해도 `task_outbox`에는 여러 행이 쌓일 수 있지만(각 인스턴스가 독립적으로 insert), `TaskOutboxPoller`가 발행할 때 같은 `deduplicationId`로 SQS FIFO의 5분 dedup 윈도우 안에서는 큐에 1건만 들어간다. 큐 레벨에서 걸러지지 못한 극단적인 경우(윈도우를 벗어난 재시도 등)에도 `Account.payInterest()`/`Card.markStatementSent()`의 Level 1/Level 2 멱등성이 최종 방어선이다 — 두 층이 함께 다중 인스턴스 안전성을 보장한다.
+
+큐를 아직 도입하지 않은 단순 배치라면 `ShedLock`(`net.javacrumbs.shedlock`)도 여전히 유효한 대안이다 — 이 저장소는 채택하지 않았을 뿐, 인프라 상황에 따라 선택 가능한 옵션으로 남아 있다.
+
+---
+
+## 멱등성 — 실제 Level 1 / Level 2 예시
+
+```java
+// account/domain/Account.java — 실제 코드(발췌), Level 1 — 본질적 멱등
+public Optional<Transaction> payInterest(LocalDate today) {
+    if (this.status != AccountStatus.ACTIVE) return Optional.empty();
+    if (this.lastInterestPaidAt != null && !this.lastInterestPaidAt.isBefore(today)) {
+        return Optional.empty();   // 오늘 이미 지급했으면 no-op
+    }
+    long interestAmount = this.balance.amount() / DAILY_INTEREST_RATE_DENOMINATOR;
+    if (interestAmount <= 0) return Optional.empty();   // 이자 0 계산도 no-op — 재실행해도 항상 동일
+    // ... 잔액 증가 + lastInterestPaidAt 갱신 + Transaction 생성 ...
+}
+```
+
+```java
+// card/domain/Card.java — 실제 코드(발췌), Level 2 — Ledger
+public boolean shouldSendStatement(YearMonth month) {
+    return this.status == CardStatus.ACTIVE && !month.equals(this.lastStatementSentMonth);
+}
+
+public void markStatementSent(YearMonth month) {
+    this.lastStatementSentMonth = month;
+}
+```
+
+`SendCardStatementService`는 `shouldSendStatement()`가 `false`인 카드는 이메일 발송도, `cardRepository.saveCard()`도 건너뛴다 — at-least-once로 같은 Task가 재실행돼도 재발송하지 않는다. 두 방식 모두 별도의 "처리 기록" 테이블(Level 3 강한 원자성용 ledger)을 두지 않고 Aggregate 필드에 인라인했다 — 판단 기준이 Aggregate 자신의 상태(오늘 날짜, 이번 달)로 충분하기 때문이다. `domain-events.md`의 이벤트 핸들러 멱등성과 동일한 3단계 모델을 그대로 따른다.
+
+---
+
+## DLQ — 실제 SQS 설정
+
+```bash
+# localstack/init-sqs.sh — 실제 코드(발췌)
+awslocal sqs create-queue --queue-name task-queue-dlq.fifo \
+  --attributes '{"FifoQueue":"true"}'
+
+TASK_DLQ_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/task-queue-dlq.fifo \
+  --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+
+awslocal sqs create-queue --queue-name task-queue.fifo \
+  --attributes '{"FifoQueue":"true","RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$TASK_DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
+```
+
+`outbox/`의 `domain-events-dlq`와 동일한 구성(`maxReceiveCount=3`)이지만 FIFO 큐 속성(`FifoQueue: true`)이 추가된다. `.env.example`/`docker-compose.yml`의 `SQS_TASK_QUEUE_URL`, `config/SqsProperties.taskQueueUrl()`(`@NotBlank`)이 실제 URL을 주입한다.
 
 ---
 
 ## 원칙
 
-- **Scheduler는 Infrastructure 레이어**: `infrastructure/scheduling/` 패키지, Application/Domain에 `@Scheduled` 사용 금지.
-- **Scheduler는 적재만**: `@Scheduled` 메서드는 큐 발행 또는 Outbox insert만 한다.
-- **`@EnableScheduling` 누락 확인**: 없으면 `@Scheduled`가 조용히 무효화된다.
-- **다중 인스턴스 안전성**: FIFO dedup 또는 ShedLock 중 인프라 상황에 맞는 것을 선택한다.
-- **`@Scheduled` 예외는 명시적 로깅**: 실패가 조용히 묻히지 않도록 한다.
-- **Task Outbox로 원자성 보장**: DB 변경과 Task 적재를 같은 `@Transactional` 안에 둔다.
+- **Scheduler는 Infrastructure 레이어**: `<domain>/infrastructure/scheduling/` 패키지, Application/Domain에 `@Scheduled` 사용 금지 — `harness/src/rules/SchedulerInInfrastructureOnly.java`가 검증한다(아래 참고).
+- **Scheduler는 적재만**: `@Scheduled` 메서드는 `TaskOutboxWriter.enqueue()` 호출만 한다 — 비즈니스 로직(이자 계산, 통계 집계 등)은 전부 Task Controller 이후(CommandService/Aggregate)에 있다.
+- **Task Controller는 Interface 레이어**: `<domain>/interfaces/task/`, HTTP Controller와 동일한 입력 어댑터. 에러를 그대로 던진다(catch/변환 없음).
+- **적재는 Task Outbox 경유**: `task_outbox` 테이블 → `TaskOutboxPoller` → SQS FIFO → `TaskConsumer`. Domain Event Outbox(`outbox/`)와 완전히 분리된 테이블·큐다.
+- **Task는 멱등하게**: `Account.payInterest()`(Level 1), `Card.markStatementSent()`(Level 2) 둘 다 실제 구현되어 있고 E2E 테스트(`InterestPaymentSchedulingE2ETest`/`CardStatementSchedulingE2ETest`)로 같은 날/같은 달 재적재해도 결과가 바뀌지 않음을 검증한다.
+- **DLQ 필수**: `task-queue-dlq.fifo` + `maxReceiveCount=3`, `outbox/`의 DLQ와 동일한 컨벤션.
+- **Cron 예외는 명시적 로깅**: 두 Scheduler 모두 `try`/`catch` + `log.error`로 실패를 명시적으로 남기고, 예외를 재throw하지 않는다(다음 tick 재시도에 맡긴다).
 
 ---
 
 ## harness 검증
 
-`harness/src/rules/SchedulerInInfrastructureOnly.java`(rule: `scheduler-in-infrastructure-only`)가 `domain/`·`application/`에서 `@Scheduled`/`@EnableScheduling` 사용을 찾으면 실패시킨다 — 위 "Scheduler는 Infrastructure 레이어에 배치" 원칙의 자동 검증이다. 블록리스트 방식(domain/application에서만 금지)이라, `outbox/OutboxPoller.java`(공용 인프라 패키지지만 도메인별 `infrastructure/` 하위가 아닌 최상위 `outbox/`에 위치)와 `AccountServiceApplication.java`의 `@EnableScheduling`(부트스트랩 진입점, 최상위 패키지)처럼 이 저장소의 실제 정당한 사용은 통과한다.
+`harness/src/rules/SchedulerInInfrastructureOnly.java`(rule: `scheduler-in-infrastructure-only`)가 `domain/`·`application/`에서 `@Scheduled`/`@EnableScheduling` 사용을 찾으면 실패시킨다 — 블록리스트 방식이라, `outbox/OutboxPoller.java`/`taskqueue/TaskOutboxPoller.java`(공용 인프라 패키지, 도메인별 `infrastructure/` 하위가 아님)와 `AccountServiceApplication.java`의 `@EnableScheduling`(부트스트랩 진입점)처럼 이 저장소의 실제 정당한 사용은 통과한다. `InterestPaymentScheduler`/`CardStatementScheduler`는 각각 `account/infrastructure/scheduling/`·`card/infrastructure/scheduling/`에 있어 화이트리스트 방식이었어도 통과했겠지만, 블록리스트로도 동일하게 통과를 정확히 판정한다.
+
+`harness/src/rules/NoSilentCatch.java`(rule: `no-silent-catch`)는 `application/`·`infrastructure/`의 빈 catch 블록만 잡는다 — Task Controller(`interfaces/task/`)는 애초에 catch 자체가 없으므로(예외를 그대로 던짐) 이 규칙의 스코프 밖이지만 원칙적으로 위반할 수 없는 설계다.
 
 ---
 
 ### 관련 문서
 
-- [domain-events.md](domain-events.md) — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`의 실제 구현(`@Scheduled` 폴링 + SQS를 통한 비동기 드레인), 멱등성 3단계
+- [domain-events.md](domain-events.md) — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`의 실제 구현(`taskqueue/`의 대응 구조), Domain Event vs Task Queue 구분, 멱등성 3단계
 - [layer-architecture.md](layer-architecture.md) — 레이어 배치 원칙
-- [graceful-shutdown.md](graceful-shutdown.md) — Scheduler의 종료 시 처리
+- [graceful-shutdown.md](graceful-shutdown.md) — `TaskConsumer`의 `SmartLifecycle.stop()` graceful 종료
+- [shared-modules.md](shared-modules.md) — `taskqueue/` 패키지 배치 컨벤션

@@ -14,6 +14,9 @@ public interface AccountAdapter {
 
     Optional<AccountView> findAccount(String accountId, String ownerId);
 
-    /** Card BC가 소유하는 최소 계좌 뷰 — Account BC의 내부 타입이 Card로 새어들지 않게 한다. */
-    record AccountView(String accountId, boolean active) {}
+    /**
+     * Card BC가 소유하는 최소 계좌 뷰 — Account BC의 내부 타입이 Card로 새어들지 않게 한다. {@code email}은 월간 카드 사용내역
+     * 안내(scheduling.md Feature 2, {@code SendCardStatementService})가 알림 수신자를 결정하는 데 쓰인다.
+     */
+    record AccountView(String accountId, boolean active, String email) {}
 }

@@ -19,7 +19,8 @@ final class AccountMapper {
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
-                entity.getDeletedAt());
+                entity.getDeletedAt(),
+                entity.getLastInterestPaidAt());
     }
 
     /** 신규 Account를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
@@ -33,7 +34,8 @@ final class AccountMapper {
                 account.getStatus(),
                 account.getCreatedAt(),
                 account.getUpdatedAt(),
-                account.getDeletedAt());
+                account.getDeletedAt(),
+                account.getLastInterestPaidAt());
     }
 
     /** 기존 엔티티(PK 보존)에 도메인 Account의 최신 상태를 반영한다 — update 대상. */
@@ -43,7 +45,8 @@ final class AccountMapper {
                 MoneyEmbeddable.fromDomain(account.getBalance()),
                 account.getStatus(),
                 account.getUpdatedAt(),
-                account.getDeletedAt());
+                account.getDeletedAt(),
+                account.getLastInterestPaidAt());
         return entity;
     }
 }

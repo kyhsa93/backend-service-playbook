@@ -3,6 +3,7 @@ package com.example.accountservice.card.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
 
 class CardTest {
@@ -87,5 +88,40 @@ class CardTest {
                 .isInstanceOf(CardException.class)
                 .extracting(e -> ((CardException) e).code())
                 .isEqualTo(CardException.ErrorCode.CARD_ALREADY_CANCELLED);
+    }
+
+    @Test
+    void 활성_카드는_이번_달_안내를_아직_보내지_않았으면_발송_대상이다() {
+        Card card = issueCard();
+
+        assertThat(card.shouldSendStatement(YearMonth.of(2026, 7))).isTrue();
+    }
+
+    @Test
+    void 이번_달_안내를_이미_보냈으면_발송_대상이_아니다() {
+        Card card = issueCard();
+        card.markStatementSent(YearMonth.of(2026, 7));
+
+        assertThat(card.shouldSendStatement(YearMonth.of(2026, 7))).isFalse();
+        assertThat(card.getLastStatementSentMonth()).isEqualTo(YearMonth.of(2026, 7));
+    }
+
+    @Test
+    void 다음_달에는_다시_발송_대상이_된다() {
+        Card card = issueCard();
+        card.markStatementSent(YearMonth.of(2026, 7));
+
+        assertThat(card.shouldSendStatement(YearMonth.of(2026, 8))).isTrue();
+    }
+
+    @Test
+    void 정지되거나_해지된_카드는_발송_대상이_아니다() {
+        Card suspended = issueCard();
+        suspended.suspend();
+        Card cancelled = issueCard();
+        cancelled.cancel();
+
+        assertThat(suspended.shouldSendStatement(YearMonth.of(2026, 7))).isFalse();
+        assertThat(cancelled.shouldSendStatement(YearMonth.of(2026, 7))).isFalse();
     }
 }
