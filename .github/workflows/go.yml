@@ -9,6 +9,7 @@ on:
     paths:
       - 'implementations/go/**'
       - '.github/workflows/go.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

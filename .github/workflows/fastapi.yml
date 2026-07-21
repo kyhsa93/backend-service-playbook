@@ -10,6 +10,7 @@ on:
     paths:
       - 'implementations/fastapi/**'
       - '.github/workflows/fastapi.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

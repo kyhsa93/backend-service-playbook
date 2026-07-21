@@ -10,6 +10,7 @@ on:
     paths:
       - 'implementations/nestjs/**'
       - '.github/workflows/nestjs.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -10,6 +10,7 @@ on:
     paths:
       - 'implementations/java-springboot/**'
       - '.github/workflows/java-springboot.yml'
+  workflow_dispatch:
 
 jobs:
   java-springboot:

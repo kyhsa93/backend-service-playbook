@@ -10,6 +10,7 @@ on:
     paths:
       - 'implementations/kotlin-springboot/**'
       - '.github/workflows/kotlin-springboot.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

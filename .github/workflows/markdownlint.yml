@@ -11,6 +11,7 @@ on:
       - '**/*.md'
       - '.markdownlint.jsonc'
       - '.github/workflows/markdownlint.yml'
+  workflow_dispatch:
 
 jobs:
   markdownlint:

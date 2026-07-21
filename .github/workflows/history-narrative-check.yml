@@ -15,6 +15,7 @@ on:
       - 'implementations/*/harness/**'
       - 'scripts/check_history_narrative.py'
       - '.github/workflows/history-narrative-check.yml'
+  workflow_dispatch:
 
 jobs:
   history-narrative:
