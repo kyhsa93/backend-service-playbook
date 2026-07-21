@@ -7,6 +7,18 @@ interface AccountRepository {
 
     fun saveAccount(account: Account)
 
+    /**
+     * source/target 두 Account를 하나의 물리 트랜잭션으로 저장한다 — Transfer(계좌 간 송금)처럼
+     * 서로 다른 두 Account 인스턴스에 대한 저장이 원자적으로 함께 커밋되거나 함께 롤백돼야 하는
+     * 유스케이스 전용이다. 단일 Account만 저장하면 되는 기존 유스케이스는 계속 [saveAccount]를
+     * 쓴다(persistence.md — 트랜잭션 경계는 Command Service가 아니라 이 Repository의 save*
+     * 메서드에 있다).
+     */
+    fun saveAccounts(
+        source: Account,
+        target: Account,
+    )
+
     fun deleteAccount(accountId: String)
 
     fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>

@@ -14,6 +14,9 @@ import com.example.accountservice.account.application.command.ReactivateAccountS
 import com.example.accountservice.account.application.command.SuspendAccountCommand
 import com.example.accountservice.account.application.command.SuspendAccountService
 import com.example.accountservice.account.application.command.TransactionResult
+import com.example.accountservice.account.application.command.TransferCommand
+import com.example.accountservice.account.application.command.TransferResult
+import com.example.accountservice.account.application.command.TransferService
 import com.example.accountservice.account.application.command.WithdrawCommand
 import com.example.accountservice.account.application.command.WithdrawService
 import com.example.accountservice.account.application.query.GetAccountResult
@@ -39,6 +42,7 @@ class AccountController(
     private val createAccountService: CreateAccountService,
     private val depositService: DepositService,
     private val withdrawService: WithdrawService,
+    private val transferService: TransferService,
     private val suspendAccountService: SuspendAccountService,
     private val reactivateAccountService: ReactivateAccountService,
     private val closeAccountService: CloseAccountService,
@@ -68,6 +72,14 @@ class AccountController(
         @PathVariable accountId: String,
         @RequestBody request: WithdrawRequest,
     ): TransactionResult = withdrawService.withdraw(WithdrawCommand(accountId, authentication.name, request.amount))
+
+    @PostMapping("/{accountId}/transfer")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun transfer(
+        authentication: Authentication,
+        @PathVariable accountId: String,
+        @RequestBody request: TransferRequest,
+    ): TransferResult = transferService.transfer(TransferCommand(accountId, request.targetAccountId, authentication.name, request.amount))
 
     @PostMapping("/{accountId}/suspend")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -81,3 +81,10 @@ class AccountBalanceNotZeroError(AccountError):
 
     def __init__(self) -> None:
         super().__init__("잔액이 0이 아닌 계좌는 종료할 수 없습니다.")
+
+
+class TransferSameAccountError(AccountError):
+    code = AccountErrorCode.TRANSFER_SAME_ACCOUNT
+
+    def __init__(self) -> None:
+        super().__init__("출금 계좌와 입금 계좌가 동일할 수 없습니다.")

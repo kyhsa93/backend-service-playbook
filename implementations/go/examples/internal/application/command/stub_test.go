@@ -55,3 +55,12 @@ func (s *stubRepository) HasTransactionWithReference(
 	}
 	return s.hasTransactionWithReferenceFn(ctx, referenceID, txType)
 }
+
+// stubTransactionManager는 실제 DB 트랜잭션 없이 fn을 그대로 실행한다 — TransferHandler
+// 같은 호출부가 "두 SaveAccount 호출을 하나의 RunInTx로 묶어 호출하는지"만 검증하면
+// 충분하고, 실제 커밋/롤백 동작은 database.Manager의 몫(별도 관심사)이기 때문이다.
+type stubTransactionManager struct{}
+
+func (stubTransactionManager) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
+}

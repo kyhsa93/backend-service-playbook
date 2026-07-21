@@ -293,6 +293,171 @@ describe('AccountController (e2e)', () => {
     })
   })
 
+  describe('POST /accounts/:accountId/transfer', () => {
+    it('송금_요청이_유효하면_201과_출금_입금_거래_내역을_반환한다', async () => {
+      const source = await createAccount(OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      const target = await createAccount(OTHER_OWNER_ID)
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 4000 })
+
+      expect(response.status).toBe(201)
+      expect(response.body.transferId).toEqual(expect.any(String))
+      expect(response.body.sourceTransaction).toMatchObject({
+        accountId: source.accountId, type: 'WITHDRAWAL', amount: { amount: 4000, currency: 'KRW' }
+      })
+      expect(response.body.targetTransaction).toMatchObject({
+        accountId: target.accountId, type: 'DEPOSIT', amount: { amount: 4000, currency: 'KRW' }
+      })
+
+      const sourceGet = await request(app.getHttpServer())
+        .get(`/accounts/${source.accountId}`)
+        .set('Authorization', authHeader(OWNER_ID))
+      expect(sourceGet.body.balance).toMatchObject({ amount: 6000, currency: 'KRW' })
+
+      const targetGet = await request(app.getHttpServer())
+        .get(`/accounts/${target.accountId}`)
+        .set('Authorization', authHeader(OTHER_OWNER_ID))
+      expect(targetGet.body.balance).toMatchObject({ amount: 4000, currency: 'KRW' })
+    })
+
+    it('타인_소유_계좌로도_송금할_수_있다', async () => {
+      const source = await createAccount(OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      const target = await createAccount(OTHER_OWNER_ID)
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 1000 })
+
+      expect(response.status).toBe(201)
+    })
+
+    it('존재하지_않는_출금_계좌면_404와_ACCOUNT_NOT_FOUND를_반환한다', async () => {
+      const target = await createAccount(OTHER_OWNER_ID)
+
+      const response = await request(app.getHttpServer())
+        .post('/accounts/non-existent/transfer')
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 1000 })
+
+      expect(response.status).toBe(404)
+      expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
+    })
+
+    it('존재하지_않는_입금_계좌면_404와_ACCOUNT_NOT_FOUND를_반환한다', async () => {
+      const source = await createAccount(OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: 'non-existent', amount: 1000 })
+
+      expect(response.status).toBe(404)
+      expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
+    })
+
+    it('출금_계좌와_입금_계좌가_같으면_400과_TRANSFER_SAME_ACCOUNT를_반환한다', async () => {
+      const account = await createAccount(OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: account.accountId, amount: 1000 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.code).toBe('TRANSFER_SAME_ACCOUNT')
+    })
+
+    it('잔액보다_큰_금액을_송금하면_400과_INSUFFICIENT_BALANCE를_반환한다', async () => {
+      const source = await createAccount(OWNER_ID)
+      const target = await createAccount(OTHER_OWNER_ID)
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 1000 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.code).toBe('INSUFFICIENT_BALANCE')
+    })
+
+    it('출금_계좌가_정지_상태면_400과_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+      const source = await createAccount(OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/suspend`)
+        .set('Authorization', authHeader(OWNER_ID))
+      const target = await createAccount(OTHER_OWNER_ID)
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 1000 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.code).toBe('WITHDRAW_REQUIRES_ACTIVE_ACCOUNT')
+    })
+
+    it('입금_계좌가_정지_상태면_400과_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+      const source = await createAccount(OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      const target = await createAccount(OTHER_OWNER_ID)
+      await request(app.getHttpServer())
+        .post(`/accounts/${target.accountId}/suspend`)
+        .set('Authorization', authHeader(OTHER_OWNER_ID))
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 1000 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.code).toBe('DEPOSIT_REQUIRES_ACTIVE_ACCOUNT')
+    })
+
+    it('통화가_일치하지_않으면_400과_CURRENCY_MISMATCH를_반환한다', async () => {
+      const source = await createAccount(OWNER_ID, 'KRW')
+      await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      const target = await createAccount(OTHER_OWNER_ID, 'USD')
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${source.accountId}/transfer`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ targetAccountId: target.accountId, amount: 1000 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.code).toBe('CURRENCY_MISMATCH')
+    })
+  })
+
   describe('POST /accounts/:accountId/suspend', () => {
     it('정상_계좌를_정지하면_204를_반환한다', async () => {
       const account = await createAccount()

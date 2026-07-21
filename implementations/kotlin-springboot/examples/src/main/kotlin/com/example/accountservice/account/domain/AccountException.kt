@@ -34,3 +34,5 @@ class AccountAlreadyClosedException : AccountException("이미 종료된 계좌�
 class AccountBalanceNotZeroException : AccountException("잔액이 0이 아닌 계좌는 종료할 수 없습니다.", AccountErrorCode.ACCOUNT_BALANCE_NOT_ZERO)
 
 class DeleteRequiresClosedAccountException : AccountException("종료 상태의 계좌만 삭제할 수 있습니다.", AccountErrorCode.DELETE_REQUIRES_CLOSED_ACCOUNT)
+
+class TransferSameAccountException : AccountException("출금 계좌와 입금 계좌가 동일할 수 없습니다.", AccountErrorCode.TRANSFER_SAME_ACCOUNT)

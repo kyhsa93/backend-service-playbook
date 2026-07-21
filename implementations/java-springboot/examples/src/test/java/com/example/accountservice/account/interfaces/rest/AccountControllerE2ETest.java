@@ -247,6 +247,182 @@ class AccountControllerE2ETest {
     }
 
     @Test
+    void 송금_요청이_유효하면_201과_출금_입금_거래_내역을_반환한다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + source.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 4000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Map<String, Object> body = response.getBody();
+        assertThat(body.get("transferId")).isNotNull();
+        Map<String, Object> sourceTx = (Map<String, Object>) body.get("sourceTransaction");
+        Map<String, Object> targetTx = (Map<String, Object>) body.get("targetTransaction");
+        assertThat(sourceTx.get("type")).isEqualTo("WITHDRAWAL");
+        assertThat(targetTx.get("type")).isEqualTo("DEPOSIT");
+
+        ResponseEntity<Map> sourceGet = get("/accounts/" + source.get("accountId"), OWNER_ID);
+        Map<String, Object> sourceBalance =
+                (Map<String, Object>) sourceGet.getBody().get("balance");
+        assertThat(sourceBalance.get("amount")).isEqualTo(6000);
+
+        ResponseEntity<Map> targetGet = get("/accounts/" + target.get("accountId"), OTHER_OWNER_ID);
+        Map<String, Object> targetBalance =
+                (Map<String, Object>) targetGet.getBody().get("balance");
+        assertThat(targetBalance.get("amount")).isEqualTo(4000);
+    }
+
+    @Test
+    void 타인_소유_계좌로도_송금할_수_있다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + source.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    void 송금_시_출금_계좌를_찾을_수_없으면_404를_반환한다() {
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/non-existent/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().get("code")).isEqualTo("ACCOUNT_NOT_FOUND");
+    }
+
+    @Test
+    void 송금_시_입금_계좌를_찾을_수_없으면_404를_반환한다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + source.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", "non-existent", "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().get("code")).isEqualTo("ACCOUNT_NOT_FOUND");
+    }
+
+    @Test
+    void 출금_계좌와_입금_계좌가_같으면_400과_TRANSFER_SAME_ACCOUNT를_반환한다() {
+        Map<String, Object> account = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + account.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + account.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", account.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().get("code")).isEqualTo("TRANSFER_SAME_ACCOUNT");
+    }
+
+    @Test
+    void 잔액보다_큰_금액을_송금하면_400과_INSUFFICIENT_BALANCE를_반환한다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().get("code")).isEqualTo("INSUFFICIENT_BALANCE");
+    }
+
+    @Test
+    void 출금_계좌가_정지_상태면_400과_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + source.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+        post("/accounts/" + source.get("accountId") + "/suspend", OWNER_ID, Map.of());
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().get("code")).isEqualTo("WITHDRAW_REQUIRES_ACTIVE_ACCOUNT");
+    }
+
+    @Test
+    void 입금_계좌가_정지_상태면_400과_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + source.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
+        post("/accounts/" + target.get("accountId") + "/suspend", OTHER_OWNER_ID, Map.of());
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().get("code")).isEqualTo("DEPOSIT_REQUIRES_ACTIVE_ACCOUNT");
+    }
+
+    @Test
+    void 통화가_일치하지_않으면_400과_CURRENCY_MISMATCH를_반환한다() {
+        Map<String, Object> source = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + source.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+        Map<String, Object> target = createAccount(OTHER_OWNER_ID, "USD");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + source.get("accountId") + "/transfer",
+                        OWNER_ID,
+                        Map.of("targetAccountId", target.get("accountId"), "amount", 1000));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().get("code")).isEqualTo("CURRENCY_MISMATCH");
+    }
+
+    @Test
     void 정상_계좌를_정지하면_204를_반환한다() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 

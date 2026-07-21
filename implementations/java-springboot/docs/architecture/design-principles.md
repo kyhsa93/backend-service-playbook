@@ -14,7 +14,7 @@
 
 6. **의존성 주입은 생성자 주입만 사용한다 — `@Autowired` 필드 주입 금지** — Lombok `@RequiredArgsConstructor`로 `final` 필드 생성자를 생성한다. 생성자가 하나뿐인 클래스는 Spring이 `@Autowired` 없이도 자동 주입한다. `examples/`의 모든 Service/Repository/Controller가 이 패턴을 따른다. ([module-pattern.md](module-pattern.md))
 
-7. **`@Transactional`은 Application 레이어(Command/Query Service)에만 붙인다** — Domain과 Infrastructure에는 붙이지 않는다. 쓰기는 `@Transactional`, 읽기 전용은 `@Transactional(readOnly = true)`로 구분해 Hibernate dirty checking 오버헤드를 줄인다. 트랜잭션 경계를 원본과 격리해야 하는 부가 작업(알림 발송 등)은 `Propagation.REQUIRES_NEW`로 분리한다. ([persistence.md](persistence.md), [layer-architecture.md](layer-architecture.md))
+7. **`@Transactional`은 `Repository`의 `save*()` 메서드에 붙인다 — Command/Query Service 자신에는 붙이지 않는다** — Account 저장과 Outbox 적재를 하나의 물리 트랜잭션으로 묶는 경계가 바로 이 지점이기 때문이다. Command Service(`WithdrawService`, `TransferService` 등)에 `@Transactional`을 다시 붙이는 것은 회귀다. 쓰기는 `@Transactional`, 읽기 전용은 `@Transactional(readOnly = true)`로 구분해 Hibernate dirty checking 오버헤드를 줄인다. 트랜잭션 경계를 원본과 격리해야 하는 부가 작업(알림 발송 등)은 `Propagation.REQUIRES_NEW`로 분리한다. ([persistence.md](persistence.md), [layer-architecture.md](layer-architecture.md))
 
 8. **Command/Query Service는 분리하되, Query는 별도 조회 인터페이스를 써야 한다** — `GetAccountService`/`GetTransactionsService` 모두 쓰기용 `AccountRepository`가 아니라 좁은 `AccountQuery`(application/query)에 의존한다. harness의 `cqrs-query-purity` 규칙이 `application/query/` 하위 파일의 Repository 직접 참조를 자동으로 잡아낸다. ([cqrs-pattern.md](cqrs-pattern.md))
 

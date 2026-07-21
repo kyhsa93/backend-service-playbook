@@ -5,6 +5,13 @@ public interface AccountRepository {
 
     void saveAccount(Account account);
 
+    /**
+     * source/target 두 Account를 하나의 물리 트랜잭션으로 저장한다 — Transfer처럼 서로 다른 두 Account 인스턴스에 대한 저장이 원자적으로
+     * 함께 커밋되거나 함께 롤백돼야 하는 유스케이스 전용이다. 단일 Account만 저장하면 되는 기존 유스케이스는 계속 {@link #saveAccount}를
+     * 쓴다(persistence.md — 트랜잭션 경계는 Command Service가 아니라 이 Repository의 save* 메서드에 있다).
+     */
+    void saveAccounts(Account source, Account target);
+
     void deleteAccount(String accountId);
 
     TransactionsWithCount findTransactions(String accountId, int page, int take);

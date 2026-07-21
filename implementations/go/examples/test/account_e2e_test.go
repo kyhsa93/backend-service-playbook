@@ -30,6 +30,7 @@ import (
 	integrationevent "github.com/example/account-service/internal/application/integration-event"
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
+	"github.com/example/account-service/internal/infrastructure/database"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -249,7 +250,7 @@ func runTests(m *testing.M) int {
 	// 여기서만 넉넉한 limiter로 override한다.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter)
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter, database.NewManager(db))
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
@@ -531,6 +532,130 @@ func TestWithdraw(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
 			map[string]int{"amount": -1})
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+}
+
+func TestTransfer(t *testing.T) {
+	t.Run("송금_요청이_유효하면_201과_출금_입금_거래_내역을_반환한다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		target := createAccount(t, otherOwnerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 4000})
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		require.NotEmpty(t, body["transferId"])
+		sourceTx := body["sourceTransaction"].(map[string]any)
+		targetTx := body["targetTransaction"].(map[string]any)
+		require.Equal(t, "WITHDRAWAL", sourceTx["type"])
+		require.Equal(t, "DEPOSIT", targetTx["type"])
+
+		sourceGet := decodeBody(t, doRequest(t, http.MethodGet, "/accounts/"+source["accountId"].(string), ownerID, nil))
+		require.InDelta(t, float64(6000), sourceGet["balance"].(map[string]any)["amount"], 0)
+
+		targetGet := decodeBody(t, doRequest(t, http.MethodGet, "/accounts/"+target["accountId"].(string), otherOwnerID, nil))
+		require.InDelta(t, float64(4000), targetGet["balance"].(map[string]any)["amount"], 0)
+	})
+
+	t.Run("타인_소유_계좌로도_송금할_수_있다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		target := createAccount(t, otherOwnerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+	})
+
+	t.Run("존재하지_않는_출금_계좌면_404를_반환한다", func(t *testing.T) {
+		target := createAccount(t, otherOwnerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("존재하지_않는_입금_계좌면_404를_반환한다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": "non-existent", "amount": 1000})
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("출금_계좌와_입금_계좌가_같으면_400을_반환한다", func(t *testing.T) {
+		acc := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+acc["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+acc["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": acc["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		require.Equal(t, "ACCOUNT_TRANSFER_SAME_ACCOUNT", body["code"])
+	})
+
+	t.Run("잔액보다_큰_금액을_송금하면_400을_반환한다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		target := createAccount(t, otherOwnerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		require.Equal(t, "ACCOUNT_INSUFFICIENT_BALANCE", body["code"])
+	})
+
+	t.Run("출금_계좌가_정지_상태면_400을_반환한다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/suspend", ownerID, nil)
+		target := createAccount(t, otherOwnerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		require.Equal(t, "ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT", body["code"])
+	})
+
+	t.Run("입금_계좌가_정지_상태면_400을_반환한다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		target := createAccount(t, otherOwnerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+target["accountId"].(string)+"/suspend", otherOwnerID, nil)
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		require.Equal(t, "ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT", body["code"])
+	})
+
+	t.Run("통화가_일치하지_않으면_400을_반환한다", func(t *testing.T) {
+		source := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		target := createAccount(t, otherOwnerID, "USD")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/transfer", ownerID,
+			map[string]any{"targetAccountId": target["accountId"], "amount": 1000})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		require.Equal(t, "ACCOUNT_CURRENCY_MISMATCH", body["code"])
 	})
 }
 

@@ -361,6 +361,175 @@ class AccountControllerE2ETest {
     }
 
     @Test
+    fun `송금 요청이 유효하면 201과 출금 입금 거래 내역을 반환한다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val target = createAccount(OTHER_OWNER_ID, "KRW")
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 4000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        val body = response.body!!
+        assertThat(body["transferId"]).isNotNull()
+        @Suppress("UNCHECKED_CAST")
+        val sourceTx = body["sourceTransaction"] as Map<String, Any>
+
+        @Suppress("UNCHECKED_CAST")
+        val targetTx = body["targetTransaction"] as Map<String, Any>
+        assertThat(sourceTx["type"]).isEqualTo("WITHDRAWAL")
+        assertThat(targetTx["type"]).isEqualTo("DEPOSIT")
+
+        val sourceGet = get("/accounts/${source["accountId"]}", OWNER_ID)
+
+        @Suppress("UNCHECKED_CAST")
+        val sourceBalance = sourceGet.body!!["balance"] as Map<String, Any>
+        assertThat(sourceBalance["amount"]).isEqualTo(6000)
+
+        val targetGet = get("/accounts/${target["accountId"]}", OTHER_OWNER_ID)
+
+        @Suppress("UNCHECKED_CAST")
+        val targetBalance = targetGet.body!!["balance"] as Map<String, Any>
+        assertThat(targetBalance["amount"]).isEqualTo(4000)
+    }
+
+    @Test
+    fun `타인 소유 계좌로도 송금할 수 있다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val target = createAccount(OTHER_OWNER_ID, "KRW")
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+    }
+
+    @Test
+    fun `송금 시 출금 계좌를 찾을 수 없으면 404를 반환한다`() {
+        val target = createAccount(OTHER_OWNER_ID, "KRW")
+
+        val response =
+            post(
+                "/accounts/non-existent/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(response.body!!["code"]).isEqualTo("ACCOUNT_NOT_FOUND")
+    }
+
+    @Test
+    fun `송금 시 입금 계좌를 찾을 수 없으면 404를 반환한다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to "non-existent", "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(response.body!!["code"]).isEqualTo("ACCOUNT_NOT_FOUND")
+    }
+
+    @Test
+    fun `출금 계좌와 입금 계좌가 같으면 400과 TRANSFER_SAME_ACCOUNT를 반환한다`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+
+        val response =
+            post(
+                "/accounts/${account["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to account["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(response.body!!["code"]).isEqualTo("TRANSFER_SAME_ACCOUNT")
+    }
+
+    @Test
+    fun `잔액보다 큰 금액을 송금하면 400과 INSUFFICIENT_BALANCE를 반환한다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        val target = createAccount(OTHER_OWNER_ID, "KRW")
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(response.body!!["code"]).isEqualTo("INSUFFICIENT_BALANCE")
+    }
+
+    @Test
+    fun `출금 계좌가 정지 상태면 400과 WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를 반환한다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        post("/accounts/${source["accountId"]}/suspend", OWNER_ID, emptyMap())
+        val target = createAccount(OTHER_OWNER_ID, "KRW")
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(response.body!!["code"]).isEqualTo("WITHDRAW_REQUIRES_ACTIVE_ACCOUNT")
+    }
+
+    @Test
+    fun `입금 계좌가 정지 상태면 400과 DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를 반환한다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val target = createAccount(OTHER_OWNER_ID, "KRW")
+        post("/accounts/${target["accountId"]}/suspend", OTHER_OWNER_ID, emptyMap())
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(response.body!!["code"]).isEqualTo("DEPOSIT_REQUIRES_ACTIVE_ACCOUNT")
+    }
+
+    @Test
+    fun `통화가 일치하지 않으면 400과 CURRENCY_MISMATCH를 반환한다`() {
+        val source = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val target = createAccount(OTHER_OWNER_ID, "USD")
+
+        val response =
+            post(
+                "/accounts/${source["accountId"]}/transfer",
+                OWNER_ID,
+                mapOf("targetAccountId" to target["accountId"]!!, "amount" to 1000),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(response.body!!["code"]).isEqualTo("CURRENCY_MISMATCH")
+    }
+
+    @Test
     fun `정상 계좌를 정지하면 204를 반환한다`() {
         val account = createAccount(OWNER_ID, "KRW")
 

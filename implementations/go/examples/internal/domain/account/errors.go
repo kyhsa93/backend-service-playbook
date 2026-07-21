@@ -16,4 +16,5 @@ var (
 	ErrBalanceNotZero                     = errors.New("balance must be zero to close account")
 	ErrInterestRequiresActiveAccount      = errors.New("account must be active to receive interest")
 	ErrInvalidInterestDate                = errors.New("invalid interest posting date")
+	ErrTransferSameAccount                = errors.New("source and target account must be different")
 )

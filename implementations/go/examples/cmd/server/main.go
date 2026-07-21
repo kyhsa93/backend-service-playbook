@@ -21,6 +21,7 @@ import (
 	"github.com/example/account-service/internal/config"
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
+	"github.com/example/account-service/internal/infrastructure/database"
 	"github.com/example/account-service/internal/infrastructure/logging"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
@@ -73,6 +74,10 @@ func main() {
 	// import하지 않는다 — Account는 Outbox에 Integration Event를 문자열 event_type으로
 	// 적재하고, Card는 아래 handler map에서 그 문자열을 구독한다(cross-domain.md).
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
+	// dbManager는 command.TransactionManager 포트를 만족한다 — TransferHandler처럼 한
+	// Handler가 둘 이상의 SaveAccount 호출을 원자적으로 묶어야 할 때만 쓴다(그 외
+	// 단독 호출부는 지금처럼 SaveAccount가 스스로 여닫는 로컬 트랜잭션으로 충분하다).
+	dbManager := database.NewManager(db)
 	cardRepo := persistence.NewCardRepository(db)
 	credentialRepo := persistence.NewCredentialRepository(db)
 	accountAdapter := acl.NewAccountAdapter(accountRepo)
@@ -198,7 +203,7 @@ func main() {
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, limiter)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, limiter, dbManager)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 

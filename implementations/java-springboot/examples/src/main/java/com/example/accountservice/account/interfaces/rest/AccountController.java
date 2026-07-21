@@ -27,6 +27,7 @@ public class AccountController {
     private final CreateAccountService createAccountService;
     private final DepositService depositService;
     private final WithdrawService withdrawService;
+    private final TransferService transferService;
     private final SuspendAccountService suspendAccountService;
     private final ReactivateAccountService reactivateAccountService;
     private final CloseAccountService closeAccountService;
@@ -63,6 +64,18 @@ public class AccountController {
         String requesterId = authentication.getName();
         return withdrawService.withdraw(
                 new WithdrawCommand(accountId, requesterId, request.amount()));
+    }
+
+    @PostMapping("/{accountId}/transfer")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TransferResult transfer(
+            Authentication authentication,
+            @PathVariable String accountId,
+            @RequestBody TransferRequest request) {
+        String requesterId = authentication.getName();
+        return transferService.transfer(
+                new TransferCommand(
+                        accountId, request.targetAccountId(), requesterId, request.amount()));
     }
 
     @PostMapping("/{accountId}/suspend")

@@ -29,6 +29,11 @@ type WithdrawRequest struct {
 	Amount int64 `json:"amount"`
 }
 
+type TransferRequest struct {
+	TargetAccountID string `json:"targetAccountId"`
+	Amount          int64  `json:"amount"`
+}
+
 type MoneyResponse struct {
 	Amount   int64  `json:"amount"`
 	Currency string `json:"currency"`
@@ -49,6 +54,12 @@ type TransactionResponse struct {
 	Type          string        `json:"type"`
 	Amount        MoneyResponse `json:"amount"`
 	CreatedAt     time.Time     `json:"createdAt"`
+}
+
+type TransferResponse struct {
+	TransferID        string              `json:"transferId"`
+	SourceTransaction TransactionResponse `json:"sourceTransaction"`
+	TargetTransaction TransactionResponse `json:"targetTransaction"`
 }
 
 type GetAccountResponse struct {

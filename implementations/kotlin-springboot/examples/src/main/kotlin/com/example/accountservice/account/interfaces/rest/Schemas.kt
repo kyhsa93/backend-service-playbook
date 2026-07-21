@@ -18,6 +18,11 @@ data class WithdrawRequest(
     val amount: Long,
 )
 
+data class TransferRequest(
+    val targetAccountId: String,
+    val amount: Long,
+)
+
 data class ErrorResponse(
     val statusCode: Int,
     val code: String,

@@ -41,10 +41,11 @@ type PaymentStore interface {
 // limiter는 호출자가 조립한다(main()은 config.LoadRateLimitConfig()로, 테스트는 임계값이
 // 훨씬 높은 limiter로) — rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
 // 운영값과 테스트값을 분리하기 위해서다.
-func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, limiter *rate.Limiter) (http.Handler, *HealthHandler) {
+func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, limiter *rate.Limiter, txManager command.TransactionManager) (http.Handler, *HealthHandler) {
 	createAccountHandler := command.NewCreateAccountHandler(repo)
 	depositHandler := command.NewDepositHandler(repo)
 	withdrawHandler := command.NewWithdrawHandler(repo)
+	transferHandler := command.NewTransferHandler(repo, txManager)
 	suspendAccountHandler := command.NewSuspendAccountHandler(repo)
 	reactivateAccountHandler := command.NewReactivateAccountHandler(repo)
 	closeAccountHandler := command.NewCloseAccountHandler(repo)
@@ -55,6 +56,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 		createAccountHandler,
 		depositHandler,
 		withdrawHandler,
+		transferHandler,
 		suspendAccountHandler,
 		reactivateAccountHandler,
 		closeAccountHandler,
@@ -97,6 +99,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	protected.HandleFunc("POST /accounts", accountHTTP.CreateAccount)
 	protected.HandleFunc("POST /accounts/{id}/deposit", accountHTTP.Deposit)
 	protected.HandleFunc("POST /accounts/{id}/withdraw", accountHTTP.Withdraw)
+	protected.HandleFunc("POST /accounts/{id}/transfer", accountHTTP.Transfer)
 	protected.HandleFunc("POST /accounts/{id}/suspend", accountHTTP.SuspendAccount)
 	protected.HandleFunc("POST /accounts/{id}/reactivate", accountHTTP.ReactivateAccount)
 	protected.HandleFunc("POST /accounts/{id}/close", accountHTTP.CloseAccount)

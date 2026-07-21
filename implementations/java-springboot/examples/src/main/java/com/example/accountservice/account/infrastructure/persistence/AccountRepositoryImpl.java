@@ -49,6 +49,21 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     @Override
     @Transactional
     public void saveAccount(Account account) {
+        saveAccountInternal(account);
+    }
+
+    /**
+     * source/target 두 Account 저장을 하나의 물리 트랜잭션으로 묶는다 — Transfer(계좌 간 송금)가 첫 사용처다. 출금 계좌 저장과 입금 계좌
+     * 저장이 각자 별도 트랜잭션으로 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다.
+     */
+    @Override
+    @Transactional
+    public void saveAccounts(Account source, Account target) {
+        saveAccountInternal(source);
+        saveAccountInternal(target);
+    }
+
+    private void saveAccountInternal(Account account) {
         AccountJpaEntity entity =
                 jpaRepository
                         .findByAccountId(account.getAccountId())

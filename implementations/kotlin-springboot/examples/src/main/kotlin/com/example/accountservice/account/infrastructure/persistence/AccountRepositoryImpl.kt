@@ -44,6 +44,24 @@ class AccountRepositoryImpl(
 
     @Transactional
     override fun saveAccount(account: Account) {
+        saveAccountInternal(account)
+    }
+
+    /**
+     * source/target 두 Account 저장을 하나의 물리 트랜잭션으로 묶는다 — Transfer(계좌 간 송금)가
+     * 첫 사용처다. 출금 계좌 저장과 입금 계좌 저장이 각자 별도 트랜잭션으로 커밋되면 "출금은
+     * 반영됐는데 입금은 유실됨" 실패 모드가 생긴다.
+     */
+    @Transactional
+    override fun saveAccounts(
+        source: Account,
+        target: Account,
+    ) {
+        saveAccountInternal(source)
+        saveAccountInternal(target)
+    }
+
+    private fun saveAccountInternal(account: Account) {
         val entity =
             jpaRepository
                 .findByAccountId(account.accountId)

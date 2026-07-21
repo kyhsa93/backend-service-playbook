@@ -208,6 +208,169 @@ async def test_withdraw_suspended_account_returns_400(client: AsyncClient) -> No
 
 
 @pytest.mark.asyncio
+async def test_transfer_success(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{source['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    target = await create_account(client, OTHER_OWNER_ID, "KRW", email="owner2@example.com")
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": target["account_id"], "amount": 4000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["transfer_id"]
+    assert body["source_transaction"]["type"] == "WITHDRAWAL"
+    assert body["target_transaction"]["type"] == "DEPOSIT"
+
+    source_get = await client.get(f"/accounts/{source['account_id']}", headers=auth_headers(OWNER_ID))
+    assert source_get.json()["balance"] == {"amount": 6000, "currency": "KRW"}
+
+    target_get = await client.get(f"/accounts/{target['account_id']}", headers=auth_headers(OTHER_OWNER_ID))
+    assert target_get.json()["balance"] == {"amount": 4000, "currency": "KRW"}
+
+
+@pytest.mark.asyncio
+async def test_transfer_to_other_owner_account_succeeds(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{source['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    target = await create_account(client, OTHER_OWNER_ID, "KRW", email="owner2@example.com")
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": target["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_transfer_source_account_not_found_returns_404(client: AsyncClient) -> None:
+    target = await create_account(client, OTHER_OWNER_ID, "KRW", email="owner2@example.com")
+
+    response = await client.post(
+        "/accounts/non-existent/transfer",
+        json={"target_account_id": target["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "ACCOUNT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_transfer_target_account_not_found_returns_404(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{source['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": "non-existent", "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "ACCOUNT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_transfer_same_account_returns_400(client: AsyncClient) -> None:
+    account = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+
+    response = await client.post(
+        f"/accounts/{account['account_id']}/transfer",
+        json={"target_account_id": account["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "TRANSFER_SAME_ACCOUNT"
+
+
+@pytest.mark.asyncio
+async def test_transfer_insufficient_balance_returns_400(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    target = await create_account(client, OTHER_OWNER_ID, "KRW", email="owner2@example.com")
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": target["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INSUFFICIENT_BALANCE"
+
+
+@pytest.mark.asyncio
+async def test_transfer_source_account_suspended_returns_400(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{source['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    await client.post(f"/accounts/{source['account_id']}/suspend", headers=auth_headers(OWNER_ID))
+    target = await create_account(client, OTHER_OWNER_ID, "KRW", email="owner2@example.com")
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": target["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "WITHDRAW_REQUIRES_ACTIVE_ACCOUNT"
+
+
+@pytest.mark.asyncio
+async def test_transfer_target_account_suspended_returns_400(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{source['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    target = await create_account(client, OTHER_OWNER_ID, "KRW", email="owner2@example.com")
+    await client.post(f"/accounts/{target['account_id']}/suspend", headers=auth_headers(OTHER_OWNER_ID))
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": target["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "DEPOSIT_REQUIRES_ACTIVE_ACCOUNT"
+
+
+@pytest.mark.asyncio
+async def test_transfer_currency_mismatch_returns_400(client: AsyncClient) -> None:
+    source = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{source['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    target = await create_account(client, OTHER_OWNER_ID, "USD", email="owner2@example.com")
+
+    response = await client.post(
+        f"/accounts/{source['account_id']}/transfer",
+        json={"target_account_id": target["account_id"], "amount": 1000},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "CURRENCY_MISMATCH"
+
+
+@pytest.mark.asyncio
 async def test_suspend_account_success(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID, "KRW")
 

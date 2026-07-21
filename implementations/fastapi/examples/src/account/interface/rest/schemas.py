@@ -21,6 +21,11 @@ class WithdrawRequest(BaseModel):
     amount: int
 
 
+class TransferRequest(BaseModel):
+    target_account_id: str
+    amount: int
+
+
 class CreateAccountResponse(BaseModel):
     account_id: str
     owner_id: str
@@ -36,6 +41,12 @@ class TransactionResponse(BaseModel):
     type: str
     amount: MoneySchema
     created_at: datetime
+
+
+class TransferResponse(BaseModel):
+    transfer_id: str
+    source_transaction: TransactionResponse
+    target_transaction: TransactionResponse
 
 
 class GetAccountResponse(BaseModel):

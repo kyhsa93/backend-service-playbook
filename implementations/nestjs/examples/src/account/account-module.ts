@@ -10,6 +10,7 @@ import { DepositByPaymentCommandHandler } from '@/account/application/command/de
 import { DepositCommandHandler } from '@/account/application/command/deposit-command-handler'
 import { ReactivateAccountCommandHandler } from '@/account/application/command/reactivate-account-command-handler'
 import { SuspendAccountCommandHandler } from '@/account/application/command/suspend-account-command-handler'
+import { TransferCommandHandler } from '@/account/application/command/transfer-command-handler'
 import { WithdrawByPaymentCommandHandler } from '@/account/application/command/withdraw-by-payment-command-handler'
 import { WithdrawCommandHandler } from '@/account/application/command/withdraw-command-handler'
 import { AccountIntegrationEventController } from '@/account/interface/integration-event/account-integration-event-controller'
@@ -53,6 +54,7 @@ import { AuthModule } from '@/auth/auth-module'
     SuspendAccountCommandHandler,
     ReactivateAccountCommandHandler,
     CloseAccountCommandHandler,
+    TransferCommandHandler,
     // Payment BC의 Integration Event(payment.completed.v1 / payment.cancelled.v1 /
     // refund.approved.v1)에 대한 반응 Command Handler
     WithdrawByPaymentCommandHandler,

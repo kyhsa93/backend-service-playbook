@@ -18,6 +18,7 @@ type AccountHandler struct {
 	createAccount     *command.CreateAccountHandler
 	deposit           *command.DepositHandler
 	withdraw          *command.WithdrawHandler
+	transfer          *command.TransferHandler
 	suspendAccount    *command.SuspendAccountHandler
 	reactivateAccount *command.ReactivateAccountHandler
 	closeAccount      *command.CloseAccountHandler
@@ -29,6 +30,7 @@ func NewAccountHandler(
 	createAccount *command.CreateAccountHandler,
 	deposit *command.DepositHandler,
 	withdraw *command.WithdrawHandler,
+	transfer *command.TransferHandler,
 	suspendAccount *command.SuspendAccountHandler,
 	reactivateAccount *command.ReactivateAccountHandler,
 	closeAccount *command.CloseAccountHandler,
@@ -39,6 +41,7 @@ func NewAccountHandler(
 		createAccount:     createAccount,
 		deposit:           deposit,
 		withdraw:          withdraw,
+		transfer:          transfer,
 		suspendAccount:    suspendAccount,
 		reactivateAccount: reactivateAccount,
 		closeAccount:      closeAccount,
@@ -146,6 +149,45 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		Type:          string(tx.Type),
 		Amount:        MoneyResponse{Amount: tx.Amount.Amount, Currency: tx.Amount.Currency},
 		CreatedAt:     tx.CreatedAt,
+	})
+}
+
+func (h *AccountHandler) Transfer(w http.ResponseWriter, r *http.Request) {
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
+	accountID := r.PathValue("id")
+	var body TransferRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	result, err := h.transfer.Handle(r.Context(), command.TransferCommand{
+		SourceAccountID: accountID,
+		TargetAccountID: body.TargetAccountID,
+		RequesterID:     requesterID,
+		Amount:          body.Amount,
+	})
+	if err != nil {
+		writeAccountError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, r, TransferResponse{
+		TransferID: result.TransferID,
+		SourceTransaction: TransactionResponse{
+			TransactionID: result.SourceTransaction.TransactionID,
+			AccountID:     result.SourceTransaction.AccountID,
+			Type:          string(result.SourceTransaction.Type),
+			Amount:        MoneyResponse{Amount: result.SourceTransaction.Amount.Amount, Currency: result.SourceTransaction.Amount.Currency},
+			CreatedAt:     result.SourceTransaction.CreatedAt,
+		},
+		TargetTransaction: TransactionResponse{
+			TransactionID: result.TargetTransaction.TransactionID,
+			AccountID:     result.TargetTransaction.AccountID,
+			Type:          string(result.TargetTransaction.Type),
+			Amount:        MoneyResponse{Amount: result.TargetTransaction.Amount.Amount, Currency: result.TargetTransaction.Amount.Currency},
+			CreatedAt:     result.TargetTransaction.CreatedAt,
+		},
 	})
 }
 
@@ -266,6 +308,8 @@ var accountErrorMapping = []struct {
 	{account.ErrReactivateRequiresSuspendedAccount, http.StatusBadRequest, "ACCOUNT_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT"},
 	{account.ErrAlreadyClosed, http.StatusBadRequest, "ACCOUNT_ALREADY_CLOSED"},
 	{account.ErrBalanceNotZero, http.StatusBadRequest, "ACCOUNT_BALANCE_NOT_ZERO"},
+	{account.ErrCurrencyMismatch, http.StatusBadRequest, "ACCOUNT_CURRENCY_MISMATCH"},
+	{account.ErrTransferSameAccount, http.StatusBadRequest, "ACCOUNT_TRANSFER_SAME_ACCOUNT"},
 }
 
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {

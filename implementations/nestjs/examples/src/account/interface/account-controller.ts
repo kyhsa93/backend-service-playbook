@@ -12,6 +12,8 @@ import { CreateAccountCommand } from '@/account/application/command/create-accou
 import { DepositCommand } from '@/account/application/command/deposit-command'
 import { ReactivateAccountCommand } from '@/account/application/command/reactivate-account-command'
 import { SuspendAccountCommand } from '@/account/application/command/suspend-account-command'
+import { TransferCommand } from '@/account/application/command/transfer-command'
+import { TransferResult } from '@/account/application/command/transfer-result'
 import { WithdrawCommand } from '@/account/application/command/withdraw-command'
 import { Account } from '@/account/domain/account'
 import { Transaction } from '@/account/domain/transaction'
@@ -26,6 +28,8 @@ import { GetAccountResponseBody } from '@/account/interface/dto/get-account-resp
 import { GetTransactionsRequestParam } from '@/account/interface/dto/get-transactions-request-param'
 import { GetTransactionsRequestQuerystring } from '@/account/interface/dto/get-transactions-request-querystring'
 import { GetTransactionsResponseBody } from '@/account/interface/dto/get-transactions-response-body'
+import { TransferRequestBody } from '@/account/interface/dto/transfer-request-body'
+import { TransferResponseBody } from '@/account/interface/dto/transfer-response-body'
 import { WithdrawRequestBody } from '@/account/interface/dto/withdraw-request-body'
 import { WithdrawResponseBody } from '@/account/interface/dto/withdraw-response-body'
 import { AccountErrorCode as ErrorCode } from '@/account/account-error-code'
@@ -119,6 +123,49 @@ export class AccountController {
           [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
           [AccountErrorMessage['금액은 0보다 커야 합니다.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
           [AccountErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'], BadRequestException, ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT],
+          [AccountErrorMessage['잔액이 부족합니다.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
+        ])
+      })
+  }
+
+  @Post('/accounts/:accountId/transfer')
+  @ApiOperation({ operationId: 'transfer' })
+  @ApiCreatedResponse({ type: TransferResponseBody })
+  public async transfer(
+    @Req() req: AuthenticatedRequest,
+    @Param('accountId') accountId: string,
+    @Body() body: TransferRequestBody
+  ): Promise<TransferResponseBody> {
+    const requesterId = req.user.userId
+    return this.commandBus.execute<TransferCommand, TransferResult>(
+      new TransferCommand({ sourceAccountId: accountId, targetAccountId: body.targetAccountId, amount: body.amount, requesterId })
+    )
+      .then((result) => ({
+        transferId: result.transferId,
+        sourceTransaction: {
+          transactionId: result.sourceTransaction.transactionId,
+          accountId: result.sourceTransaction.accountId,
+          type: result.sourceTransaction.type,
+          amount: { amount: result.sourceTransaction.amount.amount, currency: result.sourceTransaction.amount.currency },
+          createdAt: result.sourceTransaction.createdAt
+        },
+        targetTransaction: {
+          transactionId: result.targetTransaction.transactionId,
+          accountId: result.targetTransaction.accountId,
+          type: result.targetTransaction.type,
+          amount: { amount: result.targetTransaction.amount.amount, currency: result.targetTransaction.amount.currency },
+          createdAt: result.targetTransaction.createdAt
+        }
+      }))
+      .catch((error) => {
+        this.logger.error(error)
+        throw generateErrorResponse(error.message, [
+          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['금액은 0보다 커야 합니다.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
+          [AccountErrorMessage['출금 계좌와 입금 계좌가 동일할 수 없습니다.'], BadRequestException, ErrorCode.TRANSFER_SAME_ACCOUNT],
+          [AccountErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'], BadRequestException, ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT],
+          [AccountErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'], BadRequestException, ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT],
+          [AccountErrorMessage['통화가 일치하지 않습니다.'], BadRequestException, ErrorCode.CURRENCY_MISMATCH],
           [AccountErrorMessage['잔액이 부족합니다.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
         ])
       })
