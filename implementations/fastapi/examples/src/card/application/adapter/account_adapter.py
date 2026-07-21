@@ -10,10 +10,14 @@ class AccountView:
 
     상류(Account) 모델의 `AccountStatus` enum을 그대로 노출하지 않고 `active: bool`로
     축약한다 — 상류 모델 변경이 Card 도메인으로 누수되지 않게 하는 것이 ACL의 목적이다.
+
+    `email`은 매월 카드 사용내역 발송 배치(SendMonthlyCardStatementHandler)가 통지 수신자를
+    결정하기 위해 필요하다 — Card 자신은 계좌 소유자의 이메일을 모른다.
     """
 
     account_id: str
     active: bool
+    email: str
 
 
 class AccountAdapter(ABC):

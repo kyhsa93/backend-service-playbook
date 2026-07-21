@@ -8,6 +8,7 @@ from ..account.application.event.account_closed_event_handler import AccountClos
 from ..account.application.event.account_created_event_handler import AccountCreatedEventHandler
 from ..account.application.event.account_reactivated_event_handler import AccountReactivatedEventHandler
 from ..account.application.event.account_suspended_event_handler import AccountSuspendedEventHandler
+from ..account.application.event.interest_paid_event_handler import InterestPaidEventHandler
 from ..account.application.event.money_deposited_event_handler import MoneyDepositedEventHandler
 from ..account.application.event.money_withdrawn_event_handler import MoneyWithdrawnEventHandler
 from ..account.domain.repository import AccountRepository
@@ -16,7 +17,11 @@ from ..account.infrastructure.persistence.account_repository import SqlAlchemyAc
 from ..account.interface.integration_event.account_integration_event_controller import (
     AccountIntegrationEventController,
 )
+from ..card.application.event.card_statement_sent_event_handler import CardStatementSentEventHandler
 from ..card.domain.repository import CardRepository
+from ..card.infrastructure.notification.notification_service import (
+    SesNotificationService as CardSesNotificationService,
+)
 from ..card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
 from ..card.interface.integration_event.card_integration_event_controller import CardIntegrationEventController
 from ..payment.application.event.payment_cancelled_event_handler import PaymentCancelledEventHandler
@@ -49,6 +54,7 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
     account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
     card_repo: CardRepository = SqlAlchemyCardRepository(session)
     notification_service = SesNotificationService(session)
+    card_notification_service = CardSesNotificationService(session)
     outbox_writer = OutboxWriter(session)
     card_integration_event_controller = CardIntegrationEventController(card_repo)
     account_integration_event_controller = AccountIntegrationEventController(account_repo)
@@ -60,8 +66,14 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
         "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
         "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
         "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
+        # 정기 이자 지급 배치(scheduling.md)가 Account.apply_interest()로 발행하는 Domain Event
+        # — 다른 Account 이벤트와 동일한 SES 알림 경로를 그대로 탄다.
+        "InterestPaid": InterestPaidEventHandler(notification_service).handle,
         "account.suspended.v1": card_integration_event_controller.on_account_suspended,
         "account.closed.v1": card_integration_event_controller.on_account_closed,
+        # 매월 카드 사용내역 발송 배치가 Card.send_statement()로 발행하는 Domain Event —
+        # Card BC 최초의 Domain Event다(domain-events.md와 동일한 흐름, 전용 CardNotificationService).
+        "CardStatementSent": CardStatementSentEventHandler(card_notification_service).handle,
         "PaymentCompleted": PaymentCompletedEventHandler(outbox_writer).handle,
         "PaymentCancelled": PaymentCancelledEventHandler(outbox_writer).handle,
         "RefundApproved": RefundApprovedEventHandler(outbox_writer).handle,

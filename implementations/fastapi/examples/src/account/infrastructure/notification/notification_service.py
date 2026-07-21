@@ -16,6 +16,7 @@ from ...domain.events import (
     AccountCreated,
     AccountReactivated,
     AccountSuspended,
+    InterestPaid,
     MoneyDeposited,
     MoneyWithdrawn,
 )
@@ -43,6 +44,12 @@ def _render(event: AccountDomainEvent) -> tuple[str, str]:
             "[Account] 출금이 완료되었습니다",
             f"{event.amount.amount} {event.amount.currency}이 출금되었습니다. "
             f"출금 후 잔액: {event.balance_after.amount} {event.balance_after.currency}",
+        )
+    if isinstance(event, InterestPaid):
+        return (
+            "[Account] 이자가 지급되었습니다",
+            f"{event.amount.amount} {event.amount.currency}의 이자가 지급되었습니다. "
+            f"지급 후 잔액: {event.balance_after.amount} {event.balance_after.currency}",
         )
     if isinstance(event, AccountSuspended):
         return "[Account] 계좌가 정지되었습니다", f"계좌({event.account_id})가 정지되었습니다."

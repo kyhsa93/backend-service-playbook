@@ -53,7 +53,7 @@ python3 harness.py <projectRoot>
 | `handler-placement` | `rules/handler_placement.py` | `*_handler.py` → `application/command/` 또는 `application/query/` |
 | `domain-purity` | `rules/domain_purity.py` | `domain/`에서 `fastapi`/`sqlalchemy`/`aioboto3`/`logging`/`structlog` import 금지 |
 | `directory-structure` | `rules/directory_structure.py` | `src/<domain>/{domain,application,interface,infrastructure}` + `application/{command,query}` 존재 |
-| `shared-infra` | `rules/shared_infra.py` | `OutboxWriter` 참조 시 `src/outbox/`에 `outbox_writer.py`/`outbox_poller.py`/`outbox_consumer.py` 존재 확인, `*task_queue*` 참조 시 `src/task-queue/` 배치 확인 |
+| `shared-infra` | `rules/shared_infra.py` | `OutboxWriter` 참조 시 `src/outbox/`에 `outbox_writer.py`/`outbox_poller.py`/`outbox_consumer.py` 존재 확인, `TaskOutboxWriter` 참조(또는 `*task_queue*` 이름의 오배치 파일) 시 `src/task_queue/`에 `task_outbox_writer.py`/`task_outbox_poller.py`/`task_consumer.py` 배치 확인 |
 | `event-placement` | `rules/event_placement.py` | `*_event_handler.py` → `application/event/`, `*_integration_event.py` → `application/integration-event/` |
 | `layer-dependency` | `rules/layer_dependency.py` | AST 기반 — `application/`이 `infrastructure/`를 직접 import하면 실패(의존성 역전) |
 | `no-notification-dependency-in-command` | `rules/no_notification_dependency_in_command.py` | Command Handler가 `NotificationService`(ABC 포함)를 직접 의존하면 실패 — Outbox 경유해야 함 |

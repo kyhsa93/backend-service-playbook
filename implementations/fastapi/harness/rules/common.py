@@ -84,7 +84,7 @@ def norm(path: str) -> str:
 
 
 def is_shared_dir(name: str) -> bool:
-    return name in {"common", "database", "outbox", "task-queue", "config"}
+    return name in {"common", "database", "outbox", "task_queue", "config"}
 
 
 def is_technical_service_dir(name: str) -> bool:
