@@ -27,4 +27,8 @@ export class CardAdapterImpl extends CardAdapter {
       throw error
     }
   }
+
+  public async findActiveCards(): Promise<{ cardId: string; accountId: string; ownerId: string }[]> {
+    return this.cardQuery.getActiveCards()
+  }
 }

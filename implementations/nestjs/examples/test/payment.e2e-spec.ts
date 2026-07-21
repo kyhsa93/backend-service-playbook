@@ -22,7 +22,11 @@ import { OutboxModule } from '@/outbox/outbox-module'
 import { PaymentModule } from '@/payment/payment-module'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
 import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
+import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
+import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
+import { TaskQueueModule } from '@/task-queue/task-queue-module'
 import { createDomainEventQueue } from './support/sqs-test-queue'
+import { createTaskQueue } from './support/task-queue-test-queue'
 
 // Payment BC의 3자 조율(Card+Account 동기 Adapter)과, RefundEligibilityService
 // (Domain Service, Payment+Refund 두 Aggregate를 조율하는 순수 판단 로직), 그리고
@@ -131,6 +135,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
     process.env.AWS_ACCESS_KEY_ID = 'test'
     process.env.AWS_SECRET_ACCESS_KEY = 'test'
     process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
+    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -140,12 +145,13 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
           type: 'postgres',
           url: container.getConnectionUri(),
           entities: [
-            AccountEntity, TransactionEntity, CardEntity, PaymentEntity, RefundEntity,
-            OutboxEntity, SentEmailEntity, CredentialEntity
+            AccountEntity, TransactionEntity, CardEntity, PaymentEntity, RefundEntity, SentCardStatementEntity,
+            OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity
           ],
           synchronize: true
         }),
         OutboxModule,
+        TaskQueueModule,
         AuthModule,
         AccountModule,
         CardModule,
@@ -180,6 +186,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
     delete process.env.AWS_ACCESS_KEY_ID
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
+    delete process.env.SQS_TASK_QUEUE_URL
     await app?.close()
     await container?.stop()
     await localstack?.stop()
