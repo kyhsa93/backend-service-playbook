@@ -16,6 +16,7 @@ DELETE /orders/:orderId     주문 삭제
 ```
 
 잘못된 방식:
+
 ```
 GET  /getOrders      동사를 URL에 넣지 않는다
 POST /createOrder    동사를 URL에 넣지 않는다

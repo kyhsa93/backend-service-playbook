@@ -168,6 +168,7 @@ export class OrderQueryImpl extends OrderQuery {
 ```
 
 DI 바인딩:
+
 ```
 OrderQuery (abstract)  ←  OrderQueryImpl (구현체)
 ```

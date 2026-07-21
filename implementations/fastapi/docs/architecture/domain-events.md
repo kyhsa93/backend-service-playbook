@@ -1,7 +1,7 @@
 # 도메인 이벤트 발행 패턴
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/domain-events.md](../../../../docs/architecture/domain-events.md)
-
+>
 > **이 저장소의 실제 경로**: root가 규정하는 유일한 경로 — **Outbox 적재는 Repository.save() 트랜잭션 안에서, 큐 발행은 독립적으로 주기 실행되는 `OutboxPoller`가, EventHandler 실행은 SQS를 수신 대기하는 `OutboxConsumer`가** — 를 그대로 구현한다. Command Handler가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 이 저장소에 없다. `src/outbox/outbox_poller.py`/`outbox_consumer.py`가 실제 코드이며, `src/outbox/event_handlers.py`의 `build_event_handlers()`가 `eventType` → 핸들러 dict를 조립하는 composition root다.
 
 ## 이벤트 수집 — Aggregate 안에서만

@@ -14,6 +14,7 @@ return this.service.doSomething(param).catch((error) => {
 
 > `generateErrorResponse`는 에러 메시지 → HTTP 예외 변환 + 고유 에러 코드 부여를 담당하는 프로젝트 공통 유틸이다.
 > 매핑 튜플은 `[에러 메시지, HttpException 클래스, 에러 코드]` 3-튜플이다.
+>
 > ```typescript
 > // src/common/generate-error-response.ts
 > import { HttpException, HttpStatus, InternalServerErrorException } from '@nestjs/common'

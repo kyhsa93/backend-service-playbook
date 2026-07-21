@@ -1,7 +1,7 @@
 # 스케줄링 / Task Queue 구현 패턴
 
 > 프레임워크 무관 원칙: [../../../../docs/architecture/scheduling.md](../../../../docs/architecture/scheduling.md)
-
+>
 > **이 저장소의 실제 경로**: root가 규정하는 `[Scheduler] --(enqueue)--> [task_outbox] --(Poller)--> [SQS FIFO] --(Consumer)--> [TaskController] --(호출)--> [CommandService]` 경로를 그대로 구현한다. Scheduler(APScheduler `@scheduled_job`)는 `task_outbox` row를 insert하는 것 말고는 아무것도 하지 않는다 — 이자 계산·통계 집계 같은 실제 비즈니스 로직은 `TaskConsumer`가 SQS에서 수신해 호출하는 `TaskController`(→ Command Handler)의 몫이다. `src/task_queue/`가 실제 코드이며, `task_outbox_writer.py`/`task_outbox_poller.py`/`task_consumer.py`/`task_handlers.py`로 구성된다. 여기 기술한 전체 구조는 이 저장소가 실제로 채택한 **한 가지 구현 예시**다 — 더 단순한 배치라면 `BackgroundTasks`나 단일 `@scheduled_job` + 직접 Handler 호출만으로도 충분할 수 있다(아래 "선택지" 참고).
 
 주기적 작업 두 가지(계좌 정기 이자 지급, 카드 월간 사용내역 발송)가 이 패턴으로 구현되어 있다 — `src/account/infrastructure/scheduling/interest_scheduler.py`와 `src/card/infrastructure/scheduling/statement_scheduler.py`.

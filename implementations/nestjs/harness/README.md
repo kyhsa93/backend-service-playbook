@@ -59,6 +59,7 @@ npm run evaluate -- /path/to/project --out=report.json
 ```
 
 출력(JSON):
+
 ```json
 {
   "projectRoot": "/abs/path",
@@ -135,6 +136,7 @@ npm run test:evaluators    # tests/fixtures/ 기반 회귀
 ```
 
 회귀 fixture 구조:
+
 ```
 tests/fixtures/<evaluator>/<case>/
   src/                   (최소 NestJS 소스 — 컴파일 안 해도 됨)

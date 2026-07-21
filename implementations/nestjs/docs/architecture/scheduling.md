@@ -667,6 +667,7 @@ public async enqueueDailyCleanup(): Promise<void> {
   })
 }
 ```
+
 - **실패는 다음 Cron tick이 복구**: 날짜 기반 `deduplicationId`는 자연 유일하므로 실패 후 다음 tick에서 다시 적재되어도 `task_outbox`에 중복 row가 쌓이거나 SQS에 중복 배달되지 않는다. (DB 장애로 outbox write 자체가 실패하는 경우는 장애 해소 후 다음 tick까지 기다리거나 긴급 수동 트리거.)
 
 ## 모듈 등록
