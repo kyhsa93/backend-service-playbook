@@ -7,12 +7,10 @@ import java.io.File
  * [12] Outbox 동기 드레인 금지 — Command Service는 OutboxRelay/OutboxPoller/OutboxConsumer를
  * 참조하거나 드레인 메서드를 호출하면 안 된다 (domain-events.md).
  *
- * 예전에는 Command Service가 저장 커밋 직후 `OutboxRelay.processPending()`을 동기 호출해 같은
- * 프로세스 안에서 즉시 이벤트를 드레인했다(과거 규칙: save(...) 호출 뒤에 processPending() 호출
- * 순서를 강제). 2026-07 async 전환 이후 Outbox → 큐 발행(`OutboxPoller`)과 큐 → 핸들러 실행
- * (`OutboxConsumer`)이 독립적으로 주기 실행되는 별도 컴포넌트로 분리됐으므로, Command Service는
- * 저장 후 곧바로 반환해야 한다 — 이 규칙이 뒤집힌 이유다. 동기 드레인을 다시 추가해도 이 규칙 하나가
- * 없으면 어떤 다른 규칙도 잡아내지 못한다.
+ * Outbox → 큐 발행(`OutboxPoller`)과 큐 → 핸들러 실행(`OutboxConsumer`)은 독립적으로 주기
+ * 실행되는 별도 컴포넌트다 — Command Service는 저장 후 곧바로 반환해야 하며 드레인 메서드를
+ * 직접 호출하면 안 된다. 동기 드레인을 다시 추가해도 이 규칙 하나가 없으면 어떤 다른 규칙도
+ * 잡아내지 못한다.
  */
 // 주석 안에서 "OutboxRelay"/"processPending" 같은 단어를 설명 목적으로 언급하는 것까지 위반으로
 // 오탐하지 않기 위해 아주 단순한 주석 제거를 거친다 — 이 harness의 다른 정규식 기반 규칙들도

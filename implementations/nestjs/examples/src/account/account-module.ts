@@ -103,11 +103,8 @@ export class AccountModule implements OnModuleInit {
   ) {}
 
   // 자기 도메인이 발행하는 Domain Event(OutboxConsumer가 SQS에서 수신했을 때 호출할
-  // 핸들러)와, Payment BC가 발행하는 Integration Event 수신부를 모두 같은
-  // EventHandlerRegistry에 등록한다. 예전에는 이 라우팅을
-  // account/application/event/outbox-relay.ts의 생성자 주입 고정 맵이 담당했지만,
-  // Account/Payment가 각자 별도 Relay를 두던 구조를 하나의 공유 outbox 모듈로
-  // 통합하면서 모든 라우팅이 이 레지스트리 하나로 모인다.
+  // 핸들러)와, Payment BC가 발행하는 Integration Event 수신부를 모두 같은 공유
+  // EventHandlerRegistry에 등록한다 — 도메인별 전용 Relay 파일은 두지 않는다.
   onModuleInit(): void {
     this.registry.register('AccountCreated', (payload) => this.accountCreatedHandler.handle(payload as never))
     this.registry.register('MoneyDeposited', (payload) => this.moneyDepositedHandler.handle(payload as never))

@@ -247,7 +247,7 @@
 [ ] 요청 로깅이 HandlerInterceptor로 구현되어 있는가? (Filter와 역할을 혼동하지 않는다)
 [ ] Domain 레이어에서 Logger/MDC/Spring Security 등 횡단 관심사를 사용하고 있지 않은가?
 [ ] Rate Limiting을 도입했다면 인증보다 먼저 실행되는 Filter로 적용되어 있는가?
-    → 이 저장소는 `RateLimitFilter`(전역, `/actuator/**` 제외)와 `@RateLimiter` 애노테이션(엔드포인트별) 이중 방어로 이미 적용 완료되었다(rate-limiting.md 참고)
+    → 이 저장소는 `RateLimitFilter`(전역, `/actuator/**` 제외)와 `@RateLimiter` 애노테이션(엔드포인트별) 이중 방어를 적용한다(rate-limiting.md 참고)
 [ ] Rate Limiting 초과 응답이 429 + 4필드 에러 형식을 따르는가? (도입한 경우)
 [ ] 헬스체크/Actuator 엔드포인트가 인증·rate limiting에서 제외되어 있는가?
 ```

@@ -722,11 +722,10 @@ CREATE INDEX idx_{n.table_snake}_owner_id ON {n.table_snake} (owner_id);
 def wire_outbox_relay(path: Path, n: Names) -> str:
     """EventHandlerRegistry.kt에 새 도메인의 Cancelled 이벤트 핸들러를 등록한다.
 
-    2026-07 async(Outbox → SQS Poller/Consumer) 전환 전에는 이 파일이 outbox/OutboxRelay.kt였고
-    `when(eventType)` 블록으로 분기했다. 지금은 outbox/EventHandlerRegistry.kt가 생성자 실행
-    시점에 구성하는 `Map<eventType, handler>` 리터럴로 바뀌었다 — 이 함수도 그 구조에 맞춰
-    패치한다. 이 파일은 여전히 Spring의 List<Interface> 자동 수집이 아니라 생성자에 개별 핸들러를
-    명시적으로 주입받는 구조라(domain-events.md 참고), 새 도메인마다 직접 고쳐야 한다.
+    outbox/EventHandlerRegistry.kt는 생성자 실행 시점에 구성하는 `Map<eventType, handler>`
+    리터럴로 이벤트를 라우팅한다 — 이 함수도 그 구조에 맞춰 패치한다. 이 파일은 Spring의
+    List<Interface> 자동 수집이 아니라 생성자에 개별 핸들러를 명시적으로 주입받는 구조라
+    (domain-events.md 참고), 새 도메인마다 직접 고쳐야 한다.
     """
     if not path.is_file():
         return f"경고: {path} 를 찾지 못해 EventHandlerRegistry 자동 wiring을 건너뜁니다."

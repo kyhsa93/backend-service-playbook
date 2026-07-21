@@ -24,7 +24,7 @@ import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 
 /**
- * Auth BC E2E 테스트 — 자격증명 검증 없는 JWT 발급 취약점 수정을 검증한다(#190).
+ * Auth BC E2E 테스트.
  *
  * sign-up으로 Credential을 저장하고, sign-in이 저장된 해시와 실제로 비교하는지,
  * 아이디 미존재/비밀번호 불일치가 동일한 응답(401 INVALID_CREDENTIALS)으로 통일되는지

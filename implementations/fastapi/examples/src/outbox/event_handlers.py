@@ -43,9 +43,8 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
     (payment.completed.v1/payment.cancelled.v1/refund.approved.v1)를 구독하는 Account의
     반응 핸들러까지 Account/Card/Payment 세 BC의 이벤트 배선을 이 함수 하나가 조립한다 —
     FastAPI에는 NestJS의 EventHandlerRegistry 같은 모듈 간 느슨한 등록 메커니즘이 없으므로,
-    이 함수가 곧 세 BC의 composition root다. (예전에는 `interface/rest/account_router.py`의
-    `_outbox_relay()` 팩토리가 요청마다 이 조립을 다시 했다 — 이제 이 함수 하나로 고정되어
-    OutboxConsumer가 메시지마다 재사용한다.)
+    이 함수가 곧 세 BC의 composition root다. OutboxConsumer가 메시지마다 이 함수를 호출해
+    조립 결과를 재사용한다.
 
     세션은 호출자(OutboxConsumer)가 메시지 하나(단위 작업)당 새로 열어 넘긴다 — 이 함수
     자체는 매 호출마다 새 Repository/Service 인스턴스를 조립할 뿐, 세션의 생명주기를

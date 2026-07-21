@@ -5,10 +5,6 @@ Command Handler는 저장(save) 후 곧바로 반환해야 한다 — Outbox →
 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나 process_pending()/run_forever()류를
 호출하면, Outbox 패턴이 원래 분리하려던 "쓰기"와 "이벤트 처리"가 다시 한 요청 안에
 묶여버린다.
-
-2026-07 async 전환으로 이 규칙은 예전 rule(outbox-drain-order)의 정반대다 — 예전에는
-save() 직후 process_pending() 호출을 *요구*했지만, 동기 드레인을 전면 제거한 뒤에는
-그 호출 자체를 금지한다.
 """
 
 from __future__ import annotations

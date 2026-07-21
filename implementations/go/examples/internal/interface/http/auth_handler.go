@@ -41,8 +41,7 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-// SignIn은 저장된 해시와 비교해 비밀번호를 검증한 뒤에만 토큰을 발급한다 — 이전에는
-// userId만으로 즉시 토큰을 발급해 다른 사용자를 사칭할 수 있었다(#188).
+// SignIn은 저장된 해시와 비교해 비밀번호를 검증한 뒤에만 토큰을 발급한다.
 func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	var body SignInRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.UserID == "" || body.Password == "" {

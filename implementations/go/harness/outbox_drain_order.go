@@ -8,18 +8,15 @@ import (
 )
 
 // checkOutboxDrainOrder — [8] 동기 드레인 금지 검증 — domain-events.md의 핵심 불변식
-// (2026-07 async 전환으로 규칙이 뒤집힘)
 //
-// 예전에는 Command Handler가 저장(Save) 커밋 직후 OutboxRelay.ProcessPending을
-// 호출해 Outbox를 동기적으로 드레인해야 했다. 이제는 정반대다 — Outbox → SQS 발행은
-// 독립적으로 주기 실행되는 outbox.Poller가, SQS → Handler 실행은 outbox.Consumer가
-// 각자 맡는다(main.go의 goroutine). Command Handler는 저장 후 곧바로 반환해야 하며,
-// OutboxRelay/OutboxPoller/OutboxConsumer를 참조하거나 드레인 메서드(ProcessPending/
-// Poll/drainOnce)를 호출하면 안 된다. 이 검사가 없으면 누군가 예전 습관대로 Command
-// Handler에 드레인 호출을 다시 추가해도 잡아내지 못한다.
+// Outbox → SQS 발행은 독립적으로 주기 실행되는 outbox.Poller가, SQS → Handler 실행은
+// outbox.Consumer가 각자 맡는다(main.go의 goroutine). Command Handler는 저장 후 곧바로
+// 반환해야 하며, OutboxRelay/OutboxPoller/OutboxConsumer를 참조하거나 드레인
+// 메서드(ProcessPending/Poll/drainOnce)를 호출하면 안 된다. 이 검사가 없으면 누군가
+// Command Handler에 드레인 호출을 추가해도 잡아내지 못한다.
 var (
-	// OutboxRelay(옛 포트)뿐 아니라 신규 타입(OutboxPoller/OutboxConsumer, outbox.Poller/
-	// outbox.Consumer/outbox.Relay 참조)도 함께 금지한다 — 어떤 이름으로 회귀하든 잡는다.
+	// OutboxRelay/OutboxPoller/OutboxConsumer/outbox.Poller/outbox.Consumer/outbox.Relay
+	// 참조를 모두 금지한다 — 어떤 이름으로 동기 드레인이 재도입되든 잡는다.
 	forbiddenSymbol = regexp.MustCompile(
 		`\bOutboxRelay\b|\bOutboxPoller\b|\bOutboxConsumer\b|\boutbox\.Relay\b|\boutbox\.Poller\b|\boutbox\.Consumer\b`,
 	)

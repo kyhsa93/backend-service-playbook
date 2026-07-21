@@ -88,8 +88,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	)
 
 	// Auth — jwtService는 이미 command.TokenIssuer(Sign(userID) (string, error))를
-	// 구조적으로 만족하므로 그대로 SignInHandler에 주입한다(#188 — sign-in에 실제
-	// 비밀번호 검증을 추가한 수정).
+	// 구조적으로 만족하므로 그대로 SignInHandler에 주입한다.
 	signUpHandler := command.NewSignUpHandler(credentialRepo, passwordHasher)
 	signInHandler := command.NewSignInHandler(credentialRepo, passwordHasher, jwtService)
 	authHTTP := NewAuthHandler(signUpHandler, signInHandler)

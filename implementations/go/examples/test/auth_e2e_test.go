@@ -19,7 +19,7 @@ func signIn(t *testing.T, userID, password string) *http.Response {
 	return doRequest(t, http.MethodPost, "/auth/sign-in", "", map[string]string{"userId": userID, "password": password})
 }
 
-// TestSignUp은 회원가입 유스케이스(#188 수정으로 새로 추가됨)를 검증한다.
+// TestSignUp은 회원가입 유스케이스를 검증한다.
 func TestSignUp(t *testing.T) {
 	t.Run("신규_아이디로_가입하면_201을_반환한다", func(t *testing.T) {
 		resp := signUp(t, "auth-signup-1", "password123!")
@@ -45,7 +45,7 @@ func TestSignUp(t *testing.T) {
 
 // TestSignIn은 로그인 유스케이스를 검증한다 — sign-in이 실제 비밀번호 해시를
 // 검증하는지, 그리고 아이디 미존재/비밀번호 불일치가 동일한 응답(401
-// INVALID_CREDENTIALS)으로 합류하는지가 이 취약점 수정(#188)의 핵심이다.
+// INVALID_CREDENTIALS)으로 합류하는지를 확인한다(user enumeration 방지).
 func TestSignIn(t *testing.T) {
 	t.Run("가입한_아이디와_비밀번호가_일치하면_201과_액세스_토큰을_반환한다", func(t *testing.T) {
 		require.Equal(t, http.StatusCreated, signUp(t, "auth-signin-ok", "password123!").StatusCode)

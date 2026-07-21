@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// 자동 스키마 동기화에 의존하던 시절의 스키마를 최초로 마이그레이션 파일에 옮겨 담은 커밋 —
-// 이후부터는 Entity를 수정할 때마다 새 마이그레이션 파일을 추가한다
+// TypeORM의 자동 스키마 동기화 옵션에 의존하지 않고 전체 스키마를 명시적으로 생성하는
+// baseline 마이그레이션이다 — Entity를 수정할 때마다 새 마이그레이션 파일을 추가한다
 // (docs/architecture/persistence.md 참고).
 export class InitSchema1700000000000 implements MigrationInterface {
   name = 'InitSchema1700000000000'

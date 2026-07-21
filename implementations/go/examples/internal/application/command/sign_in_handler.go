@@ -25,8 +25,7 @@ func NewSignInHandler(repo credential.Repository, passwordHasher PasswordHasher,
 // Handle은 저장된 해시와 비교해 비밀번호를 검증한 뒤에만 토큰을 발급한다. 아이디가
 // 존재하지 않는 경우와 비밀번호가 틀린 경우를 동일한 에러(credential.ErrInvalidCredentials)로
 // 응답한다 — 두 경우를 구분하면 공격자가 존재하는 아이디를 추측할 수 있다(user
-// enumeration). 이 메서드가 이 취약점 수정의 핵심이다: 이전에는 이 검증 자체가
-// 아예 없어 누구든 임의의 userId로 토큰을 발급받을 수 있었다.
+// enumeration).
 func (h *SignInHandler) Handle(ctx context.Context, cmd SignInCommand) (string, error) {
 	c, err := credential.FindOne(ctx, h.repo, cmd.UserID)
 	if err != nil {

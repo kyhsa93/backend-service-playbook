@@ -94,8 +94,8 @@ export class PaymentModule implements OnModuleInit {
   ) {}
 
   // Account BC의 account-module.ts와 동일한 패턴 — 자기 도메인이 발행하는 Domain
-  // Event를 OutboxConsumer가 SQS에서 수신했을 때 호출할 핸들러로 EventHandlerRegistry에
-  // 등록한다. 예전에는 payment/application/event/outbox-relay.ts의 고정 맵이 담당했다.
+  // Event를 OutboxConsumer가 SQS에서 수신했을 때 호출할 핸들러로 공유
+  // EventHandlerRegistry에 등록한다 — 도메인별 전용 Relay 파일은 두지 않는다.
   onModuleInit(): void {
     this.registry.register('PaymentCompleted', (payload) => this.paymentCompletedHandler.handle(payload as never))
     this.registry.register('PaymentCancelled', (payload) => this.paymentCancelledHandler.handle(payload as never))

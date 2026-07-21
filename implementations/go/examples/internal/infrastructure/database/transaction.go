@@ -3,11 +3,11 @@
 // TransactionManager, Spring의 @Transactional에 대응하는, context.Context 값 전파 기반의
 // 명시적 버전이다.
 //
-// 지금까지 이 저장소의 Command Handler는 한 Handler가 두 Aggregate의 Repository에
-// 동시에 쓰기를 호출하는 경우가 없어 만들지 않고 있었다(YAGNI — go/docs/architecture/
-// persistence.md 참고). account/application/command/transfer_handler.go(계좌 간 송금)가
-// 그 첫 실제 유스케이스다 — 출금 계좌 저장과 입금 계좌 저장 두 번의 SaveAccount 호출이
-// 원자적으로 함께 커밋되지 않으면, 출금만 반영되고 입금이 유실되는 실패 모드가 생긴다.
+// 한 Handler가 두 Aggregate의 Repository에 동시에 쓰기를 호출하는 경우에만 필요하다
+// (go/docs/architecture/persistence.md 참고) — account/application/command/
+// transfer_handler.go(계좌 간 송금)가 그 예시다: 출금 계좌 저장과 입금 계좌 저장 두 번의
+// SaveAccount 호출이 원자적으로 함께 커밋되지 않으면, 출금만 반영되고 입금이 유실되는
+// 실패 모드가 생긴다.
 package database
 
 import (

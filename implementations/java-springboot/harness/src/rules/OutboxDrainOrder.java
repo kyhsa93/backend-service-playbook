@@ -19,9 +19,8 @@ import static harness.JavaFiles.relTo;
  * Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 {@code OutboxPoller}(@Scheduled)와 {@code
  * OutboxConsumer}(SQS long polling)만의 책임이다. Command Service가 저장(save&lt;Noun&gt;) 커밋 직후
  * 같은 프로세스 안에서 드레인을 동기 호출하면, Outbox 패턴이 원래 분리하려던 "쓰기"와 "이벤트 처리"가
- * 다시 한 요청 안에 묶여버린다 — 이 검사가 없으면 누군가 예전 습관대로 Command Service에 드레인 호출을
- * 다시 추가해도 잡아내지 못한다(2026-07 async 전환 이전에는 정반대 방향 — "호출해야 한다" — 이었던
- * 규칙이 뒤집힌 것이다).
+ * 다시 한 요청 안에 묶여버린다 — 이 검사가 없으면 누군가 Command Service에 드레인 호출을 추가해도
+ * 잡아내지 못한다.
  *
  * 주석까지 검사 대상에 포함하면 "왜 호출하면 안 되는지"를 설명하는 코드 주석 자체가 오탐될 수 있으므로,
  * 아주 단순한 주석 제거 후 검사한다(이 harness의 다른 정규식 기반 규칙들과 동일한 수준의 근사치).

@@ -17,17 +17,15 @@ import static harness.JavaFiles.relTo;
  * 엔드포인트별 {@code @RateLimiter}(Resilience4j 애노테이션) 이중 방어를 요구한다. "정의는 있지만
  * 실제로 적용되지 않는" dead code 회귀를 잡는다.
  *
- * <p>과거 실제 회귀(#181): {@code RateLimitFilter}가 {@code RateLimiterConfig.custom()
- * .limitForPeriod(100)...}처럼 제한 값을 필드에 하드코딩해, {@code application.yml}/환경
- * 변수로 배포 시점에 조정할 수 없었다. 이후 {@code RateLimiterRegistry}에서 named
- * instance(`http-write`/`http-read`)를 조회하는 방식으로 고쳐졌다(현재 코드). 이 규칙은 그
- * 회귀가 재발하지 않도록 세 가지를 확인한다:
+ * <p>{@code RateLimitFilter}가 {@code RateLimiterConfig.custom().limitForPeriod(100)...}처럼
+ * 제한 값을 필드에 하드코딩하면 {@code application.yml}/환경 변수로 배포 시점에 조정할 수 없다 —
+ * 반드시 {@code RateLimiterRegistry}에서 named instance(`http-write`/`http-read`)를 동적으로
+ * 조회해야 한다. 이 규칙은 세 가지를 확인한다:
  *
  * <ol>
  *   <li>{@code RateLimitFilter}가 {@code @Component}로 Spring bean 등록되어 있는지(Spring Boot가
  *   Filter bean을 자동으로 필터 체인에 등록해 실제 요청 경로에 적용됨 — 별도 등록 파일 없음)</li>
- *   <li>{@code RateLimiterConfig.custom(}으로 제한 값을 필드에 직접 하드코딩하지 않는지(#181 회귀
- *   시그니처)</li>
+ *   <li>{@code RateLimiterConfig.custom(}으로 제한 값을 필드에 직접 하드코딩하지 않는지</li>
  *   <li>{@code RateLimiterRegistry}를 주입받아 {@code .rateLimiter(...)}로 named instance를
  *   동적으로 조회하는지</li>
  * </ol>
@@ -78,7 +76,7 @@ public final class RateLimitWired {
 
         if (HARDCODED_CONFIG.matcher(code).find()) {
             result.add(Finding.fail(rel,
-                "RateLimiterConfig.custom()으로 제한 값을 필드에 직접 하드코딩함 — application.yml의 RateLimiterRegistry named instance를 조회해야 배포 시점 조정이 가능함(#181 회귀, rate-limiting.md)"));
+                "RateLimiterConfig.custom()으로 제한 값을 필드에 직접 하드코딩함 — application.yml의 RateLimiterRegistry named instance를 조회해야 배포 시점 조정이 가능함(rate-limiting.md)"));
         } else if (REGISTRY_FIELD.matcher(code).find() && REGISTRY_LOOKUP.matcher(code).find()) {
             result.add(Finding.pass(rel + " (RateLimiterRegistry 동적 조회 확인 — 하드코딩 없음)"));
         } else {

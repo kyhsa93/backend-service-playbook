@@ -27,12 +27,10 @@ from .schemas import (
     WithdrawRequest,
 )
 
-# 이 라우터는 예전에는 Account/Card/Payment 세 BC의 이벤트 배선을 조립하는 composition
-# root(`_outbox_relay()` 팩토리)를 겸했다 — 커맨드 처리 직후 같은 요청 안에서 동기적으로
-# Outbox를 드레인해야 했기 때문이다. 이제 Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
+# Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
 # OutboxPoller/OutboxConsumer(`src/outbox/outbox_poller.py`/`outbox_consumer.py`)만의
 # 책임이고, 그 배선(eventType → 핸들러)은 `src/outbox/event_handlers.py`의
-# `build_event_handlers()`로 옮겨졌다 — 이 라우터는 다시 Account 자신의 라우트에만
+# `build_event_handlers()`가 담당한다 — 이 라우터는 Account 자신의 라우트에만
 # 집중한다(domain-events.md 참고).
 
 router = APIRouter(prefix="/accounts", tags=["Account"], dependencies=[Depends(get_current_user)])

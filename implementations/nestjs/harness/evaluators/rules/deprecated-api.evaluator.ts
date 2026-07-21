@@ -79,10 +79,9 @@ export function evaluateDeprecatedApi(root: string): EvaluatorResult {
 
     const methods = extractMethods(content)
     for (const m of methods) {
-      // URL/메서드명에 'deprecated' 또는 'legacy' 토큰이 있을 때만 의심한다.
-      // 이전에는 '/v1/' 같은 API versioning 토큰도 포함했으나, 현재 가이드는
-      // API versioning 자체를 제거했으므로 /v1/ 자체가 가이드 위반이지
-      // deprecated-api 관심사가 아니다.
+      // URL/메서드명에 'deprecated' 또는 'legacy' 토큰이 있을 때만 의심한다 — API
+      // versioning 토큰(`/v1/` 등)은 대상이 아니다. 이 가이드는 API versioning 자체를
+      // 쓰지 않으므로 /v1/이 있다면 그 자체가 가이드 위반이지 deprecated-api 관심사가 아니다.
       const looksDeprecated = /deprecated|legacy/i.test(m.routePath) || /deprecated|legacy/i.test(m.name)
       const hasApiOperationDeprecated = /@ApiOperation\s*\(\s*\{[^}]*deprecated\s*:\s*true/.test(m.block)
 

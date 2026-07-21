@@ -242,11 +242,10 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
   //    등록 하나가 빠져도(예: MoneyDeposited) 그 이벤트는 Outbox 테이블에 영원히
   //    processed=false로 남아 조용히 드레인되지 않는다.
   //
-  //    과거에는 도메인마다 전용 OutboxRelay(*outbox-relay.ts)가 생성자 주입 고정 맵으로
-  //    이 라우팅을 담당했지만(issue #229), 동기 드레인을 전면 제거하면서 Poller(DB→큐
-  //    발행만 담당)와 Consumer(큐→핸들러 라우팅)로 역할이 분리되고, 라우팅 자체는 도메인
-  //    별 relay 파일이 아니라 하나의 공유 EventHandlerRegistry로 통합됐다 — 검사도
-  //    "relay 파일이 존재하는가"가 아니라 "문자열 키로 register() 등록됐는가"를 본다.
+  //    라우팅은 도메인별 relay 파일이 아니라 하나의 공유 EventHandlerRegistry로
+  //    통합되어 있다 — Poller(DB→큐 발행만 담당)와 Consumer(큐→핸들러 라우팅)로 역할이
+  //    분리되어 있으므로, 검사도 "relay 파일이 존재하는가"가 아니라 "문자열 키로
+  //    register() 등록됐는가"를 본다.
   if (aggregatesWithEvents.length > 0) {
     const hasPoller = files.some((f) => /outbox-poller\.ts$/.test(path.basename(f)))
     const hasConsumer = files.some((f) => /outbox-consumer\.ts$/.test(path.basename(f)))

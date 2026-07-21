@@ -1,0 +1,30 @@
+name: History-narrative check
+
+on:
+  push:
+    paths:
+      - '**/*.md'
+      - 'implementations/*/examples/**'
+      - 'implementations/*/harness/**'
+      - 'scripts/check_history_narrative.py'
+      - '.github/workflows/history-narrative-check.yml'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'implementations/*/examples/**'
+      - 'implementations/*/harness/**'
+      - 'scripts/check_history_narrative.py'
+      - '.github/workflows/history-narrative-check.yml'
+
+jobs:
+  history-narrative:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check for history-narrative language
+        run: python3 scripts/check_history_narrative.py
