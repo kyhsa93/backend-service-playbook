@@ -78,7 +78,7 @@ spec:
 
 ## 컨테이너에서 직접 프로세스 실행 — 이미 [container.md](container.md)에서 다룸
 
-`ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]`(exec form)로 JVM이 PID 1이 되어야 SIGTERM을 즉시 수신한다 — `./gradlew bootRun` 같은 래퍼로 감싸면 Gradle 프로세스가 중간에 끼어 신호 전달이 지연되거나 유실된다. 상세는 [container.md](container.md) 참고.
+`ENTRYPOINT ["java", "-jar", "app.jar"]`(exec form)로 JVM이 PID 1이 되어야 SIGTERM을 즉시 수신한다 — `./gradlew bootRun` 같은 래퍼로 감싸면 Gradle 프로세스가 중간에 끼어 신호 전달이 지연되거나 유실된다. 상세는 [container.md](container.md) 참고.
 
 ---
 
