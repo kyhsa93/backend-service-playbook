@@ -11,6 +11,10 @@ on:
       - 'implementations/fastapi/**'
       - '.github/workflows/fastapi.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   fastapi:
     runs-on: ubuntu-latest
@@ -44,4 +48,17 @@ jobs:
       - name: Harness self-tests (규칙별 fixture 회귀 테스트)
         run: cd harness && python3 -m pytest tests/
 
-      - run: bash harness.sh examples
+      - name: Harness
+        run: bash harness.sh examples | tee /tmp/harness-output.txt
+
+      - name: Format harness score comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          { echo '### fastapi harness'; echo; echo '```'; cat /tmp/harness-output.txt; echo '```'; } > /tmp/harness-comment.md
+
+      - name: Comment harness score on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: harness-fastapi
+          path: /tmp/harness-comment.md

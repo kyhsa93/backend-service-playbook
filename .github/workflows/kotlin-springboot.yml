@@ -11,6 +11,10 @@ on:
       - 'implementations/kotlin-springboot/**'
       - '.github/workflows/kotlin-springboot.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   kotlin-springboot:
     runs-on: ubuntu-latest
@@ -25,7 +29,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # ktlint(issue #202) — 스타일 위반은 여기서 빨리 실패시키고, 4분 넘게 걸리는
+      # ktlint — 스타일 위반은 여기서 빨리 실패시키고, 4분 넘게 걸리는
       # Testcontainers e2e 테스트까지 기다리지 않게 한다. ktlintCheck는 build.gradle.kts의
       # 플러그인 설정으로 check/build 태스크에도 이미 연결되어 있어 아래 `./gradlew build`가
       # 다시 한 번 검증하지만, 별도 스텝으로 뽑아두면 실패 원인이 로그에서 바로 구분된다.
@@ -37,7 +41,7 @@ jobs:
       - run: ./gradlew build
         working-directory: implementations/kotlin-springboot/examples
 
-      # harness가 Kotlin 프로그램으로 재작성됨(issue #46) — kotlinc가 PATH에 없으면 다운로드해 준비한다.
+      # harness는 Kotlin 프로그램이다 — kotlinc가 PATH에 없으면 다운로드해 준비한다.
       - name: Install kotlinc
         run: |
           curl -fsSL -o /tmp/kotlin-compiler.zip \
@@ -51,4 +55,17 @@ jobs:
           kotlinc src test/RuleTest.kt -include-runtime -d build/test.jar
           cd test && java -cp ../build/test.jar harness.test.RuleTestKt
 
-      - run: bash harness.sh examples
+      - name: Harness
+        run: bash harness.sh examples | tee /tmp/harness-output.txt
+
+      - name: Format harness score comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          { echo '### kotlin-springboot harness'; echo; echo '```'; cat /tmp/harness-output.txt; echo '```'; } > /tmp/harness-comment.md
+
+      - name: Comment harness score on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: harness-kotlin-springboot
+          path: /tmp/harness-comment.md

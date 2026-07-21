@@ -20,6 +20,9 @@ jobs:
     # 스텝으로 전체 빌드를 시도한다. 지속적으로 타임아웃되면 test/e2eTest 태스크를
     # 분리해 각각 timeout-minutes를 늘리는 방향으로 전환한다.
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: implementations/java-springboot
@@ -50,4 +53,16 @@ jobs:
           cd test && java -cp ../build/classes:../build/test-classes RuleTest
 
       - name: Run harness
-        run: bash harness.sh examples
+        run: bash harness.sh examples | tee /tmp/harness-output.txt
+
+      - name: Format harness score comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          { echo '### java-springboot harness'; echo; echo '```'; cat /tmp/harness-output.txt; echo '```'; } > /tmp/harness-comment.md
+
+      - name: Comment harness score on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: harness-java-springboot
+          path: /tmp/harness-comment.md

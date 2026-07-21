@@ -1,0 +1,33 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # major 버전 업그레이드는 breaking change 가능성이 있어 사람이 직접 확인한다 —
+      # patch/minor만 자동 승인·머지 대상으로 삼는다. 이 저장소는 main에 branch
+      # protection/required checks를 강제하지 않으므로 `gh pr merge --auto`에만
+      # 기대지 않고, 실제 체크런 결과를 직접 기다린 뒤(성공한 경우에만) 머지한다.
+      - name: Wait for checks, then approve and merge
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: |
+          gh pr checks "$PR_URL" --watch --fail-fast
+          gh pr review --approve "$PR_URL"
+          gh pr merge --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

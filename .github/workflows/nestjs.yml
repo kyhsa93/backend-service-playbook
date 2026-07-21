@@ -11,6 +11,10 @@ on:
       - 'implementations/nestjs/**'
       - '.github/workflows/nestjs.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   nestjs:
     runs-on: ubuntu-latest
@@ -27,4 +31,18 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run test:e2e
-      - run: cd ../harness && npm ci && npm run lint && npm run test:evaluators && npm run evaluate -- ../examples
+      - run: cd ../harness && npm ci && npm run lint && npm run test:evaluators
+      - name: Harness
+        run: cd ../harness && npm run evaluate -- ../examples | tee /tmp/harness-output.txt
+
+      - name: Format harness score comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          { echo '### nestjs harness'; echo; echo '```'; cat /tmp/harness-output.txt; echo '```'; } > /tmp/harness-comment.md
+
+      - name: Comment harness score on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: harness-nestjs
+          path: /tmp/harness-comment.md

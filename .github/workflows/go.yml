@@ -10,6 +10,10 @@ on:
       - 'implementations/go/**'
       - '.github/workflows/go.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   go:
     runs-on: ubuntu-latest
@@ -52,4 +56,16 @@ jobs:
           version: latest
 
       - name: Harness
-        run: bash harness.sh examples
+        run: bash harness.sh examples | tee /tmp/harness-output.txt
+
+      - name: Format harness score comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          { echo '### Go harness'; echo; echo '```'; cat /tmp/harness-output.txt; echo '```'; } > /tmp/harness-comment.md
+
+      - name: Comment harness score on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: harness-go
+          path: /tmp/harness-comment.md
