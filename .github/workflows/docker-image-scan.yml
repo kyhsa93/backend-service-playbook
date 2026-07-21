@@ -1,0 +1,55 @@
+name: Docker image scan (Trivy)
+
+# 5개 언어 Dockerfile을 빌드하고 Trivy로 취약점을 스캔한다. 베이스 이미지의 CVE는 이
+# 저장소의 코드 변경과 무관하게 매일 바뀔 수 있어 빌드를 막는 하드 게이트로 쓰지 않는다
+# (exit-code 0) — 결과는 SARIF로 업로드해 저장소의 Security 탭에서 가시성만 확보한다.
+
+on:
+  push:
+    paths:
+      - 'implementations/*/examples/Dockerfile'
+      - '.github/workflows/docker-image-scan.yml'
+  pull_request:
+    paths:
+      - 'implementations/*/examples/Dockerfile'
+      - '.github/workflows/docker-image-scan.yml'
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [nestjs, go, java-springboot, kotlin-springboot, fastapi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: implementations/${{ matrix.lang }}/examples
+          push: false
+          load: true
+          tags: bsp-${{ matrix.lang }}:scan
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: bsp-${{ matrix.lang }}:scan
+          format: sarif
+          output: trivy-${{ matrix.lang }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-${{ matrix.lang }}.sarif
+          category: trivy-${{ matrix.lang }}
