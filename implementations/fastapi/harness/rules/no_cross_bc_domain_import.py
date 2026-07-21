@@ -15,7 +15,7 @@ domain 패키지)를 직접 import하는 것을 막는 규칙이 없었다. 이 
 
 **위반 판별**: import 모듈 경로에서 `domain` 세그먼트를 찾고, 그 앞에 있는 세그먼트가
 자기 자신의 BC 이름도 아니고 `src`도 아니며 공유 인프라 디렉터리(`common`/`database`/
-`outbox`/`task-queue`/`config`, `common.is_shared_dir`)도 아니면 위반이다. 같은 BC
+`outbox`/`task_queue`/`config`, `common.is_shared_dir`)도 아니면 위반이다. 같은 BC
 안에서의 상대 import(`from .account_status import ...`, `from .errors import ...`)는
 모듈 문자열에 `domain` 세그먼트 자체가 없으므로(파이썬 상대 import는 같은 패키지 안에서는
 패키지명을 반복하지 않는다) 오탐하지 않는다. `from ...common.generate_id import
