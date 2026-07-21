@@ -1,7 +1,10 @@
 import { generateId } from '@/common/generate-id'
 import { Money } from '@/account/domain/money'
 
-export type TransactionType = 'DEPOSIT' | 'WITHDRAWAL'
+// INTEREST는 사용자가 직접 요청한 입금(DEPOSIT)과 구분되는 시스템 주도 크레딧이다 —
+// account/infrastructure/account-interest-scheduler.ts가 매일 적재하는 배치 Task의
+// 결과로만 생성된다(account/domain/account.ts의 Account.applyInterest() 참고).
+export type TransactionType = 'DEPOSIT' | 'WITHDRAWAL' | 'INTEREST'
 
 export class Transaction {
   public readonly transactionId: string

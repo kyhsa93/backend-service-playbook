@@ -3,6 +3,7 @@ import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
 import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
+import { ApplyDailyInterestCommandHandler } from '@/account/application/command/apply-daily-interest-command-handler'
 import { CloseAccountCommandHandler } from '@/account/application/command/close-account-command-handler'
 import { CreateAccountCommandHandler } from '@/account/application/command/create-account-command-handler'
 import { DepositByPaymentCommandHandler } from '@/account/application/command/deposit-by-payment-command-handler'
@@ -16,21 +17,25 @@ import { AccountClosedHandler } from '@/account/application/event/account-closed
 import { AccountCreatedHandler } from '@/account/application/event/account-created-handler'
 import { AccountReactivatedHandler } from '@/account/application/event/account-reactivated-handler'
 import { AccountSuspendedHandler } from '@/account/application/event/account-suspended-handler'
+import { InterestPaidHandler } from '@/account/application/event/interest-paid-handler'
 import { MoneyDepositedHandler } from '@/account/application/event/money-deposited-handler'
 import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdrawn-handler'
 import { AccountQuery } from '@/account/application/query/account-query'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
+import { AccountCommandService } from '@/account/application/service/account-command-service'
 import { NotificationService } from '@/account/application/service/notification-service'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
+import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
 import { AccountRepositoryImpl } from '@/account/infrastructure/account-repository-impl'
 import { NotificationServiceImpl } from '@/account/infrastructure/notification/notification-service-impl'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { SesClientProvider } from '@/account/infrastructure/notification/ses-client-provider'
 import { AccountController } from '@/account/interface/account-controller'
+import { AccountTaskController } from '@/account/interface/account-task-controller'
 import { AuthModule } from '@/auth/auth-module'
 
 @Module({
@@ -52,15 +57,24 @@ import { AuthModule } from '@/auth/auth-module'
     // refund.approved.v1)에 대한 반응 Command Handler
     WithdrawByPaymentCommandHandler,
     DepositByPaymentCommandHandler,
+    // account.apply-daily-interest Task가 위임하는 Command Handler
+    ApplyDailyInterestCommandHandler,
     // Query Handlers
     GetAccountQueryHandler,
     GetTransactionsQueryHandler,
     // Integration Event 수신부 (외부 BC → Account)
     AccountIntegrationEventController,
+    // Task 입력 어댑터 — @TaskConsumer 메서드
+    AccountTaskController,
+    // Cron → TaskQueue.enqueue만 수행 (Infrastructure 레이어)
+    AccountInterestScheduler,
+    // Task Controller가 주입받는 얇은 Command Service (CommandBus 위임)
+    AccountCommandService,
     // Event Handlers
     AccountCreatedHandler,
     MoneyDepositedHandler,
     MoneyWithdrawnHandler,
+    InterestPaidHandler,
     AccountSuspendedHandler,
     AccountReactivatedHandler,
     AccountClosedHandler,
@@ -83,6 +97,7 @@ export class AccountModule implements OnModuleInit {
     private readonly accountCreatedHandler: AccountCreatedHandler,
     private readonly moneyDepositedHandler: MoneyDepositedHandler,
     private readonly moneyWithdrawnHandler: MoneyWithdrawnHandler,
+    private readonly interestPaidHandler: InterestPaidHandler,
     private readonly accountSuspendedHandler: AccountSuspendedHandler,
     private readonly accountReactivatedHandler: AccountReactivatedHandler,
     private readonly accountClosedHandler: AccountClosedHandler
@@ -98,6 +113,7 @@ export class AccountModule implements OnModuleInit {
     this.registry.register('AccountCreated', (payload) => this.accountCreatedHandler.handle(payload as never))
     this.registry.register('MoneyDeposited', (payload) => this.moneyDepositedHandler.handle(payload as never))
     this.registry.register('MoneyWithdrawn', (payload) => this.moneyWithdrawnHandler.handle(payload as never))
+    this.registry.register('InterestPaid', (payload) => this.interestPaidHandler.handle(payload as never))
     this.registry.register('AccountSuspended', (payload) => this.accountSuspendedHandler.handle(payload as never))
     this.registry.register('AccountReactivated', (payload) => this.accountReactivatedHandler.handle(payload as never))
     this.registry.register('AccountClosed', (payload) => this.accountClosedHandler.handle(payload as never))

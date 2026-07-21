@@ -94,6 +94,73 @@ describe('Account', () => {
     })
   })
 
+  describe('applyInterest', () => {
+    const today = new Date('2026-07-20T00:00:00.000Z')
+    const yesterday = new Date('2026-07-19T00:00:00.000Z')
+
+    it('applyInterest_when_활성_계좌에_이자가_0보다_크면_then_잔액이_증가하고_INTEREST_거래와_InterestPaid_이벤트가_발행된다', () => {
+      const account = createActiveAccount(1_000_000)
+
+      const transaction = account.applyInterest(today)
+
+      expect(transaction).not.toBeNull()
+      expect(transaction?.type).toBe('INTEREST')
+      expect(transaction?.amount.amount).toBe(100)
+      expect(account.balance.amount).toBe(1_000_100)
+      expect(account.lastInterestPaidAt).toEqual(today)
+      expect(account.domainEvents[0].constructor.name).toBe('InterestPaid')
+    })
+
+    it('applyInterest_when_계산된_이자가_0이면_then_null을_반환하고_잔액은_변하지_않지만_lastInterestPaidAt은_갱신된다', () => {
+      const account = createActiveAccount(100)
+
+      const transaction = account.applyInterest(today)
+
+      expect(transaction).toBeNull()
+      expect(account.balance.amount).toBe(100)
+      expect(account.lastInterestPaidAt).toEqual(today)
+      expect(account.domainEvents).toHaveLength(0)
+    })
+
+    it('applyInterest_when_같은_날_두_번_호출되면_then_두_번째_호출은_null을_반환하고_잔액이_중복_증가하지_않는다', () => {
+      const account = createActiveAccount(1_000_000)
+      account.applyInterest(today)
+      account.clearEvents()
+      account.clearTransactions()
+
+      const secondCall = account.applyInterest(today)
+
+      expect(secondCall).toBeNull()
+      expect(account.balance.amount).toBe(1_000_100)
+      expect(account.domainEvents).toHaveLength(0)
+    })
+
+    it('applyInterest_when_전날_이미_지급됐고_오늘_다시_호출되면_then_다시_지급된다', () => {
+      const account = new Account({
+        ownerId: 'owner-1',
+        email: 'owner1@example.com',
+        balance: new Money({ amount: 1_000_000, currency: 'KRW' }),
+        status: AccountStatus.ACTIVE,
+        lastInterestPaidAt: yesterday
+      })
+
+      const transaction = account.applyInterest(today)
+
+      expect(transaction).not.toBeNull()
+      expect(account.balance.amount).toBe(1_000_100)
+    })
+
+    it('applyInterest_when_정지된_계좌면_then_null을_반환하고_lastInterestPaidAt도_변하지_않는다', () => {
+      const account = createActiveAccount(1_000_000)
+      account.suspend()
+
+      const transaction = account.applyInterest(today)
+
+      expect(transaction).toBeNull()
+      expect(account.lastInterestPaidAt).toBeNull()
+    })
+  })
+
   describe('suspend', () => {
     it('suspend_when_활성_계좌_then_SUSPENDED_상태가_되고_AccountSuspended_이벤트가_발행된다', () => {
       const account = createActiveAccount()
