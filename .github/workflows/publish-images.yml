@@ -1,0 +1,43 @@
+name: Publish images to GHCR
+
+# 태그 push 또는 수동 실행으로만 동작한다 — 이 저장소는 참조 구현 예제라 커밋마다 이미지를
+# 새로 배포할 대상이 없다. 버전 태그(v1.2.3 등)를 붙이거나 필요할 때 수동으로 실행한다.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang: [nestjs, go, java-springboot, kotlin-springboot, fastapi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine tag
+        id: tag
+        run: echo "value=${GITHUB_REF_NAME:-manual-$(date +%Y%m%d%H%M%S)}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: implementations/${{ matrix.lang }}/examples
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/bsp-${{ matrix.lang }}:${{ steps.tag.outputs.value }}
+            ghcr.io/${{ github.repository_owner }}/bsp-${{ matrix.lang }}:latest
