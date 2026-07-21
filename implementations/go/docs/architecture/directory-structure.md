@@ -134,9 +134,9 @@ go.mod
 | `<domain>/infrastructure/` | `internal/infrastructure/<concern>/` (persistence, notification 등 관심사별 하위 패키지) |
 | `<domain>/interface/` | `internal/interface/http/` |
 | `common/` | `internal/common/`(`id.go` — ID 생성 등 프레임워크 무관 순수 함수)([aggregate-id.md](aggregate-id.md) 참고) |
-| `database/`(TransactionManager) | 없음 — 현재 `Save()` 내부 로컬 `db.BeginTx()`만 사용. 여러 Repository를 하나의 트랜잭션으로 묶는 컨텍스트 기반 전파가 필요한 시나리오가 아직 없다([persistence.md](persistence.md) 참고) |
+| `database/`(TransactionManager) | `internal/infrastructure/database/`(`WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`) — 계좌 간 송금(Transfer)이 여러 Repository 저장을 하나의 트랜잭션으로 묶어야 하는 첫 실사용처였다([persistence.md](persistence.md) 참고) |
 | `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Poller`/`Consumer` 구현됨([domain-events.md](domain-events.md) 참고) |
-| `task-queue/` | 없음 — 스케줄링/Task Queue 예제 없음([scheduling.md](scheduling.md) 참고) |
+| `task-queue/` | `internal/infrastructure/task-queue/`(`Writer`/`Poller`/`Consumer`) — 정기 이자 지급/카드 명세서 발송 배치가 실사용처다([scheduling.md](scheduling.md) 참고) |
 | `config/` | `internal/config/`(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`)([config.md](config.md) 참고) |
 
 여러 도메인이 추가되면 `internal/domain/<domain>/`, `internal/infrastructure/persistence/<domain>_repository.go`처럼 도메인별로 파일이 늘어난다. 현재 `examples/`에는 Account와 Card 두 Bounded Context가 있고(파일명 접두사 `card_*`로 구분), `internal/application/command/`·`query/`는 아직 평평한 구조로 두 도메인의 핸들러를 함께 담는다 — 도메인이 더 많아져 파일이 번잡해지면 `command/<domain>/`처럼 하위 디렉토리로 나누는 것을 검토한다. Account↔Card 크로스 도메인 호출 배치는 [cross-domain.md](cross-domain.md)를 참고한다.
@@ -159,9 +159,9 @@ go.mod
 
 ---
 
-## 공용 인프라를 아직 추가하지 않은 이유
+## 공용 인프라는 실제로 필요해질 때만 추가한다
 
-root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다. `outbox/`는 실제로 필요해져 추가되었다(알림 발송이 유실되면 안 되는 부가효과였기 때문 — [domain-events.md](domain-events.md) 참고). 나머지(`common/`, `database/`, `task-queue/`, `config/`)는 아직 그 필요가 생기지 않아 없다. 각 패턴을 실제로 추가할 때 참고할 문서를 위 표에 명시했다.
+root의 `common/`, `database/`, `outbox/`, `task-queue/`, `config/` 디렉토리는 각각 대응하는 패턴(ID 유틸, 트랜잭션 전파, Outbox, Task Queue, 설정 검증)이 실제로 필요해질 때 만드는 것이 Go 컨벤션에 맞다 — 미리 빈 추상화를 만들어두지 않는다(YAGNI). 다섯 모두 지금은 실제로 존재한다 — 각각 그 필요를 만든 실사용처가 생겼을 때 추가됐다: `outbox/`는 알림 발송이 유실되면 안 되는 부가효과 때문에, `task-queue/`는 정기 이자 지급/카드 명세서 발송 배치 때문에, `database/`는 계좌 간 송금이 두 Account 저장을 하나의 트랜잭션으로 묶어야 했기 때문이다. 이 순서 자체가 이 저장소의 YAGNI 원칙이 실제로 어떻게 지켜지는지 보여주는 기록이다 — 다음에 새로운 공용 인프라가 필요해지면 같은 방식(실사용처가 생긴 뒤에 추가)을 따른다.
 
 ---
 

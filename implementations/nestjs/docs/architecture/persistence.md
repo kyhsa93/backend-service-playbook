@@ -86,33 +86,31 @@ export class OrderRepositoryImpl extends OrderRepository {
 }
 ```
 
-#### Command Service에서 사용
+#### Command Handler에서 사용 — 실제 코드(계좌 간 송금)
 
-여러 Repository를 호출하는 Command에서 `transactionManager.run()`으로 감싼다.
+여러 Repository 저장(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)을 하나의 트랜잭션으로 묶어야 하는 실제 유스케이스는 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. 이 Handler는 기존 `TransactionManager`를 그대로 재사용한다 — 새 인프라가 필요 없었다.
 
 ```typescript
-// application/command/order-command-service.ts
-@Injectable()
-export class OrderCommandService {
+// application/command/transfer-command-handler.ts
+@CommandHandler(TransferCommand)
+export class TransferCommandHandler implements ICommandHandler<TransferCommand, TransferResult> {
   constructor(
-    private readonly orderRepository: OrderRepository,
-    private readonly paymentRepository: PaymentRepository,
+    private readonly accountRepository: AccountRepository,
     private readonly transactionManager: TransactionManager
   ) {}
 
-  public async cancelOrder(command: CancelOrderCommand): Promise<void> {
-    const order = await this.orderRepository
-      .findOrders({ orderId: command.orderId, take: 1, page: 0 })
-      .then((r) => r.orders.pop())
-    if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+  public async execute(command: TransferCommand): Promise<TransferResult> {
+    // ... source/target 로드, TransferEligibilityService로 판단 ...
+    const sourceTransaction = source.withdraw(amount, transferId)
+    const targetTransaction = target.deposit(amount, transferId)
 
-    order.cancel(command.reason)
-
-    // Repository.saveOrder() 내부에서 Aggregate + outbox를 함께 저장
+    // 두 계좌 저장 모두 같은 트랜잭션 안에서 실행 — 하나라도 예외가 나면 전체 롤백
     await this.transactionManager.run(async () => {
-      await this.paymentRepository.deletePaymentMethods(order.orderId)
-      await this.orderRepository.saveOrder(order)
+      await this.accountRepository.saveAccount(source)
+      await this.accountRepository.saveAccount(target)
     })
+
+    return new TransferResult(transferId, sourceTransaction, targetTransaction)
   }
 }
 ```

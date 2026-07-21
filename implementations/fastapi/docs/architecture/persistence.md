@@ -7,11 +7,15 @@
 이 저장소는 SQLAlchemy의 `AsyncSession` 하나를 요청 전체의 Unit of Work로 사용한다. 별도의 `TransactionManager`/`contextvars` 전파 계층 없이, FastAPI의 `Depends`가 세션 생명주기를 요청 단위로 관리한다.
 
 ```python
-# src/database.py
+# src/database.py — 실제 코드
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
-        yield session
-        await session.commit()   # 요청이 성공적으로 끝나면 커밋
+        try:
+            yield session
+            await session.commit()   # 요청이 성공적으로 끝나면 커밋
+        except Exception:
+            await session.rollback()
+            raise
 ```
 
 `interface/rest/account_router.py`의 모든 라우트가 같은 `Depends(get_session)`을 통해 세션을 받고, 그 세션으로 Repository(`_repo`)와 Technical Service(`_notification_service`)를 모두 조립한다 — 즉 하나의 HTTP 요청 안에서 Repository 저장과 알림 발송 기록(`SentEmailModel`)이 **같은 세션, 같은 트랜잭션**에 속한다.
@@ -28,19 +32,7 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
 
 FastAPI가 `Depends(get_session)`을 같은 요청 내에서 캐싱하므로, 두 팩토리는 실제로 동일한 `AsyncSession` 인스턴스를 받는다. 여러 Repository/Service에 걸친 쓰기를 하나의 트랜잭션으로 묶을 때 root가 요구하는 "Unit of Work" 개념이 이 캐싱 동작으로 충족된다 — 언어별로는 `AsyncLocalStorage`/`contextvars`를 쓰는 대신, FastAPI의 요청 스코프 의존성 캐싱이 같은 역할을 한다.
 
-라우트 함수가 성공적으로 반환되면 `get_session()`의 `yield` 다음 줄(`await session.commit()`)이 실행된다. 예외가 발생하면 `async with SessionLocal()`이 세션을 롤백 없이 그냥 닫는다 — 명시적 롤백이 필요하면 `get_session()`에 `except`를 추가한다.
-
-```python
-# src/database.py — 명시적 롤백을 원하면
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    async with SessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-```
+라우트 함수가 성공적으로 반환되면 `get_session()`의 `yield` 다음 줄(`await session.commit()`)이 실행된다. 예외가 발생하면 `except` 블록이 명시적으로 롤백한다 — 애초에는 이 `except`가 없어 `async with SessionLocal()`이 세션을 롤백 없이 그냥 닫는 gap이 있었지만, 계좌 간 송금(Transfer)이 한 요청 안에서 서로 다른 두 Aggregate 인스턴스를 순차로 저장하는 첫 유스케이스가 되면서(두 번째 저장이 예외를 던지면 첫 번째 저장이 세션에 이미 flush된 채로 남을 수 있다) 이 gap이 실제 위험이 됐고, 그래서 명시적 롤백을 추가했다.
 
 ---
 

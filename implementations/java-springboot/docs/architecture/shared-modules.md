@@ -6,7 +6,7 @@
 
 `examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `payment/`(3번째 도메인 — Payment/Refund, `RefundEligibilityService`), `auth/`(인증/가입), `common/`, `config/`, `outbox/`, `taskqueue/`다. `notification`(Technical Service)은 `account`/`card` 각자 안에 있다 — 최상위가 아니라 각 도메인 내부(`account/application/service/`+`account/infrastructure/notification/`, `card/application/service/`+`card/infrastructure/notification/`)에 별도 인터페이스+구현체를 갖는다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다(두 도메인이 "이메일 발송"이라는 같은 개념을 쓰지만, 구현체는 서로 다른 발송 이력 테이블을 가지므로 공유 인스턴스를 두지 않는다).
 
-여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), `taskqueue/`(`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — scheduling.md 참고, `outbox/`와 형제 구조지만 Task 전용 별도 테이블·큐)다. `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 아직 없다 — [layer-architecture.md](layer-architecture.md)가 설명하듯 그런 트랜잭션 전파가 필요한 시나리오가 아직 없기 때문이다.
+여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), `taskqueue/`(`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — scheduling.md 참고, `outbox/`와 형제 구조지만 Task 전용 별도 테이블·큐)다. `database/`는 여전히 없다 — 다만 이제는 "그런 시나리오가 없어서"가 아니다: 계좌 간 송금(Transfer)이 여러 Repository 저장을 하나의 트랜잭션으로 묶어야 하는 실제 시나리오를 만들었지만, Spring의 `@Transactional`(AOP 프록시 기반)이 이미 그 역할을 대신하므로 별도 공유 패키지 자체가 필요 없다 — `AccountRepository.saveAccounts()`처럼 트랜잭션 경계가 필요한 Repository 메서드에 `@Transactional`만 붙이면 된다([persistence.md](persistence.md) 참고).
 
 상세는 [directory-structure.md](directory-structure.md)의 실제 트리를 참고한다 — 이 문서는 그 배치를 NestJS의 공유 모듈 구조와 대응시켜 설명한다.
 
@@ -80,7 +80,7 @@ com.example.accountservice/
   AccountServiceApplication.java
 ```
 
-여러 도메인/`Technical Service`가 두루 쓰는 항목만 최상위(`common/`, `config/`, `outbox/`)에 있고, `notification`처럼 한 도메인만 쓰는 Technical Service는 그 도메인 내부에 남는다 — `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)만 그런 시나리오가 아직 없어 만들지 않았다.
+여러 도메인/`Technical Service`가 두루 쓰는 항목만 최상위(`common/`, `config/`, `outbox/`)에 있고, `notification`처럼 한 도메인만 쓰는 Technical Service는 그 도메인 내부에 남는다 — `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)는 그 시나리오(계좌 간 송금)가 실제로 생긴 뒤에도 만들지 않았다 — Spring의 `@Transactional`이 이미 그 역할을 하므로 별도 공유 패키지가 필요 없기 때문이다.
 
 **`common/`과 `config/`를 나눈 이유**: `common/`은 도메인 무관 **범용 유틸/Interface 레이어 부품**(ID 생성, 전역 예외 처리, 필터, Secret 조회)이고, `config/`는 **`@ConfigurationProperties` 바인딩 전용 record + Security/Web 설정**([config.md](config.md) 참고)이다. 후자는 Infrastructure 레이어에서만 주입받는다는 제약이 있어 역할이 명확히 다르므로 분리했다.
 
@@ -91,7 +91,7 @@ com.example.accountservice/
 | NestJS (`@Module`, `@Global`) | Spring Boot 대응 | 이 저장소의 상태 |
 |---|---|---|
 | `src/common/` (필터, 인터셉터, 유틸) | `common/` 패키지 — `@Component`/순수 유틸 혼재 | 있음 — `IdGenerator`, `web/`의 Filter·Interceptor, `SecretService`(secret-manager.md 참고) |
-| `src/database/` (`@Global` — DataSource, TransactionManager) | `database/` 패키지 — 단, Spring은 `@Global` 개념 자체가 불필요 | 없음 (JPA `DataSource`는 auto-configuration이 이미 전역 제공, 여러 Repository를 묶는 트랜잭션 유틸도 필요한 시나리오가 아직 없음 — layer-architecture.md 참고) |
+| `src/database/` (`@Global` — DataSource, TransactionManager) | `database/` 패키지 — 단, Spring은 `@Global` 개념 자체가 불필요 | 없음 (JPA `DataSource`는 auto-configuration이 이미 전역 제공. 여러 Repository를 묶는 시나리오는 실제로 생겼지만(계좌 간 송금 — `AccountRepository.saveAccounts()`), `@Transactional`이 그 역할을 대신하므로 별도 공유 유틸이 필요 없다 — persistence.md 참고) |
 | `src/outbox/` (`@Global` — OutboxWriter/Poller/Consumer) | `outbox/` 패키지 | 있음 — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`(domain-events.md 참고) |
 | (NestJS에 대응 패키지 없음 — Task Queue는 domain-events.md의 Outbox와 별도 신규 개념) | `taskqueue/` 패키지 | 있음 — `TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler`(scheduling.md 참고) |
 | `src/auth/` (인증 공유 모듈) | `auth/` 패키지 | 있음 — `Credential` Aggregate + `SignInService`/`SignUpService`(authentication.md 참고) |
@@ -104,7 +104,7 @@ com.example.accountservice/
 
 - **두 개 이상의 도메인/Technical Service가 참조하면 공유 코드다.** `IdGenerator`는 `account`/`card`/`auth`가 모두 쓰는 유틸이므로 `common/`에 둔다. 반대로 `NotificationServiceImpl`은 `account` 도메인 하나만 쓰므로 최상위 공유 패키지가 아니라 `account/infrastructure/notification/`에 남는다.
 - **공유 코드도 레이어 규율을 그대로 따른다.** `common/IdGenerator`는 어떤 프레임워크도 import하지 않는 순수 유틸이라 Domain 레이어(`Account.create()`)에서 직접 호출할 수 있다. 반면 `common/web/GlobalExceptionHandler`는 Spring MVC 타입(`ResponseEntity`, `@RestControllerAdvice`)에 의존하므로 Interface 레이어 성격의 공유 코드이고, Domain/Application에서 참조해서는 안 된다.
-- **여러 도메인이 실제로 공유하게 될 때만 최상위로 끌어올린다.** `database/`가 아직 없는 것이 그 반대 사례다 — 여러 Repository를 하나의 트랜잭션으로 묶어야 하는 시나리오가 아직 없어서, 미리 빈 추상화를 만들지 않았다(YAGNI).
+- **여러 도메인이 실제로 공유하게 될 때만 최상위로 끌어올린다.** `database/`가 없는 것이 좋은 대조 사례다 — 여러 Repository를 하나의 트랜잭션으로 묶어야 하는 시나리오(계좌 간 송금)는 실제로 생겼지만, Spring `@Transactional`이 이미 그 역할을 대신하므로 별도 공유 패키지를 만들 필요 자체가 없었다 — "시나리오가 없어서 안 만든 것"과 "시나리오는 있지만 프레임워크가 이미 해결해서 안 만든 것"은 다른 이유다.
 
 ---
 

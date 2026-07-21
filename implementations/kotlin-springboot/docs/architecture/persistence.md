@@ -24,22 +24,38 @@ class AccountRepositoryImpl(
 }
 ```
 
-`@Transactional`은 Command Service가 아니라 `Repository.saveAccount()`에 있다 — Account 저장과 Outbox 적재를 하나의 물리 트랜잭션으로 묶는 경계가 바로 여기이기 때문이다([domain-events.md](domain-events.md) 참고).
+`@Transactional`은 Command Service가 아니라 `Repository`의 저장 메서드에 있다 — Account 저장과 Outbox 적재를 하나의 물리 트랜잭션으로 묶는 경계가 바로 여기이기 때문이다([domain-events.md](domain-events.md) 참고).
 
 Spring AOP가 `@Transactional` 메서드 진입 시 트랜잭션을 시작해 현재 스레드에 커넥션을 바인딩하고(`TransactionSynchronizationManager`), 같은 스레드에서 호출되는 모든 Repository 메서드가 자동으로 같은 커넥션/트랜잭션을 사용한다 — root의 `getClient()` 패턴에 해당하는 것을 Spring이 내부적으로 수행한다.
 
+**여러 Repository를 하나의 트랜잭션으로 묶는 실제 예시** — 계좌 간 송금(Transfer)이 이 저장소 최초의 실제 유스케이스다(출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다). `TransferService`(Command Service) 자신은 `@Transactional`을 갖지 않는다 — 경계는 여전히 Repository에 있다:
+
 ```kotlin
-// 여러 Repository를 하나의 트랜잭션으로 묶기 — 메서드에 @Transactional 하나만 붙이면 됨
-@Service
+// domain/AccountRepository.kt — 실제 코드
+interface AccountRepository {
+    fun saveAccount(account: Account)
+
+    // source/target 두 Account를 하나의 물리 트랜잭션으로 저장한다.
+    fun saveAccounts(source: Account, target: Account)
+    // ...
+}
+
+// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
 @Transactional
+override fun saveAccounts(source: Account, target: Account) {
+    saveAccountInternal(source)
+    saveAccountInternal(target)
+}
+
+// application/command/TransferService.kt — 실제 코드, @Transactional 없음
+@Service
 class TransferService(
     private val accountRepository: AccountRepository,
-    private val ledgerRepository: LedgerRepository,   // 예시 — 다른 Aggregate
 ) {
-    fun transfer(command: TransferCommand) {
-        // 두 Repository 호출 모두 같은 트랜잭션 안에서 실행 — 하나라도 예외가 나면 전체 롤백
-        accountRepository.saveAccount(sourceAccount)
-        ledgerRepository.saveLedger(ledgerEntry)
+    fun transfer(command: TransferCommand): TransferResult {
+        // ... source/target 로드, TransferEligibilityService로 판단, withdraw/deposit 호출 ...
+        accountRepository.saveAccounts(source, target)
+        // ...
     }
 }
 ```

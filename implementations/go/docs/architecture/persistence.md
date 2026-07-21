@@ -4,101 +4,137 @@
 
 ---
 
-## 트랜잭션 전파 — root가 요구하는 패턴 vs 현재 코드
+## 트랜잭션 전파 — `context.Context` 기반, `internal/infrastructure/database/`에 실제로 구현됨
 
 ### root 원칙: `context.Context`로 암묵 전파
 
-Go의 `context.Context`는 API 경계를 넘나드는 유일한 표준 값 전파 채널이다. TransactionManager 패턴을 Go로 옮기면 이런 모습이 된다:
+Go의 `context.Context`는 API 경계를 넘나드는 유일한 표준 값 전파 채널이다. root의 AsyncLocalStorage 기반 TransactionManager에 대응하는 실제 구현이 `internal/infrastructure/database/transaction.go`에 있다:
 
 ```go
-// internal/infrastructure/database/transaction.go — 목표 패턴 (아직 이 저장소엔 없음)
+// internal/infrastructure/database/transaction.go — 실제 코드
 package database
-
-import (
-	"context"
-	"database/sql"
-)
 
 type txKey struct{}
 
-// WithTx는 새 트랜잭션을 시작하고 ctx에 담아 fn을 실행한다.
-// fn이 에러 없이 끝나면 커밋하고, 에러를 반환하면 롤백한다.
+// TxFromContext는 WithTx(또는 Manager.RunInTx)가 ctx에 담아둔 *sql.Tx를 꺼낸다.
+// Repository가 "지금 앰비언트 트랜잭션에 참여해야 하는지, 아니면 스스로 트랜잭션을
+// 열고 커밋해야 하는지"를 스스로 판단하는 데 쓴다.
+func TxFromContext(ctx context.Context) (*sql.Tx, bool) {
+	tx, ok := ctx.Value(txKey{}).(*sql.Tx)
+	return tx, ok
+}
+
+// WithTx는 새 트랜잭션을 시작하고 ctx에 담아 fn을 실행한다 — 재진입 가능하다
+// (ctx에 이미 트랜잭션이 있으면 새로 열지 않고 재사용).
 func WithTx(ctx context.Context, db *sql.DB, fn func(ctx context.Context) error) error {
+	if _, ok := TxFromContext(ctx); ok {
+		return fn(ctx)
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	ctxWithTx := context.WithValue(ctx, txKey{}, tx)
-	if err := fn(ctxWithTx); err != nil {
+	if err := fn(context.WithValue(ctx, txKey{}, tx)); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// Querier는 *sql.DB와 *sql.Tx가 공통으로 만족하는 최소 인터페이스다.
+// Querier는 *sql.DB와 *sql.Tx가 공통으로 만족하는 최소 인터페이스다 — 조회 경로처럼
+// 커밋 주체 판단이 필요 없는 단일 statement 호출부가 쓴다.
 type Querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// querier는 ctx에 트랜잭션이 있으면 그것을, 없으면 기본 db를 반환한다.
-func querier(ctx context.Context, db *sql.DB) Querier {
-	if tx, ok := ctx.Value(txKey{}).(*sql.Tx); ok {
+func QuerierFrom(ctx context.Context, db *sql.DB) Querier {
+	if tx, ok := TxFromContext(ctx); ok {
 		return tx
 	}
 	return db
 }
-```
 
-Repository 구현체는 `db.BeginTx`를 직접 호출하지 않고 `querier(ctx, r.db)`로 현재 트랜잭션 컨텍스트를 받는다:
+// Manager는 application/command.TransactionManager 포트의 구현체다.
+type Manager struct{ db *sql.DB }
 
-```go
-func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
-	q := querier(ctx, r.db)
-	_, err := q.ExecContext(ctx, `INSERT INTO accounts (...) VALUES (...) ON CONFLICT ...`, ...)
-	return err
+func NewManager(db *sql.DB) *Manager { return &Manager{db: db} }
+
+func (m *Manager) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return WithTx(ctx, m.db, fn)
 }
-```
-
-여러 Repository를 하나의 트랜잭션으로 묶고 싶은 Application 핸들러는 `database.WithTx`로 감싼다:
-
-```go
-err := database.WithTx(ctx, db, func(ctx context.Context) error {
-	if err := paymentRepo.DeletePaymentMethods(ctx, accountID); err != nil {
-		return err
-	}
-	return accountRepo.SaveAccount(ctx, a)
-})
 ```
 
 이 패턴이 root의 AsyncLocalStorage 기반 TransactionManager와 동일한 역할을 한다 — 차이는 Node가 암묵적 스토리지(콜백 외부에서도 접근 가능)를 쓰는 반면, Go는 `context.Context`를 **함수 인자로 명시적으로 전달**해야 한다는 점이다(Go 관용 — context를 전역 변수나 구조체 필드에 숨겨 저장하지 않는다).
 
-### 현재 `examples/`의 실제 코드 — 로컬 트랜잭션으로 충분한 범위까지만 구현
+### `SaveAccount`가 커밋 주체를 스스로 판단한다 — `QuerierFrom`을 무작정 쓰지 않는 이유
 
-`internal/infrastructure/persistence/account_repository.go`의 `SaveAccount()`는 위 패턴을 쓰지 않는다. **로컬 트랜잭션을 그 함수 안에서 직접 열고 닫는다**:
+`internal/infrastructure/persistence/account_repository.go`의 `SaveAccount()`는 조회 경로처럼 무조건 `QuerierFrom`을 호출하지 **않는다**. 대신 `TxFromContext`로 앰비언트 트랜잭션이 있는지 직접 확인해 커밋 책임을 스스로 결정한다:
 
 ```go
+// 실제 코드
 func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
+	if tx, ok := database.TxFromContext(ctx); ok {
+		// 앰비언트 트랜잭션에 참여만 한다 — 커밋은 호출부(TransferHandler 등)의 몫.
+		if err := r.saveAccount(ctx, tx, a); err != nil {
+			return err
+		}
+		a.ClearTransactions()
+		a.ClearEvents()
+		return nil
+	}
+
+	// 앰비언트 트랜잭션이 없다 — 기존의 모든 단독 호출부(deposit/withdraw 등)와
+	// 동일하게 스스로 열고 커밋까지 책임진다.
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO accounts (...) VALUES (...) ON CONFLICT ...`, ...)
-	// ... transactions 테이블도 같은 tx로 insert
+	if err := r.saveAccount(ctx, tx, a); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit save account: %w", err)
 	}
 	a.ClearTransactions()
+	a.ClearEvents()
 	return nil
+}
+
+// saveAccount는 계좌+거래+Outbox 저장 SQL을 공유하는 사설 헬퍼다 — 양쪽 경로가
+// 정확히 같은 SQL을 실행하므로, 앰비언트 트랜잭션이 없는 기존 호출부의 동작은
+// 이 리팩토링으로 한 글자도 바뀌지 않는다.
+func (r *AccountRepository) saveAccount(ctx context.Context, tx *sql.Tx, a *account.Account) error { /* ... */ }
+```
+
+**왜 `QuerierFrom(ctx, r.db)`를 모든 문에 무작정 쓰지 않는가**: `outbox.Writer.SaveAll`이 `*sql.Tx`로 하드타입돼 있고, 더 중요하게는 `SaveAccount`가 지금까지 `accounts`+`transactions`+Outbox 3개 테이블 저장을 자기 로컬 트랜잭션으로 원자적으로 묶어 왔다 — `QuerierFrom`이 앰비언트 트랜잭션 없을 때 `*sql.DB`를 돌려주면 각 `ExecContext`가 개별 자동커밋되어 그 원자성이 조용히 깨진다. `TxFromContext`로 커밋 주체를 스스로 판단하는 방식이 이 회귀를 피한다.
+
+### 실사용처 — `TransferHandler`(계좌 간 송금)
+
+여러 Repository(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)를 하나의 트랜잭션으로 묶어야 하는 첫 실제 유스케이스는 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다:
+
+```go
+// internal/application/command/transfer_handler.go — 실제 코드
+func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*TransferResult, error) {
+	// ... source/target 로드, eligibility 판단, Withdraw/Deposit 호출 ...
+
+	if err := h.tx.RunInTx(ctx, func(ctx context.Context) error {
+		if err := h.repo.SaveAccount(ctx, source); err != nil {
+			return err
+		}
+		return h.repo.SaveAccount(ctx, target)
+	}); err != nil {
+		return nil, err
+	}
+	// ...
 }
 ```
 
-이것으로 충분한 이유는 `Save()` 하나가 `accounts` + `transactions` 두 테이블만 다루고, 그 범위 밖의 다른 Repository와 트랜잭션을 묶을 필요가 지금까지 없었기 때문이다. Command Handler를 전부 훑어봐도(`internal/application/command/`) 한 Handler가 두 Aggregate의 Repository에 동시에 쓰기를 호출하는 경우가 없다 — Account BC와 Card BC 사이의 상호작용은 항상 Integration Event를 통한 비동기 최종 일관성으로 처리되고([cross-domain.md](cross-domain.md)), `SuspendCardsByAccountHandler`처럼 여러 행을 갱신하는 Handler도 전부 같은 Aggregate(Card)의 Repository만 호출한다. root가 요구하는 "여러 Repository를 넘나드는 컨텍스트 기반 전파"를 만들 실제 유스케이스가 아직 없으므로, 위 목표 패턴(`database.WithTx` + `Querier`)은 만들지 않았다 — 두 번째 Aggregate가 하나의 트랜잭션으로 묶여야 하는 시나리오가 실제로 생기면 그때 이 패턴으로 리팩토링한다(YAGNI, [shared-modules.md](shared-modules.md) 참고).
+`main.go`가 `database.NewManager(db)`를 만들어 `command.TransactionManager` 포트로 주입한다 — Application 레이어는 concrete `*database.Manager`가 아니라 그 포트 인터페이스로만 의존한다(layer-architecture.md).
 
 ---
 
