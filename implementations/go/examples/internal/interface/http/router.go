@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"golang.org/x/time/rate"
 
 	"github.com/example/account-service/internal/application/command"
@@ -139,6 +140,13 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	// by the rate limit middleware.
 	mux.HandleFunc("GET /health/live", healthHandler.Live)
 	mux.HandleFunc("GET /health/ready", healthHandler.Ready)
+	// Swagger UI + the generated OpenAPI JSON/YAML — public, unauthenticated,
+	// and (like the healthcheck routes) not wrapped by the rate limit
+	// middleware, since it's documentation rather than a business endpoint
+	// (docs/architecture/api-documentation.md). httpSwagger.WrapHandler
+	// serves index.html/doc.json/the swagger-ui asset bundle all under this
+	// one prefix.
+	mux.Handle("GET /docs/", httpSwagger.WrapHandler)
 
 	return middleware.CorrelationID(middleware.RequestLogging(mux)), healthHandler
 }

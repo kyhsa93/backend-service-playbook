@@ -15,6 +15,12 @@ import (
 	_ "github.com/lib/pq"
 	"golang.org/x/time/rate"
 
+	// Blank-imported so its init() registers the generated OpenAPI spec with
+	// swag's global registry (docs/architecture/api-documentation.md).
+	// Regenerate with `swag init` (see the Makefile) after changing any
+	// @-annotation below or on a handler in internal/interface/http/.
+	_ "github.com/example/account-service/docs"
+
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/event"
 	integrationevent "github.com/example/account-service/internal/application/integration-event"
@@ -33,6 +39,14 @@ import (
 	taskinterface "github.com/example/account-service/internal/interface/task"
 )
 
+// @title			Account Service API
+// @version		0.1.0
+// @description	API documentation for the DDD-based Account domain example service (Account/Card/Payment/Refund/Credential Bounded Contexts). Generated from the @-annotations above each handler in internal/interface/http/ by swag (docs/architecture/api-documentation.md) — never hand-edited.
+// @BasePath		/
+// @securityDefinitions.apikey	BearerAuth
+// @in								header
+// @name							Authorization
+// @description					Type "Bearer" followed by a space and the JWT access token issued by `POST /auth/sign-in`.
 func main() {
 	// CorrelationHandler wraps JSONHandler so that, whenever the ctx carries a
 	// correlation ID, it automatically adds a "correlation_id" field to every

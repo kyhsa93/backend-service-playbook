@@ -21,15 +21,29 @@ func NewCardHandler(issueCard *command.IssueCardHandler, getCard *query.GetCardH
 	return &CardHandler{issueCard: issueCard, getCard: getCard}
 }
 
+// IssueCard issues a new card linked to an active account owned by the requester.
+//
+// @Summary		Issue a card
+// @Description	Issues a new card linked to an active account owned by the authenticated requester.
+// @Tags			Card
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			body	body		IssueCardRequest	true	"Linked account and card brand"
+// @Success		201		{object}	CardResponse		"The card was issued."
+// @Failure		400		{object}	ErrorResponse		"One of: request validation failed (`VALIDATION_FAILED`), or the linked account is not active (`CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT`)."
+// @Failure		401		{object}	ErrorResponse		"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse		"No account exists with the given `accountId` for this requester (`LINKED_ACCOUNT_NOT_FOUND`)."
+// @Router			/cards [post]
 func (h *CardHandler) IssueCard(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	var body IssueCardRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, r, "invalid request body")
 		return
 	}
 	if body.AccountID == "" || body.Brand == "" {
-		http.Error(w, "accountId and brand are required", http.StatusBadRequest)
+		writeValidationError(w, r, "accountId and brand are required")
 		return
 	}
 	c, err := h.issueCard.Handle(r.Context(), command.IssueCardCommand{
@@ -53,6 +67,18 @@ func (h *CardHandler) IssueCard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetCard looks up a card owned by the authenticated requester.
+//
+// @Summary		Look up a card
+// @Description	Returns the card only if it belongs to the authenticated requester.
+// @Tags			Card
+// @Produce		json
+// @Security		BearerAuth
+// @Param			cardId	path		string			true	"The card ID"
+// @Success		200		{object}	CardResponse	"The card was found."
+// @Failure		401		{object}	ErrorResponse	"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse	"No card exists with the given `cardId` for this requester (`CARD_NOT_FOUND`)."
+// @Router			/cards/{cardId} [get]
 func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	cardID := r.PathValue("cardId")

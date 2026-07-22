@@ -34,6 +34,7 @@ harness/
   no_generic_response_keys.go
   query_handler_no_raw_aggregate.go
   no_cross_bc_domain_import.go
+  api_documentation.go
   import_paths.go                go/parser-based import path extraction helper (shared by several rules)
   text_block.go                  Balanced-bracket/brace extraction helper (skips the interior of string literals, shared by several rules)
   *_test.go                      Per-rule regression tests (standard testing package)
@@ -85,6 +86,7 @@ go run . <projectRoot>
 | `no-generic-response-keys` | `no_generic_response_keys.go` | Whether struct declarations under `internal/interface/**` have no field with a `json:"result"`/`json:"data"`/`json:"items"` tag — list response keys must be the plural of the domain object name (`orders`/`accounts`/`payments`) — `api-response.md` |
 | `query-handler-no-raw-aggregate` | `query_handler_no_raw_aggregate.go` | Whether the type a `Handle()` method in `internal/application/query/*.go` returns on success is not a pointer type qualified by the `internal/domain/<bc>` package that file imports (e.g. `*account.Account`) — a Query Handler must return only a dedicated Result type — `api-response.md` |
 | `no-cross-bc-domain-import` | `no_cross_bc_domain_import.go` | Whether `internal/domain/<bc>/*.go` avoids importing another BC's `internal/domain/<other-bc>` package (generalizes `no-cross-aggregate-reference` within the same BC to the entire BC boundary) — `tactical-ddd.md` |
+| `api-documentation` | `api_documentation.go` | Whether every `internal/interface/**/*.go` function/method matching net/http's handler signature (`func(http.ResponseWriter, *http.Request)`) has a swag `@Summary`/`@Description` doc comment, and at least one `@Failure` annotation documenting a non-2xx response (an operationId/route alone is not sufficient) — `/health/*` routes are exempt from the `@Failure` requirement only, since a liveness probe has no failure path to document by construction — root `api-response.md`'s "Machine-readable API documentation (OpenAPI)" section |
 
 **Rules not implemented:**
 

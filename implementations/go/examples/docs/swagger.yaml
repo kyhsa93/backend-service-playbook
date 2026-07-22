@@ -1,0 +1,1063 @@
+basePath: /
+definitions:
+  http.CancelPaymentRequest:
+    properties:
+      reason:
+        description: Why the payment is being cancelled.
+        type: string
+    type: object
+  http.CardResponse:
+    properties:
+      accountId:
+        description: The account this card is linked to.
+        type: string
+      brand:
+        description: The card brand (e.g. `VISA`, `MASTER`).
+        type: string
+      cardId:
+        description: The card's ID.
+        type: string
+      createdAt:
+        description: When the card was issued.
+        type: string
+      ownerId:
+        description: The card owner's user ID.
+        type: string
+      status:
+        description: The card status (`ACTIVE`, `SUSPENDED`, or `CANCELLED`).
+        type: string
+    type: object
+  http.CreateAccountRequest:
+    properties:
+      currency:
+        description: The account's currency code (e.g. `KRW`, `USD`). Fixed for the
+          account's lifetime.
+        type: string
+      email:
+        description: The account owner's email address. Used as the destination for
+          notification emails.
+        type: string
+    type: object
+  http.CreateAccountResponse:
+    properties:
+      accountId:
+        description: The newly created account's ID.
+        type: string
+      balance:
+        allOf:
+        - $ref: '#/definitions/http.MoneyResponse'
+        description: The account balance. Always 0 immediately after creation.
+      createdAt:
+        description: When the account was created.
+        type: string
+      email:
+        description: The account owner's email address.
+        type: string
+      ownerId:
+        description: The authenticated requester's user ID.
+        type: string
+      status:
+        description: The account status (`ACTIVE`, `SUSPENDED`, or `CLOSED`).
+        type: string
+    type: object
+  http.CreatePaymentRequest:
+    properties:
+      amount:
+        description: The amount to charge. Must be a positive integer.
+        type: integer
+      cardId:
+        description: The active card to charge. Must be linked to an active account
+          with sufficient balance.
+        type: string
+    type: object
+  http.DepositRequest:
+    properties:
+      amount:
+        description: The amount to credit. Must be a positive integer.
+        type: integer
+    type: object
+  http.ErrorResponse:
+    properties:
+      code:
+        description: A stable, machine-readable error code the client can branch on
+          (e.g. `ACCOUNT_NOT_FOUND`). Unlike `message`, this never changes wording.
+        type: string
+      error:
+        description: The standard HTTP status text for `statusCode` (e.g. `Not Found`).
+        type: string
+      message:
+        description: A human-readable description of the error.
+        type: string
+      statusCode:
+        description: The HTTP status code.
+        type: integer
+    type: object
+  http.GetAccountResponse:
+    properties:
+      accountId:
+        description: The account's ID.
+        type: string
+      balance:
+        allOf:
+        - $ref: '#/definitions/http.MoneyResponse'
+        description: The current account balance.
+      createdAt:
+        description: When the account was created.
+        type: string
+      email:
+        description: The account owner's email address.
+        type: string
+      ownerId:
+        description: The account owner's user ID.
+        type: string
+      status:
+        description: The account status (`ACTIVE`, `SUSPENDED`, or `CLOSED`).
+        type: string
+      updatedAt:
+        description: When the account was last modified.
+        type: string
+    type: object
+  http.GetPaymentsResponse:
+    properties:
+      count:
+        description: The total number of payments matching the filter (not just the
+          current page's size).
+        type: integer
+      payments:
+        description: The requester's payments, newest first.
+        items:
+          $ref: '#/definitions/http.PaymentResponse'
+        type: array
+    type: object
+  http.GetRefundsResponse:
+    properties:
+      count:
+        description: The total number of refunds matching the filter (not just the
+          current page's size).
+        type: integer
+      refunds:
+        description: The refunds requested against the payment, newest first.
+        items:
+          $ref: '#/definitions/http.RefundResponse'
+        type: array
+    type: object
+  http.GetTransactionsResponse:
+    properties:
+      count:
+        description: The total number of transactions matching the filter (not just
+          the current page's size).
+        type: integer
+      transactions:
+        description: The account's transactions, newest first.
+        items:
+          $ref: '#/definitions/http.TransactionSummaryResponse'
+        type: array
+    type: object
+  http.IssueCardRequest:
+    properties:
+      accountId:
+        description: The active account to link the card to. Must be owned by the
+          authenticated requester.
+        type: string
+      brand:
+        description: The card brand (e.g. `VISA`, `MASTER`).
+        type: string
+    type: object
+  http.MoneyResponse:
+    properties:
+      amount:
+        description: The amount, in the currency's smallest unit (no decimal places).
+        type: integer
+      currency:
+        description: The currency code (e.g. `KRW`, `USD`).
+        type: string
+    type: object
+  http.PaymentResponse:
+    properties:
+      accountId:
+        description: The account debited (asynchronously) for this payment.
+        type: string
+      amount:
+        description: The charged amount.
+        type: integer
+      cardId:
+        description: The card used for this payment.
+        type: string
+      createdAt:
+        description: When the payment was created.
+        type: string
+      ownerId:
+        description: The payment owner's user ID.
+        type: string
+      paymentId:
+        description: The payment's ID.
+        type: string
+      status:
+        description: The payment status (`COMPLETED` or `CANCELLED`).
+        type: string
+    type: object
+  http.RefundResponse:
+    properties:
+      amount:
+        description: The requested refund amount.
+        type: integer
+      createdAt:
+        description: When the refund was requested.
+        type: string
+      decisionNote:
+        description: Why the refund was rejected. Only present when `status` is `REJECTED`.
+        type: string
+      paymentId:
+        description: The payment this refund was requested against.
+        type: string
+      reason:
+        description: Why the refund was requested.
+        type: string
+      refundId:
+        description: The refund request's ID.
+        type: string
+      status:
+        description: The refund status (`APPROVED`, `REJECTED`, or `COMPLETED`) —
+          check this, not just the HTTP status, since a rejection is still a 201 response.
+        type: string
+    type: object
+  http.RequestRefundRequest:
+    properties:
+      amount:
+        description: The amount to refund. Must be a positive integer not exceeding
+          the original payment amount.
+        type: integer
+      reason:
+        description: Why the refund is being requested.
+        type: string
+    type: object
+  http.SignInRequest:
+    properties:
+      password:
+        description: The account password.
+        type: string
+      userId:
+        description: The registered user ID.
+        type: string
+    type: object
+  http.SignInResponse:
+    properties:
+      accessToken:
+        description: 'A JWT bearer token. Send it as `Authorization: Bearer <accessToken>`
+          on subsequent requests.'
+        type: string
+    type: object
+  http.SignUpRequest:
+    properties:
+      password:
+        description: The account password. Must be at least 8 characters.
+        type: string
+      userId:
+        description: The user ID to register. Must be unique.
+        type: string
+    type: object
+  http.TransactionResponse:
+    properties:
+      accountId:
+        description: The account this transaction belongs to.
+        type: string
+      amount:
+        allOf:
+        - $ref: '#/definitions/http.MoneyResponse'
+        description: The transaction amount.
+      createdAt:
+        description: When the transaction was recorded.
+        type: string
+      transactionId:
+        description: The transaction record's ID.
+        type: string
+      type:
+        description: The transaction type (`DEPOSIT`, `WITHDRAWAL`, or `INTEREST`).
+        type: string
+    type: object
+  http.TransactionSummaryResponse:
+    properties:
+      amount:
+        allOf:
+        - $ref: '#/definitions/http.MoneyResponse'
+        description: The transaction amount.
+      createdAt:
+        description: When the transaction was recorded.
+        type: string
+      transactionId:
+        description: The transaction record's ID.
+        type: string
+      type:
+        description: The transaction type (`DEPOSIT`, `WITHDRAWAL`, or `INTEREST`).
+        type: string
+    type: object
+  http.TransferRequest:
+    properties:
+      amount:
+        description: The amount to transfer. Must be a positive integer not exceeding
+          the source account's balance.
+        type: integer
+      targetAccountId:
+        description: The account ID to transfer into. Must differ from the source
+          account in the URL path.
+        type: string
+    type: object
+  http.TransferResponse:
+    properties:
+      sourceTransaction:
+        allOf:
+        - $ref: '#/definitions/http.TransactionResponse'
+        description: The `WITHDRAWAL` transaction recorded on the source account.
+      targetTransaction:
+        allOf:
+        - $ref: '#/definitions/http.TransactionResponse'
+        description: The `DEPOSIT` transaction recorded on the target account.
+      transferId:
+        description: Correlates the source and target transactions raised by this
+          single transfer.
+        type: string
+    type: object
+  http.WithdrawRequest:
+    properties:
+      amount:
+        description: The amount to debit. Must be a positive integer not exceeding
+          the current balance.
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: API documentation for the DDD-based Account domain example service
+    (Account/Card/Payment/Refund/Credential Bounded Contexts). Generated from the
+    @-annotations above each handler in internal/interface/http/ by swag (docs/architecture/api-documentation.md)
+    — never hand-edited.
+  title: Account Service API
+  version: 0.1.0
+paths:
+  /accounts:
+    post:
+      consumes:
+      - application/json
+      description: Opens a new account for the authenticated requester with a 0 balance
+        in the given currency.
+      parameters:
+      - description: Owner email and currency
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The account was created.
+          schema:
+            $ref: '#/definitions/http.CreateAccountResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. an invalid
+            or missing email.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Open a new account
+      tags:
+      - Account
+  /accounts/{id}:
+    get:
+      description: Returns the account only if it belongs to the authenticated requester.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The account was found.
+          schema:
+            $ref: '#/definitions/http.GetAccountResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Look up an account
+      tags:
+      - Account
+  /accounts/{id}/close:
+    post:
+      description: Permanently closes an account. The balance must be exactly 0 first
+        (withdraw or transfer out any remaining funds).
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: The account was closed.
+        "400":
+          description: 'One of: the account is already closed (`ACCOUNT_ALREADY_CLOSED`),
+            or the balance is not 0 (`ACCOUNT_BALANCE_NOT_ZERO`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Close an account
+      tags:
+      - Account
+  /accounts/{id}/deposit:
+    post:
+      consumes:
+      - application/json
+      description: Credits the given amount to the account and records a `DEPOSIT`
+        transaction.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Deposit amount
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.DepositRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The deposit succeeded.
+          schema:
+            $ref: '#/definitions/http.TransactionResponse'
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`), the
+            amount is not a positive integer (`ACCOUNT_INVALID_AMOUNT`), or the account
+            is not active (`ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deposit money into an account
+      tags:
+      - Account
+  /accounts/{id}/reactivate:
+    post:
+      description: Moves a suspended account back to active, restoring its ability
+        to accept deposits/withdrawals/transfers.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: The account was reactivated.
+        "400":
+          description: Only a suspended account can be reactivated (`ACCOUNT_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reactivate a suspended account
+      tags:
+      - Account
+  /accounts/{id}/suspend:
+    post:
+      description: Suspends an active account, blocking further deposits/withdrawals/transfers
+        until it is reactivated.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: The account was suspended.
+        "400":
+          description: Only an active account can be suspended (`ACCOUNT_SUSPEND_REQUIRES_ACTIVE_ACCOUNT`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Suspend an account
+      tags:
+      - Account
+  /accounts/{id}/transactions:
+    get:
+      description: Returns the account's deposit/withdrawal/interest transactions,
+        newest first, paginated with `page`/`take`. Out-of-range `page`/`take` values
+        fall back to their defaults rather than failing.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 0
+        description: Page number, starting at 0
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Page size
+        in: query
+        name: take
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The transaction history was found.
+          schema:
+            $ref: '#/definitions/http.GetTransactionsResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List an account's transaction history
+      tags:
+      - Account
+  /accounts/{id}/transfer:
+    post:
+      consumes:
+      - application/json
+      description: Atomically debits the source account and credits the target account
+        with the given amount, recording one `WITHDRAWAL` and one `DEPOSIT` transaction.
+      parameters:
+      - description: The source account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Target account and transfer amount
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.TransferRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The transfer succeeded.
+          schema:
+            $ref: '#/definitions/http.TransferResponse'
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`), the
+            amount is not a positive integer (`ACCOUNT_INVALID_AMOUNT`), the source
+            and target accounts are the same (`ACCOUNT_TRANSFER_SAME_ACCOUNT`), either
+            account is not active (`ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`/`ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`),
+            the currencies do not match (`ACCOUNT_CURRENCY_MISMATCH`), or the balance
+            is insufficient (`ACCOUNT_INSUFFICIENT_BALANCE`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given source or target account ID
+            (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer money to another account
+      tags:
+      - Account
+  /accounts/{id}/withdraw:
+    post:
+      consumes:
+      - application/json
+      description: Debits the given amount from the account and records a `WITHDRAWAL`
+        transaction.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Withdrawal amount
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.WithdrawRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The withdrawal succeeded.
+          schema:
+            $ref: '#/definitions/http.TransactionResponse'
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`), the
+            amount is not a positive integer (`ACCOUNT_INVALID_AMOUNT`), the account
+            is not active (`ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`), or the balance
+            is insufficient (`ACCOUNT_INSUFFICIENT_BALANCE`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Withdraw money from an account
+      tags:
+      - Account
+  /auth/sign-in:
+    post:
+      consumes:
+      - application/json
+      description: Verifies the user ID/password and issues a JWT bearer token. Responds
+        with the same error whether the user ID doesn't exist or the password is wrong,
+        to prevent user enumeration.
+      parameters:
+      - description: User ID and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.SignInRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: A bearer token was issued.
+          schema:
+            $ref: '#/definitions/http.SignInResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. a missing
+            `userId`/`password`.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The user ID doesn't exist, or the password doesn't match (`INVALID_CREDENTIALS`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: Sign in
+      tags:
+      - Auth
+  /auth/sign-up:
+    post:
+      consumes:
+      - application/json
+      description: Registers a new user ID with a password. The password is hashed
+        before storage; the plaintext is never persisted.
+      parameters:
+      - description: New user ID and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.SignUpRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The user was registered.
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`) —
+            e.g. a missing `userId` or a password under 8 characters — or the user
+            ID is already taken (`USER_ID_ALREADY_EXISTS`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: Sign up
+      tags:
+      - Auth
+  /cards:
+    post:
+      consumes:
+      - application/json
+      description: Issues a new card linked to an active account owned by the authenticated
+        requester.
+      parameters:
+      - description: Linked account and card brand
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.IssueCardRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The card was issued.
+          schema:
+            $ref: '#/definitions/http.CardResponse'
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`), or
+            the linked account is not active (`CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `accountId` for this requester
+            (`LINKED_ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Issue a card
+      tags:
+      - Card
+  /cards/{cardId}:
+    get:
+      description: Returns the card only if it belongs to the authenticated requester.
+      parameters:
+      - description: The card ID
+        in: path
+        name: cardId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The card was found.
+          schema:
+            $ref: '#/definitions/http.CardResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No card exists with the given `cardId` for this requester (`CARD_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Look up a card
+      tags:
+      - Card
+  /health/live:
+    get:
+      description: Reports whether the process itself is alive. Always returns 200,
+        even while the process is shutting down — an orchestrator should use `ready`,
+        not this, to decide whether to route traffic.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The process is alive — returns 200 even while shutting down.
+      summary: Liveness probe
+      tags:
+      - Health
+  /health/ready:
+    get:
+      description: Reports whether the process is ready to accept new requests. Used
+        by an orchestrator to stop routing traffic during graceful shutdown.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ready to accept new requests.
+        "503":
+          description: Shutdown has started and new requests are no longer accepted.
+      summary: Readiness probe
+      tags:
+      - Health
+  /payments:
+    get:
+      description: Returns the authenticated requester's payments, newest first, paginated
+        with `page`/`take`. Out-of-range `page`/`take` values fall back to their defaults
+        rather than failing.
+      parameters:
+      - default: 0
+        description: Page number, starting at 0
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Page size
+        in: query
+        name: take
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The payment list was found.
+          schema:
+            $ref: '#/definitions/http.GetPaymentsResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List the requester's payments
+      tags:
+      - Payment
+    post:
+      consumes:
+      - application/json
+      description: Charges an active card linked to an active account with sufficient
+        balance. The account balance is debited asynchronously once the payment completes.
+      parameters:
+      - description: Card to charge and amount
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreatePaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The payment was created.
+          schema:
+            $ref: '#/definitions/http.PaymentResponse'
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`), the
+            card is not active (`PAYMENT_REQUIRES_ACTIVE_CARD`), the linked account
+            is not active (`PAYMENT_REQUIRES_ACTIVE_ACCOUNT`), or the account balance
+            is insufficient (`INSUFFICIENT_BALANCE`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: 'One of: no card exists with the given `cardId` (`LINKED_CARD_NOT_FOUND`),
+            or the card''s linked account could not be found (`LINKED_ACCOUNT_NOT_FOUND`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a payment
+      tags:
+      - Payment
+  /payments/{paymentId}:
+    get:
+      description: Returns the payment only if it belongs to the authenticated requester.
+      parameters:
+      - description: The payment ID
+        in: path
+        name: paymentId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The payment was found.
+          schema:
+            $ref: '#/definitions/http.PaymentResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No payment exists with the given `paymentId` for this requester
+            (`PAYMENT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Look up a payment
+      tags:
+      - Payment
+  /payments/{paymentId}/cancel:
+    post:
+      consumes:
+      - application/json
+      description: Cancels a completed payment before it is refunded.
+      parameters:
+      - description: The payment ID
+        in: path
+        name: paymentId
+        required: true
+        type: string
+      - description: Cancellation reason
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.CancelPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: The payment was cancelled.
+        "400":
+          description: 'One of: request validation failed (`VALIDATION_FAILED`), or
+            only a completed payment can be cancelled (`PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT`).'
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel a payment
+      tags:
+      - Payment
+  /payments/{paymentId}/refunds:
+    get:
+      description: Returns the refunds requested against a payment, newest first,
+        paginated with `page`/`take`. Out-of-range `page`/`take` values fall back
+        to their defaults rather than failing.
+      parameters:
+      - description: The payment ID
+        in: path
+        name: paymentId
+        required: true
+        type: string
+      - default: 0
+        description: Page number, starting at 0
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Page size
+        in: query
+        name: take
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The refund list was found.
+          schema:
+            $ref: '#/definitions/http.GetRefundsResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List a payment's refunds
+      tags:
+      - Payment
+    post:
+      consumes:
+      - application/json
+      description: Requests a refund for a payment. Eligibility is judged synchronously
+        (`APPROVED`/`REJECTED`); an approved refund is credited back to the account
+        asynchronously.
+      parameters:
+      - description: The payment ID
+        in: path
+        name: paymentId
+        required: true
+        type: string
+      - description: Refund amount and reason
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.RequestRefundRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The refund request was recorded (its `status` may still be
+            `REJECTED` — check the response body, not just the HTTP status).
+          schema:
+            $ref: '#/definitions/http.RefundResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. a non-positive
+            amount or missing reason.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Request a refund
+      tags:
+      - Payment
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and the JWT access token issued
+      by `POST /auth/sign-in`.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

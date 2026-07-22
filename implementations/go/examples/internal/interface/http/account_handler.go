@@ -50,15 +50,28 @@ func NewAccountHandler(
 	}
 }
 
+// CreateAccount opens a new account for the authenticated requester.
+//
+// @Summary		Open a new account
+// @Description	Opens a new account for the authenticated requester with a 0 balance in the given currency.
+// @Tags			Account
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			body	body		CreateAccountRequest	true	"Owner email and currency"
+// @Success		201		{object}	CreateAccountResponse	"The account was created."
+// @Failure		400		{object}	ErrorResponse			"Request validation failed (`VALIDATION_FAILED`) — e.g. an invalid or missing email."
+// @Failure		401		{object}	ErrorResponse			"The bearer token is missing, malformed, or invalid."
+// @Router			/accounts [post]
 func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	var body CreateAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, r, "invalid request body")
 		return
 	}
 	if !isValidEmail(body.Email) {
-		http.Error(w, "email must be a valid, non-empty email address", http.StatusBadRequest)
+		writeValidationError(w, r, "email must be a valid, non-empty email address")
 		return
 	}
 	a, err := h.createAccount.Handle(r.Context(), command.CreateAccountCommand{
@@ -97,12 +110,27 @@ func isValidEmail(email string) bool {
 	return strings.Contains(email[at+1:], ".")
 }
 
+// Deposit credits an amount into an account.
+//
+// @Summary		Deposit money into an account
+// @Description	Credits the given amount to the account and records a `DEPOSIT` transaction.
+// @Tags			Account
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string					true	"The account ID"
+// @Param			body	body		DepositRequest			true	"Deposit amount"
+// @Success		201		{object}	TransactionResponse		"The deposit succeeded."
+// @Failure		400		{object}	ErrorResponse			"One of: request validation failed (`VALIDATION_FAILED`), the amount is not a positive integer (`ACCOUNT_INVALID_AMOUNT`), or the account is not active (`ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`)."
+// @Failure		401		{object}	ErrorResponse			"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse			"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/deposit [post]
 func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	var body DepositRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, r, "invalid request body")
 		return
 	}
 	tx, err := h.deposit.Handle(r.Context(), command.DepositCommand{
@@ -125,12 +153,27 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Withdraw debits an amount from an account.
+//
+// @Summary		Withdraw money from an account
+// @Description	Debits the given amount from the account and records a `WITHDRAWAL` transaction.
+// @Tags			Account
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string					true	"The account ID"
+// @Param			body	body		WithdrawRequest			true	"Withdrawal amount"
+// @Success		201		{object}	TransactionResponse		"The withdrawal succeeded."
+// @Failure		400		{object}	ErrorResponse			"One of: request validation failed (`VALIDATION_FAILED`), the amount is not a positive integer (`ACCOUNT_INVALID_AMOUNT`), the account is not active (`ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`), or the balance is insufficient (`ACCOUNT_INSUFFICIENT_BALANCE`)."
+// @Failure		401		{object}	ErrorResponse			"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse			"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/withdraw [post]
 func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	var body WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, r, "invalid request body")
 		return
 	}
 	tx, err := h.withdraw.Handle(r.Context(), command.WithdrawCommand{
@@ -153,12 +196,27 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Transfer atomically moves money from the account in the URL to another account.
+//
+// @Summary		Transfer money to another account
+// @Description	Atomically debits the source account and credits the target account with the given amount, recording one `WITHDRAWAL` and one `DEPOSIT` transaction.
+// @Tags			Account
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string				true	"The source account ID"
+// @Param			body	body		TransferRequest		true	"Target account and transfer amount"
+// @Success		201		{object}	TransferResponse	"The transfer succeeded."
+// @Failure		400		{object}	ErrorResponse		"One of: request validation failed (`VALIDATION_FAILED`), the amount is not a positive integer (`ACCOUNT_INVALID_AMOUNT`), the source and target accounts are the same (`ACCOUNT_TRANSFER_SAME_ACCOUNT`), either account is not active (`ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`/`ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`), the currencies do not match (`ACCOUNT_CURRENCY_MISMATCH`), or the balance is insufficient (`ACCOUNT_INSUFFICIENT_BALANCE`)."
+// @Failure		401		{object}	ErrorResponse		"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse		"No account exists with the given source or target account ID (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/transfer [post]
 func (h *AccountHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
 	var body TransferRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, r, "invalid request body")
 		return
 	}
 	result, err := h.transfer.Handle(r.Context(), command.TransferCommand{
@@ -192,6 +250,19 @@ func (h *AccountHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// SuspendAccount suspends an active account.
+//
+// @Summary		Suspend an account
+// @Description	Suspends an active account, blocking further deposits/withdrawals/transfers until it is reactivated.
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id	path	string	true	"The account ID"
+// @Success		204	"The account was suspended."
+// @Failure		400	{object}	ErrorResponse	"Only an active account can be suspended (`ACCOUNT_SUSPEND_REQUIRES_ACTIVE_ACCOUNT`)."
+// @Failure		401	{object}	ErrorResponse	"The bearer token is missing, malformed, or invalid."
+// @Failure		404	{object}	ErrorResponse	"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/suspend [post]
 func (h *AccountHandler) SuspendAccount(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
@@ -205,6 +276,19 @@ func (h *AccountHandler) SuspendAccount(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ReactivateAccount moves a suspended account back to active.
+//
+// @Summary		Reactivate a suspended account
+// @Description	Moves a suspended account back to active, restoring its ability to accept deposits/withdrawals/transfers.
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id	path	string	true	"The account ID"
+// @Success		204	"The account was reactivated."
+// @Failure		400	{object}	ErrorResponse	"Only a suspended account can be reactivated (`ACCOUNT_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT`)."
+// @Failure		401	{object}	ErrorResponse	"The bearer token is missing, malformed, or invalid."
+// @Failure		404	{object}	ErrorResponse	"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/reactivate [post]
 func (h *AccountHandler) ReactivateAccount(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
@@ -218,6 +302,19 @@ func (h *AccountHandler) ReactivateAccount(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// CloseAccount permanently closes an account with a 0 balance.
+//
+// @Summary		Close an account
+// @Description	Permanently closes an account. The balance must be exactly 0 first (withdraw or transfer out any remaining funds).
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id	path	string	true	"The account ID"
+// @Success		204	"The account was closed."
+// @Failure		400	{object}	ErrorResponse	"One of: the account is already closed (`ACCOUNT_ALREADY_CLOSED`), or the balance is not 0 (`ACCOUNT_BALANCE_NOT_ZERO`)."
+// @Failure		401	{object}	ErrorResponse	"The bearer token is missing, malformed, or invalid."
+// @Failure		404	{object}	ErrorResponse	"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/close [post]
 func (h *AccountHandler) CloseAccount(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
@@ -231,6 +328,18 @@ func (h *AccountHandler) CloseAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetAccount looks up an account owned by the authenticated requester.
+//
+// @Summary		Look up an account
+// @Description	Returns the account only if it belongs to the authenticated requester.
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id	path		string				true	"The account ID"
+// @Success		200	{object}	GetAccountResponse	"The account was found."
+// @Failure		401	{object}	ErrorResponse		"The bearer token is missing, malformed, or invalid."
+// @Failure		404	{object}	ErrorResponse		"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id} [get]
 func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
@@ -254,6 +363,20 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetTransactions lists an account's transaction history, paginated.
+//
+// @Summary		List an account's transaction history
+// @Description	Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with `page`/`take`. Out-of-range `page`/`take` values fall back to their defaults rather than failing.
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string						true	"The account ID"
+// @Param			page	query		int							false	"Page number, starting at 0"	default(0)
+// @Param			take	query		int							false	"Page size"						default(20)
+// @Success		200		{object}	GetTransactionsResponse		"The transaction history was found."
+// @Failure		401		{object}	ErrorResponse				"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse				"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/transactions [get]
 func (h *AccountHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	accountID := r.PathValue("id")
@@ -323,6 +446,18 @@ func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
 	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+}
+
+// writeValidationError responds with the standard JSON error schema for a
+// request-shape/input-validation failure (a malformed body, a missing
+// required field, an out-of-range value, ...) — the Go idiom corresponding
+// to nestjs's global ValidationPipe's VALIDATION_FAILED response
+// (error-handling.md). Every handler validates its own request body inline
+// (this repository has no shared validation middleware/framework), so this
+// helper only fixes the status/code, keeping every 400 response actually
+// matching what's documented in the Swagger annotations above each handler.
+func writeValidationError(w http.ResponseWriter, r *http.Request, message string) {
+	writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", message)
 }
 
 // writeJSONError writes the standard {statusCode, code, message, error} JSON

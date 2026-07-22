@@ -34,6 +34,15 @@ jobs:
           go build ./...
           go vet ./...
 
+      - name: Verify OpenAPI docs are up to date (swag init)
+        working-directory: implementations/go/examples
+        run: |
+          go tool swag init -g cmd/server/main.go --output docs --parseInternal
+          git diff --exit-code -- docs || {
+            echo '::error::implementations/go/examples/docs/ is stale — a handler @-annotation changed without re-running `go tool swag init -g cmd/server/main.go --output docs --parseInternal` (see docs/architecture/api-documentation.md).'
+            exit 1
+          }
+
       - name: Lint (examples)
         uses: golangci/golangci-lint-action@v9
         with:

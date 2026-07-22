@@ -41,6 +41,7 @@ var rules = []func(string) RuleResult{
 	checkNoGenericResponseKeys,
 	checkQueryHandlerNoRawAggregate,
 	checkNoCrossBCDomainImport,
+	checkAPIDocumentation,
 }
 
 func main() {

@@ -42,6 +42,7 @@ Follows the 4-layer `internal/{domain,application,infrastructure,interface}/` st
 | Middleware chain, correlation ID injection, request validation | `docs/architecture/cross-cutting-concerns.md` |
 | Error handling, sentinel errors, `errors.Is`, HTTP status code mapping | `docs/architecture/error-handling.md` |
 | Rate limiting, token bucket, `golang.org/x/time/rate`, request throttling | `docs/architecture/rate-limiting.md` |
+| API documentation, OpenAPI/Swagger, swaggo/swag annotations, `swag init` | `docs/architecture/api-documentation.md` |
 
 ### Operations / infrastructure
 
