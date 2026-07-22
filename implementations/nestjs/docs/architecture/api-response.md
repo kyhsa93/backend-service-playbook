@@ -1,16 +1,16 @@
-# Pagination / 공통 응답 패턴
+# Pagination / Common Response Pattern
 
-목록 조회 API의 페이지네이션과 응답 구조를 정의한다.
+Defines the pagination and response structure of list-lookup APIs.
 
-## 페이지네이션 방식
+## Pagination Approach
 
-오프셋 기반 페이지네이션을 기본으로 사용한다.
+Uses offset-based pagination as the default.
 
-| 파라미터 | 타입 | 설명 | 기본값 |
+| Parameter | Type | Description | Default |
 |---------|------|------|--------|
-| `page` | number | 페이지 번호 (0부터 시작) | 0 |
-| `take` | number | 페이지 크기 | 20 |
-| `sort` | string | 정렬 기준 (`createdAt:desc`) | 선택 |
+| `page` | number | The page number (0-based) | 0 |
+| `take` | number | The page size | 20 |
+| `sort` | string | The sort criterion (`createdAt:desc`) | optional |
 
 ```
 GET /orders?page=0&take=20&status=pending&status=paid&sort=createdAt:desc
@@ -41,12 +41,12 @@ export class GetOrdersQuery {
 }
 ```
 
-- `@Type(() => Number)`: querystring은 문자열이므로 숫자로 변환
-- `page`와 `take`에 기본값을 지정하여 클라이언트가 생략할 수 있도록 한다
+- `@Type(() => Number)`: since the querystring is a string, convert it to a number
+- Give `page` and `take` default values so the client can omit them
 
-## Repository 인터페이스
+## Repository Interface
 
-목록 조회 메서드는 항상 **도메인 객체 배열 + count**를 반환한다. 키 이름은 도메인 객체명의 복수형을 사용한다.
+A list-lookup method always returns **a domain object array + count**. Use the plural of the domain object's name for the key.
 
 ```typescript
 // src/order/domain/order-repository.ts
@@ -64,9 +64,9 @@ export abstract class OrderRepository {
 }
 ```
 
-### 단건 조회 패턴
+### Single-Record Lookup Pattern
 
-별도의 `findOne` 메서드를 만들지 않는다. `findOrders`에 `take: 1`을 전달하고 `.then()` 체이닝으로 변환한다.
+Don't create a separate `findOne` method. Pass `take: 1` to `findOrders` and convert with `.then()` chaining.
 
 ```typescript
 const order = await this.orderRepository
@@ -76,7 +76,7 @@ const order = await this.orderRepository
 if (!order) throw new Error(OrderErrorMessage['주문을 찾을 수 없습니다.'])
 ```
 
-## Repository 구현체 — QueryBuilder 패턴
+## Repository Implementation — the QueryBuilder Pattern
 
 ```typescript
 // src/order/infrastructure/order-repository-impl.ts
@@ -91,7 +91,7 @@ async findOrders(query: {
     .createQueryBuilder(OrderEntity, 'order')
     .leftJoinAndSelect('order.items', 'item')
 
-  // 동적 where 조건
+  // dynamic where conditions
   if (query.orderId) {
     qb.andWhere('order.orderId = :orderId', { orderId: query.orderId })
   }
@@ -109,17 +109,17 @@ async findOrders(query: {
 }
 ```
 
-### 동적 where 조건 규칙
+### Dynamic Where Condition Rules
 
-- 각 조건은 `if (query.field)` 가드로 감싸서 값이 있을 때만 적용
-- 배열 조건은 `IN (:...param)` 스프레드 문법 사용
-- `andWhere`로 조건을 누적 — `where`는 첫 호출에만 사용하거나 QueryBuilder에 위임
+- Wrap each condition in an `if (query.field)` guard, applying it only when a value is present
+- Use `IN (:...param)` spread syntax for array conditions
+- Accumulate conditions with `andWhere` — use `where` only for the first call, or delegate it to the QueryBuilder
 
-## 응답 구조
+## Response Structure
 
-### 목록 조회 응답
+### List-Lookup Response
 
-Controller에서 Query 결과를 Response DTO로 감싼다.
+The Controller wraps the Query result in a Response DTO.
 
 ```typescript
 // src/order/interface/dto/get-orders-response-body.ts
@@ -141,12 +141,12 @@ export class GetOrdersResponseBody {
 }
 ```
 
-- 키 이름은 도메인 객체명 복수형 (`orders`, `users`, `payments`)
-- `result`, `data`, `items` 같은 범용 키를 사용하지 않는다
+- The key name is the plural of the domain object name (`orders`, `users`, `payments`)
+- Never use a generic key like `result`, `data`, `items`
 
-`harness/evaluators/rules/no-generic-response-keys.evaluator.ts`가 application/interface 레이어 class에서 `count: number`와 나란히 있는 배열 필드가 `result`/`data`/`items`로 명명되어 있으면 `no-generic-response-keys.generic-list-field`로 잡아낸다. Query handler/Controller가 Domain Aggregate를 그대로 반환하는지는 `harness/evaluators/rules/query-handler-no-raw-aggregate.evaluator.ts`가 `query-handler-no-raw-aggregate.raw-aggregate-return`으로 잡아낸다.
+`harness/evaluators/rules/no-generic-response-keys.evaluator.ts` catches it as `no-generic-response-keys.generic-list-field` when an array field sitting alongside `count: number` in an application/interface layer class is named `result`/`data`/`items`. Whether a Query handler/Controller returns the Domain Aggregate as-is is caught by `harness/evaluators/rules/query-handler-no-raw-aggregate.evaluator.ts` as `query-handler-no-raw-aggregate.raw-aggregate-return`.
 
-### 단건 조회 응답
+### Single-Record Lookup Response
 
 ```json
 {
@@ -159,12 +159,12 @@ export class GetOrdersResponseBody {
 }
 ```
 
-범용 래퍼(`{ success: true, data: { ... } }`)로 감싸지 않는다. 도메인 객체를 직접 반환한다.
+Never wrap it in a generic wrapper (`{ success: true, data: { ... } }`). Return the domain object directly.
 
-## 원칙
+## Principles
 
-- **오프셋 기반 페이지네이션 기본**: `page` (0부터), `take` (페이지 크기) 파라미터를 사용한다.
-- **단건 조회 메서드 없음**: `findOrders({ take: 1 }).then(r => r.orders.pop())` 패턴을 사용한다.
-- **응답 키는 도메인 복수형**: `{ orders: [...], count: N }` — 범용 키(`data`, `result`) 금지.
-- **범용 래퍼 없음**: `{ success, data }` 패턴을 사용하지 않는다. 에러는 HTTP 상태 코드로 구분한다.
-- **동적 where는 조건부 체이닝**: `if (query.field) qb.andWhere(...)` 패턴으로 조건을 누적한다.
+- **Offset-based pagination by default**: use the `page` (0-based), `take` (page size) parameters.
+- **No single-record lookup method**: use the `findOrders({ take: 1 }).then(r => r.orders.pop())` pattern.
+- **Response keys are domain plurals**: `{ orders: [...], count: N }` — generic keys (`data`, `result`) are prohibited.
+- **No generic wrapper**: don't use a `{ success, data }` pattern. Distinguish errors via the HTTP status code.
+- **Dynamic where via conditional chaining**: accumulate conditions with the `if (query.field) qb.andWhere(...)` pattern.

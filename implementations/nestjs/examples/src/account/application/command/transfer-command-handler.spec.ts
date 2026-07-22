@@ -9,9 +9,9 @@ import { AccountStatus } from '@/account/account-enum'
 import { Money } from '@/account/domain/money'
 import { AccountErrorMessage } from '@/account/account-error-message'
 
-// TransferEligibilityService(Domain Service)는 순수 클래스라 목(mock)하지 않는다 —
-// 이 스펙은 Application 레이어가 두 계좌를 로드해 실제 판단 로직에 위임하고, 승인 시
-// 두 계좌를 하나의 트랜잭션으로 저장하는 흐름을 검증한다.
+// TransferEligibilityService (a Domain Service) is a plain class, so it isn't mocked — this
+// spec verifies the flow where the Application layer loads both accounts, delegates to the
+// real judgment logic, and on approval, saves both accounts in a single transaction.
 describe('TransferCommandHandler', () => {
   let handler: TransferCommandHandler
   let accountRepository: jest.Mocked<AccountRepository>

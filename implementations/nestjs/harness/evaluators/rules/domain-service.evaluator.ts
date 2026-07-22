@@ -20,7 +20,7 @@ function walkTsFiles(root: string): string[] {
 
 function isDomainServiceFile(root: string, file: string): boolean {
   const rel = path.relative(root, file).replace(/\\/g, '/')
-  // src/<domain>/domain/*-service.ts 패턴
+  // The src/<domain>/domain/*-service.ts pattern
   return /^src\/[^/]+\/domain\/[^/]+-service\.ts$/.test(rel)
 }
 
@@ -40,7 +40,7 @@ export function evaluateDomainService(root: string): EvaluatorResult {
   for (const file of domainServiceFiles) {
     const content = fs.readFileSync(file, 'utf-8')
 
-    // Domain Service는 @Injectable() 금지 — 프레임워크 독립성 필수
+    // A Domain Service must not have @Injectable() — framework independence is required
     if (/@Injectable\s*\(\s*\)/.test(content)) {
       failures.push({
         ruleId: 'domain-service.injectable-forbidden',
@@ -51,7 +51,7 @@ export function evaluateDomainService(root: string): EvaluatorResult {
       score -= penaltyFor('high')
     }
 
-    // Domain Service는 @Module, @Controller 등 NestJS 데코레이터 금지
+    // A Domain Service must not have NestJS decorators like @Module, @Controller
     if (/@(Module|Controller|Get|Post|Put|Patch|Delete)\s*\(/.test(content)) {
       failures.push({
         ruleId: 'domain-service.nestjs-decorator-forbidden',

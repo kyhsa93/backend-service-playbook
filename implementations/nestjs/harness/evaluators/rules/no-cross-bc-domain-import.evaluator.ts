@@ -1,20 +1,20 @@
-// no-cross-bc-domain-import evaluator — 다른 Bounded Context의 Aggregate는
-// ID 참조만 허용하고 객체 참조(직접 import)는 금지한다. 이 원칙은 같은 BC 안의
-// Aggregate 간(`no-cross-aggregate-reference`)뿐 아니라 BC 경계를 넘나드는
-// 경우에도 동일하게 적용된다 (guide: docs/architecture/tactical-ddd.md —
-// "다른 Aggregate는 ID 참조만 허용한다 (객체 참조 금지)").
+// The no-cross-bc-domain-import evaluator — another Bounded Context's Aggregate may only be
+// referenced by ID; an object reference (a direct import) is prohibited. This principle
+// applies equally both between Aggregates within the same BC (`no-cross-aggregate-reference`)
+// and across a BC boundary (guide: docs/architecture/tactical-ddd.md —
+// "another Aggregate may only be referenced by ID (object references are prohibited)").
 //
-// Check: src/<bc>/domain/*.ts 파일이 'src/<otherBc>/domain/*'에서 무언가를
-// import하고 otherBc !== bc이면 실패. 같은 BC 안의 domain import(정상 패턴,
-// 예: refund-eligibility-service.ts가 같은 payment BC의 payment.ts를 import)는
-// 대상이 아니다. common/outbox/database/config처럼 domain/ 레이어가 없는
-// 횡단 관심사 모듈(`isDomainBearing`이 false)에서 오는 import는애초에 이
-// 패턴(otherBc의 domain/ 안)에 걸리지 않으므로 자연히 제외된다 — 예를 들어
-// `@/payment/payment-enum`(도메인 아님, BC 루트)이나 `@/common/generate-id`는
-// 'domain/' 세그먼트가 없어 매치되지 않는다.
+// Check: fails if a `src/<bc>/domain/*.ts` file imports something from
+// 'src/<otherBc>/domain/*' where otherBc !== bc. A domain import within the same BC (a normal
+// pattern — e.g. refund-eligibility-service.ts importing payment.ts from the same payment BC)
+// isn't a target. An import coming from a cross-cutting-concern module with no domain/ layer
+// (`isDomainBearing` is false), like common/outbox/database/config, never matches this pattern
+// (inside another BC's domain/) to begin with, so it's naturally excluded — for instance,
+// `@/payment/payment-enum` (not a domain, the BC root) or `@/common/generate-id` have no
+// 'domain/' segment, so they don't match.
 //
-// Applicability: domain-bearing BC가 2개 이상일 때만 실행 — 단일 도메인
-// 프로젝트에서는 크로스 BC 위반이 구조적으로 불가능하다.
+// Applicability: runs only when there are 2 or more domain-bearing BCs — in a single-domain
+// project, a cross-BC violation is structurally impossible.
 
 import * as path from 'node:path'
 

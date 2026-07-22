@@ -6,10 +6,10 @@ import { penaltyFor } from '../shared/penalty'
 import { walkTsFiles, readSourceFile } from '../shared/ast-utils'
 
 const DOC = 'docs/architecture/repository-pattern.md'
-const DOC_REF = `${DOC}#repository-메서드-네이밍-규칙`
+const DOC_REF = `${DOC}#repository-method-naming-rules`
 
-// src/<domain>/domain/*-repository.ts 패턴만 대상으로 한다 — infrastructure의
-// TypeORM 구현체(*-repository-impl.ts)는 내부 query-builder 헬퍼가 있을 수 있어 제외.
+// Targets only the src/<domain>/domain/*-repository.ts pattern — infrastructure's TypeORM
+// implementation (*-repository-impl.ts) is excluded since it may have internal query-builder helpers.
 function isRepositoryDomainFile(root: string, file: string): boolean {
   const rel = path.relative(root, file).replace(/\\/g, '/')
   return /^src\/[^/]+\/domain\/[^/]+-repository\.ts$/.test(rel)
@@ -19,8 +19,8 @@ interface AbstractMethod {
   name: string
 }
 
-// abstract class *Repository 안의 abstract 메서드만 수집한다.
-// concrete 메서드(있다면)는 이 규칙의 대상이 아니다.
+// Collects only the abstract methods inside an abstract class *Repository.
+// A concrete method (if any) isn't a target of this rule.
 function extractAbstractRepositoryMethods(filePath: string): AbstractMethod[] {
   const sf = readSourceFile(filePath)
   const methods: AbstractMethod[] = []
@@ -52,8 +52,8 @@ interface AntiPattern {
   describe: (name: string) => string
 }
 
-// 블록리스트 방식 — 알려진 안티패턴만 좁게 잡는다. `hasTransactionWithReference`
-// 같은 정상 메서드까지 잡는 광범위한 긍정 문법(허용 목록)은 쓰지 않는다.
+// A blocklist approach — narrowly catches only known anti-patterns. A broad positive-match
+// grammar (an allowlist) that would also catch a normal method like `hasTransactionWithReference` isn't used.
 const ANTI_PATTERNS: AntiPattern[] = [
   {
     ruleId: 'repository-naming.find-by-shape',

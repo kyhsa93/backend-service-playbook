@@ -18,8 +18,9 @@ export default tseslint.config(
       }
     },
     rules: {
-      // NestJS는 constructor parameter property / decorator 인자로만 쓰이는 값이 많아
-      // 완전 금지 대신 `_` 접두사로 의도적 미사용을 표시할 수 있게 허용한다.
+      // NestJS has a lot of values that are only ever used as constructor parameter
+      // properties / decorator arguments, so instead of banning them outright, a `_` prefix is
+      // allowed to mark them as intentionally unused.
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }

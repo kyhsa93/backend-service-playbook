@@ -29,18 +29,18 @@ import { CardIntegrationEventController } from '@/card/interface/integration-eve
     CancelCardsByAccountCommandHandler,
     // Query Handlers
     GetCardQueryHandler,
-    // Integration Event 수신부 (외부 BC → Card)
+    // The Integration Event receiving end (external BC → Card)
     CardIntegrationEventController,
     // Repositories
     { provide: CardRepository, useClass: CardRepositoryImpl },
-    // Query 구현체
+    // The Query implementation
     { provide: CardQuery, useClass: CardQueryImpl },
-    // 크로스 도메인 Adapter (Card → Account 동기 조회)
+    // A cross-domain Adapter (Card → Account synchronous lookup)
     { provide: AccountAdapter, useClass: AccountAdapterImpl }
   ],
-  // 다른 BC(Payment)가 Adapter(ACL)를 통해 카드를 동기 조회할 수 있도록 읽기 서비스만
-  // 공개한다(AccountModule의 기존 exports: [AccountQuery]와 동일한 패턴).
-  // Repository·도메인 객체는 공개하지 않는다.
+  // Only the read service is exposed so another BC (Payment) can synchronously look up a card
+  // via an Adapter (ACL) (the same pattern as AccountModule's existing exports: [AccountQuery]).
+  // The Repository and domain objects are never exposed.
   exports: [CardQuery]
 })
 export class CardModule implements OnModuleInit {
@@ -49,9 +49,9 @@ export class CardModule implements OnModuleInit {
     private readonly cardIntegrationEventController: CardIntegrationEventController
   ) {}
 
-  // Account BC가 발행하는 Integration Event를 자기 수신부에 연결한다.
-  // eventName 리터럴(account.suspended.v1 등)이 Outbox row의 eventType이며,
-  // OutboxConsumer가 SQS에서 이 eventType을 수신하면 이 레지스트리에서 핸들러를 찾아 호출한다.
+  // Wires the Integration Events published by Account BC to this domain's own receiving end.
+  // The eventName literal (account.suspended.v1, etc.) is the Outbox row's eventType, and when
+  // OutboxConsumer receives this eventType from SQS, it looks up and calls the handler in this registry.
   onModuleInit(): void {
     this.registry.register('account.suspended.v1', (payload) =>
       this.cardIntegrationEventController.onAccountSuspended(payload as never))

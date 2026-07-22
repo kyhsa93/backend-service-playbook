@@ -1,5 +1,5 @@
-// APP_GUARD와 ThrottlerGuard라는 단어가 파일 어딘가에 존재하기만 해도 통과하던 예전(문자열 매칭)
-// 검사를 우회하던 dead code 시나리오 — 실제로는 어떤 @Module의 providers에도, 어떤 컨트롤러의
-// @UseGuards()에도 연결되지 않은 미사용 import/주석이다.
+// A dead-code scenario that used to slip past a naive (string-matching) check that passed as
+// long as the words APP_GUARD and ThrottlerGuard existed somewhere in the file — in reality
+// it's an unused import/comment that's never wired into any @Module's providers or any controller's @UseGuards().
 // APP_GUARD, ThrottlerGuard
 export const NOTE = 'ThrottlerGuard와 APP_GUARD는 여기 텍스트로만 존재하고 실제로 연결되지 않았다'

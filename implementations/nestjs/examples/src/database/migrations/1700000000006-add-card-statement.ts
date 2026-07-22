@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// payment.send-card-statements Task의 발송 기록 테이블 — sent_email과 같은 모양이다.
-// (cardId, statementMonth) 유니크 제약이 같은 달 중복 발송을 막는 최종 방어선이다
-// (payment/infrastructure/notification/sent-card-statement.entity.ts 참고).
+// The sent-record table for the payment.send-card-statements Task — shaped like sent_email.
+// The (cardId, statementMonth) unique constraint is the final defense against duplicate
+// sending within the same month (see payment/infrastructure/notification/sent-card-statement.entity.ts).
 export class AddCardStatement1700000000006 implements MigrationInterface {
   name = 'AddCardStatement1700000000006'
 

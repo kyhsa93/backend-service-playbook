@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// TypeORM의 자동 스키마 동기화 옵션에 의존하지 않고 전체 스키마를 명시적으로 생성하는
-// baseline 마이그레이션이다 — Entity를 수정할 때마다 새 마이그레이션 파일을 추가한다
-// (docs/architecture/persistence.md 참고).
+// A baseline migration that explicitly creates the entire schema, rather than relying on
+// TypeORM's automatic schema-sync option — add a new migration file whenever an Entity is
+// modified (see docs/architecture/persistence.md).
 export class InitSchema1700000000000 implements MigrationInterface {
   name = 'InitSchema1700000000000'
 

@@ -1,9 +1,9 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm'
 
-// account/infrastructure/notification/sent-email.entity.ts와 같은 모양의 발송 기록
-// 테이블이다. (cardId, statementMonth) 유니크 제약이 이 Task의 실제 멱등성 방어선이다 —
-// 같은 카드·같은 달 조합으로 두 번 insert되면 DB가 막는다(애플리케이션의
-// hasSentStatement() 사전 체크는 최적화일 뿐, 최종 방어는 이 제약).
+// A sent-record table shaped like account/infrastructure/notification/sent-email.entity.ts.
+// The (cardId, statementMonth) unique constraint is this Task's actual idempotency defense
+// line — the DB blocks a second insert with the same card·month combination (the
+// application's hasSentStatement() precheck is just an optimization; this constraint is the final defense).
 @Entity('sent_card_statement')
 @Index(['cardId', 'statementMonth'], { unique: true })
 export class SentCardStatementEntity {
@@ -16,7 +16,7 @@ export class SentCardStatementEntity {
   @Column({ type: 'char', length: 32 })
   accountId: string
 
-  // 'YYYY-MM' 형식 — payment/infrastructure/previous-statement-month.ts가 계산한다.
+  // 'YYYY-MM' format — computed by payment/infrastructure/previous-statement-month.ts.
   @Column({ type: 'char', length: 7 })
   statementMonth: string
 

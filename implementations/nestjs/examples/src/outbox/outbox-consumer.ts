@@ -5,15 +5,15 @@ import { getDomainEventQueueUrl } from '@/config/aws.config'
 import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
 import { SQS_CLIENT } from '@/outbox/sqs-client-provider'
 
-// SQS를 long polling(ReceiveMessageCommand의 WaitTimeSeconds)으로 수신 대기하다가
-// 메시지를 받으면 eventType(MessageAttributes)으로 EventHandlerRegistry에서 핸들러를
-// 찾아 호출한다 — Domain Event Handler(application/event/)든 Integration Event
-// Controller(interface/integration-event/)든 이 하나의 레지스트리·Consumer를 거친다.
+// Waits to receive from SQS via long polling (ReceiveMessageCommand's WaitTimeSeconds), and
+// when a message arrives, looks up and calls the handler in EventHandlerRegistry by eventType
+// (MessageAttributes) — whether it's a Domain Event Handler (application/event/) or an
+// Integration Event Controller (interface/integration-event/), both go through this single registry·Consumer.
 //
-// 핸들러 성공 → 메시지 삭제(ack). 핸들러 실패(또는 등록된 핸들러가 없음) → 삭제하지
-// 않는다 — SQS의 visibility timeout이 지나면 자동 재전달된다(at-least-once). 이
-// 저장소가 요구하는 EventHandler 멱등성(docs/architecture/domain-events.md)이 바로
-// 이 재전달을 전제한다.
+// Handler succeeds → delete the message (ack). Handler fails (or no handler is registered) →
+// don't delete — it's automatically redelivered once SQS's visibility timeout passes
+// (at-least-once). This is exactly the redelivery that the EventHandler idempotency this repo
+// requires (docs/architecture/domain-events.md) assumes.
 @Injectable()
 export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxConsumer.name)
@@ -24,15 +24,14 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
     @Inject(SQS_CLIENT) private readonly sqs: SQSClient
   ) {}
 
-  // 앱 부트스트랩 시 단 한 번 시작되는 싱글턴 백그라운드 루프다 — 요청마다 새로
-  // 만들어지지 않는다.
+  // A singleton background loop started exactly once at app bootstrap — it's never recreated per request.
   public onModuleInit(): void {
     this.running = true
     void this.pollLoop()
   }
 
-  // Graceful Shutdown(app.enableShutdownHooks()) 시 루프를 멈춘다. 진행 중인
-  // ReceiveMessageCommand(최대 WaitTimeSeconds)는 끝까지 기다린 뒤 종료한다.
+  // Stops the loop on Graceful Shutdown (app.enableShutdownHooks()). An in-flight
+  // ReceiveMessageCommand (up to WaitTimeSeconds) is waited out fully before exiting.
   public onModuleDestroy(): void {
     this.running = false
   }
@@ -66,7 +65,7 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
       await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
     } catch (error) {
       this.logger.error({ message: '이벤트 처리 실패', event_type: eventType, error })
-      // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
+      // Don't delete — it's re-received and retried after the visibility timeout.
     }
   }
 }

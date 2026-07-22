@@ -1,6 +1,7 @@
-// Refund만으로는 accountId/ownerId를 모른다(Refund는 paymentId만 참조).
-// approve() 호출 시 Application 레이어가 이미 로드해둔 Payment에서 얻은 값을 함께
-// 넘겨받아 이 이벤트에 싣는다 — Refund Aggregate 자신의 필드로 상시 보관하지는 않는다.
+// Refund alone doesn't know accountId/ownerId (Refund only references paymentId).
+// When approve() is called, values obtained from the Payment the Application layer already
+// loaded are passed in together and carried on this event — they're never kept as a
+// permanent field on the Refund Aggregate itself.
 export class RefundApproved {
   public readonly refundId: string
   public readonly paymentId: string

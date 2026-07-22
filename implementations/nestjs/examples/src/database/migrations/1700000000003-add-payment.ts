@@ -1,13 +1,13 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// Payment BC 테이블 추가 — Account, Card에 이어 세 번째 Bounded Context
-// (Payment/Refund 두 Aggregate). cardId/accountId는 각각 Card/Account Aggregate를
-// ID로만 참조하는 외부 참조이며, BC 경계를 넘는 FK 제약은 두지 않는다
-// (각 BC가 독립적으로 배포·변경될 수 있어야 하므로) — Card 테이블 추가 때와 동일한 원칙.
+// Adds the Payment BC tables — the third Bounded Context after Account, Card
+// (the two Aggregates Payment/Refund). cardId/accountId are external references to the
+// Card/Account Aggregates by ID only, with no FK constraint crossing the BC boundary
+// (since each BC must be independently deployable/changeable) — the same principle as when the Card tables were added.
 //
-// transaction.referenceId는 Payment BC의 Integration Event(payment.completed.v1 등)에
-// 대한 Account BC의 반응이 at-least-once 재수신에도 같은 거래를 중복 생성하지 않도록
-// 하는 멱등성 판단 키다(Level 2 Ledger, docs/architecture/domain-events.md 참고).
+// transaction.referenceId is the idempotency-check key ensuring Account BC's reaction to
+// Payment BC's Integration Events (payment.completed.v1, etc.) never creates the same
+// transaction twice even under at-least-once re-receipt (a Level 2 Ledger, see docs/architecture/domain-events.md).
 export class AddPayment1700000000003 implements MigrationInterface {
   name = 'AddPayment1700000000003'
 
@@ -47,11 +47,13 @@ export class AddPayment1700000000003 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "IDX_refund_paymentId" ON "refund" ("paymentId")`)
 
     await queryRunner.query(`ALTER TABLE "transaction" ADD COLUMN "referenceId" character varying`)
-    // (referenceId, type) 조합에 한해서만 유니크 — 결제완료(WITHDRAWAL)와 그 결제취소
-    // 보상 크레딧(DEPOSIT)은 같은 paymentId를 referenceId로 공유하는 서로 다른 거래이므로
-    // referenceId 단독 유니크는 보상 크레딧 삽입 자체를 막아버린다. 동시에 도착한 중복
-    // Integration Event가 애플리케이션의 체크(hasTransactionWithReference)를 통과해버리는
-    // 극히 짧은 race를 DB 제약으로 한 번 더 막는다(Level 2 Ledger의 방어선을 이중화).
+    // Unique only for the (referenceId, type) combination — since a completed payment
+    // (WITHDRAWAL) and its cancellation's compensating credit (DEPOSIT) are different
+    // transactions that share the same paymentId as referenceId, a unique constraint on
+    // referenceId alone would block inserting the compensating credit itself. This adds a
+    // second DB-level defense against the extremely brief race where a duplicate Integration
+    // Event arriving concurrently slips past the application's check (hasTransactionWithReference)
+    // — doubling up the Level 2 Ledger's defense line.
     await queryRunner.query(`
       CREATE UNIQUE INDEX "IDX_transaction_referenceId_type" ON "transaction" ("referenceId", "type") WHERE "referenceId" IS NOT NULL
     `)

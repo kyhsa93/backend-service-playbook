@@ -39,8 +39,8 @@ export function evaluateStructure(root: string): EvaluatorResult {
     }
   }
 
-  // Conditional: if Task Queue 패턴을 사용하는 파일이 하나라도 있으면
-  // src/task-queue/ 공유 모듈이 존재해야 한다.
+  // Conditional: if there's even a single file using the Task Queue pattern, the
+  // src/task-queue/ shared module must exist.
   const allFiles = walkTs(base)
   const usesTaskQueue = anyFileMatches(
     allFiles,

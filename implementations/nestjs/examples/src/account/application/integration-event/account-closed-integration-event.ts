@@ -1,4 +1,4 @@
-// Account BC가 외부 BC에 공개하는 Integration Event (공개 계약).
+// The Integration Event (a public contract) the Account BC exposes to external BCs.
 export class AccountClosedIntegrationEventV1 {
   public readonly eventName = 'account.closed.v1' as const
 

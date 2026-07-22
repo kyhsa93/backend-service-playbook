@@ -3,10 +3,10 @@ import { PaymentStatus, RefundStatus } from '@/payment/payment-enum'
 import { Refund } from '@/payment/domain/refund'
 import { RefundEligibilityService } from '@/payment/domain/refund-eligibility-service'
 
-// 이 판단(원 결제 COMPLETED 여부 + 환불 금액 ≤ 결제 금액)은 Payment 혼자, Refund
-// 혼자로는 검증할 수 없다 — 두 Aggregate를 함께 로드해야만 검증 가능한 규칙이라는
-// 것이 RefundEligibilityService가 Domain Service인 이유다. 이 스펙은 그 판단 자체를
-// 직접 검증한다(NestJS 의존성 없이 순수 객체로 인스턴스화한다).
+// This judgment (whether the original payment is COMPLETED + whether the refund amount ≤ the
+// payment amount) can't be verified by Payment alone or Refund alone — the fact that it's a
+// rule verifiable only by loading both Aggregates together is why RefundEligibilityService is
+// a Domain Service. This spec verifies that judgment directly (instantiated as a plain object with no NestJS dependency).
 describe('RefundEligibilityService', () => {
   const service = new RefundEligibilityService()
 

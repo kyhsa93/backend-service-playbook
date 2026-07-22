@@ -39,9 +39,10 @@ function findImportModuleFor(content: string, name: string): string | null {
   return null
 }
 
-// 얇은 `class X extends BaseDto {}` 래퍼는 자기 파일에 page/take 필드·데코레이터가 없고
-// 부모 클래스에서 상속받는다. 상속 체인을 따라가며 실제 선언부까지의 내용을 모아
-// 페이지네이션 필드/데코레이터 검사 대상에 포함시킨다 (최대 3단계).
+// A thin `class X extends BaseDto {}` wrapper has no page/take field·decorator in its own file
+// and inherits them from a parent class. This follows the inheritance chain, gathering content
+// up to the actual declaration, and includes it as a target for pagination field/decorator
+// checks (up to 3 levels).
 function collectContentWithBases(filePath: string, srcRoot: string, depth = 0): string {
   const content = fs.readFileSync(filePath, 'utf-8')
   if (depth >= 3) return content
@@ -58,7 +59,7 @@ function collectContentWithBases(filePath: string, srcRoot: string, depth = 0): 
   return `${content}\n${collectContentWithBases(resolved, srcRoot, depth + 1)}`
 }
 
-// page와 take 프로퍼티가 (상속 포함) 모두 선언되어 있는지 확인 (pagination DTO 판별)
+// Checks whether both the page and take properties are declared (including via inheritance) — used to detect a pagination DTO
 function isPaginationDto(content: string): boolean {
   return /\bpage\b/.test(content) && /\btake\b/.test(content)
 }
@@ -76,7 +77,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
     return c
   }
 
-  // page + take 필드가 있는 DTO 파일을 찾아 gate 조건으로 사용 (상속 체인 포함)
+  // Finds a DTO file with page + take fields and uses it as the applicability gate (including via the inheritance chain)
   const paginationDtoFiles = files.filter((f) => f.includes('dto') && isPaginationDto(read(f)))
   if (paginationDtoFiles.length === 0) {
     return { name: 'pagination', score: 0, maxScore: 0, failures: [] }
@@ -89,7 +90,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
   for (const file of paginationDtoFiles) {
     const content = read(file)
 
-    // page 필드에 @Type(() => Number) + @IsInt() 필요
+    // The page field needs @Type(() => Number) + @IsInt()
     const hasPageType = /@Type\s*\(\s*\(\s*\)\s*=>\s*Number\s*\)[\s\S]{0,100}page\b|page\b[\s\S]{0,200}@Type\s*\(\s*\(\s*\)\s*=>\s*Number\s*\)/.test(content)
     const hasPageInt = /@IsInt\s*\(\s*\)[\s\S]{0,100}page\b|page\b[\s\S]{0,200}@IsInt\s*\(\s*\)/.test(content)
 
@@ -103,7 +104,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
       score -= penaltyFor('medium')
     }
 
-    // take 필드에 @Type(() => Number) + @IsInt() 필요
+    // The take field needs @Type(() => Number) + @IsInt()
     const hasTakeType = /@Type\s*\(\s*\(\s*\)\s*=>\s*Number\s*\)[\s\S]{0,100}take\b|take\b[\s\S]{0,200}@Type\s*\(\s*\(\s*\)\s*=>\s*Number\s*\)/.test(content)
     const hasTakeInt = /@IsInt\s*\(\s*\)[\s\S]{0,100}take\b|take\b[\s\S]{0,200}@IsInt\s*\(\s*\)/.test(content)
 
@@ -118,11 +119,12 @@ export function evaluatePagination(root: string): EvaluatorResult {
     }
   }
 
-  // Repository 반환값에 data/items/result 같은 범용 키 사용 금지 — 단, 파일 전체가 아니라
-  // 페이지네이션 응답 시그니처(`Promise<{ ...; count: number }>` 형태) 안에서만 검사한다.
-  // 파일 전체를 훑으면 페이지네이션과 무관한 동명 필드(예: 저장 payload의 `items: order.items`
-  // 같은 정당한 도메인 필드)까지 오탐한다 — Account/Card에는 우연히 이런 이름이 없어 드러나지
-  // 않았을 뿐이다.
+  // A generic key like data/items/result on a Repository return value is prohibited — but this
+  // is checked only within a pagination response signature (shaped
+  // `Promise<{ ...; count: number }>`), not across the whole file. Scanning the whole file
+  // would false-positive even on a same-named field unrelated to pagination (e.g. a legitimate
+  // domain field like `items: order.items` in a save payload) — it just never surfaced because
+  // Account/Card happen to have no such name.
   const repoFiles = files.filter((f) => f.endsWith('-repository.ts') || f.endsWith('-repository-impl.ts'))
   for (const file of repoFiles) {
     const content = fs.readFileSync(file, 'utf-8')

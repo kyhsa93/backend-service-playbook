@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# NestJS Harness — TypeScript evaluator 실행 래퍼
+# NestJS Harness — a wrapper for running the TypeScript evaluators
 #
 # Usage: ./implementations/nestjs/harness.sh [projectRoot]
 #
-# 사전 조건: node, npm (또는 npx)
+# Prerequisites: node, npm (or npx)
 
 set -uo pipefail
 

@@ -1,19 +1,17 @@
-// no-cross-bc-repository-in-application evaluator — 다른 Bounded Context의
-// Repository를 Application 레이어에서 직접 import하지 않는다. 크로스 도메인
-// 조회는 Adapter(ACL)를 거친다 — Adapter 인터페이스는 자기 도메인의
-// application/adapter/에, 구현체는 infrastructure/에 두고 상대 BC의
-// Query(읽기 전용 인터페이스)만 호출한다 (guide: cross-domain-communication.md
-// "외부 BC의 Repository나 Service를 Application 레이어에서 직접 주입하지
-// 않는다").
+// The no-cross-bc-repository-in-application evaluator — another Bounded Context's Repository
+// is never directly imported in the Application layer. A cross-domain lookup goes through an
+// Adapter (ACL) — the Adapter interface lives in this domain's own application/adapter/, its
+// implementation in infrastructure/, calling only the counterpart BC's Query (a read-only
+// interface) (guide: cross-domain-communication.md —
+// "never inject an external BC's Repository or Service directly in the Application layer").
 //
-// Check: src/<domain>/application/**/*.ts 파일이 'src/<otherDomain>/domain/*-repository.ts'
-// 형태의 import를 갖고 있고 otherDomain !== domain이면 실패. 같은 도메인 안의
-// Repository import(Command Service가 자기 도메인 Repository를 쓰는 정상 패턴)는
-// 대상이 아니다.
+// Check: fails if a `src/<domain>/application/**/*.ts` file has an import shaped like
+// 'src/<otherDomain>/domain/*-repository.ts' where otherDomain !== domain. A Repository import
+// within the same domain (the normal pattern of a Command Service using its own domain's
+// Repository) isn't a target.
 //
-// Applicability: 2개 이상의 domain-bearing BC가 있고, application/ 파일이
-// 존재할 때만 실행 (단일 도메인 프로젝트에서는 크로스 도메인 위반이 구조적으로
-// 불가능하므로 skip).
+// Applicability: runs only when there are 2 or more domain-bearing BCs and application/ files
+// exist (skipped in a single-domain project, where a cross-domain violation is structurally impossible).
 
 import * as path from 'node:path'
 
@@ -30,8 +28,7 @@ import {
 
 const DOC_REF = '../../docs/architecture/cross-domain-communication.md#동기-호출--adapter-패턴-acl'
 
-// import specifier가 확장자 없이 resolve되므로(예: '@/user/domain/user-repository')
-// '.ts' suffix는 옵션으로 둔다.
+// Since an import specifier resolves with no extension (e.g. '@/user/domain/user-repository'), the '.ts' suffix is left optional.
 function isRepositoryFile(filePath: string): boolean {
   return /-repository(\.ts)?$/.test(filePath.replace(/\\/g, '/')) && classifyLayer(filePath) === 'domain'
 }

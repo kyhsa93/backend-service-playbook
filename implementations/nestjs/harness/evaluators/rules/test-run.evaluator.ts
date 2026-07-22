@@ -55,7 +55,7 @@ export function evaluateTestRun(root: string): EvaluatorResult {
     cwd: root,
     encoding: 'utf-8',
     env: { ...process.env, CI: '1' },
-    timeout: 5 * 60 * 1000   // 5분 제한
+    timeout: 5 * 60 * 1000   // a 5-minute limit
   })
 
   if (res.status === 0) {

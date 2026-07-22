@@ -60,9 +60,9 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     process.env.AWS_ACCESS_KEY_ID = 'test'
     process.env.AWS_SECRET_ACCESS_KEY = 'test'
     process.env.SES_SENDER_EMAIL = 'no-reply@backend-service-playbook.example.com'
-    // AccountCreated/MoneyDeposited Domain Event Handler(NotificationService 호출)는
-    // 이제 같은 프로세스 안에서 즉시 실행되지 않는다 — OutboxPoller가 이 이벤트를 SQS로
-    // 발행하고 OutboxConsumer가 수신해야 실행된다. 그래서 SES뿐 아니라 SQS도 필요하다.
+    // The AccountCreated/MoneyDeposited Domain Event Handlers (which call NotificationService)
+    // no longer run immediately in the same process — they only run once OutboxPoller
+    // publishes this event to SQS and OutboxConsumer receives it. So SQS is needed alongside SES.
     process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sesEndpoint)
     process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sesEndpoint)
 
@@ -114,10 +114,11 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     await localstack?.stop()
   })
 
-  // AccountCreatedHandler/MoneyDepositedHandler(SES 발송)는 더 이상 같은 프로세스 안에서
-  // 커맨드 응답 전에 끝나지 않는다 — OutboxPoller(1초 주기)가 이벤트를 SQS로 발행하고
-  // OutboxConsumer(long polling)가 수신해야 실행된다. 즉시 조회하던 이전 assert를
-  // 폴링으로 바꾼다(card.e2e-spec.ts의 waitForCardStatus와 동일한 패턴).
+  // AccountCreatedHandler/MoneyDepositedHandler (which send via SES) no longer finish within
+  // the same process before the command response — they only run once OutboxPoller (1-second
+  // interval) publishes the event to SQS and OutboxConsumer (long polling) receives it. So an
+  // immediate-lookup assertion is replaced with polling (the same pattern as
+  // card.e2e-spec.ts's waitForCardStatus).
   async function waitForSentEmail(accountId: string, eventType: string): Promise<SentEmailEntity | null> {
     for (let i = 0; i < 150; i++) {
       const sentEmail = await dataSource.getRepository(SentEmailEntity).findOneBy({ accountId, eventType })

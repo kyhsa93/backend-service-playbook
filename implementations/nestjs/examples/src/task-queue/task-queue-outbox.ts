@@ -6,11 +6,12 @@ import { TransactionManager } from '@/database/transaction-manager'
 import { EnqueueOptions, TaskQueue } from './task-queue'
 import { TaskOutboxEntity } from './task-outbox.entity'
 
-// TaskQueue의 Outbox 기반 구현체. TransactionManager의 현재 트랜잭션 문맥에 참여하므로,
-// Command 트랜잭션 안에서 호출되면 DB 변경과 Task 적재가 원자적으로 묶인다(dual-write
-// 차단). Scheduler(Cron)처럼 트랜잭션 문맥이 없는 곳에서 호출돼도 단일 row insert이므로
-// 자연스럽게 atomic하다 — 경로가 통일되어 있어 호출자는 트랜잭션 유무를 신경 쓰지 않는다
-// (docs/architecture/scheduling.md#taskqueue--outbox-기반-구현).
+// TaskQueue's Outbox-based implementation. Since it participates in TransactionManager's
+// current transaction context, calling it inside a Command transaction binds the DB change
+// and the Task enqueue atomically (blocking dual-write). Even called from somewhere with no
+// transaction context, like the Scheduler (Cron), it's naturally atomic as a single row insert
+// — since the path is unified, the caller doesn't need to worry about whether a transaction
+// exists (see docs/architecture/scheduling.md, the TaskQueue Outbox-based Implementation section).
 @Injectable()
 export class TaskQueueOutbox extends TaskQueue {
   constructor(private readonly transactionManager: TransactionManager) {

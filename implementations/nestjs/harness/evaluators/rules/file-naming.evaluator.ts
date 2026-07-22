@@ -58,8 +58,8 @@ export function evaluateFileNaming(submissionRoot: string): EvaluatorResult {
       score -= 2
     }
   }
-  // Task Queue / Scheduler / SQS 관련 suffix 컨벤션은 각 도메인 evaluator
-  // (task-queue, scheduler)로 이관하여 file-naming은 파일명 규칙만 담당한다.
+  // The Task Queue / Scheduler / SQS-related suffix conventions are delegated to their own
+  // domain evaluators (task-queue, scheduler), so file-naming handles only the file-name rules.
 
   return {
     name: 'file-naming',

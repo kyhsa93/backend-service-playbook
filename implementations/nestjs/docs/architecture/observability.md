@@ -1,10 +1,10 @@
 # Logging / Observability
 
-NestJS 내장 Logger를 기반으로 구조화된 로깅을 적용하는 패턴이다.
+The pattern for applying structured logging on top of NestJS's built-in Logger.
 
-## Logger 선언
+## Declaring the Logger
 
-모든 클래스에서 Logger를 클래스 필드로 선언한다. 생성자 인자로 클래스명을 전달하여 로그 출처를 식별한다.
+Declare a Logger as a class field in every class. Pass the class name as the constructor argument to identify the log's source.
 
 ```typescript
 import { Logger } from '@nestjs/common'
@@ -14,19 +14,19 @@ export class OrderCommandService {
 }
 ```
 
-## 로그 레벨 정책
+## Log Level Policy
 
-NestJS Logger는 5단계 레벨을 제공한다. 각 레벨의 용도를 지켜 사용한다.
+NestJS's Logger provides 5 levels. Use each level according to its intended purpose.
 
-| 레벨 | 메서드 | 용도 | 예시 |
+| Level | Method | Purpose | Example |
 |------|--------|------|------|
-| `error` | `logger.error()` | 요청 처리 실패, 외부 시스템 장애 | DB 연결 실패, 외부 API 5xx |
-| `warn` | `logger.warn()` | 정상 동작이지만 주의가 필요한 상황 | Deprecated 엔드포인트 호출, 재시도 발생 |
-| `log` | `logger.log()` | 주요 비즈니스 이벤트, 상태 변경 | 주문 생성, 결제 완료, 앱 기동 |
-| `debug` | `logger.debug()` | 개발/디버깅용 상세 정보 | 쿼리 파라미터, 중간 계산 결과 |
-| `verbose` | `logger.verbose()` | 최대 상세 정보 | 전체 요청/응답 페이로드 |
+| `error` | `logger.error()` | Request-processing failure, external system outage | DB connection failure, external API 5xx |
+| `warn` | `logger.warn()` | Normal operation, but a situation that needs attention | Calling a deprecated endpoint, a retry occurring |
+| `log` | `logger.log()` | Major business events, state changes | Order created, payment completed, app startup |
+| `debug` | `logger.debug()` | Detailed info for development/debugging | Query parameters, intermediate computation results |
+| `verbose` | `logger.verbose()` | Maximum detail | Full request/response payload |
 
-### 환경별 로그 레벨 설정
+### Per-Environment Log Level Configuration
 
 ```typescript
 // src/main.ts
@@ -37,44 +37,44 @@ const app = await NestFactory.create(AppModule, {
 })
 ```
 
-- **프로덕션**: `error`, `warn`, `log`만 출력
-- **개발/스테이징**: 전체 레벨 출력
+- **Production**: only outputs `error`, `warn`, `log`
+- **Development/staging**: outputs every level
 
-## 구조화된 로깅
+## Structured Logging
 
-외부 모니터링 시스템(Datadog, CloudWatch 등)과 연동할 때는 JSON 형식의 구조화된 로그를 사용한다.
+When integrating with an external monitoring system (Datadog, CloudWatch, etc.), use structured logs in JSON format.
 
-### 필드 네이밍 규칙
+### Field Naming Convention
 
-로그 객체의 필드명은 **snake_case**를 사용한다.
+Use **snake_case** for the field names of a log object.
 
 ```typescript
-// 비즈니스 이벤트 로그
+// a business event log
 this.logger.log({ message: '주문 생성 완료', order_id: orderId, user_id: userId, amount })
 
-// 에러 로그
+// an error log
 this.logger.error({ message: 'SQS 전송 실패', event_id: event.eventId, error })
 ```
 
-### 레이어별 로깅 기준
+### Per-Layer Logging Criteria
 
-| 레이어 | 로깅 대상 | 레벨 |
+| Layer | What to log | Level |
 |--------|----------|------|
-| Interface (Controller) | 요청 에러 (catch 블록) | `error` |
-| Application (Service) | 비즈니스 이벤트, 외부 시스템 호출 결과 | `log`, `error` |
-| Infrastructure | 외부 연동 실패/재시도, 쿼리 성능 | `error`, `warn`, `debug` |
-| Domain | 로깅하지 않음 (프레임워크 무의존) | — |
+| Interface (Controller) | Request errors (the catch block) | `error` |
+| Application (Service) | Business events, results of external system calls | `log`, `error` |
+| Infrastructure | External-integration failures/retries, query performance | `error`, `warn`, `debug` |
+| Domain | No logging (framework-independent) | — |
 
-Domain 레이어에서는 `Logger`를 사용하지 않는다. 도메인 로직의 결과는 Application 레이어에서 로깅한다.
+The Domain layer never uses `Logger`. The result of domain logic is logged from the Application layer.
 
-`domain/*.ts`가 `@nestjs/common`의 `Logger`, `winston`, `console.*` 중 하나라도 사용하면
-`harness/evaluators/rules/logging.evaluator.ts`가 `logging.no-logging-in-domain`으로 잡아낸다.
-console 직접 사용(`logging.no-console`)과 빈/미처리 catch 블록(`logging.no-empty-catch`,
-`logging.no-swallowed-error`)도 같은 evaluator가 검증한다.
+If `domain/*.ts` uses any of `@nestjs/common`'s `Logger`, `winston`, or `console.*`,
+`harness/evaluators/rules/logging.evaluator.ts` catches it as `logging.no-logging-in-domain`.
+Direct console usage (`logging.no-console`) and empty/unhandled catch blocks (`logging.no-empty-catch`,
+`logging.no-swallowed-error`) are also verified by the same evaluator.
 
-## Correlation ID — 요청 추적
+## Correlation ID — Request Tracing
 
-분산 환경에서 하나의 요청이 여러 서비스를 거칠 때, 모든 로그에 동일한 Correlation ID를 포함하여 추적한다.
+When a single request passes through multiple services in a distributed environment, include the same Correlation ID in every log to trace it.
 
 ### CorrelationIdMiddleware
 
@@ -98,7 +98,7 @@ export class CorrelationIdMiddleware implements NestMiddleware {
 }
 ```
 
-### AsyncLocalStorage 기반 저장소
+### AsyncLocalStorage-Based Store
 
 ```typescript
 // src/common/correlation-id-store.ts
@@ -112,7 +112,7 @@ export const CorrelationIdStore = {
 }
 ```
 
-### Middleware 등록
+### Registering the Middleware
 
 ```typescript
 // src/app-module.ts
@@ -128,7 +128,7 @@ export class AppModule implements NestModule {
 }
 ```
 
-### 로그에 Correlation ID 포함
+### Including the Correlation ID in Logs
 
 ```typescript
 import { CorrelationIdStore } from '@/common/correlation-id-store'
@@ -140,9 +140,9 @@ this.logger.log({
 })
 ```
 
-## LoggingInterceptor — HTTP 요청/응답 로깅
+## LoggingInterceptor — HTTP Request/Response Logging
 
-모든 HTTP 요청의 메서드, URL, 응답 시간을 자동 로깅한다. `src/common/logging.interceptor.ts`에 위치한다.
+Automatically logs the method, URL, and response time of every HTTP request. Located at `src/common/logging.interceptor.ts`.
 
 ```typescript
 // src/common/logging.interceptor.ts
@@ -174,24 +174,24 @@ export class LoggingInterceptor implements NestInterceptor {
 }
 ```
 
-전역 적용은 [bootstrap.md](bootstrap.md)에서 `app.useGlobalInterceptors(new LoggingInterceptor())`로 등록하거나, Controller 클래스 레벨에서 `@UseInterceptors(LoggingInterceptor)`로 적용한다.
+Apply it globally by registering `app.useGlobalInterceptors(new LoggingInterceptor())` in [bootstrap.md](bootstrap.md), or at the Controller class level via `@UseInterceptors(LoggingInterceptor)`.
 
-## 원칙
+## Principles
 
-- **Logger는 클래스 필드로 선언**: `new Logger(ClassName.name)` — 로그 출처를 자동 식별한다.
-- **Domain 레이어에서 로깅 금지**: Domain은 프레임워크 무의존을 유지한다.
-- **구조화된 로그 사용**: 외부 모니터링 연동을 위해 JSON 객체로 로깅하고 필드명은 snake_case를 사용한다.
-- **에러는 `logger.error()`로**: catch 블록에서 반드시 에러를 로깅한 뒤 예외를 던진다.
-- **프로덕션에서 debug/verbose 비활성화**: 환경별 로그 레벨을 설정하여 불필요한 로그를 차단한다.
-- **Correlation ID로 요청 추적**: 분산 환경에서는 모든 로그에 Correlation ID를 포함한다.
+- **Declare the Logger as a class field**: `new Logger(ClassName.name)` — automatically identifies the log's source.
+- **No logging in the Domain layer**: the Domain stays framework-independent.
+- **Use structured logs**: log as a JSON object for external monitoring integration, using snake_case field names.
+- **Log errors with `logger.error()`**: always log the error in a catch block before throwing the exception.
+- **Disable debug/verbose in production**: configure per-environment log levels to block unnecessary logs.
+- **Trace requests with a Correlation ID**: in a distributed environment, include a Correlation ID in every log.
 
-## 메트릭·트레이싱 (메모)
+## Metrics / Tracing (Notes)
 
-본 가이드는 특정 observability 스택을 강제하지 않는다. 운영 환경에서 다음을 고려한다.
+This guide doesn't mandate a specific observability stack. Consider the following in production.
 
-- **메트릭**: 일반적으로 Prometheus(`/metrics` 엔드포인트 + 스크레이프). NestJS에서는 `@willsoto/nestjs-prometheus` 같은 패키지로 통합 가능.
-- **트레이싱**: OpenTelemetry auto-instrumentation으로 HTTP/TypeORM/SQS span을 자동 수집. Task Queue를 쓰는 경우 `traceparent`를 `task_outbox`에 실어 Task 경계에서 context를 전파하면 HTTP 요청 → Task 처리가 단일 trace로 묶인다.
-- **알람 최우선 항목**: DLQ depth > 0, SQS `ApproximateAgeOfOldestMessage`, HTTP 5xx rate, p99 지연, DB 커넥션 풀 포화.
-- **로그 ↔ 트레이스 상관관계**: log 레코드에 `trace_id`를 포함시켜 trace → log 점프 가능하도록 한다.
+- **Metrics**: typically Prometheus (a `/metrics` endpoint + scraping). In NestJS, integrate via a package like `@willsoto/nestjs-prometheus`.
+- **Tracing**: use OpenTelemetry auto-instrumentation to automatically collect HTTP/TypeORM/SQS spans. When using a Task Queue, carrying `traceparent` in `task_outbox` and propagating the context at the Task boundary binds the HTTP request → Task processing into a single trace.
+- **Top alerting priorities**: DLQ depth > 0, SQS `ApproximateAgeOfOldestMessage`, HTTP 5xx rate, p99 latency, DB connection pool saturation.
+- **Log ↔ trace correlation**: include `trace_id` in log records to enable jumping from a trace to its logs.
 
-구체 구현은 각 스택의 공식 문서 및 팀 컨벤션에 따른다.
+Follow each stack's official documentation and your team's conventions for the concrete implementation.

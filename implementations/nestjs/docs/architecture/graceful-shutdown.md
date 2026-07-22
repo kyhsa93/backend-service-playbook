@@ -1,15 +1,15 @@
 # Graceful Shutdown
 
-컨테이너 오케스트레이션 환경(Kubernetes, ECS 등)에서 SIGTERM 수신 시 진행 중인 요청을 안전하게 처리한 뒤 종료하는 패턴이다.
+The pattern for safely finishing in-flight requests before terminating, upon receiving SIGTERM in a container orchestration environment (Kubernetes, ECS, etc.).
 
-## 현재 구현
+## Current Implementation
 
-실제 `src/main.ts`([bootstrap.md](bootstrap.md) 참고)는 `enableShutdownHooks()`를 호출한다 — SIGTERM 수신 시 `OnApplicationShutdown`/`BeforeApplicationShutdown` 라이프사이클 훅이 동작한다. 아래 "헬스체크 연동" 섹션이 정의하는 `ShutdownState`(`src/common/infrastructure/shutdown-state.ts`)와 `HealthController`(`src/common/interface/health-controller.ts`, `GET /health/live`·`GET /health/ready`)도 문서 그대로 `examples/`에 반영되어 `src/app-module.ts`의 `providers`/`controllers`에 등록되어 있다. `RedisShutdown`/`QueueShutdown` 패턴은 이 저장소에 Redis·메시지 큐 연결 자체가 없어 아직 적용되지 않았다 — 필요해지면 추가할 확장 패턴으로 남겨둔다.
+The actual `src/main.ts` (see [bootstrap.md](bootstrap.md)) calls `enableShutdownHooks()` — this makes the `OnApplicationShutdown`/`BeforeApplicationShutdown` lifecycle hooks run upon receiving SIGTERM. The `ShutdownState` (`src/common/infrastructure/shutdown-state.ts`) and `HealthController` (`src/common/interface/health-controller.ts`, `GET /health/live`·`GET /health/ready`) defined in the "Health-check integration" section below are likewise reflected in `examples/` exactly as documented, registered in `src/app-module.ts`'s `providers`/`controllers`. The `RedisShutdown`/`QueueShutdown` patterns aren't applied yet since this repo has no Redis or message-queue connection of its own — they're left as extension patterns to add if ever needed.
 
-## main.ts 설정 (실제 코드)
+## main.ts Configuration (Actual Code)
 
 ```typescript
-// src/main.ts — 실제 코드 일부, 전체는 bootstrap.md 참고
+// src/main.ts — an excerpt of the actual code; see bootstrap.md for the full file
 import { NestFactory } from '@nestjs/core'
 
 import { AppModule } from '@/app-module'
@@ -17,9 +17,9 @@ import { AppModule } from '@/app-module'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
 
-  // ... ValidationPipe, LoggingInterceptor, HttpExceptionFilter, CORS, Swagger 설정은 bootstrap.md 참고
+  // ... see bootstrap.md for ValidationPipe, LoggingInterceptor, HttpExceptionFilter, CORS, Swagger setup
 
-  // Graceful Shutdown — SIGTERM/SIGINT 수신 시 NestJS 라이프사이클 훅 활성화
+  // Graceful Shutdown — activates the NestJS lifecycle hooks on receiving SIGTERM/SIGINT
   app.enableShutdownHooks()
 
   await app.listen(process.env.PORT ?? 3000)
@@ -28,34 +28,34 @@ async function bootstrap() {
 bootstrap()
 ```
 
-`app.enableShutdownHooks()`를 호출해야 `OnApplicationShutdown`, `BeforeApplicationShutdown` 라이프사이클 훅이 동작한다. 이 호출이 없으면 SIGTERM을 받아도 훅이 실행되지 않고 프로세스가 즉시 종료된다.
+The `OnApplicationShutdown` and `BeforeApplicationShutdown` lifecycle hooks only run if `app.enableShutdownHooks()` is called. Without this call, the hooks never run on SIGTERM and the process terminates immediately.
 
-## 라이프사이클 훅
+## Lifecycle Hooks
 
-NestJS는 두 가지 종료 라이프사이클 훅을 제공한다. 실행 순서에 주의한다.
+NestJS provides two shutdown lifecycle hooks. Pay attention to their execution order.
 
 ```
-SIGTERM 수신
+SIGTERM received
   → BeforeApplicationShutdown.beforeApplicationShutdown(signal)
-    → 진행 중인 요청 처리 완료 대기, 새 요청 수락 중단
-  → HTTP 서버 종료
+    → wait for in-flight requests to finish, stop accepting new requests
+  → HTTP server shuts down
   → OnApplicationShutdown.onApplicationShutdown(signal)
-    → DB 연결 해제, 메시지 브로커 연결 해제 등 리소스 정리
-  → 프로세스 종료
+    → clean up resources: release DB connections, release message-broker connections, etc.
+  → process exits
 ```
 
-| 훅 | 시점 | 용도 |
+| Hook | Timing | Purpose |
 |----|------|------|
-| `BeforeApplicationShutdown` | HTTP 서버 종료 전 | 진행 중인 요청 완료 대기, 헬스체크 실패 전환 |
-| `OnApplicationShutdown` | HTTP 서버 종료 후 | DB·Redis·메시지 브로커 연결 해제 |
+| `BeforeApplicationShutdown` | Before the HTTP server shuts down | Wait for in-flight requests to finish, switch the health check to failing |
+| `OnApplicationShutdown` | After the HTTP server shuts down | Release DB·Redis·message-broker connections |
 
-## Infrastructure 레이어에서 리소스 정리
+## Cleaning Up Resources in the Infrastructure Layer
 
-리소스 정리 로직은 해당 연결을 관리하는 Infrastructure 레이어 모듈에 구현한다.
+Implement resource-cleanup logic in the Infrastructure-layer module that manages that connection.
 
-### DB 연결 해제
+### Releasing the DB Connection
 
-TypeORM을 사용하는 경우, TypeORM 모듈이 자체적으로 연결을 해제하므로 별도 처리가 불필요하다. 커스텀 DataSource를 직접 관리하는 경우에만 아래 패턴을 적용한다.
+When using TypeORM, the TypeORM module releases the connection on its own, so no extra handling is needed. Only apply the pattern below when you're directly managing a custom DataSource.
 
 ```typescript
 // src/common/infrastructure/database-shutdown.ts
@@ -74,7 +74,7 @@ export class DatabaseShutdown implements OnApplicationShutdown {
 }
 ```
 
-### Redis 연결 해제
+### Releasing the Redis Connection
 
 ```typescript
 // src/common/infrastructure/redis-shutdown.ts
@@ -91,7 +91,7 @@ export class RedisShutdown implements OnApplicationShutdown {
 }
 ```
 
-### 메시지 브로커 연결 해제 (예: Bull Queue)
+### Releasing a Message Broker Connection (e.g. Bull Queue)
 
 ```typescript
 // src/common/infrastructure/queue-shutdown.ts
@@ -109,12 +109,12 @@ export class QueueShutdown implements OnApplicationShutdown {
 }
 ```
 
-## 헬스체크 연동
+## Health-Check Integration
 
-로드밸런서/오케스트레이터가 종료 중인 인스턴스로 새 트래픽을 보내지 않도록 readiness 상태를 전환한다.
+Switch the readiness state so the load balancer/orchestrator stops sending new traffic to an instance that's shutting down.
 
 ```typescript
-// src/common/interface/health-controller.ts — 실제 코드
+// src/common/interface/health-controller.ts — actual code
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common'
 import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
@@ -145,10 +145,10 @@ export class HealthController {
 }
 ```
 
-`Error`가 아니라 `ServiceUnavailableException`(`@nestjs/common`)을 던진다 — 전역 `HttpExceptionFilter`(`src/common/http-exception.filter.ts`)가 `HttpException`은 그대로, 일반 `Error`는 500으로 변환하기 때문에 readiness 실패를 정확히 503으로 응답하려면 `HttpException` 계열이어야 한다. [rate-limiting.md](rate-limiting.md)가 정의하는 전역 `ThrottlerGuard`가 `/health/*`에도 적용되므로 `@SkipThrottle()`로 헬스체크를 제한 대상에서 제외한다.
+It throws a `ServiceUnavailableException` (`@nestjs/common`), not an `Error` — since the global `HttpExceptionFilter` (`src/common/http-exception.filter.ts`) passes an `HttpException` through as-is but converts a plain `Error` into a 500, a readiness failure must be an `HttpException` subtype to be correctly reported as a 503. Since the global `ThrottlerGuard` defined by [rate-limiting.md](rate-limiting.md) also applies to `/health/*`, `@SkipThrottle()` excludes the health check from rate limiting.
 
 ```typescript
-// src/common/infrastructure/shutdown-state.ts — 실제 코드
+// src/common/infrastructure/shutdown-state.ts — actual code
 import { BeforeApplicationShutdown, Injectable } from '@nestjs/common'
 
 @Injectable()
@@ -165,19 +165,19 @@ export class ShutdownState implements BeforeApplicationShutdown {
 }
 ```
 
-[shared-modules.md](shared-modules.md)가 정리하듯 `common/`은 별도 모듈이 아닌 공유 유틸 디렉토리다 — `ShutdownState`를 감싸는 `@Global()` 모듈을 새로 만드는 대신, 기존 `SecretService`와 동일하게 `src/app-module.ts`의 `providers`/`controllers`에 `ShutdownState`/`HealthController`를 직접 등록한다. 다른 도메인 모듈에서도 주입이 필요해지면 그때 `@Global()` 모듈로 승격한다.
+As [shared-modules.md](shared-modules.md) explains, `common/` is a shared utility directory, not a separate module — instead of creating a new `@Global()` module to wrap `ShutdownState`, `ShutdownState`/`HealthController` are registered directly in `src/app-module.ts`'s `providers`/`controllers`, the same way as the existing `SecretService`. If another domain module later needs to inject it, promote it to a `@Global()` module at that point.
 
-## Dockerfile / 컨테이너 연동
+## Dockerfile / Container Integration
 
 ```dockerfile
-# node를 PID 1로 실행 — SIGTERM을 직접 수신
+# run node as PID 1 — receives SIGTERM directly
 CMD ["node", "dist/main.js"]
 ```
 
-- `npm run start:prod`를 사용하면 npm 프로세스가 중간에 끼어 SIGTERM 전달이 지연된다.
-- `node`를 직접 실행하여 PID 1로 SIGTERM을 즉시 수신하도록 한다.
+- Using `npm run start:prod` inserts an npm process in between, delaying SIGTERM delivery.
+- Run `node` directly so it receives SIGTERM immediately as PID 1.
 
-### Kubernetes 연동
+### Kubernetes Integration
 
 ```yaml
 # deployment.yaml
@@ -195,28 +195,28 @@ spec:
           port: 3000
 ```
 
-| 설정 | 값 | 설명 |
+| Setting | Value | Description |
 |------|---|------|
-| `terminationGracePeriodSeconds` | 30 | SIGTERM 이후 SIGKILL까지 대기 시간. 앱의 최대 요청 처리 시간보다 여유 있게 설정 |
-| `readinessProbe` | `/health/ready` | ShutdownState가 종료 상태로 전환되면 503 반환 → 로드밸런서가 트래픽 차단 |
-| `livenessProbe` | `/health/live` | 프로세스 생존 확인. 종료 중에도 200 반환 (진행 중인 요청 처리를 위해) |
+| `terminationGracePeriodSeconds` | 30 | The wait time from SIGTERM to SIGKILL. Set it with margin above the app's max request-processing time |
+| `readinessProbe` | `/health/ready` | Returns 503 once ShutdownState switches to the shutting-down state → the load balancer blocks traffic |
+| `livenessProbe` | `/health/live` | Confirms the process is alive. Returns 200 even while shutting down (to let in-flight requests finish) |
 
-### 종료 흐름 요약
+### Shutdown Flow Summary
 
 ```
-1. Kubernetes가 SIGTERM 전송
+1. Kubernetes sends SIGTERM
 2. BeforeApplicationShutdown: ShutdownState.shuttingDown = true
-3. readinessProbe 실패 → 로드밸런서가 새 트래픽 차단
-4. 진행 중인 요청 처리 완료
-5. HTTP 서버 종료
-6. OnApplicationShutdown: DB·Redis·Queue 연결 해제
-7. 프로세스 정상 종료 (exit code 0)
+3. readinessProbe fails → the load balancer blocks new traffic
+4. In-flight requests finish processing
+5. The HTTP server shuts down
+6. OnApplicationShutdown: releases the DB·Redis·Queue connections
+7. The process exits normally (exit code 0)
 ```
 
-## 원칙
+## Principles
 
-- **`enableShutdownHooks()` 필수**: main.ts에서 반드시 호출한다. 이 호출 없이는 라이프사이클 훅이 동작하지 않는다.
-- **리소스 정리는 `OnApplicationShutdown`에서**: HTTP 서버가 종료된 후 실행되므로 안전하다.
-- **readiness 전환은 `BeforeApplicationShutdown`에서**: HTTP 서버 종료 전에 새 요청 수락을 중단한다.
-- **CMD에 `node` 직접 사용**: npm/yarn wrapper 없이 SIGTERM을 즉시 수신한다.
-- **종료 로직에서 예외를 던지지 않는다**: `onApplicationShutdown`에서 예외가 발생하면 다른 모듈의 정리가 실행되지 않을 수 있다. try-catch로 감싸고 로그만 남긴다.
+- **`enableShutdownHooks()` is required**: always call it in main.ts. Without this call, the lifecycle hooks never run.
+- **Clean up resources in `OnApplicationShutdown`**: safe because it runs after the HTTP server has shut down.
+- **Switch readiness in `BeforeApplicationShutdown`**: stop accepting new requests before the HTTP server shuts down.
+- **Use `node` directly in CMD**: receives SIGTERM immediately, with no npm/yarn wrapper in between.
+- **Never throw an exception from shutdown logic**: if `onApplicationShutdown` throws, other modules' cleanup may not run. Wrap it in try-catch and just log.

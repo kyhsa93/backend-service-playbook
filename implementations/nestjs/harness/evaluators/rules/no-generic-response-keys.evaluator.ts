@@ -1,16 +1,16 @@
-// no-generic-response-keys evaluator — 목록 조회 응답의 배열 필드는 도메인
-// 복수형 명사를 사용해야 하며 `result`/`data`/`items` 같은 범용 키를 쓰지
-// 않는다 (guide: docs/architecture/api-response.md — "키 이름은 도메인 객체명
-// 복수형 ... `result`, `data`, `items` 같은 범용 키를 사용하지 않는다").
+// The no-generic-response-keys evaluator — an array field in a list-lookup response must use
+// a domain-specific plural noun, never a generic key like `result`/`data`/`items` (guide:
+// docs/architecture/api-response.md — "the key name is the plural of the domain object name
+// ... never a generic key like `result`, `data`, `items`").
 //
-// Scope: application/ 과 interface/ 레이어의 class 선언. `count: number`
-// 필드와 배열 타입(`X[]`/`Array<X>`) 필드가 함께 있는 class만 "목록 응답"
-// 시그니처로 간주한다 — count 없이 단독으로 있는 `items` 필드(예: 주문의
-// 라인 아이템 `items: OrderItem[]`)는 목록 "응답 래퍼"가 아니라 정당한 도메인
-// 필드이므로 오탐을 막기 위해 count 동반 여부로 좁힌다
-// (docs/architecture/api-response.md의 단건 조회 응답 예시 참고).
+// Scope: class declarations in the application/ and interface/ layers. Only a class that has
+// both a `count: number` field and an array-typed (`X[]`/`Array<X>`) field is treated as a
+// "list response" signature — a standalone `items` field with no count (e.g. an order's line
+// items `items: OrderItem[]`) is a legitimate domain field, not a list "response wrapper," so
+// this is narrowed to whether count is present, to avoid false positives
+// (see the single-record-lookup-response example in docs/architecture/api-response.md).
 //
-// Applicability: application/ 또는 interface/ 레이어에 이런 class가 없으면 skip.
+// Applicability: skipped if no such class exists in the application/ or interface/ layer.
 
 import * as path from 'node:path'
 import ts from 'typescript'

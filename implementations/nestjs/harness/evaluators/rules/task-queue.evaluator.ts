@@ -4,7 +4,7 @@
 // Rules:
 // - Task Controller (@TaskConsumer holder) lives in interface/ layer.
 // - Task Controller injects CommandService; not DataSource/Repository/TaskExecutionLog.
-// - Task Controller body does not call generateErrorResponse (Task context 무의미).
+// - Task Controller body does not call generateErrorResponse (meaningless in a Task context).
 // - taskType passed to @TaskConsumer is globally unique across the codebase.
 // - If @Cron or @TaskConsumer is used, AppModule imports ScheduleModule/TaskQueueModule.
 //
@@ -95,18 +95,18 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         ruleId: 'task-queue.controller.layer',
         severity: 'high',
         message: `Task Controller(@TaskConsumer 보유)가 interface/ 외 레이어(${layer})에 위치: ${rel(file)}`,
-        docRef: 'docs/architecture/scheduling.md#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어'
+        docRef: 'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
       })
       score -= 5
     }
 
-    // Rule 1b: Task Controller 파일명 suffix 컨벤션
+    // Rule 1b: the Task Controller file-name suffix convention
     if (fileHasTaskConsumer && !/-task-controller\.ts$/.test(path.basename(file))) {
       failures.push({
         ruleId: 'task-queue.controller.file-suffix',
         severity: 'medium',
         message: `@TaskConsumer 보유 파일은 *-task-controller.ts 형식이어야 함: ${rel(file)}`,
-        docRef: 'docs/architecture/scheduling.md#레이어-배치'
+        docRef: 'docs/architecture/scheduling.md#layer-placement'
       })
       score -= 2
     }
@@ -117,9 +117,9 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       const hasDataSource = params.some((p) => /\bDataSource\b/.test(p.typeText))
       const hasRepository = params.some((p) => /\bRepository<.+>/.test(p.typeText))
       const hasExecLog = params.some((p) => /\bTaskExecutionLog\b/.test(p.typeText))
-      // Service 방식 도메인은 CommandService를, @nestjs/cqrs 방식 도메인은 HTTP Controller와
-      // 동일하게 CommandBus를 직접 주입한다 — 둘 다 "Command로 위임"이라는 동일한 제약을 만족한다
-      // (scheduling.md#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어).
+      // A Service-style domain injects CommandService, while an @nestjs/cqrs-style domain
+      // injects CommandBus directly, the same as the HTTP Controller — both satisfy the same
+      // "delegate to a Command" constraint (scheduling.md, the TaskController section).
       const hasCommandService = params.some((p) => /CommandService\b|\bCommandBus\b/.test(p.typeText))
 
       if (hasDataSource) {
@@ -127,7 +127,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
           ruleId: 'task-queue.controller.no-datasource',
           severity: 'high',
           message: `Task Controller가 DataSource를 직접 주입: ${rel(file)} (CommandService 또는 idempotencyKey 옵션 사용)`,
-          docRef: 'docs/architecture/scheduling.md#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어'
+          docRef: 'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
         })
         score -= 4
       }
@@ -136,12 +136,12 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
           ruleId: 'task-queue.controller.no-repository',
           severity: 'high',
           message: `Task Controller가 Repository<Entity>를 직접 주입: ${rel(file)}`,
-          docRef: 'docs/architecture/scheduling.md#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어'
+          docRef: 'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
         })
         score -= 4
       }
 
-      // 이중 ledger 체크 (TaskExecutionLog 주입 + idempotencyKey 옵션 동시)
+      // A double-ledger check (TaskExecutionLog injected + the idempotencyKey option both at once)
       const hasIdempotencyKeyOption = /idempotencyKey\s*:/.test(content)
       if (hasExecLog && hasIdempotencyKeyOption) {
         failures.push({
@@ -161,7 +161,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         score -= 3
       }
 
-      // Rule: Task Controller 메서드에서 generateErrorResponse 사용 금지
+      // Rule: using generateErrorResponse in a Task Controller method is prohibited
       for (const m of methods) {
         if (!m.decorators.some((d) => d.name === 'TaskConsumer')) continue
         if (/\bgenerateErrorResponse\s*\(/.test(m.body)) {
@@ -176,20 +176,20 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
     }
   }
 
-  // Rule 5: taskType 전역 유일
+  // Rule 5: taskType is globally unique
   for (const [taskType, locations] of taskTypesSeen) {
     if (locations.length > 1) {
       failures.push({
         ruleId: 'task-queue.task-type.unique',
         severity: 'critical',
         message: `taskType '${taskType}'이 ${locations.length}곳에서 중복 등록됨 — ${locations.join(', ')}`,
-        docRef: 'docs/architecture/scheduling.md#taskconsumer-데코레이터'
+        docRef: 'docs/architecture/scheduling.md#taskconsumer-decorator'
       })
       score -= 6
     }
   }
 
-  // Rule 6: AppModule에 ScheduleModule.forRoot() / TaskQueueModule 등록 확인
+  // Rule 6: verify ScheduleModule.forRoot() / TaskQueueModule are registered in AppModule
   const appModule = findAppModuleFile(files)
   if (appModule) {
     const appContent = fs.readFileSync(appModule, 'utf-8')
@@ -198,7 +198,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         ruleId: 'task-queue.app-module.schedule-module',
         severity: 'critical',
         message: `@Cron 사용되는데 AppModule에 ScheduleModule.forRoot() 등록 없음 — Cron 메서드가 조용히 동작 안 함`,
-        docRef: 'docs/architecture/scheduling.md#appmodule-설정'
+        docRef: 'docs/architecture/scheduling.md#appmodule-configuration'
       })
       score -= 6
     }
@@ -207,7 +207,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         ruleId: 'task-queue.app-module.task-queue-module',
         severity: 'high',
         message: `@TaskConsumer 사용되는데 AppModule에 TaskQueueModule import 없음`,
-        docRef: 'docs/architecture/scheduling.md#appmodule-설정'
+        docRef: 'docs/architecture/scheduling.md#appmodule-configuration'
       })
       score -= 4
     }

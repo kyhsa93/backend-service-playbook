@@ -4,9 +4,9 @@ import { HandleEvent } from '@/outbox/event-handler-registry'
 import { OutboxWriter } from '@/outbox/outbox-writer'
 import { PaymentCompletedIntegrationEventV1 } from '@/payment/application/integration-event/payment-completed-integration-event'
 
-// 내부 Domain Event(PaymentCompleted)를 수신해 외부 BC용 Integration Event
-// (payment.completed.v1)로 변환해 Outbox에 적재하는 Application EventHandler.
-// Account BC가 이 Integration Event를 구독해 실제 차감(withdraw)을 수행한다.
+// An Application EventHandler that receives the internal Domain Event (PaymentCompleted),
+// converts it into an external-BC Integration Event (payment.completed.v1), and writes it to
+// the Outbox. Account BC subscribes to this Integration Event and performs the actual debit (withdraw).
 @Injectable()
 export class PaymentCompletedHandler {
   private readonly logger = new Logger(PaymentCompletedHandler.name)

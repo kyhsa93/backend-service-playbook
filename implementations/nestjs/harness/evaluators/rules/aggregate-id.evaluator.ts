@@ -34,7 +34,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
   for (const file of entityFiles) {
     const content = fs.readFileSync(file, 'utf-8')
 
-    // @PrimaryGeneratedColumn 사용 금지
+    // Using @PrimaryGeneratedColumn is prohibited
     if (/@PrimaryGeneratedColumn\s*\(/.test(content)) {
       failures.push({
         ruleId: 'aggregate-id.primary-generated-column-forbidden',
@@ -46,7 +46,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
       continue
     }
 
-    // @PrimaryColumn이 있다면 type: 'char' length: 32 확인
+    // If @PrimaryColumn exists, verify type: 'char' length: 32
     if (/@PrimaryColumn\s*\(/.test(content)) {
       const primaryColMatch = /@PrimaryColumn\s*\(([^)]*)\)/.exec(content)
       if (primaryColMatch) {
@@ -66,7 +66,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
     }
   }
 
-  // generateId() 함수 존재 여부 확인
+  // Check whether the generateId() function exists
   const generateIdFile = files.find((f) => {
     const content = fs.readFileSync(f, 'utf-8')
     return /export\s+(function\s+generateId|const\s+generateId)/.test(content)
@@ -80,9 +80,10 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
     })
     score -= penaltyFor('medium')
   } else {
-    // generateId()가 있다면 실제로 하이픈을 제거하는지 확인 — randomUUID()를 하이픈 포함 그대로
-    // 반환하면 32자리 hex 규칙(가이드) 위반. .replace(/-/g, '') 또는 .replaceAll('-', '')로
-    // 제거하는지 정규식으로 확인한다 (런타임 동작이라 AST만으로는 값 검증이 안 되므로 소스 패턴 검사).
+    // If generateId() exists, verify it actually strips the hyphens — returning randomUUID()
+    // with the hyphens intact violates the guide's 32-character hex rule. Checks via regex
+    // whether it's stripped with .replace(/-/g, '') or .replaceAll('-', '') (since this is
+    // runtime behavior that AST alone can't verify the value of, a source-pattern check is used instead).
     const content = fs.readFileSync(generateIdFile, 'utf-8')
     const stripsHyphens = /\.replace\s*\(\s*\/-\/g\s*,\s*(['"`])\1\s*\)/.test(content)
       || /\.replaceAll\s*\(\s*['"`]-['"`]\s*,\s*(['"`])\1\s*\)/.test(content)

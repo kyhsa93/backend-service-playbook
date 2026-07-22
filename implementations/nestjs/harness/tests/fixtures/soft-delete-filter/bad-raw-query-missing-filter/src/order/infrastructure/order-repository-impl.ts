@@ -15,7 +15,7 @@ export class OrderRepositoryImpl extends OrderRepository {
   }
 
   public async findOrders(query: { readonly take: number; readonly page: number }): Promise<{ orders: Order[]; count: number }> {
-    // raw SQL — TypeORM의 자동 soft-delete 필터를 우회하는데 deletedAt 필터가 없음
+    // raw SQL — bypasses TypeORM's automatic soft-delete filter, with no deletedAt filter
     const rows = await this.orderRepo.manager.query(`SELECT * FROM "order" LIMIT ${query.take} OFFSET ${query.page * query.take}`)
     return { orders: rows.map((row: { orderId: string; status: string }) => new Order({ orderId: row.orderId, status: row.status })), count: rows.length }
   }

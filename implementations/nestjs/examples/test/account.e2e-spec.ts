@@ -21,9 +21,9 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
 import { createDomainEventQueue } from './support/sqs-test-queue'
 import { createTaskQueue } from './support/task-queue-test-queue'
 
-// Outbox 드레인이 OutboxPoller(주기 폴링)+OutboxConsumer(SQS 수신)로 완전히 비동기화됨에
-// 따라, OutboxModule을 import하는 모든 e2e 스펙은 실제 SQS(LocalStack)가 필요하다 —
-// 없으면 Poller/Consumer가 매 tick 연결 실패 로그만 반복해서 쌓인다.
+// Since Outbox draining is now fully asynchronous via OutboxPoller (periodic polling) +
+// OutboxConsumer (SQS receiving), every e2e spec that imports OutboxModule needs a real SQS
+// (LocalStack) — without one, the Poller/Consumer just pile up connection-failure logs every tick.
 describe('AccountController (e2e)', () => {
   let container: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer

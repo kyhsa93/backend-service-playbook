@@ -10,9 +10,9 @@ import { PaymentErrorMessage as ErrorMessage } from '@/payment/payment-error-mes
 
 @CommandHandler(RequestRefundCommand)
 export class RequestRefundCommandHandler implements ICommandHandler<RequestRefundCommand, Refund> {
-  // RefundEligibilityService는 프레임워크 데코레이터가 없는 순수 Domain Service다.
-  // NestJS DI 컨테이너에 등록하지 않고 직접 인스턴스화해 쓴다(상태 없는 순수 판단
-  // 로직이라 매 요청 재사용에 문제가 없다).
+  // RefundEligibilityService is a plain Domain Service with no framework decorators.
+  // It's instantiated directly rather than registered in the NestJS DI container (since it's
+  // stateless, pure judgment logic, reusing it per request is fine).
   private readonly refundEligibilityService = new RefundEligibilityService()
 
   constructor(
@@ -29,26 +29,26 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
 
     const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
 
-    // 어느 한 Aggregate만으로는 내릴 수 없는 판단(원 결제 상태 + 환불 금액 비교)을
-    // Payment+Refund 두 Aggregate를 함께 로드한 이 Application 레이어가
-    // RefundEligibilityService(Domain Service)에 위임해 조율한다.
+    // This Application layer, having loaded both the Payment and Refund Aggregates together,
+    // delegates the judgment (comparing the original payment's status + the refund amount)
+    // that neither Aggregate alone could make to RefundEligibilityService (a Domain Service) to coordinate.
     const decision = this.refundEligibilityService.evaluate(payment, refund)
     if (decision.approved) {
       refund.approve({ accountId: payment.accountId, ownerId: payment.ownerId })
     } else {
-      // 환불 거부는 도메인 관점에서 유효한 상태 전이다(입력이 잘못된 것이 아니라 두
-      // Aggregate를 조율해 내린 결론) — 따라서 이 메서드는 throw하지 않고 REJECTED로
-      // 저장한 Refund를 그대로 반환한다. 인터페이스 레이어가 이를 에러가 아닌
-      // 201 + status:REJECTED로 응답한다.
+      // A refund rejection is a valid state transition from the domain's point of view (not
+      // invalid input, but a conclusion reached by coordinating both Aggregates) — so this
+      // method doesn't throw, and instead returns the Refund saved as REJECTED as-is. The
+      // interface layer responds with this as 201 + status:REJECTED, not an error.
       refund.reject(decision.reason ?? '환불 요청이 거부되었습니다.')
     }
 
     await this.transactionManager.run(async () => {
       await this.refundRepository.saveRefund(refund)
     })
-    // RefundApproved → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다.
-    // 거부된 경우에는 Domain Event가 없으므로 outbox에 적재된 것이 없다. 실제
-    // 구독·실행은 OutboxPoller/OutboxConsumer가 비동기로 처리한다.
+    // Account BC subscribes to RefundApproved → refund.approved.v1 and executes the refund credit.
+    // When rejected, there's no Domain Event, so nothing was written to the outbox. The actual
+    // subscription/execution is handled asynchronously by OutboxPoller/OutboxConsumer.
     return refund
   }
 }

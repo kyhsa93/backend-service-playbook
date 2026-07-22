@@ -5,12 +5,12 @@ import { DepositByPaymentCommand } from '@/account/application/command/deposit-b
 import { AccountRepository } from '@/account/domain/account-repository'
 import { Money } from '@/account/domain/money'
 
-// Payment BC의 payment.cancelled.v1(결제취소 보상 크레딧) 및 refund.approved.v1
-// (환불 승인 크레딧) Integration Event 둘 다에 대한 반응 유스케이스다 — 두 이벤트는
-// "이미 차감된 금액을 되돌린다"는 동일한 동작이고 referenceId(paymentId 또는
-// refundId)만 다르므로 커맨드를 하나로 재사용한다.
+// The reacting use case for both of Payment BC's payment.cancelled.v1 (a payment-cancellation
+// compensating credit) and refund.approved.v1 (a refund-approval credit) Integration Events —
+// both events perform the identical action of "reversing an amount that was already debited,"
+// differing only in referenceId (paymentId or refundId), so a single Command is reused for both.
 //
-// 멱등성은 WithdrawByPaymentCommandHandler와 동일한 이유로 Level 2 Ledger를 쓴다.
+// Idempotency uses a Level 2 Ledger, for the same reason as WithdrawByPaymentCommandHandler.
 @CommandHandler(DepositByPaymentCommand)
 export class DepositByPaymentCommandHandler implements ICommandHandler<DepositByPaymentCommand, void> {
   constructor(

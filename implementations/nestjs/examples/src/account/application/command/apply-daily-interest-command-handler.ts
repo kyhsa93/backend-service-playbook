@@ -7,10 +7,11 @@ import { AccountStatus } from '@/account/account-enum'
 
 const PAGE_SIZE = 100
 
-// account.apply-daily-interest Task Controller가 위임하는 Command다. 모든 ACTIVE
-// 계좌를 페이지 단위로 순회하며 Account.applyInterest()(Level 1 멱등성)를 호출한다 —
-// 이미 오늘 처리된 계좌는 Aggregate 내부에서 스킵되므로 여기서는 별도 조건 분기를
-// 두지 않는다(Task Controller/Command 모두 "로직 없이 위임"을 유지).
+// The Command the account.apply-daily-interest Task Controller delegates to. It paginates
+// through every ACTIVE account and calls Account.applyInterest() (Level 1 idempotency) —
+// since an account already processed today is skipped inside the Aggregate itself, no
+// separate conditional branch is added here (both the Task Controller and the Command keep
+// "delegate with no logic").
 @CommandHandler(ApplyDailyInterestCommand)
 export class ApplyDailyInterestCommandHandler implements ICommandHandler<ApplyDailyInterestCommand, number> {
   constructor(
@@ -32,8 +33,8 @@ export class ApplyDailyInterestCommandHandler implements ICommandHandler<ApplyDa
 
       for (const account of accounts) {
         const transaction = account.applyInterest(command.today)
-        // applyInterest는 ACTIVE 계좌라면 이자가 0이어도 lastInterestPaidAt을 갱신하므로
-        // (오늘 재수신된 Task가 다시 계산하지 않도록) 언제나 저장한다.
+        // applyInterest updates lastInterestPaidAt for an ACTIVE account even when the
+        // interest is 0, so it's always saved (so a Task re-received today doesn't recompute it).
         await this.transactionManager.run(async () => {
           await this.accountRepository.saveAccount(account)
         })

@@ -1,23 +1,23 @@
-# Aggregate 생성과 ID 처리
+# Aggregate Creation and ID Handling
 
-모든 Aggregate의 ID는 **UUID v4 (하이픈 제거)** 형식의 문자열을 사용한다. Aggregate 생성자에서 직접 ID를 할당한다.
+Every Aggregate's ID uses a string in **UUID v4 (hyphens removed)** format. The ID is assigned directly in the Aggregate's constructor.
 
-### ID 생성 규칙
+### ID Generation Rules
 
-- **형식**: UUID v4에서 `-`를 제거한 32자리 hex 문자열
-- **생성 위치**: Aggregate 생성자 (Domain 레이어)
-- **타입**: `string`
+- **Format**: a 32-character hex string with the `-` removed from a UUID v4
+- **Where it's generated**: the Aggregate's constructor (the Domain layer)
+- **Type**: `string`
 
 ```typescript
-// 올바른 방식
-'550e8400e29b41d4a716446655440000'   // 32자리, 하이픈 없음
+// Correct
+'550e8400e29b41d4a716446655440000'   // 32 characters, no hyphens
 
-// 잘못된 방식
-'550e8400-e29b-41d4-a716-446655440000'  // 하이픈 포함
-1, 2, 3                                  // auto-increment 숫자
+// Incorrect
+'550e8400-e29b-41d4-a716-446655440000'  // includes hyphens
+1, 2, 3                                  // auto-increment numbers
 ```
 
-### ID 생성 유틸
+### The ID Generation Utility
 
 ```typescript
 // common/generate-id.ts
@@ -28,9 +28,9 @@ export function generateId(): string {
 }
 ```
 
-`randomUUID()`를 하이픈 제거 없이 그대로 반환하면 `harness/evaluators/rules/aggregate-id.evaluator.ts`가 `aggregate-id.generate-id-raw-uuid`로 잡아낸다.
+If `randomUUID()` is returned as-is without stripping the hyphens, `harness/evaluators/rules/aggregate-id.evaluator.ts` catches it as `aggregate-id.generate-id-raw-uuid`.
 
-### Aggregate에서 사용
+### Usage in the Aggregate
 
 ```typescript
 // domain/order.ts
@@ -52,8 +52,8 @@ export class Order {
 }
 ```
 
-- 신규 생성 시: `orderId`를 생략하면 생성자에서 자동 할당
-- DB에서 복원 시: 기존 `orderId`를 그대로 전달
+- On new creation: omitting `orderId` lets the constructor assign it automatically
+- On restoring from the DB: pass through the existing `orderId` as-is
 
 ### TypeORM Entity
 
@@ -77,10 +77,10 @@ export class OrderEntity extends BaseEntity {
 }
 ```
 
-### Repository 구현체
+### Repository Implementation
 
 ```typescript
-// infrastructure/order-repository-impl.ts — save 시 Aggregate의 ID를 그대로 사용
+// infrastructure/order-repository-impl.ts — reuses the Aggregate's ID as-is when saving
 public async saveOrder(order: Order): Promise<void> {
   const manager = this.transactionManager.getManager()
   await manager.save(OrderEntity, {
@@ -94,6 +94,6 @@ public async saveOrder(order: Order): Promise<void> {
       quantity: i.quantity
     }))
   })
-  // 도메인 이벤트 outbox 저장은 domain-events.md 참조
+  // see domain-events.md for saving the domain events to the outbox
 }
 ```

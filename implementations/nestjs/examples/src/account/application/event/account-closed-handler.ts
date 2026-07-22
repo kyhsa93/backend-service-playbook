@@ -18,12 +18,12 @@ export class AccountClosedHandler {
   public async handle(event: { accountId: string; email: string; closedAt: string }): Promise<void> {
     this.logger.log({ message: '계좌 종료됨', account_id: event.accountId })
 
-    // 외부 BC용 Integration Event(account.closed.v1)를 Outbox에 적재한다.
+    // Write the external-BC Integration Event (account.closed.v1) to the Outbox.
     await this.outboxWriter.saveAll([
       new AccountClosedIntegrationEventV1(event.accountId, event.closedAt ?? new Date().toISOString())
     ])
 
-    // 알림은 best-effort다(정지 핸들러와 동일한 이유 — Integration Event 중복 발행 방지).
+    // The notification is best-effort (same reason as the suspend handler — avoids duplicate-publishing the Integration Event).
     try {
       await this.notificationService.sendEmail({
         accountId: event.accountId,

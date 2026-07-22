@@ -16,7 +16,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
   let score = 15
   const content = fs.readFileSync(dockerfilePath, 'utf-8')
 
-  // 멀티스테이지 빌드 필수
+  // A multi-stage build is required
   if (!/\bAS\s+build\b/i.test(content)) {
     failures.push({
       ruleId: 'dockerfile.multistage-required',
@@ -27,7 +27,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('critical')
   }
 
-  // npm wrapper 대신 node 직접 실행 (SIGTERM 처리)
+  // Run node directly instead of the npm wrapper (for SIGTERM handling)
   if (/^\s*CMD\s+\[?"npm/m.test(content) || /^\s*CMD\s+\[?"yarn/m.test(content)) {
     failures.push({
       ruleId: 'dockerfile.cmd-node-direct',
@@ -38,7 +38,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('high')
   }
 
-  // devDependencies 제외한 프로덕션 설치
+  // A production install that excludes devDependencies
   if (!/npm\s+ci\s+--omit=dev|npm\s+install\s+--production|npm\s+ci\s+--only=production/m.test(content)) {
     failures.push({
       ruleId: 'dockerfile.prod-deps-only',
@@ -49,11 +49,11 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('medium')
   }
 
-  // non-root 사용자로 실행 — 마지막 스테이지에 USER 지시문이 있는지 확인한다.
-  // 스테이지가 여러 개면 각 스테이지 블록 중 마지막 것만 봐야 한다(Build 스테이지에는
-  // USER가 없는 게 정상이라 전체 content에서 찾으면 오탐 없이 통과해버릴 위험이 없어
-  // 단순 검사로 충분하다 — production 스테이지 자체가 USER 없이 CMD/ENTRYPOINT로
-  // 끝나면 지금 이 파일처럼 놓치기 쉽다).
+  // Run as a non-root user — checks whether the last stage has a USER directive.
+  // If there are multiple stages, only the last stage block should be looked at (a Build stage
+  // having no USER is normal, so a simple check across the whole content carries no
+  // false-positive risk — if the production stage itself ends with CMD/ENTRYPOINT with no
+  // USER, it's easy to miss, just like it is in this very file).
   if (!/^\s*USER\s+\S+/m.test(content)) {
     failures.push({
       ruleId: 'dockerfile.non-root-user-missing',
@@ -64,7 +64,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('high')
   }
 
-  // .dockerignore 존재
+  // A .dockerignore exists
   if (!fs.existsSync(path.join(root, '.dockerignore'))) {
     failures.push({
       ruleId: 'dockerfile.dockerignore-missing',
@@ -75,14 +75,14 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     score -= penaltyFor('medium')
   }
 
-  // HEALTHCHECK — container.md는 "필수는 아니다"(오케스트레이터가 liveness/readiness를
-  // 이미 담당하는 배포 환경)라고 명시하므로 medium(권장)으로만 잡는다.
+  // HEALTHCHECK — since container.md states it's "not strictly required" (in a deployment
+  // environment where an orchestrator already handles liveness/readiness), this is only flagged as medium (a recommendation).
   if (!/^\s*HEALTHCHECK\b/m.test(content)) {
     failures.push({
       ruleId: 'dockerfile.healthcheck-missing',
       severity: 'medium',
       message: 'HEALTHCHECK 지시문이 없습니다. 단독 docker run 환경에서 컨테이너 헬스 상태를 바로 확인하려면 필요합니다(오케스트레이터가 liveness/readiness probe를 이미 담당한다면 생략 가능).',
-      docRef: `${DOC}#원칙`
+      docRef: `${DOC}#principles`
     })
     score -= penaltyFor('medium')
   }

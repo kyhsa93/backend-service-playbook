@@ -1,16 +1,17 @@
-// Card BC를 동기 조회하기 위한 Adapter 인터페이스 (Anticorruption Layer).
-// 결제 시 카드가 존재하고 활성 상태인지, 연결된 accountId가 무엇인지를 현재 요청 안에서
-// 즉시 확인해야 하므로 동기 Adapter 패턴을 사용한다(cross-domain-communication.md 참조).
-// Card BC가 이미 Account를 이 방식으로 조회하고 있는 것과 동일한 패턴을 Payment가
-// 재사용한다 — 반환 타입은 Card BC의 CardStatus enum을 노출하지 않고 Payment BC가
-// 필요로 하는 최소 형태로 번역한다. 실제 번역은 infrastructure/card-adapter-impl.ts.
+// The Adapter interface (an Anticorruption Layer) for synchronously querying the Card BC.
+// The synchronous Adapter pattern is used since, at payment time, whether the card exists and
+// is active, and what its linked accountId is, must be confirmed immediately within the
+// current request (see cross-domain-communication.md). Payment reuses the same pattern Card
+// BC already uses to query Account — the return type translates it into the minimal shape
+// Payment BC needs, without exposing Card BC's CardStatus enum. The actual translation happens
+// in infrastructure/card-adapter-impl.ts.
 export abstract class CardAdapter {
   abstract findCard(query: {
     readonly cardId: string
     readonly ownerId: string
   }): Promise<{ cardId: string; accountId: string; active: boolean } | null>
 
-  // payment.send-card-statements Task가 통계를 낼 대상(모든 ACTIVE 카드)을 얻기 위한
-  // 배치 전용 조회다. findCard()와 달리 특정 ownerId 스코프가 없다.
+  // A batch-only query for the payment.send-card-statements Task to get its target set (every
+  // ACTIVE card) to generate statements for. Unlike findCard(), it has no specific ownerId scope.
   abstract findActiveCards(): Promise<{ cardId: string; accountId: string; ownerId: string }[]>
 }

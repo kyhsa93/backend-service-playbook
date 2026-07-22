@@ -4,10 +4,10 @@ import {
   SQSClient
 } from '@aws-sdk/client-sqs'
 
-// support/sqs-test-queue.ts(Domain Event 큐)와 같은 목적 — localstack/init-tasks.sh와
-// 동일한 구성(FIFO + DLQ 우선 생성 → RedrivePolicy로 연결, maxReceiveCount=3)을 SDK
-// 호출로 재현한다. Testcontainers LocalstackContainer는 로컬 init 스크립트를 마운트하지
-// 않으므로 테스트 코드에서 직접 만든다.
+// Serves the same purpose as support/sqs-test-queue.ts (the Domain Event queue) —
+// reproduces via SDK calls the same setup as localstack/init-tasks.sh (FIFO + create the DLQ
+// first → attach it via RedrivePolicy, maxReceiveCount=3). Since the Testcontainers
+// LocalstackContainer doesn't mount the local init script, it's created directly in the test code.
 export async function createTaskQueue(endpoint: string): Promise<string> {
   const client = new SQSClient({
     region: 'us-east-1',

@@ -7,9 +7,9 @@ import { parseImports, readSourceFile } from '../shared/ast-utils'
 
 const REPOSITORY_IMPL_NAME = /Repository(Impl)?$/
 
-// application 레이어에서 `new XxxRepository(...)` / `new XxxRepositoryImpl(...)` 형태로
-// 직접 인스턴스화하는지 확인한다. `new Money(...)`, `new Error(...)` 같은 무관한 `new` 표현식은
-// 대상 클래스명이 Repository로 끝나지 않으므로 매치되지 않는다.
+// Checks whether the application layer directly instantiates something shaped like `new
+// XxxRepository(...)` / `new XxxRepositoryImpl(...)`. An unrelated `new` expression like `new
+// Money(...)`, `new Error(...)` doesn't match, since the target class name doesn't end in Repository.
 function instantiatesRepositoryDirectly(filePath: string): boolean {
   const sf = readSourceFile(filePath)
   let found = false

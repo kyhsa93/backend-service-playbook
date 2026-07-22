@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// Card BC 테이블 추가 — Account에 이어 두 번째 Bounded Context.
-// accountId는 Account Aggregate를 ID로만 참조하는 외부 참조이며, BC 경계를 넘는
-// FK 제약은 두지 않는다 (각 BC가 독립적으로 배포·변경될 수 있어야 하므로).
+// Adds the Card BC tables — the second Bounded Context after Account.
+// accountId is an external reference to the Account Aggregate by ID only, with no FK
+// constraint crossing the BC boundary (since each BC must be independently deployable/changeable).
 export class AddCard1700000000001 implements MigrationInterface {
   name = 'AddCard1700000000001'
 

@@ -16,7 +16,7 @@ export class IssueCardCommandHandler implements ICommandHandler<IssueCardCommand
   ) {}
 
   public async execute(command: IssueCardCommand): Promise<Card> {
-    // 동기 Adapter(ACL)로 연결 계좌를 조회 — 응답(발급 가부)에 필요하므로 동기 호출.
+    // Look up the linked account via the synchronous Adapter (ACL) — a synchronous call since it's needed for the response (whether issuance is allowed).
     const account = await this.accountAdapter.findAccount({
       accountId: command.accountId,
       ownerId: command.requesterId

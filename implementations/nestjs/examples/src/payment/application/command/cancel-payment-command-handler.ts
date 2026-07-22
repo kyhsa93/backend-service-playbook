@@ -23,8 +23,8 @@ export class CancelPaymentCommandHandler implements ICommandHandler<CancelPaymen
     await this.transactionManager.run(async () => {
       await this.paymentRepository.savePayment(payment)
     })
-    // PaymentCancelled → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다.
-    // 실제 구독·실행은 OutboxPoller/OutboxConsumer가 비동기로 처리한다.
+    // Account BC subscribes to PaymentCancelled → payment.cancelled.v1 and executes the compensating credit.
+    // The actual subscription/execution is handled asynchronously by OutboxPoller/OutboxConsumer.
     return payment
   }
 }

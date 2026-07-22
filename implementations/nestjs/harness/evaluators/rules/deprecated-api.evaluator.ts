@@ -5,8 +5,8 @@
 //   name should declare @ApiOperation({ deprecated: true }) so Swagger/OpenAPI
 //   surfaces the flag to clients.
 // - Endpoints that already use @ApiOperation({ deprecated: true }) should
-//   ideally include a logger.warn call in their handler body (guide: warn 레벨
-//   예시). This is informational, not a hard failure.
+//   ideally include a logger.warn call in their handler body (guide: the warn-level example).
+//   This is informational, not a hard failure.
 //
 // Scope: only /interface/ layer files.
 
@@ -61,8 +61,8 @@ export function evaluateDeprecatedApi(root: string): EvaluatorResult {
   // (the actual traversal uses extractMethods).
   void HTTP_METHOD_DECORATOR
 
-  // Applicability: interface/ 레이어에 HTTP Controller가 하나라도 없으면
-  // deprecated API 관점에서 평가할 대상이 없음.
+  // Applicability: if there's not a single HTTP Controller in the interface/ layer, there's
+  // nothing to evaluate from a deprecated-API standpoint.
   const interfaceFilesWithHttp = files.filter(
     (f) => classifyLayer(f) === 'interface'
       && /@(?:Get|Post|Put|Patch|Delete)\s*\(/.test(fs.readFileSync(f, 'utf-8'))
@@ -79,9 +79,10 @@ export function evaluateDeprecatedApi(root: string): EvaluatorResult {
 
     const methods = extractMethods(content)
     for (const m of methods) {
-      // URL/메서드명에 'deprecated' 또는 'legacy' 토큰이 있을 때만 의심한다 — API
-      // versioning 토큰(`/v1/` 등)은 대상이 아니다. 이 가이드는 API versioning 자체를
-      // 쓰지 않으므로 /v1/이 있다면 그 자체가 가이드 위반이지 deprecated-api 관심사가 아니다.
+      // Only suspects it when the URL/method name has a 'deprecated' or 'legacy' token — an
+      // API-versioning token (`/v1/`, etc.) isn't a target. Since this guide doesn't use API
+      // versioning itself, if `/v1/` is present, that itself is a guide violation, not a
+      // deprecated-api concern.
       const looksDeprecated = /deprecated|legacy/i.test(m.routePath) || /deprecated|legacy/i.test(m.name)
       const hasApiOperationDeprecated = /@ApiOperation\s*\(\s*\{[^}]*deprecated\s*:\s*true/.test(m.block)
 

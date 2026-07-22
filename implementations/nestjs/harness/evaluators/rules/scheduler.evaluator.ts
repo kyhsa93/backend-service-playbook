@@ -2,10 +2,10 @@
 //
 // Rules:
 // - Scheduler with @Cron or @Interval lives in infrastructure/ (exception:
-//   task-queue/ & outbox/ framework-internal files) — scheduling.md: "단순
-//   @Cron 하나"도 유효한 선택지지만 위치는 항상 Infrastructure. @Interval도
-//   같은 이유(다중 인스턴스에서 타이머가 프레임워크 스케줄러로 동작)로 동일
-//   원칙이 적용된다 ("Interval / Timeout" 섹션).
+//   task-queue/ & outbox/ framework-internal files) — scheduling.md: even "a single plain
+//   @Cron" is a valid choice, but its placement is always Infrastructure. The same principle
+//   applies to @Interval for the same reason (across multiple instances, the timer behaves as
+//   the framework scheduler) (the "Interval / Timeout" section).
 // - Every @Cron/@Interval method body has try-catch or uses runSafely() helper.
 // - Domain Scheduler must NOT inject Repository/DataSource/CommandService
 //   (should only depend on TaskQueue abstract).
@@ -51,7 +51,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
     const layer = classifyLayer(file)
     const frameworkInternal = isFrameworkInternal(file)
 
-    // Rule 1: Scheduler가 infrastructure/ 레이어에 위치 (framework-internal은 예외)
+    // Rule 1: the Scheduler is located in the infrastructure/ layer (framework-internal is an exception)
     if (!frameworkInternal && layer !== 'infrastructure') {
       failures.push({
         ruleId: 'scheduler.layer',
@@ -62,7 +62,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       score -= 4
     }
 
-    // Rule 1b: Scheduler 파일명 suffix 컨벤션 (framework-internal 제외)
+    // Rule 1b: the Scheduler file-name suffix convention (framework-internal excluded)
     if (!frameworkInternal && !/-scheduler\.ts$/.test(path.basename(file))) {
       failures.push({
         ruleId: 'scheduler.file-suffix',
@@ -72,7 +72,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       score -= 2
     }
 
-    // Rule 2: 각 @Cron/@Interval 메서드가 try-catch 또는 runSafely로 감싸져 있어야 함
+    // Rule 2: each @Cron/@Interval method must be wrapped in try-catch or use runSafely
     for (const m of cronMethods) {
       const hasTry = /\btry\s*\{/.test(m.body)
       const hasCatch = /\bcatch\s*\(/.test(m.body)
@@ -88,7 +88,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       }
     }
 
-    // Rule 3: 도메인 Scheduler는 TaskQueue.enqueue만 호출 (비즈니스 DI 금지)
+    // Rule 3: a domain Scheduler only calls TaskQueue.enqueue (injecting business dependencies is prohibited)
     if (!frameworkInternal) {
       const params = listConstructorParams(file)
       if (params.some((p) => /\bRepository<.+>/.test(p.typeText))) {

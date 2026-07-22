@@ -1,21 +1,21 @@
-// no-cross-aggregate-reference evaluator — 하나의 Aggregate는 다른 Aggregate를
-// 직접 참조하지 않는다. ID 참조(paymentId: string)만 허용하고, 다른 Aggregate의
-// 타입 자체를 필드/생성자 파라미터로 갖지 않는다
-// (guide: ../../docs/architecture/domain-service.md — "하나의 Aggregate는 다른
-// Aggregate를 직접 참조하지 않는다" / RefundEligibilityService 예시).
+// The no-cross-aggregate-reference evaluator — one Aggregate never directly references
+// another Aggregate. Only an ID reference (paymentId: string) is allowed; it never holds
+// another Aggregate's type itself as a field/constructor parameter
+// (guide: ../../docs/architecture/domain-service.md — "one Aggregate never directly
+// references another Aggregate" / the RefundEligibilityService example).
 //
-// Scope: src/payment/domain/ — 같은 Bounded Context 안에 두 개의 독립된
-// Aggregate(Payment, Refund)가 공존하는 이 저장소의 실제 케이스로 좁힌다.
-// 다른 언어/도메인에 일반화하려면 '한 BC의 domain/ 안에 서로 다른 Aggregate
-// 파일이 여럿 있을 때 서로를 import하지 않는가'로 확장할 수 있지만, 지금은
-// 오탐 위험을 최소화하기 위해 실제 검증된 두 파일만 정밀 대상으로 삼는다.
+// Scope: src/payment/domain/ — narrowed to this repo's actual case where two independent
+// Aggregates (Payment, Refund) coexist within the same Bounded Context.
+// To generalize to other languages/domains, this could be extended to "when a BC's domain/
+// has multiple different Aggregate files, do they import each other" — but for now, to
+// minimize false-positive risk, only these two actually-verified files are precisely targeted.
 //
-// Check: payment.ts가 refund.ts에서 `Refund` 타입을 import하지 않고,
-// refund.ts가 payment.ts에서 `Payment` 타입을 import하지 않는지 — import
-// 구문(named import) 기준의 정밀 검사다. 주석 안의 "Payment"/"Refund" 언급이나
-// PaymentStatus/PaymentErrorMessage 같은 동명이 아닌 식별자는 대상이 아니다.
+// Check: verifies precisely, based on the import statement (a named import), that payment.ts
+// never imports the `Refund` type from refund.ts, and refund.ts never imports the `Payment`
+// type from payment.ts. Mentions of "Payment"/"Refund" inside a comment, or non-matching
+// identifiers like PaymentStatus/PaymentErrorMessage, aren't targets.
 //
-// Applicability: src/payment/domain/payment.ts와 refund.ts가 모두 존재할 때만 실행.
+// Applicability: runs only when both src/payment/domain/payment.ts and refund.ts exist.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'

@@ -1,9 +1,9 @@
-# 데이터베이스 쿼리 패턴
+# Database Query Patterns
 
-### TypeORM 쿼리 스타일 — Repository 구현체에서만 DB 접근
+### TypeORM Query Style — DB Access Only in the Repository Implementation
 
 ```typescript
-// find (목록) — QueryBuilder 사용
+// find (list) — using QueryBuilder
 const qb = this.orderRepo.createQueryBuilder('order')
   .leftJoinAndSelect('order.items', 'item')
   .orderBy('order.orderId', 'DESC')
@@ -13,30 +13,30 @@ const qb = this.orderRepo.createQueryBuilder('order')
 if (query.status?.length) qb.andWhere('order.status IN (:...status)', { status: query.status })
 if (query.keyword) qb.andWhere('order.description LIKE :keyword', { keyword: `%${query.keyword}%` })
 
-// find + count (페이지네이션) — 키 이름은 도메인 객체명 복수형으로
+// find + count (pagination) — key name is the plural of the domain object name
 const [rows, count] = await qb.getManyAndCount()
 return { orders: rows.map((row) => toDomain(row)), count }
 ```
 
-### `.then()` 체이닝 — 단건 조회 및 변환에 선호
+### `.then()` Chaining — Preferred for Single-Record Lookup and Conversion
 
 ```typescript
-// 단건 조회 — take: 1 + pop() 패턴
+// single-record lookup — the take: 1 + pop() pattern
 const order = await this.orderRepository
   .findOrders({ orderId, take: 1, page: 0 })
   .then((result) => result.orders.pop())
 if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
 
-// 수정 — 조회 후 Aggregate 도메인 메서드 호출, save로 저장
+// update — fetch, then call the Aggregate's domain method, then save
 order.cancel(reason)
 await this.orderRepository.saveOrder(order)
 ```
 
-### 트랜잭션 — AsyncLocalStorage 패턴
+### Transactions — the AsyncLocalStorage Pattern
 
-여러 Repository에 걸친 쓰기 작업을 하나의 트랜잭션으로 묶는다. AsyncLocalStorage를 사용하여 트랜잭션 클라이언트를 암묵적으로 전파한다.
+Bind write operations spanning multiple Repositories into a single transaction. Use AsyncLocalStorage to implicitly propagate the transaction client.
 
-#### TransactionManager (infrastructure 레이어)
+#### TransactionManager (infrastructure layer)
 
 ```typescript
 // database/transaction-manager.ts
@@ -50,23 +50,23 @@ const transactionStorage = new AsyncLocalStorage<EntityManager>()
 export class TransactionManager {
   constructor(private readonly dataSource: DataSource) {}
 
-  // 트랜잭션 내에서 콜백을 실행한다
+  // runs the callback inside a transaction
   public async run<T>(fn: () => Promise<T>): Promise<T> {
     return this.dataSource.transaction((manager) =>
       transactionStorage.run(manager, fn)
     )
   }
 
-  // 트랜잭션 컨텍스트가 있으면 tx manager, 없으면 기본 manager를 반환한다
+  // returns the tx manager if there's a transaction context, otherwise the default manager
   public getManager(): EntityManager {
     return transactionStorage.getStore() ?? this.dataSource.manager
   }
 }
 ```
 
-#### Repository 구현체에서 사용
+#### Usage in the Repository implementation
 
-Repository 구현체는 `this.transactionManager.getManager()`를 사용하여 트랜잭션 컨텍스트를 자동으로 전파받는다.
+The Repository implementation uses `this.transactionManager.getManager()` to automatically receive the propagated transaction context.
 
 ```typescript
 // infrastructure/order-repository-impl.ts
@@ -86,9 +86,9 @@ export class OrderRepositoryImpl extends OrderRepository {
 }
 ```
 
-#### Command Handler에서 사용 — 실제 코드(계좌 간 송금)
+#### Usage in a Command Handler — actual code (transferring money between accounts)
 
-여러 Repository 저장(정확히는 같은 `AccountRepository`의 서로 다른 두 Account 인스턴스)을 하나의 트랜잭션으로 묶어야 하는 실제 유스케이스는 계좌 간 송금이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. 이 Handler는 기존 `TransactionManager`를 그대로 재사용한다 — 새 인프라가 필요 없다.
+The real use case that requires binding multiple Repository saves (specifically, two different Account instances of the same `AccountRepository`) into a single transaction is transferring money between accounts — if the withdrawal-account save and the deposit-account save each committed independently, a failure mode arises where "the withdrawal was applied but the deposit was lost." This Handler simply reuses the existing `TransactionManager` — no new infrastructure is needed.
 
 ```typescript
 // application/command/transfer-command-handler.ts
@@ -100,11 +100,11 @@ export class TransferCommandHandler implements ICommandHandler<TransferCommand, 
   ) {}
 
   public async execute(command: TransferCommand): Promise<TransferResult> {
-    // ... source/target 로드, TransferEligibilityService로 판단 ...
+    // ... load source/target, judge via TransferEligibilityService ...
     const sourceTransaction = source.withdraw(amount, transferId)
     const targetTransaction = target.deposit(amount, transferId)
 
-    // 두 계좌 저장 모두 같은 트랜잭션 안에서 실행 — 하나라도 예외가 나면 전체 롤백
+    // both account saves run inside the same transaction — if either throws, everything rolls back
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(source)
       await this.accountRepository.saveAccount(target)
@@ -115,18 +115,18 @@ export class TransferCommandHandler implements ICommandHandler<TransferCommand, 
 }
 ```
 
-#### 단일 Repository 호출
+#### A single Repository call
 
 ```typescript
 public async createOrder(command: CreateOrderCommand): Promise<void> {
   const order = new Order({ ... })
-  await this.orderRepository.saveOrder(order)  // 내부에서 outbox 저장 포함
+  await this.orderRepository.saveOrder(order)  // includes saving to the outbox internally
 }
 ```
 
-#### Repository 내부의 멀티스텝 쓰기
+#### A multi-step write inside a Repository
 
-하나의 Repository 구현체 내부에서 여러 테이블을 조작할 때는 `transactionManager.getManager()`를 사용한다. 트랜잭션 컨텍스트가 있으면 해당 트랜잭션 안에서, 없으면 기본 manager로 실행된다.
+When a single Repository implementation manipulates multiple tables internally, use `transactionManager.getManager()`. If a transaction context exists, it runs inside that transaction; otherwise it runs with the default manager.
 
 ```typescript
 // infrastructure/order-repository-impl.ts
@@ -137,7 +137,7 @@ public async deleteOrder(orderId: string): Promise<void> {
 }
 ```
 
-### 동적 where 조건 — QueryBuilder 조건부 체이닝
+### Dynamic Where Conditions — QueryBuilder Conditional Chaining
 
 ```typescript
 const qb = this.orderRepo.createQueryBuilder('order')
@@ -147,15 +147,15 @@ if (query.email) qb.andWhere('order.email LIKE :email', { email: `%${query.email
 if (query.name) qb.andWhere('order.name LIKE :name', { name: `%${query.name}%` })
 ```
 
-### 네이밍 컨벤션
+### Naming Convention
 
-- TypeORM Entity 프로퍼티명: **camelCase** 사용
-- `order.orderId` (O) / `order.order_id` (X)
-- DB 컬럼명이 snake_case인 경우 `@Column({ name: 'order_id' })`로 매핑
+- TypeORM Entity property names: use **camelCase**
+- `order.orderId` (correct) / `order.order_id` (wrong)
+- If the DB column name is snake_case, map it with `@Column({ name: 'order_id' })`
 
-### Entity 공통 컬럼 — createdAt, updatedAt, deletedAt
+### Common Entity Columns — createdAt, updatedAt, deletedAt
 
-모든 TypeORM Entity는 `createdAt`, `updatedAt`, `deletedAt` 컬럼을 포함한다. 공통 컬럼은 `BaseEntity`를 상속하여 적용한다.
+Every TypeORM Entity includes `createdAt`, `updatedAt`, and `deletedAt` columns. Apply the common columns by extending `BaseEntity`.
 
 ```typescript
 // database/base.entity.ts
@@ -173,7 +173,7 @@ export abstract class BaseEntity {
 }
 ```
 
-모든 Entity는 `BaseEntity`를 상속한다:
+Every Entity extends `BaseEntity`:
 
 ```typescript
 // infrastructure/entity/order.entity.ts
@@ -200,40 +200,40 @@ export class OrderEntity extends BaseEntity {
 
 ### Soft Delete
 
-데이터 삭제 시 실제 삭제(hard delete)가 아닌 `deletedAt`에 타임스탬프를 기록하는 soft delete를 사용한다.
+When deleting data, use soft delete — recording a timestamp in `deletedAt` — instead of an actual (hard) delete.
 
-#### TypeORM 설정
+#### TypeORM Configuration
 
-`@DeleteDateColumn()`이 선언된 Entity는 TypeORM의 `softDelete` / `softRemove` 메서드를 사용하면 자동으로 `deletedAt`이 설정된다. `find` 계열 메서드는 `deletedAt IS NULL` 조건을 자동 적용한다.
+For an Entity with `@DeleteDateColumn()` declared, `deletedAt` is set automatically when TypeORM's `softDelete` / `softRemove` methods are used. `find`-family methods automatically apply a `deletedAt IS NULL` condition.
 
-#### Repository 구현체에서의 삭제
+#### Deleting in the Repository Implementation
 
 ```typescript
-// 올바른 방식 — soft delete
+// Correct — soft delete
 public async deleteOrder(orderId: string): Promise<void> {
   const manager = this.transactionManager.getManager()
   await manager.softDelete(OrderEntity, { orderId })
 }
 
-// 잘못된 방식 — hard delete
+// Incorrect — hard delete
 public async deleteOrder(orderId: string): Promise<void> {
   const manager = this.transactionManager.getManager()
-  await manager.delete(OrderEntity, { orderId })  // 실제 삭제 — 사용 금지
+  await manager.delete(OrderEntity, { orderId })  // an actual delete — prohibited
 }
 ```
 
-#### 삭제된 데이터 조회가 필요한 경우
+#### When You Need to Query Deleted Data
 
 ```typescript
-// withDeleted 옵션으로 삭제된 데이터 포함 조회
+// query including deleted data via the withDeleted option
 const qb = this.orderRepo.createQueryBuilder('order')
   .withDeleted()
   .andWhere('order.orderId = :orderId', { orderId })
 ```
 
-#### 하위 엔티티 cascade soft delete
+#### Cascading Soft Delete to Child Entities
 
-하위 엔티티도 함께 soft delete해야 하는 경우, Repository 구현체 내부에서 명시적으로 처리한다:
+When child entities also need to be soft-deleted, handle it explicitly inside the Repository implementation:
 
 ```typescript
 public async deleteOrder(orderId: string): Promise<void> {
@@ -243,41 +243,41 @@ public async deleteOrder(orderId: string): Promise<void> {
 }
 ```
 
-`harness/evaluators/rules/soft-delete-filter.evaluator.ts`가 Repository 구현체(`*-repository-impl.ts`)의 `find` 메서드가 soft-delete 컬럼(`@DeleteDateColumn` 또는 `BaseEntity` 상속)이 없는 Entity를 조회하면 `soft-delete-filter.entity-not-soft-deletable`로, raw SQL(`.query()`)이 soft-delete 가능한 Entity를 `deletedAt IS NULL` 필터 없이 조회하면(TypeORM의 자동 필터를 우회) `soft-delete-filter.raw-query-missing-filter`로 잡아낸다.
+`harness/evaluators/rules/soft-delete-filter.evaluator.ts` flags it as `soft-delete-filter.entity-not-soft-deletable` if a Repository implementation's (`*-repository-impl.ts`) `find` method queries an Entity without a soft-delete column (no `@DeleteDateColumn` or `BaseEntity` inheritance), and as `soft-delete-filter.raw-query-missing-filter` if raw SQL (`.query()`) queries a soft-deletable Entity without a `deletedAt IS NULL` filter (bypassing TypeORM's automatic filter).
 
-### 마이그레이션 — TypeORM CLI
+### Migrations — the TypeORM CLI
 
-스키마 변경은 TypeORM 마이그레이션으로 관리한다. Entity를 수정한 후 마이그레이션 파일을 생성하고, 배포 시 실행한다.
+Manage schema changes via TypeORM migrations. After modifying an Entity, generate a migration file and run it at deploy time.
 
-#### 디렉토리 구조
+#### Directory Structure
 
 ```
 src/
   database/
-    migrations/                      # 마이그레이션 파일
+    migrations/                      # migration files
       1712345678901-create-order.ts
       1712345678902-add-order-status.ts
-    data-source.ts                   # CLI와 앱 모두에서 사용하는 DataSource
+    data-source.ts                   # the DataSource used by both the CLI and the app
 ```
 
-#### 마이그레이션 명령어
+#### Migration Commands
 
 ```bash
-# 마이그레이션 생성 — Entity 변경 사항을 감지하여 자동 생성
+# generate a migration — auto-generated by detecting Entity changes
 npx typeorm migration:generate src/database/migrations/create-order -d src/database/data-source.ts
 
-# 마이그레이션 실행
+# run migrations
 npx typeorm migration:run -d src/database/data-source.ts
 
-# 마이그레이션 롤백 (마지막 1개)
+# roll back a migration (the last one)
 npx typeorm migration:revert -d src/database/data-source.ts
 ```
 
-#### 원칙
+#### Principles
 
-- **Entity 수정 후 반드시 마이그레이션 생성**: `synchronize: true`는 개발 환경에서만 사용하고, 운영 환경에서는 마이그레이션으로 스키마를 관리한다.
-- **마이그레이션 파일은 커밋에 포함**: 자동 생성된 파일을 검토한 후 커밋한다.
-- **롤백 가능한 마이그레이션 작성**: `up()`과 `down()` 모두 구현한다.
-- **데이터 마이그레이션은 별도 파일**: 스키마 변경과 데이터 변환을 같은 마이그레이션에 넣지 않는다.
+- **Always generate a migration after modifying an Entity**: use `synchronize: true` only in the development environment; manage the schema via migrations in production.
+- **Include migration files in the commit**: review an auto-generated file before committing it.
+- **Write migrations that can be rolled back**: implement both `up()` and `down()`.
+- **Data migrations go in a separate file**: don't put a schema change and a data transformation in the same migration.
 
-`harness/evaluators/rules/no-orm-autosync-in-prod-config.evaluator.ts`가 `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})`의 `synchronize`가 리터럴 `true`로 하드코딩되어 있으면 `no-orm-autosync-in-prod-config.synchronize-hardcoded-true`로, `NODE_ENV === 'production'`처럼 운영 환경일 때 오히려 true로 평가되는 조건식이면 `no-orm-autosync-in-prod-config.synchronize-true-in-production`으로 잡아낸다.
+`harness/evaluators/rules/no-orm-autosync-in-prod-config.evaluator.ts` flags it as `no-orm-autosync-in-prod-config.synchronize-hardcoded-true` if `synchronize` in `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})` is hardcoded to the literal `true`, and as `no-orm-autosync-in-prod-config.synchronize-true-in-production` if it's a conditional expression like `NODE_ENV === 'production'` that evaluates to true precisely in production.

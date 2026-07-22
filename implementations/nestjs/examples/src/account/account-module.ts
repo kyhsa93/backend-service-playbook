@@ -54,20 +54,20 @@ import { AuthModule } from '@/auth/auth-module'
     ReactivateAccountCommandHandler,
     CloseAccountCommandHandler,
     TransferCommandHandler,
-    // Payment BC의 Integration Event(payment.completed.v1 / payment.cancelled.v1 /
-    // refund.approved.v1)에 대한 반응 Command Handler
+    // Command Handlers reacting to Payment BC's Integration Events (payment.completed.v1 /
+    // payment.cancelled.v1 / refund.approved.v1)
     WithdrawByPaymentCommandHandler,
     DepositByPaymentCommandHandler,
-    // account.apply-daily-interest Task가 위임하는 Command Handler
+    // The Command Handler the account.apply-daily-interest Task delegates to
     ApplyDailyInterestCommandHandler,
     // Query Handlers
     GetAccountQueryHandler,
     GetTransactionsQueryHandler,
-    // Integration Event 수신부 (외부 BC → Account)
+    // The Integration Event receiving end (external BC → Account)
     AccountIntegrationEventController,
-    // Task 입력 어댑터 — @TaskConsumer 메서드
+    // The Task input adapter — @TaskConsumer methods
     AccountTaskController,
-    // Cron → TaskQueue.enqueue만 수행 (Infrastructure 레이어)
+    // Only Cron → TaskQueue.enqueue (Infrastructure layer)
     AccountInterestScheduler,
     // Event Handlers
     AccountCreatedHandler,
@@ -79,14 +79,14 @@ import { AuthModule } from '@/auth/auth-module'
     AccountClosedHandler,
     // Repositories
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
-    // Query 구현체
+    // The Query implementation
     { provide: AccountQuery, useClass: AccountQueryImpl },
-    // Technical Service — SES 이메일 발송 (Account 전용, 다른 도메인이 필요로 하면 그때 공유 여부 재검토)
+    // A Technical Service — SES email sending (Account-only; revisit whether to share it if another domain needs it)
     { provide: NotificationService, useClass: NotificationServiceImpl },
     SesClientProvider
   ],
-  // 다른 BC(Card)가 Adapter(ACL)를 통해 계좌를 동기 조회할 수 있도록 읽기 서비스만 공개한다.
-  // Repository·도메인 객체는 공개하지 않는다.
+  // Only the read service is exposed, so another BC (Card) can synchronously look up an
+  // account via an Adapter (ACL). The Repository and domain objects are never exposed.
   exports: [AccountQuery]
 })
 export class AccountModule implements OnModuleInit {
@@ -102,9 +102,9 @@ export class AccountModule implements OnModuleInit {
     private readonly accountClosedHandler: AccountClosedHandler
   ) {}
 
-  // 자기 도메인이 발행하는 Domain Event(OutboxConsumer가 SQS에서 수신했을 때 호출할
-  // 핸들러)와, Payment BC가 발행하는 Integration Event 수신부를 모두 같은 공유
-  // EventHandlerRegistry에 등록한다 — 도메인별 전용 Relay 파일은 두지 않는다.
+  // Registers both this domain's own Domain Event handlers (called when the OutboxConsumer
+  // receives them from SQS) and the receiving end for Payment BC's Integration Events into
+  // the same shared EventHandlerRegistry — no per-domain dedicated Relay file is kept.
   onModuleInit(): void {
     this.registry.register('AccountCreated', (payload) => this.accountCreatedHandler.handle(payload as never))
     this.registry.register('MoneyDeposited', (payload) => this.moneyDepositedHandler.handle(payload as never))
@@ -114,9 +114,9 @@ export class AccountModule implements OnModuleInit {
     this.registry.register('AccountReactivated', (payload) => this.accountReactivatedHandler.handle(payload as never))
     this.registry.register('AccountClosed', (payload) => this.accountClosedHandler.handle(payload as never))
 
-    // Payment BC가 발행하는 Integration Event를 자기 수신부에 연결한다. CardModule이
-    // account.suspended.v1/account.closed.v1을 구독하는 것과 동일한 패턴 —
-    // 등록만 추가되며 Card 관련 등록·코드는 건드리지 않는다.
+    // Wires Payment BC's published Integration Events to this domain's own receiving end.
+    // The same pattern as CardModule subscribing to account.suspended.v1/account.closed.v1 —
+    // this only adds a registration and doesn't touch any Card-related registration or code.
     this.registry.register('payment.completed.v1', (payload) =>
       this.accountIntegrationEventController.onPaymentCompleted(payload as never))
     this.registry.register('payment.cancelled.v1', (payload) =>

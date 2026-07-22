@@ -10,14 +10,14 @@ import { TaskQueue } from './task-queue'
 import { TaskQueueConsumer } from './task-queue-consumer'
 import { TaskQueueOutbox } from './task-queue-outbox'
 
-// 공유 Task Queue 인프라 모듈(outbox/outbox-module.ts와 같은 모양) — task_outbox
-// 테이블 하나 + Relay 하나 + Consumer 하나 + 레지스트리 하나를 갖는다. @Global이지만
-// 활성화를 위해 AppModule의 imports에 한 번은 포함되어야 한다
-// (docs/architecture/scheduling.md#appmodule-설정).
+// The shared Task Queue infrastructure module (shaped like outbox/outbox-module.ts) — it has
+// one task_outbox table + one Relay + one Consumer + one registry. It's @Global, but it still
+// needs to be included once in AppModule's imports to activate it
+// (see docs/architecture/scheduling.md, the AppModule Configuration section).
 //
-// OutboxModule을 import하는 이유는 SQS_CLIENT(같은 SDK 커넥션)를 재사용하기 위함이다 —
-// OutboxModule이 이미 @Global이라 명시적 import 없이도 주입은 되지만, 이 모듈이
-// SQS_CLIENT에 실제로 의존하고 있음을 코드에서 드러내기 위해 명시한다.
+// The reason it imports OutboxModule is to reuse SQS_CLIENT (the same SDK connection) —
+// OutboxModule is already @Global so injection would work even without an explicit import, but
+// it's stated explicitly to make it visible in the code that this module actually depends on SQS_CLIENT.
 @Global()
 @Module({
   imports: [TypeOrmModule.forFeature([TaskOutboxEntity]), OutboxModule],

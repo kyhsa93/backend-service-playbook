@@ -1,64 +1,64 @@
-# Harness — nestjs-playbook 가이드 규칙 linter
+# Harness — nestjs-playbook guide-rule linter
 
-`docs/`의 가이드 규칙 중 **기계 검증 가능한 항목**을 외부 NestJS 프로젝트에 적용하는 정적 분석 도구.
-각 evaluator는 TypeScript AST·파일 경로·정규식을 조합해 규칙 위반을 검출한다.
+A static analysis tool that applies the **mechanically verifiable items** among `docs/`'s guide rules to an external NestJS project.
+Each evaluator combines the TypeScript AST, file paths, and regular expressions to detect rule violations.
 
-## 설계 원칙
+## Design Principles
 
-harness 전체(5개 언어 공통)의 설계 원칙은 루트 [`../../../docs/harness.md`](../../../docs/harness.md)를 따른다 — 요약하면: **harness는 아키텍처 규칙 준수 능력을 평가하지, 비즈니스 로직의 정답 여부를 평가하지 않는다.** `examples/`의 Account 도메인은 설명용 샘플일 뿐이며, 어떤 evaluator도 특정 업무 도메인 지식(계좌 정지/재개 규칙 등)을 필수 전제로 삼으면 안 된다. 새 evaluator를 추가하기 전에 반드시 그 문서를 먼저 읽는다.
+The design principles for the harness overall (shared across all 5 languages) follow the root [`../../../docs/harness.md`](../../../docs/harness.md) — in short: **the harness evaluates the ability to follow architectural rules, not whether the business logic is "correct."** The Account domain in `examples/` is just an illustrative sample, and no evaluator may treat knowledge of a specific business domain (e.g. account suspend/resume rules) as a hard prerequisite. Always read that document before adding a new evaluator.
 
 ## Coverage
 
-하네스가 어떤 가이드 규칙을 자동 검증하는지는 [`COVERAGE.md`](./COVERAGE.md)를 참고한다.
+See [`COVERAGE.md`](./COVERAGE.md) for which guide rules the harness automatically verifies.
 
-가이드 규칙은 다음 세 가지로 구분된다.
+Guide rules are divided into three categories.
 
-- **Auto-check**: evaluator로 자동 검증
-- **Manual**: 코드 리뷰/설계 리뷰로 확인
-- **Gap**: 아직 하네스에 구현되지 않은 검증 항목
+- **Auto-check**: automatically verified by an evaluator
+- **Manual**: confirmed via code review/design review
+- **Gap**: a verification item not yet implemented in the harness
 
-새 규칙을 가이드에 추가하거나 수정할 때는 다음 중 하나를 반드시 수행한다.
+When adding or changing a rule in the guide, always do one of the following.
 
-1. evaluator 추가 또는 기존 evaluator 확장
-2. `COVERAGE.md`에 Manual 또는 Gap으로 명시
+1. Add a new evaluator, or extend an existing one
+2. Mark it explicitly as Manual or Gap in `COVERAGE.md`
 
-이 과정을 통해 가이드와 하네스의 동기화를 유지한다.
+This process keeps the guide and the harness in sync.
 
-## 구조
+## Structure
 
 ```
 harness/
   evaluators/
-    rules/              18개 evaluator (structure, layer-dependency, ...)
+    rules/              18 evaluators (structure, layer-dependency, ...)
     shared/             types, score, ast-utils, penalty, workspace
-    cli/run.ts          CLI 엔트리
+    cli/run.ts          CLI entry point
   tests/
-    fixtures/<name>/<case>/   회귀 fixture (expected.json 기반)
-    run-fixtures.ts           러너
+    fixtures/<name>/<case>/   regression fixtures (expected.json-based)
+    run-fixtures.ts           the runner
   package.json · tsconfig.json
 ```
 
-## 설치
+## Installation
 
 ```bash
 cd harness
 npm install
 ```
 
-## 사용
+## Usage
 
 ```bash
-# 대상 NestJS 프로젝트 전체 평가
+# Evaluate an entire target NestJS project
 npm run evaluate -- /path/to/your-nestjs-project
 
-# 특정 evaluator만
+# Only specific evaluators
 npm run evaluate -- /path/to/project --only=structure,layer-dependency,task-queue
 
-# 파일 출력
+# Output to a file
 npm run evaluate -- /path/to/project --out=report.json
 ```
 
-출력(JSON):
+Output (JSON):
 
 ```json
 {
@@ -80,77 +80,77 @@ npm run evaluate -- /path/to/project --out=report.json
 }
 ```
 
-각 failure의 `docRef`는 해당 규칙을 설명하는 가이드 문서 상대 경로. 에이전트·개발자는 이 링크를 열어 수정 방향을 확인한다.
+Each failure's `docRef` is the relative path to the guide document explaining that rule. Agents/developers open this link to figure out how to fix it.
 
-## Evaluator 목록
+## Evaluator List
 
-| 이름 | 역할 | maxScore |
+| Name | Role | maxScore |
 |------|------|----------|
-| `structure` | 4레이어 디렉토리 + `src/task-queue/` 조건부 | 25 |
-| `layer-dependency` | Domain에 NestJS/TypeORM 금지 등 | 25 |
-| `repository-pattern` | abstract class 여부, 직접 인스턴스화 금지 | 25 |
-| `repository-naming` | `src/<domain>/domain/*-repository.ts`의 abstract 메서드 네이밍 — `find...By...`/`findAll`/`count*`/bare `save`/bare `delete`/`update*` 금지 (블록리스트) | 15 *(auto-gated)* |
-| `controller-path` | `@Controller('create…')` 같은 동사 prefix 금지 | 25 |
-| `checklist` | `docs/checklist.md` 기반 기계 룰 모음 | 100 |
-| `cqrs-pattern` | `command/`·`query/` 분리, Query에서 Repository 미사용 | 25 |
-| `error-handling` | Domain/Application 둘 다 throw new Error 금지(raw 문자열, ErrorMessage enum 참조 강제), Domain HttpException 금지, `<domain>-error-code.ts` 존재/네이밍/메시지 1:1, `generateErrorResponse` 3-튜플, 전역 예외 필터의 에러 응답 객체가 정확히 4개 필드(statusCode/code/message/error) | 25 |
-| `test-presence` | `test/` 또는 `*.spec.ts` 존재 | 25 |
-| `dto-validation` | DTO에 `class-validator` 데코레이터 부착 | 25 |
-| `task-queue` | `@TaskConsumer` 사용 시 Interface 레이어, CommandService 주입 등 | 20 *(auto-gated)* |
-| `scheduler` | `@Cron`/`@Interval` 사용 시 Infrastructure 레이어, try-catch | 15 *(auto-gated)* |
-| `deprecated-api` | deprecated/legacy 경로에 `@ApiOperation({ deprecated: true })` | 10 *(auto-gated)* |
-| `module-di-ast` | `@Module`에 providers 배열 존재 | 25 |
-| `import-graph` | domain → infrastructure import 금지 | 25 |
-| `domain-event-outbox` | Aggregate 이벤트 발행 시 Outbox 모듈/Repository saveAll/clearEvents 준수, Application(단 `application/event/` 예외)에서 이벤트 직접 생성·OutboxWriter 참조 금지, `@HandleEvent`는 `application/event/<event>-handler.ts`, `@HandleIntegrationEvent`는 `interface/integration-event/<domain>-integration-event-controller.ts`, `EventBus.publish()` 직접 호출 금지 | 15 *(auto-gated)* |
-| `build` | `tsc --noEmit` 실행 (tsconfig 존재 시) | 25 *(auto-gated)* |
-| `test-run` | `npm test` 실행 (`HARNESS_ENABLE_TEST_RUN=1`) | 20 *(opt-in)* |
-| `secret-manager` | `src/config/*.config.ts`에서 민감 키(`*_PASSWORD` · `*_SECRET` · `*_API_KEY` · `*_TOKEN`)를 `process.env`로만 받으면 실패. `NODE_ENV` 분기 · `SecretsManagerClient` · `SecretService` 중 하나 필요 | 10 *(auto-gated)* |
-| `e2e-quality` | `test/*.e2e-spec.ts` 존재 시: `jest.mock()` 사용 금지(high, -4/건), nock·testcontainers 패키지 미보유 시 경고(medium, -2) | 20 *(auto-gated)* |
-| `dockerfile` | `Dockerfile` 존재 시: 멀티스테이지(AS build) 필수, `CMD ["node", ...]` 직접 실행, `npm ci --omit=dev`, `.dockerignore` 존재, `HEALTHCHECK` 존재(권장) | 15 *(auto-gated)* |
-| `local-dev` | `docker-compose.yml` 존재 시: postgres 서비스, healthcheck, env 파일 존재 | 15 *(auto-gated)* |
-| `rate-limiting` | `@nestjs/throttler` 사용 시: `ThrottlerModule.forRoot/Async`, `APP_GUARD + ThrottlerGuard`가 실제 `@Module` providers 또는 컨트롤러 `@UseGuards()`로 적용(dead code 아님) | 10 *(auto-gated)* |
-| `pagination` | pagination DTO(page+take 필드) 존재 시: `@Type(() => Number)` + `@IsInt()` 데코레이터, 범용 응답 키(data/items/result) 금지 | 15 *(auto-gated)* |
-| `database-queries` | `*.entity.ts` 존재 시: `@PrimaryGeneratedColumn()` 금지, `BaseEntity` 상속, `TransactionManager` 파일 존재 | 20 *(auto-gated)* |
-| `domain-service` | `src/<domain>/domain/*-service.ts` 존재 시: `@Injectable()` 및 NestJS 라우팅 데코레이터 금지 | 10 *(auto-gated)* |
-| `aggregate-id` | `*.entity.ts` 존재 시: `@PrimaryGeneratedColumn()` 금지, `@PrimaryColumn({ type: 'char', length: 32 })` 필수, `generateId()` 함수 존재 및 `randomUUID()`의 하이픈 제거(`.replace(/-/g, '')`) 여부 | 15 *(auto-gated)* |
-| `logging` | `console.*` 직접 사용 금지, 빈/미처리 catch 블록 금지, domain/ 레이어에서 `@nestjs/common` Logger·winston·console 로깅 전면 금지 | 15 |
-| `domain-layer-isolation` | `src/<domain>/domain/*.ts`가 (자기/타 도메인 불문) application/infrastructure/interface를 import하면 실패 — 경로 기반, import-graph보다 넓은 범위 | 20 *(auto-gated)* |
-| `interface-no-infrastructure` | domain-bearing BC의 `interface/**/*.ts`(Controller)가 `infrastructure/`를 직접 import하면 실패 — Application을 거쳐야 함. `common/`처럼 `domain/`이 없는 횡단 관심사 모듈은 대상 아님 | 15 *(auto-gated)* |
-| `aggregate-no-public-setters` | `src/<domain>/domain/*.ts` class에 public `set x(...)` accessor 또는 public 비-readonly 필드가 있으면 실패 | 15 *(auto-gated)* |
-| `no-cross-aggregate-reference` | `src/payment/domain/`의 `payment.ts`/`refund.ts`가 서로를 타입으로 import(named import)하면 실패 — ID 참조만 허용 | 10 *(auto-gated)* |
-| `no-cross-bc-repository-in-application` | `application/**/*.ts`가 다른 BC의 `domain/*-repository.ts`를 직접 import하면 실패 — Adapter(ACL) 경유 필요 | 15 *(auto-gated)* |
-| `soft-delete-filter` | `*-repository-impl.ts`의 `find` 메서드가 soft-delete 불가능한(BaseEntity 미상속·`@DeleteDateColumn` 없음) Entity를 조회하면 실패, raw SQL(`.query()`)이 soft-delete 가능한 Entity를 `deletedAt IS NULL` 필터 없이 조회하면 실패 | 15 *(auto-gated)* |
-| `no-generic-response-keys` | application/interface 레이어 class에 `count: number`와 나란히 있는 배열 필드가 `result`/`data`/`items`로 명명되면 실패 — 도메인 복수형 명사 강제 | 15 |
-| `query-handler-no-raw-aggregate` | `save<Noun>(param: Type)` 시그니처로 동적 추출한 Aggregate 타입명을 Query 인터페이스/QueryHandler/Controller의 `Promise<X>` 반환 타입·`IQueryHandler<Q, R>`의 R이 그대로 반환하면 실패 — 전용 Result/DTO 강제 | 15 *(auto-gated)* |
-| `no-cross-bc-domain-import` | `src/<bc>/domain/*.ts`가 다른 BC의 `domain/*`를 직접 import하면 실패 — 다른 Aggregate는 ID 참조만 허용(객체 참조 금지), BC 경계를 넘는 경우까지 확장 | 15 *(auto-gated)* |
-| `no-orm-autosync-in-prod-config` | `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})`의 `synchronize`가 리터럴 `true`이거나 `NODE_ENV === 'production'`일 때 true로 평가되면 실패 | 10 *(auto-gated)* |
+| `structure` | 4-layer directories + `src/task-queue/` conditionally | 25 |
+| `layer-dependency` | e.g. NestJS/TypeORM prohibited in Domain | 25 |
+| `repository-pattern` | Whether it's an abstract class, no direct instantiation | 25 |
+| `repository-naming` | Abstract method naming in `src/<domain>/domain/*-repository.ts` — prohibits `find...By...`/`findAll`/`count*`/bare `save`/bare `delete`/`update*` (blocklist) | 15 *(auto-gated)* |
+| `controller-path` | Prohibits verb prefixes like `@Controller('create…')` | 25 |
+| `checklist` | A collection of mechanical rules based on `docs/checklist.md` | 100 |
+| `cqrs-pattern` | `command/`·`query/` separation, no Repository usage in Query | 25 |
+| `error-handling` | Prohibits `throw new Error` with a raw string in both Domain/Application (enforces referencing an ErrorMessage enum), prohibits HttpException in Domain, requires `<domain>-error-code.ts` existence/naming/1:1 message mapping, `generateErrorResponse` 3-tuple, the global exception filter's error response object has exactly 4 fields (statusCode/code/message/error) | 25 |
+| `test-presence` | `test/` or `*.spec.ts` exists | 25 |
+| `dto-validation` | `class-validator` decorators attached to DTOs | 25 |
+| `task-queue` | When `@TaskConsumer` is used: Interface layer, CommandService injection, etc. | 20 *(auto-gated)* |
+| `scheduler` | When `@Cron`/`@Interval` is used: Infrastructure layer, try-catch | 15 *(auto-gated)* |
+| `deprecated-api` | `@ApiOperation({ deprecated: true })` on deprecated/legacy paths | 10 *(auto-gated)* |
+| `module-di-ast` | A providers array exists in `@Module` | 25 |
+| `import-graph` | Prohibits domain → infrastructure imports | 25 |
+| `domain-event-outbox` | When an Aggregate publishes an event, compliance with the Outbox module/Repository saveAll/clearEvents; prohibits creating events directly or referencing OutboxWriter in Application (except `application/event/`); `@HandleEvent` must be in `application/event/<event>-handler.ts`, `@HandleIntegrationEvent` in `interface/integration-event/<domain>-integration-event-controller.ts`; prohibits calling `EventBus.publish()` directly | 15 *(auto-gated)* |
+| `build` | Runs `tsc --noEmit` (if tsconfig exists) | 25 *(auto-gated)* |
+| `test-run` | Runs `npm test` (`HARNESS_ENABLE_TEST_RUN=1`) | 20 *(opt-in)* |
+| `secret-manager` | Fails if a sensitive key (`*_PASSWORD` · `*_SECRET` · `*_API_KEY` · `*_TOKEN`) in `src/config/*.config.ts` is sourced only from `process.env`. Requires one of `NODE_ENV` branching · `SecretsManagerClient` · `SecretService` | 10 *(auto-gated)* |
+| `e2e-quality` | When `test/*.e2e-spec.ts` exists: prohibits using `jest.mock()` (high, -4/occurrence), warns if the nock/testcontainers package is missing (medium, -2) | 20 *(auto-gated)* |
+| `dockerfile` | When a `Dockerfile` exists: requires a multi-stage build (AS build), direct `CMD ["node", ...]` execution, `npm ci --omit=dev`, a `.dockerignore` file, a `HEALTHCHECK` (recommended) | 15 *(auto-gated)* |
+| `local-dev` | When `docker-compose.yml` exists: a postgres service, healthcheck, env file existence | 15 *(auto-gated)* |
+| `rate-limiting` | When `@nestjs/throttler` is used: `ThrottlerModule.forRoot/Async`, `APP_GUARD + ThrottlerGuard` actually applied via `@Module` providers or a controller's `@UseGuards()` (not dead code) | 10 *(auto-gated)* |
+| `pagination` | When a pagination DTO (page+take fields) exists: `@Type(() => Number)` + `@IsInt()` decorators, prohibits generic response keys (data/items/result) | 15 *(auto-gated)* |
+| `database-queries` | When `*.entity.ts` exists: prohibits `@PrimaryGeneratedColumn()`, requires extending `BaseEntity`, requires a `TransactionManager` file to exist | 20 *(auto-gated)* |
+| `domain-service` | When `src/<domain>/domain/*-service.ts` exists: prohibits `@Injectable()` and NestJS routing decorators | 10 *(auto-gated)* |
+| `aggregate-id` | When `*.entity.ts` exists: prohibits `@PrimaryGeneratedColumn()`, requires `@PrimaryColumn({ type: 'char', length: 32 })`, requires a `generateId()` function to exist and strip hyphens from `randomUUID()` (`.replace(/-/g, '')`) | 15 *(auto-gated)* |
+| `logging` | Prohibits directly using `console.*`, prohibits empty/unhandled catch blocks, entirely prohibits `@nestjs/common` Logger·winston·console logging in the domain/ layer | 15 |
+| `domain-layer-isolation` | Fails if `src/<domain>/domain/*.ts` (regardless of own or another domain) imports application/infrastructure/interface — path-based, broader scope than import-graph | 20 *(auto-gated)* |
+| `interface-no-infrastructure` | Fails if `interface/**/*.ts` (Controller) of a domain-bearing BC directly imports `infrastructure/` — it must go through Application. A cross-cutting-concern module with no `domain/`, like `common/`, is not a target | 15 *(auto-gated)* |
+| `aggregate-no-public-setters` | Fails if a class in `src/<domain>/domain/*.ts` has a public `set x(...)` accessor or a public non-readonly field | 15 *(auto-gated)* |
+| `no-cross-aggregate-reference` | Fails if `payment.ts`/`refund.ts` in `src/payment/domain/` import each other as a type (named import) — only ID references are allowed | 10 *(auto-gated)* |
+| `no-cross-bc-repository-in-application` | Fails if `application/**/*.ts` directly imports another BC's `domain/*-repository.ts` — must go through an Adapter (ACL) | 15 *(auto-gated)* |
+| `soft-delete-filter` | Fails if a `find` method in `*-repository-impl.ts` queries an Entity that can't be soft-deleted (doesn't extend BaseEntity · has no `@DeleteDateColumn`); fails if raw SQL (`.query()`) queries a soft-deletable Entity without a `deletedAt IS NULL` filter | 15 *(auto-gated)* |
+| `no-generic-response-keys` | Fails if an array field sitting alongside `count: number` in an application/interface layer class is named `result`/`data`/`items` — enforces a domain-specific plural noun | 15 |
+| `query-handler-no-raw-aggregate` | Fails if the Aggregate type name dynamically extracted from a `save<Noun>(param: Type)` signature is returned as-is as the Query interface/QueryHandler/Controller's `Promise<X>` return type or as the R in `IQueryHandler<Q, R>` — enforces a dedicated Result/DTO | 15 *(auto-gated)* |
+| `no-cross-bc-domain-import` | Fails if `src/<bc>/domain/*.ts` directly imports another BC's `domain/*` — other Aggregates may only be referenced by ID (no object references); extends to crossing BC boundaries too | 15 *(auto-gated)* |
+| `no-orm-autosync-in-prod-config` | Fails if `synchronize` in `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})` is the literal `true`, or evaluates to true when `NODE_ENV === 'production'` | 10 *(auto-gated)* |
 
-*auto-gated*: 해당 기능을 사용하는 코드가 없으면 `maxScore=0`으로 집계에서 제외.
-*opt-in*: 환경 변수 명시 시에만 실행.
+*auto-gated*: excluded from the aggregate score with `maxScore=0` if there's no code using that feature.
+*opt-in*: only runs when the environment variable is explicitly set.
 
-## Type 체크 / 회귀 테스트
+## Type Checking / Regression Tests
 
 ```bash
-npm run typecheck          # evaluator TypeScript 검증
-npm run test:evaluators    # tests/fixtures/ 기반 회귀
+npm run typecheck          # TypeScript verification of the evaluators
+npm run test:evaluators    # regression based on tests/fixtures/
 ```
 
-회귀 fixture 구조:
+Regression fixture structure:
 
 ```
 tests/fixtures/<evaluator>/<case>/
-  src/                   (최소 NestJS 소스 — 컴파일 안 해도 됨)
+  src/                   (minimal NestJS source — doesn't need to compile)
   expected.json          { name, applicable, expectedFailureRuleIds }
 ```
 
-## 점수 산정
+## Scoring
 
-- 각 evaluator는 `{ score, maxScore }` 반환.
-- `aggregate()`가 `sumScore / sumMax * 100`으로 **0–100 정규화**.
-- 적용 불가(maxScore=0) evaluator는 집계에서 제외.
-- 등급: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F < 60.
+- Each evaluator returns `{ score, maxScore }`.
+- `aggregate()` **normalizes to 0-100** via `sumScore / sumMax * 100`.
+- A not-applicable evaluator (maxScore=0) is excluded from the aggregate.
+- Grades: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F < 60.
 
-Severity → 감점 기본 매핑 (`shared/penalty.ts`):
+Default severity → penalty mapping (`shared/penalty.ts`):
 
 | severity | base penalty |
 |----------|--------------|
@@ -159,41 +159,41 @@ Severity → 감점 기본 매핑 (`shared/penalty.ts`):
 | medium   | 2 |
 | low      | 1 |
 
-## CI 통합
+## CI Integration
 
-프로젝트 `.github/workflows/`에 추가:
+Add to the project's `.github/workflows/`:
 
 ```yaml
 - run: |
     cd /path/to/harness
     npm ci
     npm run evaluate -- ${{ github.workspace }} --out=report.json
-    # 점수 임계 검사
+    # check the score threshold
     node -e "if (JSON.parse(require('fs').readFileSync('report.json')).totalScore < 80) process.exit(1)"
 ```
 
-## 기여
+## Contributing
 
-### 새 evaluator 추가
+### Adding a new evaluator
 
-1. `evaluators/rules/<name>.evaluator.ts` 작성
-   - `export function evaluate<Name>(root: string): EvaluatorResult` 시그니처
-   - 적용 대상 없으면 `{ score: 0, maxScore: 0, failures: [] }` 반환 (auto-gate)
-   - 실패엔 가능하면 `docRef`(가이드 경로) 포함
-   - 감점은 `shared/penalty.ts`의 `penaltyFor(severity)` 권장
-   - AST가 필요하면 `shared/ast-utils.ts`(`listMethodDecorators`, `listConstructorParams`, `findClassDecorator` 등)
-2. `evaluators/cli/run.ts`의 `EVALUATORS` map에 등록
-3. `evaluators/shared/score.ts`의 breakdown 라우팅에 카테고리 추가 (`architecture` / `api` / `testing` / `runtime`)
-4. `tests/fixtures/<name>/<case>/` fixture 작성 (`good` + 최소 1개 `bad-*`)
+1. Write `evaluators/rules/<name>.evaluator.ts`
+   - Signature: `export function evaluate<Name>(root: string): EvaluatorResult`
+   - Return `{ score: 0, maxScore: 0, failures: [] }` if there's nothing applicable (auto-gate)
+   - Include a `docRef` (guide path) with a failure whenever possible
+   - Use `penaltyFor(severity)` from `shared/penalty.ts` for the penalty amount when possible
+   - Use `shared/ast-utils.ts` (`listMethodDecorators`, `listConstructorParams`, `findClassDecorator`, etc.) if AST access is needed
+2. Register it in the `EVALUATORS` map in `evaluators/cli/run.ts`
+3. Add a category to the breakdown routing in `evaluators/shared/score.ts` (`architecture` / `api` / `testing` / `runtime`)
+4. Write a fixture at `tests/fixtures/<name>/<case>/` (a `good` case + at least one `bad-*` case)
 5. `npm run typecheck && npm run test:evaluators`
 
-### docRef 규약
+### `docRef` convention
 
-- 실패가 특정 문서에 대응될 때 `docRef: 'docs/architecture/<file>.md#<anchor>'` 형식.
-- 앵커는 GitHub 생성 규칙(소문자, 공백 → `-`). 한글 지원되지만 em-dash(—)는 제거되어 이중 `--` 발생 가능.
-- 작성 후 실제 렌더링 링크가 유효한지 반드시 로컬에서 확인.
+- When a failure corresponds to a specific document, use the format `docRef: 'docs/architecture/<file>.md#<anchor>'`.
+- The anchor follows GitHub's generation rule (lowercase, spaces → `-`). Non-ASCII text is supported, but an em-dash (—) is stripped, which can produce a double `--`.
+- Always verify locally after writing that the actual rendered link is valid.
 
-## 관련
+## Related
 
-- 가이드 진입점: [`CLAUDE.md`](../CLAUDE.md) (상위 루트) — 작업/키워드 → 문서 매핑.
-- 규칙 설명: `docs/architecture/*.md` — evaluator가 검증하는 원리.
+- Guide entry point: [`CLAUDE.md`](../CLAUDE.md) (parent root) — task/keyword → document mapping.
+- Rule explanations: `docs/architecture/*.md` — the principles each evaluator verifies.

@@ -51,7 +51,7 @@ describe('ApplyDailyInterestCommandHandler', () => {
     expect(creditedCount).toBe(1)
     expect(highBalance.balance.amount).toBe(1_000_100)
     expect(zeroInterest.balance.amount).toBe(100)
-    // 이자가 0이어도 lastInterestPaidAt 갱신을 위해 저장은 두 계좌 모두 호출된다.
+    // Even when the interest is 0, save is called for both accounts to update lastInterestPaidAt.
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(highBalance)
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(zeroInterest)
     expect(accountRepository.saveAccount).toHaveBeenCalledTimes(2)

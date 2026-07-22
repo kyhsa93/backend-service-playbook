@@ -1,6 +1,6 @@
 import { ThrottlerModuleOptions } from '@nestjs/throttler'
 
-// 환경 변수가 없거나 숫자로 파싱되지 않으면 기존 하드코딩 값을 기본값으로 유지한다.
+// If the environment variable is absent or doesn't parse as a number, keep the previously hardcoded value as the default.
 function getEnvInt(name: string, defaultValue: number): number {
   const raw = process.env[name]
   if (!raw) return defaultValue
@@ -8,8 +8,9 @@ function getEnvInt(name: string, defaultValue: number): number {
   return Number.isNaN(parsed) ? defaultValue : parsed
 }
 
-// short/medium/long 3단 임계값을 환경 변수로 조정 가능하게 한다 — 운영 중 값을 바꾸려면
-// 코드 변경 없이 컨테이너 환경 변수만 갱신하고 재기동하면 된다(rate-limiting.md "운영값 조정" 참고).
+// Makes the short/medium/long 3-tier thresholds adjustable via environment variables — to
+// change a value in production, just update the container's environment variable and restart,
+// with no code change (see rate-limiting.md, "Adjusting Production Values").
 export function getThrottlerConfig(): ThrottlerModuleOptions {
   return {
     throttlers: [

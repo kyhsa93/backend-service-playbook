@@ -1,11 +1,11 @@
-// auth evaluator — Controller route의 보호/공개 의도 명시 여부를 검증한다
+// The auth evaluator — verifies whether a Controller route's protected/public intent is stated explicitly
 // (guide: docs/architecture/authentication.md).
 //
-// Applicability: *-controller.ts 파일이 있으면 실행 (maxScore = 20).
+// Applicability: runs if a *-controller.ts file exists (maxScore = 20).
 //
 // Rules:
-// - Controller 클래스 또는 route method에는 @UseGuards 또는 @Public 같은 공개 의도가 있어야 한다.
-// - Auth/Jwt/Guard 관련 파일이 전혀 없으면 JWT/Bearer 인증 구성 누락으로 본다.
+// - a Controller class or route method must have @UseGuards or a public-intent marker like @Public.
+// - if there are no Auth/Jwt/Guard-related files at all, it's treated as missing JWT/Bearer authentication setup.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'

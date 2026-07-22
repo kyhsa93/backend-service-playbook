@@ -17,8 +17,8 @@ export class CreateAccountCommandHandler implements ICommandHandler<CreateAccoun
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(account)
     })
-    // Outbox 드레인은 OutboxPoller/OutboxConsumer가 독립적으로 주기 실행하며 처리한다 —
-    // Command Handler는 저장이 끝나면 그대로 반환한다.
+    // Draining the Outbox is handled independently by OutboxPoller/OutboxConsumer running on
+    // their own schedule — the Command Handler just returns once the save is done.
     return account
   }
 }

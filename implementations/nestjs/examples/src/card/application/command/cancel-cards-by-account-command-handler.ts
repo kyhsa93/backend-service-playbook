@@ -5,8 +5,8 @@ import { CancelCardsByAccountCommand } from '@/card/application/command/cancel-c
 import { CardRepository } from '@/card/domain/card-repository'
 import { CardStatus } from '@/card/card-enum'
 
-// Account BC의 account.closed.v1 Integration Event에 대한 반응 유스케이스.
-// 아직 해지되지 않은 카드(ACTIVE·SUSPENDED)만 해지하므로 재수신에 멱등하다.
+// The reacting use case for Account BC's account.closed.v1 Integration Event.
+// It's idempotent under re-receipt since it only cancels cards that aren't already cancelled (ACTIVE·SUSPENDED).
 @CommandHandler(CancelCardsByAccountCommand)
 export class CancelCardsByAccountCommandHandler implements ICommandHandler<CancelCardsByAccountCommand> {
   constructor(

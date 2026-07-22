@@ -1,6 +1,7 @@
-// Task Queue의 적재(enqueue) 계약(abstract class). Scheduler(Cron)와 Application
-// Service 둘 다 이 인터페이스만 의존한다 — 실제로는 task_outbox 테이블에 쓰는
-// TaskQueueOutbox가 유일한 구현체다(docs/architecture/scheduling.md#taskqueue--outbox-기반-구현).
+// The Task Queue's enqueue contract (abstract class). Both the Scheduler (Cron) and the
+// Application Service depend only on this interface — in practice, TaskQueueOutbox, which
+// writes to the task_outbox table, is the only implementation (see
+// docs/architecture/scheduling.md, the TaskQueue Outbox-based Implementation section).
 export type EnqueueOptions = {
   readonly groupId: string
   readonly deduplicationId: string

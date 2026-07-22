@@ -45,15 +45,16 @@ async function fetchSesMessages(endpoint: string): Promise<SesMessage[]> {
   return body.messages
 }
 
-// Scheduling(Task Queue) 인프라를 실제로 검증한다 — Cron이 직접 실행하지 않고
-// TaskQueue.enqueue만 하는 것, task_outbox → SQS FIFO(TaskOutboxRelay) → Consumer →
-// Task Controller → Command Handler 전체 경로가 실제로 동작하는지, 그리고 두 배치
-// Task(일 이자 지급, 월간 카드 사용내역 발송) 각각의 Level 1 멱등성을 확인한다.
+// Verifies the Scheduling (Task Queue) infrastructure for real — that Cron never executes
+// directly and only calls TaskQueue.enqueue, that the entire path task_outbox → SQS FIFO
+// (TaskOutboxRelay) → Consumer → Task Controller → Command Handler actually works, and
+// confirms the Level 1 idempotency of each of the two batch Tasks (daily interest payment,
+// monthly card-statement sending).
 //
-// 실제 Cron tick(자정/매월 1일)을 기다리는 대신, card.e2e-spec.ts 등 기존 e2e 테스트와
-// 같은 방식으로 Scheduler의 enqueue 메서드를 직접 호출한다(scheduling.md가 이미
-// "Scheduler는 적재만 한다"고 명시하므로, enqueue 메서드 자체가 곧 Cron 핸들러의
-// 전체 책임이다 — 별도로 감춰진 로직이 없다).
+// Instead of waiting for a real Cron tick (midnight/the 1st of the month), it calls the
+// Scheduler's enqueue method directly, the same way existing e2e tests like card.e2e-spec.ts
+// do (since scheduling.md already states "the Scheduler only enqueues," the enqueue method
+// itself is the Cron handler's entire responsibility — there's no separately hidden logic).
 describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내역 발송 (e2e)', () => {
   let postgres: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
@@ -157,9 +158,9 @@ describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내
     return response.body.balance.amount
   }
 
-  // Task Outbox → Relay(3초 폴링) → SQS FIFO → TaskQueueConsumer → Task Controller →
-  // Command Handler 전체 경로를 거치므로, 같은 프로세스 즉시 완결이 아니라 폴링으로
-  // 기다린다(card.e2e-spec.ts의 waitForCardStatus와 동일한 패턴).
+  // Goes through the entire path Task Outbox → Relay (3-second polling) → SQS FIFO →
+  // TaskQueueConsumer → Task Controller → Command Handler, so instead of finishing immediately
+  // in the same process, it waits via polling (the same pattern as card.e2e-spec.ts's waitForCardStatus).
   async function waitForBalance(accountId: string, expected: number): Promise<number> {
     for (let i = 0; i < 150; i++) {
       const balance = await getBalance(accountId)
@@ -189,8 +190,7 @@ describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내
       expect(transactions).toHaveLength(1)
       expect(transactions[0].amount).toBe(100)
 
-      // 같은 날짜 dedupId이므로 두 번째 enqueue는 재수신되어도(Level 1 멱등) 잔액이
-      // 중복 증가하지 않아야 한다.
+      // Since it's the same date's dedupId, even if the second enqueue is re-received (Level 1 idempotency), the balance must not double-increment.
       await scheduler.enqueueDailyInterest()
       await new Promise((resolve) => setTimeout(resolve, 5000))
       expect(await getBalance(accountId)).toBe(1_000_100)
@@ -217,9 +217,10 @@ describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ cardId, amount: 5000 })
 
-      // 통계 대상 기간("지난 달")과 정확히 같은 계산을 재사용해 결제 시각을 그 구간
-      // 안으로 백데이트한다 — Scheduler가 실제로 계산하는 로직과 동일해야 통계가
-      // 맞아떨어진다(테스트 편의로 로직 자체를 바꾸지 않기 위함).
+      // Reuses the exact same computation as the statistics' target period ("last month") to
+      // backdate the payment timestamp into that range — the statistics only line up if it
+      // matches the logic the Scheduler actually computes with (so the logic itself isn't
+      // changed for test convenience).
       const { statementMonth, monthStart } = computePreviousStatementMonth(new Date())
       const backdatedAt = new Date(monthStart.getTime() + 24 * 60 * 60 * 1000)
       await dataSource.getRepository(PaymentEntity).update(
@@ -252,8 +253,8 @@ describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내
       expect(matched).toBeDefined()
       expect(matched?.Destination.ToAddresses).toContain(RECIPIENT_EMAIL)
 
-      // 같은 달 dedupId이므로 두 번째 enqueue가 재처리되어도 (cardId, statementMonth)
-      // 유니크 제약 + hasSentStatement 사전 체크로 중복 row가 생기지 않아야 한다.
+      // Since it's the same month's dedupId, even if the second enqueue is reprocessed, the
+      // (cardId, statementMonth) unique constraint + the hasSentStatement precheck must prevent a duplicate row.
       await scheduler.enqueueMonthlyCardStatements()
       await new Promise((resolve) => setTimeout(resolve, 5000))
       const allStatementsForCard = await statementRepo.findBy({ cardId, statementMonth })

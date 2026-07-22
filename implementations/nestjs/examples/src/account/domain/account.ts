@@ -20,12 +20,12 @@ export type AccountDomainEvent =
   | AccountReactivated
   | AccountClosed
 
-// 일 이자율(0.01%) — account.apply-daily-interest Task가 모든 ACTIVE 계좌에 매일
-// 적용하는 고정 비율이다. 이자 = floor(balance × DAILY_INTEREST_RATE).
+// The daily interest rate (0.01%) — the fixed rate the account.apply-daily-interest Task
+// applies to every ACTIVE account each day. interest = floor(balance × DAILY_INTEREST_RATE).
 export const DAILY_INTEREST_RATE = 0.0001
 
-// UTC 기준 "같은 날짜"인지 비교한다 — lastInterestPaidAt의 하루 단위 멱등성 판단에 쓴다.
-// 서버 로컬 타임존에 의존하지 않도록 UTC 필드만 비교한다.
+// Compares whether two dates are the "same day" in UTC — used to judge lastInterestPaidAt's
+// once-per-day idempotency. Compares only the UTC fields so it doesn't depend on the server's local timezone.
 function isSameUtcDate(a: Date, b: Date): boolean {
   return a.getUTCFullYear() === b.getUTCFullYear()
     && a.getUTCMonth() === b.getUTCMonth()
@@ -121,20 +121,23 @@ export class Account {
     return transaction
   }
 
-  // 시스템 주도(system-initiated) 이자 지급. 사용자가 요청하는 유스케이스가 아니므로
-  // 기존 deposit()의 입력 검증(command 경유)을 거치지 않고 Aggregate 메서드로 직접
-  // 모델링한다(account.apply-daily-interest Task Controller가 이 메서드를 호출한다).
+  // System-initiated interest payment. Since this isn't a use case a user requests, it's
+  // modeled directly as an Aggregate method rather than going through the existing deposit()'s
+  // input validation (via a command) — the account.apply-daily-interest Task Controller calls
+  // this method.
   //
-  // 멱등성은 Level 1(본질적 멱등) 전략을 쓴다 — lastInterestPaidAt에 "오늘 이미
-  // 지급했는지"를 저장해두고, 같은 날 두 번째 호출은 그냥 무시(null 반환)한다. Task
-  // 큐가 at-least-once라 같은 날짜의 Task가 재수신되어도 잔액이 중복 증가하지 않는다
-  // (docs/architecture/scheduling.md#멱등성 — Level 1 예시와 동일한 패턴).
+  // Idempotency uses the Level 1 (inherent idempotency) strategy — lastInterestPaidAt stores
+  // whether "today's payment was already made," and a second call on the same day is simply
+  // ignored (returns null). Since the Task queue is at-least-once, the balance doesn't get
+  // double-incremented even if the same day's Task is re-received
+  // (see docs/architecture/scheduling.md#idempotency — the same pattern as the Level 1 example).
   public applyInterest(today: Date): Transaction | null {
     if (this._status !== AccountStatus.ACTIVE) return null
 
     const alreadyPaidToday = this._lastInterestPaidAt !== null && isSameUtcDate(this._lastInterestPaidAt, today)
-    // "오늘 처리했다"는 표시는 이자 금액이 0이어도 남긴다 — 같은 날 재수신된 Task가
-    // floor() 계산을 다시 하지 않고 바로 스킵되도록(Level 1 멱등성의 핵심 상태).
+    // Leave the "processed today" marker even if the interest amount is 0 — so a Task
+    // re-received on the same day skips straight through instead of recomputing floor()
+    // (this is the core state behind the Level 1 idempotency).
     this._lastInterestPaidAt = today
     if (alreadyPaidToday) return null
 

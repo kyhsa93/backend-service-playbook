@@ -1,49 +1,49 @@
-# 인증 패턴
+# Authentication Pattern
 
-### 인증 흐름
+### Authentication Flow
 
 ```
-[요청]
-1. 클라이언트: Authorization: Bearer <access_token> 헤더를 포함하여 API 호출
-2. AuthGuard: 헤더에서 토큰 추출 → AuthService.verify()로 검증
-3. AuthService: 토큰 디코딩 → 사용자 정보 반환
-4. AuthGuard: request.user에 사용자 정보 할당 → Controller로 전달
+[Request]
+1. Client: calls the API with an Authorization: Bearer <access_token> header
+2. AuthGuard: extracts the token from the header → verifies via AuthService.verify()
+3. AuthService: decodes the token → returns user information
+4. AuthGuard: assigns the user information to request.user → passes it to the Controller
 
-[가입]
-1. 클라이언트 → 서버: POST /auth/sign-up { userId, password }
-2. SignUpCommandHandler: 아이디 중복 확인 → PasswordHasher로 비밀번호 해싱 → Credential 저장
-3. 서버 → 클라이언트: 201
+[Sign-up]
+1. Client → server: POST /auth/sign-up { userId, password }
+2. SignUpCommandHandler: checks for a duplicate ID → hashes the password via PasswordHasher → saves the Credential
+3. Server → client: 201
 
-[토큰 발급]
-1. 클라이언트 → 서버: POST /auth/sign-in { userId, password }
-2. SignInCommandHandler: CredentialRepository로 저장된 해시 조회 → PasswordHasher.verify()로 비밀번호 검증
-3. 검증 성공 시 AuthService.sign()으로 Access Token 발급
-4. 서버 → 클라이언트: { accessToken }
+[Token Issuance]
+1. Client → server: POST /auth/sign-in { userId, password }
+2. SignInCommandHandler: looks up the stored hash via CredentialRepository → verifies the password via PasswordHasher.verify()
+3. On successful verification, issues an Access Token via AuthService.sign()
+4. Server → client: { accessToken }
 ```
 
-**아이디 미존재와 비밀번호 불일치는 동일한 에러 메시지(`INVALID_CREDENTIALS`)로 응답한다** — 둘을 구분해서 응답하면 공격자가 존재하는 아이디를 추측할 수 있다(user enumeration).
+**A nonexistent ID and a password mismatch respond with the same error message (`INVALID_CREDENTIALS`)** — responding differently for the two would let an attacker guess which IDs exist (user enumeration).
 
-### 디렉토리 구조
+### Directory Structure
 
 ```
 src/
   auth/
     auth-module.ts
-    auth-service.ts                        ← 토큰 발급/검증 (JWT, Technical Service)
-    auth.guard.ts                          ← Bearer 토큰 추출 및 검증 Guard
-    public.decorator.ts                    ← @Public() — 인증 불필요 라우트 명시
+    auth-service.ts                        ← issues/verifies tokens (JWT, a Technical Service)
+    auth.guard.ts                          ← the Guard that extracts and verifies the Bearer token
+    public.decorator.ts                    ← @Public() — marks a route as not requiring authentication
     domain/
-      credential.ts                        ← Credential Aggregate (credentialId, userId, passwordHash)
+      credential.ts                        ← the Credential Aggregate (credentialId, userId, passwordHash)
       credential-repository.ts             ← abstract class
       credential-find-query.ts
     application/
       command/
-        sign-up-command.ts / -handler.ts   ← 아이디 중복 확인 → 해싱 → 저장
-        sign-in-command.ts / -handler.ts   ← 해시 조회 → 검증 → 토큰 발급
+        sign-up-command.ts / -handler.ts   ← checks for a duplicate ID → hashes → saves
+        sign-in-command.ts / -handler.ts   ← looks up the hash → verifies → issues the token
       service/
-        password-hasher.ts                 ← abstract class (Technical Service)
+        password-hasher.ts                 ← abstract class (a Technical Service)
     infrastructure/
-      bcrypt-password-hasher.ts            ← PasswordHasher 구현체 (bcryptjs)
+      bcrypt-password-hasher.ts            ← the PasswordHasher implementation (bcryptjs)
       credential-repository-impl.ts
       entity/
         credential.entity.ts
@@ -55,11 +55,11 @@ src/
         sign-in-response-body.ts
 ```
 
-비밀번호 해싱은 이메일 발송(`NotificationService`)과 동일한 Technical Service 패턴이다 — `application/service/`에 ABC, `infrastructure/`에 구현체를 두어 Domain/Application이 `bcryptjs` 같은 구체 라이브러리에 의존하지 않게 한다.
+Password hashing follows the same Technical Service pattern as email sending (`NotificationService`) — an ABC in `application/service/`, an implementation in `infrastructure/`, so the Domain/Application doesn't depend on a concrete library like `bcryptjs`.
 
-### AuthGuard — Bearer 토큰 추출 및 검증
+### AuthGuard — Extracting and Verifying the Bearer Token
 
-모든 인증 필요 Controller에 클래스 레벨로 적용한다. `Authorization` 헤더에서 `Bearer` 토큰을 추출하고, `AuthService.verify()`로 검증한 뒤 `request.user`에 사용자 정보를 할당한다.
+Applied at the class level on every Controller that requires authentication. Extracts the `Bearer` token from the `Authorization` header, verifies it via `AuthService.verify()`, and assigns the user information to `request.user`.
 
 ```typescript
 // src/auth/auth.guard.ts
@@ -86,7 +86,7 @@ export class AuthGuard implements CanActivate {
 }
 ```
 
-### AuthService — 토큰 발급 및 검증
+### AuthService — Issuing and Verifying Tokens
 
 ```typescript
 // src/auth/auth-service.ts
@@ -120,14 +120,14 @@ export class AuthService {
 }
 ```
 
-### Credential — 비밀번호 검증
+### Credential — Password Verification
 
 ```typescript
 // src/auth/domain/credential.ts
 export class Credential {
   public readonly credentialId: string
   public readonly userId: string
-  public readonly passwordHash: string  // 평문 비밀번호는 domain/application 어디에도 보관하지 않는다
+  public readonly passwordHash: string  // the plaintext password is never kept anywhere in domain/application
   public readonly createdAt: Date
   // ...
   public static create(params: { userId: string; passwordHash: string }): Credential {
@@ -135,13 +135,13 @@ export class Credential {
   }
 }
 
-// src/auth/application/service/password-hasher.ts — Technical Service ABC
+// src/auth/application/service/password-hasher.ts — the Technical Service ABC
 export abstract class PasswordHasher {
   public abstract hash(plainPassword: string): Promise<string>
   public abstract verify(plainPassword: string, passwordHash: string): Promise<boolean>
 }
 
-// src/auth/infrastructure/bcrypt-password-hasher.ts — 구현체
+// src/auth/infrastructure/bcrypt-password-hasher.ts — the implementation
 import { compare, hash } from 'bcryptjs'
 
 @Injectable()
@@ -155,7 +155,7 @@ export class BcryptPasswordHasher implements PasswordHasher {
 }
 ```
 
-### SignInCommandHandler — 조회 → 검증 → 토큰 발급
+### SignInCommandHandler — Lookup → Verify → Issue the Token
 
 ```typescript
 // src/auth/application/command/sign-in-command-handler.ts
@@ -171,7 +171,7 @@ export class SignInCommandHandler implements ICommandHandler<SignInCommand, stri
     const credential = await this.credentialRepository
       .findCredentials({ userId: command.userId, take: 1, page: 0 })
       .then((r) => r.credentials.pop())
-    // 아이디 미존재와 비밀번호 불일치를 동일한 메시지로 응답 — user enumeration 방지
+    // respond with the same message for a nonexistent ID and a password mismatch — prevents user enumeration
     if (!credential) throw new Error(ErrorMessage['아이디 또는 비밀번호가 올바르지 않습니다.'])
 
     const isValid = await this.passwordHasher.verify(command.password, credential.passwordHash)
@@ -205,16 +205,16 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 export class AuthModule {}
 ```
 
-### Controller에서 사용
+### Usage in a Controller
 
 ```typescript
-// 인증 필요 Controller — 클래스 레벨에 AuthGuard 적용
+// a Controller requiring authentication — AuthGuard applied at the class level
 @Controller()
 @ApiBearerAuth('token')
 @ApiTags('Order')
 @UseGuards(AuthGuard)
 export class OrderController {
-  // request.user로 인증된 사용자 정보 접근
+  // access the authenticated user's information via request.user
   @Get('/orders')
   public async getOrders(
     @Req() req: Request & { user: { userId: string } }
@@ -223,7 +223,7 @@ export class OrderController {
 ```
 
 ```typescript
-// 인증 불필요 Controller — @Public()으로 의도를 명시 (harness의 auth 규칙이 이를 검사한다)
+// a Controller that doesn't require authentication — mark the intent explicitly with @Public() (the harness's auth rule checks for this)
 @Controller()
 @ApiTags('Auth')
 export class AuthController {
@@ -246,9 +246,9 @@ export class AuthController {
 }
 ```
 
-`@Public()`은 `SetMetadata`로 라우트에 마킹만 하고, `AuthGuard`가 `Reflector`로 이를 읽어 토큰 검증을 건너뛴다 — `AuthController`는 애초에 `@UseGuards(AuthGuard)`가 적용되지 않아 `@Public()` 없이도 동작하지만, 명시적으로 표시해두면 나중에 인증이 전역 Guard(`APP_GUARD`)로 바뀌어도 실수로 막히지 않는다. `GET /health/*` 같은 공개 엔드포인트도 동일하게 `@Public()`을 붙인다.
+`@Public()` only marks the route via `SetMetadata`, and `AuthGuard` reads it via `Reflector` to skip token verification — `AuthController` already works without `@Public()` since `@UseGuards(AuthGuard)` was never applied to it in the first place, but marking it explicitly means it won't accidentally get blocked later if authentication switches to a global Guard (`APP_GUARD`). Public endpoints like `GET /health/*` are likewise annotated with `@Public()`.
 
-### Swagger 인증 설정
+### Swagger Authentication Configuration
 
 ```typescript
 // main.ts
@@ -260,10 +260,10 @@ const document = SwaggerModule.createDocument(app,
 )
 ```
 
-- `addBearerAuth`의 두 번째 인자 `'token'`은 Controller의 `@ApiBearerAuth('token')`과 일치시킨다.
-- Swagger UI에서 Authorize 버튼으로 토큰을 입력하면 모든 요청에 `Authorization: Bearer <token>` 헤더가 자동 포함된다.
+- The second argument to `addBearerAuth`, `'token'`, is matched with the Controller's `@ApiBearerAuth('token')`.
+- Entering a token via the Authorize button in Swagger UI automatically includes an `Authorization: Bearer <token>` header on every request.
 
-### Interceptor — 로깅/변환
+### Interceptor — Logging/Transformation
 
 ```typescript
 // src/common/logging.interceptor.ts

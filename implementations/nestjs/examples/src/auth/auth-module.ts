@@ -25,7 +25,7 @@ import { AuthController } from '@/auth/interface/auth-controller'
     SignInCommandHandler,
     // Repository
     { provide: CredentialRepository, useClass: CredentialRepositoryImpl },
-    // Technical Service — 비밀번호 해싱
+    // A Technical Service — password hashing
     { provide: PasswordHasher, useClass: BcryptPasswordHasher }
   ],
   exports: [AuthService, AuthGuard]

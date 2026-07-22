@@ -1,44 +1,44 @@
-# 실전 구현 템플릿
+# Reference Implementation Template
 
-전체 도메인 하나를 본 아키텍처로 구현한 예시이다. 새 도메인을 추가할 때 이 템플릿을 복사하여 시작한다.
+An example of one complete domain implemented with this architecture. When adding a new domain, copy this template as a starting point.
 
 ---
 
-## 디렉토리 구조
+## Directory Structure
 
 ```
 src/
   config/
-    database.config.ts               ← DB 설정 팩토리
-    jwt.config.ts                    ← JWT 설정 팩토리
-    validation.config.ts             ← 환경 변수 검증
+    database.config.ts               ← DB config factory
+    jwt.config.ts                    ← JWT config factory
+    validation.config.ts             ← environment variable validation
   order/
     domain/
       order.ts                       ← Aggregate Root
       order-item.ts                  ← Value Object
       order-cancelled.ts             ← Domain Event
-      order-repository.ts            ← Repository 인터페이스 (abstract class)
-      payment-repository.ts          ← Repository 인터페이스 (abstract class)
+      order-repository.ts            ← Repository interface (abstract class)
+      payment-repository.ts          ← Repository interface (abstract class)
     application/
       adapter/
-        user-adapter.ts                ← 외부 도메인 호출 인터페이스 (abstract class)
+        user-adapter.ts                ← external-domain call interface (abstract class)
       service/
-        crypto-service.ts              ← 기술 인프라 인터페이스 (abstract class)
+        crypto-service.ts              ← technical infrastructure interface (abstract class)
       command/
-        order-command-service.ts       ← Command Service (쓰기)
+        order-command-service.ts       ← Command Service (write)
         cancel-order-command.ts
         create-order-command.ts
         delete-order-command.ts
       query/
-        order-query-service.ts         ← Query Service (읽기)
-        order-query.ts                 ← Query 인터페이스 (abstract class)
+        order-query-service.ts         ← Query Service (read)
+        order-query.ts                 ← Query interface (abstract class)
         get-order-query.ts
         get-order-result.ts
         get-orders-query.ts
         get-orders-result.ts
     interface/
       order-controller.ts
-      order-task-controller.ts       ← Task Controller (선택 — 비동기 Task가 있을 때)
+      order-task-controller.ts       ← Task Controller (optional — when there's an async Task)
       dto/
         cancel-order-request-body.ts
         create-order-request-body.ts
@@ -51,12 +51,12 @@ src/
       entity/
         order.entity.ts              ← TypeORM Entity
         order-item.entity.ts         ← TypeORM Entity
-      order-query-impl.ts             ← Query 구현체
-      order-repository-impl.ts       ← Repository 구현체
+      order-query-impl.ts             ← Query implementation
+      order-repository-impl.ts       ← Repository implementation
       payment-repository-impl.ts
-      user-adapter-impl.ts           ← 외부 도메인 Adapter 구현체
-      crypto-service-impl.ts          ← 기술 인프라 Service 구현체
-      order-cleanup-scheduler.ts     ← Scheduler (선택 — Cron이 필요할 때)
+      user-adapter-impl.ts           ← external-domain Adapter implementation
+      crypto-service-impl.ts          ← technical infrastructure Service implementation
+      order-cleanup-scheduler.ts     ← Scheduler (optional — when a Cron is needed)
     order-module.ts
     order-error-message.ts
     order-enum.ts
@@ -65,12 +65,12 @@ src/
 
 ---
 
-## Domain 레이어
+## Domain Layer
 
 ### Aggregate Root
 
 ```typescript
-// domain/order.ts — 프레임워크 무의존
+// domain/order.ts — framework-independent
 import { generateId } from '@/common/generate-id'
 import { OrderCancelled } from '@/order/domain/order-cancelled'
 import { OrderItem } from '@/order/domain/order-item'
@@ -123,7 +123,7 @@ export class Order {
 ### Value Object
 
 ```typescript
-// domain/order-item.ts — 불변 객체
+// domain/order-item.ts — an immutable object
 import { OrderErrorMessage } from '@/order/order-error-message'
 
 export class OrderItem {
@@ -167,7 +167,7 @@ export class OrderCancelled {
 }
 ```
 
-### Repository 인터페이스
+### Repository Interface
 
 ```typescript
 // domain/order-repository.ts — abstract class
@@ -203,7 +203,7 @@ export abstract class PaymentRepository {
 
 ---
 
-## Application 레이어
+## Application Layer
 
 ### Command Service
 
@@ -230,7 +230,7 @@ export class OrderCommandService {
   ) {}
 
   public async createOrder(command: CreateOrderCommand): Promise<void> {
-    // Aggregate 생성 (불변식은 생성자에서 검증)
+    // create the Aggregate (invariants are validated in the constructor)
     const order = new Order({
       userId: command.userId,
       items: command.items.map((i) => new OrderItem(i)),
@@ -239,17 +239,17 @@ export class OrderCommandService {
     await this.orderRepository.saveOrder(order)
   }
 
-  // 수정 — 조회 → Aggregate 도메인 메서드 호출 → 트랜잭션으로 save
+  // update — fetch → call the Aggregate's domain method → save via a transaction
   public async cancelOrder(command: CancelOrderCommand): Promise<void> {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
     if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
 
-    // 비즈니스 규칙은 Aggregate 내부에서 검증
+    // business rules are validated inside the Aggregate
     order.cancel(command.reason)
 
-    // Repository.saveOrder() 내부에서 Aggregate + outbox를 함께 저장
+    // Repository.saveOrder() saves the Aggregate + outbox together internally
     await this.transactionManager.run(async () => {
       await this.paymentRepository.deletePaymentMethods(order.orderId)
       await this.orderRepository.saveOrder(order)
@@ -267,7 +267,7 @@ export class OrderCommandService {
 }
 ```
 
-### Query 인터페이스
+### Query Interface
 
 ```typescript
 // application/query/order-query.ts — abstract class
@@ -411,9 +411,9 @@ export class GetOrdersResult {
 
 ---
 
-## Infrastructure 레이어
+## Infrastructure Layer
 
-### Query 구현체
+### Query Implementation
 
 ```typescript
 // infrastructure/order-query-impl.ts
@@ -475,7 +475,7 @@ export class OrderQueryImpl extends OrderQuery {
 }
 ```
 
-### Repository 구현체
+### Repository Implementation
 
 ```typescript
 // infrastructure/order-repository-impl.ts
@@ -521,7 +521,7 @@ export class OrderRepositoryImpl extends OrderRepository {
 
     const [rows, count] = await qb.getManyAndCount()
 
-    // DB 엔티티 → 도메인 Aggregate로 변환
+    // convert DB entities → domain Aggregates
     return {
       orders: rows.map((row) => new Order({
         orderId: row.orderId,
@@ -546,7 +546,7 @@ export class OrderRepositoryImpl extends OrderRepository {
         quantity: i.quantity
       }))
     })
-    // 도메인 이벤트가 있으면 outbox에 함께 저장 (같은 트랜잭션)
+    // save to the outbox together if there are domain events (same transaction)
     if (order.domainEvents.length > 0) {
       await this.outboxWriter.saveAll(order.domainEvents)
       order.clearEvents()
@@ -555,7 +555,7 @@ export class OrderRepositoryImpl extends OrderRepository {
 
   public async deleteOrder(orderId: string): Promise<void> {
     const manager = this.transactionManager.getManager()
-    // cascade soft delete: 하위 엔티티 먼저
+    // cascade soft delete: child entities first
     await manager.softDelete(OrderItemEntity, { orderId })
     await manager.softDelete(OrderEntity, { orderId })
   }
@@ -564,7 +564,7 @@ export class OrderRepositoryImpl extends OrderRepository {
 
 ---
 
-## Interface 레이어
+## Interface Layer
 
 ### Controller
 
@@ -682,7 +682,7 @@ export class OrderController {
 }
 ```
 
-### Query (Application 레이어 — 단건 조회)
+### Query (Application layer — single-record lookup)
 
 ```typescript
 // application/query/get-order-query.ts
@@ -708,7 +708,7 @@ export class DeleteOrderCommand {
 }
 ```
 
-### Result (Application 레이어)
+### Result (Application layer)
 
 ```typescript
 // application/query/get-order-result.ts
@@ -758,9 +758,9 @@ import { DeleteOrderCommand } from '@/order/application/command/delete-order-com
 export class DeleteOrderRequestParam extends DeleteOrderCommand {}
 ```
 
-### Task Controller (선택 — 비동기 Task가 있을 때)
+### Task Controller (optional — when there's an async Task)
 
-Scheduler나 다른 서비스가 적재한 Task를 `@TaskConsumer`로 구독하여 Command를 실행한다. 자세한 패턴은 [scheduling.md](architecture/scheduling.md)를 참고한다.
+Subscribes via `@TaskConsumer` to a Task enqueued by the Scheduler or another service, and executes the Command. See [scheduling.md](architecture/scheduling.md) for the detailed pattern.
 
 ```typescript
 // interface/order-task-controller.ts
@@ -775,15 +775,16 @@ export class OrderTaskController {
 
   constructor(private readonly orderCommandService: OrderCommandService) {}
 
-  // 본질적으로 멱등한 Task — 옵션 없음
+  // an inherently idempotent Task — no options needed
   @TaskConsumer('order.cleanup-expired')
   public async cleanupExpired(): Promise<void> {
     const count = await this.orderCommandService.cleanupExpiredOrders()
     this.logger.log({ message: '만료 주문 정리', cleaned_count: count })
   }
 
-  // 엔티티 단위 중복 실행 방어가 필요한 Task — idempotencyKey 옵션으로
-  // 프레임워크가 TaskExecutionLog에 ledger를 남겨 자동 skip (자세한 패턴은 scheduling.md 참고)
+  // a Task that needs protection against per-entity duplicate execution — via the
+  // idempotencyKey option, the framework leaves a ledger entry in TaskExecutionLog for auto-skip
+  // (see scheduling.md for the detailed pattern)
   @TaskConsumer('order.archive', {
     idempotencyKey: (payload: { orderId: string }) => `order.archive-${payload.orderId}`
   })
@@ -793,7 +794,7 @@ export class OrderTaskController {
 }
 ```
 
-### Scheduler (선택 — Cron이 필요할 때)
+### Scheduler (optional — when a Cron is needed)
 
 ```typescript
 // infrastructure/order-cleanup-scheduler.ts
@@ -818,7 +819,7 @@ export class OrderCleanupScheduler {
         { groupId: 'order.cleanup', deduplicationId: dedupId }
       )
     } catch (error) {
-      // @nestjs/schedule은 Cron 핸들러 예외를 삼키므로 명시적 로깅 필수
+      // @nestjs/schedule swallows exceptions from Cron handlers, so explicit logging is required
       this.logger.error({ message: '적재 실패', dedup_id: dedupId, error })
     }
   }
@@ -858,8 +859,8 @@ import { OrderTaskController } from '@/order/interface/order-task-controller'
   providers: [
     OrderCommandService,
     OrderQueryService,
-    OrderTaskController,        // Task Controller — @TaskConsumer 메서드 보유
-    OrderCleanupScheduler,      // Scheduler — Cron으로 Task 적재
+    OrderTaskController,        // Task Controller — has @TaskConsumer methods
+    OrderCleanupScheduler,      // Scheduler — enqueues a Task via Cron
     { provide: OrderQuery, useClass: OrderQueryImpl },
     { provide: OrderRepository, useClass: OrderRepositoryImpl },
     { provide: PaymentRepository, useClass: PaymentRepositoryImpl },

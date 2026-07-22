@@ -3,14 +3,14 @@ import { ModuleRef } from '@nestjs/core'
 
 import { getTaskHandler } from './task-consumer.decorator'
 
-// taskType으로 등록된 Task Controller 메서드를 찾아 호출한다. Task Controller는 반드시
-// 자기 도메인 모듈의 providers에 등록되어 있어야 ModuleRef가 인스턴스를 해결할 수 있다
-// (docs/architecture/scheduling.md#모듈-등록).
+// Finds and calls the Task Controller method registered under a taskType. A Task Controller
+// must be registered in its own domain module's providers for ModuleRef to be able to resolve
+// the instance (see docs/architecture/scheduling.md, the Module Registration section).
 //
-// 두 Task(account.apply-daily-interest, payment.send-card-statements) 모두 상태 기반의
-// 본질적 멱등성(Level 1)으로 설계되어 있어 이 레지스트리는 별도 ledger를 두지 않는다 —
-// 부작용이 큰 Task가 추가되면 EventHandlerRegistry의 방식과 동일하게 Level 2(ledger)를
-// 여기에 얹을 수 있다(scheduling.md#멱등성).
+// Both Tasks (account.apply-daily-interest, payment.send-card-statements) are designed with
+// state-based inherent idempotency (Level 1), so this registry keeps no separate ledger — if a
+// Task with significant side effects is added, a Level 2 (ledger) can be layered on here the
+// same way EventHandlerRegistry does (see scheduling.md, the Idempotency section).
 @Injectable()
 export class TaskConsumerRegistry {
   constructor(private readonly moduleRef: ModuleRef) {}

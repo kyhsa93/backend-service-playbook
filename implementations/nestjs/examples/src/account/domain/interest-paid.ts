@@ -1,8 +1,9 @@
 import { Money } from '@/account/domain/money'
 
-// MoneyDeposited와 형태는 비슷하지만 별개 이벤트다 — "사용자가 입금했다"와 "시스템이
-// 이자를 지급했다"는 다른 사실이므로, 알림 문구 등 소비 측이 독립적으로 판단할 수 있게
-// 분리한다(account/application/event/interest-paid-handler.ts 참고).
+// Similar in shape to MoneyDeposited, but a separate event — "the user made a deposit" and
+// "the system paid interest" are different facts, so it's kept separate so the consuming
+// side (notification text, etc.) can judge it independently (see
+// account/application/event/interest-paid-handler.ts).
 export class InterestPaid {
   public readonly accountId: string
   public readonly email: string
