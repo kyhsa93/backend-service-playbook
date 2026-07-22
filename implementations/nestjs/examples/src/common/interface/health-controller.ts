@@ -1,7 +1,8 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common'
-import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger'
+import { ApiInternalServerErrorResponse, ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
 
+import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
 import { Public } from '@/auth/public.decorator'
 
@@ -9,6 +10,10 @@ import { Public } from '@/auth/public.decorator'
 @ApiTags('Health')
 @SkipThrottle()
 @Public()
+// Applies to every endpoint below: none of them has a domain-specific failure mode, but the
+// process itself can still crash/throw unexpectedly (e.g. an OOM during request handling), so
+// this is the one status every endpoint in this repo can produce regardless of business logic.
+@ApiInternalServerErrorResponse({ description: 'An unexpected error occurred while handling the request.', type: ErrorResponseBody })
 export class HealthController {
   constructor(private readonly shutdownState: ShutdownState) {}
 

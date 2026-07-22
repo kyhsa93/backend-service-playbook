@@ -429,16 +429,16 @@ export class ${n.Domain}QueryImpl extends ${n.Domain}Query {
   files[`${n.domainKebab}/interface/dto/create-${n.domainKebab}-response-body.ts`] = `import { ApiProperty } from '@nestjs/swagger'
 
 export class Create${n.Domain}ResponseBody {
-  @ApiProperty()
+  @ApiProperty({ description: 'A 32-character hex string uniquely identifying the ${n.domain}.' })
   public readonly ${n.domain}Id: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ID of the user who owns this ${n.domain}.' })
   public readonly ownerId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ${n.domain} status.', enum: ['PENDING', 'ACTIVE', 'CANCELLED'] })
   public readonly status: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the ${n.domain} was created.' })
   public readonly createdAt: Date
 }
 `
@@ -447,7 +447,7 @@ export class Create${n.Domain}ResponseBody {
 import { IsString, MinLength } from 'class-validator'
 
 export class Cancel${n.Domain}RequestBody {
-  @ApiProperty({ minLength: 1 })
+  @ApiProperty({ description: 'Why the ${n.domain} is being cancelled.', minLength: 1 })
   @IsString()
   @MinLength(1)
   public readonly reason: string
@@ -458,7 +458,7 @@ export class Cancel${n.Domain}RequestBody {
 import { IsString } from 'class-validator'
 
 export class Get${n.Domain}RequestParam {
-  @ApiProperty()
+  @ApiProperty({ description: 'The ${n.domain} ID.' })
   @IsString()
   public readonly ${n.domain}Id: string
 }
@@ -467,29 +467,33 @@ export class Get${n.Domain}RequestParam {
   files[`${n.domainKebab}/interface/dto/get-${n.domainKebab}-response-body.ts`] = `import { ApiProperty } from '@nestjs/swagger'
 
 export class Get${n.Domain}ResponseBody {
-  @ApiProperty()
+  @ApiProperty({ description: 'A 32-character hex string uniquely identifying the ${n.domain}.' })
   public readonly ${n.domain}Id: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ID of the user who owns this ${n.domain}.' })
   public readonly ownerId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ${n.domain} status.', enum: ['PENDING', 'ACTIVE', 'CANCELLED'] })
   public readonly status: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the ${n.domain} was created.' })
   public readonly createdAt: Date
 }
 `
 
   files[`${n.domainKebab}/interface/${n.domainKebab}-controller.ts`] = `import {
-  Body, Controller, Get, HttpCode, Logger,
+  BadRequestException, Body, Controller, Get, HttpCode, Logger,
   NotFoundException, Param, Post, Req, UseGuards
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+  ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
+  ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
+} from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import { Request } from 'express'
 
 import { generateErrorResponse } from '@/common/generate-error-response'
+import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
 import { AuthGuard } from '@/auth/auth.guard'
 import { Cancel${n.Domain}Command } from '@/${n.domainKebab}/application/command/cancel-${n.domainKebab}-command'
 import { Create${n.Domain}Command } from '@/${n.domainKebab}/application/command/create-${n.domainKebab}-command'
@@ -508,6 +512,7 @@ type AuthenticatedRequest = Request & { user: { userId: string } }
 @Controller()
 @ApiTags('${n.Domain}')
 @ApiBearerAuth('token')
+@ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
 @UseGuards(AuthGuard)
 export class ${n.Domain}Controller {
   private readonly logger = new Logger(${n.Domain}Controller.name)
@@ -518,8 +523,12 @@ export class ${n.Domain}Controller {
   ) {}
 
   @Post('/${n.domainsKebab}')
-  @ApiOperation({ operationId: 'create${n.Domain}' })
-  @ApiCreatedResponse({ type: Create${n.Domain}ResponseBody })
+  @ApiOperation({
+    operationId: 'create${n.Domain}',
+    summary: 'Create a ${n.domain}',
+    description: 'Creates a new ${n.domain} owned by the authenticated requester, starting in PENDING status.'
+  })
+  @ApiCreatedResponse({ description: 'The ${n.domain} was created.', type: Create${n.Domain}ResponseBody })
   public async create${n.Domain}(
     @Req() req: AuthenticatedRequest
   ): Promise<Create${n.Domain}ResponseBody> {
@@ -538,8 +547,13 @@ export class ${n.Domain}Controller {
   }
 
   @Get('/${n.domainsKebab}/:${n.domain}Id')
-  @ApiOperation({ operationId: 'get${n.Domain}' })
-  @ApiOkResponse({ type: Get${n.Domain}ResponseBody })
+  @ApiOperation({
+    operationId: 'get${n.Domain}',
+    summary: 'Look up a ${n.domain}',
+    description: 'Returns the ${n.domain} only if it belongs to the authenticated requester.'
+  })
+  @ApiOkResponse({ description: 'The ${n.domain} was found.', type: Get${n.Domain}ResponseBody })
+  @ApiNotFoundResponse({ description: 'No ${n.domain} exists with the given \`${n.domain}Id\` for this requester (\`${n.DOMAIN_SCREAM}_NOT_FOUND\`).', type: ErrorResponseBody })
   public async get${n.Domain}(
     @Req() req: AuthenticatedRequest,
     @Param() param: Get${n.Domain}RequestParam
@@ -557,8 +571,14 @@ export class ${n.Domain}Controller {
 
   @Post('/${n.domainsKebab}/:${n.domain}Id/cancel')
   @HttpCode(204)
-  @ApiOperation({ operationId: 'cancel${n.Domain}' })
-  @ApiNoContentResponse()
+  @ApiOperation({
+    operationId: 'cancel${n.Domain}',
+    summary: 'Cancel a ${n.domain}',
+    description: 'Cancels a ${n.domain} that has not already been cancelled.'
+  })
+  @ApiNoContentResponse({ description: 'The ${n.domain} was cancelled.' })
+  @ApiBadRequestResponse({ description: 'The ${n.domain} is already cancelled (\`${n.DOMAIN_SCREAM}_ALREADY_CANCELLED\`).', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No ${n.domain} exists with the given \`${n.domain}Id\` (\`${n.DOMAIN_SCREAM}_NOT_FOUND\`).', type: ErrorResponseBody })
   public async cancel${n.Domain}(
     @Param('${n.domain}Id') ${n.domain}Id: string,
     @Body() body: Cancel${n.Domain}RequestBody
@@ -566,7 +586,8 @@ export class ${n.Domain}Controller {
     return this.commandBus.execute<Cancel${n.Domain}Command, void>(new Cancel${n.Domain}Command({ ...body, ${n.domain}Id })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [${n.Domain}ErrorMessage['${n.Domain} not found.'], NotFoundException, ErrorCode.${n.DOMAIN_SCREAM}_NOT_FOUND]
+        [${n.Domain}ErrorMessage['${n.Domain} not found.'], NotFoundException, ErrorCode.${n.DOMAIN_SCREAM}_NOT_FOUND],
+        [${n.Domain}ErrorMessage['The ${n.domain} is already cancelled.'], BadRequestException, ErrorCode.${n.DOMAIN_SCREAM}_ALREADY_CANCELLED]
       ])
     })
   }

@@ -179,6 +179,15 @@ function main(): void {
     + `${output.failures.length} failure(s) across ${names.length} evaluator(s), `
     + `${output.skippedEvaluators.length} skipped (not applicable)`
   )
+
+  // 'low'-severity entries are informational (e.g. checklist.meta.coverage, test-run.skipped)
+  // and present on every run regardless of code quality — only a medium/high/critical finding
+  // should fail the build, matching every other language's harness in this repo (they all
+  // exit non-zero on any FAIL; this CLI has no PASS/FAIL binary, so severity stands in for it).
+  const blocking = report.failures.filter((f) => f.severity !== 'low')
+  if (blocking.length > 0) {
+    process.exit(1)
+  }
 }
 
 main()
