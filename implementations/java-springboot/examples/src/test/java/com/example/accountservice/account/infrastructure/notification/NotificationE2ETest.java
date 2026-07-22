@@ -173,7 +173,8 @@ class NotificationE2ETest {
     }
 
     @Test
-    void 계좌_생성시_SES로_이메일이_발송되고_발송_내역이_DB와_localstack에_기록된다() throws Exception {
+    void sends_email_via_SES_on_account_creation_and_records_it_in_the_DB_and_localstack()
+            throws Exception {
         ResponseEntity<Map> response =
                 post("/accounts", OWNER_ID, Map.of("currency", "KRW", "email", RECIPIENT_EMAIL));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -198,7 +199,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    void 입금시_SES로_이메일이_발송되고_발송_내역이_DB에_기록된다() throws Exception {
+    void sends_email_via_SES_on_deposit_and_records_it_in_the_DB() throws Exception {
         ResponseEntity<Map> createResponse =
                 post("/accounts", OWNER_ID, Map.of("currency", "KRW", "email", RECIPIENT_EMAIL));
         String accountId = (String) createResponse.getBody().get("accountId");

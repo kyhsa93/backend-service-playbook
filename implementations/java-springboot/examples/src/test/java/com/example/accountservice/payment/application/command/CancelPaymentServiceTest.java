@@ -32,7 +32,7 @@ class CancelPaymentServiceTest {
     }
 
     @Test
-    void 완료된_결제를_취소하면_CANCELLED_상태로_저장한다() {
+    void cancelling_a_completed_payment_saves_it_as_CANCELLED() {
         Payment payment = Payment.create("card-1", "account-1", "owner-1", 1000);
         payment.complete();
         when(paymentRepository.findPayments(
@@ -47,7 +47,7 @@ class CancelPaymentServiceTest {
     }
 
     @Test
-    void 결제를_찾을_수_없으면_예외를_던진다() {
+    void throws_exception_when_payment_is_not_found() {
         when(paymentRepository.findPayments(new PaymentFindQuery(0, 1, "non-existent", "owner-1")))
                 .thenReturn(new PaymentsWithCount(List.of(), 0));
 
@@ -62,7 +62,7 @@ class CancelPaymentServiceTest {
     }
 
     @Test
-    void PENDING_결제를_취소하면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_cancelling_a_PENDING_payment() {
         Payment payment = Payment.create("card-1", "account-1", "owner-1", 1000);
         when(paymentRepository.findPayments(
                         new PaymentFindQuery(0, 1, payment.getPaymentId(), "owner-1")))

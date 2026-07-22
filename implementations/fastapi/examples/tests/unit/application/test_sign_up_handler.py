@@ -18,7 +18,7 @@ def password_hasher() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_execute_신규_아이디면_비밀번호를_해싱해서_저장한다(repo, password_hasher) -> None:
+async def test_execute_hashes_and_saves_the_password_for_a_new_username(repo, password_hasher) -> None:
     repo.find_credentials.return_value = ([], 0)
     password_hasher.hash.return_value = "hashed-password"
     handler = SignUpHandler(repo, password_hasher)
@@ -32,7 +32,7 @@ async def test_execute_신규_아이디면_비밀번호를_해싱해서_저장�
 
 
 @pytest.mark.asyncio
-async def test_execute_이미_존재하는_아이디면_에러를_raise하고_저장하지_않는다(repo, password_hasher) -> None:
+async def test_execute_raises_an_error_and_does_not_save_when_username_already_exists(repo, password_hasher) -> None:
     existing = Credential.create(user_id="owner-1", password_hash="existing-hash")
     repo.find_credentials.return_value = ([existing], 1)
     handler = SignUpHandler(repo, password_hasher)

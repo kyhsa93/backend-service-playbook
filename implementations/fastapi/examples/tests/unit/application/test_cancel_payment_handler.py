@@ -21,7 +21,7 @@ def make_completed_payment() -> Payment:
 
 
 @pytest.mark.asyncio
-async def test_execute_완료된_결제는_취소되고_저장된다(repo) -> None:
+async def test_execute_a_completed_payment_is_cancelled_and_saved(repo) -> None:
     payment = make_completed_payment()
     repo.find_payments.return_value = ([payment], 1)
     handler = CancelPaymentHandler(repo)
@@ -35,7 +35,7 @@ async def test_execute_완료된_결제는_취소되고_저장된다(repo) -> No
 
 
 @pytest.mark.asyncio
-async def test_execute_결제가_없으면_PaymentNotFoundError(repo) -> None:
+async def test_execute_raises_PaymentNotFoundError_when_payment_is_missing(repo) -> None:
     repo.find_payments.return_value = ([], 0)
     handler = CancelPaymentHandler(repo)
 
@@ -48,7 +48,7 @@ async def test_execute_결제가_없으면_PaymentNotFoundError(repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_대기중인_결제는_취소할_수_없다(repo) -> None:
+async def test_execute_a_pending_payment_cannot_be_cancelled(repo) -> None:
     payment = Payment.create(card_id="card-1", account_id="account-1", owner_id="owner-1", amount=5000)
     repo.find_payments.return_value = ([payment], 1)
     handler = CancelPaymentHandler(repo)

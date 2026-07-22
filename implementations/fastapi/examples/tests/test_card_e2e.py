@@ -46,11 +46,11 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
         engine = create_async_engine(url)
 
         async with engine.begin() as conn:
-            # Base.metadata에는 accounts/cards/outbox/... 가 모두 등록되어 있다 — main.py가
-            # outbox_consumer를 import하고, outbox_consumer가 build_event_handlers()를 통해
-            # Card의 infrastructure까지 import하는 체인을 타고 CardModel도 같은 Base에
-            # 등록되기 때문에 별도로 Card 모델을 import할 필요 없이 이 한 번의 create_all로
-            # cards 테이블도 생긴다.
+            # Base.metadata already has accounts/cards/outbox/... all registered — main.py
+            # imports outbox_consumer, and outbox_consumer imports all the way down into Card's
+            # infrastructure via build_event_handlers(), which registers CardModel on the same
+            # Base too, so this single create_all() also creates the cards table without
+            # needing to import the Card model separately.
             await conn.run_sync(Base.metadata.create_all)
 
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -62,9 +62,9 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
         app.dependency_overrides[get_session] = override_get_session
 
-        # main.py의 lifespan은 ASGITransport로 구동되는 이 클라이언트에서는 트리거되지
-        # 않으므로, OutboxPoller/OutboxConsumer를 이 fixture가 직접 시작한다 — 이 테스트의
-        # ephemeral Postgres/LocalStack을 가리키는 session_factory를 그대로 넘긴다.
+        # main.py's lifespan isn't triggered under this ASGITransport-driven client, so this
+        # fixture starts OutboxPoller/OutboxConsumer directly — passing through the
+        # session_factory that points at this test's ephemeral Postgres/LocalStack.
         outbox_tasks = start_outbox_background_tasks(session_factory)
 
         transport = ASGITransport(app=app)
@@ -98,7 +98,7 @@ async def issue_card(client: AsyncClient, owner_id: str, account_id: str, brand:
     return response.json()
 
 
-# --- 동기 Adapter(ACL) 흐름: POST /cards가 Account BC를 즉시 조회한다 ---
+# --- Synchronous Adapter (ACL) flow: POST /cards immediately queries the Account BC ---
 
 
 @pytest.mark.asyncio
@@ -142,8 +142,9 @@ async def test_issue_card_other_owners_account_returns_404(client: AsyncClient) 
         headers=auth_headers(OTHER_OWNER_ID),
     )
 
-    # AccountAdapter는 (account_id, owner_id) 쌍으로 조회하므로 다른 소유자에게는
-    # "계좌 없음"과 동일하게 보인다 — Account BC의 find_accounts(account_id, owner_id, take=1)와 동일한 격리 방식.
+    # AccountAdapter looks up by the (account_id, owner_id) pair, so to another owner this
+    # looks identical to "account not found" — the same isolation approach as the Account BC's
+    # find_accounts(account_id, owner_id, take=1).
     assert response.status_code == 404
 
 
@@ -197,9 +198,9 @@ async def test_get_card_other_owner_returns_404(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
-# --- 비동기 Integration Event 흐름: Account 정지/해지가 OutboxPoller/OutboxConsumer를
-# 거쳐 비동기로 Card에 전파된다 — 응답 직후에는 아직 전파되지 않았을 수 있으므로
-# wait_until()로 폴링한다(conftest.py 참고). ---
+# --- Asynchronous Integration Event flow: Account suspension/closure propagates to Card
+# asynchronously via OutboxPoller/OutboxConsumer — it may not have propagated yet right after
+# the response, so this polls with wait_until() (see conftest.py). ---
 
 
 async def get_card_status(client: AsyncClient, owner_id: str, card_id: str) -> str:
@@ -216,8 +217,9 @@ async def test_suspending_account_cascades_to_suspend_its_active_cards(client: A
     suspend_response = await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
     assert suspend_response.status_code == 204
 
-    # account.suspended.v1 Integration Event가 OutboxPoller → SQS → OutboxConsumer를 거쳐
-    # 비동기로 처리되어 카드 상태가 바뀐다 — 응답 직후 즉시 반영되어 있지 않을 수 있다.
+    # The account.suspended.v1 Integration Event is processed asynchronously through
+    # OutboxPoller -> SQS -> OutboxConsumer, changing the card's status — it may not be
+    # reflected immediately right after the response.
     await wait_until(lambda: _status_is(client, OWNER_ID, card["card_id"], "SUSPENDED"))
 
 
@@ -252,9 +254,10 @@ async def test_closing_account_cancels_already_suspended_cards_too(client: Async
     await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
     await wait_until(lambda: _status_is(client, OWNER_ID, card["card_id"], "SUSPENDED"))
 
-    # 계좌 재개(reactivate)는 카드에 영향을 주는 Integration Event를 발행하지 않는다 —
-    # 카드는 SUSPENDED 상태로 남아 있다(account.reactivated.v1 같은 이벤트 자체가 없다).
-    # Account만 다시 ACTIVE가 되므로 곧바로 두 번째 suspend가 유효한 상태 전이가 된다.
+    # Reactivating the account does not publish an Integration Event that affects the card —
+    # the card stays SUSPENDED (there's no event like account.reactivated.v1 at all).
+    # Only the Account becomes ACTIVE again, so the second suspend right after is a valid
+    # state transition.
     await client.post(f"/accounts/{account['account_id']}/reactivate", headers=auth_headers(OWNER_ID))
     await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 

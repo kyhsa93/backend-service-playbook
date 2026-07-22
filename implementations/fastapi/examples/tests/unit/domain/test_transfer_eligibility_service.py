@@ -16,7 +16,7 @@ def make_funded_account(currency: str = "KRW", amount: int = 0) -> Account:
     return account
 
 
-def test_evaluate_모든_조건을_만족하면_승인된다() -> None:
+def test_evaluate_approved_when_all_conditions_are_satisfied() -> None:
     source = make_funded_account(amount=10000)
     target = make_funded_account(amount=0)
 
@@ -26,7 +26,7 @@ def test_evaluate_모든_조건을_만족하면_승인된다() -> None:
     assert decision.error is None
 
 
-def test_evaluate_출금_계좌와_입금_계좌가_같으면_거부된다() -> None:
+def test_evaluate_rejected_when_withdrawal_and_deposit_accounts_are_the_same() -> None:
     source = make_funded_account(amount=10000)
 
     decision = TransferEligibilityService().evaluate(source, source, 5000)
@@ -35,7 +35,7 @@ def test_evaluate_출금_계좌와_입금_계좌가_같으면_거부된다() -> 
     assert isinstance(decision.error, TransferSameAccountError)
 
 
-def test_evaluate_출금_계좌가_비활성이면_거부된다() -> None:
+def test_evaluate_rejected_when_withdrawal_account_is_inactive() -> None:
     source = make_funded_account(amount=10000)
     source.suspend()
     target = make_funded_account(amount=0)
@@ -46,7 +46,7 @@ def test_evaluate_출금_계좌가_비활성이면_거부된다() -> None:
     assert isinstance(decision.error, WithdrawRequiresActiveAccountError)
 
 
-def test_evaluate_입금_계좌가_비활성이면_거부된다() -> None:
+def test_evaluate_rejected_when_deposit_account_is_inactive() -> None:
     source = make_funded_account(amount=10000)
     target = make_funded_account(amount=0)
     target.suspend()
@@ -57,7 +57,7 @@ def test_evaluate_입금_계좌가_비활성이면_거부된다() -> None:
     assert isinstance(decision.error, DepositRequiresActiveAccountError)
 
 
-def test_evaluate_통화가_일치하지_않으면_거부된다() -> None:
+def test_evaluate_rejected_when_currencies_do_not_match() -> None:
     source = make_funded_account(currency="KRW", amount=10000)
     target = make_funded_account(currency="USD", amount=0)
 
@@ -67,7 +67,7 @@ def test_evaluate_통화가_일치하지_않으면_거부된다() -> None:
     assert isinstance(decision.error, CurrencyMismatchError)
 
 
-def test_evaluate_출금_계좌_잔액이_부족하면_거부된다() -> None:
+def test_evaluate_rejected_when_withdrawal_account_balance_is_insufficient() -> None:
     source = make_funded_account(amount=1000)
     target = make_funded_account(amount=0)
 

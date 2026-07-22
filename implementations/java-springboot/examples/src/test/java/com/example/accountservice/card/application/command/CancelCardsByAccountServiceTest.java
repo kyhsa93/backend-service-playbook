@@ -31,7 +31,7 @@ class CancelCardsByAccountServiceTest {
     }
 
     @Test
-    void 계좌의_ACTIVE와_SUSPENDED_카드를_전부_해지하고_저장한다() {
+    void cancels_and_saves_all_of_the_accounts_ACTIVE_and_SUSPENDED_cards() {
         Card active = Card.issue("account-1", "owner-1", "VISA");
         Card suspended = Card.issue("account-1", "owner-1", "MASTER");
         suspended.suspend();
@@ -51,7 +51,7 @@ class CancelCardsByAccountServiceTest {
     }
 
     @Test
-    void 해지_대상_카드가_없으면_아무_것도_저장하지_않는다_멱등성() {
+    void saves_nothing_when_there_are_no_cards_to_cancel_idempotency() {
         when(cardRepository.findCards(
                         eq(
                                 new CardFindQuery(

@@ -12,7 +12,7 @@ class PaymentTest {
     }
 
     @Test
-    void 생성하면_PENDING_상태이고_이벤트가_없다() {
+    void creating_starts_as_PENDING_with_no_events() {
         Payment payment = createPayment();
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
@@ -24,14 +24,14 @@ class PaymentTest {
     }
 
     @Test
-    void 결제_ID는_하이픈_없는_32자리_hex_문자열이다() {
+    void payment_id_is_a_32_character_hex_string_with_no_hyphens() {
         Payment payment = createPayment();
 
         assertThat(payment.getPaymentId()).matches("^[0-9a-f]{32}$");
     }
 
     @Test
-    void PENDING_결제를_완료하면_COMPLETED_상태이고_PaymentCompletedEvent가_수집된다() {
+    void completing_a_PENDING_payment_moves_to_COMPLETED_and_collects_PaymentCompletedEvent() {
         Payment payment = createPayment();
 
         payment.complete();
@@ -44,7 +44,7 @@ class PaymentTest {
     }
 
     @Test
-    void PENDING이_아닌_결제를_완료하면_예외를_던진다() {
+    void throws_exception_when_completing_a_non_PENDING_payment() {
         Payment payment = createPayment();
         payment.complete();
 
@@ -55,7 +55,7 @@ class PaymentTest {
     }
 
     @Test
-    void PENDING_결제를_실패처리하면_FAILED_상태가_된다() {
+    void failing_a_PENDING_payment_moves_to_FAILED() {
         Payment payment = createPayment();
 
         payment.fail("gateway error");
@@ -64,7 +64,7 @@ class PaymentTest {
     }
 
     @Test
-    void PENDING이_아닌_결제를_실패처리하면_예외를_던진다() {
+    void throws_exception_when_failing_a_non_PENDING_payment() {
         Payment payment = createPayment();
         payment.complete();
 
@@ -75,7 +75,7 @@ class PaymentTest {
     }
 
     @Test
-    void COMPLETED_결제를_취소하면_CANCELLED_상태이고_PaymentCancelledEvent가_수집된다() {
+    void cancelling_a_COMPLETED_payment_moves_to_CANCELLED_and_collects_PaymentCancelledEvent() {
         Payment payment = createPayment();
         payment.complete();
         payment.pullDomainEvents();
@@ -90,7 +90,7 @@ class PaymentTest {
     }
 
     @Test
-    void COMPLETED가_아닌_결제를_취소하면_예외를_던진다() {
+    void throws_exception_when_cancelling_a_non_COMPLETED_payment() {
         Payment payment = createPayment();
 
         assertThatThrownBy(() -> payment.cancel("customer request"))
@@ -100,7 +100,7 @@ class PaymentTest {
     }
 
     @Test
-    void 취소된_결제를_다시_취소하면_예외를_던진다() {
+    void throws_exception_when_cancelling_an_already_cancelled_payment() {
         Payment payment = createPayment();
         payment.complete();
         payment.cancel("customer request");

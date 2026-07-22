@@ -49,7 +49,7 @@ class AccountTest {
     }
 
     @Test
-    void 계좌_생성_시_잔액은_0이고_ACTIVE_상태다() {
+    void creating_account_starts_with_zero_balance_and_ACTIVE_status() {
         Account account = createAccount();
 
         assertThat(account.getBalance().amount()).isEqualTo(0);
@@ -59,7 +59,7 @@ class AccountTest {
     }
 
     @Test
-    void 정지된_계좌에_입금하면_예외를_던진다() {
+    void throws_exception_when_depositing_to_a_suspended_account() {
         Account account = createAccount();
         account.suspend();
 
@@ -70,7 +70,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액보다_큰_금액을_출금하면_예외를_던진다() {
+    void throws_exception_when_withdrawing_more_than_the_balance() {
         Account account = createAccount();
         account.deposit(1000);
 
@@ -81,7 +81,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액이_0이_아닌_계좌를_종료하면_예외를_던진다() {
+    void throws_exception_when_closing_an_account_with_non_zero_balance() {
         Account account = createAccount();
         account.deposit(1000);
 
@@ -92,7 +92,7 @@ class AccountTest {
     }
 
     @Test
-    void 입금하면_MoneyDepositedEvent가_수집된다() {
+    void collects_MoneyDepositedEvent_on_deposit() {
         Account account = createAccount();
         account.pullDomainEvents();   // clear the creation event
 
@@ -141,7 +141,7 @@ class CreateAccountServiceTest {
     }
 
     @Test
-    void 계좌_생성_시_저장되고_결과에_초기_잔액_0이_담긴다() {
+    void creating_account_saves_it_and_the_result_carries_an_initial_zero_balance() {
         CreateAccountResult result =
                 service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
 
@@ -177,7 +177,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 생성_요청이_유효하면_201과_계좌_정보를_반환한다() {
+    void returns_201_and_account_info_when_creation_request_is_valid() {
         ResponseEntity<Map> response = post("/accounts", OWNER_ID, Map.of("currency", "KRW", "email", "owner-1@example.com"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
@@ -210,15 +210,15 @@ The standard Java/Gradle layout separates `src/main` and `src/test`, mirroring t
 
 ---
 
-## Test naming — Korean method names (an already-established convention)
+## Test naming — a full descriptive sentence as the method name (an already-established convention)
 
 ```java
 // a pattern already in use in the actual code
 @Test
-void 생성_요청이_유효하면_201과_계좌_정보를_반환한다() { /* ... */ }
+void returns_201_and_account_info_when_creation_request_is_valid() { /* ... */ }
 ```
 
-Java method names can use underscores and Korean characters as-is, with no backticks needed (Unicode identifiers are allowed). Instead of the root's English snake_case `<action>_when_<condition>_then_<expected_result>`, this repository has already adopted the convention of expressing test intent as **full Korean sentences** — the method name itself reads clearly with no `@DisplayName` annotation needed (and since test-report output shows the method name in Korean as-is, CI log readability is preserved too). New Domain/Application unit tests being added should follow this same pattern.
+Java method names can use underscores as-is, with no backticks needed. Rather than the root's terser `<action>_when_<condition>_then_<expected_result>` template, this repository has already adopted the convention of expressing test intent as a **full descriptive sentence** in snake_case — the method name itself reads clearly with no `@DisplayName` annotation needed. New Domain/Application unit tests being added should follow this same pattern.
 
 ---
 

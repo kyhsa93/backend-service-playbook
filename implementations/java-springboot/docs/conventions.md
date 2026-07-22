@@ -563,18 +563,18 @@ src/test/java/com/example/accountservice/account/
 
 Rather than placing a `.spec.ts` next to the source file as NestJS does, this mirrors the same package structure inside a `src/test` tree separate from `src/main`.
 
-### Test method naming — full Korean sentences (this repository's established convention)
+### Test method naming — a full descriptive sentence (this repository's established convention)
 
 ```java
 // Correct — the already-adopted convention
 @Test
-void 정지된_계좌에_입금하면_예외를_던진다() { ... }
+void throws_exception_when_depositing_to_a_suspended_account() { ... }
 
 @Test
-void 생성_요청이_유효하면_201과_계좌_정보를_반환한다() { ... }
+void returns_201_and_account_info_when_creation_request_is_valid() { ... }
 ```
 
-Java method names can use underscores and Korean characters as-is (Unicode identifiers are allowed). Rather than forcing the root's `<action>_when_<condition>_then_<expected_result>` English snake_case pattern, this repository follows its own established convention of expressing test intent as full Korean sentences. The method name itself reads clearly with no `@DisplayName` needed.
+Java method names can use underscores as-is. Rather than forcing the root's `<action>_when_<condition>_then_<expected_result>` template exactly, this repository follows its own established convention of expressing test intent as a full descriptive sentence in snake_case. The method name itself reads clearly with no `@DisplayName` needed.
 
 ### Verifying exceptions — via `ErrorCode`, not a string
 

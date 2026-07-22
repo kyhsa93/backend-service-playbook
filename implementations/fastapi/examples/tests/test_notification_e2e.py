@@ -84,9 +84,9 @@ async def notification_env() -> AsyncGenerator[dict, None]:
 
         app.dependency_overrides[get_session] = override_get_session
 
-        # OutboxPoller/OutboxConsumer가 AccountCreated/MoneyDeposited 같은 Domain Event를
-        # SQS를 거쳐 비동기로 SesNotificationService에 전달한다 — main.py의 lifespan은
-        # ASGITransport에서 트리거되지 않으므로 이 fixture가 직접 백그라운드로 띄운다.
+        # OutboxPoller/OutboxConsumer delivers Domain Events like AccountCreated/MoneyDeposited
+        # to SesNotificationService asynchronously via SQS — main.py's lifespan isn't triggered
+        # under ASGITransport, so this fixture starts it in the background directly.
         outbox_tasks = start_outbox_background_tasks(session_factory)
 
         transport = ASGITransport(app=app)
@@ -170,7 +170,7 @@ async def test_account_created_sends_ses_email_and_records_it(notification_env: 
 
 
 @pytest.mark.asyncio
-async def test_outbox가_같은_이벤트를_재전달해도_이메일이_중복_발송되지_않는다(notification_env: dict) -> None:
+async def test_redelivering_the_same_event_from_outbox_does_not_send_duplicate_email(notification_env: dict) -> None:
     client: AsyncClient = notification_env["client"]
 
     create_response = await client.post(
@@ -181,9 +181,9 @@ async def test_outbox가_같은_이벤트를_재전달해도_이메일이_중복
     await _wait_for_sent_email(notification_env["session_factory"], account_id, "AccountCreated")
     assert await _count_sent_emails(notification_env["session_factory"], account_id, "AccountCreated") == 1
 
-    # OutboxPoller가 AccountCreated 이벤트를 다시 SQS로 발행하도록 processed 플래그를
-    # 되돌린다(at-least-once 재전달 시뮬레이션) — 다음 tick에서 재발행되고 OutboxConsumer가
-    # 다시 수신해 SesNotificationService를 호출한다.
+    # Reverts the processed flag so OutboxPoller re-publishes the AccountCreated event to SQS
+    # (simulates at-least-once redelivery) — it gets re-published on the next tick and
+    # OutboxConsumer receives it again and calls SesNotificationService.
     await _mark_unprocessed(notification_env["session_factory"], "AccountCreated")
 
     async def _republished() -> bool:
@@ -192,13 +192,14 @@ async def test_outbox가_같은_이벤트를_재전달해도_이메일이_중복
             rows = (await session.execute(stmt)).scalars().all()
             return bool(rows) and all(row.processed for row in rows)
 
-    # 재전달이 실제로 일어났음을 먼저 확인한다(그냥 count==1을 곧바로 재확인하면, 재전달이
-    # 아직 일어나기도 전에 우연히 통과하는 vacuous pass가 될 수 있다).
+    # First confirms that redelivery actually happened (immediately re-checking count==1 alone
+    # could pass vacuously before the redelivery has even happened).
     await wait_until(_republished)
-    # OutboxConsumer가 재전달된 메시지를 처리할 시간을 추가로 준다.
+    # Gives OutboxConsumer extra time to process the redelivered message.
     await asyncio.sleep(3)
 
-    # Ledger(SentEmailModel.outbox_event_id) 덕분에 같은 이벤트가 재전달돼도 이메일은 한 번만 남는다.
+    # Thanks to the ledger (SentEmailModel.outbox_event_id), only one email remains even if the
+    # same event is redelivered.
     assert await _count_sent_emails(notification_env["session_factory"], account_id, "AccountCreated") == 1
 
 

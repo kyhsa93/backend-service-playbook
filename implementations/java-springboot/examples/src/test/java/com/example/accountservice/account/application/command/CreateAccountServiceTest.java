@@ -24,7 +24,7 @@ class CreateAccountServiceTest {
     }
 
     @Test
-    void 계좌_생성_시_저장되고_결과에_초기_잔액_0이_담긴다() {
+    void creating_account_saves_it_and_the_result_carries_an_initial_zero_balance() {
         CreateAccountResult result =
                 service.create(new CreateAccountCommand("owner-1", "owner-1@example.com", "KRW"));
 

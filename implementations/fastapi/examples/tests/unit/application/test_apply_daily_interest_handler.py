@@ -27,7 +27,7 @@ def _active_account(balance: int) -> Account:
 
 
 @pytest.mark.asyncio
-async def test_execute_ACTIVE_계좌_전체를_순회하며_이자를_지급하고_모두_저장한다(repo) -> None:
+async def test_execute_iterates_all_active_accounts_pays_interest_and_saves_all(repo) -> None:
     account1 = _active_account(1000000)
     account2 = _active_account(2000000)
     repo.find_accounts.side_effect = [([account1, account2], 2), ([], 2)]
@@ -43,7 +43,7 @@ async def test_execute_ACTIVE_계좌_전체를_순회하며_이자를_지급하�
 
 
 @pytest.mark.asyncio
-async def test_execute_이자가_0원인_계좌는_applied_count에_포함되지_않지만_저장은_된다(repo) -> None:
+async def test_execute_an_account_with_zero_interest_is_excluded_from_applied_count_but_still_saved(repo) -> None:
     tiny_account = _active_account(1)
     repo.find_accounts.side_effect = [([tiny_account], 1), ([], 1)]
     handler = ApplyDailyInterestHandler(repo)
@@ -55,7 +55,7 @@ async def test_execute_이자가_0원인_계좌는_applied_count에_포함되지
 
 
 @pytest.mark.asyncio
-async def test_execute_ACTIVE_계좌가_없으면_아무것도_저장하지_않는다(repo) -> None:
+async def test_execute_saves_nothing_when_there_are_no_active_accounts(repo) -> None:
     repo.find_accounts.return_value = ([], 0)
     handler = ApplyDailyInterestHandler(repo)
 

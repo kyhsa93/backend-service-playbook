@@ -189,7 +189,9 @@ class CardStatementSchedulingE2ETest {
     }
 
     @Test
-    void 이번_달_카드_사용내역_안내를_적재하면_사용_건수와_합계가_담긴_이메일이_발송된다() throws Exception {
+    void
+            enqueueing_this_months_card_statement_notice_sends_an_email_with_the_usage_count_and_total()
+                    throws Exception {
         // Open an account + issue a card + make 2 payments (totaling 30,000 KRW).
         ResponseEntity<Map> account =
                 post("/accounts", OWNER_ID, Map.of("currency", "KRW", "email", RECIPIENT_EMAIL));

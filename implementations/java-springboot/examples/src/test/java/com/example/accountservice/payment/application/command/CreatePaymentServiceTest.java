@@ -46,7 +46,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 활성_카드와_충분한_잔액이면_결제를_완료처리하고_저장한다() {
+    void completes_and_saves_the_payment_when_card_is_active_and_balance_is_sufficient() {
         stubActiveCardAndAccount(5000);
 
         GetPaymentResult result =
@@ -59,7 +59,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 연결_카드를_찾을_수_없으면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_linked_card_is_not_found() {
         when(cardAdapter.findCard("card-1", "owner-1")).thenReturn(Optional.empty());
 
         assertThatThrownBy(
@@ -71,7 +71,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 비활성_카드면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_card_is_inactive() {
         when(cardAdapter.findCard("card-1", "owner-1"))
                 .thenReturn(Optional.of(new CardAdapter.CardView("card-1", "account-1", false)));
 
@@ -84,7 +84,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 연결_계좌를_찾을_수_없으면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_linked_account_is_not_found() {
         when(cardAdapter.findCard("card-1", "owner-1"))
                 .thenReturn(Optional.of(new CardAdapter.CardView("card-1", "account-1", true)));
         when(accountAdapter.findAccount("account-1", "owner-1")).thenReturn(Optional.empty());
@@ -98,7 +98,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 비활성_계좌면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_account_is_inactive() {
         when(cardAdapter.findCard("card-1", "owner-1"))
                 .thenReturn(Optional.of(new CardAdapter.CardView("card-1", "account-1", true)));
         when(accountAdapter.findAccount("account-1", "owner-1"))
@@ -115,7 +115,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    void 잔액이_부족하면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_balance_is_insufficient() {
         stubActiveCardAndAccount(500);
 
         assertThatThrownBy(

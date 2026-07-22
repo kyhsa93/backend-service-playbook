@@ -46,7 +46,7 @@ class SendCardStatementServiceTest {
     }
 
     @Test
-    void 이번_달_안내를_아직_보내지_않은_카드에_사용내역_안내를_보내고_기록한다() {
+    void sends_and_records_the_statement_notice_for_a_card_not_yet_notified_this_month() {
         Card card = Card.issue("account-1", "owner-1", "VISA");
         YearMonth month = YearMonth.of(2026, 7);
         when(cardRepository.findCards(activeCardsQuery()))
@@ -74,7 +74,7 @@ class SendCardStatementServiceTest {
     }
 
     @Test
-    void 이미_이번_달_안내를_보낸_카드는_다시_보내지_않는다_멱등성() {
+    void does_not_resend_to_a_card_already_notified_this_month_idempotency() {
         Card card = Card.issue("account-1", "owner-1", "VISA");
         YearMonth month = YearMonth.of(2026, 7);
         card.markStatementSent(month);
@@ -88,7 +88,7 @@ class SendCardStatementServiceTest {
     }
 
     @Test
-    void 연결_계좌를_찾을_수_없으면_건너뛰고_기록하지_않는다() {
+    void skips_and_does_not_record_when_linked_account_is_not_found() {
         Card card = Card.issue("account-1", "owner-1", "VISA");
         YearMonth month = YearMonth.of(2026, 7);
         when(cardRepository.findCards(activeCardsQuery()))
@@ -102,7 +102,7 @@ class SendCardStatementServiceTest {
     }
 
     @Test
-    void 사용내역_기간은_해당_월_1일부터_다음_달_1일_직전까지다() {
+    void usage_period_spans_from_the_1st_of_the_month_to_just_before_the_1st_of_next_month() {
         Card card = Card.issue("account-1", "owner-1", "VISA");
         YearMonth month = YearMonth.of(2026, 7);
         when(cardRepository.findCards(activeCardsQuery()))

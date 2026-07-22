@@ -25,7 +25,7 @@ def make_account(balance: int = 10000) -> Account:
 
 
 @pytest.mark.asyncio
-async def test_execute_이미_처리된_reference_id면_조용히_무시한다(repo) -> None:
+async def test_execute_silently_ignores_an_already_processed_reference_id(repo) -> None:
     repo.has_transaction_with_reference.return_value = True
     handler = WithdrawByPaymentHandler(repo)
 
@@ -37,7 +37,7 @@ async def test_execute_이미_처리된_reference_id면_조용히_무시한다(r
 
 
 @pytest.mark.asyncio
-async def test_execute_계좌가_없으면_조용히_무시한다(repo) -> None:
+async def test_execute_silently_ignores_when_account_is_missing(repo) -> None:
     repo.has_transaction_with_reference.return_value = False
     repo.find_accounts.return_value = ([], 0)
     handler = WithdrawByPaymentHandler(repo)
@@ -48,7 +48,7 @@ async def test_execute_계좌가_없으면_조용히_무시한다(repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_처음_처리하는_reference_id면_출금하고_저장한다(repo) -> None:
+async def test_execute_withdraws_and_saves_on_first_processing_of_a_reference_id(repo) -> None:
     account = make_account(balance=10000)
     repo.has_transaction_with_reference.return_value = False
     repo.find_accounts.return_value = ([account], 1)

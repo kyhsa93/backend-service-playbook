@@ -16,7 +16,7 @@ def repo() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_execute_ACTIVE_SUSPENDED_카드를_해지시키고_저장한다(repo) -> None:
+async def test_execute_cancels_active_and_suspended_cards_and_saves_them(repo) -> None:
     active_card = Card.issue(account_id="account-1", owner_id="owner-1", brand="VISA")
     suspended_card = Card.issue(account_id="account-1", owner_id="owner-1", brand="MASTER")
     suspended_card.suspend()
@@ -34,7 +34,7 @@ async def test_execute_ACTIVE_SUSPENDED_카드를_해지시키고_저장한다(r
 
 
 @pytest.mark.asyncio
-async def test_execute_해지_대상_카드가_없으면_멱등하게_아무_일도_하지_않는다(repo) -> None:
+async def test_execute_does_nothing_idempotently_when_there_are_no_cards_to_cancel(repo) -> None:
     repo.find_cards.return_value = ([], 0)
     handler = CancelCardsByAccountHandler(repo)
 

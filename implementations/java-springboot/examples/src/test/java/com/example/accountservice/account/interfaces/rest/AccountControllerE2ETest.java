@@ -103,7 +103,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 생성_요청이_유효하면_201과_계좌_정보를_반환한다() {
+    void returns_201_and_account_info_when_creation_request_is_valid() {
         ResponseEntity<Map> response =
                 post(
                         "/accounts",
@@ -123,13 +123,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 생성_요청에_이메일이_없으면_400을_반환한다() {
+    void returns_400_when_creation_request_has_no_email() {
         ResponseEntity<Map> response = post("/accounts", OWNER_ID, Map.of("currency", "KRW"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
-    void 입금_요청이_유효하면_201과_거래_내역을_반환한다() {
+    void returns_201_and_transaction_info_when_deposit_request_is_valid() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -146,14 +146,14 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 입금_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_depositing_to_a_nonexistent_account() {
         ResponseEntity<Map> response =
                 post("/accounts/non-existent/deposit", OWNER_ID, Map.of("amount", 10000));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void 입금_시_다른_소유자의_계좌면_404를_반환한다() {
+    void returns_404_when_depositing_to_another_owners_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -166,7 +166,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 입금_금액이_0_이하이면_400을_반환한다() {
+    void returns_400_when_deposit_amount_is_zero_or_less() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -180,7 +180,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 정지된_계좌에_입금하면_400과_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+    void returns_400_and_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT_when_depositing_to_a_suspended_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post("/accounts/" + account.get("accountId") + "/suspend", OWNER_ID, Map.of());
 
@@ -195,7 +195,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 출금_요청이_유효하면_201과_거래_내역을_반환한다() {
+    void returns_201_and_transaction_info_when_withdrawal_request_is_valid() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + account.get("accountId") + "/deposit",
@@ -213,14 +213,14 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 출금_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_withdrawing_from_a_nonexistent_account() {
         ResponseEntity<Map> response =
                 post("/accounts/non-existent/withdraw", OWNER_ID, Map.of("amount", 1000));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void 잔액보다_큰_금액을_출금하면_400과_INSUFFICIENT_BALANCE를_반환한다() {
+    void returns_400_and_INSUFFICIENT_BALANCE_when_withdrawing_more_than_the_balance() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -234,7 +234,8 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 정지된_계좌에서_출금하면_400과_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+    void
+            returns_400_and_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT_when_withdrawing_from_a_suspended_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post("/accounts/" + account.get("accountId") + "/suspend", OWNER_ID, Map.of());
 
@@ -249,7 +250,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 송금_요청이_유효하면_201과_출금_입금_거래_내역을_반환한다() {
+    void returns_201_and_withdrawal_deposit_transaction_info_when_transfer_request_is_valid() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + source.get("accountId") + "/deposit",
@@ -283,7 +284,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 타인_소유_계좌로도_송금할_수_있다() {
+    void can_transfer_to_an_account_owned_by_someone_else() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + source.get("accountId") + "/deposit",
@@ -301,7 +302,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 송금_시_출금_계좌를_찾을_수_없으면_404를_반환한다() {
+    void returns_404_when_transfer_source_account_is_not_found() {
         Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -315,7 +316,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 송금_시_입금_계좌를_찾을_수_없으면_404를_반환한다() {
+    void returns_404_when_transfer_target_account_is_not_found() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + source.get("accountId") + "/deposit",
@@ -333,7 +334,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 출금_계좌와_입금_계좌가_같으면_400과_TRANSFER_SAME_ACCOUNT를_반환한다() {
+    void returns_400_and_TRANSFER_SAME_ACCOUNT_when_source_and_target_accounts_are_the_same() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + account.get("accountId") + "/deposit",
@@ -351,7 +352,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 잔액보다_큰_금액을_송금하면_400과_INSUFFICIENT_BALANCE를_반환한다() {
+    void returns_400_and_INSUFFICIENT_BALANCE_when_transferring_more_than_the_balance() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         Map<String, Object> target = createAccount(OTHER_OWNER_ID, "KRW");
 
@@ -366,7 +367,8 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 출금_계좌가_정지_상태면_400과_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+    void
+            returns_400_and_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT_when_transfer_source_account_is_suspended() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + source.get("accountId") + "/deposit",
@@ -386,7 +388,8 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 입금_계좌가_정지_상태면_400과_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+    void
+            returns_400_and_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT_when_transfer_target_account_is_suspended() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + source.get("accountId") + "/deposit",
@@ -406,7 +409,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 통화가_일치하지_않으면_400과_CURRENCY_MISMATCH를_반환한다() {
+    void returns_400_and_CURRENCY_MISMATCH_on_transfer_currency_mismatch() {
         Map<String, Object> source = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + source.get("accountId") + "/deposit",
@@ -425,7 +428,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 정상_계좌를_정지하면_204를_반환한다() {
+    void returns_204_when_suspending_a_normal_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -437,13 +440,14 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 정지_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_suspending_a_nonexistent_account() {
         ResponseEntity<Map> response = post("/accounts/non-existent/suspend", OWNER_ID, Map.of());
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void 이미_정지된_계좌를_정지하면_400과_SUSPEND_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+    void
+            returns_400_and_SUSPEND_REQUIRES_ACTIVE_ACCOUNT_when_suspending_an_already_suspended_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post("/accounts/" + account.get("accountId") + "/suspend", OWNER_ID, Map.of());
 
@@ -455,7 +459,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 정지된_계좌를_재개하면_204를_반환한다() {
+    void returns_204_when_reactivating_a_suspended_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post("/accounts/" + account.get("accountId") + "/suspend", OWNER_ID, Map.of());
 
@@ -468,14 +472,15 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 재개_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_reactivating_a_nonexistent_account() {
         ResponseEntity<Map> response =
                 post("/accounts/non-existent/reactivate", OWNER_ID, Map.of());
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void 활성_계좌를_재개하면_400과_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT를_반환한다() {
+    void
+            returns_400_and_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT_when_reactivating_an_active_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -487,7 +492,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 잔액이_0인_계좌를_종료하면_204를_반환한다() {
+    void returns_204_when_closing_a_zero_balance_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
@@ -499,13 +504,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 종료_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_closing_a_nonexistent_account() {
         ResponseEntity<Map> response = post("/accounts/non-existent/close", OWNER_ID, Map.of());
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void 잔액이_0이_아니면_400과_ACCOUNT_BALANCE_NOT_ZERO를_반환한다() {
+    void returns_400_and_ACCOUNT_BALANCE_NOT_ZERO_when_balance_is_not_zero() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + account.get("accountId") + "/deposit",
@@ -520,7 +525,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 이미_종료된_계좌를_종료하면_400과_ACCOUNT_ALREADY_CLOSED를_반환한다() {
+    void returns_400_and_ACCOUNT_ALREADY_CLOSED_when_closing_an_already_closed_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post("/accounts/" + account.get("accountId") + "/close", OWNER_ID, Map.of());
 
@@ -532,7 +537,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 존재하는_계좌를_조회하면_200과_계좌_정보를_반환한다() {
+    void returns_200_and_account_info_when_fetching_an_existing_account() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response = get("/accounts/" + account.get("accountId"), OWNER_ID);
@@ -545,14 +550,14 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 조회_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_fetching_a_nonexistent_account() {
         ResponseEntity<Map> response = get("/accounts/non-existent", OWNER_ID);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody().get("code")).isEqualTo("ACCOUNT_NOT_FOUND");
     }
 
     @Test
-    void 다른_소유자가_조회하면_404를_반환한다() {
+    void returns_404_when_fetched_by_a_different_owner() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response = get("/accounts/" + account.get("accountId"), OTHER_OWNER_ID);
@@ -561,7 +566,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 거래_내역을_페이지네이션과_함께_반환한다() {
+    void returns_transaction_history_with_pagination() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
         post(
                 "/accounts/" + account.get("accountId") + "/deposit",
@@ -584,13 +589,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    void 거래_내역_조회_시_존재하지_않는_계좌면_404를_반환한다() {
+    void returns_404_when_fetching_transaction_history_for_a_nonexistent_account() {
         ResponseEntity<Map> response = get("/accounts/non-existent/transactions", OWNER_ID);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void take를_초과한_페이지_조회는_빈_배열을_반환한다() {
+    void returns_an_empty_array_for_a_page_beyond_take() {
         Map<String, Object> account = createAccount(OWNER_ID, "KRW");
 
         ResponseEntity<Map> response =
