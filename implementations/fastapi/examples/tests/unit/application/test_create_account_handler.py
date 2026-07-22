@@ -11,7 +11,7 @@ def repo() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_execute_계좌_생성_시_저장되고_초기_잔액_0이_담긴다(repo) -> None:
+async def test_execute_saves_the_account_with_an_initial_zero_balance_on_creation(repo) -> None:
     handler = CreateAccountHandler(repo)
 
     account = await handler.execute(

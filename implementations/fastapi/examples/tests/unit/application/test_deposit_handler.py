@@ -13,7 +13,7 @@ def repo() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(repo) -> None:
+async def test_execute_raises_AccountNotFoundError_when_account_is_missing(repo) -> None:
     repo.find_accounts.return_value = ([], 0)
     handler = DepositHandler(repo)
 
@@ -24,7 +24,7 @@ async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(rep
 
 
 @pytest.mark.asyncio
-async def test_execute_입금_성공_시_save가_호출된다(repo) -> None:
+async def test_execute_calls_save_on_successful_deposit(repo) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     account.pull_events()
     repo.find_accounts.return_value = ([account], 1)
@@ -40,7 +40,7 @@ async def test_execute_입금_성공_시_save가_호출된다(repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_정지된_계좌면_에러를_던지고_저장하지_않는다(repo) -> None:
+async def test_execute_raises_an_error_and_does_not_save_when_account_is_suspended(repo) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     account.suspend()
     repo.find_accounts.return_value = ([account], 1)

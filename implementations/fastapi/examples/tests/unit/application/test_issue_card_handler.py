@@ -22,7 +22,7 @@ def account_adapter() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_execute_활성_계좌면_카드가_발급되고_저장된다(repo, account_adapter) -> None:
+async def test_execute_issues_and_saves_a_card_when_account_is_active(repo, account_adapter) -> None:
     account_adapter.find_account.return_value = AccountView(
         account_id="account-1", active=True, email="owner1@example.com"
     )
@@ -38,7 +38,7 @@ async def test_execute_활성_계좌면_카드가_발급되고_저장된다(repo
 
 
 @pytest.mark.asyncio
-async def test_execute_연결할_계좌가_없으면_LinkedAccountNotFoundError(repo, account_adapter) -> None:
+async def test_execute_raises_LinkedAccountNotFoundError_when_account_to_link_is_missing(repo, account_adapter) -> None:
     account_adapter.find_account.return_value = None
     handler = IssueCardHandler(repo, account_adapter)
 
@@ -49,7 +49,9 @@ async def test_execute_연결할_계좌가_없으면_LinkedAccountNotFoundError(
 
 
 @pytest.mark.asyncio
-async def test_execute_비활성_계좌면_CardIssueRequiresActiveAccountError(repo, account_adapter) -> None:
+async def test_execute_raises_CardIssueRequiresActiveAccountError_when_account_is_inactive(
+    repo, account_adapter
+) -> None:
     account_adapter.find_account.return_value = AccountView(
         account_id="account-1", active=False, email="owner1@example.com"
     )

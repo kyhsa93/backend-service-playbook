@@ -13,7 +13,7 @@ def repo() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_execute_승인되면_두_계좌를_저장한다(repo) -> None:
+async def test_execute_saves_both_accounts_when_approved(repo) -> None:
     source = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     source.deposit(10000)
     source.pull_events()
@@ -43,7 +43,7 @@ async def test_execute_승인되면_두_계좌를_저장한다(repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_출금_계좌를_찾을_수_없으면_에러를_던지고_저장하지_않는다(repo) -> None:
+async def test_execute_raises_an_error_and_does_not_save_when_withdrawal_account_cannot_be_found(repo) -> None:
     repo.find_accounts.return_value = ([], 0)
     handler = TransferHandler(repo)
 
@@ -58,7 +58,7 @@ async def test_execute_출금_계좌를_찾을_수_없으면_에러를_던지고
 
 
 @pytest.mark.asyncio
-async def test_execute_잔액이_부족하면_에러를_던지고_저장하지_않는다(repo) -> None:
+async def test_execute_raises_an_error_and_does_not_save_when_balance_is_insufficient(repo) -> None:
     source = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
     source.deposit(1000)
     source.pull_events()

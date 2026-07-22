@@ -636,12 +636,12 @@ from src.order.domain.errors import OrderAlreadyCancelledError, OrderMustHaveAtL
 from src.order.domain.order import Order
 
 
-def test_create_주문_항목이_비어있으면_에러를_던진다() -> None:
+def test_create_raises_an_error_when_order_has_no_items() -> None:
     with pytest.raises(OrderMustHaveAtLeastOneItemError):
         Order.create(user_id="user-1", items=[])
 
 
-def test_cancel_이미_취소된_주문을_다시_취소하면_에러를_던진다() -> None:
+def test_cancel_raises_an_error_when_cancelling_an_already_cancelled_order() -> None:
     order = Order.create(user_id="user-1", items=[make_item()])
     order.cancel("change of mind")
 
@@ -664,7 +664,7 @@ from src.order.domain.errors import OrderNotFoundError
 
 
 @pytest.mark.asyncio
-async def test_execute_주문이_존재하지_않으면_에러를_던진다() -> None:
+async def test_execute_raises_an_error_when_order_does_not_exist() -> None:
     repo = AsyncMock()
     repo.find_orders.return_value = ([], 0)
     handler = CancelOrderHandler(repo)
@@ -715,8 +715,8 @@ tests/
 
 ```
 test_<method>_<condition>_<expected_result>
-e.g.: test_cancel_이미_취소된_주문을_다시_취소하면_에러를_던진다
-e.g. (an English style is allowed too): test_cancel_order_when_already_cancelled_then_raises
+e.g.: test_cancel_raises_an_error_when_cancelling_an_already_cancelled_order
+e.g. (a shorter style is fine too): test_cancel_order_when_already_cancelled_then_raises
 ```
 
-If the existing E2E tests use an English style (`test_deposit_success`), keep new tests in that same file consistently in the English style too — keep a single style consistent per file.
+Both styles are plain English `snake_case` — pick whichever reads most clearly for a given test, but keep a single style consistent per file (e.g. match the existing E2E tests' shorter style such as `test_deposit_success`).

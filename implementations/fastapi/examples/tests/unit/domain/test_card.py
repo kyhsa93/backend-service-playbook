@@ -14,7 +14,7 @@ def make_active_card() -> Card:
     return Card.issue(account_id="account-1", owner_id="owner-1", brand="VISA")
 
 
-def test_issue_카드_발급_시_ACTIVE_상태로_생성된다() -> None:
+def test_issue_creates_a_card_in_ACTIVE_status() -> None:
     card = make_active_card()
 
     assert card.status == CardStatus.ACTIVE
@@ -25,7 +25,7 @@ def test_issue_카드_발급_시_ACTIVE_상태로_생성된다() -> None:
     assert card.created_at
 
 
-def test_suspend_활성_카드는_정지된다() -> None:
+def test_suspend_an_active_card_is_suspended() -> None:
     card = make_active_card()
 
     card.suspend()
@@ -33,7 +33,7 @@ def test_suspend_활성_카드는_정지된다() -> None:
     assert card.status == CardStatus.SUSPENDED
 
 
-def test_suspend_이미_정지된_카드는_다시_정지할_수_없다() -> None:
+def test_suspend_an_already_suspended_card_cannot_be_suspended_again() -> None:
     card = make_active_card()
     card.suspend()
 
@@ -41,7 +41,7 @@ def test_suspend_이미_정지된_카드는_다시_정지할_수_없다() -> Non
         card.suspend()
 
 
-def test_suspend_해지된_카드는_정지할_수_없다() -> None:
+def test_suspend_a_cancelled_card_cannot_be_suspended() -> None:
     card = make_active_card()
     card.cancel()
 
@@ -49,7 +49,7 @@ def test_suspend_해지된_카드는_정지할_수_없다() -> None:
         card.suspend()
 
 
-def test_cancel_활성_카드는_해지된다() -> None:
+def test_cancel_an_active_card_is_cancelled() -> None:
     card = make_active_card()
 
     card.cancel()
@@ -57,7 +57,7 @@ def test_cancel_활성_카드는_해지된다() -> None:
     assert card.status == CardStatus.CANCELLED
 
 
-def test_cancel_정지된_카드도_해지할_수_있다() -> None:
+def test_cancel_a_suspended_card_can_also_be_cancelled() -> None:
     card = make_active_card()
     card.suspend()
 
@@ -66,7 +66,7 @@ def test_cancel_정지된_카드도_해지할_수_있다() -> None:
     assert card.status == CardStatus.CANCELLED
 
 
-def test_cancel_이미_해지된_카드는_다시_해지할_수_없다() -> None:
+def test_cancel_an_already_cancelled_card_cannot_be_cancelled_again() -> None:
     card = make_active_card()
     card.cancel()
 
@@ -74,7 +74,7 @@ def test_cancel_이미_해지된_카드는_다시_해지할_수_없다() -> None
         card.cancel()
 
 
-def test_send_statement_처음_발송하면_CardStatementSent_이벤트가_수집되고_월이_기록된다() -> None:
+def test_send_statement_collects_a_CardStatementSent_event_and_records_the_month_on_first_send() -> None:
     card = make_active_card()
 
     card.send_statement("2026-07", payment_count=3, total_amount=15000, email="owner1@example.com")
@@ -89,7 +89,7 @@ def test_send_statement_처음_발송하면_CardStatementSent_이벤트가_수�
     assert events[0].email == "owner1@example.com"
 
 
-def test_send_statement_같은_달에_두_번_호출하면_두_번째는_완전한_no_op이다() -> None:
+def test_send_statement_calling_twice_in_the_same_month_makes_the_second_call_a_complete_no_op() -> None:
     card = make_active_card()
     card.send_statement("2026-07", payment_count=3, total_amount=15000, email="owner1@example.com")
     card.pull_events()
@@ -99,7 +99,7 @@ def test_send_statement_같은_달에_두_번_호출하면_두_번째는_완전�
     assert card.pull_events() == []
 
 
-def test_send_statement_다음_달에_다시_호출하면_새_이벤트가_수집된다() -> None:
+def test_send_statement_calling_again_next_month_collects_a_new_event() -> None:
     card = make_active_card()
     card.send_statement("2026-07", payment_count=3, total_amount=15000, email="owner1@example.com")
     card.pull_events()
