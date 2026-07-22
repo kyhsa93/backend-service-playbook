@@ -8,6 +8,7 @@ export enum PaymentErrorMessage {
   'Only a completed payment can be cancelled.' = 'Only a completed payment can be cancelled.',
   'A refund can only be requested for a completed payment.' = 'A refund can only be requested for a completed payment.',
   'The refund amount cannot exceed the payment amount.' = 'The refund amount cannot exceed the payment amount.',
+  'This refund reason was flagged as high fraud risk and requires manual review.' = 'This refund reason was flagged as high fraud risk and requires manual review.',
   'Can only be marked completed from the pending state.' = 'Can only be marked completed from the pending state.',
   'Can only be marked failed from the pending state.' = 'Can only be marked failed from the pending state.',
   'Can only be approved from the requested state.' = 'Can only be approved from the requested state.',

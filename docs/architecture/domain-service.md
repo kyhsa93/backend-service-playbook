@@ -78,12 +78,19 @@ export interface RefundDecision {
 }
 
 export class RefundEligibilityService {
-  public evaluate(payment: Payment, refund: Refund): RefundDecision {
+  // classification is a plain value already computed upstream by RefundReasonClassifier (a
+  // Technical Service wrapping an LLM call — see the Technical Service section below). This
+  // method never calls it and doesn't know an LLM produced the value; it only weighs the
+  // fraud-risk signal alongside its other checks and still owns the actual judgment.
+  public evaluate(payment: Payment, refund: Refund, classification: RefundReasonClassification): RefundDecision {
     if (payment.status !== PaymentStatus.COMPLETED) {
       return { approved: false, reason: PaymentErrorMessage['A refund can only be requested for a completed payment.'] }
     }
     if (refund.amount > payment.amount) {
       return { approved: false, reason: PaymentErrorMessage['The refund amount cannot exceed the payment amount.'] }
+    }
+    if (classification.category === 'fraud_suspected' && classification.fraudRiskScore >= 0.7) {
+      return { approved: false, reason: PaymentErrorMessage['This refund reason was flagged as high fraud risk and requires manual review.'] }
     }
     return { approved: true }
   }
@@ -91,9 +98,16 @@ export class RefundEligibilityService {
 ```
 
 ```typescript
-// application/command/request-refund-command-handler.ts — loads both Repositories and delegates
+// application/command/request-refund-command-handler.ts — loads both Repositories, classifies
+// the reason via the Technical Service, and delegates
 export class RequestRefundCommandHandler {
   private readonly refundEligibilityService = new RefundEligibilityService()
+
+  constructor(
+    private readonly paymentRepository: PaymentRepository,
+    private readonly refundRepository: RefundRepository,
+    private readonly refundReasonClassifier: RefundReasonClassifier // a Technical Service, DI-injected
+  ) {}
 
   public async execute(command: RequestRefundCommand): Promise<Refund> {
     const payment = await this.paymentRepository
@@ -102,8 +116,9 @@ export class RequestRefundCommandHandler {
     if (!payment) throw new Error(PaymentErrorMessage['Payment not found.'])
 
     const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
+    const classification = await this.refundReasonClassifier.classify(command.reason)
 
-    const decision = this.refundEligibilityService.evaluate(payment, refund)
+    const decision = this.refundEligibilityService.evaluate(payment, refund, classification)
     if (decision.approved) refund.approve({ accountId: payment.accountId, ownerId: payment.ownerId })
     else refund.reject(decision.reason ?? 'The refund request was rejected.')
 
@@ -113,7 +128,7 @@ export class RequestRefundCommandHandler {
 }
 ```
 
-`RefundEligibilityService` holds no state and is used by instantiating it directly with `new` — it's never registered in a DI container (staying true to the "never uses a framework decorator" principle from the "Placement and naming" section above). Its unit test also doesn't go through the Application layer — it `new`s this class directly and verifies only the decision logic.
+`RefundEligibilityService` holds no state and is used by instantiating it directly with `new` — it's never registered in a DI container (staying true to the "never uses a framework decorator" principle from the "Placement and naming" section above). Its unit test also doesn't go through the Application layer — it `new`s this class directly, passes in a plain `RefundReasonClassification` value (no LLM call, no mocking needed), and verifies only the decision logic. `RefundReasonClassifier` — the Technical Service that produces that value from the refund's free-text reason via an LLM call — is a real, worked example of the Technical Service pattern in the section below.
 
 Full code: `implementations/nestjs/examples/src/payment/domain/refund-eligibility-service.ts`,
 `payment.ts`, `refund.ts`, `application/command/request-refund-command-handler.ts`.
@@ -209,6 +224,17 @@ class OrderCommandService {
 
 > **When to apply this**: don't split out a simple utility function (date formatting, string conversion, etc.) as a Technical Service. Apply it to a technical concern that involves integrating with an external system, or where the implementation technology might get swapped out.
 > Examples: encryption, file storage ([file-storage.md](file-storage.md)), Secrets Manager ([secret-manager.md](secret-manager.md)), a message-queue client, an external API client, sending email/SMS, etc.
+
+**A real, working example — RefundReasonClassifier (an LLM call as a Technical Service).** An external LLM call is a technical concern like any other in this pattern — the interface is defined in the shape the Domain Service needs (a category plus a fraud-risk score, see `RefundReasonClassification` above), and the implementation is free to swap providers/models without the Application or Domain layer ever changing:
+
+```typescript
+// application/service/refund-reason-classifier.ts — the interface
+export abstract class RefundReasonClassifier {
+  abstract classify(reason: string): Promise<RefundReasonClassification>
+}
+```
+
+The implementation (`infrastructure/refund-reason-classifier-impl.ts`) calls the Claude API with a JSON-schema-constrained response and falls back to a neutral, non-blocking result (`{ category: 'other', fraudRiskScore: 0 }`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Full code: `implementations/nestjs/examples/src/payment/application/service/refund-reason-classifier.ts`, `infrastructure/refund-reason-classifier-impl.ts`.
 
 ---
 

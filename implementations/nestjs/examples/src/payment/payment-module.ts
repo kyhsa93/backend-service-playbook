@@ -21,6 +21,7 @@ import { GetRefundsQueryHandler } from '@/payment/application/query/get-refunds-
 import { PaymentQuery } from '@/payment/application/query/payment-query'
 import { RefundQuery } from '@/payment/application/query/refund-query'
 import { CardStatementNotificationService } from '@/payment/application/service/card-statement-notification-service'
+import { RefundReasonClassifier } from '@/payment/application/service/refund-reason-classifier'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
@@ -34,6 +35,7 @@ import { SentCardStatementEntity } from '@/payment/infrastructure/notification/s
 import { PaymentQueryImpl } from '@/payment/infrastructure/payment-query-impl'
 import { PaymentRepositoryImpl } from '@/payment/infrastructure/payment-repository-impl'
 import { RefundQueryImpl } from '@/payment/infrastructure/refund-query-impl'
+import { RefundReasonClassifierImpl } from '@/payment/infrastructure/refund-reason-classifier-impl'
 import { RefundRepositoryImpl } from '@/payment/infrastructure/refund-repository-impl'
 import { PaymentController } from '@/payment/interface/payment-controller'
 import { PaymentTaskController } from '@/payment/interface/payment-task-controller'
@@ -82,6 +84,8 @@ import { PaymentTaskController } from '@/payment/interface/payment-task-controll
     { provide: AccountAdapter, useClass: AccountAdapterImpl },
     // A Technical Service — SES card-statement sending (Payment-only, separate from Account's NotificationService)
     { provide: CardStatementNotificationService, useClass: CardStatementNotificationServiceImpl },
+    // A Technical Service — LLM-based refund reason classification (see refund-eligibility-service.ts)
+    { provide: RefundReasonClassifier, useClass: RefundReasonClassifierImpl },
     PaymentSesClientProvider
   ]
 })

@@ -133,6 +133,9 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 JWT_SECRET=local-dev-secret
 JWT_EXPIRES_IN=1h
 
+ANTHROPIC_API_KEY=
+REFUND_CLASSIFIER_MODEL=claude-opus-4-8
+
 PORT=3000
 NODE_ENV=development
 ```

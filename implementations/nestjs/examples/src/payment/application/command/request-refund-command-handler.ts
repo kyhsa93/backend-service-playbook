@@ -2,6 +2,7 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
+import { RefundReasonClassifier } from '@/payment/application/service/refund-reason-classifier'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { Refund } from '@/payment/domain/refund'
 import { RefundEligibilityService } from '@/payment/domain/refund-eligibility-service'
@@ -18,7 +19,11 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
   constructor(
     private readonly paymentRepository: PaymentRepository,
     private readonly refundRepository: RefundRepository,
-    private readonly transactionManager: TransactionManager
+    private readonly transactionManager: TransactionManager,
+    // RefundReasonClassifier is a Technical Service (DI-bound to its real LLM-backed
+    // implementation) — unlike RefundEligibilityService above, it wraps external I/O, so it's
+    // injected rather than `new`'d directly.
+    private readonly refundReasonClassifier: RefundReasonClassifier
   ) {}
 
   public async execute(command: RequestRefundCommand): Promise<Refund> {
@@ -28,11 +33,13 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
     if (!payment) throw new Error(ErrorMessage['Payment not found.'])
 
     const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
+    const classification = await this.refundReasonClassifier.classify(command.reason)
 
-    // This Application layer, having loaded both the Payment and Refund Aggregates together,
-    // delegates the judgment (comparing the original payment's status + the refund amount)
+    // This Application layer, having loaded both the Payment and Refund Aggregates together and
+    // classified the refund reason via the Technical Service above, delegates the judgment
+    // (comparing the original payment's status, the refund amount, and the fraud-risk signal)
     // that neither Aggregate alone could make to RefundEligibilityService (a Domain Service) to coordinate.
-    const decision = this.refundEligibilityService.evaluate(payment, refund)
+    const decision = this.refundEligibilityService.evaluate(payment, refund, classification)
     if (decision.approved) {
       refund.approve({ accountId: payment.accountId, ownerId: payment.ownerId })
     } else {

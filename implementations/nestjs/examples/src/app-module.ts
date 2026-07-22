@@ -8,10 +8,9 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { AccountModule } from '@/account/account-module'
 import { AuthModule } from '@/auth/auth-module'
 import { CardModule } from '@/card/card-module'
-import { SecretService } from '@/common/application/service/secret-service'
+import { CommonModule } from '@/common/common-module'
 import { CorrelationIdMiddleware } from '@/common/correlation-id.middleware'
 import { HealthController } from '@/common/interface/health-controller'
-import { SecretServiceImpl } from '@/common/infrastructure/secret-service-impl'
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
 import { validateConfig } from '@/config/validation.config'
 import { jwtConfig } from '@/config/jwt.config'
@@ -33,6 +32,7 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
     }),
     OutboxModule,
     TaskQueueModule,
+    CommonModule,
     AuthModule,
     AccountModule,
     CardModule,
@@ -40,11 +40,9 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
   ],
   controllers: [HealthController],
   providers: [
-    { provide: SecretService, useClass: SecretServiceImpl },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     ShutdownState
-  ],
-  exports: [SecretService]
+  ]
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
