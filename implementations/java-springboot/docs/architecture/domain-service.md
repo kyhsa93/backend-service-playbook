@@ -7,7 +7,8 @@
 `examples/` has two kinds of examples.
 
 - **Technical Service**: `account/application/service/NotificationService.java` (interface) + `account/infrastructure/notification/NotificationServiceImpl.java` (implementation, SES). This abstracts technical infrastructure (sending email), but is not domain judgment logic that coordinates multiple Aggregates.
-- **Domain Service (genuine cross-Aggregate coordination)**: `payment/domain/RefundEligibilityService.java`. It coordinates a judgment ("the original payment must be in COMPLETED status, and the refund amount cannot exceed the payment amount") that can only be made by loading both the `Payment` and `Refund` Aggregates together — a real, working example of the "logic that must read multiple Aggregates to reach a judgment" the root document defines.
+- **Domain Service (genuine cross-Aggregate coordination)**: `payment/domain/RefundEligibilityService.java`. It coordinates a judgment ("the original payment must be in COMPLETED status, the refund amount cannot exceed the payment amount, and the reason's LLM-classified fraud-risk signal must not cross a threshold") that can only be made by loading both the `Payment` and `Refund` Aggregates together — a real, working example of the "logic that must read multiple Aggregates to reach a judgment" the root document defines.
+- **Technical Service (LLM call)**: `payment/application/service/RefundReasonClassifier.java` (interface) + `payment/infrastructure/RefundReasonClassifierImpl.java` (implementation, Claude API) — see the dedicated section below.
 
 Since the Account and Card BCs each have only a single Aggregate, this pattern couldn't be demonstrated there — the Payment BC (with its two Aggregates, Payment/Refund) is what actually shows it working.
 
@@ -23,7 +24,13 @@ The `Payment` Aggregate knows nothing about refund attempts against it (a refund
 // payment/domain/RefundEligibilityService.java — actual code
 public class RefundEligibilityService {
 
-    public RefundDecision evaluate(Payment payment, Refund refund) {
+    // classification is a plain value already computed upstream by RefundReasonClassifier (a
+    // Technical Service wrapping an LLM call — see the Technical Service section below). This
+    // method never calls it and doesn't know an LLM produced the value; it only weighs the
+    // fraud-risk signal alongside its other checks and still owns the actual judgment.
+    private static final double FRAUD_RISK_REJECTION_THRESHOLD = 0.7;
+
+    public RefundDecision evaluate(Payment payment, Refund refund, RefundReasonClassification classification) {
         if (payment.getStatus() != PaymentStatus.COMPLETED) {
             return RefundDecision.rejected(
                     PaymentException.ErrorCode.REFUND_REQUIRES_COMPLETED_PAYMENT,
@@ -33,6 +40,12 @@ public class RefundEligibilityService {
             return RefundDecision.rejected(
                     PaymentException.ErrorCode.REFUND_AMOUNT_EXCEEDS_PAYMENT,
                     "The refund amount cannot exceed the payment amount.");
+        }
+        if (classification.category() == RefundReasonCategory.FRAUD_SUSPECTED
+                && classification.fraudRiskScore() >= FRAUD_RISK_REJECTION_THRESHOLD) {
+            return RefundDecision.rejected(
+                    PaymentException.ErrorCode.REFUND_REASON_HIGH_FRAUD_RISK,
+                    "This refund reason was flagged as high fraud risk and requires manual review.");
         }
         return RefundDecision.approve();
     }
@@ -65,11 +78,17 @@ public class RequestRefundService {
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
 
+    // RefundReasonClassifier is a Technical Service (DI-bound to its real LLM-backed
+    // implementation) — unlike RefundEligibilityService above, it wraps external I/O, so it's
+    // injected rather than `new`'d directly.
+    private final RefundReasonClassifier refundReasonClassifier;
+
     public GetRefundResult request(RequestRefundCommand command) {
         Payment payment = /* loaded via paymentRepository.findPayments(...) after verifying ownership */;
         Refund refund = Refund.create(payment.getPaymentId(), command.amount(), command.reason());
+        RefundReasonClassification classification = refundReasonClassifier.classify(command.reason());
 
-        RefundDecision decision = refundEligibilityService.evaluate(payment, refund);
+        RefundDecision decision = refundEligibilityService.evaluate(payment, refund, classification);
         if (decision.approved()) {
             refund.approve(payment.getAccountId(), payment.getOwnerId());
         } else {
@@ -91,9 +110,9 @@ This repository's [error-handling.md](error-handling.md) requires "1 guard condi
 
 ### Related code
 
-- `payment/domain/Payment.java`, `Refund.java`, `RefundEligibilityService.java`, `RefundDecision.java`, `PaymentException.java`
+- `payment/domain/Payment.java`, `Refund.java`, `RefundEligibilityService.java`, `RefundDecision.java`, `PaymentException.java`, `RefundReasonCategory.java`, `RefundReasonClassification.java`
 - `payment/application/command/RequestRefundService.java` — the call site of the Domain Service
-- `payment/domain/RefundEligibilityServiceTest.java` — a unit test that instantiates it directly with `new`, without a Spring context, verifying only the judgment logic
+- `payment/domain/RefundEligibilityServiceTest.java` — a unit test that instantiates it directly with `new`, without a Spring context, verifying only the judgment logic (no LLM call — classification is always passed in as a plain value)
 - `payment/interfaces/rest/PaymentControllerE2ETest.java` — verifies both the refund-approval and refund-rejection paths via the actual HTTP API
 
 ---
@@ -101,6 +120,29 @@ This repository's [error-handling.md](error-handling.md) requires "1 guard condi
 ## Technical Service — NotificationService
 
 The Technical Service placement principle (domain-internal by default, per YAGNI) and the `NotificationService`/`NotificationServiceImpl` code are already covered repeatedly by [file-storage.md](file-storage.md)/[secret-manager.md](secret-manager.md)/[directory-structure.md](directory-structure.md), so they aren't duplicated here.
+
+---
+
+## Technical Service — RefundReasonClassifier (an LLM call)
+
+A real, working example of the Technical Service pattern for an external LLM call. The interface is defined in the shape the Domain Service needs (a category plus a fraud-risk score, see `RefundReasonClassification` above), and the implementation is free to swap providers/models without the Application or Domain layer ever changing:
+
+```java
+// payment/application/service/RefundReasonClassifier.java — the interface
+public interface RefundReasonClassifier {
+    RefundReasonClassification classify(String reason);
+}
+```
+
+The implementation (`payment/infrastructure/RefundReasonClassifierImpl.java`) calls the Claude API with a JSON-schema-constrained response and falls back to a neutral, non-blocking result (`RefundReasonCategory.OTHER`, `fraudRiskScore: 0`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Its unit test (`RequestRefundServiceTest`) mocks the interface rather than hitting the real LLM — no external dependency, no non-determinism, in the test.
+
+The Anthropic API key gates on the same `Profiles.of("prod")` check as the JWT secret, but resolved lazily via the injected `SecretService` rather than eagerly via `EnvironmentPostProcessor` — see [secret-manager.md](secret-manager.md) → "A second consumer" for why the two secrets use different timings of the same mechanism.
+
+### Related code
+
+- `payment/application/service/RefundReasonClassifier.java`, `payment/infrastructure/RefundReasonClassifierImpl.java`
+- `config/RefundClassifierProperties.java` — the non-production API key + model, via `@ConfigurationProperties`
+- `payment/application/command/RequestRefundServiceTest.java` — mocks `RefundReasonClassifier`
 
 ---
 

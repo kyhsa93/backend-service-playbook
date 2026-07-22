@@ -3,16 +3,20 @@ package com.example.accountservice.payment.application.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.accountservice.payment.application.query.GetRefundResult;
+import com.example.accountservice.payment.application.service.RefundReasonClassifier;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
 import com.example.accountservice.payment.domain.PaymentRepository;
 import com.example.accountservice.payment.domain.PaymentsWithCount;
+import com.example.accountservice.payment.domain.RefundReasonCategory;
+import com.example.accountservice.payment.domain.RefundReasonClassification;
 import com.example.accountservice.payment.domain.RefundRepository;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +25,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * RefundEligibilityService (a Domain Service) is a plain class, so it isn't mocked — this spec
+ * verifies the flow where the Application layer loads both Repositories, classifies the reason via
+ * the (mocked) RefundReasonClassifier Technical Service, delegates to the real judgment logic, and
+ * approves/rejects and saves the Refund based on the result. Mocking the Technical Service
+ * interface — rather than hitting the real LLM — is exactly the benefit described in
+ * domain-service.md: no external dependency, no non-determinism, in this test.
+ */
 @ExtendWith(MockitoExtension.class)
 class RequestRefundServiceTest {
 
@@ -28,11 +40,20 @@ class RequestRefundServiceTest {
 
     @Mock private RefundRepository refundRepository;
 
+    @Mock private RefundReasonClassifier refundReasonClassifier;
+
     private RequestRefundService service;
 
     @BeforeEach
     void setUp() {
-        service = new RequestRefundService(paymentRepository, refundRepository);
+        service =
+                new RequestRefundService(
+                        paymentRepository, refundRepository, refundReasonClassifier);
+        lenient()
+                .when(refundReasonClassifier.classify(any()))
+                .thenReturn(
+                        new RefundReasonClassification(
+                                RefundReasonCategory.DEFECTIVE_PRODUCT, 0.1));
     }
 
     private Payment completedPayment(long amount) {
@@ -55,6 +76,7 @@ class RequestRefundServiceTest {
 
         assertThat(result.status()).isEqualTo("APPROVED");
         verify(refundRepository).saveRefund(any());
+        verify(refundReasonClassifier).classify("change of mind");
     }
 
     @Test
@@ -87,6 +109,26 @@ class RequestRefundServiceTest {
         assertThat(result.status()).isEqualTo("REJECTED");
         assertThat(result.decisionNote())
                 .isEqualTo("A refund can only be requested for a completed payment.");
+    }
+
+    @Test
+    void saves_as_REJECTED_without_throwing_when_the_classifier_flags_high_fraud_risk() {
+        Payment payment = completedPayment(1000);
+        when(refundReasonClassifier.classify("suspicious reason"))
+                .thenReturn(
+                        new RefundReasonClassification(RefundReasonCategory.FRAUD_SUSPECTED, 0.95));
+
+        GetRefundResult result =
+                service.request(
+                        new RequestRefundCommand(
+                                payment.getPaymentId(), 500, "suspicious reason", "owner-1"));
+
+        assertThat(result.status()).isEqualTo("REJECTED");
+        assertThat(result.decisionNote())
+                .isEqualTo(
+                        "This refund reason was flagged as high fraud risk and requires manual"
+                                + " review.");
+        verify(refundRepository).saveRefund(any());
     }
 
     @Test

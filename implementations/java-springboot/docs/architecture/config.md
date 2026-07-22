@@ -29,6 +29,10 @@ ses:
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
+
+refund-classifier:
+  anthropic-api-key: ${ANTHROPIC_API_KEY:dev-anthropic-key}
+  model: ${REFUND_CLASSIFIER_MODEL:claude-opus-4-8}
 ```
 
 (For `ddl-auto`/migration status, see [persistence.md](persistence.md) — migrations are managed by Flyway.)
