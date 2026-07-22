@@ -4,7 +4,7 @@
 
 ```dockerfile
 # ---- Stage 1: Build ----
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY src ./src
 RUN npm run build
 
 # ---- Stage 2: Production ----
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -58,12 +58,12 @@ localstack
 
 | Item | Description |
 |------|------|
-| Base image | `node:20-alpine` — a lightweight image |
+| Base image | `node:24-alpine` — a lightweight image |
 | Build stage | installs all dependencies + builds TypeScript |
 | Production stage | installs only production dependencies via `--omit=dev`, copies `dist/` |
-| USER | `node` — the non-root user `node:20-alpine` provides by default |
+| USER | `node` — the non-root user `node:24-alpine` provides by default |
 | EXPOSE | 3000 (changeable via the `PORT` environment variable) |
-| HEALTHCHECK | queries `/health/live` via `wget` (busybox, included by default in `node:20-alpine`) — the liveness endpoint from [graceful-shutdown.md](graceful-shutdown.md) |
+| HEALTHCHECK | queries `/health/live` via `wget` (busybox, included by default in `node:24-alpine`) — the liveness endpoint from [graceful-shutdown.md](graceful-shutdown.md) |
 | CMD | `node dist/main.js` — better for process signal handling than `npm run start:prod` |
 
 ### Principles
@@ -73,4 +73,4 @@ localstack
 - **Keep a .dockerignore**: exclude `node_modules`, `dist`, `.env*`, `.git`, etc. from the build context.
 - **Use `node` directly in CMD**: `npm run` inserts an npm process in between, which can delay SIGTERM delivery.
 - **Never bake environment variables into the image**: exclude the `.env` file via `.dockerignore`, and inject it at runtime via `--env-file` or an orchestration tool.
-- **HEALTHCHECK uses `wget`**: `node:20-alpine` doesn't have curl installed by default — it queries `/health/live` using the `wget` included in busybox. In a deployment environment where an orchestrator like Kubernetes/ECS already handles the liveness/readiness probe, this is redundant and not strictly required (see the java-springboot implementation) — it's useful when you want to check the container's health status directly via a standalone `docker run`/`docker ps`. `harness/evaluators/rules/dockerfile.evaluator.ts` flags a missing `HEALTHCHECK` as `dockerfile.healthcheck-missing` (medium, a recommendation-level check).
+- **HEALTHCHECK uses `wget`**: `node:24-alpine` doesn't have curl installed by default — it queries `/health/live` using the `wget` included in busybox. In a deployment environment where an orchestrator like Kubernetes/ECS already handles the liveness/readiness probe, this is redundant and not strictly required (see the java-springboot implementation) — it's useful when you want to check the container's health status directly via a standalone `docker run`/`docker ps`. `harness/evaluators/rules/dockerfile.evaluator.ts` flags a missing `HEALTHCHECK` as `dockerfile.healthcheck-missing` (medium, a recommendation-level check).

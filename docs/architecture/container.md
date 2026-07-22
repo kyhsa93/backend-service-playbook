@@ -8,7 +8,7 @@ Separate build-time dependencies from runtime dependencies to keep the productio
 
 ```dockerfile
 # ---- Stage 1: Build ----
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ COPY src ./src
 RUN npm run build                 # compile TypeScript
 
 # ---- Stage 2: Production ----
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
