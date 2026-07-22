@@ -202,13 +202,20 @@ func NewCreate{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Create{{.Dom
 // SQS is solely the responsibility of the independently, periodically running
 // outbox.Poller/outbox.Consumer (synchronous draining is prohibited,
 // domain-events.md).
+// Note: the local variable holding the {{.Domain}} here is
+// {{.DomainCamel}} (the domain's full camelCase name), not the {{.Domain}}
+// package's own {{.Recv}} single-letter receiver convention — this method's
+// receiver is already named h (*Create{{.Domain}}Handler), and for a domain
+// starting with the same letter (e.g. "Homework" -> Recv "h"), reusing Recv
+// here would shadow h partway through the function and break the later
+// h.repo reference (a real bug this generator hit and fixed once already).
 func (h *Create{{.Domain}}Handler) Handle(ctx context.Context, cmd Create{{.Domain}}Command) (*{{.DomainLower}}.{{.Domain}}, error) {
-	{{.Recv}} := {{.DomainLower}}.New(cmd.OwnerID)
+	{{.DomainCamel}} := {{.DomainLower}}.New(cmd.OwnerID)
 	// Repository.Save{{.Domain}} commits the {{.DomainLower}} row and the Outbox row in the same transaction (domain-events.md).
-	if err := h.repo.Save{{.Domain}}(ctx, {{.Recv}}); err != nil {
+	if err := h.repo.Save{{.Domain}}(ctx, {{.DomainCamel}}); err != nil {
 		return nil, fmt.Errorf("create {{.DomainLower}}: %w", err)
 	}
-	return {{.Recv}}, nil
+	return {{.DomainCamel}}, nil
 }
 `
 
@@ -239,18 +246,22 @@ func NewCancel{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Cancel{{.Dom
 // SQS is solely the responsibility of the independently, periodically running
 // outbox.Poller/outbox.Consumer (synchronous draining is prohibited,
 // domain-events.md).
+// Note: same reasoning as Create{{.Domain}}Handler.Handle above — the local
+// variable is {{.DomainCamel}}, not the single-letter {{.Recv}}, since this
+// method's receiver is h and there's a second h.repo reference below the
+// point where {{.Recv}} would have shadowed it for an "h"-initial domain.
 func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Domain}}Command) error {
-	{{.Recv}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, cmd.{{.Domain}}ID, cmd.OwnerID)
+	{{.DomainCamel}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, cmd.{{.Domain}}ID, cmd.OwnerID)
 	if err != nil {
 		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
 	}
 
 	// Business rules are validated inside the Aggregate — the Handler only coordinates.
-	if err := {{.Recv}}.Cancel(cmd.Reason); err != nil {
+	if err := {{.DomainCamel}}.Cancel(cmd.Reason); err != nil {
 		return err
 	}
 
-	if err := h.repo.Save{{.Domain}}(ctx, {{.Recv}}); err != nil {
+	if err := h.repo.Save{{.Domain}}(ctx, {{.DomainCamel}}); err != nil {
 		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
 	}
 	return nil
@@ -284,15 +295,15 @@ func NewGet{{.Domain}}Handler(repo {{.DomainLower}}.Query) *Get{{.Domain}}Handle
 }
 
 func (h *Get{{.Domain}}Handler) Handle(ctx context.Context, q Get{{.Domain}}Query) (*Get{{.Domain}}Result, error) {
-	{{.Recv}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, q.{{.Domain}}ID, q.OwnerID)
+	{{.DomainCamel}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, q.{{.Domain}}ID, q.OwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("get {{.DomainLower}}: %w", err)
 	}
 	return &Get{{.Domain}}Result{
-		{{.Domain}}ID: {{.Recv}}.{{.Domain}}ID,
-		OwnerID:   {{.Recv}}.OwnerID,
-		Status:    string({{.Recv}}.Status),
-		CreatedAt: {{.Recv}}.CreatedAt,
+		{{.Domain}}ID: {{.DomainCamel}}.{{.Domain}}ID,
+		OwnerID:   {{.DomainCamel}}.OwnerID,
+		Status:    string({{.DomainCamel}}.Status),
+		CreatedAt: {{.DomainCamel}}.CreatedAt,
 	}, nil
 }
 `
@@ -435,7 +446,12 @@ func (r *{{.Domain}}Repository) Find{{.Domain}}s(ctx context.Context, q {{.Domai
 // as-is — until Writer is made generic, this loads the row directly within this
 // transaction instead (the Poller/Consumer operate on the event_type string, so
 // they drain correctly regardless of how the row was loaded).
-func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.Recv}} *{{.DomainLower}}.{{.Domain}}) error {
+// Note: the parameter is named {{.DomainCamel}}, not the single-letter
+// {{.Recv}} — this method's receiver is r (*{{.Domain}}Repository), and a
+// parameter named identically to the receiver ({{.Recv}} == "r" for a
+// domain starting with "R") is a compile error in Go ("r redeclared in
+// this block"), not just a shadowing footgun.
+func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.DomainCamel}} *{{.DomainLower}}.{{.Domain}}) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -446,13 +462,13 @@ func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.Recv}} *
 		` + "`" + `INSERT INTO {{.DomainsLower}} (id, owner_id, status, created_at)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status` + "`" + `,
-		{{.Recv}}.{{.Domain}}ID, {{.Recv}}.OwnerID, string({{.Recv}}.Status), {{.Recv}}.CreatedAt,
+		{{.DomainCamel}}.{{.Domain}}ID, {{.DomainCamel}}.OwnerID, string({{.DomainCamel}}.Status), {{.DomainCamel}}.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("save {{.DomainLower}}: %w", err)
 	}
 
-	for _, evt := range {{.Recv}}.DomainEvents() {
+	for _, evt := range {{.DomainCamel}}.DomainEvents() {
 		payload, err := json.Marshal(evt)
 		if err != nil {
 			return fmt.Errorf("marshal domain event: %w", err)
@@ -468,7 +484,7 @@ func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.Recv}} *
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit save {{.DomainLower}}: %w", err)
 	}
-	{{.Recv}}.ClearEvents()
+	{{.DomainCamel}}.ClearEvents()
 	return nil
 }
 `
@@ -480,14 +496,14 @@ const tmplDTO = `package http
 import "time"
 
 type Cancel{{.Domain}}Request struct {
-	Reason string ` + "`" + `json:"reason"` + "`" + `
+	Reason string ` + "`" + `json:"reason"` + "`" + ` // Why the {{.DomainLower}} is being cancelled.
 }
 
 type {{.Domain}}Response struct {
-	{{.Domain}}ID string    ` + "`" + `json:"{{.DomainCamel}}Id"` + "`" + `
-	OwnerID   string    ` + "`" + `json:"ownerId"` + "`" + `
-	Status    string    ` + "`" + `json:"status"` + "`" + `
-	CreatedAt time.Time ` + "`" + `json:"createdAt"` + "`" + `
+	{{.Domain}}ID string    ` + "`" + `json:"{{.DomainCamel}}Id"` + "`" + ` // The {{.DomainLower}}'s ID.
+	OwnerID   string    ` + "`" + `json:"ownerId"` + "`" + ` // The {{.DomainLower}} owner's user ID.
+	Status    string    ` + "`" + `json:"status"` + "`" + ` // The {{.DomainLower}} status (` + "`" + `PENDING` + "`" + `, ` + "`" + `ACTIVE` + "`" + `, or ` + "`" + `CANCELLED` + "`" + `).
+	CreatedAt time.Time ` + "`" + `json:"createdAt"` + "`" + ` // When the {{.DomainLower}} was created.
 }
 `
 
@@ -519,9 +535,25 @@ func New{{.Domain}}Handler(
 	return &{{.Domain}}Handler{create{{.Domain}}: create{{.Domain}}, cancel{{.Domain}}: cancel{{.Domain}}, get{{.Domain}}: get{{.Domain}}}
 }
 
+// Create{{.Domain}} creates a new {{.Domain}} for the authenticated requester.
+//
+// @Summary		Create a new {{.DomainLower}}
+// @Description	Creates a new {{.DomainLower}} for the authenticated requester, starting in the PENDING state.
+// @Tags			{{.Domain}}
+// @Produce		json
+// @Security		BearerAuth
+// @Success		201	{object}	{{.Domain}}Response	"The {{.DomainLower}} was created."
+// @Failure		401	{object}	ErrorResponse		"The bearer token is missing, malformed, or invalid."
+// @Router			/{{.DomainsLower}} [post]
+// Note: the local variable is {{.DomainCamel}}, not the single-letter
+// {{.Recv}} — this handler's parameters are w (http.ResponseWriter) and r
+// (*http.Request), and for a domain starting with "W" or "R", {{.Recv}}
+// would shadow one of them right before the w./r. calls below that need the
+// real ResponseWriter/Request (a real bug this generator hit and fixed once
+// already, caught by scaffolding a "Warranty" domain).
 func (h *{{.Domain}}Handler) Create{{.Domain}}(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
-	{{.Recv}}, err := h.create{{.Domain}}.Handle(r.Context(), command.Create{{.Domain}}Command{OwnerID: requesterID})
+	{{.DomainCamel}}, err := h.create{{.Domain}}.Handle(r.Context(), command.Create{{.Domain}}Command{OwnerID: requesterID})
 	if err != nil {
 		write{{.Domain}}Error(w, r, err)
 		return
@@ -529,20 +561,35 @@ func (h *{{.Domain}}Handler) Create{{.Domain}}(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, r, {{.Domain}}Response{
-		{{.Domain}}ID: {{.Recv}}.{{.Domain}}ID,
-		OwnerID:   {{.Recv}}.OwnerID,
-		Status:    string({{.Recv}}.Status),
-		CreatedAt: {{.Recv}}.CreatedAt,
+		{{.Domain}}ID: {{.DomainCamel}}.{{.Domain}}ID,
+		OwnerID:   {{.DomainCamel}}.OwnerID,
+		Status:    string({{.DomainCamel}}.Status),
+		CreatedAt: {{.DomainCamel}}.CreatedAt,
 	})
 }
 
+// Cancel{{.Domain}} cancels a {{.Domain}} owned by the authenticated requester.
+//
+// @Summary		Cancel a {{.DomainLower}}
+// @Description	Cancels the {{.DomainLower}}, recording the given reason.
+// @Tags			{{.Domain}}
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path	string					true	"The {{.DomainLower}} ID"
+// @Param			body	body	Cancel{{.Domain}}Request	true	"Cancellation reason"
+// @Success		204		"The {{.DomainLower}} was cancelled."
+// @Failure		400		{object}	ErrorResponse	"One of: request validation failed (` + "`" + `VALIDATION_FAILED` + "`" + `), or the {{.DomainLower}} is already cancelled (` + "`" + `{{.DomainScream}}_ALREADY_CANCELLED` + "`" + `)."
+// @Failure		401		{object}	ErrorResponse	"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse	"No {{.DomainLower}} exists with the given ` + "`" + `id` + "`" + ` for this requester (` + "`" + `{{.DomainScream}}_NOT_FOUND` + "`" + `)."
+// @Router			/{{.DomainsLower}}/{id}/cancel [post]
 func (h *{{.Domain}}Handler) Cancel{{.Domain}}(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	{{.DomainCamel}}ID := r.PathValue("id")
 
 	var body Cancel{{.Domain}}Request
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, r, "invalid request body")
 		return
 	}
 
@@ -557,6 +604,18 @@ func (h *{{.Domain}}Handler) Cancel{{.Domain}}(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Get{{.Domain}} looks up a {{.Domain}} owned by the authenticated requester.
+//
+// @Summary		Look up a {{.DomainLower}}
+// @Description	Returns the {{.DomainLower}} only if it belongs to the authenticated requester.
+// @Tags			{{.Domain}}
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id	path		string				true	"The {{.DomainLower}} ID"
+// @Success		200	{object}	{{.Domain}}Response	"The {{.DomainLower}} was found."
+// @Failure		401	{object}	ErrorResponse		"The bearer token is missing, malformed, or invalid."
+// @Failure		404	{object}	ErrorResponse		"No {{.DomainLower}} exists with the given ` + "`" + `id` + "`" + ` for this requester (` + "`" + `{{.DomainScream}}_NOT_FOUND` + "`" + `)."
+// @Router			/{{.DomainsLower}}/{id} [get]
 func (h *{{.Domain}}Handler) Get{{.Domain}}(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	{{.DomainCamel}}ID := r.PathValue("id")
