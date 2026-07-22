@@ -5,11 +5,10 @@ This repo's docs and code comments must describe the *current* architecture, not
 how it got there. Two categories recur (see memory/commit history of this repo):
 
   1. Session/issue meta-narration: referencing a specific past session, review pass, or
-     issue number as the reason something looks the way it does (e.g. "과거 실제 회귀(#181)",
-     "이전 세션에서").
+     issue number as the reason something looks the way it does (e.g. "a real past
+     regression (#181)", "in a previous session").
   2. Before/after temporal framing: describing the current design by contrasting it with
-     a prior state ("예전에는 X였다", "더 이상 X가 아니다", "(신규)"/"(구현됨)" tags,
-     "이미 적용 완료되었다").
+     a prior state ("(new)"/"(implemented)" tags, "completely replaced", "no precedent").
 
 Both read fine in a PR description or commit message — that's where this information
 belongs. In docs/comments it rots (the "before" state stops being true background and
@@ -18,6 +17,16 @@ naturally invites before/after phrasing. This script is the standard finishing-s
 that past cleanup rounds ran by hand; see ALLOWLIST below for the small number of known
 false positives (forward-looking design-scope notes that happen to contain a trigger word,
 not narration of a past session).
+
+Note on scope: this used to match a broader set of Korean phrases before the repo's docs
+and code were translated to English. Several equally literal English equivalents (e.g.
+"used to be", "no longer", "already implemented", "promoted to") turned out to be common,
+legitimate phrasing in ordinary English technical prose in this repo (describing a current
+semantic fact or a design decision's rationale, not narrating removed history), so
+including them produced far more false positives than their Korean counterparts ever did.
+The pattern list below is intentionally narrower and biased toward unambiguous markers
+(explicit issue/session references, parenthetical status tags) rather than free-form
+temporal phrases.
 
 Exit code is non-zero if any non-allowlisted match is found (for CI gating).
 """
@@ -41,9 +50,11 @@ INCLUDE_SUFFIXES = {".md", ".ts", ".go", ".java", ".kt", ".py", ".yml", ".yaml"}
 # Category 1: session/issue meta-narration.
 CATEGORY_1 = re.compile(
     "|".join([
-        r"이번\s*패스", r"이전\s*세션", r"이전\s*버전", r"이전\s*감사",
-        r"지난\s*세션", r"지난\s*라운드", r"회귀\s*#\d+", r"과거\s*실제",
-        r"(?:issue|이슈)\s*#\d+",
+        r"\bprevious\s+session\b", r"\bprior\s+session\b", r"\blast\s+session\b",
+        r"\bprevious\s+version\b", r"\bprior\s+version\b",
+        r"\bprevious\s+audit\b", r"\bprior\s+audit\b",
+        r"\blast\s+round\b", r"\bprevious\s+round\b",
+        r"\bregression\s*#\d+", r"\bissue\s*#\d+",
     ]),
     re.IGNORECASE,
 )
@@ -51,20 +62,19 @@ CATEGORY_1 = re.compile(
 # Category 2: before/after temporal framing and completion labels.
 CATEGORY_2 = re.compile(
     "|".join([
-        r"예전에는", r"과거에는", r"이전에는", r"더\s*이상.{0,10}아니",
-        r"바뀌었다", r"시절", r"전례가", r"\(신규\)", r"\(변경\s*없음\)",
-        r"\(구현됨\)", r"승격되었다", r"완전히\s*교체", r"첫\s*실",
-        r"적용\s*완료", r"이미\s*적용됨", r"이미\s*구현됨", r"이미\s*올바름",
-    ])
+        r"\(new\)", r"\(no\s*change\)", r"\(implemented\)",
+        r"\bcompletely\s+replaced\b", r"\bfirst\s+real\b", r"\bno\s+precedent\b",
+    ]),
+    re.IGNORECASE,
 )
 
 # (relative path, substring of the offending line) — genuine false positives, each with
 # a reason a human already checked. Keep this list short; a new hit should almost always
 # be fixed, not allowlisted.
 ALLOWLIST: list[tuple[str, str]] = [
-    # Forward-looking scope note ("no precedent of this in the actual code, so we don't
+    # Forward-looking scope note ("no precedent for it in the actual code, so we don't
     # handle it") — not narrating a past session, describing a design-scope decision.
-    ("implementations/go/harness/no_direct_env_access.go", "전례가 없어 다루지 않는다"),
+    ("implementations/go/harness/no_direct_env_access.go", "no precedent for it in this repository's actual code"),
 ]
 
 

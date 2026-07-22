@@ -2,11 +2,11 @@
 """Cross-checks documentation claims about file existence against the real repo tree.
 
 Catches two failure modes seen repeatedly in this repo's history:
-  1. A doc says a file/feature "doesn't exist yet" (아직 없다/미구현/부재/...) while the
+  1. A doc says a file/feature "doesn't exist yet"/"not implemented"/"absent" while the
      cited file actually exists on disk — the code moved on but the doc didn't.
-  2. A doc says something "is already implemented"/"is the real code" (실제 코드/이미
-     구현/이미 존재/...) while the cited file does not exist — the doc describes code
-     that was never written, renamed, or removed.
+  2. A doc says something "is already implemented"/"is the real code" while the cited
+     file does not exist — the doc describes code that was never written, renamed, or
+     removed.
 
 This is a heuristic, path-existence checker, not a semantic one. It only looks at
 backtick-quoted strings that look like file paths (contain a `/` and a file extension)
@@ -41,20 +41,21 @@ DOC_GLOBS = [
 # Keyword lists are intentionally narrow (high precision over high recall) — false
 # positives here would train people to ignore the tool.
 ABSENCE_KEYWORDS = [
-    "아직 없다", "아직 없음", "아직 부재", "미구현", "존재하지 않는다",
-    "존재하지 않고", "아직 도입하지", "아직 채택하지", "부재 —", "부재("
+    "doesn't exist yet", "does not exist yet", "not yet implemented",
+    "not been introduced", "not been adopted", "absent —", "absent(",
 ]
 PRESENCE_KEYWORDS = [
-    "실제 코드", "이미 구현", "실제로 존재", "이미 존재", "코드로 존재", "실제 존재",
+    "actual code", "already implemented", "actually exists", "already exists",
+    "real code", "really exists",
 ]
 
 # Header-comment markers inside fenced code blocks (first content line of ``` ... ```).
-BLOCK_PRESENT_MARKERS = ["실제 코드"]
-# Deliberately narrow: "추가 필요"/"제안"/"목표 형태" etc. are used constantly in this
-# repo's docs to show a snippet that modifies an EXISTING file (adding a section to
-# build.gradle, a method to an existing service) — not a claim that the whole file
-# is missing. Only "아직 없음" (doesn't exist yet) is an unambiguous non-existence claim.
-BLOCK_ABSENT_MARKERS = ["아직 없음"]
+BLOCK_PRESENT_MARKERS = ["actual code"]
+# Deliberately narrow: "needs to be added"/"proposed"/"target shape" etc. are used
+# constantly in this repo's docs to show a snippet that modifies an EXISTING file (adding
+# a section to build.gradle, a method to an existing service) — not a claim that the
+# whole file is missing. Only "doesn't exist yet" is an unambiguous non-existence claim.
+BLOCK_ABSENT_MARKERS = ["doesn't exist yet"]
 
 PATH_IN_BACKTICKS = re.compile(r"`([\w./{}\-]+/[\w./{}\-]+\.\w{1,30})(?!\w)`")
 PATH_IN_COMMENT = re.compile(r"([\w./\-]+\.\w{2,30})(?!\w)")

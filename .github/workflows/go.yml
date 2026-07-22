@@ -40,11 +40,11 @@ jobs:
           working-directory: implementations/go/examples
           version: latest
 
-      - name: Test (Testcontainers 기반 e2e 포함)
+      - name: Test (including Testcontainers-based e2e)
         working-directory: implementations/go/examples
         run: go test ./...
 
-      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+      - name: Harness self-tests (per-rule fixture regression tests)
         working-directory: implementations/go/harness
         run: |
           go test ./...

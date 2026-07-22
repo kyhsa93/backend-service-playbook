@@ -15,11 +15,11 @@ on:
 jobs:
   java-springboot:
     runs-on: ubuntu-latest
-    # ./gradlew build는 Testcontainers 기반 E2E 테스트를 포함해 실행 시간이 길다.
-    # 리소스가 제한된 로컬 sandbox에서는 timeout을 겪은 적이 있지만, GitHub-hosted
-    # ubuntu-latest는 Docker가 기본 탑재되어 있고 리소스도 더 넉넉하므로 일단 하나의
-    # 스텝으로 전체 빌드를 시도한다. 지속적으로 타임아웃되면 test/e2eTest 태스크를
-    # 분리해 각각 timeout-minutes를 늘리는 방향으로 전환한다.
+    # ./gradlew build takes a while since it includes Testcontainers-based E2E tests.
+    # This has timed out before in a resource-constrained local sandbox, but GitHub-hosted
+    # ubuntu-latest ships Docker by default and has more headroom, so this tries the full
+    # build as one step for now. If it keeps timing out, switch to splitting the
+    # test/e2eTest tasks apart and raising timeout-minutes on each separately.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -36,8 +36,9 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      # spotlessCheck는 build/check가 자동으로 포함하지만, Testcontainers e2e까지 기다리지
-      # 않고 포맷 위반을 먼저 빠르게 보고하기 위해 별도 스텝으로 분리한다.
+      # spotlessCheck is already included automatically by build/check, but this is split
+      # into its own step so format violations get reported quickly without waiting for
+      # the Testcontainers e2e run.
       - name: Lint (Spotless)
         run: ./gradlew spotlessCheck
         working-directory: implementations/java-springboot/examples
@@ -46,7 +47,7 @@ jobs:
         run: ./gradlew build
         working-directory: implementations/java-springboot/examples
 
-      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+      - name: Harness self-tests (per-rule fixture regression tests)
         working-directory: implementations/java-springboot/harness
         run: |
           javac -d build/classes $(find src -name "*.java")

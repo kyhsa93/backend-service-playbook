@@ -1,9 +1,10 @@
 name: Nightly full sweep
 
-# 매일 밤 5개 언어 CI + harness + docs-drift + history-narrative + 스캐폴딩 생성기까지
-# 전부 한 번씩 돌려, 아무 파일도 안 바뀌었는데 외부 요인(의존성 릴리스, 툴체인 업데이트,
-# 베이스 이미지 변경 등)만으로 뭔가 깨지지 않았는지 감시한다 — path-filter가 있는
-# 평소 CI는 관련 파일이 바뀔 때만 도는 반면, 이건 무조건 전체를 돈다.
+# Every night, runs all 5 languages' CI + harness + docs-drift + history-narrative +
+# scaffolding generators once each, to catch anything that broke purely from an external
+# factor (a dependency release, a toolchain update, a base image change) even though no
+# file in this repo changed — the regular path-filtered CI only runs when relevant files
+# change, whereas this always runs everything unconditionally.
 
 on:
   schedule:

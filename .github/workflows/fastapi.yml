@@ -31,22 +31,23 @@ jobs:
 
       - run: pip install -r examples/requirements.txt
 
-      # ruff는 examples/와 harness/를 함께 검사한다 (implementations/fastapi/pyproject.toml 설정 적용).
+      # ruff checks examples/ and harness/ together (using implementations/fastapi/pyproject.toml's config).
       - name: Lint (ruff check)
         run: ruff check .
 
       - name: Format check (ruff format)
         run: ruff format --check .
 
-      # cwd가 examples/여야 `from main import app`, `from src...`가 sys.path로 해석된다
-      # (콘솔 스크립트 pytest는 cwd를 sys.path에 넣지 않으므로 `python -m pytest`를 examples/ 안에서 실행한다).
+      # cwd must be examples/ for `from main import app`/`from src...` to resolve via sys.path
+      # (the pytest console script doesn't add cwd to sys.path, so `python -m pytest` is run from inside examples/).
       - run: cd examples && python -m pytest tests
 
-      # harness의 directory-structure 규칙이 __pycache__를 phantom 디렉토리로
-      # 오탐할 수 있다 — pytest 실행으로 examples/ 아래 생긴 __pycache__를 harness 실행 전에 정리한다.
+      # The harness's directory-structure rule can false-positive on __pycache__ as a
+      # phantom directory — clean up any __pycache__ that pytest created under examples/
+      # before running the harness.
       - run: find examples -iname __pycache__ -exec rm -rf {} +
 
-      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+      - name: Harness self-tests (per-rule fixture regression tests)
         run: cd harness && python3 -m pytest tests/
 
       - name: Harness

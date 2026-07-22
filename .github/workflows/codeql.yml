@@ -26,9 +26,10 @@ jobs:
             build-mode: none
           - language: go
             build-mode: autobuild
-          # java-springboot와 kotlin-springboot, 두 개의 독립된 Gradle 프로젝트가 한 저장소에
-          # 있어 autobuild가 어느 쪽을 빌드할지 모호해진다 — 컴파일 없이 소스만 추출하는
-          # none 모드로 둔다(데이터플로우 분석 정확도는 다소 낮아지지만 두 프로젝트 모두 커버됨).
+          # java-springboot and kotlin-springboot are two independent Gradle projects living
+          # in one repo, which makes it ambiguous which one autobuild would build — so this
+          # stays in source-only "none" mode (data-flow analysis accuracy is somewhat lower,
+          # but both projects get covered).
           - language: java-kotlin
             build-mode: none
 

@@ -1,8 +1,9 @@
 name: Scaffolding generator regression
 
-# 각 언어의 create-domain 생성기가 낯선 도메인 이름으로 실제 harness 100/100(FAIL 0건)을
-# 만들어내는지 검증한다 — 지금까지는 사람이 수동으로 실행해 검증해왔다. 러너 체크아웃은
-# job이 끝나면 버려지므로 별도 scratch 복사 없이 실제 checkout 위에서 바로 생성한다.
+# Verifies that each language's create-domain generator produces a real harness 100/100
+# (0 FAIL) for an unfamiliar domain name — until now this was verified by running it
+# manually. The runner's checkout is discarded once the job ends, so this generates
+# directly on top of the real checkout with no separate scratch copy needed.
 
 on:
   push:
@@ -45,8 +46,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: implementations/go/examples/go.mod
-      # scripts/create-domain은 examples/harness와 마찬가지로 독립 Go module이라
-      # 그 디렉토리 안에서 실행해야 한다(implementations/go/CLAUDE.md 참고).
+      # scripts/create-domain is an independent Go module, same as examples/harness, so it
+      # must be run from inside that directory (see implementations/go/CLAUDE.md).
       - run: go run . ScaffoldCheck --wire
         working-directory: implementations/go/scripts/create-domain
       - run: bash harness.sh examples

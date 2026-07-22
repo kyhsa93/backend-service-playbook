@@ -1,7 +1,7 @@
 name: Build images (verify only, no push)
 
-# 태그 push 또는 수동 실행 시 5개 언어 이미지가 여전히 빌드되는지만 확인한다 — 어떤
-# 레지스트리에도 push하지 않는다.
+# On a tag push or manual run, this only confirms that all 5 languages' images still
+# build — it doesn't push to any registry.
 
 on:
   push:

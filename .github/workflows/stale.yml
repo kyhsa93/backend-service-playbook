@@ -20,10 +20,10 @@ jobs:
           stale-issue-label: 'stale'
           stale-pr-label: 'stale'
           stale-issue-message: >
-            이 이슈는 60일 동안 활동이 없어 stale로 표시되었습니다. 14일 내에 추가 활동이
-            없으면 자동으로 닫힙니다.
+            This issue has been marked stale due to 60 days of inactivity. It will be
+            closed automatically if there is no further activity within 14 days.
           stale-pr-message: >
-            이 PR은 60일 동안 활동이 없어 stale로 표시되었습니다. 14일 내에 추가 활동이
-            없으면 자동으로 닫힙니다.
-          # Dependabot PR은 CI 결과를 기다리는 동안 활동이 없어 보일 수 있어 제외한다.
+            This PR has been marked stale due to 60 days of inactivity. It will be
+            closed automatically if there is no further activity within 14 days.
+          # Dependabot PRs are exempt since they can look inactive while just waiting on CI results.
           exempt-pr-labels: 'dependencies'

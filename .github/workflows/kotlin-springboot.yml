@@ -30,19 +30,20 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # ktlint — 스타일 위반은 여기서 빨리 실패시키고, 4분 넘게 걸리는
-      # Testcontainers e2e 테스트까지 기다리지 않게 한다. ktlintCheck는 build.gradle.kts의
-      # 플러그인 설정으로 check/build 태스크에도 이미 연결되어 있어 아래 `./gradlew build`가
-      # 다시 한 번 검증하지만, 별도 스텝으로 뽑아두면 실패 원인이 로그에서 바로 구분된다.
+      # ktlint — fail fast on style violations here rather than waiting for the
+      # Testcontainers e2e tests, which take over 4 minutes. ktlintCheck is already wired
+      # into the check/build tasks via build.gradle.kts's plugin config, so the
+      # `./gradlew build` below verifies it again anyway, but pulling it into its own step
+      # makes the failure cause immediately distinguishable in the log.
       - name: Lint (ktlint)
         run: ./gradlew ktlintCheck
         working-directory: implementations/kotlin-springboot/examples
 
-      # Testcontainers 기반 e2e 테스트 포함 — ubuntu-latest는 Docker가 기본 탑재되어 있어 그대로 동작한다.
+      # Includes Testcontainers-based e2e tests — works as-is since ubuntu-latest ships Docker by default.
       - run: ./gradlew build
         working-directory: implementations/kotlin-springboot/examples
 
-      # harness는 Kotlin 프로그램이다 — kotlinc가 PATH에 없으면 다운로드해 준비한다.
+      # The harness is a Kotlin program — download and set up kotlinc since it isn't on PATH.
       - name: Install kotlinc
         run: |
           curl -fsSL -o /tmp/kotlin-compiler.zip \
@@ -50,7 +51,7 @@ jobs:
           unzip -q /tmp/kotlin-compiler.zip -d /tmp
           echo "/tmp/kotlinc/bin" >> "$GITHUB_PATH"
 
-      - name: Harness self-tests (규칙별 fixture 회귀 테스트)
+      - name: Harness self-tests (per-rule fixture regression tests)
         working-directory: implementations/kotlin-springboot/harness
         run: |
           kotlinc src test/RuleTest.kt -include-runtime -d build/test.jar
