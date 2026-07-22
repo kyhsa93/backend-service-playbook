@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class RefundTest {
 
     private Refund createRefund() {
-        return Refund.create("payment-1", 500, "단순 변심");
+        return Refund.create("payment-1", 500, "change of mind");
     }
 
     @Test
@@ -18,7 +18,7 @@ class RefundTest {
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.REQUESTED);
         assertThat(refund.getPaymentId()).isEqualTo("payment-1");
         assertThat(refund.getAmount()).isEqualTo(500);
-        assertThat(refund.getReason()).isEqualTo("단순 변심");
+        assertThat(refund.getReason()).isEqualTo("change of mind");
         assertThat(refund.getDecisionNote()).isNull();
         assertThat(refund.pullDomainEvents()).isEmpty();
     }
@@ -37,7 +37,7 @@ class RefundTest {
         refund.approve("account-1", "owner-1");
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.APPROVED);
-        assertThat(refund.getDecisionNote()).isEqualTo("환불이 승인되었습니다.");
+        assertThat(refund.getDecisionNote()).isEqualTo("The refund has been approved.");
         assertThat(refund.pullDomainEvents())
                 .hasSize(1)
                 .first()
@@ -59,19 +59,20 @@ class RefundTest {
     void REQUESTED_환불을_거부하면_REJECTED_상태이고_사유가_기록된다() {
         Refund refund = createRefund();
 
-        refund.reject("환불 금액이 결제 금액을 초과합니다.");
+        refund.reject("The refund amount exceeds the payment amount.");
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.REJECTED);
-        assertThat(refund.getDecisionNote()).isEqualTo("환불 금액이 결제 금액을 초과합니다.");
+        assertThat(refund.getDecisionNote())
+                .isEqualTo("The refund amount exceeds the payment amount.");
         assertThat(refund.pullDomainEvents()).isEmpty();
     }
 
     @Test
     void REQUESTED가_아닌_환불을_거부하면_예외를_던진다() {
         Refund refund = createRefund();
-        refund.reject("사유");
+        refund.reject("reason");
 
-        assertThatThrownBy(() -> refund.reject("다른 사유"))
+        assertThatThrownBy(() -> refund.reject("a different reason"))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.REFUND_REJECT_REQUIRES_REQUESTED_REFUND);

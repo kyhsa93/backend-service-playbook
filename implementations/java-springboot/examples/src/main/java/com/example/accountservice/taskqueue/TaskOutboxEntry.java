@@ -9,14 +9,17 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Scheduler가 적재한 Task를 Task Queue(SQS)로 발행하기 전 보관하는 Outbox 레코드 — {@code outbox/OutboxEvent}와 동일한
- * 이유·구조다(domain-events.md의 Outbox 패턴을 Task에도 그대로 적용, scheduling.md "Task Outbox 패턴" 참고).
- * Scheduler(Cron)는 자연스러운 DB 트랜잭션 문맥이 없으므로, 이 테이블에 대한 단일 row insert 자체가 원자적 적재 단위가 된다.
+ * An Outbox record that holds a Task enqueued by a Scheduler before it's published to the Task
+ * Queue (SQS) — the same rationale and structure as {@code outbox/OutboxEvent} (applying the Outbox
+ * pattern from domain-events.md to Tasks as well; see the "Task Outbox pattern" in scheduling.md).
+ * A Scheduler (Cron) has no natural DB transaction context, so a single row insert into this table
+ * is itself the atomic unit of enqueueing.
  *
- * <p>{@code groupId}/{@code deduplicationId}는 FIFO Task Queue의 MessageGroupId/
- * MessageDeduplicationId로 그대로 전달된다({@link TaskOutboxPoller} 참고) — 여러 인스턴스가 같은 시각에 Cron을 실행해도 날짜/월
- * 기반 deduplicationId 덕분에 큐에는 1건만 들어간다(scheduling.md "Cron 다중 인스턴스 안전성"). Domain Event 큐(표준 큐)와 달리
- * Task Queue를 FIFO로 두는 이유이기도 하다.
+ * <p>{@code groupId}/{@code deduplicationId} are passed straight through as the FIFO Task Queue's
+ * MessageGroupId/MessageDeduplicationId (see {@link TaskOutboxPoller}) — even if multiple instances
+ * run the same Cron at the same moment, a date/month-based deduplicationId ensures only one entry
+ * lands in the queue (see "Cron safety with multiple instances" in scheduling.md). This is also why
+ * the Task Queue is FIFO, unlike the Domain Event queue (a standard queue).
  */
 @Entity
 @Table(name = "task_outbox")

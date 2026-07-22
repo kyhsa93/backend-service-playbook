@@ -25,7 +25,7 @@ public class SignUpService {
                         .isEmpty();
         if (exists) {
             throw new AuthException(
-                    AuthException.ErrorCode.USER_ID_ALREADY_EXISTS, "이미 사용 중인 아이디입니다.");
+                    AuthException.ErrorCode.USER_ID_ALREADY_EXISTS, "This ID is already in use.");
         }
 
         String passwordHash = passwordHasher.hash(command.password());

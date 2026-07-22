@@ -9,9 +9,10 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * auth/domain/Credential.java의 JPA 매핑 전용 대응물. Domain Aggregate(Credential)는 이 클래스를 전혀 알지 못한다 — 변환은
- * CredentialMapper가 전담한다 (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조,
- * layer-architecture.md 참고).
+ * The JPA-mapping counterpart of auth/domain/Credential.java. The Domain Aggregate (Credential) has
+ * no knowledge of this class at all — the conversion is handled entirely by CredentialMapper (the
+ * same structure as account/infrastructure/persistence/AccountJpaEntity, see
+ * layer-architecture.md).
  */
 @Entity
 @Table(name = "credential")

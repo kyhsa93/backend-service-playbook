@@ -12,11 +12,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 외부 BC(Payment)가 발행한 {@code payment.completed.v1} Integration Event 수신부. {@link
- * OutboxEventHandler}로 구현하면 {@code OutboxConsumer}가 SQS에서 수신한 메시지를 {@code eventType()} 값으로 자동
- * 라우팅하므로, Payment BC가 Account BC를 몰라도 연결된다(card/application/event/
- * AccountSuspendedIntegrationEventHandler.java와 동일한 구조). 자기 도메인의 유스케이스(Command)만 호출하고, 실패 시 예외를 그대로
- * 던져 메시지를 삭제하지 않게 한다 — SQS visibility timeout 이후 재수신되어 재시도된다.
+ * The receiver for the {@code payment.completed.v1} Integration Event published by the external BC
+ * (Payment). Implementing {@link OutboxEventHandler} means {@code OutboxConsumer} automatically
+ * routes messages received from SQS by their {@code eventType()} value, so the connection works
+ * even though the Payment BC has no knowledge of the Account BC (the same structure as
+ * card/application/event/AccountSuspendedIntegrationEventHandler.java). It calls only its own
+ * domain's use case (Command), and on failure lets the exception propagate as-is so the message is
+ * not deleted — it is redelivered and retried after the SQS visibility timeout.
  */
 @Component
 @RequiredArgsConstructor
@@ -38,7 +40,7 @@ public class PaymentCompletedIntegrationEventHandler implements OutboxEventHandl
         PaymentIntegrationEventPayload event =
                 objectMapper.readValue(payload, PaymentIntegrationEventPayload.class);
         log.info(
-                "payment.completed.v1 수신",
+                "payment.completed.v1 received",
                 kv("payment_id", event.paymentId()),
                 kv("account_id", event.accountId()));
         withdrawByPaymentService.withdraw(

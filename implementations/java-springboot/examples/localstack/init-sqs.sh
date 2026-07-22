@@ -1,10 +1,10 @@
 #!/bin/sh
 set -e
 
-# OutboxPoller가 발행하고 OutboxConsumer가 수신하는 공유 Domain/Integration Event 큐.
-# DLQ를 먼저 만들고, 메인 큐에 RedrivePolicy로 연결한다 — maxReceiveCount(3)를 넘겨
-# 재시도해도 실패하는 메시지(독성 페이로드/버그)는 DLQ로 격리된다
-# (docs/architecture/scheduling.md의 DLQ 컨벤션).
+# The shared Domain/Integration Event queue that OutboxPoller publishes to and OutboxConsumer
+# consumes from. Create the DLQ first, then wire it to the main queue via RedrivePolicy — a
+# message that still fails after exceeding maxReceiveCount(3) retries (a poison payload/bug) is
+# isolated to the DLQ (see the DLQ convention in docs/architecture/scheduling.md).
 awslocal sqs create-queue --queue-name domain-events-dlq
 
 DLQ_ARN=$(awslocal sqs get-queue-attributes \
@@ -15,10 +15,13 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes \
 awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 
-# TaskOutboxPoller가 발행하고 TaskConsumer가 수신하는 Task Queue. Domain Event 큐(표준 큐)와 달리 FIFO
-# 큐다 — 여러 인스턴스가 같은 Cron tick에 중복 적재해도 MessageDeduplicationId로 큐에는 1건만 들어간다
-# (docs/architecture/scheduling.md "Cron 다중 인스턴스 안전성"). Task(명령)와 Domain Event(사실)는
-# 개념적으로 다르므로 큐 자체를 분리한다(docs/architecture/domain-events.md).
+# The Task Queue that TaskOutboxPoller publishes to and TaskConsumer consumes from. Unlike the
+# Domain Event queue (a standard queue), this is a FIFO queue — even if multiple instances
+# duplicate-enqueue on the same Cron tick, only one entry lands in the queue via
+# MessageDeduplicationId (see "Cron safety with multiple instances" in
+# docs/architecture/scheduling.md). A Task (a command) and a Domain Event (a fact) are
+# conceptually different, so the queues themselves are kept separate (see
+# docs/architecture/domain-events.md).
 awslocal sqs create-queue --queue-name task-queue-dlq.fifo \
   --attributes '{"FifoQueue":"true"}'
 

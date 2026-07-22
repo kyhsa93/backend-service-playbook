@@ -53,8 +53,10 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     }
 
     /**
-     * source/target 두 Account 저장을 하나의 물리 트랜잭션으로 묶는다 — Transfer(계좌 간 송금)가 첫 사용처다. 출금 계좌 저장과 입금 계좌
-     * 저장이 각자 별도 트랜잭션으로 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다.
+     * Bundles the source/target Account saves into a single physical transaction — Transfer
+     * (transfer between accounts) is the first use case for this. If the withdrawal-account save
+     * and the deposit-account save were each committed as separate transactions, a failure mode
+     * would arise where "the withdrawal is applied but the deposit is lost."
      */
     @Override
     @Transactional
@@ -75,8 +77,11 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
             transactionJpaRepository.saveAll(
                     pending.stream().map(TransactionMapper::toNewEntity).toList());
         }
-        // Aggregate 저장과 같은 물리 트랜잭션 안에서 Outbox에 이벤트를 기록한다(domain-events.md 참고).
-        // 이 메서드가 예외 없이 반환되면 Account/Transaction/Outbox 행이 모두 커밋되거나 함께 롤백된다.
+        // Records the event to the Outbox within the same physical transaction as the Aggregate
+        // save
+        // (see domain-events.md). If this method returns without an exception, the
+        // Account/Transaction/
+        // Outbox rows are all committed together, or all rolled back together.
         outboxWriter.saveAll(account.pullDomainEvents());
     }
 
@@ -88,7 +93,9 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
                 .ifPresent(
                         entity -> {
                             Account account = AccountMapper.toDomain(entity);
-                            account.delete(); // 도메인 메서드로 불변식(CLOSED 상태만 삭제 가능) 검증 후 deletedAt 설정
+                            account.delete(); // Validates the invariant (only a CLOSED account may
+                            // be deleted) via the domain method, then sets
+                            // deletedAt
                             AccountMapper.updateEntity(entity, account);
                             jpaRepository.save(entity);
                         });

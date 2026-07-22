@@ -9,14 +9,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 매일 1회 배치로 호출되는 시스템 유스케이스(정기 이자 지급) — 사용자가 직접 호출하는 Command가 아니라 {@code
- * interfaces/task/PayInterestTaskController}가 Task Queue 메시지를 받아 호출한다(scheduling.md Feature 1). 활성
- * 계좌를 페이지 단위로 순회하며 실제 이자 계산·지급 판단은 {@link Account#payInterest}에 전부 위임한다 — 이 Service는 조회와 저장
- * 오케스트레이션만 한다.
+ * A system use case (scheduled interest payment) invoked once daily by a batch — not a Command
+ * invoked directly by a user, but called by {@code interfaces/task/PayInterestTaskController} when
+ * it receives a Task Queue message (scheduling.md Feature 1). It paginates over active accounts,
+ * delegating the actual interest calculation/payment decision entirely to {@link
+ * Account#payInterest} — this Service only orchestrates lookup and save.
  *
- * <p>트랜잭션 경계는 이 Command Service가 아니라 {@code AccountRepository.saveAccount()}에 있다
- * (transaction-boundary 규칙, persistence.md) — 계좌마다 개별 트랜잭션으로 저장되므로, 배치 도중 예외가 나도 이미 처리된 계좌는 그대로 커밋된
- * 채 남는다(다음 tick이 나머지를 처리, 멱등하므로 안전).
+ * <p>The transaction boundary lives not in this Command Service but in {@code
+ * AccountRepository.saveAccount()} (the transaction-boundary rule, persistence.md) — each account
+ * is saved in its own individual transaction, so if an exception occurs partway through the batch,
+ * accounts already processed remain committed (the next tick processes the rest; this is safe
+ * because it is idempotent).
  */
 @Service
 @RequiredArgsConstructor

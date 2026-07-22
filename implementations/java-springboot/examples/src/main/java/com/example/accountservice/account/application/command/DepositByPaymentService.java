@@ -8,13 +8,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * Payment BC의 {@code payment.cancelled.v1}(결제취소 보상 크레딧) 및 {@code refund.approved.v1}(환불 승인 크레딧)
- * Integration Event 둘 다에 대한 반응 유스케이스다 — 두 이벤트는 "이미 차감된 금액을 되돌린다"는 동일한 동작이고 referenceId(paymentId 또는
- * refundId)만 다르므로 Command를 하나로 재사용한다.
+ * The reaction use case for both of the Payment BC's {@code payment.cancelled.v1}
+ * (payment-cancellation compensating credit) and {@code refund.approved.v1} (refund-approval
+ * credit) Integration Events — both events are the same action, "reverse an already-debited
+ * amount," differing only in referenceId (paymentId or refundId), so a single Command is reused.
  *
- * <p>멱등성은 {@link WithdrawByPaymentService}와 동일한 이유로 Level 2 Ledger를 쓴다. 공유 Outbox 드레인 컴포넌트를 생성자로
- * 주입받지 않는 이유도 {@link WithdrawByPaymentService}와 동일하다(순환 빈 의존성 방지 — 이 서비스는 항상 {@code
- * OutboxEventHandler} 구현체를 거쳐 진행 중인 드레인 루프 안에서만 호출된다).
+ * <p>Idempotency uses Level 2 Ledger for the same reason as {@link WithdrawByPaymentService}. The
+ * reason the shared Outbox drain component is not injected via the constructor is also the same as
+ * {@link WithdrawByPaymentService} (avoiding a circular bean dependency — this service is only ever
+ * called from inside an in-progress drain loop, via an {@code OutboxEventHandler} implementation).
  */
 @Service
 @RequiredArgsConstructor

@@ -13,10 +13,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Outbox에 쌓인 {@link PaymentCompletedEvent}(내부 Domain Event)를 처리해 외부 BC(Account)에 공개하는 Integration
- * Event({@code payment.completed.v1})로 변환해 같은 Outbox 트랜잭션에 적재한다. Account BC의 {@code
- * PaymentCompletedIntegrationEventHandler}가 이 eventType으로 자동 라우팅되어 실제 차감(withdraw)을 수행한다 —
- * account/application/event/AccountSuspendedEventHandler.java와 동일한 변환 지점 패턴이다.
+ * Processes the {@link PaymentCompletedEvent} (an internal Domain Event) accumulated in the Outbox,
+ * translates it into the Integration Event ({@code payment.completed.v1}) that is exposed to the
+ * external BC (Account), and stores it in the same Outbox transaction. The Account BC's {@code
+ * PaymentCompletedIntegrationEventHandler} is automatically routed by this eventType and performs
+ * the actual deduction (withdraw) — this is the same translation-point pattern as
+ * account/application/event/AccountSuspendedEventHandler.java.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,7 +38,7 @@ public class PaymentCompletedEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         PaymentCompletedEvent event = objectMapper.readValue(payload, PaymentCompletedEvent.class);
         log.info(
-                "결제 완료됨",
+                "Payment completed",
                 kv("payment_id", event.paymentId()),
                 kv("account_id", event.accountId()),
                 kv("amount", event.amount()));

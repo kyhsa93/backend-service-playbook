@@ -50,7 +50,8 @@ class RequestRefundServiceTest {
 
         GetRefundResult result =
                 service.request(
-                        new RequestRefundCommand(payment.getPaymentId(), 1000, "단순 변심", "owner-1"));
+                        new RequestRefundCommand(
+                                payment.getPaymentId(), 1000, "change of mind", "owner-1"));
 
         assertThat(result.status()).isEqualTo("APPROVED");
         verify(refundRepository).saveRefund(any());
@@ -62,10 +63,12 @@ class RequestRefundServiceTest {
 
         GetRefundResult result =
                 service.request(
-                        new RequestRefundCommand(payment.getPaymentId(), 1001, "단순 변심", "owner-1"));
+                        new RequestRefundCommand(
+                                payment.getPaymentId(), 1001, "change of mind", "owner-1"));
 
         assertThat(result.status()).isEqualTo("REJECTED");
-        assertThat(result.decisionNote()).isEqualTo("환불 금액은 결제 금액을 초과할 수 없습니다.");
+        assertThat(result.decisionNote())
+                .isEqualTo("The refund amount cannot exceed the payment amount.");
         verify(refundRepository).saveRefund(any());
     }
 
@@ -78,10 +81,12 @@ class RequestRefundServiceTest {
 
         GetRefundResult result =
                 service.request(
-                        new RequestRefundCommand(payment.getPaymentId(), 500, "단순 변심", "owner-1"));
+                        new RequestRefundCommand(
+                                payment.getPaymentId(), 500, "change of mind", "owner-1"));
 
         assertThat(result.status()).isEqualTo("REJECTED");
-        assertThat(result.decisionNote()).isEqualTo("완료된 결제에 대해서만 환불을 요청할 수 있습니다.");
+        assertThat(result.decisionNote())
+                .isEqualTo("A refund can only be requested for a completed payment.");
     }
 
     @Test
@@ -93,7 +98,7 @@ class RequestRefundServiceTest {
                         () ->
                                 service.request(
                                         new RequestRefundCommand(
-                                                "non-existent", 500, "단순 변심", "owner-1")))
+                                                "non-existent", 500, "change of mind", "owner-1")))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_NOT_FOUND);

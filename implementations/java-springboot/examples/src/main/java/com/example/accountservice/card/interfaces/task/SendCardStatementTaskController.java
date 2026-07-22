@@ -9,10 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Task Queue 입력 어댑터(Interface 레이어) — HTTP Controller가 HTTP 요청을 Application Service에 위임하듯, 이 Task
- * Controller는 Task Queue 메시지를 받아 {@link SendCardStatementService}를 호출한다 (scheduling.md "Task
- * Controller — Interface 레이어"). 조건 분기나 비즈니스 규칙 없이 위임만 하고, 예외는 그대로 던져 {@code TaskConsumer}가 재시도/DLQ를
- * 판단하게 한다.
+ * A Task Queue input adapter (Interface layer) — just as an HTTP Controller delegates HTTP requests
+ * to an Application Service, this Task Controller receives a Task Queue message and invokes {@link
+ * SendCardStatementService} (scheduling.md "Task Controller — Interface layer"). It only delegates,
+ * without any conditional branching or business rules, and lets exceptions propagate as-is so
+ * {@code TaskConsumer} can decide whether to retry or send to the DLQ.
  */
 @Component
 @RequiredArgsConstructor
@@ -32,7 +33,7 @@ public class SendCardStatementTaskController implements TaskHandler {
         sendCardStatementService.sendStatements(new SendCardStatementCommand(parsed.month()));
     }
 
-    // 이 Task Controller가 소유하는 로컬 payload 뷰 — infrastructure/scheduling/CardStatementScheduler가
-    // 만드는 JSON과 필드명이 일치해야 한다.
+    // The local payload view owned by this Task Controller — its field names must match the
+    // JSON produced by infrastructure/scheduling/CardStatementScheduler.
     private record Payload(YearMonth month) {}
 }

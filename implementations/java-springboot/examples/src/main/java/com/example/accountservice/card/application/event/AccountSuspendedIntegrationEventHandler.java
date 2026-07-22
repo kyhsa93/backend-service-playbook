@@ -12,10 +12,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 외부 BC(Account)가 발행한 {@code account.suspended.v1} Integration Event 수신부. {@link
- * OutboxEventHandler}로 구현하면 {@code OutboxConsumer}가 SQS에서 수신한 메시지를 {@code eventType()} 값으로 자동
- * 라우팅하므로, Account BC가 Card BC를 몰라도 연결된다. 자기 도메인의 유스케이스(Command)만 호출하고, 실패 시 예외를 그대로 던져 메시지를 삭제하지 않게
- * 한다 — SQS visibility timeout 이후 재수신되어 재시도된다.
+ * Receiver for the {@code account.suspended.v1} Integration Event published by an external BC
+ * (Account). Implementing {@link OutboxEventHandler} lets {@code OutboxConsumer} automatically
+ * route messages received from SQS based on the {@code eventType()} value, so the connection works
+ * even though the Account BC has no knowledge of the Card BC. It only invokes its own domain's use
+ * case (Command), and on failure lets the exception propagate so the message is not deleted — it
+ * will be redelivered and retried after the SQS visibility timeout.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,7 +38,7 @@ public class AccountSuspendedIntegrationEventHandler implements OutboxEventHandl
     public void handle(String payload) throws Exception {
         AccountIntegrationEventPayload event =
                 objectMapper.readValue(payload, AccountIntegrationEventPayload.class);
-        log.info("account.suspended.v1 수신", kv("account_id", event.accountId()));
+        log.info("account.suspended.v1 received", kv("account_id", event.accountId()));
         suspendCardsByAccountService.suspend(new SuspendCardsByAccountCommand(event.accountId()));
     }
 }

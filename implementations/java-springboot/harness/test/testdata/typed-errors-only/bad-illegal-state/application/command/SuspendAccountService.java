@@ -4,7 +4,7 @@ public class SuspendAccountService {
 
     public void suspend(String accountId) {
         if (accountId == null) {
-            throw new IllegalStateException("accountId가 없습니다.");
+            throw new IllegalStateException("accountId is missing.");
         }
     }
 }

@@ -1,17 +1,17 @@
-# 에러 처리 (Spring Boot)
+# Error Handling (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [error-handling.md](../../../../docs/architecture/error-handling.md) 참고.
+> For the framework-agnostic principles, see the root [error-handling.md](../../../../docs/architecture/error-handling.md).
 
-## 계층별 에러 처리 — 현재 구현은 원칙과 일치
+## Error handling per layer — the current implementation matches the principle
 
-| 레이어 | 처리 방식 | 이 저장소의 구현 |
+| Layer | Handling approach | This repository's implementation |
 |---|---|---|
-| Domain | 타입화된 예외 throw | `AccountException(ErrorCode, message)` |
-| Application | 그대로 전파 (catch하지 않음) | Command/Query Service는 예외를 잡지 않는다 |
-| Interface | 예외 → HTTP 응답 변환 | `AccountController.handleAccountException` (`@ExceptionHandler`) |
+| Domain | throws a typed exception | `AccountException(ErrorCode, message)` |
+| Application | propagates as-is (never caught) | Command/Query Services never catch the exception |
+| Interface | converts exception → HTTP response | `AccountController.handleAccountException` (`@ExceptionHandler`) |
 
 ```java
-// account/domain/AccountException.java — 실제 코드
+// account/domain/AccountException.java — actual code
 public class AccountException extends RuntimeException {
 
     public enum ErrorCode {
@@ -39,12 +39,12 @@ public class AccountException extends RuntimeException {
 }
 ```
 
-- Domain 메서드(`Account.deposit()` 등)가 불변식 위반 시 `AccountException`을 즉시 throw한다 — root의 "Domain은 plain Error/타입화 예외만 throw" 원칙과 일치한다(`RuntimeException` 상속이 Java의 "plain Error"에 해당).
-- **`ErrorCode`가 enum이라 오타가 컴파일 타임에 잡힌다** — root가 TypeScript enum 키=값 트릭으로 얻으려는 효과(`OrderErrorMessage['...']`를 통해서만 메시지를 쓰게 강제)를, Java는 enum 상수 참조(`ErrorCode.INSUFFICIENT_BALANCE`)로 자연스럽게 얻는다. free-form 문자열로 코드를 표현할 수 없다.
-- 메시지(`"잔액이 부족합니다."`)는 생성자 인자로 매번 직접 넘긴다 — root의 `<Domain>ErrorMessage` enum처럼 메시지 자체를 타입화하지는 않았다. `ErrorCode` 하나당 메시지가 항상 고정이라면(현재 코드가 실제로 그렇다), 메시지를 `ErrorCode`에 내장하는 편이 root 원칙(에러 메시지도 enum으로 타입화)에 더 가깝다 — 아래 "개선안" 참고.
+- A Domain method (`Account.deposit()`, etc.) throws `AccountException` immediately on an invariant violation — this matches the root's principle that "Domain must throw only a plain Error/typed exception" (extending `RuntimeException` is the Java equivalent of a "plain Error").
+- **Because `ErrorCode` is an enum, typos are caught at compile time** — the effect the root achieves in TypeScript via the enum key=value trick (forcing messages to be written only through `OrderErrorMessage['...']`) is achieved naturally in Java through enum constant references (`ErrorCode.INSUFFICIENT_BALANCE`). A code can never be expressed as a free-form string.
+- The message (`"Insufficient balance."`) is passed directly as a constructor argument each time — unlike the root's `<Domain>ErrorMessage` enum, the message itself is not typed. Given that each `ErrorCode` always maps to a fixed message (which is true of the current code), embedding the message inside `ErrorCode` would align more closely with the root principle (typing error messages as an enum too) — see "Possible improvement" below.
 
 ```java
-// interfaces/rest/AccountController.java — 실제 코드
+// interfaces/rest/AccountController.java — actual code
 @ExceptionHandler(AccountException.class)
 public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) {
     HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
@@ -54,16 +54,16 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
 }
 ```
 
-`@ExceptionHandler`가 `AccountException`을 catch하여 HTTP 상태 코드로 변환하는 지점이 Interface 레이어(Controller)에만 있다는 것도 root 원칙과 일치한다.
+That the point where `@ExceptionHandler` catches `AccountException` and converts it into an HTTP status code exists only in the Interface layer (the Controller) also matches the root principle.
 
 ---
 
-## 에러 응답 형식 — 4필드, 루트 형식과 일치
+## Error response format — 4 fields, matching the root format
 
-루트 원칙: 모든 에러 응답은 `statusCode`/`code`/`message`/`error` 4필드를 갖는다.
+Root principle: every error response has the 4 fields `statusCode`/`code`/`message`/`error`.
 
 ```java
-// interfaces/rest/ErrorResponse.java — 실제 코드
+// interfaces/rest/ErrorResponse.java — actual code
 public record ErrorResponse(int statusCode, String code, String message, String error) {
 
     public static ErrorResponse of(HttpStatus status, String code, String message) {
@@ -72,10 +72,10 @@ public record ErrorResponse(int statusCode, String code, String message, String 
 }
 ```
 
-`statusCode`(HTTP 상태 코드 숫자)와 `error`(HTTP 상태 텍스트, 예: `"Not Found"`)까지 응답 바디에 모두 포함되어, 클라이언트가 응답 바디만 보고도 HTTP 상태를 재확인할 수 있다.
+Both `statusCode` (the numeric HTTP status code) and `error` (the HTTP status text, e.g. `"Not Found"`) are included in the response body, so a client can confirm the HTTP status from the response body alone.
 
 ```java
-// AccountController — 실제 코드
+// AccountController — actual code
 @ExceptionHandler(AccountException.class)
 public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) {
     HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
@@ -85,27 +85,27 @@ public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) 
 }
 ```
 
-응답 예시:
+Example response:
 
 ```json
 {
   "statusCode": 404,
   "code": "ACCOUNT_NOT_FOUND",
-  "message": "계좌를 찾을 수 없습니다.",
+  "message": "Account not found.",
   "error": "Not Found"
 }
 ```
 
-**남은 여지**: `AccountControllerE2ETest`는 현재 `response.getBody().get("code")`만 검증하고 `statusCode`/`error` 필드 값은 별도로 단언하지 않는다 — 응답 바디 자체에는 이미 4필드가 모두 채워지므로 회귀는 없지만, root 형식 준수 여부를 테스트로도 명시적으로 고정하려면 `assertThat(body.get("statusCode")).isEqualTo(404)` 같은 단언을 추가할 수 있다.
+**Room for improvement**: `AccountControllerE2ETest` currently only verifies `response.getBody().get("code")` and doesn't separately assert the `statusCode`/`error` field values — since all 4 fields are already populated in the response body itself, there's no regression risk, but an assertion like `assertThat(body.get("statusCode")).isEqualTo(404)` could be added to also pin down conformance to the root format explicitly via tests.
 
 ---
 
-## Validation 실패 응답 — 전역 핸들러가 처리
+## Validation failure responses — handled by the global handler
 
-`@Valid @RequestBody CreateAccountRequest request`가 Bean Validation에 실패하면 Spring이 `MethodArgumentNotValidException`을 던진다. `common/web/GlobalExceptionHandler`(`@RestControllerAdvice`)가 이를 처리해, `AccountException`과 같은 4필드 `ErrorResponse` 스키마로 응답한다.
+If `@Valid @RequestBody CreateAccountRequest request` fails Bean Validation, Spring throws a `MethodArgumentNotValidException`. `common/web/GlobalExceptionHandler` (`@RestControllerAdvice`) handles it and responds with the same 4-field `ErrorResponse` schema as `AccountException`.
 
 ```java
-// common/web/GlobalExceptionHandler.java — 실제 코드
+// common/web/GlobalExceptionHandler.java — actual code
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -120,21 +120,21 @@ public class GlobalExceptionHandler {
 }
 ```
 
-root 원칙: Validation 실패의 `code`는 항상 `VALIDATION_FAILED` 고정값이다. 여러 필드 에러가 있을 수 있으므로 `message`는 문자열 배열이 될 수도 있다(root 예시 참고) — 이 저장소는 join된 단일 문자열로 단순화했다.
+Root principle: a validation failure's `code` is always the fixed value `VALIDATION_FAILED`. Since there can be multiple field errors, `message` may also be an array of strings (see the root's example) — this repository simplifies it to a single joined string.
 
-**`@ExceptionHandler`를 `AccountController`가 아닌 `@RestControllerAdvice` 전역 클래스에 두는 이유**: 도메인이 늘어나면 각 Controller가 `MethodArgumentNotValidException` 핸들러를 중복 정의하게 된다. Validation처럼 도메인에 무관한 공통 예외는 전역에서 한 번만 처리하고, `AccountException`처럼 도메인 특화 예외만 각 Controller(`AccountController`/`CardController`/`AuthController`)에 남긴다 — rate limit(`RequestNotPermitted`) 핸들러와 같은 배치 원칙이다.
-
----
-
-## harness 검증
-
-- `harness/src/rules/ErrorResponseSchema.java`(rule: `error-response-schema`)가 `GlobalExceptionHandler`의 `@ExceptionHandler` 메서드가 반환하는 `ResponseEntity<Xxx>`의 제네릭 타입을 동적으로 찾아, 정확히 `statusCode`(숫자)/`code`(String)/`message`(String 또는 배열)/`error`(String) 4필드만 갖는지 검사한다 — 더 많거나 적은 필드, 오타 필드명은 실패.
-- `harness/src/rules/TypedErrorsOnly.java`(rule: `typed-errors-only`)가 `domain/`·`application/`에서 `throw new RuntimeException(...)` 같은 일반 예외를 문자열과 함께 직접 던지면 실패시킨다 — 도메인별 타입화 예외(`ErrorCode` enum 보유)만 허용한다는 루트 절대 원칙(AGENTS.md "에러는 enum으로 타입화 — free-form 문자열 금지")을 강제한다.
+**Why `@ExceptionHandler` lives on a global `@RestControllerAdvice` class rather than on `AccountController`**: as domains grow in number, each Controller would end up redefining its own `MethodArgumentNotValidException` handler. A domain-agnostic common exception like validation is handled once, globally, while only domain-specific exceptions like `AccountException` are left in their respective Controllers (`AccountController`/`CardController`/`AuthController`) — the same placement principle as the rate-limit (`RequestNotPermitted`) handler.
 
 ---
 
-### 관련 문서
+## Harness verification
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 내부 예외 throw 패턴
-- [layer-architecture.md](layer-architecture.md) — 레이어별 에러 처리 책임 분리
-- [testing.md](testing.md) — E2E 테스트에서 에러 응답 형식 검증
+- `harness/src/rules/ErrorResponseSchema.java` (rule: `error-response-schema`) dynamically finds the generic type of the `ResponseEntity<Xxx>` returned by `GlobalExceptionHandler`'s `@ExceptionHandler` methods, and checks that it has exactly the 4 fields `statusCode` (number)/`code` (String)/`message` (String or array)/`error` (String) — more or fewer fields, or misspelled field names, fail the check.
+- `harness/src/rules/TypedErrorsOnly.java` (rule: `typed-errors-only`) fails the build if `domain/`·`application/` throws a generic exception directly with a string, such as `throw new RuntimeException(...)` — this enforces the root's absolute principle (AGENTS.md "errors are typed as enums — free-form strings are forbidden") that only domain-specific typed exceptions (carrying an `ErrorCode` enum) are allowed.
+
+---
+
+### Related documents
+
+- [tactical-ddd.md](tactical-ddd.md) — the pattern of throwing exceptions inside an Aggregate
+- [layer-architecture.md](layer-architecture.md) — the separation of error-handling responsibility per layer
+- [testing.md](testing.md) — verifying error response format in E2E tests

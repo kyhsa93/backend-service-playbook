@@ -7,8 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * "종료"(close, 상태 전이)와 구분되는 "삭제"(delete, 데이터 생명주기 관리) 유스케이스. 종료(CLOSED)된 계좌만 soft delete할 수 있다 — 불변식
- * 검증은 Account.delete()가 담당한다(persistence.md 참고).
+ * The "delete" (data lifecycle management) use case, distinct from "close" (a state transition).
+ * Only a closed (CLOSED) account can be soft-deleted — invariant validation is Account.delete()'s
+ * responsibility (see persistence.md).
  */
 @Service
 @RequiredArgsConstructor
@@ -28,7 +29,7 @@ public class DeleteAccountService {
                         () ->
                                 new AccountException(
                                         AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
-                                        "계좌를 찾을 수 없습니다."));
+                                        "Account not found."));
         accountRepository.deleteAccount(command.accountId());
     }
 }

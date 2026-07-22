@@ -9,7 +9,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-// @EnableScheduling — outbox/OutboxPoller의 @Scheduled(fixedDelay = 1000)을 활성화한다.
+// @EnableScheduling — enables outbox/OutboxPoller's @Scheduled(fixedDelay = 1000).
 @SpringBootApplication
 @EnableScheduling
 @EnableConfigurationProperties({

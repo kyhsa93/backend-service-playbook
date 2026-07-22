@@ -14,8 +14,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * account/domain/Account.java의 JPA 매핑 전용 대응물. Domain Aggregate(Account)는 이 클래스를 전혀 알지 못한다 — 변환은
- * AccountMapper가 전담한다(layer-architecture.md 참고).
+ * The JPA-mapping counterpart of account/domain/Account.java. The Domain Aggregate (Account) has no
+ * knowledge of this class at all — the conversion is handled entirely by AccountMapper (see
+ * layer-architecture.md).
  */
 @Entity
 @Table(name = "accounts")
@@ -48,8 +49,8 @@ public class AccountJpaEntity {
 
     @Column private LocalDateTime deletedAt;
 
-    // account/domain/Account.payInterest()의 "오늘 이미 이자를 지급했는지" 판단 필드(Level 1 멱등성) —
-    // account/domain/Account.java 참고.
+    // The field account/domain/Account.payInterest() uses to determine "has interest already been
+    // paid today" (Level 1 idempotency) — see account/domain/Account.java.
     @Column private LocalDate lastInterestPaidAt;
 
     protected AccountJpaEntity() {}
@@ -77,7 +78,10 @@ public class AccountJpaEntity {
         this.lastInterestPaidAt = lastInterestPaidAt;
     }
 
-    /** 기존 row(id 보존)에 도메인 Account의 최신 상태를 반영한다 — update 저장에 사용. */
+    /**
+     * Applies the domain Account's latest state onto the existing row (id preserved) — used for
+     * update saves.
+     */
     void applyMutableState(
             String email,
             MoneyEmbeddable balance,

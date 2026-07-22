@@ -40,12 +40,14 @@ class AccountControllerE2ETest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.flyway.enabled", () -> "false");
-        // 이 테스트는 같은 클라이언트(IP)로 계좌 생성을 반복 호출한다 — 운영값(5/min, rate-limiting.md)을
-        // 그대로 쓰면 rate limiting에 걸려 429가 섞여 나온다. 테스트 목적에 맞게 한도를 완화한다.
+        // This test repeatedly calls account creation from the same client (IP) — using the
+        // production value (5/min, rate-limiting.md) as-is would trigger rate limiting and mix in
+        // 429s. Relax the limit for test purposes.
         registry.add(
                 "resilience4j.ratelimiter.instances.createAccount.limit-for-period", () -> "1000");
-        // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
-        // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+        // The tests call the write API far more times in a short window than the default
+        // limit-for-period (10), so we relax it generously for tests only, so that each endpoint's
+        // logic is verified rather than rate limiting itself.
         registry.add(
                 "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }

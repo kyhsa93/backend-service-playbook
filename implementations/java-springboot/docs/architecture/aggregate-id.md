@@ -1,27 +1,27 @@
-# Aggregate ID 생성 (Spring Boot)
+# Aggregate ID Generation (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [aggregate-id.md](../../../../docs/architecture/aggregate-id.md) 참고.
+> For the framework-agnostic principles, see the root [aggregate-id.md](../../../../docs/architecture/aggregate-id.md).
 
-## 원칙 요약
+## Principle summary
 
-- ID는 **Domain 레이어의 정적 팩토리 메서드**에서 생성한다 (Aggregate 생성자가 아니라 `create()` 팩토리).
-- 클라이언트가 보낸 ID는 사용하지 않는다. 서버가 생성한다.
-- 타입은 `String`, 형식은 **32자리 hex, 하이픈 없음**.
+- IDs are generated in a **static factory method on the Domain layer** (the `create()` factory, not the Aggregate constructor).
+- Client-supplied IDs are never used. The server generates them.
+- The type is `String`, and the format is **32-character hex, no hyphens**.
 
 ```
-"550e8400e29b41d4a716446655440000"   // 올바른 방식
-"550e8400-e29b-41d4-a716-446655440000"  // 잘못된 방식 — 하이픈 포함
-1, 2, 3                                  // 잘못된 방식 — auto-increment
+"550e8400e29b41d4a716446655440000"   // correct
+"550e8400-e29b-41d4-a716-446655440000"  // incorrect — contains hyphens
+1, 2, 3                                  // incorrect — auto-increment
 ```
 
 ---
 
 ## `IdGenerator`
 
-`account/domain/Account.java`의 `create()`, `Transaction.create()`, `account/infrastructure/notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `IdGenerator.generate()`(32자리 hex, 하이픈 없음)를 사용한다.
+Every ID issued by `Account.create()`, `Transaction.create()` in `account/domain/Account.java`, and `account/infrastructure/notification/.../SentEmail.create()` uses the `IdGenerator.generate()` below (32-character hex, no hyphens).
 
 ```java
-// common/IdGenerator.java — 프레임워크 무의존 순수 유틸
+// common/IdGenerator.java — framework-independent pure utility
 package com.example.accountservice.common;
 
 import java.util.UUID;
@@ -37,51 +37,51 @@ public final class IdGenerator {
 ```
 
 ```java
-// domain/Account.java — 수정된 create()
+// domain/Account.java — create() abbreviated
 public static Account create(String ownerId, String email, String currency) {
     Account account = new Account();
-    account.accountId = IdGenerator.generate();   // 32자리 hex, 하이픈 없음
+    account.accountId = IdGenerator.generate();   // 32-character hex, no hyphens
     ...
 }
 ```
 
-`IdGenerator`는 `common` 패키지(도메인에 속하지 않는 프로젝트 공통 유틸)에 두고 어떤 Spring/JPA 타입도 import하지 않는다. Domain 레이어(`Account`, `Transaction`)는 이 유틸만 static 호출하므로 순수성을 유지한다.
+`IdGenerator` lives in the `common` package (a project-wide utility that doesn't belong to any domain) and imports no Spring/JPA types. The Domain layer (`Account`, `Transaction`) only calls this utility statically, so it stays pure.
 
 ---
 
-## DB 복원 시 — ID를 새로 발급하지 않는다
+## Restoring from the DB — never re-issue an ID
 
-Repository 구현체가 JPA 엔티티를 Aggregate로 매핑할 때는 이미 저장된 `accountId`를 그대로 사용한다. `AccountJpaRepository`/`AccountRepositoryImpl`은 저장 시 `accountId` 컬럼 값을 그대로 보존하며, JPA의 `@Id` 대리키(`Long id`, `GenerationType.IDENTITY`)는 DB 내부용 PK일 뿐 도메인 식별자가 아니다.
+When a Repository implementation maps a JPA entity to an Aggregate, it uses the already-persisted `accountId` as-is. `AccountJpaRepository`/`AccountRepositoryImpl` preserve the `accountId` column value on save, and JPA's `@Id` surrogate key (`Long id`, `GenerationType.IDENTITY`) is purely an internal DB primary key, not the domain identifier.
 
 ```java
 @Id
 @GeneratedValue(strategy = GenerationType.IDENTITY)
-private Long id;              // DB 전용 대리키 — 외부에 노출하지 않음
+private Long id;              // DB-only surrogate key — never exposed externally
 
 @Column(nullable = false, unique = true)
-private String accountId;     // 도메인 식별자 — API 응답/이벤트/외부 참조에 사용
+private String accountId;     // domain identifier — used in API responses/events/external references
 ```
 
-이 두 ID를 분리하는 이유:
-- `id`(auto-increment)는 Hibernate가 영속성 컨텍스트 식별과 인덱싱에 쓰는 내부 값으로, JPA `@Entity`가 대리키를 요구하는 관례를 따른 것이다.
-- `accountId`(32자리 hex)는 API 응답, 도메인 이벤트, 다른 Aggregate에서의 참조에 사용하는 외부 식별자다. auto-increment 숫자를 외부에 노출하면 레코드 수·생성 순서가 드러나는 보안 문제가 생긴다.
+Why these two IDs are kept separate:
+- `id` (auto-increment) is an internal value Hibernate uses for persistence-context identity and indexing, following the convention that a JPA `@Entity` requires a surrogate key.
+- `accountId` (32-character hex) is the external identifier used in API responses, domain events, and references from other Aggregates. Exposing an auto-increment number externally creates a security problem, since it reveals record counts and creation order.
 
 ---
 
-## 하위 Entity ID
+## Child entity IDs
 
-`Transaction`(계좌의 하위 Entity)도 동일하게 `IdGenerator.generate()`로 생성한 32자리 hex 문자열을 `transactionId`로 갖는다. `Transaction.create()`는 `package-private static` 메서드로, `Account` Aggregate Root를 통해서만 생성된다 (`Account.deposit()`/`Account.withdraw()` 내부에서 호출).
-
----
-
-## harness 검증
-
-`harness/src/rules/AggregateIdFormat.java`(rule: `aggregate-id-format`)가 `common/IdGenerator.java`를 검사한다 — `UUID.randomUUID().toString()`을 그대로 반환하지 않고 `.replace("-", "")`로 하이픈을 제거하는지 확인한다. ID 생성이 이 유틸리티 한 곳으로 모여 있어 단일 파일만 검사하는 좁은 규칙이다.
+`Transaction` (a child entity of Account) likewise gets a `transactionId` that is a 32-character hex string generated by `IdGenerator.generate()`. `Transaction.create()` is a `package-private static` method, so it can only be created through the `Account` Aggregate Root (it's called from inside `Account.deposit()`/`Account.withdraw()`).
 
 ---
 
-### 관련 문서
+## Harness verification
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 정적 팩토리 패턴
-- [repository-pattern.md](repository-pattern.md) — Repository의 ID 처리
-- [directory-structure.md](directory-structure.md) — `common/` 패키지 배치 기준
+`harness/src/rules/AggregateIdFormat.java` (rule: `aggregate-id-format`) checks `common/IdGenerator.java` — confirming that it strips hyphens with `.replace("-", "")` rather than returning `UUID.randomUUID().toString()` as-is. Since ID generation is centralized in this one utility, this is a narrow rule that only checks a single file.
+
+---
+
+### Related documents
+
+- [tactical-ddd.md](tactical-ddd.md) — the Aggregate static-factory pattern
+- [repository-pattern.md](repository-pattern.md) — how the Repository handles IDs
+- [directory-structure.md](directory-structure.md) — placement criteria for the `common/` package

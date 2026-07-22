@@ -18,16 +18,20 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [29] 목록 응답 범용 키 금지 — 목록 조회 응답 DTO({@code *Result}/{@code *Response}/{@code
- * *WithCount} 네이밍 관례를 따르는 record)의 최상위 컴포넌트 중 {@code List<...>} 타입 필드명이
- * {@code result}/{@code data}/{@code items} 같은 범용 키면 실패 — 도메인 객체명 복수형(예: {@code
- * transactions}, {@code payments}, {@code accounts})을 써야 한다(api-response.md).
+ * [29] Generic keys are forbidden on list responses — fails if a list-query response DTO
+ * (a record following the {@code *Result}/{@code *Response}/{@code *WithCount} naming
+ * convention) has a top-level {@code List<...>}-typed component named with a generic key
+ * like {@code result}/{@code data}/{@code items} — it must instead use the plural of the
+ * domain object's name (e.g. {@code transactions}, {@code payments}, {@code accounts})
+ * (api-response.md).
  *
- * <p>루트 문서는 단건 응답 안에 중첩된 하위 컬렉션(예: 주문 자신의 line item 목록을 담는 {@code
- * items} 필드)은 도메인 개념(주문의 품목)이라 허용된다고 명시한다 — 금지 대상은 "목록 조회
- * 응답"의 최상위(outer) 페이지네이션 배열 필드뿐이다. 그래서 이 규칙은 파일명과 동일한 최상위
- * record 선언의 컴포넌트만 파싱하고, 그 안에 중첩된 내부 record(예: {@code GetTransactionsResult}
- * 안의 {@code TransactionSummary})는 검사하지 않는다.
+ * <p>The root docs state that a nested sub-collection inside a single-record response
+ * (e.g. an {@code items} field holding an order's own line items) is allowed because it's
+ * a domain concept (the order's line items) — what's forbidden is only the top-level
+ * (outer) pagination array field of a "list-query response." So this rule only parses the
+ * components of the top-level record declaration matching the file name, and does not
+ * check a nested inner record within it (e.g. {@code TransactionSummary} inside {@code
+ * GetTransactionsResult}).
  */
 public final class NoGenericResponseKeys {
     private NoGenericResponseKeys() {
@@ -49,7 +53,7 @@ public final class NoGenericResponseKeys {
 
             String code = stripComments(readText(f));
             Map<String, String> fields = outerRecordComponents(code, typeName);
-            if (fields == null) continue; // record가 아니거나(예: 인터페이스) 최상위 타입명이 다름
+            if (fields == null) continue; // not a record (e.g. an interface), or the top-level type name differs
 
             found = true;
             String rel = relTo(f, root);
@@ -62,21 +66,21 @@ public final class NoGenericResponseKeys {
             }
 
             if (violations.isEmpty()) {
-                result.add(Finding.pass(rel + " (" + typeName + " — 목록 필드에 범용 키 미사용 확인)"));
+                result.add(Finding.pass(rel + " (" + typeName + " — confirmed no generic keys on list fields)"));
             } else {
                 result.add(Finding.fail(rel,
-                    "'" + typeName + "'의 목록 필드명이 범용 키(" + violations
-                        + ") — result/data/items 대신 도메인 객체명 복수형을 써야 함(api-response.md)"));
+                    "'" + typeName + "'s list field name is a generic key (" + violations
+                        + ") — must use the plural of the domain object's name instead of result/data/items (api-response.md)"));
             }
         }
 
         if (!found) {
-            result.add(Finding.skip("*Result.java/*Response.java/*WithCount.java record 없음"));
+            result.add(Finding.skip("No *Result.java/*Response.java/*WithCount.java record"));
         }
         return result;
     }
 
-    /** 파일명과 이름이 같은 최상위 record 선언의 컴포넌트만 이름 -> 타입 맵으로 반환한다(중첩 record 제외). */
+    /** Returns only the components of the top-level record declaration whose name matches the file name, as a name -> type map (excludes nested records). */
     private static Map<String, String> outerRecordComponents(String code, String typeName) {
         Matcher recordMatcher = RECORD_DECL_PREFIX.matcher(code);
         while (recordMatcher.find()) {

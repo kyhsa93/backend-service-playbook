@@ -1,23 +1,23 @@
-# Harness — Java Spring Boot 프로젝트 구조·어노테이션 규칙 검사
+# Harness — checks Java Spring Boot project structure/annotation rules
 
-`docs/`(공통) + `docs/architecture/*.md`(Java 구현)의 가이드 규칙 중 **기계 검증 가능한 항목**을 외부 Java Spring Boot 프로젝트에 적용하는 정적 분석 도구. 설계 원칙은 루트 [`../../../docs/harness.md`](../../../docs/harness.md)를 따른다 — 아키텍처 규칙 준수만 평가하고, `examples/`의 Account 도메인 같은 특정 업무 도메인 지식을 전제로 삼지 않는다.
+A static-analysis tool that applies the **machine-verifiable** subset of the guideline rules in `docs/` (shared) + `docs/architecture/*.md` (Java implementation) to an external Java Spring Boot project. It follows the design principles in the root [`../../../docs/harness.md`](../../../docs/harness.md) — it evaluates only compliance with architectural rules, and doesn't assume knowledge of a specific business domain such as the Account domain in `examples/`.
 
-원래는 순수 bash+grep 스크립트였지만("설치 불필요"가 그때의 설계 가치), 이 저장소의 다른 harness(nestjs=TypeScript, go=Go, kotlin-springboot=Kotlin)처럼 **검사 대상과 같은 언어로 작성하는 편**이 관용적이라고 판단해 순수 Java 프로그램으로 재작성했다 — Gradle/Maven 같은 무거운 빌드 도구는 쓰지 않고 `javac` 직접 컴파일만 사용한다.
+It's written as a plain Java program, matching the idiom of this repository's other harnesses (nestjs=TypeScript, go=Go, kotlin-springboot=Kotlin), each written in the same language as the project it checks — it uses no heavy build tool like Gradle/Maven, only a direct `javac` compile.
 
-## 구조
+## Structure
 
 ```
 harness/
-  harness.sh                     컴파일(필요 시)+실행 래퍼
+  harness.sh                     Compile (if needed) + execute wrapper
   src/
-    Main.java                    CLI 엔트리 — 규칙 목록 정의 + 결과 집계/출력
+    Main.java                    CLI entry point — defines the rule list + aggregates/prints results
     Kind.java                    PASS/FAIL/SKIP
-    Finding.java                 규칙 검사 결과 한 건
-    RuleResult.java              규칙 하나의 section + findings 목록
-    Rule.java                    규칙 함수 시그니처(String -> RuleResult)
-    JavaFiles.java                공통 헬퍼(collectJavaFiles, relTo, pathContains, readText)
+    Finding.java                 A single rule check result
+    RuleResult.java              One rule's section + list of findings
+    Rule.java                    The rule function signature (String -> RuleResult)
+    JavaFiles.java                Shared helpers (collectJavaFiles, relTo, pathContains, readText)
     rules/
-      FileNaming.java             규칙별 구현 파일 (규칙 하나당 파일 하나)
+      FileNaming.java             One implementation file per rule
       RepositoryAnnotation.java
       ServiceAnnotation.java
       DomainPurity.java
@@ -50,74 +50,74 @@ harness/
       NoCrossBcDomainImport.java
       NoOrmAutoSyncInProdConfig.java
   test/
-    RuleTest.java                 자체 fixture 테스트 러너(외부 프레임워크 의존성 없음)
-    testdata/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
-    testdata/<rule>/bad-*/        해당 규칙을 위반해 실패해야 하는 fixture
-  build/                          컴파일 산출물(.gitignore 대상, 커밋되지 않음)
+    RuleTest.java                 Self-contained fixture test runner (no external framework dependency)
+    testdata/<rule>/good/         The minimal fixture that must pass this rule
+    testdata/<rule>/bad-*/        The fixture that violates this rule and must fail
+  build/                          Compiled output (gitignored, not committed)
 ```
 
-각 규칙은 `harness.Rule`(`Function<String, RuleResult>`) 시그니처의 정적 메서드이며, `Main.java`의 `RULES` 목록에 등록된 순서대로 실행·출력된다.
+Each rule is a static method with the `harness.Rule` (`Function<String, RuleResult>`) signature, and rules run and print in the order they're registered in `Main.java`'s `RULES` list.
 
-## 사용
+## Usage
 
 ```bash
-# 저장소 루트에서 — src/가 바뀌었을 때만 재컴파일하고 캐시된 클래스를 재사용한다
+# From the repository root — recompiles only when src/ has changed, otherwise reuses the cached classes
 bash implementations/java-springboot/harness.sh <projectRoot>
 ```
 
-`javac`/`java`가 PATH에 없다면 `JAVAC=/path/to/javac JAVA=/path/to/java bash harness.sh <projectRoot>`처럼 환경변수로 지정한다.
+If `javac`/`java` isn't on PATH, specify them via environment variables, e.g. `JAVAC=/path/to/javac JAVA=/path/to/java bash harness.sh <projectRoot>`.
 
-## 규칙 목록
+## List of rules
 
-| 이름 | 파일 | 역할 |
+| Name | File | Role |
 |------|------|------|
-| `file-naming` | `FileNaming.java` | 파일명이 `PascalCase.java`인지 |
+| `file-naming` | `FileNaming.java` | Whether the file name is `PascalCase.java` |
 | `repository-annotation` | `RepositoryAnnotation.java` | `@Repository` → `infrastructure/` |
 | `service-annotation` | `ServiceAnnotation.java` | `@Service` → `application/` |
-| `domain-purity` | `DomainPurity.java` | `domain/`에 Spring 어노테이션(`@Service`/`@Component`/`@Repository`/`@Controller`/`@RestController`) 금지 |
+| `domain-purity` | `DomainPurity.java` | Spring annotations (`@Service`/`@Component`/`@Repository`/`@Controller`/`@RestController`) are forbidden in `domain/` |
 | `controller-placement` | `ControllerPlacement.java` | `@RestController` → `interfaces/` |
-| `package-structure` | `PackageStructure.java` | `domain/` 형제로 `application/{command,query}`, `infrastructure/`, `interfaces/` 존재 |
-| `shared-infra` | `SharedInfra.java` | `OutboxWriter` 참조 시 `outbox/`에 `OutboxWriter.java`/`OutboxPoller.java`/`OutboxConsumer.java` 존재 확인, `*TaskQueue*` 참조 시 `task-queue/` 배치 확인 |
-| `event-placement` | `EventPlacement.java` | `*EventHandler`/`@EventListener` → `application/event/`; `*IntegrationEvent`(`V1`/`V2`… 버전 접미사 허용) → `application/integrationevent/`; `outbox/` 안의 `*EventHandler`는 Outbox 디스패치 계약으로 예외 허용 |
-| `no-event-publisher-in-command` | `NoEventPublisherInCommand.java` | Command Service가 `ApplicationEventPublisher`/`@EventListener`/`publishEvent()`를 쓰면 실패 — Outbox 경유해야 함 |
-| `transaction-boundary` | `TransactionBoundary.java` | Command Service에 `@Transactional`이 없고, Outbox를 저장하는 `*RepositoryImpl`에는 있는지 확인 |
-| `outbox-drain-order` | `OutboxDrainOrder.java` | Command Service(`application/command/`)가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 참조하거나 `processPending()`/`poll()`/`drainOnce()`를 호출하면 실패 — Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지, domain-events.md) |
-| `cqrs-query-purity` | `CqrsQueryPurity.java` | `application/query/` 하위 파일(주석 제외)이 쓰기용 Repository 타입을 참조하면 실패 — Query Service는 별도 Query 인터페이스(`AccountQuery` 등)만 의존해야 함(cqrs-pattern.md). nestjs harness의 `cqrs-pattern` evaluator를 이식한 규칙 |
-| `repository-naming` | `RepositoryNaming.java` | `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스 메서드가 `findByXxx`류 파생 쿼리, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태), `update`로 시작하는 메서드(별도 update 메서드 자체가 금지) 블록리스트에 걸리면 실패 — `find<Noun>s`/`save<Noun>`/`delete<Noun>` 형태만 허용(repository-pattern.md). `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드는 검사 대상 아님 |
-| `domain-layer-isolation` | `DomainLayerIsolation.java` | `<domain>/domain/` 파일이 자기 자신 또는 형제 도메인의 `application/`·`infrastructure/`·`interfaces/`를 import하면 실패 — import 문의 패키지 경로만 보는 구조적 검사라 특정 프레임워크 이름을 하드코딩하지 않는다(layer-architecture.md) |
-| `interface-no-infrastructure` | `InterfaceNoInfrastructure.java` | `interfaces/`(REST Controller 등) 파일이 `infrastructure/`를 직접 import하면 실패 — `application/`(Command/Query Service)만 거쳐야 함(layer-architecture.md) |
-| `aggregate-no-public-setters` | `AggregateNoPublicSetters.java` | `domain/`의 `class` 선언 파일에 JavaBean 스타일 `public void setX(...)` 또는 Lombok `@Setter`가 있으면 실패 — 상태 변경은 이름 있는 도메인 메서드로만(tactical-ddd.md). 현재 Aggregate는 이미 이 패턴을 안 쓰므로 회귀 가드 성격 |
-| `no-cross-aggregate-reference` | `NoCrossAggregateReference.java` | `payment/domain/Payment.java`가 `Refund` 타입을, `payment/domain/Refund.java`가 `Payment` 타입을 필드/파라미터로 직접 참조하면 실패 — ID 문자열 참조만 허용(domain-service.md). 두 Aggregate가 공존하는 실제 사례(Payment BC)에 한정한 블록리스트 |
-| `no-direct-env-access-outside-config` | `NoDirectEnvAccessOutsideConfig.java` | `domain/`·`application/`에서 `System.getenv(...)` 직접 호출 시 실패 — 환경 변수 접근은 `@ConfigurationProperties`로 감싸 `config/`(또는 `infrastructure/`)에서만(config.md) |
-| `no-cross-bc-repository-in-application` | `NoCrossBcRepositoryInApplication.java` | 한 도메인의 `application/` 파일이 다른 도메인의 `domain/*Repository`·`application/query/*Query` 인터페이스를 직접 import하면 실패 — 크로스 도메인 읽기는 호출하는 쪽이 소유한 Adapter(ACL)를 거쳐야 함(cross-domain-communication.md) |
-| `no-logging-in-domain` | `NoLoggingInDomain.java` | `domain/`에서 `org.slf4j`/`@Slf4j`/`LoggerFactory` 사용 시 실패 — Domain 레이어 로깅 금지(observability.md) |
-| `scheduler-in-infrastructure-only` | `SchedulerInInfrastructureOnly.java` | `domain/`·`application/`에서 `@Scheduled`/`@EnableScheduling` 사용 시 실패 — Scheduler는 infrastructure/에 배치해야 함(scheduling.md). `outbox/OutboxPoller`(공용 인프라 패키지)나 부트스트랩 진입점의 `@EnableScheduling`처럼 domain/application 밖에 있는 정당한 사용은 통과 |
-| `no-silent-catch` | `NoSilentCatch.java` | `application/`·`infrastructure/`에서 완전히 빈 `catch (...) {}` 블록이 있으면 실패 — 예외를 조용히 삼키지 않고 로깅 후 처리하거나 재throw해야 함(observability.md) |
-| `dockerfile-conventions` | `DockerfileConventions.java` | `Dockerfile`이 멀티스테이지(`FROM` 2개 이상)인지, `HEALTHCHECK` 지시문이 있는지, `.dockerignore`가 존재하고 `.git`/빌드 산출물을 제외하는지 확인(container.md). `.java` 파일이 아니라 두 텍스트 파일 자체를 검사하는 유일한 규칙 |
-| `aggregate-id-format` | `AggregateIdFormat.java` | `common/IdGenerator.java`가 `UUID.randomUUID().toString()`의 하이픈을 `.replace("-", "")`로 제거하는지 확인 — Aggregate ID는 32자리 hex, 36자 하이픈 포함 문자열이 아니어야 함(aggregate-id.md). ID 생성이 이 유틸리티 한 곳으로 모여 있어 단일 파일만 검사한다 |
-| `error-response-schema` | `ErrorResponseSchema.java` | `common/web/GlobalExceptionHandler.java`(`@RestControllerAdvice`)의 `@ExceptionHandler` 메서드가 반환하는 `ResponseEntity<Xxx>`의 제네릭 타입을 동적으로 찾아, 그 타입이 정확히 `statusCode`(숫자)/`code`(String)/`message`(String 또는 배열)/`error`(String) 4필드만 갖는지 확인(error-handling.md). 필드명 하드코딩 없이 GlobalExceptionHandler가 실제로 반환하는 타입을 파싱한다 — `record`/일반 `class` 둘 다 인식 |
-| `soft-delete-filter` | `SoftDeleteFilter.java` | `deletedAt` 컬럼을 가진 `*JpaEntity`를 조회하는 `*RepositoryImpl.java`의 find 메서드에 `deletedAt IS NULL`(또는 동일 의미) 필터가 있는지 확인(persistence.md) — 하드 삭제 금지. Entity에 `@SQLRestriction`/`@Where` 전역 필터가 있으면 RepositoryImpl 검사를 생략(둘 중 어느 메커니즘이든 인정). `deletedAt` 컬럼이 없는 Entity(아직 삭제 유스케이스가 없는 Card/Payment/Refund 등)는 검사 대상에서 자연히 제외 |
-| `typed-errors-only` | `TypedErrorsOnly.java` | `domain/`·`application/`에서 `throw new RuntimeException(...)`/`IllegalStateException(...)`/`IllegalArgumentException(...)`/`UnsupportedOperationException(...)`/`Exception(...)`처럼 문자열과 함께 일반 예외를 직접 던지면 실패 — 도메인별 타입화 예외(`AccountException` + `ErrorCode` enum)만 허용(error-handling.md, AGENTS.md "에러는 enum으로 타입화"). 현재 코드에 이 패턴이 없어 순수 회귀 가드 |
-| `rate-limit-wired` | `RateLimitWired.java` | `RateLimitFilter`가 `@Component`로 Spring bean 등록되어 있는지, `RateLimiterConfig.custom()`으로 제한 값을 하드코딩하지 않고 `RateLimiterRegistry`에서 named instance를 동적으로 조회하는지, `FilterRegistrationBean.setEnabled(false)`로 명시적으로 비활성화되지 않았는지 확인(rate-limiting.md). `interfaces/`의 `@RateLimiter` 애노테이션 사용도 관찰해 PASS로 기록하되, 없어도 실패로 잡지 않음(선택 사항) |
-| `no-generic-response-keys` | `NoGenericResponseKeys.java` | `*Result`/`*Response`/`*WithCount` 네이밍의 record가 최상위 컴포넌트로 `List<...>` 타입 필드를 `result`/`data`/`items` 같은 범용 이름으로 갖고 있으면 실패 — 목록 응답 필드명은 도메인 객체명 복수형이어야 함(api-response.md). 파일명과 같은 이름의 최상위 record만 파싱하고 중첩 record(내부 클래스)는 검사하지 않는다 — 단건 응답에 중첩된 하위 컬렉션(주문의 line item 등)까지 오탐하지 않기 위함 |
-| `query-handler-no-raw-aggregate` | `QueryHandlerNoRawAggregate.java` | `application/query/`의 Query Service와 `interfaces/*Controller.java`의 `public` 메서드 반환 타입이 `domain/`의 raw Aggregate/Entity 클래스를 직접(또는 `List<...>` 등 제네릭으로 감싸) 노출하면 실패 — 항상 전용 Result/DTO를 반환해야 함(api-response.md). Aggregate/Entity 이름은 하드코딩하지 않고 `<bc>/domain/`의 `public class`(`*Exception`/`*Service` 제외) 선언에서 동적으로 수집한다. `public` 키워드가 명시된 메서드만 스캔한다(Query 인터페이스의 관용적 modifier 생략 메서드는 스캔 대상 밖 — 넓게 매칭하면 `new XxxException(...)` 같은 생성자 호출을 오탐할 위험이 커서 좁은 블록리스트 방식을 택함) |
-| `no-cross-bc-domain-import` | `NoCrossBcDomainImport.java` | `<bc>/domain/*.java`가 다른 BC의 `<otherBc>/domain/*` 타입을 import하면 실패 — "다른 Aggregate는 ID 참조만 허용"(tactical-ddd.md) 원칙은 BC 경계를 넘어서도 적용됨. `no-cross-aggregate-reference`(같은 BC 안의 Payment/Refund만 봄)와 `domain-layer-isolation`(domain/이 자신의 상위 레이어만 봄) 둘 다 놓치던 gap을 닫는 규칙 |
-| `no-orm-autosync-in-prod-config` | `NoOrmAutoSyncInProdConfig.java` | `src/main/resources/application.yml`(기본)과 `application-prod.yml`(prod 프로필) 각각의 `spring.jpa.hibernate.ddl-auto` 값이 `update`/`create`/`create-drop`이면 실패 — 스키마 변경은 Flyway/Liquibase 마이그레이션으로만 관리해야 함(persistence.md). 기본 파일도 검사하는 이유는 `SPRING_PROFILES_ACTIVE` 누락 시 프로덕션에 기본값이 그대로 적용되기 때문. `ddl-auto` 키가 없으면 자동 동기화가 없다는 뜻이므로 PASS |
+| `package-structure` | `PackageStructure.java` | `application/{command,query}`, `infrastructure/`, `interfaces/` exist as siblings of `domain/` |
+| `shared-infra` | `SharedInfra.java` | If `OutboxWriter` is referenced, confirms `OutboxWriter.java`/`OutboxPoller.java`/`OutboxConsumer.java` exist under `outbox/`; if `*TaskQueue*` is referenced, confirms placement under `task-queue/` |
+| `event-placement` | `EventPlacement.java` | `*EventHandler`/`@EventListener` → `application/event/`; `*IntegrationEvent` (allowing a `V1`/`V2`… version suffix) → `application/integrationevent/`; a `*EventHandler` inside `outbox/` is allowed as an exception for the Outbox dispatch contract |
+| `no-event-publisher-in-command` | `NoEventPublisherInCommand.java` | Fails if a Command Service uses `ApplicationEventPublisher`/`@EventListener`/`publishEvent()` — it must go through the Outbox instead |
+| `transaction-boundary` | `TransactionBoundary.java` | Confirms the Command Service has no `@Transactional`, and that the `*RepositoryImpl` that saves to the Outbox does have it |
+| `outbox-drain-order` | `OutboxDrainOrder.java` | Fails if a Command Service (`application/command/`) directly references `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` or calls `processPending()`/`poll()`/`drainOnce()` — Outbox → queue publish/consume is the sole responsibility of the independently, periodically running Poller/Consumer (synchronous draining is forbidden, domain-events.md) |
+| `cqrs-query-purity` | `CqrsQueryPurity.java` | Fails if a file under `application/query/` (excluding comments) references a write-side Repository type — a Query Service must depend only on a dedicated Query interface (e.g. `AccountQuery`) (cqrs-pattern.md). A rule ported from the nestjs harness's `cqrs-pattern` evaluator |
+| `repository-naming` | `RepositoryNaming.java` | Fails if a `*Repository`/`*Query` interface method under `domain/`·`application/query/` hits the blocklist: a `findByXxx`-style derived query, a bare `findAll`, a method starting with `count`, a bare `save`/`delete` (no target noun), or a method starting with `update` (a separate update method is itself forbidden) — only the forms `find<Noun>s`/`save<Noun>`/`delete<Noun>` are allowed (repository-pattern.md). Implementations under `infrastructure/` and internal Spring Data JPA derived-query methods are not checked |
+| `domain-layer-isolation` | `DomainLayerIsolation.java` | Fails if a `<domain>/domain/` file imports its own or a sibling domain's `application/`·`infrastructure/`·`interfaces/` — a structural check that looks only at import statements' package paths, so it hardcodes no specific framework name (layer-architecture.md) |
+| `interface-no-infrastructure` | `InterfaceNoInfrastructure.java` | Fails if a file under `interfaces/` (REST Controller, etc.) directly imports `infrastructure/` — it must go through `application/` (the Command/Query Service) instead (layer-architecture.md) |
+| `aggregate-no-public-setters` | `AggregateNoPublicSetters.java` | Fails if a `class`-declaring file under `domain/` has a JavaBean-style `public void setX(...)` or a Lombok `@Setter` — state changes must go through named domain methods only (tactical-ddd.md). Current Aggregates already avoid this pattern, so this is primarily a regression guard |
+| `no-cross-aggregate-reference` | `NoCrossAggregateReference.java` | Fails if `payment/domain/Payment.java` directly references the `Refund` type, or `payment/domain/Refund.java` directly references the `Payment` type, as a field/parameter — only an ID-string reference is allowed (domain-service.md). A blocklist scoped to the one real case (the Payment BC) where two Aggregates coexist |
+| `no-direct-env-access-outside-config` | `NoDirectEnvAccessOutsideConfig.java` | Fails on a direct `System.getenv(...)` call in `domain/`·`application/` — environment-variable access must be wrapped in `@ConfigurationProperties` and done only in `config/` (or `infrastructure/`) (config.md) |
+| `no-cross-bc-repository-in-application` | `NoCrossBcRepositoryInApplication.java` | Fails if an `application/` file in one domain directly imports another domain's `domain/*Repository`·`application/query/*Query` interface — a cross-domain read must go through an Adapter (ACL) owned by the calling side (cross-domain-communication.md) |
+| `no-logging-in-domain` | `NoLoggingInDomain.java` | Fails on use of `org.slf4j`/`@Slf4j`/`LoggerFactory` in `domain/` — logging is forbidden in the Domain layer (observability.md) |
+| `scheduler-in-infrastructure-only` | `SchedulerInInfrastructureOnly.java` | Fails on use of `@Scheduled`/`@EnableScheduling` in `domain/`·`application/` — the Scheduler must be placed under infrastructure/ (scheduling.md). A legitimate use outside domain/application, like `outbox/OutboxPoller` (a shared infrastructure package) or `@EnableScheduling` on the bootstrap entry point, passes |
+| `no-silent-catch` | `NoSilentCatch.java` | Fails if there's a completely empty `catch (...) {}` block in `application/`·`infrastructure/` — don't silently swallow an exception; log it and handle it, or rethrow it (observability.md) |
+| `dockerfile-conventions` | `DockerfileConventions.java` | Confirms the `Dockerfile` is multi-stage (2+ `FROM` lines), has a `HEALTHCHECK` directive, and that `.dockerignore` exists and excludes `.git`/build output (container.md). The only rule that checks the two text files themselves rather than `.java` files |
+| `aggregate-id-format` | `AggregateIdFormat.java` | Confirms `common/IdGenerator.java` strips the hyphens from `UUID.randomUUID().toString()` via `.replace("-", "")` — an Aggregate ID must be 32-character hex, not a 36-character hyphenated string (aggregate-id.md). ID generation is centralized into this one utility, so only a single file is checked |
+| `error-response-schema` | `ErrorResponseSchema.java` | Dynamically finds the generic type of the `ResponseEntity<Xxx>` that `common/web/GlobalExceptionHandler.java`'s (`@RestControllerAdvice`) `@ExceptionHandler` methods return, and confirms that type has exactly these 4 fields: `statusCode` (number)/`code` (String)/`message` (String or array)/`error` (String) (error-handling.md). Parses the type that GlobalExceptionHandler actually returns, with no field name hardcoded — recognizes both a `record` and a plain `class` |
+| `soft-delete-filter` | `SoftDeleteFilter.java` | Confirms a find method in `*RepositoryImpl.java` that reads a `*JpaEntity` with a `deletedAt` column has a `deletedAt IS NULL` (or equivalent) filter (persistence.md) — hard deletes are forbidden. If the Entity has a `@SQLRestriction`/`@Where` global filter, the RepositoryImpl check is skipped (either mechanism is accepted). An Entity with no `deletedAt` column (Card/Payment/Refund, etc., which have no delete use case yet) is naturally excluded from this check |
+| `typed-errors-only` | `TypedErrorsOnly.java` | Fails if `domain/`·`application/` directly throws a generic exception with a string, like `throw new RuntimeException(...)`/`IllegalStateException(...)`/`IllegalArgumentException(...)`/`UnsupportedOperationException(...)`/`Exception(...)` — only a per-domain typed exception (`AccountException` + an `ErrorCode` enum) is allowed (error-handling.md, AGENTS.md "type errors as enums"). This pattern doesn't exist in the current code, so it's a pure regression guard |
+| `rate-limit-wired` | `RateLimitWired.java` | Confirms `RateLimitFilter` is registered as a Spring bean via `@Component`, that it doesn't hardcode limit values via `RateLimiterConfig.custom()` but instead dynamically looks up a named instance from `RateLimiterRegistry`, and that it isn't explicitly disabled via `FilterRegistrationBean.setEnabled(false)` (rate-limiting.md). Also observes whether `interfaces/` uses the `@RateLimiter` annotation and records it as PASS, but not having one at all isn't a failure (optional) |
+| `no-generic-response-keys` | `NoGenericResponseKeys.java` | Fails if a record following the `*Result`/`*Response`/`*WithCount` naming convention has a top-level `List<...>`-typed field named with a generic key like `result`/`data`/`items` — list-response field names must be the plural of the domain object's name (api-response.md). Only parses the top-level record matching the file name, and doesn't check a nested record (an inner class) — to avoid false-positiving on a sub-collection nested inside a single-record response (e.g. an order's line items) |
+| `query-handler-no-raw-aggregate` | `QueryHandlerNoRawAggregate.java` | Fails if the return type of a `public` method on a Query Service under `application/query/` or a `interfaces/*Controller.java` directly exposes (or wraps in a generic like `List<...>`) a raw Aggregate/Entity class from `domain/` — it must always return a dedicated Result/DTO instead (api-response.md). The Aggregate/Entity names are not hardcoded; they're dynamically collected from `public class` declarations under `<bc>/domain/` (excluding `*Exception`/`*Service`). Only scans methods with an explicit `public` keyword (a Query interface's idiomatic modifier-omitted methods are out of scan scope — matching broadly without that requirement carries a high risk of false-positiving on a constructor call like `new XxxException(...)`, so a narrow blocklist approach was chosen) |
+| `no-cross-bc-domain-import` | `NoCrossBcDomainImport.java` | Fails if `<bc>/domain/*.java` imports another BC's `<otherBc>/domain/*` type — the "another Aggregate may only be referenced by ID" principle (tactical-ddd.md) applies across BC boundaries too. A rule that closes a gap missed by both `no-cross-aggregate-reference` (which only looks at Payment/Refund within the same BC) and `domain-layer-isolation` (where domain/ only checks its own upper layers) |
+| `no-orm-autosync-in-prod-config` | `NoOrmAutoSyncInProdConfig.java` | Fails if the `spring.jpa.hibernate.ddl-auto` value in either `src/main/resources/application.yml` (default) or `application-prod.yml` (prod profile) is `update`/`create`/`create-drop` — schema changes must be managed only via Flyway/Liquibase migrations (persistence.md). The default file is checked too because, if `SPRING_PROFILES_ACTIVE` is missing, its value applies in production as-is. If the `ddl-auto` key is absent, that means there's no automatic sync, so it's a PASS |
 
-## 회귀 테스트
+## Regression tests
 
 ```bash
 cd implementations/java-springboot/harness
-export JAVA_HOME=/path/to/jdk PATH="$JAVA_HOME/bin:$PATH"   # 필요 시
+export JAVA_HOME=/path/to/jdk PATH="$JAVA_HOME/bin:$PATH"   # if needed
 javac -d build/classes $(find src -name "*.java")
 javac -cp build/classes -d build/test-classes test/RuleTest.java
 cd test && java -cp ../build/classes:../build/test-classes RuleTest
 ```
 
-각 규칙은 최소 `test/testdata/<rule>/good/`(통과해야 함)와 `test/testdata/<rule>/bad-*/`(실패해야 함) fixture로 검증된다. 외부 테스트 프레임워크(JUnit 등)는 새로 끌어오지 않고, 실패 시 `AssertionError`를 던지는 자체 assert 메서드만으로 작성했다(nestjs harness의 `run-fixtures.ts`와 같은 취지).
+Each rule is verified against at minimum a `test/testdata/<rule>/good/` fixture (must pass) and a `test/testdata/<rule>/bad-*/` fixture (must fail). No external test framework (JUnit, etc.) is pulled in — it's written with nothing but its own assert methods that throw `AssertionError` on failure (the same idea as the nestjs harness's `run-fixtures.ts`).
 
-새 규칙을 추가하거나 기존 규칙을 수정할 때는:
-1. `src/rules/<Rule>.java`에 로직 구현(또는 수정) — `public static RuleResult check(String rootPath)` 시그니처
-2. `test/testdata/<rule>/good/`, `test/testdata/<rule>/bad-*/` fixture 작성
-3. `test/RuleTest.java`의 `TESTS` 목록에 케이스 추가(신규 규칙인 경우 `src/Main.java`의 `RULES`에도 등록)
-4. 위 "회귀 테스트" 명령으로 확인
+When adding a new rule or modifying an existing one:
+1. Implement (or modify) the logic in `src/rules/<Rule>.java` — the `public static RuleResult check(String rootPath)` signature
+2. Write the `test/testdata/<rule>/good/` and `test/testdata/<rule>/bad-*/` fixtures
+3. Add a case to `test/RuleTest.java`'s `TESTS` list (and register it in `src/Main.java`'s `RULES` too, for a new rule)
+4. Verify with the "Regression tests" command above

@@ -11,14 +11,15 @@ import static harness.JavaFiles.pathContains;
 import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
-/** [5] @RestController — interfaces/rest/ 에만 허용 */
+/** [5] @RestController — only allowed under interfaces/rest/ */
 public final class ControllerPlacement {
     private ControllerPlacement() {
     }
 
-    // "@RestControllerAdvice"(전역 예외 처리, common/web/ 배치가 정석 — shared-modules.md 참고)는
-    // "@RestController"의 접두 문자열이라 단순 contains로는 오탐한다. Advice가 아닌 실제
-    // @RestController 사용만 이 규칙의 대상으로 삼는다.
+    // "@RestControllerAdvice" (global exception handling — canonically placed under
+    // common/web/, see shared-modules.md) starts with the string "@RestController", so a
+    // naive contains() check would false-positive on it. This rule targets only actual
+    // @RestController usage, not Advice.
     private static final Pattern REST_CONTROLLER = Pattern.compile("@RestController(?!Advice)");
 
     public static RuleResult check(String rootPath) {
@@ -33,10 +34,10 @@ public final class ControllerPlacement {
             if (pathContains(f, "/interfaces/")) {
                 result.add(Finding.pass(rel + " (@RestController)"));
             } else {
-                result.add(Finding.fail(rel, "@RestController는 interfaces/ 패키지 안에 있어야 함"));
+                result.add(Finding.fail(rel, "@RestController must be inside the interfaces/ package"));
             }
         }
-        if (!found) result.add(Finding.skip("@RestController 없음"));
+        if (!found) result.add(Finding.skip("No @RestController"));
         return result;
     }
 }

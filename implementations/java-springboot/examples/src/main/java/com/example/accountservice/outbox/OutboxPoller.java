@@ -16,18 +16,24 @@ import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 /**
- * Outbox 테이블 → SQS 발행만 담당한다("DB에 쌓인 이벤트를 큐로 실어 나른다"). 어떤 {@link OutboxEventHandler}도 직접 호출하지 않는다 —
- * 그건 {@link OutboxConsumer}의 몫이다.
+ * Responsible only for publishing from the Outbox table → SQS ("carries events accumulated in the
+ * DB over to the queue"). It never calls any {@link OutboxEventHandler} directly — that's {@link
+ * OutboxConsumer}'s job.
  *
- * <p>Command Service는 이 클래스를 전혀 참조하지 않는다. {@code @Scheduled}로 독립적으로 주기 실행되는 것 자체가 "저장 직후 같은 프로세스
- * 안에서 동기 드레인"을 제거하는 핵심이다 — Command가 저장을 커밋하고 응답을 반환한 뒤에도, 이 이벤트가 언제 큐로 나가는지는 다음 tick(최대 1초 뒤)까지 알 수
- * 없다.
+ * <p>The Command Service never references this class at all. Running independently and periodically
+ * via {@code @Scheduled} is itself the key to eliminating "synchronous draining in the same
+ * process, right after saving" — even after a Command commits the save and returns a response,
+ * exactly when this event goes out to the queue is unknown until the next tick (up to 1 second
+ * later).
  *
- * <p>{@code processed=true}는 이제 "핸들러가 처리를 끝냈다"가 아니라 "SQS로 전달을 끝냈다"는 뜻이다 — 이후의 재시도/at-least-once 보장은
- * outbox 테이블이 아니라 SQS의 visibility timeout + DLQ가 담당한다 (docs/architecture/domain-events.md 참고).
+ * <p>{@code processed=true} no longer means "the handler finished processing" — it means "delivery
+ * to SQS finished." From then on, retry/at-least-once guarantees are the responsibility of SQS's
+ * visibility timeout + DLQ, not the outbox table (see docs/architecture/domain-events.md).
  *
- * <p>{@code fixedDelay}는 이전 실행이 끝난 뒤부터 다음 실행까지의 간격을 보장한다 — Spring의 기본 스케줄러는 단일 스레드이므로 이전 tick의 드레인이
- * 끝나기 전에 다음 tick이 겹쳐 실행되지 않는다(nestjs의 {@code isPolling} 플래그와 동일한 효과를 프레임워크가 대신 보장한다).
+ * <p>{@code fixedDelay} guarantees the interval from when the previous execution ends to when the
+ * next one starts — since Spring's default scheduler is single-threaded, the next tick never
+ * overlaps with the previous tick's drain before it finishes (the framework guarantees the same
+ * effect nestjs achieves with its {@code isPolling} flag).
  */
 @Component
 @RequiredArgsConstructor
@@ -39,12 +45,13 @@ public class OutboxPoller {
     private final SqsClient sqsClient;
     private final SqsProperties sqsProperties;
 
-    // @Transactional이 필요한 이유: findByProcessedFalseOrderByCreatedAtAsc()가 로드하는
-    // OutboxEvent.payload는 @Lob 컬럼이다 — 이 메서드 자체가 트랜잭션 경계가 아니면 조회에 쓰인
-    // 세션/커넥션이 이미 반환된 뒤 아래 for 루프에서 event.getPayload()를 늦게 스트리밍하려다
-    // "Unable to access lob stream" 예외가 난다(예전 OutboxRelay.processPending()도 동일한
-    // 이유로 @Transactional이 붙어 있었다 — 동기 드레인을 비동기로 바꾸면서도 이 트랜잭션 경계
-    // 필요성은 그대로 남는다).
+    // Why @Transactional is needed: OutboxEvent.payload, loaded by
+    // findByProcessedFalseOrderByCreatedAtAsc(), is an @Lob column — if this method itself isn't a
+    // transaction boundary, the session/connection used for the query is already returned by the
+    // time the for loop below tries to lazily stream event.getPayload(), causing an "Unable to
+    // access lob stream" exception (the old OutboxRelay.processPending() also had @Transactional
+    // for the same reason — even after switching from synchronous to asynchronous draining, this
+    // need for a transaction boundary remains unchanged).
     @Scheduled(fixedDelay = 1000)
     @Transactional
     public void poll() {
@@ -63,13 +70,13 @@ public class OutboxPoller {
                                                         .stringValue(event.getEventType())
                                                         .build()))
                                 .build());
-                // 발행에 성공한 즉시 processed=true로 표시한다 — 발행 실패 행은 processed=false로
-                // 남겨 다음 tick에서 재시도한다.
+                // Mark processed=true as soon as publishing succeeds — a row whose publish failed
+                // is left as processed=false and retried on the next tick.
                 event.markProcessed();
                 outboxJpaRepository.save(event);
             } catch (Exception e) {
                 log.error(
-                        "SQS 발행 실패",
+                        "Failed to publish to SQS",
                         kv("event_type", event.getEventType()),
                         kv("event_id", event.getEventId()),
                         e);

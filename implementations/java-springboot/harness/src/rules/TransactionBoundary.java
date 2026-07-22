@@ -11,7 +11,7 @@ import static harness.JavaFiles.pathContains;
 import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
-/** [10] 트랜잭션 경계 — Command Service에는 없고 Repository.save()에 있어야 함 */
+/** [10] Transaction boundary — must not be on the Command Service, must be on Repository.save() */
 public final class TransactionBoundary {
     private TransactionBoundary() {
     }
@@ -27,9 +27,9 @@ public final class TransactionBoundary {
             String rel = relTo(f, root);
             String content = readText(f);
             if (content.contains("@Transactional")) {
-                result.add(Finding.fail(rel, "Command Service에 @Transactional이 있으면 안 됨 — 트랜잭션 경계는 Repository.save()로 이관됨(domain-events.md, persistence.md)"));
+                result.add(Finding.fail(rel, "Command Service must not have @Transactional — the transaction boundary has moved to Repository.save() (domain-events.md, persistence.md)"));
             } else {
-                result.add(Finding.pass(rel + " (트랜잭션 경계 미보유 확인)"));
+                result.add(Finding.pass(rel + " (confirmed it has no transaction boundary)"));
             }
         }
 
@@ -40,13 +40,13 @@ public final class TransactionBoundary {
             found = true;
             String rel = relTo(f, root);
             if (content.contains("@Transactional")) {
-                result.add(Finding.pass(rel + " (Repository.save() 트랜잭션 경계 확인)"));
+                result.add(Finding.pass(rel + " (confirmed Repository.save() transaction boundary)"));
             } else {
-                result.add(Finding.fail(rel, "Outbox를 저장하는 Repository 구현체에 @Transactional이 없음 — Aggregate 저장과 Outbox 적재가 원자적이지 않을 수 있음"));
+                result.add(Finding.fail(rel, "The Repository implementation that saves to the Outbox is missing @Transactional — saving the Aggregate and loading the Outbox may not be atomic"));
             }
         }
 
-        if (!found) result.add(Finding.skip("Command Service/Outbox 연동 Repository 구현체 없음"));
+        if (!found) result.add(Finding.skip("No Command Service / Outbox-integrated Repository implementation"));
         return result;
     }
 }

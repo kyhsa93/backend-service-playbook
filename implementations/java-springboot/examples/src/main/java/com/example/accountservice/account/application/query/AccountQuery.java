@@ -5,8 +5,10 @@ import com.example.accountservice.account.domain.AccountsWithCount;
 import com.example.accountservice.account.domain.TransactionsWithCount;
 
 /**
- * Query Service 전용 읽기 인터페이스. 쓰기용 {@code AccountRepository}(domain)와 분리된 좁은 계약이다. Query Service는 이
- * 인터페이스만 의존해야 한다 — {@code saveAccount}/{@code delete} 같은 쓰기 메서드를 노출하지 않는다 (cqrs-pattern.md 참고).
+ * A read-only interface dedicated to the Query Service. It is a narrow contract kept separate from
+ * the write-side {@code AccountRepository} (domain). The Query Service must depend only on this
+ * interface — it does not expose write methods such as {@code saveAccount}/{@code delete} (see
+ * cqrs-pattern.md).
  */
 public interface AccountQuery {
     AccountsWithCount findAccounts(AccountFindQuery query);

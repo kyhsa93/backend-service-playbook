@@ -49,7 +49,10 @@ public class AuthController {
                 e.code() == AuthException.ErrorCode.INVALID_CREDENTIALS
                         ? HttpStatus.UNAUTHORIZED
                         : HttpStatus.BAD_REQUEST;
-        log.warn("인증 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
+        log.warn(
+                "Authentication request failed",
+                kv("code", e.code()),
+                kv("message", e.getMessage()));
         return ResponseEntity.status(status)
                 .body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }

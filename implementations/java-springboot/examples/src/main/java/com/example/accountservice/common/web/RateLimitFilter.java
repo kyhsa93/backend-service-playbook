@@ -12,13 +12,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * 전역 요청 속도 제한 — rate-limiting.md 참고. SecurityFilterChain(인증)보다 먼저 실행되어야 인증되지 않은 요청의 무한 재시도를 막을 수
- * 있다. 쓰기(POST/PUT/PATCH/DELETE)/읽기(GET/HEAD) 메서드별로 {@code resilience4j.ratelimiter.instances}에 정의된
- * named instance(`http-write`/`http-read`)를 {@link RateLimiterRegistry}에서 조회한다 — 값은
- * application.yml/환경 변수로 배포 시점에 조정 가능하다(kotlin-springboot의 RateLimitingFilter와 동일한 방식).
+ * Global request rate limiting — see rate-limiting.md. It must run before SecurityFilterChain
+ * (authentication) to prevent unlimited retries of unauthenticated requests. It looks up the named
+ * instance (`http-write`/`http-read`) defined under {@code resilience4j.ratelimiter.instances} in
+ * the {@link RateLimiterRegistry}, keyed by whether the method is a write (POST/PUT/PATCH/DELETE)
+ * or a read (GET/HEAD) — values can be tuned at deploy time via application.yml/env vars (the same
+ * approach as kotlin-springboot's RateLimitingFilter).
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 10) // CorrelationIdFilter 다음, SecurityFilterChain보다 먼저
+@Order(Ordered.HIGHEST_PRECEDENCE + 10) // After CorrelationIdFilter, before SecurityFilterChain
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimiterRegistry rateLimiterRegistry;
@@ -29,7 +31,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // 헬스체크/Actuator 엔드포인트는 rate limiting 대상에서 제외
+        // Exclude health-check/Actuator endpoints from rate limiting
         return request.getRequestURI().startsWith("/actuator/");
     }
 
@@ -50,7 +52,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setContentType("application/json");
             response.getWriter()
                     .write(
-                            "{\"statusCode\":429,\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"요청이 너무 많습니다.\",\"error\":\"Too Many Requests\"}");
+                            "{\"statusCode\":429,\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Too many requests.\",\"error\":\"Too Many Requests\"}");
         }
     }
 }

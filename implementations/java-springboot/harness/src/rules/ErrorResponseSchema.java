@@ -17,15 +17,19 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [25] 에러 응답 4필드 스키마 — {@code common/web/GlobalExceptionHandler}(전역 {@code
- * @RestControllerAdvice})가 {@code @ExceptionHandler} 메서드에서 반환하는 응답 DTO가 정확히
- * {@code statusCode}(숫자)/{@code code}(문자열)/{@code message}(문자열 또는 배열)/{@code error}(문자열)
- * 4필드만 가져야 한다(error-handling.md). 더 많거나 적은 필드, 다른 이름의 필드가 있으면 실패.
+ * [25] The 4-field error-response schema — the response DTO that {@code
+ * common/web/GlobalExceptionHandler} (a global {@code @RestControllerAdvice}) returns
+ * from an {@code @ExceptionHandler} method must have exactly these 4 fields: {@code
+ * statusCode} (number)/{@code code} (string)/{@code message} (string or array)/{@code
+ * error} (string) (error-handling.md). Fails if there are more or fewer fields, or a
+ * differently-named field.
  *
- * <p>DTO 타입명을 하드코딩(예: "ErrorResponse")하지 않고, GlobalExceptionHandler의 {@code
- * @ExceptionHandler} 메서드가 실제로 반환하는 {@code ResponseEntity<Xxx>}의 제네릭 타입을 파싱해
- * 동적으로 찾는다 — 도메인 이름이 바뀌거나 응답 DTO 이름이 바뀌어도 규칙이 깨지지 않는다. 찾은
- * 타입은 {@code record}(주 사용 형태) 또는 일반 {@code class}(필드 선언) 둘 다 인식한다.
+ * <p>Rather than hardcoding the DTO type name (e.g. "ErrorResponse"), it dynamically finds
+ * the generic type of the {@code ResponseEntity<Xxx>} that GlobalExceptionHandler's {@code
+ * @ExceptionHandler} methods actually return, by parsing it — the rule doesn't break even
+ * if the domain name or the response DTO's name changes. The type it finds is recognized
+ * whether it's a {@code record} (the primary usage) or a plain {@code class} (field
+ * declarations).
  */
 public final class ErrorResponseSchema {
     private ErrorResponseSchema() {
@@ -53,7 +57,7 @@ public final class ErrorResponseSchema {
         }
 
         if (handlerFile == null) {
-            result.add(Finding.skip("common/web/GlobalExceptionHandler.java(전역 @RestControllerAdvice) 없음"));
+            result.add(Finding.skip("No common/web/GlobalExceptionHandler.java (global @RestControllerAdvice)"));
             return result;
         }
 
@@ -68,7 +72,7 @@ public final class ErrorResponseSchema {
 
         if (responseTypes.isEmpty()) {
             result.add(Finding.fail(handlerRel,
-                "@ExceptionHandler 메서드가 ResponseEntity<Xxx>를 반환하는 형태를 찾을 수 없음 — 4필드 응답 스키마를 확인할 수 없음(error-handling.md)"));
+                "Could not find an @ExceptionHandler method that returns ResponseEntity<Xxx> — could not confirm the 4-field response schema (error-handling.md)"));
             return result;
         }
 
@@ -83,7 +87,7 @@ public final class ErrorResponseSchema {
 
             if (dtoFile == null) {
                 result.add(Finding.fail(handlerRel + " -> " + typeName,
-                    "GlobalExceptionHandler가 반환하는 응답 타입 '" + typeName + "'의 선언을 프로젝트 안에서 찾을 수 없음 — 표준 4필드 ErrorResponse가 아닐 수 있음(error-handling.md)"));
+                    "Could not find the declaration of the response type '" + typeName + "' that GlobalExceptionHandler returns, anywhere in the project — it may not be a standard 4-field ErrorResponse (error-handling.md)"));
                 continue;
             }
 
@@ -93,7 +97,7 @@ public final class ErrorResponseSchema {
 
             if (fields == null) {
                 result.add(Finding.fail(dtoRel,
-                    "'" + typeName + "'의 필드 목록을 파싱할 수 없음(record 컴포넌트 또는 private 필드 선언 형태가 아님)"));
+                    "Could not parse the field list of '" + typeName + "' (not in the form of record components or private field declarations)"));
                 continue;
             }
 
@@ -112,9 +116,9 @@ public final class ErrorResponseSchema {
             Set<String> extra = new LinkedHashSet<>(actualNames);
             extra.removeAll(REQUIRED_FIELDS);
             StringBuilder reason = new StringBuilder(
-                "'" + typeName + "'는 정확히 statusCode/code/message/error 4필드만 가져야 함(error-handling.md).");
-            if (!missing.isEmpty()) reason.append(" 누락: ").append(missing).append(".");
-            if (!extra.isEmpty()) reason.append(" 불필요/오타 필드: ").append(extra).append(".");
+                "'" + typeName + "' must have exactly these 4 fields: statusCode/code/message/error (error-handling.md).");
+            if (!missing.isEmpty()) reason.append(" Missing: ").append(missing).append(".");
+            if (!extra.isEmpty()) reason.append(" Extra/misnamed fields: ").append(extra).append(".");
             result.add(Finding.fail(dtoRel, reason.toString()));
             return;
         }
@@ -125,18 +129,18 @@ public final class ErrorResponseSchema {
         boolean errorOk = isStringType(fields.get("error"));
 
         if (statusCodeOk && codeOk && messageOk && errorOk) {
-            result.add(Finding.pass(dtoRel + " (" + typeName + " — statusCode/code/message/error 4필드 스키마 확인)"));
+            result.add(Finding.pass(dtoRel + " (" + typeName + " — confirmed the statusCode/code/message/error 4-field schema)"));
         } else {
-            StringBuilder reason = new StringBuilder("'" + typeName + "' 필드 타입이 예상과 다름:");
-            if (!statusCodeOk) reason.append(" statusCode는 숫자 타입이어야 함(실제: ").append(fields.get("statusCode")).append(").");
-            if (!codeOk) reason.append(" code는 String이어야 함(실제: ").append(fields.get("code")).append(").");
-            if (!messageOk) reason.append(" message는 String 또는 배열/List<String>이어야 함(실제: ").append(fields.get("message")).append(").");
-            if (!errorOk) reason.append(" error는 String이어야 함(실제: ").append(fields.get("error")).append(").");
+            StringBuilder reason = new StringBuilder("'" + typeName + "' field types don't match what's expected:");
+            if (!statusCodeOk) reason.append(" statusCode must be a numeric type (actual: ").append(fields.get("statusCode")).append(").");
+            if (!codeOk) reason.append(" code must be String (actual: ").append(fields.get("code")).append(").");
+            if (!messageOk) reason.append(" message must be String or an array/List<String> (actual: ").append(fields.get("message")).append(").");
+            if (!errorOk) reason.append(" error must be String (actual: ").append(fields.get("error")).append(").");
             result.add(Finding.fail(dtoRel, reason.toString()));
         }
     }
 
-    /** record 컴포넌트 목록 또는 class의 private 필드 선언을 파싱해 이름 -> 타입 맵으로 반환한다. */
+    /** Parses either the record component list or a class's private field declarations, returning a name -> type map. */
     private static Map<String, String> extractFields(String code, String typeName) {
         Matcher recordMatcher = RECORD_DECL_PREFIX.matcher(code);
         while (recordMatcher.find()) {
@@ -153,7 +157,7 @@ public final class ErrorResponseSchema {
             return parseParamList(params);
         }
 
-        // record가 아니면 일반 class의 private 필드 선언을 찾는다
+        // If it's not a record, look for a plain class's private field declarations
         Matcher fieldMatcher = FIELD_DECL.matcher(code);
         Map<String, String> fields = new LinkedHashMap<>();
         while (fieldMatcher.find()) {

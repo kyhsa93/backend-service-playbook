@@ -3,7 +3,8 @@ package com.example.accountservice.card.domain;
 import java.util.List;
 
 /**
- * {@code findCards} 조회 결과 — 목록과 총 개수를 함께 반환한다. 단건 조회도 이 타입을 재사용한다: {@code CardFindQuery.take}를 1로
- * 설정해 호출한 뒤 {@code cards()}의 첫 번째 결과를 꺼내 쓴다(repository-pattern.md 참고).
+ * The result of a {@code findCards} query — returns the list together with the total count. A
+ * single-record lookup also reuses this type: call with {@code CardFindQuery.take} set to 1, then
+ * take the first result from {@code cards()} (see repository-pattern.md).
  */
 public record CardsWithCount(List<Card> cards, long count) {}

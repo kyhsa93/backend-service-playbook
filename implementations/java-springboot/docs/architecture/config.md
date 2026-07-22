@@ -1,10 +1,10 @@
-# 환경 설정 관리 (Spring Boot)
+# Environment Configuration Management (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [config.md](../../../../docs/architecture/config.md) 참고.
+> For the framework-agnostic principles, see the root [config.md](../../../../docs/architecture/config.md).
 
-## 현재 예제의 상태
+## State of the current example
 
-`examples/src/main/resources/application.yml` 전체:
+The full `examples/src/main/resources/application.yml`:
 
 ```yaml
 spring:
@@ -31,40 +31,40 @@ jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 ```
 
-(`ddl-auto`/마이그레이션 상태는 [persistence.md](persistence.md) 참고 — 마이그레이션은 Flyway로 관리된다.)
+(For `ddl-auto`/migration status, see [persistence.md](persistence.md) — migrations are managed by Flyway.)
 
-`config/AwsProperties.java`/`config/SesProperties.java`(`@ConfigurationProperties` + `@Validated`)를 통해 기동 시점 검증이 실제로 동작하고, `application-prod.yml`이 운영 프로필에서 AWS 자격증명 기본값을 제거해 fail-fast를 강제한다 — 아래에서 실제 코드를 그대로 보여준다.
+Startup-time validation is genuinely enforced via `config/AwsProperties.java`/`config/SesProperties.java` (`@ConfigurationProperties` + `@Validated`), and `application-prod.yml` removes the default AWS credential values in the production profile to force fail-fast — the actual code is shown as-is below.
 
-- **`AwsProperties.accessKeyId`/`secretAccessKey`도 `@NotBlank` 대상이다**: `region`과 동일하게 두 필드 모두 Bean Validation이 붙어 있다. 로컬 기본값(`test`/`test`)은 non-blank라 이 검증을 그대로 통과하므로 로컬 개발 편의에는 영향이 없다. `application-prod.yml`이 해당 플레이스홀더의 기본값을 생략하는 것(아래 참고)과 `@NotBlank`는 서로 다른 실패 조건을 잡는 의도적인 2중 방어다 — 환경 변수 자체가 없으면 `PlaceholderResolutionException`(프로퍼티 바인딩 이전 단계)이, 환경 변수가 빈 문자열로 설정되어 있으면 `@NotBlank`(바인딩 이후 Bean Validation 단계)가 각각 잡아낸다.
-- **관심사별 설정 파일 분리는 현재 2-파일 구성(`application.yml` + `application-prod.yml`)으로 확정했다**: 이 저장소의 설정 표면(AWS 자격증명, SES 발신자, JWT secret)이 작아 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` 수준의 세분화는 불필요한 복잡도로 판단해 도입하지 않기로 결정했다 — 아래 "관심사별 설정 파일 분리" 절 참고.
+- **`AwsProperties.accessKeyId`/`secretAccessKey` are also subject to `@NotBlank`**: like `region`, both fields carry Bean Validation annotations. The local default values (`test`/`test`) are non-blank, so they pass this validation without affecting local development convenience. `application-prod.yml` omitting the default for these placeholders (see below) and `@NotBlank` are a deliberate two-layer defense catching different failure conditions — if the environment variable itself is absent, a `PlaceholderResolutionException` is thrown (before property binding); if it's set to an empty string, `@NotBlank` catches it (during Bean Validation, after binding).
+- **Splitting config files by concern has settled on the current 2-file structure (`application.yml` + `application-prod.yml`)**: given this repository's small configuration surface (AWS credentials, SES sender, JWT secret), finer splits like `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` were judged unnecessary complexity and are not adopted — see the "Splitting config files by concern" section below.
 
 ---
 
-## `@ConfigurationProperties` + `@Validated` — Fail-fast 검증
+## `@ConfigurationProperties` + `@Validated` — fail-fast validation
 
-개별 `@Value`를 여러 클래스에 흩어놓는 대신, 관심사별 `@ConfigurationProperties` 클래스로 묶고 Bean Validation으로 기동 시 검증한다.
+Rather than scattering individual `@Value`s across many classes, related settings are grouped into `@ConfigurationProperties` classes by concern and validated at startup with Bean Validation.
 
 ```java
-// config/AwsProperties.java — 실제 코드
+// config/AwsProperties.java — actual code
 @ConfigurationProperties(prefix = "aws")
 @Validated
 public record AwsProperties(
         @NotBlank String region,
-        String endpointUrl,             // 로컬 전용 — 운영에서는 비워둠, blank 허용
+        String endpointUrl,             // local-only — left blank in production, blank is allowed
         @NotBlank String accessKeyId,
         @NotBlank String secretAccessKey
 ) {}
 ```
 
 ```java
-// config/SesProperties.java — 실제 코드
+// config/SesProperties.java — actual code
 @ConfigurationProperties(prefix = "ses")
 @Validated
 public record SesProperties(@NotBlank @Email String senderEmail) {}
 ```
 
 ```java
-// AccountServiceApplication.java — 실제 코드
+// AccountServiceApplication.java — actual code
 @SpringBootApplication
 @EnableConfigurationProperties({AwsProperties.class, SesProperties.class})
 public class AccountServiceApplication {
@@ -74,10 +74,10 @@ public class AccountServiceApplication {
 }
 ```
 
-`@ConfigurationProperties`를 `record`로 선언하면(Spring Boot 3.x 지원) 불변 객체로 주입되고, `@NotBlank`/`@Email` 등 Bean Validation 애노테이션이 **애플리케이션 컨텍스트 로딩 시점**에 검증된다. 값이 비어 있으면 `BindValidationException`이 발생하며 `ApplicationContext` 초기화가 실패하고 프로세스가 즉시 종료된다 — Node의 `process.exit(1)`에 해당하는 Spring식 fail-fast다. `region`/`senderEmail`/`accessKeyId`/`secretAccessKey` 모두 이 메커니즘으로 직접 검증된다. `accessKeyId`/`secretAccessKey`는 추가로 아래 `application-prod.yml`의 기본값 생략으로도 fail-fast를 얻는다 — 환경 변수 누락과 빈 문자열 값을 각각 다른 층에서 잡아내는 의도적인 2중 방어다.
+Declaring `@ConfigurationProperties` as a `record` (supported since Spring Boot 3.x) means it's injected as an immutable object, and Bean Validation annotations such as `@NotBlank`/`@Email` are validated **at application-context loading time**. If a value is blank, a `BindValidationException` is thrown, `ApplicationContext` initialization fails, and the process terminates immediately — the Spring equivalent of Node's `process.exit(1)` fail-fast. `region`/`senderEmail`/`accessKeyId`/`secretAccessKey` are all directly validated by this mechanism. `accessKeyId`/`secretAccessKey` additionally get fail-fast from omitting their defaults in `application-prod.yml` below — a deliberate two-layer defense that catches a missing environment variable and an empty-string value at two different layers.
 
 ```java
-// account/infrastructure/notification/SesConfig.java — 실제 코드, Infrastructure 레이어에서만 주입받는다
+// account/infrastructure/notification/SesConfig.java — actual code, injected only in the Infrastructure layer
 @Configuration
 @RequiredArgsConstructor
 public class SesConfig {
@@ -98,79 +98,79 @@ public class SesConfig {
 }
 ```
 
-**로컬 기본값과 fail-fast의 균형:** `application.yml`처럼 `${AWS_ACCESS_KEY_ID:test}`로 LocalStack용 기본값을 두는 것 자체는 로컬 개발 편의상 합리적이다. **운영/개발 환경을 구분하지 않고 항상 같은 기본값을 허용**하는 것이 문제인데, 이 저장소는 아래 `application-prod.yml`로 운영 프로필에서만 기본값을 제거해 이를 해결한다.
+**Balancing local defaults with fail-fast:** having a LocalStack default value like `${AWS_ACCESS_KEY_ID:test}` in `application.yml` is reasonable for local development convenience on its own. The actual problem would be **always allowing the same default regardless of environment (prod vs. dev)** — this repository solves that by removing the default only in the production profile, via `application-prod.yml` below.
 
 ---
 
-## 관심사별 설정 파일 분리 — 2-파일 구성으로 확정
+## Splitting config files by concern — settled on a 2-file structure
 
-이 저장소는 현재 `application.yml` + `application-prod.yml` 두 파일만 갖는다 — 아래는 실제 코드다:
+This repository currently has only two files, `application.yml` + `application-prod.yml` — below is the actual code:
 
 ```yaml
-# application-prod.yml — 실제 코드, 운영 전용, 기본값 없이 환경 변수 강제
+# application-prod.yml — actual code, production-only, forces environment variables with no default
 aws:
   access-key-id: ${AWS_ACCESS_KEY_ID}
   secret-access-key: ${AWS_SECRET_ACCESS_KEY}
 ```
 
-운영 프로필(`application-prod.yml`)에서는 `${AWS_ACCESS_KEY_ID}`처럼 **기본값을 생략**한다. Spring은 플레이스홀더에 대응하는 환경 변수가 없으면 `PlaceholderResolutionException`을 던지며 기동을 실패시킨다 — 이것이 Spring Boot의 자연스러운 fail-fast 메커니즘이고, `AwsProperties.accessKeyId`/`secretAccessKey`의 `@NotBlank`(위 참고)와 함께 환경 변수 누락/빈 문자열 두 실패 조건을 각각 다른 층에서 잡아낸다.
+In the production profile (`application-prod.yml`), the **default value is omitted**, as in `${AWS_ACCESS_KEY_ID}`. If Spring finds no environment variable corresponding to a placeholder, it throws a `PlaceholderResolutionException` and startup fails — this is Spring Boot's natural fail-fast mechanism, and together with `@NotBlank` on `AwsProperties.accessKeyId`/`secretAccessKey` (see above), it catches the two failure conditions of a missing environment variable and an empty-string value at two separate layers.
 
-**세분화된 분리는 채택하지 않는다**: `spring.config.import` 기반의 `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` 분리는 검토했지만, 이 저장소의 설정 표면(AWS 자격증명 3개 필드, SES 발신자 1개 필드, JWT secret 1개 필드)이 파일을 나눠 관리해야 할 규모에 이르지 않아 불필요한 복잡도로 판단했다 — `application.yml` + `application-prod.yml` 2-파일 구성을 최종 구조로 확정한다. 도메인이 늘어나 설정 항목이 실제로 늘어나면(예: DB 커넥션 풀 세부 튜닝, 여러 외부 연동 추가) 그때 이 구조를 재검토한다.
+**A more finely split structure is not adopted**: splitting into `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` based on `spring.config.import` was considered, but this repository's configuration surface (3 AWS credential fields, 1 SES sender field, 1 JWT secret field) doesn't reach a scale that warrants managing separate files — this was judged unnecessary complexity, and the 2-file structure of `application.yml` + `application-prod.yml` is settled on as the final structure. If the number of domains grows and configuration items genuinely increase (e.g. detailed DB connection-pool tuning, additional external integrations), this structure should be revisited at that point.
 
 ---
 
-## 민감값 — 환경 변수 vs Secrets Manager
+## Sensitive values — environment variables vs. Secrets Manager
 
-| 항목 | 방식 |
+| Item | Approach |
 |------|------|
-| 일반 설정 (리전, 엔드포인트, 타임아웃) | 환경 변수 → `@ConfigurationProperties` |
-| 민감값 (DB 비밀번호, JWT secret, API 키) | AWS Secrets Manager → 기동 시 조회 후 설정 객체에 주입 |
+| General config (region, endpoint, timeout) | Environment variable → `@ConfigurationProperties` |
+| Sensitive values (DB password, JWT secret, API keys) | AWS Secrets Manager → looked up at startup and injected into the config object |
 
-상세 조회/캐싱 구현은 [secret-manager.md](secret-manager.md) 참고. `application-prod.yml`이 환경 변수를 참조하는 것과, 그 환경 변수 값 자체가 오케스트레이터가 Secrets Manager에서 주입한 것인지는 별개의 관심사다 — ECS Task Definition의 `secrets` 필드나 Kubernetes `envFrom: secretRef`가 이 주입을 담당한다.
+See [secret-manager.md](secret-manager.md) for the detailed lookup/caching implementation. Whether `application-prod.yml` references an environment variable, and whether that environment variable's value itself was injected by an orchestrator from Secrets Manager, are separate concerns — the ECS Task Definition's `secrets` field or Kubernetes' `envFrom: secretRef` is what handles that injection.
 
 ---
 
-## 설정 접근 패턴 — Infrastructure 레이어에서만
+## Configuration access pattern — Infrastructure layer only
 
-`@ConfigurationProperties`/`@Value` 주입은 Infrastructure 레이어(`SesConfig`, `RepositoryImpl` 등)에서만 한다. Application Service(`CreateAccountService` 등)와 Domain(`Account`)은 설정값을 직접 참조하지 않는다.
+`@ConfigurationProperties`/`@Value` injection happens only in the Infrastructure layer (`SesConfig`, `RepositoryImpl`, etc.). Application Services (`CreateAccountService`, etc.) and Domain (`Account`) never reference configuration values directly.
 
 ```java
-// 올바른 방식 — Infrastructure에서만 설정 접근
+// Correct — config is accessed only in Infrastructure
 @Component
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
-    private final SesProperties sesProperties;   // Infrastructure 레이어
+    private final SesProperties sesProperties;   // Infrastructure layer
     ...
 }
 
-// 잘못된 방식 — Application Service가 설정을 직접 읽음
+// Incorrect — an Application Service reads config directly
 @Service
 public class CreateAccountService {
-    @Value("${aws.region}")   // 금지 — Application 레이어는 설정 무의존
+    @Value("${aws.region}")   // forbidden — the Application layer must not depend on config
     private String region;
 }
 ```
 
 ---
 
-## 원칙
+## Principles
 
-- **Fail-fast**: `@ConfigurationProperties` + Bean Validation으로 기동 시 검증한다 — `AwsProperties`/`SesProperties`가 이를 구현하고, 모든 필드(`region`/`accessKeyId`/`secretAccessKey`/`senderEmail`)에 `@NotBlank`가 붙어 있다. 실패 시 `ApplicationContext` 로딩이 중단되고 프로세스가 종료된다.
-- **관심사별 분리는 2-파일 구성으로 확정**: 이 저장소의 설정 표면 규모에서는 `application.yml` + 운영 프로필 오버라이드(`application-prod.yml`)만으로 충분하다고 판단했다 — 더 세분화된 `spring.config.import` 분리는 도입하지 않는다(위 참고).
-- **운영 프로필은 기본값을 생략**한다: `${VAR}` (기본값 없음)로 강제 검증 — `application-prod.yml`이 이 패턴을 따른다.
-- **민감값은 Secrets Manager**: [secret-manager.md](secret-manager.md) 참고.
-- **설정 접근은 Infrastructure 레이어**: `@Value`/`@ConfigurationProperties` 주입 대상은 Infrastructure의 `@Configuration`/`@Component` 클래스로 한정한다.
-
----
-
-## harness 검증
-
-`harness/src/rules/NoDirectEnvAccessOutsideConfig.java`(rule: `no-direct-env-access-outside-config`)가 `domain/`·`application/`에서 `System.getenv(...)`를 직접 호출하면 실패시킨다 — 환경 변수 접근은 `@ConfigurationProperties`로 감싸 `config/`(최상위 공용 패키지) 또는 `infrastructure/`에서만 해야 한다.
+- **Fail-fast**: validate at startup with `@ConfigurationProperties` + Bean Validation — `AwsProperties`/`SesProperties` implement this, and every field (`region`/`accessKeyId`/`secretAccessKey`/`senderEmail`) carries `@NotBlank`. On failure, `ApplicationContext` loading aborts and the process exits.
+- **Splitting by concern has settled on a 2-file structure**: given this repository's configuration surface, `application.yml` + a production-profile override (`application-prod.yml`) is judged sufficient — no further `spring.config.import` splitting is adopted (see above).
+- **The production profile omits defaults**: use `${VAR}` (no default) to force validation — `application-prod.yml` follows this pattern.
+- **Sensitive values go through Secrets Manager**: see [secret-manager.md](secret-manager.md).
+- **Configuration access is confined to the Infrastructure layer**: `@Value`/`@ConfigurationProperties` injection targets are limited to Infrastructure's `@Configuration`/`@Component` classes.
 
 ---
 
-### 관련 문서
+## Harness verification
 
-- [container.md](container.md) — 컨테이너 환경 변수 주입
-- [secret-manager.md](secret-manager.md) — Secrets Manager 조회/캐싱
-- [local-dev.md](local-dev.md) — 로컬 개발 프로필 구성
+`harness/src/rules/NoDirectEnvAccessOutsideConfig.java` (rule: `no-direct-env-access-outside-config`) fails the build if `domain/`·`application/` calls `System.getenv(...)` directly — environment-variable access must be wrapped in `@ConfigurationProperties` and only done in `config/` (the top-level shared package) or `infrastructure/`.
+
+---
+
+### Related documents
+
+- [container.md](container.md) — container environment-variable injection
+- [secret-manager.md](secret-manager.md) — Secrets Manager lookup/caching
+- [local-dev.md](local-dev.md) — local development profile configuration

@@ -21,8 +21,10 @@ import software.amazon.awssdk.services.ses.model.SendEmailRequest;
 import software.amazon.awssdk.services.ses.model.SendEmailResponse;
 
 /**
- * NotificationService(Technical Service 인터페이스)의 AWS SES 기반 구현체. 이 코드베이스에서 Service 애노테이션은 유스케이스를
- * 조율하는 Application Service를 뜻하므로, infrastructure 레이어의 기술 구현체인 이 클래스는 그 대신 Component 애노테이션을 사용한다.
+ * The AWS SES-based implementation of NotificationService (a Technical Service interface). In this
+ * codebase the Service annotation means an Application Service that orchestrates a use case, so
+ * this class — a technical implementation in the infrastructure layer — uses the Component
+ * annotation instead.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,8 +36,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final SentEmailRepository sentEmailRepository;
     private final SesProperties sesProperties;
 
-    // 알림 발송 실패가 원본 계좌 커맨드의 트랜잭션까지 rollback-only로 전파되지 않도록
-    // 별도의 물리 트랜잭션(REQUIRES_NEW)에서 실행한다.
+    // Runs in a separate physical transaction (REQUIRES_NEW) so a notification-send failure does
+    // not
+    // propagate as rollback-only into the original account command's transaction.
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void sendEmail(
@@ -69,7 +72,7 @@ public class NotificationServiceImpl implements NotificationService {
         sentEmailRepository.save(sentEmail);
 
         log.info(
-                "이메일 발송됨",
+                "Email sent",
                 kv("account_id", accountId),
                 kv("event_type", eventType),
                 kv("recipient", recipient),

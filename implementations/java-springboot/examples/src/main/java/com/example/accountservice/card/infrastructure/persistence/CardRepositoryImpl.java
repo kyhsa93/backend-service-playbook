@@ -14,9 +14,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Card의 쓰기용 {@link CardRepository}와 읽기용 {@link CardQuery}를 한 클래스에서 구현한다
- * (account/infrastructure/persistence/AccountRepositoryImpl과 동일한 구조). 각 Application 레이어는 자신에게 필요한
- * 좁은 인터페이스(Repository 또는 Query)만 주입받는다.
+ * Implements Card's write-side {@link CardRepository} and read-side {@link CardQuery} in a single
+ * class (the same structure as account/infrastructure/persistence/AccountRepositoryImpl). Each
+ * Application layer only injects the narrow interface it needs (Repository or Query).
  */
 @Repository
 @RequiredArgsConstructor

@@ -16,13 +16,15 @@ import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 /**
- * task_outbox 테이블 → Task Queue(SQS FIFO) 발행만 담당한다 — {@code outbox/OutboxPoller}와 동일한 구조다. 어떤 {@link
- * TaskHandler}도 직접 호출하지 않는다 — 그건 {@link TaskConsumer}의 몫이다.
+ * Responsible only for publishing from the task_outbox table → the Task Queue (SQS FIFO) — the same
+ * structure as {@code outbox/OutboxPoller}. It never calls any {@link TaskHandler} directly —
+ * that's {@link TaskConsumer}'s job.
  *
- * <p>Domain/Integration Event 큐(domain-events, 표준 큐)와 달리 Task Queue는 FIFO 큐다 —
- * MessageGroupId/MessageDeduplicationId로 여러 인스턴스가 같은 Cron tick에 중복 적재해도 큐에는 1건만 들어가게
- * 한다(scheduling.md "Cron 다중 인스턴스 안전성"). Task Queue와 Domain Event 큐를 분리한 것도 이 개념적 차이(명령 vs 사실)
- * 때문이다(domain-events.md).
+ * <p>Unlike the Domain/Integration Event queue (domain-events, a standard queue), the Task Queue is
+ * a FIFO queue — MessageGroupId/MessageDeduplicationId ensure that even if multiple instances
+ * duplicate-enqueue on the same Cron tick, only one entry lands in the queue (see "Cron safety with
+ * multiple instances" in scheduling.md). This conceptual difference (command vs. fact) is also why
+ * the Task Queue and Domain Event queue are kept separate (domain-events.md).
  */
 @Component
 @RequiredArgsConstructor
@@ -35,8 +37,9 @@ public class TaskOutboxPoller {
     private final SqsClient sqsClient;
     private final SqsProperties sqsProperties;
 
-    // @Transactional이 필요한 이유는 outbox/OutboxPoller.poll()과 동일하다 — payload가 @Lob 컬럼이라
-    // 트랜잭션 경계 밖에서 늦게 스트리밍하면 "Unable to access lob stream" 예외가 난다.
+    // The reason @Transactional is needed is the same as outbox/OutboxPoller.poll() — payload is
+    // an @Lob column, so streaming it lazily outside the transaction boundary causes an "Unable to
+    // access lob stream" exception.
     @Scheduled(fixedDelay = 1000)
     @Transactional
     public void poll() {
@@ -58,14 +61,15 @@ public class TaskOutboxPoller {
                                                         .stringValue(entry.getTaskType())
                                                         .build()))
                                 .build());
-                // 발행에 성공한 즉시 processed=true로 표시한다 — 발행 실패 행은 processed=false로
-                // 남겨 다음 tick에서 재시도한다. 같은 deduplicationId로 여러 번 발행을 시도해도
-                // FIFO 큐의 dedup 윈도우(5분) 안에서는 실제로 1건만 전달된다.
+                // Mark processed=true as soon as publishing succeeds — a row whose publish failed
+                // is left as processed=false and retried on the next tick. Even if the same
+                // deduplicationId is published multiple times, only one message is actually
+                // delivered within the FIFO queue's dedup window (5 minutes).
                 entry.markProcessed();
                 taskOutboxJpaRepository.save(entry);
             } catch (Exception e) {
                 log.error(
-                        "Task Queue 발행 실패",
+                        "Failed to publish to Task Queue",
                         kv("task_type", entry.getTaskType()),
                         kv("task_id", entry.getTaskId()),
                         e);

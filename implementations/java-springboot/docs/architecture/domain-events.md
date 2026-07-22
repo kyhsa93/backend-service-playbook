@@ -1,19 +1,19 @@
-# 도메인 이벤트 (Spring Boot)
+# Domain Events (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [domain-events.md](../../../../docs/architecture/domain-events.md) 참고.
+> For the framework-agnostic principles, see the root [domain-events.md](../../../../docs/architecture/domain-events.md).
 
-## Outbox 패턴 — 실제 경로
+## The Outbox pattern — the actual path
 
-root 원칙: **Repository가 Aggregate와 이벤트를 같은 트랜잭션에서 Outbox 테이블에 저장 → 큐 발행 → 큐 수신 시 핸들러 실행**. 이 저장소는 이 경로를 문자 그대로 구현한다 — **Command Service가 저장 직후 같은 프로세스 안에서 동기적으로 드레인하는 방식은 쓰지 않는다.**
+Root principle: **the Repository saves the Aggregate and the event to the Outbox table in the same transaction → publish to a queue → run the handler on queue receipt**. This repository implements this path literally — **it does not synchronously drain within the same process, right after saving, from the Command Service.**
 
-1. **`OutboxWriter`가 Repository 구현체의 트랜잭션 안에서 outbox 테이블에 이벤트를 적재한다** (아래 1~2단계).
-2. **`OutboxPoller`(`@Scheduled(fixedDelay = 1000)`)가 독립적으로 1초 주기로 outbox 테이블을 읽어 SQS로 발행한다.** Command Service는 이 클래스를 전혀 참조하지 않는다.
-3. **`OutboxConsumer`(전용 단일 스레드에서 도는 long-polling 루프, `SmartLifecycle`로 시작/종료 관리)가 SQS를 수신 대기하다가 메시지를 받으면 `eventType`으로 `OutboxEventHandler` 구현체를 찾아 호출한다.**
+1. **`OutboxWriter` writes the event to the outbox table inside the Repository implementation's transaction** (steps 1–2 below).
+2. **`OutboxPoller` (`@Scheduled(fixedDelay = 1000)`) independently reads the outbox table every 1 second and publishes to SQS.** The Command Service never references this class at all.
+3. **`OutboxConsumer` (a long-polling loop running on a dedicated single thread, with start/stop managed via `SmartLifecycle`) waits to receive from SQS, and on receiving a message, looks up the `OutboxEventHandler` implementation by `eventType` and invokes it.**
 
-Command Service는 `accountRepository.saveAccount(account)` 호출 뒤 곧바로 반환한다 — Outbox → SQS 발행/수신은 언제 일어나는지 Command Service가 전혀 알지 못한다(최대 1초 뒤 발행 + SQS long-poll 지연). `harness/src/rules/OutboxDrainOrder.java`가 Command Service(`application/command/`)에서 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 심볼 참조나 `processPending()`/`poll()`/`drainOnce()` 호출을 찾으면 실패시킨다 — Command Service는 저장 후 곧바로 반환해야 하고, Outbox 드레인을 동기적으로 호출해서는 안 된다.
+The Command Service returns immediately after calling `accountRepository.saveAccount(account)` — it has no knowledge of when the Outbox → SQS publish/receive actually happens (up to 1 second delay for publishing, plus SQS long-poll latency). `harness/src/rules/OutboxDrainOrder.java` fails the build if it finds a reference to the `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` symbols, or a call to `processPending()`/`poll()`/`drainOnce()`, inside a Command Service (`application/command/`) — a Command Service must return immediately after saving, and must never synchronously invoke the Outbox drain.
 
 ```java
-// application/command/CreateAccountService.java — 실제 코드
+// application/command/CreateAccountService.java — actual code
 @Service
 @RequiredArgsConstructor
 public class CreateAccountService {
@@ -22,25 +22,25 @@ public class CreateAccountService {
 
     public CreateAccountResult create(CreateAccountCommand command) {
         Account account = Account.create(command.requesterId(), command.email(), command.currency());
-        accountRepository.saveAccount(account);   // Account + Outbox 행을 한 트랜잭션으로 커밋
+        accountRepository.saveAccount(account);   // commits the Account row + Outbox row in one transaction
         return new CreateAccountResult(/* ... */);
-        // 여기서 끝난다 — Outbox → SQS 발행과 EventHandler 실행은 OutboxPoller/OutboxConsumer가
-        // 독립적으로 처리한다.
+        // Ends here — the Outbox → SQS publish and the EventHandler execution are handled
+        // independently by OutboxPoller/OutboxConsumer.
     }
 }
 ```
 
 ---
 
-## 1단계: Aggregate에서 이벤트 수집
+## Step 1: collecting events from the Aggregate
 
 ```java
-// domain/Account.java — 실제 코드
+// domain/Account.java — actual code
 @Transient
 private final List<Object> domainEvents = new ArrayList<>();
 
 public Transaction deposit(long amount) {
-    // ... 불변식 검증 ...
+    // ... invariant validation ...
     this.domainEvents.add(new MoneyDepositedEvent(
             this.accountId, this.email, transaction.getTransactionId(), money, this.balance, transaction.getCreatedAt()));
     return transaction;
@@ -53,41 +53,41 @@ public List<Object> pullDomainEvents() {
 }
 ```
 
-`@Transient`가 이 필드를 JPA 컬럼 매핑에서 제외한다 — 이벤트는 영속 상태가 아니라 "아직 전달되지 않은 사실의 목록"이다.
+`@Transient` excludes this field from JPA column mapping — an event isn't persistent state, it's "a list of facts not yet delivered."
 
 ---
 
-## 2단계: Repository가 Aggregate + Outbox를 한 트랜잭션으로 저장
+## Step 2: the Repository saves the Aggregate + Outbox in one transaction
 
 ```java
-// outbox/OutboxEvent.java — 실제 코드
+// outbox/OutboxEvent.java — actual code
 @Entity
 @Table(name = "outbox")
 public class OutboxEvent {
 
     @Id
     @Column(length = 32, nullable = false, updatable = false)
-    private String eventId;                    // UUID.randomUUID() 하이픈 제거, 32자리 hex
+    private String eventId;                    // UUID.randomUUID() with hyphens removed, 32-character hex
 
     @Column(nullable = false, updatable = false)
-    private String eventType;                  // 도메인 이벤트 record의 simple name, 예: "AccountCreatedEvent"
+    private String eventType;                  // the simple name of the domain event record, e.g. "AccountCreatedEvent"
 
     @Lob
     @Column(nullable = false, updatable = false)
-    private String payload;                     // ObjectMapper로 직렬화한 JSON
+    private String payload;                     // JSON serialized via ObjectMapper
 
     @Column(nullable = false)
-    private boolean processed = false;          // "SQS로 전달을 끝냈다"는 의미 — 아래 3단계 참고
+    private boolean processed = false;          // means "delivery to SQS has finished" — see step 3 below
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // ... create() 정적 팩토리, markProcessed(), getter ...
+    // ... create() static factory, markProcessed(), getters ...
 }
 ```
 
 ```java
-// outbox/OutboxWriter.java — 실제 코드
+// outbox/OutboxWriter.java — actual code
 @Component
 @RequiredArgsConstructor
 public class OutboxWriter {
@@ -104,14 +104,14 @@ public class OutboxWriter {
         try {
             return OutboxEvent.create(event.getClass().getSimpleName(), objectMapper.writeValueAsString(event));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("이벤트 직렬화 실패: " + event.getClass().getSimpleName(), e);
+            throw new IllegalStateException("Failed to serialize event: " + event.getClass().getSimpleName(), e);
         }
     }
 }
 ```
 
 ```java
-// account/infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드
+// account/infrastructure/persistence/AccountRepositoryImpl.java — actual code
 @Repository
 @RequiredArgsConstructor
 public class AccountRepositoryImpl implements AccountRepository {
@@ -121,7 +121,7 @@ public class AccountRepositoryImpl implements AccountRepository {
     private final EntityManager em;
 
     @Override
-    @Transactional   // Account + Transaction + Outbox 저장이 하나의 물리 트랜잭션
+    @Transactional   // saving Account + Transaction + Outbox is one physical transaction
     public void saveAccount(Account account) {
         jpaRepository.save(account);
         List<Transaction> pending = account.pullPendingTransactions();
@@ -133,16 +133,16 @@ public class AccountRepositoryImpl implements AccountRepository {
 }
 ```
 
-**Command Service는 `ApplicationEventPublisher`/`@EventListener`에 의존하지 않는다.** Account/Card/Payment 어느 BC의 Command Service도 `ApplicationEventPublisher` 의존성이 없고, 클래스 레벨 `@Transactional`도 붙지 않으며, `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 필드도 갖지 않는다 — 유일한 물리 트랜잭션 경계는 `AccountRepositoryImpl.saveAccount()`(혹은 각 BC의 동등한 Repository 구현체)다.
+**The Command Service never depends on `ApplicationEventPublisher`/`@EventListener`.** No Command Service in any BC — Account, Card, or Payment — has an `ApplicationEventPublisher` dependency, carries a class-level `@Transactional`, or holds an `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` field — the only physical transaction boundary is `AccountRepositoryImpl.saveAccount()` (or the equivalent Repository implementation in each BC).
 
 ---
 
-## 3단계: `OutboxPoller` — Outbox → SQS 발행 (`@Scheduled`)
+## Step 3: `OutboxPoller` — Outbox → SQS publish (`@Scheduled`)
 
-Outbox 테이블에서 `processed=false`인 행을 읽어 SQS로 발행하고, **발행에 성공한 즉시** `processed=true`로 표시한다. `processed`는 "SQS로 전달을 끝냈다"는 의미다 — 그 이후의 재시도/at-least-once 보장은 outbox 테이블이 아니라 SQS의 visibility timeout + DLQ가 담당한다.
+It reads rows with `processed=false` from the Outbox table, publishes them to SQS, and marks them `processed=true` **the instant the publish succeeds**. `processed` means "delivery to SQS has finished" — retries/at-least-once guarantees beyond that point are handled not by the outbox table but by SQS's visibility timeout + DLQ.
 
 ```java
-// outbox/OutboxPoller.java — 실제 코드(발췌)
+// outbox/OutboxPoller.java — actual code (excerpt)
 @Component
 @RequiredArgsConstructor
 public class OutboxPoller {
@@ -166,42 +166,42 @@ public class OutboxPoller {
                 event.markProcessed();
                 outboxJpaRepository.save(event);
             } catch (Exception e) {
-                log.error("SQS 발행 실패", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
-                // processed=false로 남아 다음 tick에서 재시도된다.
+                log.error("SQS publish failed", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
+                // stays processed=false and is retried on the next tick.
             }
         }
     }
 }
 ```
 
-**왜 `@Transactional`이 필요한가**: `OutboxEvent.payload`는 `@Lob` 컬럼이다. `poll()` 자체가 트랜잭션 경계가 아니면, `findByProcessedFalseOrderByCreatedAtAsc()`가 자신만의 짧은 트랜잭션으로 실행되고 끝나버려서, 그 다음 `for` 루프에서 `event.getPayload()`를 늦게 읽으려 할 때 세션/커넥션이 이미 반환된 상태라 `Unable to access lob stream` 예외가 발생한다(실제로 이 실수를 했다가 E2E 테스트에서 이벤트가 전혀 SQS로 발행되지 않는 회귀로 잡혔다). 옛 `OutboxRelay.processPending()`도 동일한 이유로 `@Transactional`이 붙어 있었다 — 동기 드레인을 비동기로 바꾸면서도 "LOB 조회와 반복은 같은 트랜잭션 안에서" 필요성은 그대로 남는다.
+**Why `@Transactional` is required**: `OutboxEvent.payload` is an `@Lob` column. If `poll()` itself were not a transaction boundary, `findByProcessedFalseOrderByCreatedAtAsc()` would run and complete within its own short-lived transaction, so reading `event.getPayload()` later in the `for` loop would hit an already-released session/connection and throw `Unable to access lob stream`. Keeping the LOB read and the loop inside the same transaction is exactly what `@Transactional` here guarantees.
 
-**겹쳐 실행 방지**: Spring의 `@Scheduled(fixedDelay = ...)`는 "이전 실행이 끝난 뒤부터" 다음 실행까지의 간격을 보장한다 — 기본 스케줄러가 단일 스레드이므로 이전 tick의 드레인이 아직 끝나지 않았으면 다음 tick이 겹쳐 실행되지 않는다. nestjs의 `OutboxPoller`가 `isPolling` 플래그를 직접 관리하는 것과 동일한 효과를 Spring 프레임워크가 대신 보장해준다 — Java 구현에는 별도 플래그가 필요 없다.
+**Preventing overlapping runs**: Spring's `@Scheduled(fixedDelay = ...)` guarantees the interval to the next run is measured "from when the previous run finished" — since the default scheduler is single-threaded, the next tick never overlaps with a drain from the previous tick that hasn't finished yet. This gives the same effect as nestjs's `OutboxPoller` explicitly managing an `isPolling` flag, except the Spring framework guarantees it instead — the Java implementation needs no separate flag.
 
-**`@EnableScheduling` 활성화**: `@Scheduled`가 동작하려면 `AccountServiceApplication`에 `@EnableScheduling`이 있어야 한다.
+**Enabling `@EnableScheduling`**: for `@Scheduled` to work, `AccountServiceApplication` must carry `@EnableScheduling`.
 
 ```java
-// AccountServiceApplication.java — 실제 코드(발췌)
+// AccountServiceApplication.java — actual code (excerpt)
 @SpringBootApplication
-@EnableScheduling   // OutboxPoller의 @Scheduled(fixedDelay = 1000)을 활성화한다.
+@EnableScheduling   // enables OutboxPoller's @Scheduled(fixedDelay = 1000)
 @EnableConfigurationProperties({AwsProperties.class, SesProperties.class, JwtProperties.class, SqsProperties.class})
 public class AccountServiceApplication { ... }
 ```
 
 ---
 
-## 4단계: `OutboxConsumer` — SQS → `OutboxEventHandler` 수신 (long polling)
+## Step 4: `OutboxConsumer` — SQS → `OutboxEventHandler` receipt (long polling)
 
-SQS를 long polling(`ReceiveMessageRequest.waitTimeSeconds(5)`)으로 수신 대기하다가 메시지를 받으면 `eventType`(`MessageAttributes`)으로 Spring이 자동 수집한 `List<OutboxEventHandler>`에서 핸들러를 찾아 호출한다. **`OutboxRelay`가 하던 "클래스패스 전체에서 `OutboxEventHandler` 구현체 자동 수집" 배선은 그대로 재사용된다** — 주입 대상만 `OutboxRelay`에서 `OutboxConsumer`로 바뀌었을 뿐, 각 도메인의 `OutboxEventHandler` 구현체 자체는 손댈 필요가 없다.
+It waits on SQS via long polling (`ReceiveMessageRequest.waitTimeSeconds(5)`), and when a message arrives, looks up the matching handler by `eventType` (`MessageAttributes`) from the `List<OutboxEventHandler>` that Spring automatically collects, then invokes it. **The wiring that automatically collects every `OutboxEventHandler` implementation across the classpath is shared** — each domain's `OutboxEventHandler` implementation only needs to satisfy the interface; it's entirely independent of which component performs the collection and routing.
 
 ```java
-// outbox/OutboxConsumer.java — 실제 코드(발췌)
+// outbox/OutboxConsumer.java — actual code (excerpt)
 @Component
 public class OutboxConsumer implements SmartLifecycle {
 
     private final SqsClient sqsClient;
     private final SqsProperties sqsProperties;
-    private final Map<String, OutboxEventHandler> handlers;   // eventType() -> handler, 생성자에서 한 번 구성
+    private final Map<String, OutboxEventHandler> handlers;   // eventType() -> handler, built once in the constructor
     private final ExecutorService executor =
             Executors.newSingleThreadExecutor(r -> new Thread(r, "outbox-consumer"));
     private volatile boolean running = false;
@@ -214,16 +214,16 @@ public class OutboxConsumer implements SmartLifecycle {
     }
 
     @Override
-    public void start() {              // ApplicationContext refresh 완료 시 자동 호출
+    public void start() {              // called automatically when ApplicationContext refresh completes
         running = true;
-        executor.submit(this::pollLoop);   // 즉시 반환 — 부트스트랩을 막지 않는다
+        executor.submit(this::pollLoop);   // returns immediately — doesn't block bootstrap
     }
 
     @Override
-    public void stop() {                // Graceful Shutdown 시 자동 호출
+    public void stop() {                // called automatically during graceful shutdown
         running = false;
         executor.shutdown();
-        // awaitTermination(...) — 진행 중인 ReceiveMessage 호출이 끝날 때까지 기다린다
+        // awaitTermination(...) — waits for any in-flight ReceiveMessage call to finish
     }
 
     private void pollLoop() {
@@ -242,45 +242,45 @@ public class OutboxConsumer implements SmartLifecycle {
         String eventType = /* message.messageAttributes().get("eventType").stringValue() */ null;
         try {
             OutboxEventHandler handler = handlers.get(eventType);
-            if (handler == null) throw new IllegalStateException("등록된 핸들러가 없습니다: " + eventType);
+            if (handler == null) throw new IllegalStateException("No registered handler for: " + eventType);
             handler.handle(message.body());
             sqsClient.deleteMessage(DeleteMessageRequest.builder()
                     .queueUrl(queueUrl).receiptHandle(message.receiptHandle()).build());
         } catch (Exception e) {
-            log.error("이벤트 처리 실패: eventType={}", eventType, e);
-            // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
+            log.error("Event handling failed: eventType={}", eventType, e);
+            // not deleted — re-received and retried after the visibility timeout.
         }
     }
 }
 ```
 
-### 백그라운드 루프 설계 — 왜 `@Scheduled`가 아니라 `SmartLifecycle` + 전용 스레드인가
+### Background-loop design — why `SmartLifecycle` + a dedicated thread instead of `@Scheduled`
 
-`@Scheduled(fixedDelay = ...)`는 "고정 간격으로 짧게 실행되고 끝나는 작업"(예: `OutboxPoller`)에 적합하지만, `OutboxConsumer`의 루프는 `waitTimeSeconds(5)`로 최대 5초씩 블로킹하는 긴 수신 대기를 계속 반복해야 한다. `@Scheduled`의 기본 스레드 풀에 이런 블로킹 작업을 물려두면 다른 `@Scheduled` 작업(`OutboxPoller` 등)의 실행이 지연될 위험이 있다.
+`@Scheduled(fixedDelay = ...)` fits "short tasks that run at a fixed interval and finish" (e.g. `OutboxPoller`), but `OutboxConsumer`'s loop must keep repeating a long receive-wait that blocks for up to 5 seconds via `waitTimeSeconds(5)`. Loading this kind of blocking work onto `@Scheduled`'s default thread pool risks delaying the execution of other `@Scheduled` tasks (like `OutboxPoller`).
 
-그래서 전용 단일 스레드 `ExecutorService`에 루프를 제출하고, `SmartLifecycle`로 시작/종료를 관리한다:
+So the loop is submitted to a dedicated single-thread `ExecutorService`, with start/stop managed by `SmartLifecycle`:
 
-- **`start()`**: `ApplicationContext` refresh(부트스트랩) 완료 시 Spring이 자동으로 호출한다. `executor.submit(this::pollLoop)`은 즉시 반환하므로 메인 스레드(부트스트랩)를 막지 않는다 — nestjs의 `OnModuleInit.onModuleInit()`이 `void this.pollLoop()`로 fire-and-forget하는 것과 동일한 효과다.
-- **`stop()`**: Graceful Shutdown(`server.shutdown: graceful`) 시 `ApplicationContext` 종료 과정에서 Spring이 자동으로 호출한다. `running = false` 이후 `executor.shutdown()` + `awaitTermination(...)`으로, 진행 중인 `ReceiveMessage` 호출(최대 `waitTimeSeconds`)이 끝날 때까지 기다린 뒤 graceful하게 종료한다 — nestjs의 `OnModuleDestroy.onModuleDestroy()`와 동일한 원칙([graceful-shutdown.md](graceful-shutdown.md) 참고).
+- **`start()`**: Spring calls this automatically when `ApplicationContext` refresh (bootstrap) completes. `executor.submit(this::pollLoop)` returns immediately, so it never blocks the main thread (bootstrap) — the same effect as nestjs's `OnModuleInit.onModuleInit()` firing `void this.pollLoop()` in a fire-and-forget manner.
+- **`stop()`**: Spring calls this automatically during `ApplicationContext` shutdown as part of graceful shutdown (`server.shutdown: graceful`). After `running = false`, `executor.shutdown()` + `awaitTermination(...)` wait for any in-flight `ReceiveMessage` call (up to `waitTimeSeconds`) to finish before shutting down gracefully — the same principle as nestjs's `OnModuleDestroy.onModuleDestroy()` (see [graceful-shutdown.md](graceful-shutdown.md)).
 
-`@PostConstruct`/`ApplicationListener<ApplicationReadyEvent>`도 "컨텍스트 준비 완료 후 시작"은 가능하지만, `SmartLifecycle`만이 **종료 시점의 훅(`stop()`)** 도 프레임워크가 대신 호출해준다 — 별도로 `@PreDestroy`를 얹어 `running` 플래그를 끄는 코드를 추가로 작성할 필요가 없다.
+`@PostConstruct`/`ApplicationListener<ApplicationReadyEvent>` can also handle "start once the context is ready," but only `SmartLifecycle` has the framework call a **shutdown-time hook (`stop()`)** for you as well — there's no need to additionally write a `@PreDestroy` method that flips the `running` flag off.
 
 ---
 
 ## `OutboxEventHandler`
 
-이벤트 타입별 Handler는 `application/event/`에 위치하며, `outbox/OutboxEventHandler` 인터페이스를 구현한다. 이 인터페이스와 각 도메인의 구현체(`AccountCreatedEventHandler` 등)는 `OutboxConsumer`가 이벤트 타입으로 라우팅을 결정하는 방식과 무관하게 동일한 시그니처(`eventType()`/`handle(payload)`)만 만족하면 된다.
+Handlers for each event type live in `application/event/` and implement the `outbox/OutboxEventHandler` interface. This interface and each domain's implementation (`AccountCreatedEventHandler`, etc.) only need to satisfy the same signature (`eventType()`/`handle(payload)`), independent of how `OutboxConsumer` decides routing by event type.
 
 ```java
-// outbox/OutboxEventHandler.java — 실제 코드
+// outbox/OutboxEventHandler.java — actual code
 public interface OutboxEventHandler {
-    String eventType();                       // 라우팅 키 — 도메인 이벤트 record의 simple name과 일치해야 함
+    String eventType();                       // the routing key — must match the domain event record's simple name
     void handle(String payload) throws Exception;
 }
 ```
 
 ```java
-// account/application/event/AccountCreatedEventHandler.java — 실제 코드
+// account/application/event/AccountCreatedEventHandler.java — actual code
 @Component
 @RequiredArgsConstructor
 public class AccountCreatedEventHandler implements OutboxEventHandler {
@@ -296,24 +296,24 @@ public class AccountCreatedEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         AccountCreatedEvent event = objectMapper.readValue(payload, AccountCreatedEvent.class);
         notificationService.sendEmail(event.accountId(), "AccountCreated", event.email(),
-                "[Account] 계좌가 개설되었습니다",
-                "계좌(" + event.accountId() + ")가 개설되었습니다. 통화: " + event.currency());
+                "[Account] Your account has been opened",
+                "Account (" + event.accountId() + ") has been opened. Currency: " + event.currency());
     }
 }
 ```
 
-나머지 이벤트(`MoneyDepositedEvent`/`MoneyWithdrawnEvent`/`AccountSuspendedEvent`/`AccountReactivatedEvent`/`AccountClosedEvent`)도 각각 동일한 구조의 Handler로 존재하고, Card/Payment BC의 Integration Event 수신부(`AccountSuspendedIntegrationEventHandler` 등)도 같은 인터페이스를 구현한다 — `OutboxConsumer`가 Domain Event Handler든 Integration Event 수신부든 구분하지 않고 동일하게 `eventType()`으로 라우팅한다.
+The remaining events (`MoneyDepositedEvent`/`MoneyWithdrawnEvent`/`AccountSuspendedEvent`/`AccountReactivatedEvent`/`AccountClosedEvent`) each have a Handler of the same structure, and the Integration Event receivers in the Card/Payment BCs (`AccountSuspendedIntegrationEventHandler`, etc.) implement the same interface — `OutboxConsumer` routes to all of them uniformly by `eventType()`, without distinguishing Domain Event Handlers from Integration Event receivers.
 
-**핸들러가 Payload를 스스로 역직렬화하는 이유**: `OutboxConsumer`는 `eventType`(문자열)으로 핸들러를 찾아 raw JSON payload를 그대로 넘길 뿐, 타입 정보를 갖지 않는다 — Java의 정적 타입 시스템에서 제네릭 Consumer가 여러 이벤트 타입을 다루려면 이 경계에서 타입이 지워질 수밖에 없다. 각 핸들러가 `ObjectMapper.readValue(payload, XxxEvent.class)`로 자신의 이벤트 타입만 알고 역직렬화한다.
+**Why each handler deserializes its own payload**: `OutboxConsumer` looks up a handler by `eventType` (a string) and simply passes it the raw JSON payload — it carries no type information. In Java's static type system, a generic Consumer handling multiple event types inevitably erases type information at this boundary. Each handler deserializes with `ObjectMapper.readValue(payload, XxxEvent.class)`, knowing only its own event type.
 
 ---
 
-## SQS 클라이언트 — 실제 코드
+## The SQS client — actual code
 
-기존 SES/Secrets Manager 클라이언트 구성(`AwsProperties`의 `AWS_ENDPOINT_URL` 분기, 정적 test 자격증명)을 그대로 따른다.
+This follows the same existing SES/Secrets Manager client configuration pattern (the `AwsProperties`-based `AWS_ENDPOINT_URL` branch, static test credentials).
 
 ```java
-// outbox/SqsConfig.java — 실제 코드(발췌)
+// outbox/SqsConfig.java — actual code (excerpt)
 @Configuration
 @RequiredArgsConstructor
 public class SqsConfig {
@@ -333,10 +333,10 @@ public class SqsConfig {
 }
 ```
 
-큐 URL은 `SqsProperties.domainEventQueueUrl()`이 `SQS_DOMAIN_EVENT_QUEUE_URL` 환경 변수(`sqs.domain-event-queue-url` 프로퍼티)에서 읽는다 — `@NotBlank` + `@Validated`로 fail-fast([config.md](config.md) 참고).
+The queue URL is read by `SqsProperties.domainEventQueueUrl()` from the `SQS_DOMAIN_EVENT_QUEUE_URL` environment variable (the `sqs.domain-event-queue-url` property) — fail-fast via `@NotBlank` + `@Validated` (see [config.md](config.md)).
 
 ```java
-// config/SqsProperties.java — 실제 코드
+// config/SqsProperties.java — actual code
 @ConfigurationProperties(prefix = "sqs")
 @Validated
 public record SqsProperties(@NotBlank String domainEventQueueUrl) {}
@@ -344,17 +344,17 @@ public record SqsProperties(@NotBlank String domainEventQueueUrl) {}
 
 ---
 
-## LocalStack + Docker Compose — 실제 코드
+## LocalStack + Docker Compose — actual code
 
 ```yaml
-# docker-compose.yml (발췌)
+# docker-compose.yml (excerpt)
 localstack:
   environment:
     SERVICES: ses,secretsmanager,sqs
 ```
 
 ```bash
-# localstack/init-sqs.sh — DLQ 우선 생성 후 RedrivePolicy로 메인 큐에 연결
+# localstack/init-sqs.sh — create the DLQ first, then attach it to the main queue via RedrivePolicy
 awslocal sqs create-queue --queue-name domain-events-dlq
 DLQ_ARN=$(awslocal sqs get-queue-attributes --queue-url .../domain-events-dlq \
   --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
@@ -363,22 +363,22 @@ awslocal sqs create-queue --queue-name domain-events \
 ```
 
 ```env
-# .env.example — SQS 큐 URL 추가
+# .env.example — added the SQS queue URL
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 ```
 
-DLQ + `maxReceiveCount=3`은 [scheduling.md — DLQ 모니터링](../../../../docs/architecture/scheduling.md#dlq-모니터링)이 요구하는 컨벤션을 그대로 따른다 — nestjs의 `localstack/init-sqs.sh`와 동일한 큐 이름·구성으로 언어 간 일관성을 유지한다.
+The DLQ + `maxReceiveCount=3` follows the convention required by [scheduling.md — DLQ monitoring](../../../../docs/architecture/scheduling.md#dlq-monitoring) exactly — the same queue names and configuration as nestjs's `localstack/init-sqs.sh`, keeping consistency across languages.
 
 ---
 
-## E2E 테스트 — 비동기이므로 폴링-타임아웃으로 검증한다
+## E2E tests — since this is asynchronous, verify with poll-and-timeout
 
-`CardControllerE2ETest`/`PaymentControllerE2ETest`/`NotificationE2ETest`는 Testcontainers `LocalStackContainer`(SQS 서비스 포함)를 띄우고, 테스트 시작 시 SDK로 직접 `domain-events`/`domain-events-dlq` 큐를 만든다(`support/SqsTestQueue.java` — `localstack/init-sqs.sh`와 동일한 구성을 SDK 호출로 재현; Testcontainers `LocalStackContainer`는 로컬 init 스크립트를 마운트하지 않는다).
+`CardControllerE2ETest`/`PaymentControllerE2ETest`/`NotificationE2ETest` start a Testcontainers `LocalStackContainer` (including the SQS service), and at test start create the `domain-events`/`domain-events-dlq` queues directly via the SDK (`support/SqsTestQueue.java` — reproducing the same configuration as `localstack/init-sqs.sh` through SDK calls, since Testcontainers' `LocalStackContainer` doesn't mount local init scripts).
 
-이제 카드 상태 전환(계좌 정지/종료 → Card BC 반응), 계좌 잔액 변경(결제 완료/취소/환불 → Account BC 반응), 이메일 발송(계좌 생성/입금 → SES) 모두 **HTTP 응답을 받은 시점에 아직 완료되지 않았을 수 있다** — `OutboxPoller`가 다음 tick(최대 1초)에 SQS로 발행하고, `OutboxConsumer`가 수신해야 실제로 반영된다. 그래서 [Awaitility](https://github.com/awaitility/awaitility)로 폴링-타임아웃 헬퍼를 만들어 즉시 assert를 대체한다:
+Card status transitions (account suspend/close → Card BC reaction), account balance changes (payment completed/cancelled/refunded → Account BC reaction), and email sending (account creation/deposit → SES) may all **still be incomplete at the moment the HTTP response is received** — they only actually take effect once `OutboxPoller` publishes to SQS on its next tick (up to 1 second later) and `OutboxConsumer` receives it. So instead of an immediate assert, a poll-and-timeout helper is built with [Awaitility](https://github.com/awaitility/awaitility):
 
 ```java
-// CardControllerE2ETest.java — 실제 코드(발췌)
+// CardControllerE2ETest.java — actual code (excerpt)
 private void waitForCardStatus(String cardId, String expected, String ownerId) {
     await().atMost(Duration.ofSeconds(30))
             .pollInterval(Duration.ofMillis(200))
@@ -387,41 +387,41 @@ private void waitForCardStatus(String cardId, String expected, String ownerId) {
 }
 ```
 
-`atMost(30초)`는 실제 SQS+LocalStack 왕복 지연(폴링 주기 1초 + long poll 대기 최대 5초 + 컨테이너 오버헤드)에 여유를 둔 값이다. `untilAsserted`는 타임아웃 시 마지막 `AssertionError`(실제 vs 기대값)를 그대로 노출해줘서 디버깅에 유리하다. `AccountControllerE2ETest`는 계좌 자체의 상태(정지/재개/종료)를 검증하는데, 이는 Command Service가 저장 시점에 동기적으로 바꾸는 값이라 Outbox를 거치지 않으므로 폴링이 필요 없다 — 폴링이 필요한 것은 **다른 BC/Technical Service가 이벤트에 반응해 바꾸는 값**뿐이다.
+`atMost(30 seconds)` leaves margin for the actual SQS+LocalStack round-trip latency (a 1-second polling interval + up to 5 seconds of long-poll waiting + container overhead). `untilAsserted` surfaces the final `AssertionError` (actual vs. expected) as-is on timeout, which helps debugging. `AccountControllerE2ETest` verifies the account's own state (suspended/reactivated/closed), which the Command Service changes synchronously at save time and so never goes through the Outbox — no polling is needed there. Polling is only needed for **values changed by another BC/Technical Service reacting to an event**.
 
 ---
 
-## 이벤트 핸들러 멱등성
+## Event-handler idempotency
 
-SQS는 at-least-once 전달을 보장한다. 같은 메시지가 **중복 수신**될 수 있으므로 모든 `OutboxEventHandler`는 **멱등(idempotent)** 하게 구현해야 한다.
+SQS guarantees at-least-once delivery. Since the same message can be **received more than once**, every `OutboxEventHandler` must be implemented to be **idempotent**.
 
-현재 Handler들은 이미 **Level 1(본질적 멱등)**에 근접한다 — 이메일 재발송이 시스템 상태를 망가뜨리지는 않는다(단, 중복 이메일 발송 자체는 발생할 수 있다). 완전한 멱등성을 원하면 Level 2(Ledger)를 적용한다. 이 저장소는 이미 `account/infrastructure/notification/persistence/SentEmail`(발송 이력 Entity)을 갖고 있으므로, `eventId` 컬럼만 추가하면 Ledger 역할을 겸할 수 있다. `DepositByPaymentService`/`WithdrawByPaymentService`는 `referenceId` 기준 Level 2 Ledger(`hasTransactionWithReference`)를 실제로 쓴다.
+The current Handlers already come close to **Level 1 (inherently idempotent)** — resending an email doesn't corrupt system state (though duplicate emails themselves can still occur). For full idempotency, apply Level 2 (a Ledger). This repository already has `account/infrastructure/notification/persistence/SentEmail` (a send-history Entity), so adding just an `eventId` column would let it double as a Ledger. `DepositByPaymentService`/`WithdrawByPaymentService` actually use a Level 2 Ledger keyed on `referenceId` (`hasTransactionWithReference`).
 
-3단계 전략 상세는 [root domain-events.md — 이벤트 핸들러 멱등성](../../../../docs/architecture/domain-events.md#이벤트-핸들러-멱등성) 참조.
-
----
-
-## harness 검증
-
-`harness/src/rules/OutboxDrainOrder.java`(rule: `outbox-drain-order`)가 Command Service(`application/command/`)에서 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` 심볼 참조나 `processPending()`/`poll()`/`drainOnce()` 호출을 찾으면 실패시킨다. `harness/src/rules/SharedInfra.java`(rule: `shared-infra`)는 `OutboxWriter` 참조가 있으면 `outbox/`에 `OutboxWriter.java`/`OutboxPoller.java`/`OutboxConsumer.java`가 모두 존재하는지 확인한다 — 두 규칙 모두 fixture(`harness/test/testdata/`)로 회귀 검증된다.
+For the details of the 3-level strategy, see [root domain-events.md — Event handler idempotency](../../../../docs/architecture/domain-events.md#event-handler-idempotency).
 
 ---
 
-## 원칙 요약
+## Harness verification
 
-- **Aggregate가 이벤트를 수집**하는 방식(`domainEvents` + `pullDomainEvents()`)은 root와 일치한다.
-- **발행/수신 메커니즘은 SQS 경유 비동기다**: `AccountRepositoryImpl.saveAccount()`의 Outbox 저장(같은 트랜잭션) → `OutboxPoller`(`@Scheduled(fixedDelay=1000)`)가 SQS로 발행 → `OutboxConsumer`(long polling, `SmartLifecycle`)가 수신해 `application/event/`의 `OutboxEventHandler` 구현체 호출.
-- **Command Service는 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 전혀 참조하지 않는다** — 저장 직후 곧바로 반환한다. `harness`의 `outbox-drain-order` 규칙이 동기 호출 추가를 방지한다.
-- **`OutboxEventHandler` 인터페이스와 각 도메인 구현체는 라우팅 메커니즘과 무관하다** — Spring의 `List<OutboxEventHandler>` 자동 수집을 `OutboxConsumer`가 그대로 재사용한다.
-- **EventHandler는 아직 완전히 멱등하지 않다** — 본질적 멱등(이메일 재발송은 안전)에는 해당하지만, `SentEmail`에 `eventId`를 추가하는 Level 2 Ledger는 후속 과제다.
+`harness/src/rules/OutboxDrainOrder.java` (rule: `outbox-drain-order`) fails the build if it finds a reference to the `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` symbols, or a call to `processPending()`/`poll()`/`drainOnce()`, inside a Command Service (`application/command/`). `harness/src/rules/SharedInfra.java` (rule: `shared-infra`) checks that if there's an `OutboxWriter` reference, `OutboxWriter.java`/`OutboxPoller.java`/`OutboxConsumer.java` all exist under `outbox/` — both rules are regression-tested with fixtures (`harness/test/testdata/`).
 
-### 관련 문서
+---
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate의 이벤트 수집 책임
-- [cqrs-pattern.md](cqrs-pattern.md) — Command Service와 이벤트 발행의 경계
-- [repository-pattern.md](repository-pattern.md) — Repository에서 Outbox 저장
-- [scheduling.md](scheduling.md) — `@Scheduled`/DLQ/멱등성 컨벤션(이 문서가 실제로 구현한 대상)
-- [persistence.md](persistence.md) — Outbox 저장과 Aggregate 저장의 트랜잭션 원자성
-- [graceful-shutdown.md](graceful-shutdown.md) — `OutboxConsumer`의 `SmartLifecycle.stop()` graceful 종료
-- [local-dev.md](local-dev.md) — LocalStack SQS 구성
-- [shared-modules.md](shared-modules.md) — `outbox/` 패키지 배치 컨벤션
+## Principle summary
+
+- **How the Aggregate collects events** (`domainEvents` + `pullDomainEvents()`) matches the root.
+- **The publish/receive mechanism is asynchronous via SQS**: the Outbox write inside `AccountRepositoryImpl.saveAccount()` (same transaction) → `OutboxPoller` (`@Scheduled(fixedDelay=1000)`) publishes to SQS → `OutboxConsumer` (long polling, `SmartLifecycle`) receives and invokes the matching `OutboxEventHandler` implementation in `application/event/`.
+- **The Command Service never references `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` at all** — it returns immediately after saving. The harness's `outbox-drain-order` rule prevents any synchronous call from being added.
+- **The `OutboxEventHandler` interface and each domain's implementation are independent of the routing mechanism** — `OutboxConsumer` reuses Spring's automatic `List<OutboxEventHandler>` collection as-is.
+- **EventHandlers are not yet fully idempotent** — they qualify as inherently idempotent (resending an email is safe), but adding an `eventId` to `SentEmail` for a Level 2 Ledger is a follow-up task.
+
+### Related documents
+
+- [tactical-ddd.md](tactical-ddd.md) — the Aggregate's responsibility for collecting events
+- [cqrs-pattern.md](cqrs-pattern.md) — the boundary between the Command Service and event publishing
+- [repository-pattern.md](repository-pattern.md) — the Outbox write inside the Repository
+- [scheduling.md](scheduling.md) — the `@Scheduled`/DLQ/idempotency conventions (what this document actually implements)
+- [persistence.md](persistence.md) — transactional atomicity between the Outbox write and the Aggregate save
+- [graceful-shutdown.md](graceful-shutdown.md) — `OutboxConsumer`'s graceful shutdown via `SmartLifecycle.stop()`
+- [local-dev.md](local-dev.md) — LocalStack SQS configuration
+- [shared-modules.md](shared-modules.md) — placement convention for the `outbox/` package

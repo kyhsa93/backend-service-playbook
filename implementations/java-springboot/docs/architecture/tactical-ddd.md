@@ -1,23 +1,23 @@
-# 전술적 설계 (Spring Boot / Java)
+# Tactical Design (Spring Boot / Java)
 
-> 프레임워크 무관 원칙은 루트 [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md) 참고.
+> For the framework-agnostic principles, see the root [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md).
 
 ## Aggregate Root — `Account`
 
-Aggregate Root는 비즈니스 규칙과 불변식을 캡슐화하고, 상태 변경은 도메인 메서드를 통해서만 이루어진다.
+An Aggregate Root encapsulates business rules and invariants, and state changes happen only through domain methods.
 
 ```java
-// account/domain/Account.java — 실제 코드 (일부)
+// account/domain/Account.java — actual code (excerpt)
 @Entity
 @Table(name = "accounts")
 public class Account {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;                       // JPA 대리키 — 도메인 식별자 아님
+    private Long id;                       // JPA surrogate key — not the domain identifier
 
     @Column(nullable = false, unique = true)
-    private String accountId;              // 도메인 식별자
+    private String accountId;              // domain identifier
 
     @Embedded
     private Money balance;
@@ -28,7 +28,7 @@ public class Account {
     @Transient
     private final List<Object> domainEvents = new ArrayList<>();
 
-    protected Account() {}                 // JPA가 요구하는 기본 생성자 — protected로 외부 직접 생성 차단
+    protected Account() {}                 // the default constructor JPA requires — protected to block direct external construction
 
     public static Account create(String ownerId, String email, String currency) {
         Account account = new Account();
@@ -43,10 +43,10 @@ public class Account {
 
     public Transaction deposit(long amount) {
         if (this.status != AccountStatus.ACTIVE) {
-            throw new AccountException(AccountException.ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT, "활성 상태의 계좌만 입금할 수 있습니다.");
+            throw new AccountException(AccountException.ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT, "Only an active account can receive a deposit.");
         }
         if (amount <= 0) {
-            throw new AccountException(AccountException.ErrorCode.INVALID_AMOUNT, "금액은 0보다 커야 합니다.");
+            throw new AccountException(AccountException.ErrorCode.INVALID_AMOUNT, "The amount must be greater than 0.");
         }
         Money money = new Money(amount, this.balance.currency());
         this.balance = this.balance.add(money);
@@ -59,22 +59,22 @@ public class Account {
 }
 ```
 
-**핵심 원칙의 실현:**
-- **정적 팩토리 메서드(`create()`)로만 생성** — public 생성자를 열지 않고 `protected Account() {}`로 막는다. `create()`가 초기 불변식(잔액 0, 상태 ACTIVE)을 보장하는 유일한 경로다. 상세는 [aggregate-id.md](aggregate-id.md) 참고.
-- **불변식 위반 시 도메인 메서드 내부에서 즉시 예외** — `deposit()`이 상태/금액을 검증한 뒤가 아니면 상태를 변경하지 않는다.
-- **다른 Aggregate는 ID로만 참조** — `Account`는 `ownerId`(사용자 식별자)만 문자열로 갖고, User 객체를 참조하지 않는다.
-- **트랜잭션 경계 = Aggregate 경계** — `deposit()` 한 번의 호출이 `Account`(잔액)와 `Transaction`(하위 Entity, pending 목록에 추가) 상태를 함께 바꾸고, `save()` 한 번으로 함께 커밋된다.
+**How the core principles are realized:**
+- **Created only via a static factory method (`create()`)** — no public constructor is opened; instead it's blocked with `protected Account() {}`. `create()` is the sole path guaranteeing the initial invariants (zero balance, ACTIVE status). See [aggregate-id.md](aggregate-id.md) for details.
+- **On an invariant violation, an exception is thrown immediately inside the domain method** — `deposit()` never changes state unless it has already validated status/amount.
+- **Other Aggregates are referenced only by ID** — `Account` only holds `ownerId` (a user identifier) as a string, and never references a User object.
+- **The transaction boundary = the Aggregate boundary** — a single call to `deposit()` changes both `Account` (balance) and `Transaction` (a child entity, added to the pending list) state together, and a single `save()` commits both together.
 
-`Account`는 `@Entity` 없는 순수 도메인 클래스다 — 영속성 매핑은 `infrastructure/persistence/AccountJpaEntity`+`AccountMapper`로 분리되어 있다([layer-architecture.md](layer-architecture.md) 참고). Aggregate 설계(팩토리 메서드, 불변식, 이벤트 수집) 자체도 root 원칙과 완전히 일치한다.
+`Account` is a pure domain class with no `@Entity` needed — persistence mapping is separated into `infrastructure/persistence/AccountJpaEntity`+`AccountMapper` (see [layer-architecture.md](layer-architecture.md)). The Aggregate design itself (factory method, invariants, event collection) matches the root principle exactly.
 
 ---
 
 ## Entity — `Transaction`
 
-Entity는 고유 식별자로 동등성을 판단하며 생명주기를 갖는다. `Transaction`은 `Account`의 하위 Entity로, Aggregate Root를 통해서만 생성/접근된다.
+An Entity is judged for equality by a unique identifier and has a lifecycle. `Transaction` is a child entity of `Account`, created/accessed only through the Aggregate Root.
 
 ```java
-// account/domain/Transaction.java — 실제 코드
+// account/domain/Transaction.java — actual code
 @Entity
 @Table(name = "transactions")
 public class Transaction {
@@ -84,10 +84,10 @@ public class Transaction {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String transactionId;          // 도메인 식별자 — 동등성 기준
+    private String transactionId;          // domain identifier — the basis for equality
 
     @Column(nullable = false)
-    private String accountId;              // 소속 Aggregate Root의 ID (참조)
+    private String accountId;              // the ID of the owning Aggregate Root (a reference)
 
     @Embedded
     private Money amount;
@@ -106,28 +106,28 @@ public class Transaction {
 }
 ```
 
-**`static Transaction create(...)`가 `public`이 아니라 package-private인 이유**: `Transaction`은 `Account.deposit()`/`Account.withdraw()` 내부에서만 생성되어야 하며, 외부(Application Service 등)가 `Transaction`을 직접 만들어 Aggregate 불변식을 우회하는 것을 막는다. 같은 패키지(`account.domain`) 안에서만 호출 가능하다는 Java의 package-private 접근 제어자가 이 제약을 컴파일 타임에 강제한다.
+**Why `static Transaction create(...)` is package-private, not `public`**: `Transaction` must only ever be created inside `Account.deposit()`/`Account.withdraw()`, blocking external code (an Application Service, etc.) from creating a `Transaction` directly and bypassing the Aggregate's invariants. Java's package-private access modifier — callable only from within the same package (`account.domain`) — enforces this constraint at compile time.
 
 ---
 
 ## Value Object — `Money`
 
-Value Object는 속성의 조합으로 동등성을 판단하는 불변 객체다. Java `record`가 이를 정확히 표현한다 — 필드 기반 `equals()`/`hashCode()`가 자동 생성되고, 모든 필드가 `final`이라 생성 후 변경이 불가능하다.
+A Value Object is an immutable object whose equality is judged by the combination of its attributes. A Java `record` expresses this precisely — field-based `equals()`/`hashCode()` are auto-generated, and since every field is `final`, it cannot be modified after construction.
 
 ```java
-// account/domain/Money.java — 실제 코드
+// account/domain/Money.java — actual code
 @Embeddable
 public record Money(long amount, String currency) {
 
-    public Money {                          // compact canonical constructor — 생성 시 항상 검증
+    public Money {                          // compact canonical constructor — validation always runs on construction
         if (amount < 0) {
-            throw new AccountException(AccountException.ErrorCode.INVALID_MONEY_AMOUNT, "금액은 0 이상이어야 합니다.");
+            throw new AccountException(AccountException.ErrorCode.INVALID_MONEY_AMOUNT, "The amount must be 0 or greater.");
         }
     }
 
     public Money add(Money other) {
         assertSameCurrency(other);
-        return new Money(this.amount + other.amount, this.currency);   // 새 인스턴스 반환 — 원본 불변
+        return new Money(this.amount + other.amount, this.currency);   // returns a new instance — the original stays unchanged
     }
 
     public boolean isLessThan(Money other) {
@@ -137,32 +137,32 @@ public record Money(long amount, String currency) {
 
     private void assertSameCurrency(Money other) {
         if (!this.currency.equals(other.currency)) {
-            throw new AccountException(AccountException.ErrorCode.CURRENCY_MISMATCH, "통화가 일치하지 않습니다.");
+            throw new AccountException(AccountException.ErrorCode.CURRENCY_MISMATCH, "The currencies do not match.");
         }
     }
 }
 ```
 
-- **compact canonical constructor**(`public Money { ... }`, 괄호와 파라미터 목록 생략)로 모든 생성 경로(정적 팩토리, 역직렬화 등)에 검증이 적용된다 — 필드를 직접 대입하는 별도 생성자를 추가로 만들 수 없다.
-- **연산은 새 인스턴스를 반환**한다(`add`, `subtract`) — `this.amount += ...`처럼 필드를 직접 변경하지 않는다. record의 필드는 애초에 `final`이라 컴파일러가 이를 강제한다.
-- **`@Embeddable`**로 JPA가 `Account`/`Transaction`의 컬럼에 인라인 매핑한다 — Value Object가 곧 DB 컬럼 그룹으로 대응되는 것도 layer-architecture.md가 설명하는 도메인/ORM 결합의 일부다.
+- **The compact canonical constructor** (`public Money { ... }`, omitting the parentheses and parameter list) applies validation to every construction path (static factories, deserialization, etc.) — no separate constructor that directly assigns fields can be added.
+- **Operations return a new instance** (`add`, `subtract`) — they never modify a field directly, like `this.amount += ...`. A record's fields are `final` from the start, so the compiler enforces this.
+- **`@Embeddable`** lets JPA map it inline into `Account`/`Transaction`'s columns — the fact that a Value Object maps directly to a group of DB columns is also part of the domain/ORM coupling described in layer-architecture.md.
 
-**record를 Value Object에 쓰는 이유**: Java record는 언어 차원에서 "불변 + 값 동등성"을 보장하므로, 직접 `equals()`/`hashCode()`/`toString()`을 작성할 필요가 없다. Kotlin의 `data class`, TypeScript의 `readonly` 필드 클래스에 대응하는 Java의 관용구다.
+**Why a record is used for a Value Object**: a Java record guarantees "immutability + value equality" at the language level, so there's no need to write `equals()`/`hashCode()`/`toString()` by hand. This is the Java idiom corresponding to Kotlin's `data class` or a TypeScript class with `readonly` fields.
 
 ---
 
-## Domain Event — `MoneyDepositedEvent` 등
+## Domain Event — e.g. `MoneyDepositedEvent`
 
-과거형 이름의 불변 record로 표현한다.
+Expressed as an immutable record with a past-tense name.
 
 ```java
-// account/domain/MoneyDepositedEvent.java — 실제 코드 형태
+// account/domain/MoneyDepositedEvent.java — the actual code's shape
 public record MoneyDepositedEvent(
         String accountId, String email, String transactionId,
         Money amount, Money balanceAfter, LocalDateTime occurredAt) {}
 ```
 
-`Account`가 `@Transient List<Object> domainEvents`에 이벤트를 수집하고, `pullDomainEvents()`로 꺼낸 뒤 비운다:
+`Account` collects events in `@Transient List<Object> domainEvents`, and drains and clears them via `pullDomainEvents()`:
 
 ```java
 public List<Object> pullDomainEvents() {
@@ -172,47 +172,47 @@ public List<Object> pullDomainEvents() {
 }
 ```
 
-`List<Object>`로 타입을 지우는 대신, 이벤트 개수가 늘어나면 공통 인터페이스(`sealed interface AccountDomainEvent`, Java 17+)로 묶어 `instanceof` 패턴 매칭의 완전성을 어느 정도 확보할 수 있다 — Kotlin의 `sealed interface` + `when` 완전성 검사에 대응하는 Java 방식이다. 다만 Java의 `sealed` + `switch` 패턴 매칭(JDK 21)은 아직 이 저장소에 도입되지 않았다.
+Instead of erasing the type via `List<Object>`, as the number of events grows, they could be grouped under a common interface (`sealed interface AccountDomainEvent`, Java 17+) to gain some degree of exhaustiveness for `instanceof` pattern matching — the Java approach corresponding to Kotlin's `sealed interface` + `when` exhaustiveness check. However, Java's `sealed` + `switch` pattern matching (JDK 21) has not been adopted in this repository yet.
 
-Domain Event의 발행 경로(Outbox 테이블 저장 → `OutboxPoller`가 SQS로 발행 → `OutboxConsumer`가 수신해 `application/event/`의 `OutboxEventHandler` 구현체 호출)는 [domain-events.md](domain-events.md)에서 상세히 다룬다.
-
----
-
-## Aggregate 경계 — `Account`와 `Transaction`을 묶은 이유
-
-- **함께 생성되고 생명주기를 공유**: `Transaction`은 `deposit()`/`withdraw()` 호출의 부산물로만 생성되며 독립적으로 존재할 수 없다.
-- **불변식을 항상 함께 검증**: 잔액(`balance`)과 거래 내역(`Transaction`)은 항상 짝을 이뤄야 한다 — 거래 기록 없이 잔액만 바뀌거나 그 반대는 불변식 위반이다.
-- **`ownerId`로 User를 참조**하지, `User` 객체를 필드로 갖지 않는다 — 다른 Aggregate(사용자 도메인이 있다면)와 결합을 피한다.
-
-`account/infrastructure/notification/persistence/SentEmail`은 `Account`와 별개의 Aggregate가 아니다 — 비즈니스 불변식이 없는 단순 이력 기록이라 애초에 Aggregate Root로 모델링하지 않았다([directory-structure.md](directory-structure.md) 참고).
+The publishing path for a Domain Event (saving to the Outbox table → `OutboxPoller` publishes to SQS → `OutboxConsumer` receives and invokes the matching `OutboxEventHandler` implementation in `application/event/`) is covered in detail in [domain-events.md](domain-events.md).
 
 ---
 
-## 원칙 요약
+## Aggregate boundary — why `Account` and `Transaction` are bundled together
 
-| 원칙 | 이 저장소에서의 구현 |
+- **They're created together and share a lifecycle**: `Transaction` is only ever created as a byproduct of a `deposit()`/`withdraw()` call and cannot exist independently.
+- **Invariants are always validated together**: the balance (`balance`) and the transaction history (`Transaction`) must always be a matched pair — changing the balance without a transaction record, or vice versa, is an invariant violation.
+- **User is referenced via `ownerId`**, not held as a `User` object field — avoiding coupling to another Aggregate (if a user domain existed).
+
+`account/infrastructure/notification/persistence/SentEmail` is not a separate Aggregate from `Account` — since it's a simple history record with no business invariants, it was never modeled as an Aggregate Root in the first place (see [directory-structure.md](directory-structure.md)).
+
+---
+
+## Principle summary
+
+| Principle | Implementation in this repository |
 |---|---|
-| 비즈니스 규칙은 Aggregate에 | `Account.deposit()`/`withdraw()`/`suspend()` 등이 검증 + 상태 변경 + 이벤트 수집을 모두 수행 |
-| 정적 팩토리로만 생성 | `Account.create()`, 생성자는 `protected` |
-| 하위 Entity는 package-private 생성 | `Transaction.create()`가 `static` package-private |
-| Value Object는 `record` | `Money` — compact constructor로 항상 검증 |
-| Domain Event는 과거형 `record` | `MoneyDepositedEvent`, `AccountClosedEvent` 등 |
-| 에러 메시지는 타입화 | `AccountException.ErrorCode` enum, [error-handling.md](error-handling.md) 참고 |
+| Business rules live in the Aggregate | `Account.deposit()`/`withdraw()`/`suspend()`, etc. all perform validation + state change + event collection |
+| Created only via a static factory | `Account.create()`, with the constructor `protected` |
+| Child entities are created package-private | `Transaction.create()` is `static` package-private |
+| A Value Object is a `record` | `Money` — always validated via the compact constructor |
+| A Domain Event is a past-tense `record` | `MoneyDepositedEvent`, `AccountClosedEvent`, etc. |
+| Error messages are typed | The `AccountException.ErrorCode` enum, see [error-handling.md](error-handling.md) |
 
 ---
 
-## harness 검증
+## Harness verification
 
-`harness/src/rules/AggregateNoPublicSetters.java`(rule: `aggregate-no-public-setters`)가 `domain/`의 `class` 선언 파일에서 JavaBean 스타일 `public void setX(...)` 메서드나 Lombok `@Setter`를 찾으면 실패시킨다 — 상태 변경은 위 표의 "이름 있는 도메인 메서드"로만 해야 한다는 원칙의 회귀 가드다(현재 `Account`/`Card`/`Payment`/`Refund` 모두 이미 이 패턴을 따르므로, 나중에 누군가 Aggregate를 가변 setter가 있는 클래스로 되돌리는 것을 자동으로 잡아낸다).
+`harness/src/rules/AggregateNoPublicSetters.java` (rule: `aggregate-no-public-setters`) fails the build if it finds a JavaBean-style `public void setX(...)` method or a Lombok `@Setter` in a `class` declaration file under `domain/` — a regression guard for the principle in the table above that state changes must only happen through a "named domain method" (currently `Account`/`Card`/`Payment`/`Refund` all already follow this pattern, so this automatically catches anyone later reverting an Aggregate back into a class with mutable setters).
 
-`harness/src/rules/NoCrossBcDomainImport.java`(rule: `no-cross-bc-domain-import`)가 "다른 Aggregate는 ID로만 참조"(위 65번째 줄) 원칙을 BC 경계를 넘어서까지 검사한다 — `<bc>/domain/*.java`가 다른 BC의 `<otherBc>/domain/*`를 import하면 실패시킨다. `no-cross-aggregate-reference`(domain-service.md 참고)가 같은 BC 안의 Aggregate 쌍(Payment/Refund)만 보는 것과 달리, 이 규칙은 BC 자체가 다른 경우(예: `card/domain/`이 `payment/domain/Payment`를 직접 import)를 잡는다.
+`harness/src/rules/NoCrossBcDomainImport.java` (rule: `no-cross-bc-domain-import`) extends the "other Aggregates are referenced only by ID" principle (above) to check across BC boundaries — it fails the build if `<bc>/domain/*.java` imports another BC's `<otherBc>/domain/*`. Unlike `no-cross-aggregate-reference` (see domain-service.md), which only looks at an Aggregate pair within the same BC (Payment/Refund), this rule catches the case where the BCs themselves differ (e.g. `card/domain/` importing `payment/domain/Payment` directly).
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [layer-architecture.md](layer-architecture.md) — Domain/JPA 레이어 분리
-- [repository-pattern.md](repository-pattern.md) — Aggregate 단위 Repository
-- [domain-events.md](domain-events.md) — Domain Event 발행·수신, Outbox
-- [aggregate-id.md](aggregate-id.md) — ID 생성 규칙
-- [error-handling.md](error-handling.md) — 예외 계층, ErrorCode
+- [layer-architecture.md](layer-architecture.md) — Domain/JPA layer separation
+- [repository-pattern.md](repository-pattern.md) — Repository at the Aggregate level
+- [domain-events.md](domain-events.md) — Domain Event publish/receipt, the Outbox
+- [aggregate-id.md](aggregate-id.md) — ID generation rules
+- [error-handling.md](error-handling.md) — the exception hierarchy, ErrorCode

@@ -11,8 +11,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Credential의 쓰기용 {@link CredentialRepository}와 읽기용 {@link CredentialQuery}를 한 클래스에서 구현한다
- * (account/infrastructure/persistence/AccountRepositoryImpl과 동일한 구조).
+ * Implements both the write-side {@link CredentialRepository} and the read-side {@link
+ * CredentialQuery} for Credential in a single class (the same structure as
+ * account/infrastructure/persistence/AccountRepositoryImpl).
  */
 @Repository
 @RequiredArgsConstructor

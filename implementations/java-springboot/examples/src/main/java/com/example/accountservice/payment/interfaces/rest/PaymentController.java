@@ -36,8 +36,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Payment BC의 REST 표면. {@code GET /payments}(목록)는 인증된 요청자 id(Authentication)만 소유자 범위로 쓴다 — 이 저장소의
- * 어떤 엔드포인트도 클라이언트가 보낸 소유자 id를 신뢰하지 않는다({@code ?ownerId=} 쿼리 파라미터를 받지 않는다).
+ * The REST surface of the Payment BC. {@code GET /payments} (the list) scopes ownership using only
+ * the authenticated requester id (Authentication) — no endpoint in this codebase trusts an owner id
+ * sent by the client (it does not accept an {@code ?ownerId=} query parameter).
  */
 @RestController
 @RequestMapping("/payments")
@@ -118,7 +119,7 @@ public class PaymentController {
     public ResponseEntity<ErrorResponse> handlePaymentException(PaymentException e) {
         HttpStatus status =
                 NOT_FOUND_CODES.contains(e.code()) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
-        log.warn("결제 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
+        log.warn("Payment request failed", kv("code", e.code()), kv("message", e.getMessage()));
         return ResponseEntity.status(status)
                 .body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }

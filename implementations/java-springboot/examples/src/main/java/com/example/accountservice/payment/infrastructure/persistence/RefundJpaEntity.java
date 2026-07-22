@@ -12,8 +12,9 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * payment/domain/Refund.java의 JPA 매핑 전용 대응물. Domain Aggregate(Refund)는 이 클래스를 전혀 알지 못한다 — 변환은
- * RefundMapper가 전담한다.
+ * The JPA mapping counterpart dedicated to payment/domain/Refund.java. The Domain Aggregate
+ * (Refund) is entirely unaware of this class — the conversion is handled exclusively by
+ * RefundMapper.
  */
 @Entity
 @Table(name = "refund")
@@ -65,7 +66,10 @@ public class RefundJpaEntity {
         this.createdAt = createdAt;
     }
 
-    /** 기존 row(id 보존)에 도메인 Refund의 최신 상태를 반영한다 — status/decisionNote 전이 저장에 사용. */
+    /**
+     * Applies the domain Refund's latest state to an existing row (preserving id) — used to save a
+     * status/decisionNote transition.
+     */
     void applyMutableState(RefundStatus status, String decisionNote) {
         this.status = status;
         this.decisionNote = decisionNote;

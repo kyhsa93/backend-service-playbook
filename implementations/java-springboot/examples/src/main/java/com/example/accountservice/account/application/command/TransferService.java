@@ -12,17 +12,19 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 계좌 간 송금(Transfer) — Command Service 자신은 트랜잭션 애노테이션을 갖지 않는다. 트랜잭션 경계는 {@link
- * AccountRepository#saveAccounts}(Repository 레벨)에 있다(persistence.md,
- * WithdrawService/DepositService와 동일한 규칙 — Command Service에 트랜잭션 애노테이션을 다시 붙이는 것은 회귀다).
+ * Transfer between accounts — the Command Service itself carries no transaction annotation. The
+ * transaction boundary lives in {@link AccountRepository#saveAccounts} (at the Repository level)
+ * (persistence.md, the same rule as WithdrawService/DepositService — re-attaching a transaction
+ * annotation to the Command Service would be a regression).
  */
 @Service
 @RequiredArgsConstructor
 public class TransferService {
 
     private final AccountRepository accountRepository;
-    // TransferEligibilityService는 프레임워크 애노테이션이 없는 순수 Domain Service다. Spring
-    // 빈으로 등록하지 않고 직접 인스턴스화해 쓴다(RefundEligibilityService와 동일한 이유).
+    // TransferEligibilityService is a pure Domain Service with no framework annotations. It is
+    // instantiated directly instead of being registered as a Spring bean (the same reason as
+    // RefundEligibilityService).
     private final TransferEligibilityService transferEligibilityService =
             new TransferEligibilityService();
 
@@ -43,9 +45,10 @@ public class TransferService {
                                 () ->
                                         new AccountException(
                                                 AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
-                                                "계좌를 찾을 수 없습니다."));
-        // target은 소유자 필터 없이 조회한다 — 타인 계좌로 송금하는 것이 이 기능의 목적이라,
-        // 존재+활성 여부만 확인하면 된다(소유권 확인은 source에만 적용).
+                                                "Account not found."));
+        // target is looked up without an owner filter — since the whole point of this feature is
+        // transferring to someone else's account, only its existence and active status need to be
+        // checked (ownership verification applies only to source).
         Account target =
                 accountRepository
                         .findAccounts(
@@ -57,7 +60,7 @@ public class TransferService {
                                 () ->
                                         new AccountException(
                                                 AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
-                                                "계좌를 찾을 수 없습니다."));
+                                                "Account not found."));
 
         TransferDecision decision =
                 transferEligibilityService.evaluate(source, target, command.amount());
@@ -65,17 +68,21 @@ public class TransferService {
             throw new AccountException(decision.code(), decision.reason());
         }
 
-        // transferId는 이 송금 전용의 새 영속 Aggregate를 두지 않고, 두 Transaction 행을
-        // 상관관계 짓는 referenceId로만 쓴다 — (reference_id, type) 조합이 이미 유니크하므로
-        // source(WITHDRAWAL)/target(DEPOSIT) 두 행이 같은 transferId를 공유해도 충돌하지
-        // 않는다. 접미사 없이 32자리 원본 그대로 쓴다 — reference_id 컬럼이 VARCHAR(36)이므로
-        // 접미사를 붙이면 그 한도를 넘길 수 있다.
+        // transferId does not introduce a new dedicated persistent Aggregate for this transfer; it
+        // is
+        // used only as the referenceId correlating the two Transaction rows — since the
+        // (reference_id,
+        // type) combination is already unique, the source (WITHDRAWAL) and target (DEPOSIT) rows
+        // can
+        // share the same transferId without conflicting. It is used as-is, 32 characters, with no
+        // suffix — the reference_id column is VARCHAR(36), so appending a suffix could exceed that
+        // limit.
         String transferId = IdGenerator.generate();
         Transaction sourceTransaction = source.withdraw(command.amount(), transferId);
         Transaction targetTransaction = target.deposit(command.amount(), transferId);
 
-        // 두 Account 저장을 하나의 물리 트랜잭션으로 묶는다 — 그렇지 않으면 "출금은
-        // 반영됐는데 입금은 유실됨" 실패 모드가 생긴다.
+        // Saving both Accounts is bundled into a single physical transaction — otherwise a failure
+        // mode arises where "the withdrawal is applied but the deposit is lost."
         accountRepository.saveAccounts(source, target);
 
         return new TransferResult(

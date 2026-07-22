@@ -21,11 +21,13 @@ import software.amazon.awssdk.services.ses.model.SendEmailRequest;
 import software.amazon.awssdk.services.ses.model.SendEmailResponse;
 
 /**
- * NotificationService(Technical Service 인터페이스)의 AWS SES 기반 구현체 — {@code account/infrastructure/
- * notification/NotificationServiceImpl}과 동일한 구조다. 클래스명을 {@code CardNotificationServiceImpl}로 붙인 이유는
- * {@code PaymentAccountAdapterImpl}과 같다 — 단순히 {@code NotificationServiceImpl}로 두면 Account BC의 동명
- * 클래스와 Spring 빈 이름이 충돌한다(패키지가 달라도 빈 이름은 전역으로 유일해야 함). {@link SesClient}는
- * account/infrastructure/notification/SesConfig가 만든 애플리케이션 전역 단일 빈을 그대로 공유한다.
+ * The AWS SES-based implementation of NotificationService (a Technical Service interface) — the
+ * same structure as {@code account/infrastructure/notification/NotificationServiceImpl}. The class
+ * is named {@code CardNotificationServiceImpl} for the same reason as {@code
+ * PaymentAccountAdapterImpl} — simply naming it {@code NotificationServiceImpl} would collide with
+ * the Account BC's identically-named class at the Spring bean level (bean names must be globally
+ * unique even across different packages). {@link SesClient} shares the single application-wide bean
+ * created by account/infrastructure/notification/SesConfig as-is.
  */
 @Component
 @RequiredArgsConstructor
@@ -37,9 +39,9 @@ public class CardNotificationServiceImpl implements NotificationService {
     private final CardSentEmailRepository cardSentEmailRepository;
     private final SesProperties sesProperties;
 
-    // 알림 발송 실패가 원본 카드 배치 트랜잭션까지 rollback-only로 전파되지 않도록 별도의 물리
-    // 트랜잭션(REQUIRES_NEW)에서 실행한다(account/infrastructure/notification/NotificationServiceImpl과
-    // 동일한 이유).
+    // Runs in a separate physical transaction (REQUIRES_NEW) so that a notification-send failure
+    // doesn't propagate as rollback-only into the original card batch transaction (same reasoning
+    // as account/infrastructure/notification/NotificationServiceImpl).
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void sendEmail(
@@ -73,7 +75,7 @@ public class CardNotificationServiceImpl implements NotificationService {
         cardSentEmailRepository.save(sentEmail);
 
         log.info(
-                "이메일 발송됨",
+                "Email sent",
                 kv("card_id", cardId),
                 kv("event_type", eventType),
                 kv("recipient", recipient),

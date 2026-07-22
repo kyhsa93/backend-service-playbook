@@ -58,7 +58,7 @@ class PaymentTest {
     void PENDING_결제를_실패처리하면_FAILED_상태가_된다() {
         Payment payment = createPayment();
 
-        payment.fail("게이트웨이 오류");
+        payment.fail("gateway error");
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
     }
@@ -68,7 +68,7 @@ class PaymentTest {
         Payment payment = createPayment();
         payment.complete();
 
-        assertThatThrownBy(() -> payment.fail("게이트웨이 오류"))
+        assertThatThrownBy(() -> payment.fail("gateway error"))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_FAIL_REQUIRES_PENDING_PAYMENT);
@@ -80,7 +80,7 @@ class PaymentTest {
         payment.complete();
         payment.pullDomainEvents();
 
-        payment.cancel("고객 요청");
+        payment.cancel("customer request");
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
         assertThat(payment.pullDomainEvents())
@@ -93,7 +93,7 @@ class PaymentTest {
     void COMPLETED가_아닌_결제를_취소하면_예외를_던진다() {
         Payment payment = createPayment();
 
-        assertThatThrownBy(() -> payment.cancel("고객 요청"))
+        assertThatThrownBy(() -> payment.cancel("customer request"))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT);
@@ -103,9 +103,9 @@ class PaymentTest {
     void 취소된_결제를_다시_취소하면_예외를_던진다() {
         Payment payment = createPayment();
         payment.complete();
-        payment.cancel("고객 요청");
+        payment.cancel("customer request");
 
-        assertThatThrownBy(() -> payment.cancel("고객 요청"))
+        assertThatThrownBy(() -> payment.cancel("customer request"))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT);

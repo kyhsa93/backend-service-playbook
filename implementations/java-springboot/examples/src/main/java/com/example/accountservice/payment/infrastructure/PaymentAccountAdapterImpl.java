@@ -10,13 +10,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * {@link AccountAdapter}의 구현체(ACL). Account BC가 노출한 읽기 인터페이스({@link AccountQuery})를 주입받아 호출하고,
- * Account BC의 모델을 Payment BC가 쓰는 최소 형태({@link AccountAdapter.AccountView})로 번역한다. Card BC의
- * AccountAdapterImpl과 달리 잔액(balanceAmount)까지 번역이 필요하다(결제 가능 여부 판단에 잔액이 필요하기 때문).
+ * The implementation (ACL) of {@link AccountAdapter}. Injects and calls the read interface ({@link
+ * AccountQuery}) exposed by the Account BC, and translates the Account BC's model into the minimal
+ * shape the Payment BC uses ({@link AccountAdapter.AccountView}). Unlike Card BC's
+ * AccountAdapterImpl, this also needs to translate the balance (balanceAmount), since the balance
+ * is needed to judge whether a payment can proceed.
  */
-// 클래스명이 PaymentAccountAdapterImpl인 이유: Spring의 기본 빈 이름은 단순 클래스명에서 유도되므로
-// card/infrastructure/AccountAdapterImpl(Card BC 소유)과 이름이 같으면 component scanning 시
-// ConflictingBeanDefinitionException이 발생한다 — 패키지가 달라도 빈 이름은 전역으로 유일해야 한다.
+// Why the class is named PaymentAccountAdapterImpl: Spring's default bean name is derived from
+// the simple class name, so if it shared a name with card/infrastructure/AccountAdapterImpl
+// (owned by Card BC), component scanning would throw ConflictingBeanDefinitionException — bean
+// names must be globally unique even across different packages.
 @Component
 @RequiredArgsConstructor
 public class PaymentAccountAdapterImpl implements AccountAdapter {

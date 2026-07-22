@@ -1,27 +1,27 @@
-# 횡단 관심사 (Spring Boot)
+# Cross-Cutting Concerns (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [cross-cutting-concerns.md](../../../../docs/architecture/cross-cutting-concerns.md) 참고.
+> For the framework-agnostic principles, see the root [cross-cutting-concerns.md](../../../../docs/architecture/cross-cutting-concerns.md).
 
-## 요청 파이프라인 — Spring의 구성 요소 매핑
+## The request pipeline — mapping to Spring's components
 
-root의 Middleware/Guard/Pipe/Interceptor 4단계는 Spring MVC에서 아래처럼 대응된다:
+The root's 4 stages of Middleware/Guard/Pipe/Interceptor map to Spring MVC as follows:
 
-| root 단계 | Spring 메커니즘 | 이 저장소의 현재 상태 |
+| Root stage | Spring mechanism | Current state in this repository |
 |------|----------------|------|
-| 1. 전처리 (Correlation ID 등) | `Filter`(Servlet 표준) | 있음 — `CorrelationIdFilter` |
-| 2. 인증 | Spring Security `SecurityFilterChain` | 있음 — `SecurityConfig`(JWT, [authentication.md](authentication.md) 참고) |
-| 3. 입력 검증 | `@Valid` + Bean Validation | 있음 (`@Valid @RequestBody CreateAccountRequest`) |
-| 4. Handler | `@RestController` 메서드 | `AccountController` |
-| 5. 응답 변환/로깅 | `HandlerInterceptor` 또는 AOP | 있음 — `RequestLoggingInterceptor` + `WebConfig` |
+| 1. Pre-processing (Correlation ID, etc.) | `Filter` (Servlet standard) | Present — `CorrelationIdFilter` |
+| 2. Authentication | Spring Security `SecurityFilterChain` | Present — `SecurityConfig` (JWT, see [authentication.md](authentication.md)) |
+| 3. Input validation | `@Valid` + Bean Validation | Present (`@Valid @RequestBody CreateAccountRequest`) |
+| 4. Handler | `@RestController` method | `AccountController` |
+| 5. Response transformation/logging | `HandlerInterceptor` or AOP | Present — `RequestLoggingInterceptor` + `WebConfig` |
 
-**`Filter` vs `HandlerInterceptor`의 역할 구분**: `Filter`는 Servlet 컨테이너 레벨에서 동작해 Spring MVC의 `DispatcherServlet`보다 먼저 실행된다 — 인증처럼 "Spring이 요청을 라우팅하기도 전에 차단해야 하는" 관심사에 적합하다. `HandlerInterceptor`는 `DispatcherServlet` 내부, 실제 Controller 메서드 호출 전후에 위치해 어떤 Controller/메서드가 매칭되었는지 알 수 있다 — 요청 로깅처럼 "어떤 핸들러가 처리했는지"가 필요한 관심사에 적합하다.
+**The division of responsibility between `Filter` and `HandlerInterceptor`**: `Filter` operates at the Servlet-container level and runs before Spring MVC's `DispatcherServlet` — suitable for concerns like authentication that need to be "blocked before Spring even routes the request." `HandlerInterceptor` sits inside `DispatcherServlet`, immediately before/after the actual Controller method call, so it knows which Controller/method was matched — suitable for concerns like request logging that need to know "which handler processed this."
 
 ---
 
-## Correlation ID 주입 — `Filter` + MDC
+## Injecting the Correlation ID — `Filter` + MDC
 
 ```java
-// common/web/CorrelationIdFilter.java — 실제 코드
+// common/web/CorrelationIdFilter.java — actual code
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class CorrelationIdFilter extends OncePerRequestFilter {
@@ -33,30 +33,31 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String correlationId = Optional.ofNullable(request.getHeader(HEADER))
                 .orElseGet(() -> UUID.randomUUID().toString().replace("-", ""));
-        MDC.put("correlation_id", correlationId);      // 이후 모든 로그에 자동 포함, observability.md 참고
+        MDC.put("correlation_id", correlationId);      // automatically included in every subsequent log line, see observability.md
         response.setHeader(HEADER, correlationId);
         try {
             chain.doFilter(request, response);
         } finally {
-            MDC.remove("correlation_id");                // 스레드 재사용 대비 필수 — 안 지우면 다음 요청에 값이 남는다
+            MDC.remove("correlation_id");                // essential given thread-pool reuse — without this, the value leaks into the next request
         }
     }
 }
 ```
 
-- **`OncePerRequestFilter`**: Spring이 제공하는 베이스 클래스로, 같은 요청 안에서 필터가 중복 실행(포워딩 등)되는 것을 방지한다.
-- **`@Order(Ordered.HIGHEST_PRECEDENCE)`**: 여러 `Filter`가 등록될 때 실행 순서를 보장한다 — Correlation ID는 로깅/인증보다 먼저 설정되어야 다른 필터의 로그에도 포함된다.
-- **`MDC`(Mapped Diagnostic Context)**: SLF4J/Logback이 제공하는 스레드 로컬 저장소로, root의 `AsyncLocalStorage` 기반 Correlation ID 전파를 Java에서 대체한다. `try-finally`로 반드시 정리한다 — Tomcat의 스레드 풀이 재사용되므로 정리하지 않으면 다음 요청 처리 시 이전 요청의 correlation_id가 로그에 남는다.
+- **`OncePerRequestFilter`**: a Spring-provided base class that prevents a filter from running more than once within the same request (e.g. during forwarding).
+- **`@Order(Ordered.HIGHEST_PRECEDENCE)`**: guarantees execution order when multiple `Filter`s are registered — the Correlation ID must be set before logging/authentication so it's included in the other filters' logs too.
+- **`MDC` (Mapped Diagnostic Context)**: a thread-local store provided by SLF4J/Logback, replacing the root's `AsyncLocalStorage`-based Correlation ID propagation in Java. It must always be cleaned up with `try-finally` — since Tomcat's thread pool is reused, failing to clean up leaves the previous request's correlation_id in the logs of the next request handled by the same thread.
 
 ---
 
-## 인증 — `SecurityFilterChain` (Guard 단계)
+## Authentication — `SecurityFilterChain` (the Guard stage)
 
-인증 로직 자체는 [authentication.md](authentication.md)에서 상세히 다룬다. 여기서는 파이프라인상의 위치만 확인한다: Spring Security의 `SecurityFilterChain`은 `Filter` 체인의 일부로 동작하며, `DispatcherServlet`(Controller 라우팅)보다 먼저 요청을 가로챈다 — root가 강조하는 "Guard는 Handler 진입 전에" 원칙이 그대로 실현된다.
+The authentication logic itself is covered in detail in [authentication.md](authentication.md). Here, only its position in the pipeline is confirmed: Spring Security's `SecurityFilterChain` operates as part of the `Filter` chain and intercepts the request before `DispatcherServlet` (Controller routing) — this directly realizes the root's principle that "a Guard runs before the Handler is entered."
 
 ```java
-// SecurityConfig.java — 실제 코드. authorizeHttpRequests가 전역(클래스 레벨 아닌 필터 체인 레벨)에
-// 적용되는 것이 root의 "메서드별 적용은 누락 위험" 원칙과 일치 — authentication.md 참고
+// SecurityConfig.java — actual code. Applying authorizeHttpRequests filter-chain-wide
+// (rather than at the class level) matches the root's "applying per-method risks omissions"
+// principle — see authentication.md
 http.authorizeHttpRequests(auth -> auth
         .requestMatchers("/health/**", "/auth/sign-in").permitAll()
         .anyRequest().authenticated());
@@ -64,29 +65,29 @@ http.authorizeHttpRequests(auth -> auth
 
 ---
 
-## 입력 검증 — `@Valid` (Pipe 단계)
+## Input validation — `@Valid` (the Pipe stage)
 
 ```java
-// AccountController.createAccount — 실제 코드
+// AccountController.createAccount — actual code
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 public CreateAccountResult createAccount(
         Authentication authentication,
-        @Valid @RequestBody CreateAccountRequest request   // ← 형식적 검증은 Handler 진입 전
+        @Valid @RequestBody CreateAccountRequest request   // ← formal validation happens before entering the Handler
 ) {
     String requesterId = authentication.getName();
     return createAccountService.create(new CreateAccountCommand(requesterId, request.email(), request.currency()));
 }
 ```
 
-`@Valid`는 Bean Validation(`spring-boot-starter-validation`, 이미 `build.gradle`에 있음)을 실행해 `CreateAccountRequest`의 `@NotBlank`/`@Email` 등 애노테이션을 검증한다 — 실패 시 `MethodArgumentNotValidException`이 Controller 메서드 본문 실행 전에 던져진다. **형식적 검증(필수값, 타입, 형식)과 비즈니스 규칙 검증(계좌 상태 확인 등)을 혼동하지 않는다** — 후자는 `Account` 도메인 메서드 내부(`deposit()`의 상태 체크 등)에서만 수행한다.
+`@Valid` runs Bean Validation (`spring-boot-starter-validation`, already in `build.gradle`) to check annotations like `@NotBlank`/`@Email` on `CreateAccountRequest` — on failure, a `MethodArgumentNotValidException` is thrown before the Controller method body executes. **Formal validation (required fields, type, format) is never confused with business-rule validation (checking account status, etc.)** — the latter is performed only inside `Account` domain methods (e.g. the status check in `deposit()`).
 
 ---
 
-## HTTP 요청 로깅 — `HandlerInterceptor` (응답 후처리 단계)
+## HTTP request logging — `HandlerInterceptor` (the response-post-processing stage)
 
 ```java
-// common/web/RequestLoggingInterceptor.java — 실제 코드
+// common/web/RequestLoggingInterceptor.java — actual code
 @Component
 public class RequestLoggingInterceptor implements HandlerInterceptor {
     private static final Logger log = LoggerFactory.getLogger(RequestLoggingInterceptor.class);
@@ -108,7 +109,7 @@ public class RequestLoggingInterceptor implements HandlerInterceptor {
 ```
 
 ```java
-// config/WebConfig.java — 실제 코드, Interceptor 등록
+// config/WebConfig.java — actual code, registering the Interceptor
 @Configuration
 @RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
@@ -122,41 +123,41 @@ public class WebConfig implements WebMvcConfigurer {
 }
 ```
 
-`HandlerInterceptor`는 어떤 Controller 메서드가 매칭되었는지(`handler` 파라미터)까지 알 수 있어, `Filter`보다 세밀한 후처리(예: 특정 엔드포인트만 상세 로깅)가 가능하다. `config/WebConfig.java`가 CORS([bootstrap.md](bootstrap.md) 참고)를 도입할 때도 같은 클래스에 `addCorsMappings(...)`를 추가하면 된다 — Interceptor 등록과 CORS 설정 모두 `WebMvcConfigurer` 구현체 하나로 모은다.
+`HandlerInterceptor` even knows which Controller method was matched (the `handler` parameter), enabling more granular post-processing than `Filter` (e.g. detailed logging only for specific endpoints). When `config/WebConfig.java` introduces CORS (see [bootstrap.md](bootstrap.md)), `addCorsMappings(...)` can simply be added to the same class — both Interceptor registration and CORS configuration are consolidated into a single `WebMvcConfigurer` implementation.
 
 ---
 
-## Domain 레이어에서 횡단 관심사 사용 금지
+## Cross-cutting concerns are forbidden in the Domain layer
 
-`Filter`, `HandlerInterceptor`, Spring Security, MDC 등은 모두 Interface 레이어에 속한다. Domain 레이어에서 사용하지 않는다.
+`Filter`, `HandlerInterceptor`, Spring Security, MDC, and the like all belong to the Interface layer. They are never used in the Domain layer.
 
 ```java
-// 금지 — Domain 레이어에서 로거/Spring 사용
+// Forbidden — using a logger/Spring in the Domain layer
 public class Account {
-    private static final Logger log = LoggerFactory.getLogger(Account.class);   // ← 금지
+    private static final Logger log = LoggerFactory.getLogger(Account.class);   // ← forbidden
 
     public Transaction deposit(long amount) {
-        log.info("입금 처리");   // ← 금지, Application 레이어에서 로깅
+        log.info("Processing deposit");   // ← forbidden, logging belongs in the Application layer
         // ...
     }
 }
 ```
 
-`Account`의 실제 코드는 이 원칙을 지키고 있다 — 어떤 도메인 메서드도 로깅하지 않는다.
+The actual `Account` code follows this principle — no domain method performs logging.
 
 ---
 
-## 원칙
+## Principles
 
-- **역할에 맞는 Spring 메커니즘을 사용**: 인증은 Security Filter, 로깅은 Interceptor, 검증은 `@Valid`. 혼용하지 않는다.
-- **전처리는 최대한 앞 단계에**: Correlation ID 주입은 `@Order(HIGHEST_PRECEDENCE)` Filter로 가장 먼저 실행한다.
-- **Controller는 순수하게**: Service 호출과 Command/Query 변환만 담당한다.
-- **MDC는 반드시 정리**: `try-finally`로 스레드 풀 재사용 시 값 누수를 막는다.
+- **Use the Spring mechanism appropriate to the role**: authentication via a Security Filter, logging via an Interceptor, validation via `@Valid`. Never mix these.
+- **Push pre-processing as early as possible**: Correlation ID injection runs first, via an `@Order(HIGHEST_PRECEDENCE)` Filter.
+- **Keep Controllers pure**: they only call a Service and convert to/from Command/Query objects.
+- **Always clean up MDC**: use `try-finally` to prevent value leakage when the thread pool is reused.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [authentication.md](authentication.md) — 인증 패턴 상세
-- [observability.md](observability.md) — MDC 기반 로깅, Correlation ID
-- [error-handling.md](error-handling.md) — 에러 변환 위치
+- [authentication.md](authentication.md) — details of the authentication pattern
+- [observability.md](observability.md) — MDC-based logging, Correlation ID
+- [error-handling.md](error-handling.md) — where error conversion happens

@@ -9,9 +9,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 매월 1회 모든 활성 카드에 대해 지난 한 달 사용내역 안내를 적재한다(월간 카드 사용내역 발송, scheduling.md Feature 2). Scheduler는 비즈니스
- * 로직을 직접 실행하지 않고 Task Queue에 적재(enqueue)만 한다 — 실제 통계 계산·발송은 {@code
- * card/interfaces/task/SendCardStatementTaskController} → {@code SendCardStatementService}가 담당한다.
+ * Once a month, enqueues a task to notify all active cards of last month's usage (monthly card
+ * usage statement dispatch, scheduling.md Feature 2). The Scheduler does not execute business logic
+ * directly — it only enqueues a task to the Task Queue. The actual statistics calculation and
+ * sending are handled by {@code card/interfaces/task/SendCardStatementTaskController} → {@code
+ * SendCardStatementService}.
  */
 @Component
 @RequiredArgsConstructor
@@ -23,22 +25,24 @@ public class CardStatementScheduler {
 
     private final TaskOutboxWriter taskOutboxWriter;
 
-    // 월 기반 deduplicationId로 여러 인스턴스가 같은 달 1일 동시에 tick해도 Task Queue에는 1건만
-    // 들어간다(scheduling.md "Cron 다중 인스턴스 안전성"). 예외는 명시적으로 로깅만 하고 재throw하지
-    // 않는다 — 다음 tick(다음 달 1일 새벽 4시)에 다시 시도된다.
-    @Scheduled(cron = "0 0 4 1 * *") // 매월 1일 새벽 4시
+    // With a month-based deduplicationId, even if multiple instances tick simultaneously on the
+    // 1st of the same month, only one entry ends up in the Task Queue (scheduling.md "Cron
+    // multi-instance safety"). Exceptions are only logged, not rethrown — the next tick (4 AM on
+    // the 1st of the following month) will retry.
+    @Scheduled(cron = "0 0 4 1 * *") // 4 AM on the 1st of every month
     public void enqueueMonthlyStatement() {
         try {
             YearMonth month = YearMonth.now();
             String dedupId = TASK_TYPE + "-" + month;
             taskOutboxWriter.enqueue(TASK_TYPE, new Payload(month), GROUP_ID, dedupId);
         } catch (Exception e) {
-            log.error("카드 사용내역 안내 Task 적재 실패", e);
+            log.error("Failed to enqueue card statement task", e);
         }
     }
 
-    // 이 Scheduler가 소유하는 로컬 payload 뷰 — card/interfaces/task/SendCardStatementTaskController가
-    // 소유한 별도의 payload 레코드와 JSON 스키마(필드명)만으로 계약한다(account/infrastructure/scheduling/
-    // InterestPaymentScheduler와 동일한 이유).
+    // The local payload view owned by this Scheduler — contracts only via the JSON schema (field
+    // names) with the separate payload record owned by
+    // card/interfaces/task/SendCardStatementTaskController (same reasoning as
+    // account/infrastructure/scheduling/InterestPaymentScheduler).
     private record Payload(YearMonth month) {}
 }

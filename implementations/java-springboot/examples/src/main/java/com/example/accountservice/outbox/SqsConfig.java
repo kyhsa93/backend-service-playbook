@@ -12,9 +12,10 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 
 /**
- * AWS SQS 클라이언트 빈 설정. {@code account/infrastructure/notification/SesConfig}와 동일한 구성(항상 정적
- * credential 명시, {@code AwsProperties.endpointUrl()}이 설정되면 LocalStack으로 엔드포인트 오버라이드)을 따른다. {@link
- * OutboxPoller}와 {@link OutboxConsumer}가 이 하나의 클라이언트를 공유한다.
+ * AWS SQS client bean configuration. Follows the same setup as {@code
+ * account/infrastructure/notification/SesConfig} (always specify static credentials explicitly,
+ * override the endpoint to LocalStack if {@code AwsProperties.endpointUrl()} is set). {@link
+ * OutboxPoller} and {@link OutboxConsumer} share this single client.
  */
 @Configuration
 @RequiredArgsConstructor

@@ -10,7 +10,7 @@ import static harness.JavaFiles.pathContains;
 import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
-/** [3] @Service — application/ 에만 허용 */
+/** [3] @Service — only allowed under application/ */
 public final class ServiceAnnotation {
     private ServiceAnnotation() {
     }
@@ -27,10 +27,10 @@ public final class ServiceAnnotation {
             if (pathContains(f, "/application/")) {
                 result.add(Finding.pass(rel + " (@Service)"));
             } else {
-                result.add(Finding.fail(rel, "@Service는 application/ 패키지 안에 있어야 함"));
+                result.add(Finding.fail(rel, "@Service must be inside the application/ package"));
             }
         }
-        if (!found) result.add(Finding.skip("@Service 없음"));
+        if (!found) result.add(Finding.skip("No @Service"));
         return result;
     }
 }
