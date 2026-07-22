@@ -483,18 +483,18 @@ export class Get${n.Domain}ResponseBody {
 
   files[`${n.domainKebab}/interface/${n.domainKebab}-controller.ts`] = `import {
   BadRequestException, Body, Controller, Get, HttpCode, Logger,
-  NotFoundException, Param, Post, Req, UseGuards
+  NotFoundException, Param, Post
 } from '@nestjs/common'
 import {
   ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
   ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
 } from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
-import { Request } from 'express'
 
+import { Authenticated } from '@/auth/authenticated.decorator'
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
-import { AuthGuard } from '@/auth/auth.guard'
+import { UserContextStore } from '@/common/user-context-store'
 import { Cancel${n.Domain}Command } from '@/${n.domainKebab}/application/command/cancel-${n.domainKebab}-command'
 import { Create${n.Domain}Command } from '@/${n.domainKebab}/application/command/create-${n.domainKebab}-command'
 import { ${n.Domain} } from '@/${n.domainKebab}/domain/${n.domainKebab}'
@@ -507,13 +507,11 @@ import { Get${n.Domain}ResponseBody } from '@/${n.domainKebab}/interface/dto/get
 import { ${n.Domain}ErrorCode as ErrorCode } from '@/${n.domainKebab}/${n.domainKebab}-error-code'
 import { ${n.Domain}ErrorMessage } from '@/${n.domainKebab}/${n.domainKebab}-error-message'
 
-type AuthenticatedRequest = Request & { user: { userId: string } }
-
 @Controller()
 @ApiTags('${n.Domain}')
 @ApiBearerAuth('token')
 @ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
-@UseGuards(AuthGuard)
+@Authenticated()
 export class ${n.Domain}Controller {
   private readonly logger = new Logger(${n.Domain}Controller.name)
 
@@ -529,10 +527,8 @@ export class ${n.Domain}Controller {
     description: 'Creates a new ${n.domain} owned by the authenticated requester, starting in PENDING status.'
   })
   @ApiCreatedResponse({ description: 'The ${n.domain} was created.', type: Create${n.Domain}ResponseBody })
-  public async create${n.Domain}(
-    @Req() req: AuthenticatedRequest
-  ): Promise<Create${n.Domain}ResponseBody> {
-    const ownerId = req.user.userId
+  public async create${n.Domain}(): Promise<Create${n.Domain}ResponseBody> {
+    const ownerId = UserContextStore.getRequesterId()
     return this.commandBus.execute<Create${n.Domain}Command, ${n.Domain}>(new Create${n.Domain}Command({ ownerId }))
       .then((${n.domain}) => ({
         ${n.domain}Id: ${n.domain}.${n.domain}Id,
@@ -555,10 +551,9 @@ export class ${n.Domain}Controller {
   @ApiOkResponse({ description: 'The ${n.domain} was found.', type: Get${n.Domain}ResponseBody })
   @ApiNotFoundResponse({ description: 'No ${n.domain} exists with the given \`${n.domain}Id\` for this requester (\`${n.DOMAIN_SCREAM}_NOT_FOUND\`).', type: ErrorResponseBody })
   public async get${n.Domain}(
-    @Req() req: AuthenticatedRequest,
     @Param() param: Get${n.Domain}RequestParam
   ): Promise<Get${n.Domain}ResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute<Get${n.Domain}Query, Get${n.Domain}Result>(
       new Get${n.Domain}Query({ ${n.domain}Id: param.${n.domain}Id, requesterId })
     ).catch((error) => {
