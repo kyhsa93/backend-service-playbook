@@ -8,8 +8,8 @@ import { CardStatementNotificationService } from '@/payment/application/service/
 import { PAYMENT_SES_CLIENT } from '@/payment/infrastructure/notification/ses-client-provider'
 import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
 
-// account/infrastructure/notification/notification-service-impl.ts와 같은 모양이다 —
-// SES 발송과 발송 기록 insert를 한 메서드 안에서 처리한다.
+// Shaped like account/infrastructure/notification/notification-service-impl.ts — handles the
+// SES send and the sent-record insert within a single method.
 @Injectable()
 export class CardStatementNotificationServiceImpl extends CardStatementNotificationService {
   private readonly logger = new Logger(CardStatementNotificationServiceImpl.name)

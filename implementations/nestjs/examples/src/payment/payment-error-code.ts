@@ -1,10 +1,10 @@
-// PaymentErrorMessage의 모든 항목에 1:1로 매핑되는 코드
-// (docs/architecture/error-handling.md 참고). REFUND_*_REQUIRES_*_REFUND와
-// PAYMENT_*_REQUIRES_PENDING_PAYMENT는 Application 레이어가 이미 올바른 선행 상태를
-// 보장한 뒤에만 호출하므로(예: RefundEligibilityService가 REQUESTED 상태만 approve()/
-// reject()에 넘김) 현재 REST 표면에서는 도달하지 않는 방어적 코드다 — Payment.fail()/
-// Refund.complete()처럼 아직 어떤 Command도 연결하지 않은 도메인 메서드의 가드와
-// 짝을 이룬다.
+// Codes mapped 1:1 to every entry in PaymentErrorMessage
+// (see docs/architecture/error-handling.md). REFUND_*_REQUIRES_*_REFUND and
+// PAYMENT_*_REQUIRES_PENDING_PAYMENT are only ever called once the Application layer has
+// already guaranteed the correct preceding state (e.g. RefundEligibilityService only passes
+// a REQUESTED-state refund into approve()/reject()), so they're defensive code that the
+// current REST surface never actually reaches — they're paired with the guards of domain
+// methods like Payment.fail()/Refund.complete() that no Command wires up yet.
 export enum PaymentErrorCode {
   PAYMENT_NOT_FOUND = 'PAYMENT_NOT_FOUND',
   LINKED_CARD_NOT_FOUND = 'LINKED_CARD_NOT_FOUND',

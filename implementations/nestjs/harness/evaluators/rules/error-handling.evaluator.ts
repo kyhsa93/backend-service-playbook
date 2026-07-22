@@ -1,15 +1,15 @@
-// error-handling evaluator — Domain/Application 레이어 규칙 + 에러 코드 규칙.
+// The error-handling evaluator — Domain/Application layer rules + error code rules.
 //
 // Rules:
-// - Domain 레이어 파일에 HttpException 참조 금지.
-// - Domain/Application 레이어 파일에 throw new Error() 금지 (ErrorMessage enum 참조 강제 —
-//   AGENTS.md "에러는 enum으로 타입화 — free-form 문자열 금지").
-// - <domain>-error-message.ts가 있으면 동일 디렉토리에 <domain>-error-code.ts도 존재.
-// - <Domain>ErrorMessage 와 <Domain>ErrorCode enum의 항목 수는 1:1로 일치.
-// - <Domain>ErrorCode enum 키는 SCREAMING_SNAKE_CASE.
-// - generateErrorResponse 매핑 배열의 각 튜플은 [메시지, ExceptionClass, ErrorCode] 3-튜플.
-// - 전역 예외 필터(@Catch() + ExceptionFilter)가 구성하는 에러 응답 객체는 정확히
-//   { statusCode, code, message, error } 4개 필드여야 함.
+// - Referencing HttpException in a Domain layer file is prohibited.
+// - `throw new Error()` in a Domain/Application layer file is prohibited (enforces referencing
+//   an ErrorMessage enum — AGENTS.md's "type errors as an enum — free-form strings are prohibited").
+// - If <domain>-error-message.ts exists, <domain>-error-code.ts also exists in the same directory.
+// - The number of entries in the <Domain>ErrorMessage and <Domain>ErrorCode enums match 1:1.
+// - <Domain>ErrorCode enum keys are SCREAMING_SNAKE_CASE.
+// - Each tuple in generateErrorResponse's mapping array is a 3-tuple [message, ExceptionClass, ErrorCode].
+// - The error response object constructed by the global exception filter (@Catch() +
+//   ExceptionFilter) must have exactly these 4 fields: { statusCode, code, message, error }.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -20,11 +20,11 @@ import { readSourceFile, walkTsFiles } from '../shared/ast-utils'
 import { penaltyFor } from '../shared/penalty'
 
 const DOC_REF_BASE = 'docs/architecture/error-handling.md'
-const DOC_REF_ERROR_CODE = `${DOC_REF_BASE}#에러-코드--enum으로-정의-메시지와-11-매핑`
+const DOC_REF_ERROR_CODE = `${DOC_REF_BASE}#error-codes--defined-as-an-enum-11-mapped-with-the-message`
 const DOC_REF_CATCH = `${DOC_REF_BASE}#controller--catch-and-rethrow`
-const DOC_REF_RESPONSE_SCHEMA = `${DOC_REF_BASE}#에러-응답-형식--표준-json-구조`
+const DOC_REF_RESPONSE_SCHEMA = `${DOC_REF_BASE}#error-response-format--the-standard-json-structure`
 
-// 에러 응답 형식(error-handling.md)이 요구하는 정확히 4개 필드.
+// The exact 4 fields the error response format (error-handling.md) requires.
 const RESPONSE_SCHEMA_FIELDS = ['statusCode', 'code', 'message', 'error']
 
 function kebabToPascal(kebab: string): string {
@@ -35,9 +35,10 @@ function kebabToPascal(kebab: string): string {
     .join('')
 }
 
-// `throw new Error(...)` 중 인자가 <Domain>ErrorMessage enum 참조(PropertyAccess/ElementAccess)가
-// 아닌 경우(raw 문자열 리터럴, 템플릿 리터럴, 인자 없음 등)만 위반으로 잡는다.
-// `throw new Error(ErrorMessage['...'])`는 가이드가 요구하는 정상 패턴이므로 매치되지 않는다.
+// Among `throw new Error(...)` calls, only flags a violation when the argument isn't a
+// <Domain>ErrorMessage enum reference (PropertyAccess/ElementAccess) — a raw string literal, a
+// template literal, no argument, etc. `throw new Error(ErrorMessage['...'])` is the normal
+// pattern the guide requires, so it never matches.
 function findGenericErrorThrows(filePath: string): number[] {
   const sf = readSourceFile(filePath)
   const lines: number[] = []
@@ -84,7 +85,7 @@ interface MappingCall {
   arity: number
 }
 
-// 전역 예외 필터 파일 판별 — @Catch() + ExceptionFilter 구현.
+// Detects a global exception filter file — implements @Catch() + ExceptionFilter.
 function isExceptionFilterFile(content: string): boolean {
   return /@Catch\s*\(/.test(content) && /ExceptionFilter/.test(content)
 }
@@ -94,8 +95,9 @@ interface ResponseObjectLiteral {
   keys: string[]
 }
 
-// 파일 내 모든 ObjectLiteralExpression 중 'statusCode' 키를 가진 것 — 에러 응답 후보로 간주하고
-// 필드 구성을 검사한다. spread(...foo)로만 구성된 리터럴은 정적으로 키를 알 수 없어 스킵한다.
+// Among every ObjectLiteralExpression in the file, the ones with a 'statusCode' key — treated
+// as an error-response candidate and its field composition is checked. A literal made up only
+// of a spread (...foo) is skipped since its keys can't be known statically.
 function inspectResponseObjectLiterals(filePath: string): ResponseObjectLiteral[] {
   const sf = readSourceFile(filePath)
   const results: ResponseObjectLiteral[] = []
@@ -159,9 +161,10 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
       score -= 8
     }
 
-    // 타입화된 에러만 허용(AGENTS.md "에러는 enum으로 타입화 — free-form 문자열 금지") —
-    // Domain과 Application 레이어 둘 다 <Domain>ErrorMessage enum 참조를 강제한다
-    // (error-handling.md "Domain / Service — plain Error throw" 섹션 참고). ruleId는 레이어별로 분리.
+    // Only typed errors are allowed (AGENTS.md's "type errors as an enum — free-form strings
+    // are prohibited") — enforces a <Domain>ErrorMessage enum reference in both the Domain and
+    // Application layers (see error-handling.md's "Domain / Service — throw a plain Error"
+    // section). The ruleId is split per layer.
     if (file.includes('/application/') || file.includes('/domain/')) {
       const layerLabel = file.includes('/domain/') ? 'domain' : 'application'
       for (const line of findGenericErrorThrows(file)) {
@@ -175,7 +178,7 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
       }
     }
 
-    // 전역 예외 필터가 구성하는 에러 응답 객체가 정확히 4개 필드(statusCode/code/message/error)인지 확인.
+    // Confirms the error response object the global exception filter constructs has exactly 4 fields (statusCode/code/message/error).
     if (isExceptionFilterFile(content)) {
       for (const obj of inspectResponseObjectLiterals(file)) {
         const missing = RESPONSE_SCHEMA_FIELDS.filter((k) => !obj.keys.includes(k))

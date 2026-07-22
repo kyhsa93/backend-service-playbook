@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// Auth 모듈 실제 비밀번호 인증을 위한 credential 테이블 추가.
-// userId는 Account.ownerId와 동일한 값 공간을 쓰는 외부 참조이며, 여기서도 FK 제약은 두지 않는다
-// (Account BC와 마찬가지로 독립적으로 배포·변경될 수 있어야 하므로).
+// Adds the credential table for the Auth module's actual password authentication.
+// userId is an external reference sharing the same value space as Account.ownerId, and here
+// too, no FK constraint is added (since it must be independently deployable/changeable, just like Account BC).
 export class AddCredential1700000000002 implements MigrationInterface {
   name = 'AddCredential1700000000002'
 

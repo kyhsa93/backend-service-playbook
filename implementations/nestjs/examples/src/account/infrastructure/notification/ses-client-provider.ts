@@ -6,7 +6,7 @@ import { getAwsCredentials, getAwsEndpoint, getAwsRegion } from '@/config/aws.co
 export const SES_CLIENT = Symbol('SES_CLIENT')
 
 export function createSesClient(): SESClient {
-  // credentials를 항상 명시해 SDK 기본 provider chain(IMDS 등) 탐색으로 인한 지연을 피한다.
+  // Always specify credentials explicitly to avoid the delay from the SDK's default provider chain (IMDS, etc.) lookup.
   return new SESClient({
     region: getAwsRegion(),
     endpoint: getAwsEndpoint(),

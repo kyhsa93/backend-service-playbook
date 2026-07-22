@@ -1,14 +1,14 @@
-// Technical Service — account/application/service/notification-service.ts와 같은 모양의
-// SES 이메일 발송 추상화다. Payment BC 전용으로 별도 두는 이유는 "Technical Service는
-// 도메인에 스코프한다(YAGNI)" 원칙 때문이다 — Account의 NotificationService를 그대로
-// 재사용(cross-BC export)하지 않고, Payment가 필요로 하는 최소 계약을 자체적으로 갖는다
-// (docs/architecture/domain-service.md 참고).
+// A Technical Service — an SES email-sending abstraction shaped like
+// account/application/service/notification-service.ts. It's kept Payment BC-only because of
+// the "a Technical Service is scoped to its domain (YAGNI)" principle — rather than reusing
+// Account's NotificationService as-is (a cross-BC export), Payment has its own minimal
+// contract for what it needs (see docs/architecture/domain-service.md).
 //
-// sendStatement는 "발송"과 "멱등성 기록"을 한 번의 호출로 묶는다 — Account의
-// NotificationServiceImpl이 SES 발송 직후 SentEmailEntity를 같은 메서드 안에서 기록하는
-// 것과 동일한 패턴이다. hasSentStatement()는 그 기록을 Level 1 방식으로 조회해
-// payment.send-card-statements Task의 카드×월 단위 중복 발송을 막는다
-// (send-card-statements-command-handler.ts 참고).
+// sendStatement binds "sending" and "recording idempotency" into a single call — the same
+// pattern as Account's NotificationServiceImpl recording a SentEmailEntity within the same
+// method right after the SES send. hasSentStatement() queries that record in a Level 1 style
+// to prevent duplicate sends per card×month for the payment.send-card-statements Task
+// (see send-card-statements-command-handler.ts).
 export abstract class CardStatementNotificationService {
   abstract hasSentStatement(cardId: string, statementMonth: string): Promise<boolean>
 

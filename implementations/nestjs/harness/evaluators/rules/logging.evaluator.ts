@@ -1,15 +1,15 @@
-// logging evaluator — 운영 코드에서 console 직접 사용과 에러 삼킴을 검증한다
+// The logging evaluator — verifies direct console usage and error-swallowing in production code
 // (guide: docs/architecture/observability.md).
 //
-// Applicability: src/ 하위 TypeScript 소스가 있으면 실행 (maxScore = 15).
+// Applicability: runs if there's TypeScript source under src/ (maxScore = 15).
 //
 // Rules:
-// - console.log/warn/error/debug/info 직접 사용 금지
-// - catch 블록이 비어 있거나 에러를 로깅/재throw하지 않으면 실패
-// - domain/ 레이어에서는 어떤 로깅도 하지 않는다 (NestJS Logger/@nestjs/common
-//   import, console.*, winston 전부 금지) — "Domain 레이어에서는 Logger를
-//   사용하지 않는다. 도메인 로직의 결과는 Application 레이어에서 로깅한다"
-//   (observability.md 레이어별 로깅 기준 표)
+// - direct use of console.log/warn/error/debug/info is prohibited
+// - fails if a catch block is empty or doesn't log/rethrow the error
+// - no logging of any kind in the domain/ layer (NestJS Logger/@nestjs/common import,
+//   console.*, winston — all prohibited) — "the Domain layer never uses Logger. The result of
+//   domain logic is logged from the Application layer"
+//   (observability.md's per-layer logging criteria table)
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -17,7 +17,7 @@ import * as path from 'node:path'
 import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 
 const DOC_REF = 'docs/architecture/observability.md'
-const DOMAIN_LOGGING_DOC_REF = `${DOC_REF}#레이어별-로깅-기준`
+const DOMAIN_LOGGING_DOC_REF = `${DOC_REF}#per-layer-logging-criteria`
 const CONSOLE_PATTERN = /\bconsole\.(log|warn|error|debug|info)\s*\(/g
 const EMPTY_CATCH_PATTERN = /catch\s*\([^)]*\)\s*\{\s*\}/g
 const CATCH_BLOCK_PATTERN = /catch\s*\([^)]*\)\s*\{([\s\S]*?)\}/g

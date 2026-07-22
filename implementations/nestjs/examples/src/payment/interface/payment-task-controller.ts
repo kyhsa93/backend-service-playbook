@@ -4,7 +4,7 @@ import { CommandBus } from '@nestjs/cqrs'
 import { SendCardStatementsCommand } from '@/payment/application/command/send-card-statements-command'
 import { TaskConsumer } from '@/task-queue/task-consumer.decorator'
 
-// account/interface/account-task-controller.ts와 같은 모양의 Task 입력 어댑터다.
+// A Task input adapter shaped like account/interface/account-task-controller.ts.
 @Injectable()
 export class PaymentTaskController {
   constructor(private readonly commandBus: CommandBus) {}

@@ -1,11 +1,12 @@
 #!/bin/sh
 set -e
 
-# TaskOutboxRelay가 발행하고 TaskQueueConsumer가 수신하는 Task Queue. Domain Event 큐
-# (init-sqs.sh)와 별개다 — Task는 "X를 수행하라"는 명령이고, 스케줄러(Cron)가 같은
-# 시각에 여러 인스턴스에서 동시에 enqueue해도 중복 적재되지 않아야 하므로 FIFO +
-# MessageDeduplicationId를 쓴다(docs/architecture/scheduling.md#cron-다중-인스턴스-안전성).
-# DLQ를 먼저 만들고 메인 큐에 RedrivePolicy로 연결하는 것도 domain-events와 동일한 원칙.
+# The Task Queue that TaskOutboxRelay publishes to and TaskQueueConsumer receives from.
+# Separate from the Domain Event queue (init-sqs.sh) — a Task is a command ("perform X"), and
+# since it must not be enqueued as a duplicate even when the Scheduler (Cron) enqueues at the
+# same moment from multiple instances, FIFO + MessageDeduplicationId is used (see
+# docs/architecture/scheduling.md, the Cron multi-instance safety section).
+# Creating the DLQ first and attaching it to the main queue via RedrivePolicy is the same principle as domain-events.
 awslocal sqs create-queue --queue-name task-queue-dlq.fifo \
   --attributes '{"FifoQueue":"true"}'
 

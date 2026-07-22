@@ -1,29 +1,29 @@
-// domain-event-outbox evaluator — Aggregate가 도메인 이벤트를 발행할 때 가이드의
-// Outbox 패턴을 따르는지 + Integration Event 경계를 지키는지 검증
+// The domain-event-outbox evaluator — verifies that when an Aggregate publishes a domain
+// event, it follows the guide's Outbox pattern + respects the Integration Event boundary
 // (guide: docs/architecture/domain-events.md).
 //
-// Applicability gate: 아래 중 하나라도 존재해야 실행 — 없으면 skip(maxScore=0).
-//   - domain/ 레이어의 Aggregate에 `_events.push(new XxxEvent(` 패턴
-//   - 코드베이스 어디든 `@HandleEvent(` / `@HandleIntegrationEvent(` 사용
-//   - 코드베이스 어디든 `eventBus.publish(` 호출
+// Applicability gate: runs if any of the following exist — skipped otherwise (maxScore=0).
+//   - the `_events.push(new XxxEvent(` pattern in a domain/ layer Aggregate
+//   - `@HandleEvent(` / `@HandleIntegrationEvent(` used anywhere in the codebase
+//   - an `eventBus.publish(` call anywhere in the codebase
 //
 // Rules:
-// 1. src/outbox/ 모듈 존재.
-// 2. Repository 구현체 중 OutboxWriter / saveAll(outbox) 패턴 사용.
-// 3. Repository 구현체에 clearEvents() 호출 흔적.
-// 4. Application 레이어가 도메인 이벤트 객체를 직접 `new` 하지 않음
-//    (이벤트는 Aggregate 내부 도메인 메서드에서만 생성).
-// 5. Application 레이어의 OutboxWriter 참조는 `application/event/` EventHandler에서만 허용
-//    (Command Service 등 다른 application 서브디렉토리에서는 금지).
-// 6. @HandleEvent 보유 파일은 application/event/<domain-event>-handler.ts 위치.
-// 7. @HandleIntegrationEvent 보유 파일은 interface/integration-event/<domain>-integration-event-controller.ts 위치.
-// 8. EventBus.publish() 직접 호출 금지 — @nestjs/cqrs 사용 중에도 Outbox 경로 준수.
-// 9. OutboxPoller/OutboxConsumer가 존재하고, 발행되는 모든 Domain Event 타입이
-//    EventHandlerRegistry.register(...)로 어딘가에 등록되어 있는지 검증(드레인 경로 검증).
-// 10. Command Handler가 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나
-//     processPending()류를 호출하지 않는지 검증 — Command Service는 저장 후 곧바로
-//     반환해야 하며, Outbox 드레인은 독립적으로 주기 실행되는 Poller/Consumer만의
-//     책임이다(동기 드레인 금지, issue 대응: 2026-07 async 전환).
+// 1. The src/outbox/ module exists.
+// 2. A Repository implementation uses the OutboxWriter / saveAll(outbox) pattern.
+// 3. There's a trace of a clearEvents() call in a Repository implementation.
+// 4. The Application layer never `new`s a domain event object directly
+//    (an event is created only inside an Aggregate's domain method).
+// 5. The Application layer's OutboxWriter reference is only allowed from an
+//    `application/event/` EventHandler (prohibited in other application subdirectories such as the Command Service).
+// 6. A file with @HandleEvent is located at application/event/<domain-event>-handler.ts.
+// 7. A file with @HandleIntegrationEvent is located at interface/integration-event/<domain>-integration-event-controller.ts.
+// 8. Calling EventBus.publish() directly is prohibited — the Outbox path must be followed even when using @nestjs/cqrs.
+// 9. OutboxPoller/OutboxConsumer exist, and verify that every published Domain Event type is
+//    registered somewhere via EventHandlerRegistry.register(...) (verifying the drain path).
+// 10. Verify that a Command Handler doesn't directly reference OutboxRelay/OutboxPoller/OutboxConsumer
+//     or call something like processPending() — the Command Service must return immediately
+//     after saving, and draining the Outbox is the sole responsibility of the independently,
+//     periodically running Poller/Consumer (synchronous draining is prohibited).
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -33,11 +33,11 @@ import { classifyLayer, walkTsFiles } from '../shared/ast-utils'
 
 const DOC_REF = 'docs/architecture/domain-events.md'
 
-// 매우 단순한 주석 제거. 이 evaluator 전체가 정규식 기반 텍스트 검사를 쓰므로 일관된
-// 접근이다 — rule 10(forbidden-sync-drain)이 "왜 OutboxPoller를 호출하면 안 되는지"를
-// 설명하는 코드 주석 자체를 위반으로 오탐하는 것을 막기 위해 도입했다. 문자열 리터럴
-// 안의 '//' 같은 극단적 엣지 케이스는 감수한다(이 파일의 다른 정규식 규칙들도 동일한
-// 수준의 근사치를 이미 쓰고 있다).
+// A very simple comment stripper. Consistent with this evaluator entirely using
+// regex-based text checks — introduced so rule 10 (forbidden-sync-drain) doesn't false-positive
+// on a code comment that itself explains "why you shouldn't call OutboxPoller." Extreme edge
+// cases like a '//' inside a string literal are accepted as a trade-off (the other regex rules
+// in this file already use the same level of approximation).
 function stripComments(content: string): string {
   return content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 }
@@ -55,9 +55,9 @@ function collectDomainEventClassNames(domainFiles: string[]): Set<string> {
   return names
 }
 
-// src/ 바로 아래 첫 번째 디렉토리를 "도메인"으로 취급한다(예: src/order/domain/order.ts → 'order').
-// registry-coverage-incomplete 검사가 어떤 도메인의 이벤트가 등록에서 빠졌는지 특정할 수
-// 있도록, 전역 이벤트 집합이 아니라 도메인별로 나눠서 추적한다.
+// Treats the first directory directly under src/ as the "domain" (e.g. src/order/domain/order.ts → 'order').
+// Tracked per-domain rather than as a single global event set, so the registry-coverage-incomplete
+// check can pinpoint which domain's event is missing from registration.
 function topDomainSegment(file: string, srcDir: string): string {
   const relPath = path.relative(srcDir, file).replace(/\\/g, '/')
   return relPath.split('/')[0]
@@ -236,16 +236,16 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     }
   }
 
-  // 9. OutboxPoller/OutboxConsumer가 존재하고, 발행되는 모든 Domain Event 타입이
-  //    EventHandlerRegistry.register(...)로 어딘가에 등록되어 있는지 검증. 이전까지의
-  //    규칙들은 write(적재) 경로만 봤을 뿐 드레인 경로는 전혀 검증하지 않았다 —
-  //    등록 하나가 빠져도(예: MoneyDeposited) 그 이벤트는 Outbox 테이블에 영원히
-  //    processed=false로 남아 조용히 드레인되지 않는다.
+  // 9. Verify that OutboxPoller/OutboxConsumer exist, and that every published Domain Event
+  //    type is registered somewhere via EventHandlerRegistry.register(...). The rules above
+  //    only looked at the write (enqueue) path and never verified the drain path at all —
+  //    even a single missing registration (e.g. MoneyDeposited) leaves that event permanently
+  //    stuck at processed=false in the Outbox table, silently never draining.
   //
-  //    라우팅은 도메인별 relay 파일이 아니라 하나의 공유 EventHandlerRegistry로
-  //    통합되어 있다 — Poller(DB→큐 발행만 담당)와 Consumer(큐→핸들러 라우팅)로 역할이
-  //    분리되어 있으므로, 검사도 "relay 파일이 존재하는가"가 아니라 "문자열 키로
-  //    register() 등록됐는가"를 본다.
+  //    Routing is unified into a single shared EventHandlerRegistry rather than a per-domain
+  //    relay file — since the roles are split between the Poller (handles only DB→queue
+  //    publishing) and the Consumer (queue→handler routing), the check likewise looks at
+  //    "was it registered via register() under a string key," not "does a relay file exist."
   if (aggregatesWithEvents.length > 0) {
     const hasPoller = files.some((f) => /outbox-poller\.ts$/.test(path.basename(f)))
     const hasConsumer = files.some((f) => /outbox-consumer\.ts$/.test(path.basename(f)))
@@ -288,11 +288,12 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     }
   }
 
-  // 10. Command Handler가 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나
-  //     processPending()류를 호출하지 않는지 검증(예전 규칙의 정반대) — 동기 드레인을
-  //     전면 제거한 뒤에는 Command Service가 저장 후 곧바로 반환해야 하며, Outbox 드레인은
-  //     독립적으로 주기 실행되는 Poller/Consumer만의 책임이다. 이 검사가 없으면 누군가
-  //     예전 습관대로 Command Handler에 드레인 호출을 다시 추가해도 잡아내지 못한다.
+  // 10. Verify that a Command Handler never directly references
+  //     OutboxRelay/OutboxPoller/OutboxConsumer or calls something like processPending() —
+  //     the Command Service must return immediately after saving, and draining the Outbox is
+  //     the sole responsibility of the independently, periodically running Poller/Consumer.
+  //     Without this check, nothing would catch it if someone added a drain call back into a
+  //     Command Handler out of an old habit.
   const commandHandlerFiles = files.filter(
     (f) => classifyLayer(f) === 'application' && /-command-handler\.ts$/.test(path.basename(f))
   )

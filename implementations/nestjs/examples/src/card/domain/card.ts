@@ -28,8 +28,8 @@ export class Card {
 
   get status(): CardStatus { return this._status }
 
-  // 연결 계좌의 활성 여부는 Card Aggregate가 알 수 없다 — 발급 가능 여부(계좌 상태)는
-  // Application 레이어가 AccountAdapter(ACL)로 동기 조회해 판단한 뒤 이 팩토리를 호출한다.
+  // The Card Aggregate has no way of knowing whether the linked account is active — the
+  // Application layer judges issuability (account status) by synchronously querying via AccountAdapter (ACL) before calling this factory.
   public static issue(params: { accountId: string; ownerId: string; brand: string }): Card {
     return new Card({
       accountId: params.accountId,

@@ -1,7 +1,8 @@
-// payment.send-card-statements Task의 payload. Scheduler가 enqueue 시점에 계산한
-// 대상 기간을 그대로 실어 보낸다(payment/infrastructure/previous-statement-month.ts 참고) —
-// account.apply-daily-interest의 today와 같은 이유로, Consumer가 처리 시점의 실제
-// 시계로 다시 계산하지 않는다.
+// The payload of the payment.send-card-statements Task. It carries through as-is the target
+// period the Scheduler computed at enqueue time (see
+// payment/infrastructure/previous-statement-month.ts) — for the same reason as
+// account.apply-daily-interest's today, so the Consumer never recomputes it from the actual
+// clock at processing time.
 export class SendCardStatementsCommand {
   public readonly statementMonth: string
   public readonly monthStart: Date

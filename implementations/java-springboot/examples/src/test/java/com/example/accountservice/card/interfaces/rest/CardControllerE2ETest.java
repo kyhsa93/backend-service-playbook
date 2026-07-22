@@ -172,7 +172,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 활성_계좌로_카드를_발급하면_201과_ACTIVE_카드를_반환한다() {
+    void returns_201_and_an_ACTIVE_card_when_issuing_to_an_active_account() {
         Map<String, Object> account = createAccount(OWNER_ID);
 
         ResponseEntity<Map> response =
@@ -191,7 +191,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 존재하지_않는_계좌로_카드를_발급하면_404와_LINKED_ACCOUNT_NOT_FOUND를_반환한다() {
+    void returns_404_and_LINKED_ACCOUNT_NOT_FOUND_when_issuing_to_a_nonexistent_account() {
         ResponseEntity<Map> response =
                 post("/cards", OWNER_ID, Map.of("accountId", "non-existent", "brand", "VISA"));
 
@@ -200,7 +200,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 다른_소유자의_계좌로_카드를_발급하면_404와_LINKED_ACCOUNT_NOT_FOUND를_반환한다() {
+    void returns_404_and_LINKED_ACCOUNT_NOT_FOUND_when_issuing_to_another_owners_account() {
         Map<String, Object> account = createAccount(OWNER_ID);
 
         ResponseEntity<Map> response =
@@ -214,7 +214,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 정지된_계좌로_카드를_발급하면_400과_CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT를_반환한다() {
+    void returns_400_and_CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT_when_issuing_to_a_suspended_account() {
         Map<String, Object> account = createAccount(OWNER_ID);
         post("/accounts/" + account.get("accountId") + "/suspend", OWNER_ID, Map.of());
 
@@ -229,7 +229,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 발급한_카드를_조회하면_200과_카드_정보를_반환한다() {
+    void returns_200_and_card_info_when_fetching_an_issued_card() {
         Map<String, Object> account = createAccount(OWNER_ID);
         Map<String, Object> card = issueCard(OWNER_ID, (String) account.get("accountId"));
 
@@ -240,7 +240,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 존재하지_않는_카드를_조회하면_404와_CARD_NOT_FOUND를_반환한다() {
+    void returns_404_and_CARD_NOT_FOUND_when_fetching_a_nonexistent_card() {
         ResponseEntity<Map> response = get("/cards/non-existent", OWNER_ID);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -248,7 +248,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 계좌를_정지하면_연결된_ACTIVE_카드가_전부_SUSPENDED로_바뀐다() {
+    void suspending_the_account_turns_all_linked_ACTIVE_cards_into_SUSPENDED() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         Map<String, Object> card1 = issueCard(OWNER_ID, accountId);
@@ -268,7 +268,8 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 이미_정지된_카드가_있는_계좌를_재정지해도_카드는_영향받지_않는다_멱등성() {
+    void
+            re_suspending_an_account_that_already_has_a_suspended_card_does_not_affect_the_card_idempotency() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         Map<String, Object> card = issueCard(OWNER_ID, accountId);
@@ -288,7 +289,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 계좌를_종료하면_연결된_카드가_CANCELLED로_바뀐다() {
+    void closing_the_account_turns_the_linked_card_into_CANCELLED() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         Map<String, Object> card = issueCard(OWNER_ID, accountId);
@@ -301,7 +302,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    void 정지된_카드가_있는_계좌를_종료해도_카드가_CANCELLED로_바뀐다() {
+    void closing_an_account_that_has_a_suspended_card_still_turns_the_card_into_CANCELLED() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         Map<String, Object> card = issueCard(OWNER_ID, accountId);

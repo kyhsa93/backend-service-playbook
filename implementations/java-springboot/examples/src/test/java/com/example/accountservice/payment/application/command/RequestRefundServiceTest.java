@@ -45,7 +45,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    void 완료된_결제에_결제금액_이하의_환불이면_승인되고_저장된다() {
+    void approves_and_saves_when_refund_is_at_most_the_payment_amount_on_a_completed_payment() {
         Payment payment = completedPayment(1000);
 
         GetRefundResult result =
@@ -58,7 +58,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    void 환불_금액이_결제_금액을_초과하면_REJECTED로_저장되고_예외를_던지지_않는다() {
+    void saves_as_REJECTED_without_throwing_when_refund_amount_exceeds_the_payment_amount() {
         Payment payment = completedPayment(1000);
 
         GetRefundResult result =
@@ -73,7 +73,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    void 완료되지_않은_결제에_대한_환불_요청은_REJECTED로_저장된다() {
+    void saves_a_refund_request_as_REJECTED_for_a_payment_that_is_not_completed() {
         Payment payment = Payment.create("card-1", "account-1", "owner-1", 1000); // PENDING
         when(paymentRepository.findPayments(
                         new PaymentFindQuery(0, 1, payment.getPaymentId(), "owner-1")))
@@ -90,7 +90,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    void 결제를_찾을_수_없으면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_payment_is_not_found() {
         when(paymentRepository.findPayments(new PaymentFindQuery(0, 1, "non-existent", "owner-1")))
                 .thenReturn(new PaymentsWithCount(List.of(), 0));
 

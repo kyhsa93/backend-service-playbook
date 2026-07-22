@@ -5,11 +5,12 @@ import { HandleIntegrationEvent } from '@/outbox/event-handler-registry'
 import { DepositByPaymentCommand } from '@/account/application/command/deposit-by-payment-command'
 import { WithdrawByPaymentCommand } from '@/account/application/command/withdraw-by-payment-command'
 
-// 외부 BC(Payment)가 발행한 Integration Event를 수신하는 Interface 입력 어댑터.
-// Card BC의 card-integration-event-controller.ts(Account 이벤트 구독)와 동일한
-// 위치·역할이다 — Account가 Payment를 Adapter로 조회하지 않는 것처럼, Payment도
-// Account를 직접 참조하지 않는다. 자기 도메인의 유스케이스(Command)만 호출하고,
-// 예외는 그대로 throw하여 OutboxConsumer가 메시지를 삭제하지 않고 재시도를 담당하게 한다.
+// An Interface input adapter that receives Integration Events published by an external BC
+// (Payment). The same placement and role as Card BC's card-integration-event-controller.ts
+// (which subscribes to Account's events) — just as Account never queries Payment via an
+// Adapter, Payment never references Account directly either. It calls only its own domain's
+// use case (Command), and throws exceptions as-is so the OutboxConsumer doesn't delete the
+// message and instead handles the retry.
 @Injectable()
 export class AccountIntegrationEventController {
   private readonly logger = new Logger(AccountIntegrationEventController.name)

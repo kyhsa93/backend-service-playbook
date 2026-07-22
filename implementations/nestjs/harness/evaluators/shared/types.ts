@@ -8,7 +8,7 @@ export interface EvaluatorFailure {
    * Optional relative path (with optional anchor) to the relevant guide doc.
    * When present, the CLI renders it alongside the message so a reviewer can
    * jump to the explanation that drove the rule. Example:
-   *   'docs/architecture/scheduling.md#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어'
+   *   'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
    */
   docRef?: string
 }

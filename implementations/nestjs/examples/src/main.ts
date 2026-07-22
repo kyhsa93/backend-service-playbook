@@ -14,7 +14,7 @@ async function bootstrap(): Promise<void> {
       : ['error', 'warn', 'log', 'debug', 'verbose']
   })
 
-  // 전역 ValidationPipe — class-validator 자동 적용, 실패 시 code 포함 응답 구성
+  // The global ValidationPipe — auto-applies class-validator, constructs a response with a code on failure
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     transform: true,
@@ -24,10 +24,10 @@ async function bootstrap(): Promise<void> {
     }
   }))
 
-  // 요청 로깅 인터셉터
+  // The request-logging interceptor
   app.useGlobalInterceptors(new LoggingInterceptor())
 
-  // 전역 예외 필터 — HttpException이 아닌 미처리 예외도 표준 에러 응답 형식으로 변환
+  // The global exception filter — converts even unhandled exceptions that aren't an HttpException into the standard error response format
   app.useGlobalFilters(new HttpExceptionFilter())
 
   // CORS
@@ -47,7 +47,7 @@ async function bootstrap(): Promise<void> {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig)
   SwaggerModule.setup('docs', app, swaggerDocument)
 
-  // Graceful Shutdown — SIGTERM/SIGINT 수신 시 Nest lifecycle 훅(onModuleDestroy 등) 실행
+  // Graceful Shutdown — runs Nest lifecycle hooks (onModuleDestroy, etc.) on receiving SIGTERM/SIGINT
   app.enableShutdownHooks()
 
   await app.listen(getPort())

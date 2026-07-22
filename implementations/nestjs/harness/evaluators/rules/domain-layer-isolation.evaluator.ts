@@ -1,12 +1,11 @@
-// domain-layer-isolation evaluator — Domain 레이어는 어떤 레이어에도 의존하지
-// 않는다(guide: docs/architecture/layer-architecture.md). `layer-dependency`가
-// 프레임워크 이름 블록리스트(@nestjs/*, typeorm)로, `import-graph`가
-// domain -> infrastructure 한 방향만 잡는 것과 달리, 이 evaluator는 import
-// 경로 자체를 해석해 domain/*.ts가 (자기 도메인이든 다른 도메인이든)
-// application/, infrastructure/, interface/ 어디로도 향하는 import를 하지
-// 않는지 구조적으로 검증한다.
+// The domain-layer-isolation evaluator — the Domain layer doesn't depend on any layer
+// (guide: docs/architecture/layer-architecture.md). Unlike `layer-dependency` (which uses a
+// blocklist of framework names — @nestjs/*, typeorm) and `import-graph` (which catches only
+// the one direction domain -> infrastructure), this evaluator resolves the import path itself
+// to structurally verify that `domain/*.ts` (whether its own domain or another domain) never
+// imports toward application/, infrastructure/, or interface/.
 //
-// Applicability: src/**/domain/*.ts 파일이 없으면 skip (maxScore = 0).
+// Applicability: skipped if there's no src/**/domain/*.ts file (maxScore = 0).
 
 import * as path from 'node:path'
 
@@ -14,7 +13,7 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 import { classifyLayer, parseImports, resolveImportPath, walkTsFiles } from '../shared/ast-utils'
 
-const DOC_REF = 'docs/architecture/layer-architecture.md#domain-레이어-역할'
+const DOC_REF = 'docs/architecture/layer-architecture.md#domain-layer-responsibilities'
 const FORBIDDEN_TARGETS = new Set(['application', 'infrastructure', 'interface'])
 
 export function evaluateDomainLayerIsolation(root: string): EvaluatorResult {

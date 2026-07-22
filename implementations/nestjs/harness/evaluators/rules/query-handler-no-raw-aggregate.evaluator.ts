@@ -1,21 +1,21 @@
-// query-handler-no-raw-aggregate evaluator — Query handler/Controller는 반드시
-// 전용 Result/DTO 타입을 반환해야 하며, Domain Aggregate를 그대로 반환하지
-// 않는다 (guide: docs/architecture/api-response.md — 응답은 Result/ResponseBody
-// DTO로 감싸며, 범용 래퍼든 Aggregate 그대로든 그대로 노출하지 않는다).
+// The query-handler-no-raw-aggregate evaluator — a Query handler/Controller must always
+// return a dedicated Result/DTO type, never returning the Domain Aggregate as-is (guide:
+// docs/architecture/api-response.md — the response is wrapped in a Result/ResponseBody DTO,
+// never exposing a generic wrapper or the raw Aggregate as-is).
 //
-// Aggregate 이름 판별: 하드코딩 대신 `src/<bc>/domain/*-repository.ts`의
-// abstract `save<Noun>(<param>: <Type>)` 메서드 파라미터 타입에서 동적으로
-// 추출한다 — repository-naming 규칙이 이미 `save<Noun>` 시그니처를 강제하므로
-// 이 저장소 전체(Account/Card/Payment/Refund/Credential)와 새로 생성되는
-// 도메인(create-domain.js 스캐폴딩)에도 일반화된다.
+// Determining the Aggregate name: instead of hardcoding it, it's dynamically extracted from
+// the parameter type of the abstract `save<Noun>(<param>: <Type>)` method in
+// `src/<bc>/domain/*-repository.ts` — since the repository-naming rule already enforces the
+// `save<Noun>` signature, this generalizes across this entire repo (Account/Card/Payment/Refund/Credential)
+// and any newly created domain (via the create-domain.js scaffolding).
 //
-// Scope: application/query/**/*.ts (Query 인터페이스·QueryHandler)와
-// interface/**/*.ts (Controller)의 메서드 반환 타입 애노테이션
-// (`Promise<X>` / `Promise<X[]>`, `IQueryHandler<Q, R>`의 R)이 위에서 추출한
-// Aggregate 타입명과 정확히 일치하면 실패. Result/ResponseBody로 감싼 타입
-// (`Promise<GetAccountResult>`)은 이름이 다르므로 대상이 아니다.
+// Scope: fails if the method return-type annotation
+// (`Promise<X>` / `Promise<X[]>`, or the R in `IQueryHandler<Q, R>`) in
+// application/query/**/*.ts (the Query interface·QueryHandler) and interface/**/*.ts (the
+// Controller) exactly matches the Aggregate type name extracted above. A type wrapped in a
+// Result/ResponseBody (`Promise<GetAccountResult>`) has a different name, so it isn't a target.
 //
-// Applicability: Aggregate 이름을 하나도 못 찾거나 대상 파일이 없으면 skip.
+// Applicability: skipped if no Aggregate name can be found at all, or there are no target files.
 
 import * as path from 'node:path'
 import ts from 'typescript'
@@ -31,7 +31,7 @@ function isRepositoryDomainFile(filePath: string): boolean {
   return classifyLayer(filePath) === 'domain' && /-repository\.ts$/.test(normalized)
 }
 
-// abstract class 안의 abstract save<Noun>(param: Type) 메서드에서 Type을 추출한다.
+// Extracts Type from an abstract save<Noun>(param: Type) method inside an abstract class.
 function extractAggregateNamesFromRepository(filePath: string): string[] {
   const sf = readSourceFile(filePath)
   const names: string[] = []
@@ -49,8 +49,8 @@ function extractAggregateNamesFromRepository(filePath: string): string[] {
   return names
 }
 
-// 텍스트 형태의 타입 표현(`Foo`, `Foo[]`, `Foo | null`, `Array<Foo>`)에서
-// "bare" 개체명 후보들을 뽑는다 — 유니온/배열/제네릭 래퍼를 벗겨낸 각 조각.
+// Extracts "bare" entity-name candidates from a textual type expression (`Foo`, `Foo[]`,
+// `Foo | null`, `Array<Foo>`) — each piece after stripping the union/array/generic wrapper.
 function extractBareTypeCandidates(typeText: string): string[] {
   return typeText
     .split('|')
@@ -96,7 +96,7 @@ function inspectFile(filePath: string, aggregateNames: Set<string>): Violation[]
     if (ts.isClassDeclaration(node) && node.name) {
       const className = node.name.text
 
-      // implements IQueryHandler<Query, Result>의 두 번째 타입 인자도 검사한다.
+      // Also checks the second type argument of implements IQueryHandler<Query, Result>.
       for (const clause of node.heritageClauses ?? []) {
         if (clause.token !== ts.SyntaxKind.ImplementsKeyword) continue
         for (const t of clause.types) {

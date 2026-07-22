@@ -23,7 +23,7 @@ export function evaluateLocalDev(root: string): EvaluatorResult {
   let score = 15
   const content = fs.readFileSync(composefile, 'utf-8')
 
-  // postgres 서비스 정의
+  // A postgres service definition
   if (!/postgres/i.test(content)) {
     failures.push({
       ruleId: 'local-dev.postgres-service-missing',
@@ -34,7 +34,7 @@ export function evaluateLocalDev(root: string): EvaluatorResult {
     score -= penaltyFor('high')
   }
 
-  // healthcheck 정의
+  // A healthcheck definition
   if (!/healthcheck/i.test(content)) {
     failures.push({
       ruleId: 'local-dev.healthcheck-missing',
@@ -45,7 +45,7 @@ export function evaluateLocalDev(root: string): EvaluatorResult {
     score -= penaltyFor('medium')
   }
 
-  // .env.development 또는 .env.example 존재
+  // .env.development or .env.example exists
   const hasEnvFile =
     fs.existsSync(path.join(root, '.env.development')) ||
     fs.existsSync(path.join(root, '.env.example')) ||

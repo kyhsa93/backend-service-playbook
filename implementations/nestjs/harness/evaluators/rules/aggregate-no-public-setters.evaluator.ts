@@ -1,19 +1,19 @@
 // aggregate-no-public-setters evaluator — Aggregate/Entity/Value Object
-// 상태 변경은 반드시 이름 있는 도메인 메서드(deposit(), suspend() 등)를 통해서만
-// 이뤄진다 (guide: docs/architecture/layer-architecture.md, tactical-ddd.md).
-// 외부에서 직접 대입 가능한 public setter나 public mutable 필드가 있으면 이
-// 불변식이 우회될 수 있다.
+// State changes must always happen only through a named domain method (deposit(), suspend(),
+// etc.) (guide: docs/architecture/layer-architecture.md, tactical-ddd.md).
+// A public setter or public mutable field that can be assigned to directly from the outside
+// could bypass this invariant.
 //
-// Scope: src/<domain>/domain/*.ts의 모든 class(Aggregate, Entity, Value Object
-// 구분 없이 — 이 저장소의 실제 관례는 세 종류 모두 private/readonly 필드 +
-// getter만 노출하는 동일한 패턴을 쓴다. Domain Service(상태 없음)는 필드 자체가
-// 없어 자연히 대상에서 제외된다).
+// Scope: every class in src/<domain>/domain/*.ts (regardless of Aggregate, Entity, Value
+// Object — this repo's actual convention is that all three use the same pattern, exposing only
+// private/readonly fields + getters. A Domain Service (stateless) has no fields at all, so it's
+// naturally excluded).
 //
-// Rules (블록리스트):
-// - public `set x(...)` accessor 금지
-// - private/protected/readonly가 아닌 인스턴스 property 금지 (public mutable field)
+// Rules (a blocklist):
+// - a public `set x(...)` accessor is prohibited
+// - an instance property that isn't private/protected/readonly is prohibited (a public mutable field)
 //
-// Applicability: domain/ 클래스가 없으면 skip.
+// Applicability: skipped if there's no domain/ class.
 
 import * as path from 'node:path'
 import ts from 'typescript'
@@ -22,7 +22,7 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 import { classifyLayer, readSourceFile, walkTsFiles } from '../shared/ast-utils'
 
-const DOC_REF = 'docs/architecture/layer-architecture.md#domain-레이어-역할'
+const DOC_REF = 'docs/architecture/layer-architecture.md#domain-layer-responsibilities'
 
 interface Violation {
   ruleId: string

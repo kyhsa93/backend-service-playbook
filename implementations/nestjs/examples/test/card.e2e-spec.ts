@@ -69,10 +69,11 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
     return response.body.status
   }
 
-  // 이제 Outbox 드레인이 OutboxPoller(1초 주기)→SQS→OutboxConsumer(long polling)를
-  // 거치는 진짜 비동기 경로이므로, 같은 프로세스 안에서 즉시 끝나던 이전 폴링 예산
-  // (20회 * 100ms = 2초)으로는 부족할 수 있다 — poller tick + SQS 왕복 + consumer 처리
-  // 시간을 넉넉히 흡수하도록 150회 * 200ms(최대 30초)로 늘린다.
+  // Since Outbox draining now goes through the real asynchronous path
+  // OutboxPoller (1-second interval) → SQS → OutboxConsumer (long polling), the previous
+  // polling budget (20 * 100ms = 2 seconds), sized for finishing immediately in the same
+  // process, may not be enough — it's raised to 150 * 200ms (30 seconds max) to comfortably
+  // absorb the poller tick + SQS round trip + consumer processing time.
   async function waitForCardStatus(cardId: string, expected: string, ownerId = OWNER_ID): Promise<string> {
     for (let i = 0; i < 150; i++) {
       const status = await getCardStatus(cardId, ownerId)
@@ -113,8 +114,8 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
         CardModule
       ]
     })
-      // SES(기술 서비스)는 이 테스트 관심사가 아니므로 no-op으로 대체한다. 이렇게 하면
-      // 계좌 이벤트 핸들러가 이메일 실패로 throw하지 않고 Integration Event 전달만 검증한다.
+      // SES (a technical service) isn't this test's concern, so it's replaced with a no-op.
+      // This way, the account event handler doesn't throw on an email failure, and only Integration Event delivery is verified.
       .overrideProvider(NotificationService)
       .useValue({ sendEmail: async () => undefined })
       .compile()

@@ -3,9 +3,10 @@ import { AccountStatus } from '@/account/account-enum'
 import { Money } from '@/account/domain/money'
 import { TransferEligibilityService } from '@/account/domain/transfer-eligibility-service'
 
-// 이 판단(동일 계좌 여부 + 두 계좌 활성 상태 + 통화 일치 + 잔액 충분)은 어느 한쪽
-// Account 인스턴스만으로는 검증할 수 없다 — 두 Aggregate 인스턴스를 함께 로드해야만
-// 검증 가능한 규칙이라는 것이 TransferEligibilityService가 Domain Service인 이유다.
+// This judgment (same-account check + both accounts active + currency match + sufficient
+// balance) can't be verified from either Account instance alone — the fact that it's a rule
+// verifiable only by loading both Aggregate instances together is why
+// TransferEligibilityService is a Domain Service.
 describe('TransferEligibilityService', () => {
   const service = new TransferEligibilityService()
 

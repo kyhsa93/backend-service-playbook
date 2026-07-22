@@ -293,8 +293,8 @@ Check each item, and if a violation is found, fix it immediately before moving t
 [ ] Are there tests for Aggregate invariant violations (invalid input → verifying <Domain>Exception + ErrorCode)?
 [ ] Is there a test verifying Domain Event publication via pullDomainEvents()?
 [ ] Are test files placed in the standard Gradle source set (src/test/java, mirroring the same package)?
-[ ] Do test method names follow this repository's convention (a full Korean sentence, e.g. 정지된_계좌에_입금하면_예외를_던진다())?
-    → The English _when_..._then_ pattern is not enforced. A single Korean sentence revealing intent is sufficient
+[ ] Do test method names follow this repository's convention (a full descriptive sentence, e.g. throws_exception_when_depositing_to_a_suspended_account())?
+    → The terser _when_..._then_ pattern is not enforced. A single descriptive sentence revealing intent is sufficient
 [ ] Is exception verification done against the ErrorCode enum value, not a string message? (assertThatThrownBy + extracting)
 ```
 

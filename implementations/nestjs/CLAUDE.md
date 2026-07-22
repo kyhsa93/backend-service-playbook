@@ -1,133 +1,135 @@
-# NestJS 구현 가이드
+# NestJS Implementation Guide
 
-DDD 기반 NestJS TypeScript 서버 프로젝트의 설계/구현 가이드이다.
-`src/<domain>/{domain,application,interface,infrastructure}/` 4레이어 구조를 따른다.
+This is the design/implementation guide for a DDD-based NestJS TypeScript server project.
+It follows the 4-layer structure `src/<domain>/{domain,application,interface,infrastructure}/`.
 
-> **설계 원칙 (프레임워크 무관)** 은 루트의 [CLAUDE.md](../../CLAUDE.md) 및 `docs/architecture/`를 참조한다.
-> 이 문서는 NestJS 구현 상세에 집중한다.
+> For **framework-agnostic design principles**, see the root [CLAUDE.md](../../CLAUDE.md) and `docs/architecture/`.
+> This document focuses on NestJS implementation details.
 
-## 작업 시 참조할 문서
+## Documents to reference while working
 
-### 설계 / 프로세스
+### Design / Process
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
-| 설계, 요구사항 분석, 전술 설계, 설계 산출물 | `../../docs/development-process.md` (루트 공용 문서) |
-| 레거시 기능 수정, Vertical Slice 리팩토링 | `../../docs/development-process.md` (레거시 기능 수정 섹션, 루트 공용 문서) |
-| 설계 원칙 | `docs/architecture/design-principles.md` |
-| 전략적 설계, Subdomain, Bounded Context, Context Map, 유비쿼터스 언어 | `../../docs/architecture/strategic-ddd.md` (루트 공용 문서) |
-| 코딩 컨벤션, 파일명 규칙, import 규칙 | `docs/conventions.md` |
-| 새 도메인 추가, 도메인 모듈 템플릿, Order 예시 | `docs/reference.md` — `scripts/create-domain.js`로 `docs/reference.md` 템플릿을 실제 코드로 즉시 생성 가능(아래 "스캐폴딩" 참고) |
-| 작업 완료 후 자기 검토, 체크리스트 | `docs/checklist.md` |
-| Deprecated 엔드포인트 표시, @ApiOperation deprecated | `docs/conventions.md` (Deprecated 엔드포인트 섹션) |
+| Design, requirements analysis, tactical design, design deliverables | `../../docs/development-process.md` (root shared document) |
+| Modifying legacy features, Vertical Slice refactoring | `../../docs/development-process.md` (Modifying Legacy Features section, root shared document) |
+| Design principles | `docs/architecture/design-principles.md` |
+| Strategic design, Subdomain, Bounded Context, Context Map, Ubiquitous Language | `../../docs/architecture/strategic-ddd.md` (root shared document) |
+| Coding conventions, file naming rules, import rules | `docs/conventions.md` |
+| Adding a new domain, domain module template, Order example | `docs/reference.md` — `scripts/create-domain.js` can instantly generate the `docs/reference.md` template as real code (see "Scaffolding" below) |
+| Self-review after finishing work, checklist | `docs/checklist.md` |
+| Marking deprecated endpoints, @ApiOperation deprecated | `docs/conventions.md` (Deprecated Endpoints section) |
 
-### 레이어 · 구조
+### Layers / Structure
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
-| 프로젝트 구조, 디렉토리 레이아웃 | `docs/architecture/directory-structure.md` |
-| 레이어 역할, Domain / Application / Interface / Infrastructure | `docs/architecture/layer-architecture.md` |
-| Aggregate, Entity, Value Object, Domain Event 모델링 (Money, Account 예시) | `docs/architecture/tactical-ddd.md` |
-| Repository 인터페이스·구현, abstract class | `docs/architecture/repository-pattern.md` |
-| Domain Service, Technical Service (여러 Aggregate 조율, 기술 인프라 서비스 분리) | `../../docs/architecture/domain-service.md` (루트 공용 문서) |
-| 크로스 도메인 호출, Adapter 패턴 (NestJS 구현 상세) | `docs/architecture/cross-domain.md` |
-| BC 간 통신 패턴 선택, 동기 vs 비동기, ACL, Context Map | `../../docs/architecture/cross-domain-communication.md` (루트 공용 문서) |
-| Aggregate ID 생성·전파 | `docs/architecture/aggregate-id.md` |
-| 공유 모듈 구조, 공용 인프라 모듈 | `docs/architecture/shared-modules.md` |
-| 모듈 구성, @Module, providers, controllers, DI 바인딩 | `docs/architecture/module-pattern.md` |
+| Project structure, directory layout | `docs/architecture/directory-structure.md` |
+| Layer responsibilities, Domain / Application / Interface / Infrastructure | `docs/architecture/layer-architecture.md` |
+| Modeling Aggregate, Entity, Value Object, Domain Event (Money, Account examples) | `docs/architecture/tactical-ddd.md` |
+| Repository interface/implementation, abstract class | `docs/architecture/repository-pattern.md` |
+| Domain Service, Technical Service (coordinating multiple Aggregates, separating technical infrastructure services) | `../../docs/architecture/domain-service.md` (root shared document) |
+| Cross-domain calls, Adapter pattern (NestJS implementation details) | `docs/architecture/cross-domain.md` |
+| Choosing inter-BC communication patterns, sync vs async, ACL, Context Map | `../../docs/architecture/cross-domain-communication.md` (root shared document) |
+| Aggregate ID generation/propagation | `docs/architecture/aggregate-id.md` |
+| Shared module structure, common infrastructure modules | `docs/architecture/shared-modules.md` |
+| Module composition, @Module, providers, controllers, DI bindings | `docs/architecture/module-pattern.md` |
 
-### 데이터 / 트랜잭션
+### Data / Transactions
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
-| DB 쿼리, TypeORM 사용법, QueryBuilder | `docs/architecture/persistence.md` |
-| 트랜잭션 관리, TransactionManager, AsyncLocalStorage | `docs/architecture/persistence.md` |
-| 마이그레이션, synchronize, data-source | `docs/architecture/persistence.md` |
-| Domain Event, 이벤트 발행·수신, fan-out | `docs/architecture/domain-events.md` |
-| Integration Event, 크로스 BC 이벤트, 공개 계약, 이벤트 버저닝 | `docs/architecture/domain-events.md` |
-| Outbox 패턴, OutboxWriter, OutboxPoller, OutboxConsumer, EventHandlerRegistry | `docs/architecture/domain-events.md` |
+| DB queries, TypeORM usage, QueryBuilder | `docs/architecture/persistence.md` |
+| Transaction management, TransactionManager, AsyncLocalStorage | `docs/architecture/persistence.md` |
+| Migrations, synchronize, data-source | `docs/architecture/persistence.md` |
+| Domain Event, event publishing/subscription, fan-out | `docs/architecture/domain-events.md` |
+| Integration Event, cross-BC events, public contract, event versioning | `docs/architecture/domain-events.md` |
+| Outbox pattern, OutboxWriter, OutboxPoller, OutboxConsumer, EventHandlerRegistry | `docs/architecture/domain-events.md` |
 | @nestjs/cqrs, CommandBus, QueryBus, CommandHandler | `docs/architecture/cqrs-pattern.md` |
 
 ### API / Interface
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
-| REST 엔드포인트, Controller, DTO | `docs/architecture/module-pattern.md` |
-| Swagger 문서화, @ApiProperty, @ApiOperation, @ApiTags | `docs/architecture/module-pattern.md` |
-| Pagination, 공통 응답 포맷, page/take | `docs/architecture/api-response.md` |
+| REST endpoints, Controller, DTO | `docs/architecture/module-pattern.md` |
+| Swagger documentation, @ApiProperty, @ApiOperation, @ApiTags | `docs/architecture/module-pattern.md` |
+| Pagination, common response format, page/take | `docs/architecture/api-response.md` |
 | Rate Limiting, Throttler | `docs/architecture/rate-limiting.md` |
-| 인증, 인가, Auth Guard, JWT, Bearer 토큰 | `docs/architecture/authentication.md` |
+| Authentication, authorization, Auth Guard, JWT, Bearer token | `docs/architecture/authentication.md` |
 | Middleware / Guard / Interceptor / Pipe | `docs/architecture/cross-cutting-concerns.md` |
-| 에러 처리, generateErrorResponse, 에러 메시지 enum | `docs/architecture/error-handling.md` |
+| Error handling, generateErrorResponse, error message enum | `docs/architecture/error-handling.md` |
 
-### 운영 / 인프라
+### Operations / Infrastructure
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
-| 환경 설정, 환경 변수 검증, ConfigModule | `docs/architecture/config.md` |
-| Secret 관리, 비밀값 주입, secret-manager | `docs/architecture/secret-manager.md` |
-| 앱 부트스트랩, main.ts, NestFactory, Swagger 설정 | `docs/architecture/bootstrap.md` |
+| Environment configuration, environment variable validation, ConfigModule | `docs/architecture/config.md` |
+| Secret management, secret injection, secret-manager | `docs/architecture/secret-manager.md` |
+| App bootstrap, main.ts, NestFactory, Swagger setup | `docs/architecture/bootstrap.md` |
 | Graceful Shutdown, OnApplicationShutdown | `docs/architecture/graceful-shutdown.md` |
-| 로컬 개발 환경, docker-compose, LocalStack, Postgres | `docs/architecture/local-dev.md` |
-| Dockerfile, 멀티스테이지 빌드 | `docs/architecture/container.md` |
-| Logging, 로그 레벨, structured log | `docs/architecture/observability.md` |
-| 파일 업로드/다운로드, Presigned URL, S3 | `docs/architecture/file-storage.md` |
+| Local development environment, docker-compose, LocalStack, Postgres | `docs/architecture/local-dev.md` |
+| Dockerfile, multi-stage build | `docs/architecture/container.md` |
+| Logging, log levels, structured log | `docs/architecture/observability.md` |
+| File upload/download, Presigned URL, S3 | `docs/architecture/file-storage.md` |
 
-### 비동기 / Task Queue / Scheduling
+### Async / Task Queue / Scheduling
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
 | Scheduling, @Cron, @Interval, ScheduleModule | `docs/architecture/scheduling.md` |
 | Task Queue, @TaskConsumer, Task Controller, Outbox | `docs/architecture/scheduling.md` |
 | SQS, FIFO, MessageDeduplicationId, DLQ | `docs/architecture/scheduling.md` |
 
-### 품질 / 검증
+### Quality / Verification
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / Keyword | Document to read |
 |---------------|----------|
-| Testing, 단위 테스트, 통합 테스트, jest 설정 | `docs/architecture/testing.md` |
-| harness 실행, evaluator 규칙 목록 | `harness/README.md` |
-| harness 설계 원칙(비즈니스 도메인 지식이 아닌 아키텍처 규칙만 평가) | `../../docs/harness.md` (루트 공용 문서) |
+| Testing, unit tests, integration tests, jest configuration | `docs/architecture/testing.md` |
+| Running the harness, list of evaluator rules | `harness/README.md` |
+| Harness design principles (evaluates only architecture rules, not business domain knowledge) | `../../docs/harness.md` (root shared document) |
 
-## 구현 검증
+## Implementation Verification
 
 ```bash
 ./harness.sh <projectRoot>
 ```
 
-FAIL 항목의 `ruleId`와 메시지에 관련 문서 링크가 포함된다. 해당 문서를 열어 수정한다.
+FAIL items' `ruleId` and message include links to the relevant document. Open that document to fix the issue.
 
-## 스캐폴딩 — 새 도메인 생성기
+## Scaffolding — new domain generator
 
-`docs/reference.md`의 "실전 구현 템플릿"(Order 예시)을 실제 코드로 만들어 harness 전체
-(31개 evaluator)를 A등급(100/100)으로 통과시킨 뒤, 도메인 이름만 파라미터화해 재사용
-가능하게 일반화한 스크립트다. Aggregate(단일 상태 필드 + PENDING/ACTIVE/CANCELLED) +
-CQRS CommandHandler/QueryHandler(CommandBus/QueryBus) + 도메인 이벤트 1종 + Repository +
-Controller + DTO + Module까지 한 번에 생성한다. Outbox 드레인은 도메인별 Relay가 아니라
-공유 `outbox/` 모듈(OutboxPoller/OutboxConsumer)이 담당하므로, 생성된 Module의
-`onModuleInit()`이 자기 도메인 이벤트 핸들러를 공유 `EventHandlerRegistry`에 등록한다
-(`domain-events.md` 참고).
+This script turns the "Reference Implementation Template" (Order example) in `docs/reference.md`
+into real code that passes the entire harness (31 evaluators) at grade A (100/100), then
+generalizes it by parameterizing only the domain name so it can be reused. It generates, in
+one pass, the Aggregate (single state field + PENDING/ACTIVE/CANCELLED) + CQRS
+CommandHandler/QueryHandler (CommandBus/QueryBus) + one domain event + Repository +
+Controller + DTO + Module. Outbox draining is handled not by a per-domain Relay but by the
+shared `outbox/` module (OutboxPoller/OutboxConsumer), so the generated Module's
+`onModuleInit()` registers its own domain's event handlers with the shared
+`EventHandlerRegistry` (see `domain-events.md`).
 
 ```bash
-# 기본: ../examples/src/<domain>/ 아래 생성, app-module.ts는 건드리지 않고 붙여넣을
-# import/등록 스니펫만 출력
+# Default: generates under ../examples/src/<domain>/, leaves app-module.ts untouched and
+# only prints the import/registration snippet to paste in
 node scripts/create-domain.js Coupon
 
-# --wire를 주면 app-module.ts에 import/등록까지 자동 삽입
+# Passing --wire also auto-inserts the import/registration into app-module.ts
 node scripts/create-domain.js Coupon --wire
 
-# 다른 프로젝트(이 저장소를 템플릿으로 복제한 프로젝트 등)에 생성하려면 --out으로 지정
+# To generate into a different project (e.g. one cloned from this repo as a template), specify --out
 node scripts/create-domain.js Coupon --out /path/to/other-project/src --wire
 ```
 
-생성 직후 `./harness.sh <projectRoot>`로 검증한다 — Account/Card와 무관한 새 도메인
-(Coupon, LoyaltyCategory 등 다단어/불규칙 복수형 포함)으로 실제 테스트해 100/100을
-확인했다. 나이브 복수형 규칙(+s/+es/y→ies)을 쓰므로, 불규칙 복수형 도메인이면
-`find<Domains>`/`<domains>` 등 생성된 이름을 수동으로 다듬어야 할 수 있다. 생성되는
-것은 구조적 스켈레톤(빈 CRUD형 시작점)이라, 실제 비즈니스 규칙·에러 메시지·필드는
-생성 후 직접 채워 넣는다.
+Verify immediately after generation with `./harness.sh <projectRoot>` — this has been tested
+for real with new domains unrelated to Account/Card (including multi-word/irregular-plural
+names like Coupon, LoyaltyCategory), confirming 100/100. Because it uses a naive pluralization
+rule (+s/+es/y→ies), domains with irregular plurals may need the generated names — e.g.
+`find<Domains>`/`<domains>` — manually adjusted. What's generated is a structural skeleton
+(an empty CRUD-style starting point), so the actual business rules, error messages, and
+fields need to be filled in yourself after generation.
 
-## 예시 코드
+## Example Code
 
-`examples/` 디렉토리에 Account 도메인 전체 구현 예시가 있다.
-새 도메인 작업 시 이를 템플릿으로 사용한다 (도메인명만 변경).
+The `examples/` directory contains a full example implementation of the Account domain.
+Use it as a template when working on a new domain (just change the domain name).

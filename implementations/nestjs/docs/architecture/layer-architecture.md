@@ -1,32 +1,32 @@
-# 레이어 아키텍처
+# Layer Architecture
 
-### 의존 방향
+### Dependency Direction
 
 ```
-Interface (Controller)  →  Application (Service)  →  Domain (Aggregate, Repository 인터페이스)
+Interface (Controller)  →  Application (Service)  →  Domain (Aggregate, Repository interface)
                                                           ↑
-                                                   Infrastructure (Repository 구현체)
+                                                   Infrastructure (Repository implementation)
 ```
 
-- 상위 레이어는 하위 레이어에 의존할 수 있지만, 하위 레이어는 상위 레이어에 의존하지 않는다.
-- Domain 레이어는 어떤 레이어에도 의존하지 않는다 (프레임워크, ORM 포함).
-- Infrastructure 레이어는 Domain 레이어의 인터페이스를 구현한다 (의존성 역전).
+- A higher layer may depend on a lower layer, but a lower layer never depends on a higher layer.
+- The Domain layer doesn't depend on any layer (including the framework and the ORM).
+- The Infrastructure layer implements the Domain layer's interfaces (dependency inversion).
 
-### Domain 레이어 역할
+### Domain Layer Responsibilities
 
-도메인 레이어는 비즈니스 규칙의 핵심이다. 프레임워크에 의존하지 않는 순수 TypeScript로 작성한다.
+The domain layer is the core of the business rules. Written in pure TypeScript, with no framework dependency.
 
-> **프레임워크 무의존 원칙**: Domain 레이어에는 `@Injectable`, `@Module` 등 NestJS 데코레이터를 사용하지 않는다. 단, 에러 메시지 enum(`@/order/order-error-message`)은 import하여 참조한다.
-> Application 레이어(Query/Result/Command)는 `@ApiProperty`, `class-validator` 등 NestJS/Swagger 데코레이터를 사용할 수 있다.
+> **Framework independence principle**: don't use NestJS decorators like `@Injectable`, `@Module` in the Domain layer. The error message enum (`@/order/order-error-message`), however, is imported and referenced.
+> The Application layer (Query/Result/Command) may use NestJS/Swagger decorators like `@ApiProperty`, `class-validator`.
 
-1. **Aggregate Root** — 비즈니스 규칙과 불변식을 캡슐화한다. 상태 변경은 반드시 Aggregate Root의 메서드를 통해서만 수행한다.
-2. **Entity** — 고유 식별자를 가지며 생명주기가 있는 객체.
-3. **Value Object** — 불변 객체. 속성의 조합으로 동등성을 판단한다. `equals()` 메서드를 구현하여 속성 기반 비교를 지원한다.
-4. **Domain Event** — 도메인에서 발생한 중요한 사건을 나타내는 데이터 클래스.
-5. **Repository 인터페이스** — Aggregate Root 단위로 정의한 abstract class. 구현은 Infrastructure 레이어에 배치한다.
+1. **Aggregate Root** — encapsulates business rules and invariants. State changes must always go through the Aggregate Root's methods.
+2. **Entity** — an object with a unique identifier and a lifecycle.
+3. **Value Object** — an immutable object. Equality is judged by the combination of its attributes. Implements an `equals()` method to support attribute-based comparison.
+4. **Domain Event** — a data class representing a significant event that occurred in the domain.
+5. **Repository interface** — an abstract class defined at the Aggregate Root level. Its implementation lives in the Infrastructure layer.
 
 ```typescript
-// domain/order.ts — Aggregate Root 예시 (프레임워크 무의존)
+// domain/order.ts — an Aggregate Root example (framework-independent)
 import { OrderCancelled } from '@/order/domain/order-cancelled'
 import { OrderItem } from '@/order/domain/order-item'
 import { OrderErrorMessage } from '@/order/order-error-message'
@@ -63,7 +63,7 @@ export class Order {
 ```
 
 ```typescript
-// domain/order-repository.ts — Repository 인터페이스 (abstract class)
+// domain/order-repository.ts — the Repository interface (abstract class)
 export abstract class OrderRepository {
   abstract saveOrder(order: Order): Promise<void>
   abstract findOrders(query: {
@@ -77,24 +77,24 @@ export abstract class OrderRepository {
 }
 ```
 
-`domain/*.ts`가 (자기 도메인이든 다른 도메인이든) `application/`·`infrastructure/`·`interface/`를
-import하면 `harness/evaluators/rules/domain-layer-isolation.evaluator.ts`가
-`domain-layer-isolation.forbidden-import`로 잡아낸다. 상태 변경을 도메인 메서드로만 노출하지 않고
-public `set x(...)` accessor나 public 비-readonly 필드로 열어두면
-`harness/evaluators/rules/aggregate-no-public-setters.evaluator.ts`가 잡아낸다.
+If `domain/*.ts` (whether its own domain or another domain) imports `application/`·`infrastructure/`·`interface/`,
+`harness/evaluators/rules/domain-layer-isolation.evaluator.ts` catches it as
+`domain-layer-isolation.forbidden-import`. If state changes aren't exposed only through domain methods,
+but instead through a public `set x(...)` accessor or a public non-readonly field,
+`harness/evaluators/rules/aggregate-no-public-setters.evaluator.ts` catches it.
 
-### Application 레이어 역할 — 조율자
+### Application Layer Responsibilities — the Coordinator
 
-Application Service는 **Command Service**와 **Query Service**로 분리한다.
+The Application Service is split into a **Command Service** and a **Query Service**.
 
-#### Command Service (쓰기)
+#### Command Service (write)
 
-데이터를 변경하는 유스케이스를 담당한다. Repository를 주입받아 Aggregate를 조회/저장한다. 비즈니스 로직은 직접 수행하지 않고 Aggregate에 위임한다.
+Handles use cases that change data. Injects the Repository to fetch/save the Aggregate. It doesn't perform business logic itself, delegating it to the Aggregate.
 
-1. Repository에서 Aggregate 조회
-2. Aggregate의 도메인 메서드 호출 (비즈니스 로직은 Aggregate에 위임)
-3. Repository로 Aggregate 저장 (Repository 내부에서 Aggregate + outbox를 같은 트랜잭션으로 저장)
-4. 트랜잭션 관리
+1. Fetch the Aggregate from the Repository
+2. Call the Aggregate's domain method (business logic is delegated to the Aggregate)
+3. Save the Aggregate via the Repository (the Repository saves the Aggregate + outbox in the same transaction internally)
+4. Manage the transaction
 
 ```typescript
 // application/command/order-command-service.ts
@@ -122,7 +122,7 @@ export class OrderCommandService {
 
     order.cancel(command.reason)
 
-    // Repository.saveOrder() 내부에서 Aggregate + outbox를 함께 저장
+    // Repository.saveOrder() saves the Aggregate + outbox together internally
     await this.transactionManager.run(async () => {
       await this.paymentRepository.deletePaymentMethods(order.orderId)
       await this.orderRepository.saveOrder(order)
@@ -131,12 +131,12 @@ export class OrderCommandService {
 }
 ```
 
-#### Query Service (읽기)
+#### Query Service (read)
 
-데이터를 조회하는 유스케이스를 담당한다. Repository를 직접 사용하지 않고, application 레이어의 **Query 인터페이스**(abstract class)를 주입받는다. Query 구현체는 infrastructure 레이어에 배치한다.
+Handles use cases that read data. Instead of using the Repository directly, it injects the application layer's **Query interface** (abstract class). The Query implementation lives in the infrastructure layer.
 
 ```typescript
-// application/query/order-query.ts — Query 인터페이스 (abstract class)
+// application/query/order-query.ts — the Query interface (abstract class)
 export abstract class OrderQuery {
   abstract getOrders(query: GetOrdersQuery): Promise<GetOrdersResult>
   abstract getOrder(query: GetOrderQuery): Promise<GetOrderResult>
@@ -162,7 +162,7 @@ export class OrderQueryService {
 ```
 
 ```typescript
-// infrastructure/order-query-impl.ts — Query 구현체 (DB 직접 접근)
+// infrastructure/order-query-impl.ts — the Query implementation (direct DB access)
 import { Injectable } from '@nestjs/common'
 
 import { OrderQuery } from '@/order/application/query/order-query'
@@ -176,12 +176,12 @@ export class OrderQueryImpl extends OrderQuery {
   }
 
   public async getOrders(query: GetOrdersQuery): Promise<GetOrdersResult> {
-    // DB에서 직접 조회 — Aggregate 복원 불필요, 읽기에 최적화된 쿼리 사용
+    // query the DB directly — no need to reconstruct the Aggregate, use a query optimized for reading
   }
 }
 ```
 
-#### Module DI 구성
+#### Module DI Configuration
 
 ```typescript
 // order-module.ts
@@ -193,18 +193,18 @@ providers: [
 ]
 ```
 
-#### Command/Query 분리 원칙
+#### Command/Query Separation Principles
 
-- **Repository**는 Command Service에서만 사용한다. Aggregate 단위의 조회/저장을 담당한다.
-- **Query 인터페이스**는 Query Service에서만 사용한다. 읽기에 최적화된 조회를 담당하며, Aggregate 복원이 불필요하다.
-- Controller에서는 쓰기 요청은 Command Service를, 읽기 요청은 Query Service를 호출한다.
-- `@nestjs/cqrs` 모듈을 사용하여 Command/Query Bus 기반으로 전환할 수 있다. 상세 패턴은 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+- The **Repository** is used only in the Command Service. It handles fetching/saving at the Aggregate level.
+- The **Query interface** is used only in the Query Service. It handles read-optimized lookups, with no need to reconstruct the Aggregate.
+- In the Controller, write requests call the Command Service and read requests call the Query Service.
+- The `@nestjs/cqrs` module can be used to switch to a Command/Query Bus-based approach. See [cqrs-pattern.md](cqrs-pattern.md) for the detailed pattern.
 
-### Infrastructure 레이어 역할
+### Infrastructure Layer Responsibilities
 
-1. **Repository 구현체** — Domain 레이어의 abstract class를 구현한다. ORM 클라이언트를 직접 사용하는 유일한 레이어.
-2. **이벤트 발행** — 메시지 큐 연동, 이벤트 직렬화.
-3. **외부 시스템 어댑터** — Anticorruption Layer. 외부 API 응답을 도메인 모델로 변환.
+1. **Repository implementation** — implements the Domain layer's abstract class. The only layer that uses the ORM client directly.
+2. **Event publishing** — message queue integration, event serialization.
+3. **External system adapters** — the Anticorruption Layer. Converts external API responses into the domain model.
 
 ```typescript
 // infrastructure/order-repository-impl.ts
@@ -250,7 +250,7 @@ export class OrderRepositoryImpl extends OrderRepository {
 
     const [rows, count] = await qb.getManyAndCount()
 
-    // DB 엔티티 → 도메인 Aggregate로 변환
+    // convert DB entities → domain Aggregates
     return {
       orders: rows.map((row) => new Order({
         orderId: row.orderId,
@@ -275,7 +275,7 @@ export class OrderRepositoryImpl extends OrderRepository {
         quantity: i.quantity
       }))
     })
-    // 도메인 이벤트가 있으면 outbox에 함께 저장 (같은 트랜잭션)
+    // save to the outbox together if there are domain events (same transaction)
     if (order.domainEvents.length > 0) {
       await this.outboxWriter.saveAll(order.domainEvents)
       order.clearEvents()
@@ -284,30 +284,30 @@ export class OrderRepositoryImpl extends OrderRepository {
 
   public async deleteOrder(orderId: string): Promise<void> {
     const manager = this.transactionManager.getManager()
-    // cascade: 하위 엔티티 먼저 삭제
+    // cascade: delete child entities first
     await manager.softDelete(OrderItemEntity, { orderId })
     await manager.softDelete(OrderEntity, { orderId })
   }
 }
 ```
 
-### Interface 레이어 역할
+### Interface Layer Responsibilities
 
-Interface 레이어는 REST API 진입점을 제공한다.
+The Interface layer provides the REST API entry points.
 
 #### Controller
 
-1. 요청 수신
-2. Command Service 또는 Query Service 호출
-3. `.catch()` 로 에러 캐치 → HTTP 예외로 변환
+1. Receive the request
+2. Call the Command Service or the Query Service
+3. Catch errors with `.catch()` → convert into an HTTP exception
 
-Controller는 Application Service를 NestJS DI로 주입받아 호출하고, `infrastructure/`
-구현체(Repository impl 등)를 직접 import하지 않는다. domain-bearing BC(`domain/`이 있는
-도메인)의 `interface/**/*.ts`가 `infrastructure/`를 직접 import하면
-`harness/evaluators/rules/interface-no-infrastructure.evaluator.ts`가
-`interface-no-infrastructure.forbidden-import`로 잡아낸다 — `common/`처럼 `domain/`이 없는
-횡단 관심사 기술 모듈(`HealthController`가 `ShutdownState`를 직접 참조하는 것 등,
-[graceful-shutdown.md](graceful-shutdown.md) 참고)은 대상이 아니다.
+The Controller injects the Application Service via NestJS DI and calls it, and never directly
+imports an `infrastructure/` implementation (a Repository impl, etc.). If `interface/**/*.ts` of a
+domain-bearing BC (a domain with `domain/`) directly imports `infrastructure/`,
+`harness/evaluators/rules/interface-no-infrastructure.evaluator.ts` catches it as
+`interface-no-infrastructure.forbidden-import` — a cross-cutting-concern technical module with no
+`domain/`, like `common/` (e.g. `HealthController` directly referencing `ShutdownState`,
+see [graceful-shutdown.md](graceful-shutdown.md)), isn't a target.
 
 ```typescript
 // interface/order-controller.ts
@@ -342,12 +342,12 @@ export class OrderController {
 
 ### Interface DTO
 
-#### REST DTO = Application 객체의 thin wrapper
+#### REST DTO = a thin wrapper around an Application object
 
-Interface DTO는 Application 레이어의 Query/Result/Command를 `extends`로 감싼다. 별도 로직이나 데코레이터를 추가하지 않는다.
+An Interface DTO wraps the Application layer's Query/Result/Command via `extends`. It adds no separate logic or decorators.
 
 ```typescript
-// application/query/get-order-query.ts — 단건 조회 Query 객체
+// application/query/get-order-query.ts — a single-record lookup Query object
 import { ApiProperty } from '@nestjs/swagger'
 import { IsString, MinLength } from 'class-validator'
 

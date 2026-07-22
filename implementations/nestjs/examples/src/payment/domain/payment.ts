@@ -6,10 +6,11 @@ import { PaymentCompleted } from '@/payment/domain/payment-completed'
 
 export type PaymentDomainEvent = PaymentCompleted | PaymentCancelled
 
-// Payment Aggregate. cardId로 어느 카드를 썼는지, accountId로 어느 계좌가 차감 대상인지
-// 참조만 하고(BC 경계를 넘는 FK 없음) 카드·계좌의 실제 상태·잔액 판단은 Application
-// 레이어가 CardAdapter/AccountAdapter(ACL)로 동기 조회해 이 Aggregate를 생성하기 전에
-// 끝낸다 — Payment 자신은 "카드가 활성인지", "잔액이 충분한지"를 알지 못한다.
+// The Payment Aggregate. It only references which card was used (cardId) and which account
+// is the debit target (accountId) — no FK crossing the BC boundary — and the actual
+// status·balance judgment for the card·account is finished by the Application layer via a
+// synchronous CardAdapter/AccountAdapter (ACL) lookup before this Aggregate is even created.
+// Payment itself never knows "is the card active" or "is the balance sufficient."
 export class Payment {
   public readonly paymentId: string
   public readonly cardId: string
@@ -41,8 +42,9 @@ export class Payment {
   get status(): PaymentStatus { return this._status }
   get domainEvents(): PaymentDomainEvent[] { return [...this._events] }
 
-  // 카드 활성 여부·계좌 잔액 충분 여부는 이미 Application 레이어의 동기 Adapter 호출로
-  // 판정이 끝난 뒤 호출되는 순수 생성 팩토리다 — PENDING으로만 만들고 이벤트는 없다.
+  // A pure creation factory called only after the Application layer's synchronous Adapter call
+  // has already judged the card's active status·the account's sufficient balance — it only
+  // creates as PENDING, with no event.
   public static create(params: { cardId: string; accountId: string; ownerId: string; amount: number }): Payment {
     return new Payment({
       cardId: params.cardId,
@@ -68,10 +70,10 @@ export class Payment {
     }))
   }
 
-  // 현재 CreatePaymentCommand는 통과 여부를 생성 이전에 동기 Adapter로 판정하므로
-  // Payment Aggregate가 PENDING으로 만들어진 뒤 실패하는 경로는 없다. 다만 향후
-  // 결제 게이트웨이 콜백처럼 비동기로 실패가 도착하는 시나리오를 대비해 상태 전이
-  // 자체는 Aggregate가 갖고 있는다(Domain 단위 테스트로 검증).
+  // Since the current CreatePaymentCommand judges pass/fail via a synchronous Adapter before
+  // creation, there's no path today where a Payment Aggregate fails after being created as
+  // PENDING. Still, in case a future scenario has failure arrive asynchronously (like a
+  // payment gateway callback), the Aggregate itself keeps the state transition (verified by a Domain unit test).
   public fail(_reason: string): void {
     if (this._status !== PaymentStatus.PENDING) {
       throw new Error(PaymentErrorMessage['결제 대기 상태에서만 실패 처리할 수 있습니다.'])
@@ -79,7 +81,7 @@ export class Payment {
     this._status = PaymentStatus.FAILED
   }
 
-  // 결제취소는 이미 확정된(COMPLETED) 결제를 되돌리는 것이므로 COMPLETED에서만 가능하다.
+  // A payment cancellation reverses an already-finalized (COMPLETED) payment, so it's only possible from COMPLETED.
   public cancel(reason: string): void {
     if (this._status !== PaymentStatus.COMPLETED) {
       throw new Error(PaymentErrorMessage['완료된 결제만 취소할 수 있습니다.'])

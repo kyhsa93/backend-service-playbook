@@ -38,11 +38,11 @@ import { RefundRepositoryImpl } from '@/payment/infrastructure/refund-repository
 import { PaymentController } from '@/payment/interface/payment-controller'
 import { PaymentTaskController } from '@/payment/interface/payment-task-controller'
 
-// Payment BC는 Card BC의 application/adapter/·infrastructure/*-adapter-impl.ts·
-// interface/integration-event/ 구조를 템플릿으로 재사용한 3번째 도메인이다.
-// Card와 달리 Payment는 외부 BC의 Integration Event를 구독하지 않는다(발행만 한다) —
-// payment.completed.v1 / payment.cancelled.v1 / refund.approved.v1을 구독해 반응하는
-// 쪽은 Account BC다(account/interface/integration-event/ 참고).
+// Payment BC is the 3rd domain, reusing Card BC's application/adapter/·
+// infrastructure/*-adapter-impl.ts·interface/integration-event/ structure as a template.
+// Unlike Card, Payment never subscribes to an external BC's Integration Event (it only
+// publishes) — the side subscribing to and reacting to payment.completed.v1 /
+// payment.cancelled.v1 / refund.approved.v1 is Account BC (see account/interface/integration-event/).
 @Module({
   imports: [
     CqrsModule,
@@ -57,30 +57,30 @@ import { PaymentTaskController } from '@/payment/interface/payment-task-controll
     CreatePaymentCommandHandler,
     CancelPaymentCommandHandler,
     RequestRefundCommandHandler,
-    // payment.send-card-statements Task가 위임하는 Command Handler
+    // The Command Handler the payment.send-card-statements Task delegates to
     SendCardStatementsCommandHandler,
     // Query Handlers
     GetPaymentQueryHandler,
     GetPaymentsQueryHandler,
     GetRefundsQueryHandler,
-    // Domain Event Handlers (Payment/Refund → Integration Event 변환)
+    // Domain Event Handlers (converting Payment/Refund → Integration Event)
     PaymentCompletedHandler,
     PaymentCancelledHandler,
     RefundApprovedHandler,
-    // Task 입력 어댑터 — @TaskConsumer 메서드
+    // The Task input adapter — @TaskConsumer methods
     PaymentTaskController,
-    // Cron → TaskQueue.enqueue만 수행 (Infrastructure 레이어)
+    // Only Cron → TaskQueue.enqueue (Infrastructure layer)
     CardStatementScheduler,
     // Repositories
     { provide: PaymentRepository, useClass: PaymentRepositoryImpl },
     { provide: RefundRepository, useClass: RefundRepositoryImpl },
-    // Query 구현체
+    // The Query implementation
     { provide: PaymentQuery, useClass: PaymentQueryImpl },
     { provide: RefundQuery, useClass: RefundQueryImpl },
-    // 크로스 도메인 Adapter (Payment → Card, Payment → Account 동기 조회)
+    // Cross-domain Adapters (Payment → Card, Payment → Account synchronous lookup)
     { provide: CardAdapter, useClass: CardAdapterImpl },
     { provide: AccountAdapter, useClass: AccountAdapterImpl },
-    // Technical Service — SES 카드 사용내역 발송 (Payment 전용, Account의 NotificationService와 별개)
+    // A Technical Service — SES card-statement sending (Payment-only, separate from Account's NotificationService)
     { provide: CardStatementNotificationService, useClass: CardStatementNotificationServiceImpl },
     PaymentSesClientProvider
   ]
@@ -93,9 +93,9 @@ export class PaymentModule implements OnModuleInit {
     private readonly refundApprovedHandler: RefundApprovedHandler
   ) {}
 
-  // Account BC의 account-module.ts와 동일한 패턴 — 자기 도메인이 발행하는 Domain
-  // Event를 OutboxConsumer가 SQS에서 수신했을 때 호출할 핸들러로 공유
-  // EventHandlerRegistry에 등록한다 — 도메인별 전용 Relay 파일은 두지 않는다.
+  // The same pattern as Account BC's account-module.ts — registers this domain's own
+  // published Domain Events as handlers to be called when OutboxConsumer receives them from
+  // SQS, into the shared EventHandlerRegistry — no per-domain dedicated Relay file is kept.
   onModuleInit(): void {
     this.registry.register('PaymentCompleted', (payload) => this.paymentCompletedHandler.handle(payload as never))
     this.registry.register('PaymentCancelled', (payload) => this.paymentCancelledHandler.handle(payload as never))

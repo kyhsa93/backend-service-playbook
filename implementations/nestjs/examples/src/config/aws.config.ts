@@ -2,13 +2,13 @@ export function getAwsRegion(): string {
   return process.env.AWS_REGION ?? 'us-east-1'
 }
 
-// LocalStack 사용 시 이 값을 설정한다. 실제 AWS에서는 비워 둔다.
+// Set this value when using LocalStack. Leave it unset for real AWS.
 export function getAwsEndpoint(): string | undefined {
   return process.env.AWS_ENDPOINT_URL
 }
 
-// 운영(production)에서는 undefined를 반환해 AWS SDK 기본 자격증명 체인(IAM 역할)을
-// 쓰게 한다. 그 외(로컬/테스트, LocalStack)만 정적 test/test 자격증명을 명시한다.
+// In production, returns undefined so the AWS SDK's default credential chain (IAM role) is
+// used. Only elsewhere (local/test, LocalStack) does it specify static test/test credentials.
 export function getAwsCredentials(): { accessKeyId: string; secretAccessKey: string } | undefined {
   if (process.env.NODE_ENV === 'production') return undefined
   return {
@@ -17,16 +17,17 @@ export function getAwsCredentials(): { accessKeyId: string; secretAccessKey: str
   }
 }
 
-// OutboxPoller가 발행하고 OutboxConsumer가 수신하는 공유 Domain/Integration Event SQS 큐.
+// The shared Domain/Integration Event SQS queue that OutboxPoller publishes to and OutboxConsumer receives from.
 export function getDomainEventQueueUrl(): string {
   const url = process.env.SQS_DOMAIN_EVENT_QUEUE_URL
   if (!url) throw new Error('SQS_DOMAIN_EVENT_QUEUE_URL 환경 변수가 설정되지 않았습니다.')
   return url
 }
 
-// TaskOutboxRelay가 발행하고 TaskQueueConsumer가 수신하는 공유 Task Queue(SQS FIFO).
-// Domain Event 큐와 별도 큐다 — "명령(Task): X를 수행하라" vs "사실(Domain Event): X가
-// 일어났다"는 소비 모델이 다른 개념이라 섞지 않는다(docs/architecture/scheduling.md#task-vs-domain-event).
+// The shared Task Queue (SQS FIFO) that TaskOutboxRelay publishes to and TaskQueueConsumer
+// receives from. A queue separate from the Domain Event queue — "a command (Task): perform X"
+// vs. "a fact (Domain Event): X happened" are different consumption-model concepts and aren't
+// mixed (see docs/architecture/scheduling.md, the Task vs Domain Event section).
 export function getTaskQueueUrl(): string {
   const url = process.env.SQS_TASK_QUEUE_URL
   if (!url) throw new Error('SQS_TASK_QUEUE_URL 환경 변수가 설정되지 않았습니다.')

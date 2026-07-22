@@ -1,9 +1,9 @@
-# 앱 부트스트랩
+# App Bootstrap
 
-> 아래는 실제 `src/main.ts`다.
+> Below is the actual `src/main.ts`.
 
 ```typescript
-// src/main.ts — 실제 코드
+// src/main.ts — actual code
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
@@ -20,7 +20,7 @@ async function bootstrap(): Promise<void> {
       : ['error', 'warn', 'log', 'debug', 'verbose']
   })
 
-  // 전역 ValidationPipe — class-validator 자동 적용, 실패 시 code 포함 응답 구성
+  // the global ValidationPipe — auto-applies class-validator, constructs a response with a code on failure
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     transform: true,
@@ -30,10 +30,10 @@ async function bootstrap(): Promise<void> {
     }
   }))
 
-  // 요청 로깅 인터셉터
+  // the request-logging interceptor
   app.useGlobalInterceptors(new LoggingInterceptor())
 
-  // 전역 예외 필터 — HttpException이 아닌 미처리 예외도 표준 에러 응답 형식으로 변환
+  // the global exception filter — converts even unhandled exceptions that aren't an HttpException into the standard error response format
   app.useGlobalFilters(new HttpExceptionFilter())
 
   // CORS
@@ -53,7 +53,7 @@ async function bootstrap(): Promise<void> {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig)
   SwaggerModule.setup('docs', app, swaggerDocument)
 
-  // Graceful Shutdown — SIGTERM/SIGINT 수신 시 Nest lifecycle 훅(onModuleDestroy 등) 실행
+  // Graceful Shutdown — runs the Nest lifecycle hooks (onModuleDestroy, etc.) on receiving SIGTERM/SIGINT
   app.enableShutdownHooks()
 
   await app.listen(getPort())
@@ -62,18 +62,18 @@ async function bootstrap(): Promise<void> {
 bootstrap()
 ```
 
-### 설정 요약
+### Configuration Summary
 
-| 설정 | 역할 |
+| Setting | Role |
 |------|------|
-| `logger` 옵션 | `isProduction()`이면 debug/verbose 로그 제외 |
-| `ValidationPipe` | class-validator 데코레이터 자동 적용, `exceptionFactory`로 `VALIDATION_FAILED` code 포함 응답 구성 ([error-handling.md](error-handling.md) 참고) |
-| `LoggingInterceptor` | 요청 메서드/경로/처리 시간 로깅 |
-| `HttpExceptionFilter` | 전역 예외 필터. `HttpException`은 표준 형식으로 직렬화하고, 그 외 미처리 예외(plain `Error` 등)도 스택트레이스를 그대로 노출하지 않고 `{ statusCode: 500, code: 'INTERNAL_ERROR', message, error }` 형태로 변환한다 ([error-handling.md](error-handling.md) 참고) |
-| `enableCors(...)` | `config/app.config.ts`의 `getCorsOrigins()`가 운영(`isProduction()`)에서는 `CORS_ORIGIN` 환경 변수(콤마 구분)로 허용 출처를 제한하고, 그 외 환경에서는 전체 허용(`true`)을 반환 |
-| `DocumentBuilder` + `SwaggerModule` | `/docs` 경로에 OpenAPI 문서 노출. `addBearerAuth(..., 'token')`은 컨트롤러의 `@ApiBearerAuth('token')`과 짝을 맞춘 이름이다 |
-| `enableShutdownHooks()` | SIGTERM/SIGINT 수신 시 `OnApplicationShutdown` 등 Nest 라이프사이클 훅이 동작하도록 활성화 ([graceful-shutdown.md](graceful-shutdown.md) 참고) |
+| the `logger` option | excludes debug/verbose logs when `isProduction()` |
+| `ValidationPipe` | auto-applies class-validator decorators; `exceptionFactory` constructs a response with the `VALIDATION_FAILED` code (see [error-handling.md](error-handling.md)) |
+| `LoggingInterceptor` | logs the request method/path/processing time |
+| `HttpExceptionFilter` | the global exception filter. Serializes an `HttpException` in the standard format, and also converts any other unhandled exception (a plain `Error`, etc.) into `{ statusCode: 500, code: 'INTERNAL_ERROR', message, error }` instead of exposing the raw stack trace (see [error-handling.md](error-handling.md)) |
+| `enableCors(...)` | `config/app.config.ts`'s `getCorsOrigins()` restricts allowed origins via the `CORS_ORIGIN` environment variable (comma-separated) in production (`isProduction()`), and returns allow-all (`true`) in every other environment |
+| `DocumentBuilder` + `SwaggerModule` | exposes the OpenAPI document at the `/docs` path. `addBearerAuth(..., 'token')` uses a name paired with the controller's `@ApiBearerAuth('token')` |
+| `enableShutdownHooks()` | activates Nest lifecycle hooks like `OnApplicationShutdown` on receiving SIGTERM/SIGINT (see [graceful-shutdown.md](graceful-shutdown.md)) |
 
-### 확장 지점
+### Extension Points
 
-- **Graceful Shutdown 세부 패턴**: `enableShutdownHooks()`와 `HealthController`/`ShutdownState`가 함께 적용되어 있다([graceful-shutdown.md](graceful-shutdown.md) 참고) — `BeforeApplicationShutdown` 훅에서 readiness를 먼저 실패로 전환한 뒤 `/health/live`·`/health/ready`로 노출한다. Redis·메시지 큐 연결 정리는 이 저장소에 Redis·메시지 큐가 없어 대상이 아니다. TypeORM 연결은 Nest/TypeORM이 자체적으로 정리하므로 별도 처리가 불필요하다.
+- **Graceful Shutdown details**: `enableShutdownHooks()` is applied together with `HealthController`/`ShutdownState` (see [graceful-shutdown.md](graceful-shutdown.md)) — the `BeforeApplicationShutdown` hook first flips readiness to failing, then exposes it via `/health/live`·`/health/ready`. Cleaning up Redis·message-queue connections isn't applicable since this repo has no Redis or message queue. The TypeORM connection is cleaned up by Nest/TypeORM itself, so no separate handling is needed.

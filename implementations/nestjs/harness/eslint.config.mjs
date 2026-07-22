@@ -5,8 +5,8 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    // tests/fixtures/**는 harness 자체 테스트용 "의도적으로 잘못된" 코드 샘플이다.
-    // lint 대상에서 제외한다 — 고쳐서는 안 된다.
+    // tests/fixtures/** are "intentionally incorrect" code samples for the harness's own tests.
+    // Excluded from linting — they must never be fixed.
     ignores: ['node_modules/**', 'tests/fixtures/**']
   },
   eslint.configs.recommended,

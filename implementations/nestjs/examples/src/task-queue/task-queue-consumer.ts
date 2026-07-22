@@ -6,13 +6,12 @@ import { SQS_CLIENT } from '@/outbox/sqs-client-provider'
 
 import { TaskConsumerRegistry } from './task-consumer-registry'
 
-// outbox/outbox-consumer.ts와 같은 모양의 SQS long-polling 백그라운드 루프다. 도메인
-// 지식이 없는 공용 Infrastructure 컴포넌트로, taskType(MessageAttributes)으로
-// TaskConsumerRegistry에 위임한다.
+// An SQS long-polling background loop shaped like outbox/outbox-consumer.ts. A shared
+// Infrastructure component with no domain knowledge, delegating to TaskConsumerRegistry by taskType (MessageAttributes).
 //
-// 메시지 삭제는 핸들러 성공 시에만 — 예외가 발생하면 삭제하지 않아 visibility timeout
-// 경과 후 자동 재수신되고, maxReceiveCount(3)를 넘기면 DLQ로 이동한다
-// (docs/architecture/scheduling.md#taskqueueconsumer--sqs-폴링).
+// Message deletion only on handler success — if an exception occurs, it's not deleted, so it's
+// automatically re-received after the visibility timeout elapses, moving to the DLQ once
+// maxReceiveCount (3) is exceeded (see docs/architecture/scheduling.md, the TaskQueueConsumer SQS Polling section).
 @Injectable()
 export class TaskQueueConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TaskQueueConsumer.name)
@@ -68,7 +67,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnModuleDestroy {
         task_type: taskType,
         error
       })
-      // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
+      // Don't delete — it's re-received and retried after the visibility timeout.
     }
   }
 }

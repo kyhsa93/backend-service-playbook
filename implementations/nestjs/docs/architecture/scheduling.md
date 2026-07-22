@@ -1,81 +1,81 @@
-# Scheduling / Batch 작업
+# Scheduling / Batch Jobs
 
-> **이 문서 성격**: 여기 기술한 `@TaskConsumer` + `TaskQueue` + `TaskOutbox` 전체 구조는 **한 가지 구현 예시**다. 본 가이드가 강제하는 유일한 방식이 아니며, 팀 상황에 따라 더 단순하게 시작해도 된다. 단순 `@Cron` 하나·단일 SQS consumer 한 개·외부 큐 서비스(BullMQ, SideKiq 등) 사용도 모두 유효한 선택지. 이 문서는 **대규모·다중 인스턴스·트랜잭션 정합성이 중요한 케이스의 참고 설계**로 읽는다.
+> **What kind of document this is**: The full `@TaskConsumer` + `TaskQueue` + `TaskOutbox` structure described here is **one implementation example**. It is not the only approach this guide mandates — depending on your team's situation, you may start with something much simpler. A single plain `@Cron`, one simple SQS consumer, or an external queue service (BullMQ, Sidekiq, etc.) are all valid choices. Read this document as a **reference design for cases where scale, multiple instances, and transactional consistency matter**.
 >
-> **최소 요구**는 다음 세 가지만:
-> - Scheduler는 **Infrastructure 레이어**에 둔다 (`@Cron` 데코레이터 위치).
-> - Task 핸들러(어떤 형태든)는 **멱등**하다.
-> - SQS를 쓴다면 **FIFO + DLQ**를 기본으로 한다.
+> The **minimum requirements** are just these three:
+> - Put the Scheduler in the **Infrastructure layer** (where the `@Cron` decorator lives).
+> - Make the Task handler (whatever form it takes) **idempotent**.
+> - If you use SQS, default to **FIFO + DLQ**.
 >
-> 아래 상세 구조는 이 최소 요구 위에 쌓은 **완성된 구현 예시**로 참고한다.
+> Treat the detailed structure below as a **complete implementation example** built on top of these minimum requirements.
 
-주기적 작업과 배치 처리는 **AWS SQS 기반 Task Queue** 방식으로 구현한다. Scheduler가 Cron 주기로 SQS에 Task 메시지를 적재(produce)하고, **Task Controller의 메서드가 `@TaskConsumer` 데코레이터로 구독**하여 해당 Task가 도착하면 메서드가 실행되는 구조다. Task Controller는 Command Service를 주입받아 Task에 해당하는 Command를 실행한다.
+Periodic jobs and batch processing are implemented using an **AWS SQS-based Task Queue**. The Scheduler produces Task messages onto SQS on a Cron cycle, and **a Task Controller method subscribes via the `@TaskConsumer` decorator**, so the method runs when that Task arrives. The Task Controller injects the Command Service and executes the Command corresponding to the Task.
 
 ```
-[Scheduler/CommandService] --(DB insert)--> [task_outbox 테이블]
-                                                  ↓ (Cron 폴링)
+[Scheduler/CommandService] --(DB insert)--> [task_outbox table]
+                                                  ↓ (Cron polling)
                                           [TaskOutboxRelay] --(SendMessage)--> [SQS]
                                                                                   ↓
                                                                         [TaskQueueConsumer]
-                                                                                  ↓ taskType 라우팅
+                                                                                  ↓ taskType routing
                                                           [TaskController.method @TaskConsumer('...')]
                                                                                   ↓
                                                                     [CommandService.xxxCommand(...)]
 ```
 
-적재(enqueue)는 항상 **`task_outbox` 테이블에 row를 쓰는 것**으로 정의되며, `TaskOutboxRelay`가 짧은 주기로 폴링하여 SQS에 발행한다. 이 패턴으로 Command 트랜잭션과 Task 적재가 동일 트랜잭션으로 묶여 dual-write 문제가 제거된다 (Domain Event의 Outbox 패턴과 동일한 이유).
+Enqueuing is always defined as **writing a row to the `task_outbox` table**, and `TaskOutboxRelay` polls it on a short cycle and publishes to SQS. This pattern binds the Command transaction and the Task enqueue into the same transaction, eliminating the dual-write problem (the same reasoning as the Domain Event's Outbox pattern).
 
-`@nestjs/schedule`의 `@Cron`을 Application Service에 직접 걸지 않는 이유는 다음과 같다.
+The reason `@nestjs/schedule`'s `@Cron` is not attached directly to the Application Service is as follows.
 
-- **다중 인스턴스 안전성**: SQS FIFO 큐의 `MessageDeduplicationId`로 같은 시점에 여러 인스턴스가 적재해도 5분 중복 제거 윈도우 내에서는 1건만 큐에 들어간다.
-- **재시도 내장**: Consumer가 예외로 메시지를 삭제하지 않으면 `VisibilityTimeout` 경과 후 자동 재수신된다. `maxReceiveCount` 초과 시 DLQ로 이동한다.
-- **관찰 가능성**: CloudWatch 지표(`ApproximateNumberOfMessages`, `ApproximateAgeOfOldestMessage`)와 DLQ로 상태를 추적한다.
-- **백프레셔**: 작업량이 폭증해도 큐에 쌓여 Consumer 처리 속도에 맞춰 소비된다.
+- **Safety with multiple instances**: with SQS FIFO queue's `MessageDeduplicationId`, even if several instances enqueue at the same moment, only one message actually enters the queue within the 5-minute deduplication window.
+- **Built-in retry**: if the Consumer doesn't delete the message due to an exception, it's automatically re-received after the `VisibilityTimeout` elapses. Once `maxReceiveCount` is exceeded, it moves to the DLQ.
+- **Observability**: track status via CloudWatch metrics (`ApproximateNumberOfMessages`, `ApproximateAgeOfOldestMessage`) and the DLQ.
+- **Backpressure**: even if workload spikes, messages queue up and get consumed at the Consumer's processing rate.
 
-기존 Outbox → SQS 구조와 동일한 SDK/인프라를 재사용한다. [domain-events.md](./domain-events.md)의 `EventConsumer`/`EventHandlerRegistry` 패턴과 같은 결의 구조다.
+It reuses the same SDK/infrastructure as the existing Outbox → SQS structure. It's the same kind of structure as the `EventConsumer`/`EventHandlerRegistry` pattern in [domain-events.md](./domain-events.md).
 
-## 목차
+## Table of Contents
 
-- [Task vs Domain Event](#task-vs-domain-event) — 언제 Task, 언제 Event를 쓸지
-- [설치](#설치) · [AppModule 설정](#appmodule-설정) · [큐 구성](#큐-구성) · [레이어 배치](#레이어-배치)
-- 구성 요소 (구현 순서):
-  - [`@TaskConsumer` 데코레이터](#taskconsumer-데코레이터)
-  - [`TaskConsumerRegistry` — 라우팅](#taskconsumerregistry--라우팅)
-  - [`TaskQueueConsumer` — SQS 폴링](#taskqueueconsumer--sqs-폴링)
-  - [`TaskController` — Command 실행 (Interface 레이어)](#taskcontroller--taskconsumer-메서드로-command-실행-interface-레이어)
-  - [`TaskQueue` — Outbox 기반 구현](#taskqueue--outbox-기반-구현)
+- [Task vs Domain Event](#task-vs-domain-event) — when to use a Task, when to use an Event
+- [Installation](#installation) · [AppModule Configuration](#appmodule-configuration) · [Queue Configuration](#queue-configuration) · [Layer Placement](#layer-placement)
+- Components (in implementation order):
+  - [`@TaskConsumer` Decorator](#taskconsumer-decorator)
+  - [`TaskConsumerRegistry` — Routing](#taskconsumerregistry--routing)
+  - [`TaskQueueConsumer` — SQS Polling](#taskqueueconsumer--sqs-polling)
+  - [`TaskController` — Executing Commands (Interface Layer)](#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer)
+  - [`TaskQueue` — Outbox-based Implementation](#taskqueue--outbox-based-implementation)
   - [Scheduler — Cron → TaskQueue](#scheduler--cron--taskqueue)
-- [모듈 등록](#모듈-등록) · [Ad-hoc Task 적재](#ad-hoc-task-적재-트랜잭션-안에서)
-- 운영 / 정책: [MessageGroupId 전략](#messagegroupid-전략) · [멱등성](#멱등성) · [payload 검증](#payload-검증) · [긴 Task와 VisibilityTimeout 하트비트](#긴-task와-visibilitytimeout-하트비트)
-- [Graceful Shutdown](#graceful-shutdown) · [DLQ 모니터링](#dlq-모니터링) · [Testing](#testing) · [Interval / Timeout](#interval--timeout) · [원칙](#원칙)
+- [Module Registration](#module-registration) · [Ad-hoc Task Enqueuing](#ad-hoc-task-enqueuing-inside-a-transaction)
+- Operations / policy: [MessageGroupId Strategy](#messagegroupid-strategy) · [Idempotency](#idempotency) · [Payload Validation](#payload-validation) · [Long-running Tasks and VisibilityTimeout Heartbeats](#long-running-tasks-and-visibilitytimeout-heartbeats)
+- [Graceful Shutdown](#graceful-shutdown) · [DLQ Monitoring](#dlq-monitoring) · [Testing](#testing) · [Interval / Timeout](#interval--timeout) · [Principles](#principles)
 
 ## Task vs Domain Event
 
-둘 다 SQS를 거치지만 **용도와 소비 모델이 다르다**. 혼동을 피하려면 아래 기준으로 선택한다.
+Both pass through SQS, but **their purpose and consumption model differ**. To avoid confusion, choose based on the criteria below.
 
 | | **Task Queue** | **Domain Event** |
 |---|---|---|
-| 목적 | 필요에 따라 구현하여 사용하는 비동기 작업 (배치, Cron, 분리된 후속 처리) | Command 실행의 **결과(사실)** 를 수신하여 처리 |
-| 의미 단위 | 명령(imperative): "X를 수행하라" | 사실(declarative past): "X가 일어났다" |
-| 핸들러 수 | **1:1** — `taskType`당 정확히 하나의 Task Controller 메서드 | **1:N** — 하나의 이벤트를 여러 EventHandler가 fan-out 구독 |
-| 생산자 | Scheduler (Cron) / Application Service가 `TaskQueue.enqueue` 호출 → `task_outbox` 저장 → `TaskOutboxRelay`가 SQS로 발행 | Aggregate가 `domainEvents`에 push → Repository가 `outbox` 테이블에 저장 → `OutboxPoller`가 SQS로 발행 |
-| 예시 | "만료 주문 정리 배치 실행", "알림 재전송", "리포트 생성" | `OrderCancelled` 이벤트에 대해 환불·재고 복원·알림 발송 각 핸들러 구동 |
-| 실패 처리 | visibility timeout 재시도 → DLQ | 동일 (각 핸들러 단위로) |
-| 가이드 | 본 문서 | [domain-events.md](./domain-events.md) |
+| Purpose | An asynchronous job implemented and used as needed (batch, Cron, decoupled follow-up processing) | Receives and processes the **result (fact)** of executing a Command |
+| Semantic unit | Imperative: "perform X" | Declarative past tense: "X happened" |
+| Number of handlers | **1:1** — exactly one Task Controller method per `taskType` | **1:N** — one event is subscribed to by multiple EventHandlers fanning out |
+| Producer | Scheduler (Cron) / Application Service calls `TaskQueue.enqueue` → saved to `task_outbox` → `TaskOutboxRelay` publishes to SQS | The Aggregate pushes to `domainEvents` → the Repository saves it to the `outbox` table → `OutboxPoller` publishes to SQS |
+| Example | "Run the expired-order cleanup batch", "resend a notification", "generate a report" | For an `OrderCancelled` event, drive each handler for refund, restocking, and notification |
+| Failure handling | visibility timeout retry → DLQ | Same (per handler) |
+| Guide | This document | [domain-events.md](./domain-events.md) |
 
-핵심 판단 기준: **"이건 Command의 결과를 관찰하는 것인가?"** 그렇다면 Domain Event. 그게 아니라 "이 작업을 비동기로 실행하고 싶다"면 Task.
+Core deciding question: **"Is this observing the result of a Command?"** If so, it's a Domain Event. If instead it's "I want to run this job asynchronously," it's a Task.
 
-## 설치
+## Installation
 
 ```bash
 npm install @aws-sdk/client-sqs @nestjs/schedule
 ```
 
-로컬에서는 LocalStack으로 SQS를 제공한다. 큐 생성 방법은 [local-dev.md](./local-dev.md)를 참고한다.
+Locally, SQS is provided via LocalStack. See [local-dev.md](./local-dev.md) for how to create queues.
 
-## AppModule 설정
+## AppModule Configuration
 
-`@Cron` 데코레이터가 동작하려면 `ScheduleModule.forRoot()`가 반드시 등록되어야 한다. `TaskQueueModule`은 `@Global()`이지만 활성화를 위해 AppModule의 `imports`에 한 번은 포함되어야 한다.
+For the `@Cron` decorator to work, `ScheduleModule.forRoot()` must be registered. `TaskQueueModule` is `@Global()`, but it must still be included once in AppModule's `imports` to activate it.
 
 ```typescript
 // src/app-module.ts
@@ -87,83 +87,83 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),   // @Cron 활성화 — 없으면 Scheduler/Relay가 조용히 작동 안 함
-    TaskQueueModule,            // @Global 이지만 imports 한 번은 필수
+    ScheduleModule.forRoot(),   // enables @Cron — without it, the Scheduler/Relay silently doesn't run
+    TaskQueueModule,            // @Global, but importing it once is still required
     OrderModule
   ]
 })
 export class AppModule {}
 ```
 
-## 큐 구성
+## Queue Configuration
 
-### 단일 Task 큐 정책
+### Single Task queue policy
 
-**모든 도메인의 Task는 하나의 SQS FIFO 큐를 공유한다.** 도메인별로 큐를 분리하지 않는다.
+**Tasks from all domains share a single SQS FIFO queue.** Queues are not split per domain.
 
-- **운영 단순화**: 큐/DLQ/알람 세트가 하나이므로 인프라·IaC·모니터링이 간결하다.
-- **단일 DLQ 가시성**: 실패가 한 곳에 모여 추적과 redrive가 쉽다.
-- **현재 규모의 격리 이점 미미**: 처리량이 수천 msg/s를 넘거나 특정 도메인 실패가 다른 도메인 처리를 차단하는 명확한 사례가 생기기 전에는 분리 이점보다 복잡도 비용이 크다.
+- **Simplified operations**: a single set of queue/DLQ/alarms keeps infrastructure, IaC, and monitoring simple.
+- **Single-DLQ visibility**: failures gather in one place, making tracking and redrive easy.
+- **Minimal isolation benefit at the current scale**: until throughput exceeds thousands of msg/s, or there's a clear case where one domain's failures block another domain's processing, the complexity cost of splitting outweighs the isolation benefit.
 
-라우팅은 큐가 아니라 **`taskType` 문자열**로 수행된다. 도메인별 Task Controller가 `@TaskConsumer('<domain>.<action>')` 네이밍으로 taskType을 선언하면 하나의 큐에서 자연스럽게 분기된다.
+Routing is performed not by queue but by the **`taskType` string**. When each domain's Task Controller declares its taskType with the `@TaskConsumer('<domain>.<action>')` naming convention, branching happens naturally within a single queue.
 
-### 큐 타입
+### Queue types
 
-| 큐 타입 | 선택 기준 | 핵심 속성 |
+| Queue type | Selection criteria | Key properties |
 |---------|----------|-----------|
-| **FIFO (`*.fifo`)** — **기본** | 중복 적재 방지, 그룹 단위 순차성 보장 필요 (대부분의 경우) | `MessageGroupId`, `MessageDeduplicationId` |
-| **Standard** | 극단적 고처리량(수천 msg/s)이 필요하고 순서·중복 제거를 앱 레벨에서 해결할 때 | at-least-once, 순서 무관 |
+| **FIFO (`*.fifo`)** — **default** | Need to prevent duplicate enqueuing and guarantee per-group ordering (most cases) | `MessageGroupId`, `MessageDeduplicationId` |
+| **Standard** | Need extremely high throughput (thousands of msg/s) and handle ordering/dedup at the app level | at-least-once, order not guaranteed |
 
-**DLQ는 필수.** `RedrivePolicy`의 `maxReceiveCount`를 초과한 메시지를 DLQ로 이동시켜 독성 메시지의 무한 재시도를 막는다.
+**A DLQ is mandatory.** Messages exceeding `RedrivePolicy`'s `maxReceiveCount` move to the DLQ, preventing infinite retries of poison messages.
 
 ```
 SQS_TASK_QUEUE_URL=https://.../app-task.fifo
 SQS_TASK_DLQ_URL=https://.../app-task-dlq.fifo
 ```
 
-## 레이어 배치
+## Layer Placement
 
-**Task Controller는 Interface 레이어에 배치한다.** HTTP Controller와 동일하게 외부 입력(SQS 메시지)을 받아 Application Service에 위임하는 **입력 어댑터**이기 때문이다. REST 진입점이 `interface/`에 있는 것과 같은 이유로, 메시지 진입점도 `interface/`에 둔다.
+**Place the Task Controller in the Interface layer.** Just like the HTTP Controller, it's an **input adapter** that receives external input (an SQS message) and delegates to the Application Service. For the same reason the REST entry point lives in `interface/`, the message entry point also lives in `interface/`.
 
-공용 Task Queue 인프라(SQS 폴링/적재, 데코레이터, 레지스트리)는 도메인에 속하지 않으므로 top-level 공유 모듈에 둔다.
+The shared Task Queue infrastructure (SQS polling/enqueuing, decorator, registry) doesn't belong to any domain, so it lives in a top-level shared module.
 
 ```
 src/
   common/
-    is-unique-violation.ts                   # Postgres unique 위반 판별 헬퍼
-  task-queue/                                # 공유 Task Queue 인프라
-    task-queue-module.ts                     # @Global 모듈
-    task-queue.ts                            # TaskQueue 인터페이스 (abstract class)
-    task-queue-outbox.ts                     # Outbox 기반 TaskQueue 구현체
-    task-outbox.entity.ts                    # task_outbox 테이블 Entity
-    task-outbox-relay.ts                     # task_outbox → SQS 발행 (Cron 폴링)
-    task-execution-log.ts                    # TaskExecutionLog 인터페이스 (abstract)
-    task-execution-log-db.ts                 # DB 기반 구현체
-    task-execution-log.entity.ts             # task_execution_log 테이블 Entity
+    is-unique-violation.ts                   # helper to detect a Postgres unique violation
+  task-queue/                                # shared Task Queue infrastructure
+    task-queue-module.ts                     # @Global module
+    task-queue.ts                            # TaskQueue interface (abstract class)
+    task-queue-outbox.ts                     # Outbox-based TaskQueue implementation
+    task-outbox.entity.ts                    # task_outbox table Entity
+    task-outbox-relay.ts                     # publishes task_outbox → SQS (Cron polling)
+    task-execution-log.ts                    # TaskExecutionLog interface (abstract)
+    task-execution-log-db.ts                 # DB-based implementation
+    task-execution-log.entity.ts             # task_execution_log table Entity
     task-execution-log-cleaner.ts            # ledger cleanup (Cron)
-    task-consumer.decorator.ts               # @TaskConsumer 데코레이터
-    task-consumer-registry.ts                # taskType → 핸들러 라우팅
-    task-queue-consumer.ts                   # SQS 폴링 → registry.dispatch
+    task-consumer.decorator.ts               # @TaskConsumer decorator
+    task-consumer-registry.ts                # taskType → handler routing
+    task-queue-consumer.ts                   # SQS polling → registry.dispatch
   order/
     interface/
-      order-controller.ts                    # HTTP 입력 어댑터
-      order-task-controller.ts               # Task 입력 어댑터 — @TaskConsumer 메서드
+      order-controller.ts                    # HTTP input adapter
+      order-task-controller.ts               # Task input adapter — @TaskConsumer methods
     infrastructure/
       order-cleanup-scheduler.ts             # @Cron → TaskQueue.enqueue
     application/
       command/
-        order-command-service.ts             # 비즈니스 로직 — TaskQueue 인터페이스만 주입
+        order-command-service.ts             # business logic — injects only the TaskQueue interface
 ```
 
-## `@TaskConsumer` 데코레이터
+## `@TaskConsumer` Decorator
 
-메서드에 Task 타입을 바인딩한다. 전역 Map에 핸들러를 등록해두고, 런타임에 `TaskConsumerRegistry`가 `taskType`으로 조회한다.
+Binds a Task type to a method. Handlers are registered in a global Map, and at runtime `TaskConsumerRegistry` looks them up by `taskType`.
 
 ```typescript
 // src/task-queue/task-consumer.decorator.ts
 export type HeartbeatConfig = {
-  intervalMs: number      // ChangeMessageVisibility 호출 주기
-  extendSeconds: number   // 매 호출마다 연장할 시간
+  intervalMs: number      // how often ChangeMessageVisibility is called
+  extendSeconds: number   // how long to extend on each call
 }
 
 type HandlerEntry = {
@@ -199,14 +199,14 @@ export function getTaskHandler(taskType: string): HandlerEntry | undefined {
 }
 ```
 
-- **`heartbeat` 옵션(선택)**: 장기 Task에 한해 `{ intervalMs, extendSeconds }`를 지정하면 `TaskQueueConsumer`가 처리 중 주기적으로 `ChangeMessageVisibility`를 호출한다. 자세한 내용은 하단 [긴 Task와 VisibilityTimeout 하트비트](#긴-task와-visibilitytimeout-하트비트)를 참조한다.
-- **`idempotencyKey` 옵션(선택)**: payload에서 고유 키를 뽑는 함수를 지정하면 `TaskConsumerRegistry`가 dispatch 전에 **`TaskExecutionLog`로 중복 실행을 프레임워크 레벨에서 차단**한다. Task Controller는 ledger 코드를 작성하지 않아도 된다. 자세한 내용은 [멱등성](#멱등성) 참조.
-- **taskType은 전역 유일**: Task는 정확히 하나의 핸들러가 실행되어야 한다. 중복 등록은 부트스트랩 시점에 바로 실패시킨다.
-- **등록 시점은 class 평가 시점(import 시점)**: 데코레이터는 파일이 import되어 class 본문이 평가될 때 `TASK_HANDLER_MAP`에 엔트리를 추가한다. 따라서 **Task Controller는 반드시 어떤 모듈의 `providers`에 등록되어야** 모듈 로딩 과정에서 파일이 import되어 데코레이터가 발화한다. providers에 없으면 class 파일 자체가 로드되지 않아 `TaskQueueConsumer`가 해당 `taskType`을 찾지 못한다.
+- **`heartbeat` option (optional)**: for long-running Tasks only, specifying `{ intervalMs, extendSeconds }` makes `TaskQueueConsumer` periodically call `ChangeMessageVisibility` while processing. See [Long-running Tasks and VisibilityTimeout Heartbeats](#long-running-tasks-and-visibilitytimeout-heartbeats) below for details.
+- **`idempotencyKey` option (optional)**: specifying a function that extracts a unique key from the payload makes `TaskConsumerRegistry` **block duplicate execution at the framework level using `TaskExecutionLog`** before dispatch. The Task Controller doesn't need to write any ledger code. See [Idempotency](#idempotency) for details.
+- **`taskType` is globally unique**: exactly one handler must run per Task. Duplicate registration fails immediately at bootstrap.
+- **Registration happens at class evaluation time (import time)**: the decorator adds an entry to `TASK_HANDLER_MAP` when the file is imported and the class body is evaluated. So the **Task Controller must be registered in some module's `providers`** so that the file gets imported during module loading and the decorator fires. If it's not in providers, the class file itself never loads, and `TaskQueueConsumer` won't be able to find that `taskType`.
 
-## `TaskConsumerRegistry` — 라우팅
+## `TaskConsumerRegistry` — Routing
 
-`taskType`에 매핑된 Task Controller의 메서드를 찾아 호출한다.
+Finds and calls the Task Controller method mapped to a `taskType`.
 
 ```typescript
 // src/task-queue/task-consumer-registry.ts
@@ -235,7 +235,7 @@ export class TaskConsumerRegistry {
       throw new Error(`No @TaskConsumer registered for taskType: ${taskType}`)
     }
 
-    // 프레임워크 레벨 멱등성 (idempotencyKey 옵션이 있을 때만)
+    // Framework-level idempotency (only when the idempotencyKey option is set)
     if (entry.idempotencyKey) {
       const key = entry.idempotencyKey(payload)
       const result = await this.executionLog.recordOnce(key, taskType)
@@ -245,7 +245,7 @@ export class TaskConsumerRegistry {
           task_type: taskType,
           idempotency_key: key
         })
-        return   // 정상 반환 → Consumer가 메시지 삭제
+        return   // return normally → the Consumer deletes the message
       }
     }
 
@@ -255,12 +255,12 @@ export class TaskConsumerRegistry {
 }
 ```
 
-- **ledger 기록은 dispatch 직전(record-before-execute)**: idempotencyKey가 지정된 Task는 **핸들러 호출 전에** ledger에 insert 시도. 이후 핸들러가 실패해도 ledger는 남으므로, 재시도 시 `already-executed`로 스킵된다. 핸들러 성공/실패와 ledger의 원자성이 필요하면 [강한 원자성 (Level 3)](#강한-원자성-level-3--드문-케이스)을 참조.
-- **ledger 사용이 불필요한 Task**: 본질적으로 멱등한 Task(예: `cleanup-expired` 배치는 "만료 상태만 archive"이므로 여러 번 실행해도 결과 동일)는 `idempotencyKey`를 지정하지 않는다. Ledger 테이블 비용을 아낀다.
+- **The ledger is recorded right before dispatch (record-before-execute)**: for a Task with `idempotencyKey` set, an insert into the ledger is attempted **before the handler is called**. Even if the handler subsequently fails, the ledger entry remains, so a retry gets skipped as `already-executed`. If you need atomicity between handler success/failure and the ledger, see [Strong Atomicity (Level 3)](#strong-atomicity-level-3--a-rare-case).
+- **Tasks that don't need the ledger**: a Task that is inherently idempotent (e.g. the `cleanup-expired` batch, which only "archives records that are already in an expired state," so running it multiple times produces the same result) doesn't need `idempotencyKey`. This saves the ledger-table cost.
 
-## `TaskQueueConsumer` — SQS 폴링
+## `TaskQueueConsumer` — SQS Polling
 
-SQS에서 메시지를 수신하고 `TaskConsumerRegistry`에 위임한다. 도메인 지식이 없는 공용 Infrastructure 컴포넌트다.
+Receives messages from SQS and delegates to `TaskConsumerRegistry`. A shared Infrastructure component with no domain knowledge.
 
 ```typescript
 // src/task-queue/task-queue-consumer.ts
@@ -293,7 +293,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
 
   public async onApplicationShutdown(): Promise<void> {
     this.running = false
-    await this.pollPromise  // in-flight Task 처리 완료까지 대기
+    await this.pollPromise  // wait for in-flight Task processing to finish
   }
 
   private async poll(): Promise<void> {
@@ -301,9 +301,9 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
       try {
         const result = await this.sqs.send(new ReceiveMessageCommand({
           QueueUrl: this.queueUrl,
-          MaxNumberOfMessages: 10,  // 배치 수신으로 처리량 향상 (최대 10)
-          WaitTimeSeconds: 20,      // long polling — SQS API 호출 비용 절감
-          VisibilityTimeout: 300    // 가장 긴 Task의 최대 처리 시간보다 넉넉히
+          MaxNumberOfMessages: 10,  // batch receive to improve throughput (max 10)
+          WaitTimeSeconds: 20,      // long polling — reduces SQS API call cost
+          VisibilityTimeout: 300    // set generously above the longest Task's max processing time
         }))
 
         for (const message of result.Messages ?? []) {
@@ -332,7 +332,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
               message_id: messageId,
               error
             })
-            // 삭제하지 않음 → 재수신, maxReceiveCount 초과 시 DLQ
+            // don't delete → gets re-received; moves to DLQ once maxReceiveCount is exceeded
           }
         }
       } catch (error) {
@@ -364,15 +364,15 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
 }
 ```
 
-- **메시지 삭제는 성공 시에만**: 예외가 발생하면 삭제하지 않아 visibility timeout 경과 후 자동 재수신 → `maxReceiveCount` 초과 시 DLQ로 이동한다.
-- **Graceful Shutdown은 `pollPromise`를 await**: `onApplicationShutdown`이 루프 종료를 대기하지 않으면 NestJS가 앱을 종료시켜 in-flight Task가 중간에 끊긴다. 위 구현처럼 `pollPromise`를 저장하고 shutdown에서 await해야 한다. 종료 지연이 염려되면 장기 Task는 하단 [긴 Task와 VisibilityTimeout 하트비트](#긴-task와-visibilitytimeout-하트비트) 패턴을 적용한다.
-- **`MaxNumberOfMessages`는 10까지 배치 수신 가능**: 1로 두면 메시지당 왕복 1회라 처리량이 낮다. 병렬성은 인스턴스 수 × batch 크기로 조절한다.
-- `VisibilityTimeout`은 가장 긴 Task의 최대 처리 시간보다 넉넉히 설정한다.
-- **Task Controller는 NestJS 기본 Singleton 스코프**: 현재 Consumer 구현은 배치 내 메시지를 `for` 루프로 순차 처리하므로 동일 Task Controller 인스턴스가 한 번에 하나의 메시지만 다룬다. 향후 병렬 dispatch로 전환할 경우를 대비해 **Task Controller 메서드에 공유 가변 상태(instance field 누적, static 변수 등)를 두지 않는다**. HTTP Controller의 stateless 원칙과 동일.
+- **Message deletion only on success**: if an exception occurs, the message isn't deleted, so it's automatically re-received after the visibility timeout elapses → moves to the DLQ once `maxReceiveCount` is exceeded.
+- **Graceful Shutdown awaits `pollPromise`**: if `onApplicationShutdown` doesn't wait for the loop to end, NestJS will terminate the app and cut off an in-flight Task midway. As in the implementation above, you must store `pollPromise` and await it during shutdown. If shutdown delay is a concern, apply the [Long-running Tasks and VisibilityTimeout Heartbeats](#long-running-tasks-and-visibilitytimeout-heartbeats) pattern below for long-running Tasks.
+- **`MaxNumberOfMessages` can batch-receive up to 10**: leaving it at 1 means one round trip per message, which is low throughput. Parallelism is tuned via instance count × batch size.
+- Set `VisibilityTimeout` generously above the longest Task's max processing time.
+- **The Task Controller is in NestJS's default Singleton scope**: the current Consumer implementation processes messages within a batch sequentially in a `for` loop, so a single Task Controller instance handles only one message at a time. To prepare for a future switch to parallel dispatch, **don't keep shared mutable state (accumulating instance fields, static variables, etc.) in Task Controller methods**. Same statelessness principle as the HTTP Controller.
 
-## `TaskController` — `@TaskConsumer` 메서드로 Command 실행 (Interface 레이어)
+## `TaskController` — Executing Commands with `@TaskConsumer` Methods (Interface Layer)
 
-**Task Controller는 Interface 레이어의 입력 어댑터**다. HTTP Controller가 `@Get`/`@Post`로 HTTP 진입점을 선언하듯, Task Controller는 `@TaskConsumer('taskType')`로 Task 진입점을 선언한다. CommandService를 주입받아 Task에 해당하는 Command를 실행한다.
+**The Task Controller is an input adapter in the Interface layer.** Just as the HTTP Controller declares HTTP entry points with `@Get`/`@Post`, the Task Controller declares Task entry points with `@TaskConsumer('taskType')`. It injects the CommandService and executes the Command corresponding to the Task.
 
 ```typescript
 // src/order/interface/order-task-controller.ts
@@ -388,14 +388,14 @@ export class OrderTaskController {
 
   constructor(private readonly orderCommandService: OrderCommandService) {}
 
-  // 본질적으로 멱등한 Task — idempotencyKey 불필요
+  // an inherently idempotent Task — no idempotencyKey needed
   @TaskConsumer('order.cleanup-expired')
   public async cleanupExpired(): Promise<void> {
     const count = await this.orderCommandService.cleanupExpiredOrders()
     this.logger.log({ message: '만료 주문 정리', cleaned_count: count })
   }
 
-  // 엔티티 단위 중복 실행 방어가 필요한 Task — idempotencyKey 지정
+  // a Task that needs protection against per-entity duplicate execution — idempotencyKey specified
   @TaskConsumer('order.archive', {
     idempotencyKey: (payload: ArchiveOrderCommand) => `order.archive-${payload.orderId}`
   })
@@ -405,47 +405,47 @@ export class OrderTaskController {
 }
 ```
 
-- **로직 없이 Command 위임**: Task Controller는 `CommandService`의 Command 메서드를 호출할 뿐이다. 조건 분기나 비즈니스 규칙을 넣지 않는다. HTTP Controller와 동일한 역할.
-- **멱등성은 데코레이터 옵션으로**: Task Controller 안에서 ledger 코드를 직접 쓰지 않는다. `@TaskConsumer`의 `idempotencyKey` 옵션을 지정하면 `TaskConsumerRegistry`가 dispatch 전에 `TaskExecutionLog`로 중복을 차단한다.
-- **DB 직접 주입 금지**: Task Controller에 `DataSource`/`Repository<Entity>`를 주입하지 않는다. Interface 레이어는 CommandService만 의존한다. 공용 관심사(ledger, heartbeat)는 task-queue 프레임워크가 처리한다.
-- **payload 타입은 메서드 시그니처에 명시**: 호출 계약을 명확히 한다. 필요 시 class-validator로 런타임 검증을 추가한다. (하단 [payload 검증](#payload-검증) 참조)
-- **Interface DTO 규칙 적용**: payload 타입을 Application의 Command 클래스로 그대로 쓰거나, 필요 시 Interface DTO로 `extends`하여 thin wrapper로 둔다. (HTTP RequestBody와 동일한 방식 — [layer-architecture.md](./layer-architecture.md#interface-dto) 참조)
-- **에러 처리는 HTTP Controller와 다름**: HTTP Controller의 `.catch(error => { logger.error; throw generateErrorResponse(...) })` 패턴을 쓰지 **않는다**. Task Controller는 **예외를 그대로 위로 던진다** — `TaskQueueConsumer`가 catch하여 메시지를 삭제하지 않고, visibility timeout 후 재수신/재시도 → DLQ 경로를 밟는다. `.catch`로 감싸면 예외가 삼켜져 메시지가 정상 삭제되고 실패가 소실된다.
-- **`@nestjs/cqrs` 방식 도메인에서는 `CommandBus`를 직접 주입한다**: 위 예시는 Service 방식 도메인 기준이다. 도메인이 이미 CommandHandler 기반([cqrs-pattern.md](cqrs-pattern.md) 참고)이라면, Task Controller도 HTTP Controller와 동일하게 `CommandBus`를 주입해 `commandBus.execute(new XxxCommand(...))`로 호출한다 — 오직 Task Controller만을 위해 CommandBus에 위임하기만 하는 `CommandService` 래퍼를 별도로 만들지 않는다. 한 도메인 안에서 두 방식을 섞지 않는다.
+- **Delegates the Command with no logic**: the Task Controller only calls the CommandService's Command method. Don't put conditional branching or business rules here. Same role as the HTTP Controller.
+- **Idempotency is a decorator option**: don't write ledger code directly inside the Task Controller. Specifying `@TaskConsumer`'s `idempotencyKey` option makes `TaskConsumerRegistry` block duplicates via `TaskExecutionLog` before dispatch.
+- **No direct DB injection**: don't inject `DataSource`/`Repository<Entity>` into the Task Controller. The Interface layer depends only on the CommandService. Shared concerns (ledger, heartbeat) are handled by the task-queue framework.
+- **The payload type is stated in the method signature**: makes the calling contract clear. Add runtime validation with class-validator if needed (see [Payload Validation](#payload-validation) below).
+- **Apply the Interface DTO rule**: use the Application's Command class directly as the payload type, or `extends` it as an Interface DTO thin wrapper if needed. (Same approach as the HTTP RequestBody — see [layer-architecture.md](./layer-architecture.md#interface-dto).)
+- **Error handling differs from the HTTP Controller**: the HTTP Controller's `.catch(error => { logger.error; throw generateErrorResponse(...) })` pattern is **not** used. The Task Controller **throws the exception upward as-is** — `TaskQueueConsumer` catches it and doesn't delete the message, following the visibility-timeout re-receive/retry → DLQ path. Wrapping it in `.catch` swallows the exception, causing the message to be deleted normally and the failure to be lost.
+- **In a `@nestjs/cqrs`-style domain, inject the `CommandBus` directly**: the example above is for a Service-style domain. If the domain is already CommandHandler-based (see [cqrs-pattern.md](cqrs-pattern.md)), the Task Controller likewise injects the `CommandBus`, just like the HTTP Controller, and calls `commandBus.execute(new XxxCommand(...))` — don't create a separate `CommandService` wrapper whose only job is delegating to CommandBus solely for the Task Controller's sake. Don't mix both styles within one domain.
 
 ```typescript
-// ❌ HTTP Controller 패턴을 흉내내면 안 됨 — 실패가 소실됨
+// ❌ Don't imitate the HTTP Controller pattern — the failure gets lost
 @TaskConsumer('order.notify')
 public async notify(payload: NotifyOrderCommand): Promise<void> {
   return this.orderCommandService.notify(payload).catch((error) => {
     this.logger.error(error)
-    throw generateErrorResponse(...)   // HttpException — Task 문맥에서는 무의미
+    throw generateErrorResponse(...)   // an HttpException — meaningless in a Task context
   })
 }
 
-// ✅ 그냥 호출하고 예외는 위로 — TaskQueueConsumer가 처리
+// ✅ Just call it and let the exception propagate up — TaskQueueConsumer handles it
 @TaskConsumer('order.notify')
 public async notify(payload: NotifyOrderCommand): Promise<void> {
   await this.orderCommandService.notify(payload)
 }
 ```
 
-## `TaskQueue` — Outbox 기반 구현
+## `TaskQueue` — Outbox-based Implementation
 
-### 왜 Outbox인가
+### Why Outbox
 
-Command Service에서 DB 변경과 Task 적재가 **원자적으로 묶여야 한다**. SQS `SendMessage`를 Command 트랜잭션 안에서 직접 호출하면 dual-write 문제가 발생한다 — SQS 전송은 성공했는데 DB는 롤백되거나, DB는 commit됐는데 SQS 전송이 실패하는 불일치 상태. Domain Event가 Outbox 테이블을 경유하는 것과 동일한 이유로, **Task도 `task_outbox` 테이블 write → `TaskOutboxRelay` 발행** 경로로 통일한다.
+In the Command Service, the DB change and the Task enqueue **must be bound atomically**. Calling SQS `SendMessage` directly inside the Command transaction causes a dual-write problem — a state of inconsistency where the SQS send succeeds but the DB gets rolled back, or the DB commits but the SQS send fails. For the same reason the Domain Event goes through an Outbox table, **the Task is likewise unified onto the path of writing to the `task_outbox` table → `TaskOutboxRelay` publishing it**.
 
-Scheduler(Cron) 역시 같은 경로를 쓴다. Cron 시점의 enqueue는 트랜잭션 문맥이 아니지만, 단일 row insert이므로 자연스럽게 atomic이며 경로가 통일되어 운영이 단순해진다.
+The Scheduler (Cron) uses the same path too. Enqueuing at Cron time isn't within a transaction context, but since it's a single row insert, it's naturally atomic, and unifying the path keeps operations simple.
 
-### `TaskQueue` 인터페이스
+### `TaskQueue` interface
 
 ```typescript
 // src/task-queue/task-queue.ts
 export type EnqueueOptions = {
   groupId: string
   deduplicationId: string
-  delaySeconds?: number  // 최대 900초 지연 가능
+  delaySeconds?: number  // up to 900 seconds of delay possible
 }
 
 export abstract class TaskQueue {
@@ -487,9 +487,9 @@ export class TaskOutboxEntity extends BaseEntity {
 }
 ```
 
-### Outbox 기반 `TaskQueue` 구현체
+### Outbox-based `TaskQueue` implementation
 
-`TransactionManager`를 주입받아 현재 트랜잭션 문맥에 참여한다. 트랜잭션 외부에서 호출되면(예: Scheduler) 기본 EntityManager로 단일 row insert된다.
+Injects `TransactionManager` and participates in the current transaction context. When called outside a transaction (e.g. from the Scheduler), it's inserted as a single row via the default EntityManager.
 
 ```typescript
 // src/task-queue/task-queue-outbox.ts
@@ -520,9 +520,9 @@ export class TaskQueueOutbox extends TaskQueue {
 }
 ```
 
-### `TaskOutboxRelay` — Outbox → SQS 발행
+### `TaskOutboxRelay` — Publishing Outbox → SQS
 
-짧은 주기로 `task_outbox`를 폴링하여 미발행 row를 SQS에 보낸다. Domain Event의 `OutboxPoller`와 같은 패턴이다.
+Polls `task_outbox` on a short cycle and sends unpublished rows to SQS. The same pattern as the Domain Event's `OutboxPoller`.
 
 ```typescript
 // src/task-queue/task-outbox-relay.ts
@@ -543,7 +543,7 @@ export class TaskOutboxRelay {
 
   constructor(private readonly dataSource: DataSource) {}
 
-  @Cron('*/3 * * * * *')  // 3초 폴링
+  @Cron('*/3 * * * * *')  // poll every 3 seconds
   public async relay(): Promise<void> {
     const repo = this.dataSource.getRepository(TaskOutboxEntity)
     const rows = await repo.find({
@@ -568,7 +568,7 @@ export class TaskOutboxRelay {
     }
   }
 
-  @Cron('0 3 * * *')  // 매일 03:00 — 발행 완료된 row 정리
+  @Cron('0 3 * * *')  // every day at 03:00 — clean up rows that have been published
   public async cleanup(): Promise<void> {
     const repo = this.dataSource.getRepository(TaskOutboxEntity)
     const threshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -577,39 +577,39 @@ export class TaskOutboxRelay {
 }
 ```
 
-- **다중 인스턴스 중복 적재**: Cron이 여러 인스턴스에서 동시에 발화해도 `deduplicationId`가 동일하면 SQS FIFO 5분 dedup 윈도우가 1건만 실제 큐에 들어가게 한다. `task_outbox`에는 여러 row가 생길 수 있으나, Relay가 각각 전송해도 SQS 레벨에서 걸러진다.
-- **발행 실패는 다음 폴링에서 재시도**: `processed` 플래그가 flip되지 않았으므로 자연스럽게 재처리된다.
+- **Duplicate enqueuing across multiple instances**: even if the Cron fires simultaneously on multiple instances, as long as `deduplicationId` is the same, SQS FIFO's 5-minute dedup window ensures only one message actually enters the queue. Multiple rows may be created in `task_outbox`, but even if the Relay sends each one, they get filtered out at the SQS level.
+- **Publish failures are retried on the next poll**: since the `processed` flag wasn't flipped, it's naturally reprocessed.
 
-### Relay 다중 인스턴스 race — 한계와 완화
+### Relay multi-instance race — limitations and mitigations
 
-위 구현은 여러 앱 인스턴스가 Relay를 동시 실행할 때 **같은 row를 중복 가져가 각자 SQS에 보낸다**. 보통은 SQS FIFO의 5분 dedup 윈도우가 막아주지만, 다음 상황에서 윈도우를 초과해 중복 배달될 수 있다.
+The implementation above means that when multiple app instances run the Relay concurrently, **they can both pick up the same row and each send it to SQS**. Usually SQS FIFO's 5-minute dedup window prevents this, but the window can be exceeded and duplicate delivery can occur in the following situations.
 
-- Relay가 장애로 5분 이상 멈췄다가 복귀 (쌓인 row들을 일괄 전송 → 타이밍상 5분 윈도우 밖의 중복)
-- 다른 instance에서 같은 `deduplicationId`로 오래 전 outbox row가 남아있다 늦게 발송
+- The Relay was down for over 5 minutes due to an outage and then recovered (sending accumulated rows in a batch → a duplicate outside the 5-minute window due to timing)
+- An old outbox row with the same `deduplicationId` was left lingering on another instance and gets sent late
 
-완화 전략 — 상황에 맞게 선택:
+Mitigation strategies — choose based on your situation:
 
-| 방법 | 설명 | 트레이드오프 |
+| Method | Description | Trade-off |
 |------|------|--------------|
-| **Consumer 측 멱등성** (기본) | 최후 방어선. 상단 [멱등성](#멱등성) 섹션의 ledger 패턴을 모든 중요 Task에 적용 | 항상 필요 |
-| **`SELECT ... FOR UPDATE SKIP LOCKED`** | Relay가 row를 원자적으로 claim — 동시 실행 시 한 인스턴스만 특정 row를 처리 | 코드 복잡도 소폭 증가 |
-| **Leader election** | 단일 인스턴스에서만 Relay 실행 (예: Redis 분산 락) | SPOF 위험, 추가 인프라 |
+| **Consumer-side idempotency** (default) | The last line of defense. Apply the ledger pattern from the [Idempotency](#idempotency) section above to every important Task | Always required |
+| **`SELECT ... FOR UPDATE SKIP LOCKED`** | The Relay atomically claims a row — when running concurrently, only one instance processes a given row | Slightly more code complexity |
+| **Leader election** | Run the Relay on only a single instance (e.g. via a Redis distributed lock) | SPOF risk, extra infrastructure |
 
-**Consumer 멱등성은 협상 불가.** Relay에 lock을 걸어도 at-least-once 보장은 SQS의 본질이므로 Consumer는 항상 멱등해야 한다.
+**Consumer idempotency is non-negotiable.** Even if you lock the Relay, at-least-once delivery is inherent to SQS, so the Consumer must always be idempotent.
 
-### `deduplicationId` UNIQUE 제약 — 선택지
+### `deduplicationId` UNIQUE constraint — an option
 
-`task_outbox.deduplicationId`에 DB UNIQUE 제약을 걸면 **다중 인스턴스의 outbox write가 write-time에 1건만 성공**한다(나머지는 unique violation → 무시). `task_outbox` row 폭증을 DB 레벨에서 차단.
+Putting a DB UNIQUE constraint on `task_outbox.deduplicationId` means **only one of the multi-instance outbox writes succeeds at write time** (the rest fail with a unique violation → ignored). This blocks `task_outbox` row explosion at the DB level.
 
-**단점**: 한번 쓴 `deduplicationId`를 **영구히 재사용 불가**. 예를 들어 `order.archive-<orderId>` 같은 엔티티 기반 dedupId를 나중에 의도적으로 재실행해야 한다면 막힌다. 날짜 단위(`cleanup-2026-04-18`) 같은 시간 기반은 자연 유일하므로 안전.
+**Downside**: a once-used `deduplicationId` can **never be reused**. For example, if an entity-based dedupId like `order.archive-<orderId>` ever needs to be intentionally re-run later, this blocks it. Date-based ones (`cleanup-2026-04-18`) are naturally unique over time, so they're safe.
 
-→ **기본은 UNIQUE 제약 없이 운영**하고(SQS dedup에 위임), 특정 taskType만 날짜 기반 dedupId를 쓰는 것이 확실하다면 부분 UNIQUE 인덱스(`WHERE task_type = 'xxx'`)로 좁게 적용한다.
+→ **Default to operating without the UNIQUE constraint** (delegating to SQS dedup), and only apply it narrowly via a partial UNIQUE index (`WHERE task_type = 'xxx'`) if you're sure a specific taskType uses a date-based dedupId.
 
-DI 바인딩은 [모듈 등록](#모듈-등록) 섹션에서 `{ provide: TaskQueue, useClass: TaskQueueOutbox }`로 수행한다.
+DI binding is done via `{ provide: TaskQueue, useClass: TaskQueueOutbox }` in the [Module Registration](#module-registration) section.
 
 ## Scheduler — Cron → TaskQueue
 
-`@Cron` 핸들러는 `TaskQueue.enqueue`만 호출한다. 비즈니스 로직을 직접 실행하지 않는다.
+The `@Cron` handler only calls `TaskQueue.enqueue`. It doesn't execute business logic directly.
 
 ```typescript
 // src/order/infrastructure/order-cleanup-scheduler.ts
@@ -635,19 +635,19 @@ export class OrderCleanupScheduler {
       )
       this.logger.log({ message: '만료 주문 정리 Task 적재', dedup_id: dedupId })
     } catch (error) {
-      // @nestjs/schedule은 Cron 핸들러의 예외를 조용히 삼키므로 명시적으로 로깅
+      // @nestjs/schedule silently swallows exceptions from Cron handlers, so log explicitly
       this.logger.error({ message: '만료 주문 정리 Task 적재 실패', dedup_id: dedupId, error })
     }
   }
 }
 ```
 
-- **`MessageDeduplicationId`를 날짜 단위로 고정**: 다중 인스턴스가 동일 Cron 타이밍에 적재해도 5분 중복 제거 윈도우에서 1건만 큐에 들어간다. Cron 중복 실행 해결의 핵심.
-- **`@nestjs/schedule`의 예외 무음화**: Cron 핸들러 내부 예외는 로깅 없이 삼켜진다. try-catch + `logger.error`로 **명시적 가시성 확보** 필수.
-- **다중 `@Cron` 메서드가 있는 Scheduler는 각 메서드마다 try-catch 반복**: 한 메서드의 예외가 다른 메서드에 영향을 주지는 않지만, 각 메서드의 실패 가시성을 보장하려면 모든 `@Cron` 메서드에 동일한 try-catch + logger.error 블록을 넣는다. 반복이 많으면 아래와 같은 private 헬퍼로 추출한다.
+- **Fixing `MessageDeduplicationId` to a date unit**: even if multiple instances enqueue at the same Cron timing, only one message enters the queue within the 5-minute dedup window. This is the key to resolving duplicate Cron execution.
+- **`@nestjs/schedule` silences exceptions**: exceptions inside a Cron handler are swallowed without logging. try-catch + `logger.error` is required to **guarantee explicit visibility**.
+- **A Scheduler with multiple `@Cron` methods repeats try-catch per method**: one method's exception doesn't affect another method, but every `@Cron` method needs the same try-catch + logger.error block to guarantee its own failure visibility. If there's a lot of repetition, extract it into a private helper like the one below.
 
 ```typescript
-// Scheduler 클래스 내부
+// inside the Scheduler class
 private async runSafely(name: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn()
@@ -668,11 +668,11 @@ public async enqueueDailyCleanup(): Promise<void> {
 }
 ```
 
-- **실패는 다음 Cron tick이 복구**: 날짜 기반 `deduplicationId`는 자연 유일하므로 실패 후 다음 tick에서 다시 적재되어도 `task_outbox`에 중복 row가 쌓이거나 SQS에 중복 배달되지 않는다. (DB 장애로 outbox write 자체가 실패하는 경우는 장애 해소 후 다음 tick까지 기다리거나 긴급 수동 트리거.)
+- **The next Cron tick recovers from a failure**: since the date-based `deduplicationId` is naturally unique, even if it's re-enqueued on the next tick after a failure, no duplicate row builds up in `task_outbox` and no duplicate delivery occurs on SQS. (If the outbox write itself fails due to a DB outage, either wait for the next tick after the outage clears, or trigger it manually as an emergency measure.)
 
-## 모듈 등록
+## Module Registration
 
-공유 Task Queue 모듈 하나와, 도메인 모듈에서 Task Controller를 등록한다.
+Register a single shared Task Queue module, and register the Task Controller in each domain module.
 
 ```typescript
 // src/task-queue/task-queue-module.ts
@@ -709,22 +709,22 @@ export class TaskQueueModule {}
 ```typescript
 // src/order/order-module.ts
 @Module({
-  controllers: [OrderController],           // HTTP 진입점
+  controllers: [OrderController],           // HTTP entry point
   providers: [
     OrderCommandService,
-    OrderTaskController,                    // Task 진입점 — providers로 등록
-    OrderCleanupScheduler,                  // Cron으로 Task 적재
+    OrderTaskController,                    // Task entry point — registered in providers
+    OrderCleanupScheduler,                  // enqueues a Task via Cron
     { provide: OrderRepository, useClass: OrderRepositoryImpl }
   ]
 })
 export class OrderModule {}
 ```
 
-- HTTP Controller는 `controllers`, Task Controller는 `providers`에 등록한다. NestJS의 `controllers` 배열은 라우트 매핑 대상이므로, SQS 기반 Task Controller는 `providers`로 등록해야 `ModuleRef.get()`이 인스턴스를 해결할 수 있다. 데코레이터가 Map에 메타데이터를 쌓아도 인스턴스가 DI 컨테이너에 없으면 실행되지 않는다.
+- Register the HTTP Controller in `controllers`, and the Task Controller in `providers`. Since NestJS's `controllers` array is meant for route mapping, an SQS-based Task Controller must be registered in `providers` so `ModuleRef.get()` can resolve an instance. Even if the decorator accumulates metadata in a Map, it won't run unless there's an instance in the DI container.
 
-## Ad-hoc Task 적재 (트랜잭션 안에서)
+## Ad-hoc Task Enqueuing (Inside a Transaction)
 
-Application Service가 DB 변경과 함께 Task를 적재할 때는 **같은 트랜잭션 안에서** `taskQueue.enqueue`를 호출한다. Outbox 구현체(`TaskQueueOutbox`)는 `TransactionManager`의 현재 매니저를 사용하므로, Command의 DB 변경과 Task 적재가 동일 트랜잭션으로 묶인다. commit이 성공해야 `task_outbox` row도 남고, 롤백되면 함께 사라진다 — **dual-write 문제가 원천 차단**된다. 참여 메커니즘의 코드 레벨 설명은 [Outbox 기반 `TaskQueue` 구현체](#outbox-기반-taskqueue-구현체)를 참조한다.
+When the Application Service enqueues a Task alongside a DB change, call `taskQueue.enqueue` **inside the same transaction**. Since the Outbox implementation (`TaskQueueOutbox`) uses `TransactionManager`'s current manager, the Command's DB change and the Task enqueue are bound into the same transaction. The `task_outbox` row only remains if the commit succeeds, and it disappears together on rollback — **this eliminates the dual-write problem at the source**. See [Outbox-based `TaskQueue` Implementation](#taskqueue--outbox-based-implementation) for a code-level explanation of the participation mechanism.
 
 ```typescript
 import { TaskQueue } from '@/task-queue/task-queue'  // abstract class
@@ -745,7 +745,7 @@ export class OrderCommandService {
 
     order.cancel('user request')
 
-    // DB 변경 + Task 적재가 같은 트랜잭션 안에서 원자적으로 수행됨
+    // DB change + Task enqueue happen atomically inside the same transaction
     await this.transactionManager.run(async () => {
       await this.orderRepository.saveOrder(order)
       await this.taskQueue.enqueue(
@@ -758,30 +758,30 @@ export class OrderCommandService {
 }
 ```
 
-- **트랜잭션 외부에서 호출해도 안전**: Scheduler처럼 트랜잭션 문맥이 없는 곳에서 호출되면 단일 row insert로 동작한다. 경로가 통일되어 생산자는 문맥을 신경 쓰지 않는다.
-- **실제 SQS 전송은 `TaskOutboxRelay`가 수행**: commit된 row를 3초 주기로 폴링해서 발행한다. Application은 발행 성공/실패를 몰라도 된다.
+- **Safe to call outside a transaction too**: when called from somewhere with no transaction context, like the Scheduler, it operates as a single row insert. Since the path is unified, the producer doesn't need to worry about context.
+- **The actual SQS send is performed by `TaskOutboxRelay`**: it polls committed rows every 3 seconds and publishes them. The Application doesn't need to know whether the publish succeeded or failed.
 
-## MessageGroupId 전략
+## MessageGroupId Strategy
 
-FIFO 큐에서 **같은 `MessageGroupId`를 가진 메시지는 엄격히 순차 처리**된다. 잘못 정하면 의도치 않은 직렬화로 처리량이 떨어지거나, 반대로 순서가 깨진다.
+In a FIFO queue, **messages sharing the same `MessageGroupId` are processed strictly in order**. Getting this wrong causes either unintended serialization that drops throughput, or the opposite — broken ordering.
 
-| 상황 | groupId 설정 |
+| Situation | groupId setting |
 |------|-------------|
-| Cron 전역 배치 (일 1회 등) | Task 카테고리 기준: `'order.cleanup'` — 단일 인스턴스만 실행되면 됨 |
-| Aggregate 단위 순차성 필요 | Aggregate ID: `orderId` — 같은 주문의 후속 Task는 순서대로 |
-| 순서 무관 + 고처리량 | 랜덤 UUID 또는 `taskType`+random: 병렬성 극대화 |
+| Global Cron batch (once a day, etc.) | Based on Task category: `'order.cleanup'` — only needs to run on a single instance |
+| Sequential ordering needed per Aggregate | Aggregate ID: `orderId` — follow-up Tasks for the same order stay in order |
+| Order doesn't matter + high throughput | Random UUID or `taskType`+random: maximizes parallelism |
 
-**핵심 원칙**: groupId가 **병렬성의 경계**다. 같은 group은 직렬, 다른 group은 병렬. 필요한 최소 수준의 순차성만 groupId에 담는다.
+**Key principle**: groupId is **the boundary of parallelism**. The same group is serial, different groups are parallel. Put only the minimum necessary level of ordering into groupId.
 
-## 멱등성
+## Idempotency
 
-SQS는 **at-least-once delivery**를 보장하므로, `@TaskConsumer` 메서드가 호출하는 Command는 **반드시 멱등해야 한다**. 멱등성 확보 수단은 3단계로 구분한다.
+Since SQS guarantees **at-least-once delivery**, the Command called by the `@TaskConsumer` method **must be idempotent**. There are 3 tiers of idempotency mechanisms.
 
-> **참고**: 여기서 설명하는 3단계 모델(본질적 멱등성 / 프레임워크 ledger / 강한 원자성)은 Task뿐 아니라 **Domain Event의 EventHandler에도 동일하게 적용**된다. `@HandleEvent` 핸들러도 at-least-once 전제이므로 부작용 큰 핸들러는 동일한 ledger 전략이 유효하다. Domain Event 쪽 간단 예시는 [domain-events.md — 이벤트 핸들러 멱등성](./domain-events.md#이벤트-핸들러-멱등성)을 참조.
+> **Note**: the 3-tier model described here (inherent idempotency / framework ledger / strong atomicity) applies **not just to Tasks but equally to Domain Event EventHandlers**. `@HandleEvent` handlers also assume at-least-once, so the same ledger strategy is valid for handlers with significant side effects. See [domain-events.md — Event Handler Idempotency](./domain-events.md#event-handler-idempotency) for a brief example on the Domain Event side.
 
-### 본질적 멱등성 (Level 1 · 기본)
+### Inherent idempotency (Level 1 · default)
 
-Command 자체가 반복 실행되어도 결과가 동일하면 추가 장치 불필요. Cron 배치(상태 기반 필터링 + 최종 상태로 덮어쓰기)가 대표적.
+No extra mechanism is needed if the Command itself produces the same result even when run repeatedly. A Cron batch (state-based filtering + overwriting with a final state) is the typical example.
 
 ```typescript
 public async cleanupExpiredOrders(): Promise<number> {
@@ -789,18 +789,18 @@ public async cleanupExpiredOrders(): Promise<number> {
     status: ['expired'], take: 100, page: 0
   })
   for (const order of orders) {
-    order.archive()                 // 이미 archive면 내부에서 무시
+    order.archive()                 // if already archived, ignored internally
     await this.orderRepository.saveOrder(order)
   }
   return orders.length
 }
 ```
 
-→ Task Controller는 `@TaskConsumer('order.cleanup-expired')` — **옵션 없음**. 가장 가볍다.
+→ The Task Controller is `@TaskConsumer('order.cleanup-expired')` — **no options**. The lightest tier.
 
-### 프레임워크 레벨 ledger (Level 2 · 기본 권장)
+### Framework-level ledger (Level 2 · generally recommended)
 
-엔티티 단위 중복 실행을 차단해야 하는 Task(재결제·외부 API 호출 등 부작용 있는 작업)는 **`@TaskConsumer`의 `idempotencyKey` 옵션**으로 `TaskExecutionLog`에 ledger를 남긴다. `TaskConsumerRegistry`가 dispatch **직전에** ledger에 insert 시도하고, 이미 있으면 `'already-executed'` 반환 → 메서드 호출 skip → Consumer가 메시지 정상 삭제.
+For a Task that must block per-entity duplicate execution (side-effecting work such as re-charging or calling an external API), use the **`idempotencyKey` option of `@TaskConsumer`** to leave a ledger entry in `TaskExecutionLog`. `TaskConsumerRegistry` attempts to insert into the ledger **right before** dispatch, and if an entry already exists, it returns `'already-executed'` → the method call is skipped → the Consumer deletes the message normally.
 
 ```typescript
 @TaskConsumer('order.archive', {
@@ -811,15 +811,15 @@ public async archive(payload: ArchiveOrderCommand): Promise<void> {
 }
 ```
 
-- payload 타입을 Application의 Command 클래스(`ArchiveOrderCommand`)로 선언하여 호출 계약을 명확히 한다. Service 호출 시 Command 객체를 그대로 전달 — HTTP Controller의 `new CommandClass(body)` → Service 호출 패턴과 동일.
-- **payload는 타입 힌트일 뿐 런타임에는 plain object**: SQS 메시지 body를 `JSON.parse`한 결과이므로 **Command 클래스의 인스턴스 메서드(getter/`equals()` 등)는 사용 불가**. 필드 접근만 가능. 메서드 호출이 필요하거나 validator 데코레이터로 검증해야 하면 [payload 검증](#payload-검증) 섹션의 `plainToInstance(Command, payload)` 패턴을 적용한다.
-- Task Controller 코드가 1단계와 동일하게 간결. ledger 로직은 프레임워크가 처리.
-- **semantics는 "record-before-execute"**: 핸들러 실패해도 ledger가 남아 재시도가 skip됨. 즉 **"한 번 시도 후 성공 여부와 무관하게 기억"**. 대부분의 실무 케이스에 충분하다.
-- **`idempotencyKey` 함수 자체의 예외**: 키 생성 중 throw하면 dispatch가 예외 전파 → 메시지 삭제되지 않음 → 재수신 → DLQ. 키 생성 로직은 payload 필드 접근만 하도록 단순하게 유지한다.
+- Declare the payload type as the Application's Command class (`ArchiveOrderCommand`) to make the calling contract explicit. Pass the Command object through as-is when calling the Service — the same pattern as the HTTP Controller's `new CommandClass(body)` → Service call.
+- **The payload is only a type hint — at runtime it's a plain object**: since it's the result of `JSON.parse`ing the SQS message body, **you cannot use the Command class's instance methods (getters, `equals()`, etc.)**. Only field access is possible. If you need to call methods or validate with validator decorators, apply the `plainToInstance(Command, payload)` pattern in [Payload Validation](#payload-validation).
+- The Task Controller code stays as concise as tier 1. The framework handles the ledger logic.
+- **The semantics are "record-before-execute"**: even if the handler fails, the ledger entry remains, so a retry gets skipped. In other words, **"remembered as attempted once, regardless of success"**. Sufficient for most practical cases.
+- **Exceptions in the `idempotencyKey` function itself**: if it throws while generating the key, the exception propagates from dispatch → the message isn't deleted → re-received → DLQ. Keep the key-generation logic simple, accessing only payload fields.
 
-### 강한 원자성 (Level 3 · 드문 케이스)
+### Strong atomicity (Level 3 · a rare case)
 
-"핸들러가 성공해야만 ledger가 남는다"는 엄격한 원자성이 필요하면(드문 케이스), Task Controller가 `TaskExecutionLog`를 **직접 주입받아 `transactionManager.run` 안에서 호출**한다. 프레임워크의 `idempotencyKey`는 지정하지 **않는다**(지정하면 이중 체크).
+If you need the strict atomicity guarantee that "the ledger entry only persists if the handler succeeds" (a rare case), have the Task Controller inject `TaskExecutionLog` **directly and call it inside `transactionManager.run`**. Do **not** specify the framework's `idempotencyKey` in this case (specifying it would double-check).
 
 ```typescript
 @Injectable()
@@ -841,20 +841,20 @@ export class OrderChargeTaskController {
 }
 ```
 
-- **ledger와 Command가 같은 트랜잭션에 참여하는 메커니즘**: `TaskExecutionLogDb.recordOnce()` 내부가 `TransactionManager.getManager()`를 사용하므로, 바깥의 `transactionManager.run(...)`이 연 트랜잭션 문맥에 **자동으로 참여**한다. Command가 실패해 롤백되면 ledger insert도 함께 롤백되어, 재시도 시 정상적으로 다시 처리된다(진정한 "exactly-once-on-success").
-- **중복 수신 시 트랜잭션 안전성**: `recordOnce()`는 `INSERT ... ON CONFLICT DO NOTHING`을 사용하므로 `'already-executed'`를 반환해도 트랜잭션이 abort되지 않는다. `return`으로 early exit하고 바깥 `transactionManager.run`이 그대로 commit된다(변경 없는 commit). try/catch unique violation 방식이 왜 위험한지는 [`TaskExecutionLogDb` 구현체](#taskexecutionlog-인터페이스--구현체) 아래 노트 참조.
-- **`recordOnce`의 2번째 인자(taskType)는 선택**: logging 용도일 뿐이며, Registry에서 프레임워크 경로로 호출할 때만 전달한다. Task Controller에서 직접 호출할 때는 생략 가능(예시 참조) — decorator에 이미 있는 정보의 중복 작성을 피함.
-- 단점: Task Controller가 `TaskExecutionLog` + `TransactionManager`를 직접 주입받아 코드가 늘어난다. 3단계는 결제·외부 트랜잭션 등 금액이 걸린 Task에만 제한적으로 사용한다.
+- **The mechanism by which the ledger and the Command participate in the same transaction**: because `TaskExecutionLogDb.recordOnce()` internally uses `TransactionManager.getManager()`, it **automatically participates** in the transaction context opened by the outer `transactionManager.run(...)`. If the Command fails and rolls back, the ledger insert rolls back with it, so a retry is processed correctly again (true "exactly-once-on-success").
+- **Transaction safety on duplicate receipt**: because `recordOnce()` uses `INSERT ... ON CONFLICT DO NOTHING`, the transaction doesn't abort even when it returns `'already-executed'`. It early-exits via `return`, and the outer `transactionManager.run` commits as-is (a no-op commit). See the note under [`TaskExecutionLog` Interface + Implementation](#taskexecutionlog-interface--implementation) for why a try/catch-unique-violation approach is risky here.
+- **`recordOnce`'s 2nd argument (taskType) is optional**: it's just for logging, and is only passed when called via the Registry's framework path. It can be omitted when called directly from a Task Controller (see the example) — avoiding redundantly re-stating information the decorator already has.
+- Downside: the Task Controller injects `TaskExecutionLog` + `TransactionManager` directly, adding more code. Use tier 3 only in a limited way, for Tasks involving money such as payments or external transactions.
 
-### Entity / 헬퍼 (프레임워크 내부)
+### Entity / Helpers (Framework Internals)
 
-task-queue 모듈 **내부 인프라 코드**(Entity, Relay, Cleaner 등)는 `DataSource`를 직접 주입/사용할 수 있다. "Task Controller의 DB 직접 접근 금지" 원칙은 도메인 Interface 레이어에만 적용되며, task-queue 프레임워크 자체는 DB·Cron·SQS 인프라를 직접 다루는 기술 컴포넌트다.
+**Internal infrastructure code** of the task-queue module (Entity, Relay, Cleaner, etc.) may inject/use `DataSource` directly. The "no direct DB access from the Task Controller" principle applies only to the domain Interface layer — the task-queue framework itself is a technical component that directly handles DB, Cron, and SQS infrastructure.
 
 ```typescript
 // src/task-queue/task-execution-log.entity.ts
 import { Column, Entity, Index, PrimaryColumn } from 'typeorm'
 
-// ledger는 hard delete만 적합하므로 BaseEntity(softDelete 포함)를 상속하지 않는다
+// the ledger is suited only for hard delete, so it doesn't extend BaseEntity (which includes softDelete)
 @Entity('task_execution_log')
 @Index(['executedAt'])
 export class TaskExecutionLogEntity {
@@ -862,7 +862,7 @@ export class TaskExecutionLogEntity {
   taskId: string
 
   @Column({ nullable: true })
-  taskType: string | null   // logging 용도 — 없으면 null
+  taskType: string | null   // for logging purposes — null if absent
 
   @Column()
   executedAt: Date
@@ -882,9 +882,9 @@ export function isUniqueViolation(error: unknown): boolean {
 }
 ```
 
-### `TaskExecutionLog` 인터페이스 + 구현체
+### `TaskExecutionLog` Interface + Implementation
 
-`TaskConsumerRegistry`가 주입받아 사용하며(2단계), 드물게 Task Controller가 직접 주입받을 수도 있다(3단계). `taskType` 파라미터는 logging 용도로만 쓰이므로 optional.
+Injected and used by `TaskConsumerRegistry` (tier 2), and in rare cases may also be injected directly by a Task Controller (tier 3). The `taskType` parameter is used only for logging, so it's optional.
 
 ```typescript
 // src/task-queue/task-execution-log.ts
@@ -912,11 +912,12 @@ export class TaskExecutionLogDb extends TaskExecutionLog {
 
   public async recordOnce(taskId: string, taskType?: string): Promise<RecordResult> {
     const manager = this.transactionManager.getManager()
-    // INSERT ... ON CONFLICT DO NOTHING — try/catch unique violation 대신 사용.
-    // Postgres는 트랜잭션 내에서 에러가 발생하면 트랜잭션 전체를 abort 상태로
-    // 만들기 때문에, 3단계(강한 원자성) 패턴처럼 바깥 트랜잭션이 있는 경우
-    // try/catch 방식은 후속 쿼리와 commit이 SQLSTATE 25P02로 실패한다.
-    // `.orIgnore()`는 예외를 발생시키지 않으므로 어느 문맥에서든 안전하다.
+    // INSERT ... ON CONFLICT DO NOTHING — used instead of a try/catch unique violation.
+    // Because Postgres puts the whole transaction into an aborted state when an error
+    // occurs within it, in the tier-3 (strong atomicity) pattern where an outer
+    // transaction exists, a try/catch approach would make subsequent queries and the
+    // commit fail with SQLSTATE 25P02.
+    // `.orIgnore()` never throws an exception, so it's safe in any context.
     const result = await manager
       .createQueryBuilder()
       .insert()
@@ -929,12 +930,12 @@ export class TaskExecutionLogDb extends TaskExecutionLog {
 }
 ```
 
-- **UPSERT 패턴 선택의 이유**: `try { INSERT } catch (isUniqueViolation) { ... }` 방식은 쓰지 않는다 — Postgres에서는 unique 위반 발생 시 **현재 트랜잭션이 aborted 상태**로 전환되기 때문이다(SQLSTATE 25P02). 3단계 강한 원자성 패턴처럼 `transactionManager.run(...)` 안에서 `recordOnce()`를 호출할 경우, `'already-executed'` 반환 후 후속 작업·commit이 모두 "current transaction is aborted"로 실패한다. `.orIgnore()`(`ON CONFLICT DO NOTHING`)는 **예외를 발생시키지 않고** 충돌 row를 조용히 무시하므로, 어떤 트랜잭션 문맥에서도 안전하다.
-- `isUniqueViolation` 헬퍼는 ledger 외의 영역(예: `task_outbox.deduplicationId` UNIQUE 위반 처리 등)에서 여전히 유용하므로 유지한다.
+- **Why the UPSERT pattern was chosen**: the `try { INSERT } catch (isUniqueViolation) { ... }` approach isn't used — because in Postgres, a unique violation puts **the current transaction into an aborted state** (SQLSTATE 25P02). If `recordOnce()` is called inside `transactionManager.run(...)` as in the tier-3 strong-atomicity pattern, after returning `'already-executed'`, all subsequent work and the commit would fail with "current transaction is aborted." `.orIgnore()` (`ON CONFLICT DO NOTHING`) **doesn't throw an exception** and silently ignores the conflicting row, so it's safe in any transaction context.
+- The `isUniqueViolation` helper is still kept because it remains useful outside the ledger (e.g. handling a `task_outbox.deduplicationId` UNIQUE violation).
 
 ### Ledger cleanup
 
-`task_execution_log`는 방치하면 무한 증가한다. 보존 기간은 **`maxReceiveCount × VisibilityTimeout`에 여유를 더한 값** 이상이면 충분하다(같은 메시지가 재배달될 수 있는 최대 기간). 보통 30일 보존으로 넉넉하다.
+`task_execution_log` grows indefinitely if left unattended. A retention period of **`maxReceiveCount × VisibilityTimeout` plus some margin** is enough (the maximum period during which the same message could be redelivered). A 30-day retention is usually generous enough.
 
 ```typescript
 // src/task-queue/task-execution-log-cleaner.ts
@@ -950,7 +951,7 @@ export class TaskExecutionLogCleaner {
 
   constructor(private readonly dataSource: DataSource) {}
 
-  @Cron('0 4 * * *')  // 매일 04:00
+  @Cron('0 4 * * *')  // every day at 04:00
   public async cleanup(): Promise<void> {
     const threshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const result = await this.dataSource
@@ -961,11 +962,11 @@ export class TaskExecutionLogCleaner {
 }
 ```
 
-## payload 검증
+## Payload Validation
 
-외부(SQS) 입력이므로 Task Controller 메서드 내부에서 **payload 스키마를 검증**한다. HTTP Controller가 `class-validator`로 RequestBody를 검증하는 것과 같은 이유다.
+Since the input comes from an external source (SQS), **validate the payload schema** inside the Task Controller method. The same reasoning as why the HTTP Controller validates the RequestBody with `class-validator`.
 
-payload 타입을 Application의 Command 클래스(이미 `class-validator` 데코레이터 부착)로 재사용하면 검증 로직이 HTTP와 Task 양쪽에서 공유된다.
+Reusing the Application's Command class (which already has `class-validator` decorators attached) as the payload type shares the validation logic between HTTP and Task.
 
 ```typescript
 import { plainToInstance } from 'class-transformer'
@@ -976,118 +977,118 @@ import { SendReminderEmailCommand } from '@/order/application/command/send-remin
 @TaskConsumer('order.send-reminder-email')
 public async sendReminderEmail(payload: object): Promise<void> {
   const command = plainToInstance(SendReminderEmailCommand, payload)
-  await validateOrReject(command)   // 검증 실패 시 throw → visibility timeout 후 재시도 → DLQ
+  await validateOrReject(command)   // if validation fails, throws → visibility timeout → retry → DLQ
   await this.orderCommandService.sendReminderEmail(command)
 }
 ```
 
-- 검증 실패도 예외이므로 메시지는 삭제되지 않고 재시도된다. 동일 payload는 매번 같은 이유로 실패하므로 `maxReceiveCount` 초과 시 DLQ로 이동한다. **독성 payload가 자연스럽게 격리**되는 구조.
+- A validation failure is also an exception, so the message isn't deleted and is retried. Since the same payload fails for the same reason every time, it moves to the DLQ once `maxReceiveCount` is exceeded. A structure where **poison payloads are naturally isolated**.
 
-### payload 크기 제한 (SQS 256KB)
+### Payload size limit (SQS 256KB)
 
-SQS 단일 메시지는 **최대 256KB**다. 큰 페이로드(대용량 파일 내용, 다량 JSON 등)는 그대로 실어보내면 안 된다.
+A single SQS message is **256KB max**. Large payloads (large file contents, bulky JSON, etc.) shouldn't be sent as-is.
 
-- **작은 메타데이터만 payload에 담는다**: `{ orderId: 'o1', itemIds: ['i1', 'i2'] }` 수준.
-- **대용량 데이터는 S3에 offload**하고 key만 담는다: `{ orderId: 'o1', payloadS3Key: 'tasks/abc.json' }`. Task Controller가 S3에서 다시 가져와 처리.
-- `task_outbox.payload`의 `jsonb` 컬럼 자체는 더 큰 값을 담을 수 있지만, Relay가 SQS로 발행하는 순간 256KB 한계에 걸린다. 한계를 넘으면 SendMessage가 실패하고 row가 `processed=false`로 남아 계속 실패한다 — 이런 row는 수동으로 정리하거나 Relay에 사이즈 체크 + DLQ 이동 로직을 추가한다.
+- **Put only small metadata in the payload**: something like `{ orderId: 'o1', itemIds: ['i1', 'i2'] }`.
+- **Offload large data to S3** and put only the key: `{ orderId: 'o1', payloadS3Key: 'tasks/abc.json' }`. The Task Controller fetches it back from S3 to process it.
+- The `jsonb` column of `task_outbox.payload` itself can hold larger values, but the moment the Relay publishes it to SQS, the 256KB limit applies. If the limit is exceeded, SendMessage fails and the row stays `processed=false`, failing repeatedly — such rows need manual cleanup, or add a size check + DLQ-move logic to the Relay.
 
-### 검증 + 멱등성 결합
+### Combining validation + idempotency
 
-payload 검증과 프레임워크 레벨 멱등성(`idempotencyKey`)을 함께 적용할 때 주의할 점: **프레임워크의 ledger 기록은 핸들러 호출 전에 일어난다**. 즉 payload가 유효하지 않아 핸들러가 throw해도 ledger는 이미 기록되므로, 재시도 시 `already-executed`로 skip되어 **잘못된 payload가 영원히 처리되지 못할 수 있다**.
+Something to watch out for when applying payload validation together with framework-level idempotency (`idempotencyKey`): **the framework's ledger entry is recorded before the handler is called**. That is, even if the payload is invalid and the handler throws, the ledger has already been recorded, so on retry it's skipped as `already-executed` — meaning **an invalid payload may never get processed, forever**.
 
-검증이 필수적인 Task는 **생산자 측에서 payload를 완전히 제어**하거나, 검증이 실패하면 즉시 DLQ로 보내는 방식(즉 재시도 무의미)으로 운영하는 것이 맞다.
+For Tasks where validation is essential, it's correct to operate either by **having the producer fully control the payload**, or by sending straight to the DLQ when validation fails (i.e. retrying is pointless).
 
 ```typescript
 @TaskConsumer('order.dispatch-shipment', {
   idempotencyKey: (payload: DispatchShipmentCommand) => `order.dispatch-shipment-${payload.orderId}`
 })
 public async dispatchShipment(payload: object): Promise<void> {
-  // 검증은 ledger 이후에 실행됨 — producer가 제어하는 payload여야 안전
+  // validation runs after the ledger — this is only safe for a producer-controlled payload
   const command = plainToInstance(DispatchShipmentCommand, payload)
   await validateOrReject(command)
   await this.orderCommandService.dispatchShipment(command)
 }
 ```
 
-검증 실패 후 **재처리가 필요한 케이스**(외부 시스템이 payload를 보내주는 등)는 `idempotencyKey`를 쓰지 않고 [강한 원자성 패턴 (Level 3)](#강한-원자성-level-3--드문-케이스)을 쓴다 — 트랜잭션 안에서 검증 → ledger → Command 순서로 직접 제어.
+For cases that **need reprocessing after a validation failure** (e.g. an external system sends the payload), don't use `idempotencyKey`; use the [Strong Atomicity pattern (Level 3)](#strong-atomicity-level-3--a-rare-case) instead — directly control the validate → ledger → Command order inside the transaction.
 
-## 긴 Task와 VisibilityTimeout 하트비트
+## Long-running Tasks and VisibilityTimeout Heartbeats
 
-`VisibilityTimeout`은 최대 12시간이지만, 처리가 그보다 길어지거나 예측 불가능한 Task는 **처리 중 주기적으로 `ChangeMessageVisibility`를 호출**하여 timeout을 연장해야 한다. 연장하지 않으면 다른 Consumer가 동일 메시지를 중복 수신한다.
+`VisibilityTimeout` can go up to 12 hours, but a Task whose processing runs longer than that, or whose duration is unpredictable, needs to **periodically call `ChangeMessageVisibility` while processing** to extend the timeout. Without extending it, another Consumer will receive the same message as a duplicate.
 
-`TaskQueueConsumer`의 [`withHeartbeat`](#taskqueueconsumer--sqs-폴링)가 이미 이 로직을 구현해두었다. **`@TaskConsumer` 옵션에 `heartbeat`을 지정**하기만 하면 해당 taskType 처리 중에만 자동으로 하트비트가 동작한다.
+`TaskQueueConsumer`'s [`withHeartbeat`](#taskqueueconsumer--sqs-polling) already implements this logic. **Just specify `heartbeat` in the `@TaskConsumer` option**, and the heartbeat automatically runs only while that taskType is being processed.
 
 ```typescript
 @TaskConsumer('order.generate-large-report', {
-  heartbeat: { intervalMs: 60_000, extendSeconds: 180 }  // 60초마다 180초 연장
+  heartbeat: { intervalMs: 60_000, extendSeconds: 180 }  // extend by 180s every 60s
 })
 public async generateLargeReport(payload: { reportId: string }): Promise<void> {
   await this.orderCommandService.generateReport(payload.reportId)
 }
 ```
 
-- **옵션 설계**: `intervalMs < extendSeconds * 1000`이어야 한다. 60초 간격으로 180초 연장하면 항상 여유가 있다.
-- **기본은 옵션 미지정(하트비트 없음)**: 대부분의 Task는 수초~수십초에 끝나므로 초기 `VisibilityTimeout: 300`으로 충분하다.
-- **초기 `VisibilityTimeout`은 짧게 + 하트비트로 연장**: 초기값을 무조건 크게 잡으면 진짜 실패 시 재시도 지연이 커진다. 짧게 잡고 필요한 Task만 하트비트로 연장하는 편이 회복력 측면에서 유리하다.
+- **Option design**: `intervalMs` should be `< extendSeconds * 1000`. Extending by 180 seconds every 60 seconds always leaves margin.
+- **Default: no option specified (no heartbeat)**: most Tasks finish in seconds to tens of seconds, so the initial `VisibilityTimeout: 300` is enough.
+- **Keep the initial `VisibilityTimeout` short + extend via heartbeat**: unconditionally setting a large initial value causes a large retry delay on a real failure. Setting it short and extending only the Tasks that need it via heartbeat is better for resilience.
 
 ## Graceful Shutdown
 
-앱 종료 시 `TaskQueueConsumer`의 polling 루프가 먼저 중단되어야 한다. 위 구현의 `OnApplicationShutdown`이 이를 담당한다. 진행 중인 Task는 완료까지 대기하고, 실패하면 visibility timeout 후 다른 인스턴스가 재수신한다. 자세한 순서는 [graceful-shutdown.md](./graceful-shutdown.md)를 참고한다.
+On app shutdown, `TaskQueueConsumer`'s polling loop must stop first. The `OnApplicationShutdown` in the implementation above handles this. In-progress Tasks are waited on until completion, and if they fail, another instance re-receives them after the visibility timeout. See [graceful-shutdown.md](./graceful-shutdown.md) for the detailed ordering.
 
-**단, `pollPromise` await는 무한 대기가 아니다.** 컨테이너 오케스트레이터(K8s 등)는 `terminationGracePeriodSeconds`(기본 30초) 내에 정리가 끝나지 않으면 SIGKILL로 강제 종료한다. Task Controller가 stuck(무한 루프·DB deadlock 등)되면 shutdown이 블록되고 강제 종료가 발생하며, in-flight 메시지는 삭제되지 않았으므로 visibility timeout 후 다른 인스턴스가 재수신한다 — 즉, **at-least-once 의미론이 강제 종료를 복구**한다. 그래도 다음을 유념한다.
+**However, the `pollPromise` await is not an infinite wait.** A container orchestrator (K8s, etc.) forcibly terminates with SIGKILL if cleanup isn't finished within `terminationGracePeriodSeconds` (default 30s). If the Task Controller gets stuck (an infinite loop, a DB deadlock, etc.), shutdown blocks and gets force-killed, but since the in-flight message was never deleted, another instance re-receives it after the visibility timeout — meaning **at-least-once semantics recover from the forced shutdown**. Still, keep the following in mind.
 
-- **Task의 최대 처리 시간이 grace period보다 작도록 설계**. 길어지면 `@TaskConsumer heartbeat` + grace period 상향이 함께 필요.
-- **정상 종료 경로에서 재수신으로 인한 중복 실행 가능** — Consumer 측 멱등성이 여기서도 방어선.
+- **Design so a Task's max processing time is smaller than the grace period**. If it runs longer, you need `@TaskConsumer heartbeat` together with a larger grace period.
+- **Duplicate execution from re-receiving is possible even on the normal shutdown path** — Consumer-side idempotency is the defense here too.
 
-## DLQ 모니터링
+## DLQ Monitoring
 
-DLQ에 쌓인 메시지는 **코드 버그나 독성 페이로드의 증거**다. CloudWatch 알람으로 `ApproximateNumberOfMessages > 0`을 감시하고, 원인 수정 후 DLQ → 원래 큐로 redrive한다.
+Messages piling up in the DLQ are **evidence of a code bug or a poison payload**. Watch `ApproximateNumberOfMessages > 0` with a CloudWatch alarm, and after fixing the root cause, redrive from the DLQ back to the original queue.
 
 ## Testing
 
-`@TaskConsumer` / `@Cron` 데코레이터는 모두 **메타데이터만 등록**하고 메서드 호출 자체를 래핑하지 않는다. 따라서 단위 테스트는 데코레이터를 우회해 메서드를 직접 호출하면 된다. SQS 목이 필요한 곳은 통합 경계뿐.
+The `@TaskConsumer` / `@Cron` decorators only **register metadata** and don't wrap the method call itself. So a unit test can bypass the decorator and call the method directly. SQS mocking is needed only at integration boundaries.
 
-### Task Controller — 단위 테스트
+### Task Controller — unit test
 
-CommandService만 목으로 주입하고 메서드를 직접 호출한다. 큐/SQS/ledger 불필요 — Task Controller는 순수 위임이므로 비즈니스 동작만 검증.
+Inject only a mocked CommandService and call the method directly. No queue/SQS/ledger needed — since the Task Controller is a pure delegation, only verify the business behavior.
 
 ```typescript
 describe('OrderTaskController', () => {
   const orderCommandService = { archiveOrder: jest.fn() } as any
   const controller = new OrderTaskController(orderCommandService)
 
-  test('archive는 CommandService.archiveOrder에 Command 객체를 전달한다', async () => {
+  test('archive passes the Command object to CommandService.archiveOrder', async () => {
     await controller.archive({ orderId: 'o1' })
     expect(orderCommandService.archiveOrder).toHaveBeenCalledWith({ orderId: 'o1' })
   })
 })
 ```
 
-> 멱등성 ledger는 `TaskConsumerRegistry` 레벨에서 처리되므로 Task Controller 단위 테스트의 관심사가 아니다. ledger 동작은 `TaskConsumerRegistry` 또는 `TaskExecutionLogDb` 통합 테스트에서 검증한다.
+> The idempotency ledger is handled at the `TaskConsumerRegistry` level, so it's not a concern for the Task Controller unit test. Verify ledger behavior in a `TaskConsumerRegistry` or `TaskExecutionLogDb` integration test.
 
-### `TaskConsumerRegistry` — 통합 테스트
+### `TaskConsumerRegistry` — integration test
 
-`idempotencyKey` 옵션이 있는 Task가 실제로 ledger를 기록하고 중복 호출 시 skip되는지 검증.
+Verify that a Task with an `idempotencyKey` option actually records the ledger and gets skipped on duplicate calls.
 
 ```typescript
-test('idempotencyKey가 있는 Task는 두 번째 호출에서 skip된다', async () => {
-  // OrderTaskController가 등록된 상태라고 가정
+test('a Task with idempotencyKey is skipped on the second call', async () => {
+  // assume OrderTaskController is already registered
   const controller = moduleRef.get(OrderTaskController)
   const spy = jest.spyOn(controller, 'archive')
 
   await registry.dispatch('order.archive', { orderId: 'o1' })
   await registry.dispatch('order.archive', { orderId: 'o1' })
 
-  expect(spy).toHaveBeenCalledTimes(1)   // 두 번째는 ledger skip
+  expect(spy).toHaveBeenCalledTimes(1)   // the second call is skipped via the ledger
 })
 ```
 
-### Scheduler — 단위 테스트
+### Scheduler — unit test
 
-`TaskQueue` 목을 주입하고 `@Cron` 메서드를 직접 호출한 뒤 `enqueue` 인자를 검증한다.
+Inject a mocked `TaskQueue`, call the `@Cron` method directly, and verify the `enqueue` arguments.
 
 ```typescript
-test('만료 주문 정리 Task를 날짜 기반 dedupId로 적재한다', async () => {
+test('enqueues the expired-order cleanup Task with a date-based dedupId', async () => {
   const taskQueue = { enqueue: jest.fn() } as any
   const scheduler = new OrderCleanupScheduler(taskQueue)
 
@@ -1101,19 +1102,19 @@ test('만료 주문 정리 Task를 날짜 기반 dedupId로 적재한다', async
 })
 ```
 
-### `TaskQueueOutbox` — 통합 테스트
+### `TaskQueueOutbox` — integration test
 
-실제 DB로 `task_outbox` row insert와 트랜잭션 롤백 동작을 검증한다.
+Verify the `task_outbox` row insert and transaction-rollback behavior against a real DB.
 
 ```typescript
-test('enqueue는 task_outbox row를 insert한다', async () => {
+test('enqueue inserts a task_outbox row', async () => {
   await taskQueueOutbox.enqueue('order.archive', { orderId: 'o1' }, { groupId: 'o1', deduplicationId: 'd1' })
   const rows = await dataSource.getRepository(TaskOutboxEntity).find()
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({ taskType: 'order.archive', processed: false })
 })
 
-test('트랜잭션 롤백 시 row도 롤백된다', async () => {
+test('the row also rolls back on transaction rollback', async () => {
   await expect(
     transactionManager.run(async () => {
       await taskQueueOutbox.enqueue('order.archive', { orderId: 'o1' }, { groupId: 'o1', deduplicationId: 'd2' })
@@ -1125,44 +1126,44 @@ test('트랜잭션 롤백 시 row도 롤백된다', async () => {
 })
 ```
 
-### `TaskOutboxRelay` / `TaskQueueConsumer` — 통합 테스트
+### `TaskOutboxRelay` / `TaskQueueConsumer` — integration test
 
-- **Relay**: SQSClient를 목 치환하거나 LocalStack으로 실제 전송. `processed=true`로 flip되는지 확인.
-- **Consumer**: LocalStack 큐에 메시지를 직접 `SendMessage`한 뒤 Task Controller의 `@TaskConsumer` 메서드가 호출되는지 검증.
+- **Relay**: mock-replace the SQSClient, or send for real via LocalStack. Verify that it flips to `processed=true`.
+- **Consumer**: send a message directly to a LocalStack queue via `SendMessage`, then verify that the Task Controller's `@TaskConsumer` method gets called.
 
-공통 패턴(TestContainer, trxn rollback 등)은 [testing.md](./testing.md)를 참조한다.
+See [testing.md](./testing.md) for shared patterns (TestContainer, transaction rollback, etc.).
 
 ## Interval / Timeout
 
-단순 반복이나 지연 실행도 Task Queue로 표현하는 것을 우선한다. **프로세스 로컬한 작업**(예: 인메모리 캐시 워밍)에 한해 `@Interval` / `@Timeout`을 제한적으로 사용한다.
+Prefer expressing even simple repetition or delayed execution through the Task Queue. Use `@Interval` / `@Timeout` sparingly, and only for **process-local work** (e.g. warming an in-memory cache).
 
 ```typescript
-@Timeout(5000)  // 앱 기동 5초 후 1회 — 프로세스 로컬 캐시 워밍
+@Timeout(5000)  // once, 5 seconds after app startup — process-local cache warming
 async warmupCache() { /* ... */ }
 ```
 
-`@Interval`도 `@Cron`과 같은 이유로 위치가 Infrastructure 레이어로 제한된다 —
-`harness/evaluators/rules/scheduler.evaluator.ts`가 `@Cron`뿐 아니라 `@Interval` 사용도
-검증 대상에 포함한다(`scheduler.layer`/`scheduler.cron.try-catch` 등 동일 ruleId로 잡아낸다).
+`@Interval` is likewise restricted to the Infrastructure layer for the same reason as `@Cron` —
+`harness/evaluators/rules/scheduler.evaluator.ts` covers `@Interval` usage as well as `@Cron`
+(caught under the same ruleIds, e.g. `scheduler.layer`/`scheduler.cron.try-catch`).
 
-## 원칙
+## Principles
 
-- **`@TaskConsumer` 데코레이터로 Task 구독**: `taskType` 문자열 하나로 Scheduler(적재)와 Task Controller(소비)가 연결된다.
-- **Task Controller는 Interface 레이어**: HTTP Controller와 동일한 입력 어댑터. `CommandService`를 주입받아 Command를 실행만 한다. 조건 분기·비즈니스 로직 금지.
-- **Task Controller는 에러를 그대로 던진다**: HTTP Controller의 `.catch + generateErrorResponse` 패턴 금지. 예외는 `TaskQueueConsumer`가 catch하여 재시도/DLQ에 위임한다.
-- **적재는 Outbox 경유**: `TaskQueue.enqueue`는 `task_outbox`에 row를 쓰고, `TaskOutboxRelay`가 SQS에 발행한다. Command 트랜잭션과 Task 적재의 원자성이 보장된다.
-- **Scheduler는 적재만**: `@Cron` 핸들러는 `TaskQueue.enqueue`만 호출한다. Scheduler와 SQS 폴링 인프라는 Infrastructure 레이어.
-- **Domain/Application은 큐 구현을 모른다**: Application Service는 `TaskQueue` **abstract class**에만 의존한다. SQS·Outbox 구현은 DI 바인딩으로 주입된다.
-- **Task ≠ Domain Event**: Task는 필요에 따라 구현하여 실행하는 비동기 작업(1:1), Domain Event는 Command 실행 결과를 수신해 처리하는 수단(1:N). 선택 기준은 상단 표 참조.
-- **`taskType`은 전역 유일**: `@TaskConsumer` 중복 등록은 부트스트랩 시점에 실패시킨다. (도메인 이벤트의 1:N fan-out과 다른 점)
-- **단일 Task 큐**: 모든 도메인의 Task는 하나의 SQS FIFO 큐를 공유한다. 라우팅은 `taskType` 문자열로 수행.
-- **FIFO + MessageDeduplicationId**: 다중 인스턴스 Cron 중복 적재는 큐 레벨에서 방지한다.
-- **실패 시 메시지 삭제 금지**: visibility timeout → 재수신 → DLQ 구조를 신뢰한다. try-catch로 삼키고 Delete하면 실패가 소실된다.
-- **긴 Task는 `@TaskConsumer` heartbeat 옵션**: 초기 `VisibilityTimeout`을 짧게 잡고, 필요한 taskType에만 `heartbeat`을 지정해 처리 중 연장한다.
-- **Command는 멱등하게**: at-least-once 전달이므로 동일 Task가 2회 이상 실행되어도 결과가 같아야 한다. 3단계 전략: ① 본질적 멱등 ② `@TaskConsumer({ idempotencyKey })` 프레임워크 ledger ③ 강한 원자성이 필요하면 Task Controller에서 `TaskExecutionLog`를 직접 주입.
-- **ledger 코드는 Task Controller에 작성하지 않는다(기본)**: `idempotencyKey` 옵션으로 프레임워크가 처리. Task Controller는 CommandService 호출만 남는다.
-- **Task Controller는 DB 직접 접근 금지**: `DataSource`/`Repository<Entity>`를 주입하지 않는다. 공용 관심사(ledger, heartbeat)는 task-queue 프레임워크가 처리한다.
-- **ledger와 outbox 모두 cleanup Cron 필수**: `task_outbox` / `task_execution_log` 방치 시 무한 증가.
-- **Scheduler는 try-catch + logger.error 필수**: `@nestjs/schedule`이 예외를 삼키므로 명시적 로깅 없으면 실패가 관찰 불가능해진다.
-- **Consumer 멱등성은 최후 방어선**: Relay 다중 인스턴스 race·Graceful Shutdown 강제 종료·visibility timeout 만료 시 재수신 등 어떤 경우에도 Consumer가 멱등하면 복구된다.
-- **DLQ 필수**: 모든 Task 큐에 DLQ를 설정하고 CloudWatch 알람으로 감시한다.
+- **Subscribe to a Task via the `@TaskConsumer` decorator**: a single `taskType` string connects the Scheduler (enqueue) and the Task Controller (consume).
+- **The Task Controller is in the Interface layer**: the same kind of input adapter as the HTTP Controller. It injects `CommandService` and only executes the Command. No conditional branching or business logic.
+- **The Task Controller throws errors as-is**: the HTTP Controller's `.catch + generateErrorResponse` pattern is prohibited. Exceptions are caught by `TaskQueueConsumer`, which delegates to retry/DLQ.
+- **Enqueuing goes through the Outbox**: `TaskQueue.enqueue` writes a row to `task_outbox`, and `TaskOutboxRelay` publishes it to SQS. Atomicity between the Command transaction and the Task enqueue is guaranteed.
+- **The Scheduler only enqueues**: the `@Cron` handler only calls `TaskQueue.enqueue`. The Scheduler and the SQS-polling infrastructure are in the Infrastructure layer.
+- **Domain/Application don't know the queue implementation**: the Application Service depends only on the **abstract class** `TaskQueue`. The SQS/Outbox implementation is injected via DI binding.
+- **Task ≠ Domain Event**: a Task is an asynchronous job implemented and run as needed (1:1); a Domain Event is a means of receiving and processing the result of a Command execution (1:N). See the table above for the selection criteria.
+- **`taskType` is globally unique**: duplicate `@TaskConsumer` registration fails at bootstrap. (Unlike the Domain Event's 1:N fan-out.)
+- **A single Task queue**: Tasks from every domain share one SQS FIFO queue. Routing is done via the `taskType` string.
+- **FIFO + MessageDeduplicationId**: duplicate Cron enqueuing from multiple instances is prevented at the queue level.
+- **Never delete a message on failure**: trust the visibility-timeout → re-receive → DLQ structure. Swallowing it with try-catch and deleting loses the failure.
+- **Long Tasks use the `@TaskConsumer` heartbeat option**: keep the initial `VisibilityTimeout` short, and specify `heartbeat` only for the taskTypes that need it, extending it during processing.
+- **Commands must be idempotent**: since delivery is at-least-once, the result must be the same even if the same Task runs 2+ times. 3-tier strategy: ① inherent idempotency ② `@TaskConsumer({ idempotencyKey })` framework ledger ③ if strong atomicity is needed, inject `TaskExecutionLog` directly in the Task Controller.
+- **Don't write ledger code in the Task Controller (by default)**: the framework handles it via the `idempotencyKey` option. The Task Controller is left with only the CommandService call.
+- **The Task Controller must not access the DB directly**: don't inject `DataSource`/`Repository<Entity>`. Shared concerns (ledger, heartbeat) are handled by the task-queue framework.
+- **Both the ledger and the outbox require a cleanup Cron**: `task_outbox` / `task_execution_log` grow indefinitely if left unattended.
+- **The Scheduler requires try-catch + logger.error**: since `@nestjs/schedule` swallows exceptions, failures become unobservable without explicit logging.
+- **Consumer idempotency is the last line of defense**: whether it's a Relay multi-instance race, a forced shutdown during Graceful Shutdown, or a re-receive after visibility timeout expiry, the system recovers in every case as long as the Consumer is idempotent.
+- **A DLQ is mandatory**: configure a DLQ for every Task queue and watch it with a CloudWatch alarm.

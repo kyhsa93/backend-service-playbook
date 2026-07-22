@@ -19,9 +19,9 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 
 type Step = { number: number; title: string; itemCount: number }
 
-// docs/checklist.md 위치는 실행 cwd에 의존. 보통 프로젝트 루트에서 실행하므로
-// cwd 기준 상위 디렉토리 몇 단계를 후보로 탐색한다 (하네스가 sandbox/ 등에서
-// 호출될 수도 있음).
+// The location of docs/checklist.md depends on the execution cwd. Since it's usually run from
+// the project root, a few candidate ancestor directories relative to cwd are searched (the
+// harness may also be invoked from somewhere like sandbox/).
 function locateChecklistDoc(): string | null {
   const candidates = [
     path.resolve(process.cwd(), 'docs/checklist.md'),
@@ -92,7 +92,7 @@ export function evaluateChecklist(root: string): EvaluatorResult {
       : file.includes('/interface/') ? 'interface'
       : file.includes('/infrastructure/') ? 'infrastructure' : 'unknown'
 
-    // STEP 2 — Domain 레이어 (프레임워크 무의존)
+    // STEP 2 — the Domain layer (framework-independent)
     if (layer === 'domain') {
       if (content.includes('@Injectable(')) {
         push('checklist.step2.domain.no-nest-decorator', 'high',
@@ -112,7 +112,7 @@ export function evaluateChecklist(root: string): EvaluatorResult {
       }
     }
 
-    // STEP 3 — Application 레이어
+    // STEP 3 — the Application layer
     if (layer === 'application') {
       if (content.includes('HttpException')) {
         push('checklist.step3.application.no-http-exception', 'high',
@@ -122,7 +122,7 @@ export function evaluateChecklist(root: string): EvaluatorResult {
         push('checklist.step3.application.no-aws-sdk', 'medium',
           `${stepTitle(steps, 3)} — Application이 AWS SDK를 직접 import: ${rel(file)}`, 5)
       }
-      // Application의 Repository 구현체 직접 import 금지 (abstract class만 사용해야 함)
+      // Application must not directly import a Repository implementation (only the abstract class should be used)
       if (/from\s+['"][^'"]*-repository-impl['"]/.test(content)) {
         push('checklist.step3.application.no-impl-import', 'high',
           `${stepTitle(steps, 3)} — Application에서 -impl 직접 import (abstract class 경유 필요): ${rel(file)}`, 6)
@@ -135,64 +135,65 @@ export function evaluateChecklist(root: string): EvaluatorResult {
         `${stepTitle(steps, 4)} — *-impl.ts가 infrastructure/ 외부에 위치: ${rel(file)}`, 4)
     }
 
-    // STEP 5 — Interface: 파일당 @Controller 1개
+    // STEP 5 — Interface: 1 @Controller per file
     const controllerCount = (content.match(/@Controller\s*\(/g) ?? []).length
     if (controllerCount > 1) {
       push('checklist.step5.interface.single-controller-per-file', 'medium',
         `${stepTitle(steps, 5)} — 한 파일에 @Controller가 ${controllerCount}개: ${rel(file)}`, 3)
     }
 
-    // STEP 5 — Module 파일은 domain root에 위치 (interface/application/infrastructure 안에 있으면 안 됨)
+    // STEP 5 — a Module file lives at the domain root (must not be inside interface/application/infrastructure)
     if (/-module\.ts$/.test(file) && (layer === 'application' || layer === 'interface' || layer === 'infrastructure')) {
       push('checklist.step5.module-placement', 'medium',
         `${stepTitle(steps, 5)} — Module 파일이 ${layer}/ 내부에 위치 (도메인 루트 권장): ${rel(file)}`, 3)
     }
 
-    // STEP 12 — Entity 파일은 infrastructure/entity/ 에 위치해야 함
-    // 단, 이 규칙은 도메인의 4레이어 구조(domain/application/infrastructure/interface) 안에
-    // 있는 Entity에만 적용된다. outbox/, task-queue/ 같은 공유 모듈은 애초에 4레이어 구조를
-    // 따르지 않는 flat 패키지이므로(domain-events.md, shared-modules.md 참고) layer가
-    // 'unknown'으로 판정된다 — 이런 모듈의 Entity(outbox.entity.ts, task-outbox.entity.ts 등)
-    // 까지 infrastructure/ 강제 배치 대상으로 삼으면 가이드를 정확히 따른 코드를 오탐 FAIL
-    // 처리하게 된다. 도메인 전용 Technical Service의 Entity(예: account의
-    // infrastructure/notification/sent-email.entity.ts)는 4레이어 구조 안에 있으므로 이 예외
-    // 대상이 아니며 정상적으로 infrastructure/ 배치 규칙을 적용받는다.
+    // STEP 12 — an Entity file must be located at infrastructure/entity/
+    // However, this rule applies only to an Entity within a domain's 4-layer structure
+    // (domain/application/infrastructure/interface). Shared modules like outbox/, task-queue/
+    // aren't 4-layer structures to begin with — they're flat packages (see domain-events.md,
+    // shared-modules.md) — so their layer is judged 'unknown'. If Entities of such modules
+    // (outbox.entity.ts, task-outbox.entity.ts, etc.) were also forced into the
+    // infrastructure/ placement requirement, code correctly following the guide would false-positive FAIL.
+    // A domain-only Technical Service's Entity (e.g. account's
+    // infrastructure/notification/sent-email.entity.ts) is inside the 4-layer structure, so
+    // it's not part of this exception and normally has the infrastructure/ placement rule applied.
     if (/\.entity\.ts$/.test(file) && layer !== 'unknown' && !file.includes('/infrastructure/') && !file.includes('/database/')) {
-      // base.entity.ts는 예외 (database/)
+      // base.entity.ts is an exception (database/)
       if (path.basename(file) !== 'base.entity.ts') {
         push('checklist.step12.entity-placement', 'medium',
           `${stepTitle(steps, 12)} — *.entity.ts가 infrastructure/ 외부에 위치: ${rel(file)}`, 3)
       }
     }
 
-    // STEP 3 — Query Service에서 Repository 사용 금지 (CQRS — Query 인터페이스만 사용)
+    // STEP 3 — using a Repository in the Query Service is prohibited (CQRS — only the Query interface should be used)
     if (/-query-service\.ts$/.test(file) && /\bRepository\b/.test(content) && !/\bQuery\b/.test(content)) {
       push('checklist.step3.query-service-uses-repository', 'medium',
         `${stepTitle(steps, 3)} — Query Service가 Repository를 사용 (Query 인터페이스 사용 필요): ${rel(file)}`, 4)
     }
 
-    // STEP 11 — Async Task Controller 메서드는 Promise를 반환
-    // (skipped — TypeScript 타입 체크와 중복)
+    // STEP 11 — an async Task Controller method returns a Promise
+    // (skipped — redundant with TypeScript's own type checking)
 
-    // STEP 12 — Migration/sync 하드코딩 금지 (production NODE_ENV 체크)
+    // STEP 12 — hardcoding Migration/sync is prohibited (checked against production NODE_ENV)
     if (/synchronize\s*:\s*true(?![^,})]*process\.env)/.test(content)) {
       push('checklist.step12.typeorm-synchronize-unconditional', 'high',
         `${stepTitle(steps, 12)} — TypeORM synchronize: true가 조건 없이 설정됨 (production 사고 위험): ${rel(file)}`, 6)
     }
 
-    // STEP 12 — Secret 하드코딩 검출 (*.spec.ts는 목/픽스처 값이 실제 값처럼 보여도 제외)
+    // STEP 12 — detecting a hardcoded secret (*.spec.ts is excluded, even if a mock/fixture value looks like a real one)
     if (!file.endsWith('.spec.ts') && /(?:password|secret|apikey|api_key|token)\s*[:=]\s*['"][A-Za-z0-9_-]{8,}['"]/i.test(content)) {
       push('checklist.step12.no-hardcoded-secret', 'critical',
         `${stepTitle(steps, 12)} — 비밀값 하드코딩 의심 (process.env 사용): ${rel(file)}`, 8)
     }
 
-    // STEP 14 — cleanup (TODO 잔존 금지)
+    // STEP 14 — cleanup (a leftover TODO is prohibited)
     if (/\bTODO\b/.test(content)) {
       push('checklist.step14.no-todo', 'low',
         `${stepTitle(steps, 14)} — TODO 주석 잔존: ${rel(file)}`, 2)
     }
 
-    // STEP 14 — 상대경로 import 금지 (../ 사용 — 절대경로 @/ 권장)
+    // STEP 14 — relative-path imports are prohibited (using ../ — an absolute @/ path is recommended)
     const relImportCount = (content.match(/from\s+['"]\.\.\//g) ?? []).length
     if (relImportCount >= 3) {
       push('checklist.step14.avoid-relative-imports', 'low',
@@ -200,7 +201,7 @@ export function evaluateChecklist(root: string): EvaluatorResult {
     }
   }
 
-  // Informational: STEP 파싱 및 커버리지 요약
+  // Informational: STEP parsing and coverage summary
   if (steps.length > 0) {
     const totalItems = steps.reduce((sum, s) => sum + s.itemCount, 0)
     failures.push({

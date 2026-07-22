@@ -32,7 +32,7 @@ class DepositServiceTest {
     }
 
     @Test
-    void 계좌가_존재하면_잔액이_증가하고_저장된다() {
+    void increases_balance_and_saves_when_account_exists() {
         Account account = Account.create("owner-1", "owner-1@example.com", "KRW");
         when(accountRepository.findAccounts(
                         new AccountFindQuery(0, 1, account.getAccountId(), "owner-1", null)))
@@ -47,7 +47,7 @@ class DepositServiceTest {
     }
 
     @Test
-    void 계좌가_존재하지_않으면_예외를_던진다() {
+    void throws_exception_when_account_does_not_exist() {
         when(accountRepository.findAccounts(
                         new AccountFindQuery(0, 1, "non-existent", "owner-1", null)))
                 .thenReturn(new AccountsWithCount(List.of(), 0));
@@ -60,7 +60,7 @@ class DepositServiceTest {
     }
 
     @Test
-    void 정지된_계좌면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_account_is_suspended() {
         Account account = Account.create("owner-1", "owner-1@example.com", "KRW");
         account.suspend();
         when(accountRepository.findAccounts(

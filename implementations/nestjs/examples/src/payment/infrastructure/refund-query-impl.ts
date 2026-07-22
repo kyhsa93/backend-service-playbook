@@ -8,10 +8,10 @@ import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
 import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
 import { PaymentErrorMessage as ErrorMessage } from '@/payment/payment-error-message'
 
-// Refund 테이블 자체는 ownerId를 갖지 않는다(Refund는 paymentId로만 원 결제를
-// 참조한다) — 소유권 검증은 Payment 테이블을 먼저 조회해 확인한다. Account의
-// AccountQueryImpl.getTransactions가 계좌 소유권을 먼저 확인한 뒤 거래 내역을
-// 조회하는 것과 동일한 패턴이다.
+// The Refund table itself has no ownerId (Refund references the original payment only via
+// paymentId) — ownership is verified by querying the Payment table first. The same pattern as
+// Account's AccountQueryImpl.getTransactions confirming account ownership before querying the
+// transaction history.
 @Injectable()
 export class RefundQueryImpl extends RefundQuery {
   constructor(

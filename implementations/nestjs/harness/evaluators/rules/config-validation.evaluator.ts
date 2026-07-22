@@ -1,12 +1,12 @@
-// config-validation evaluator — ConfigModule 설정, 환경 변수 validation,
-// process.env 직접 참조 범위를 검증한다 (guide: docs/architecture/config.md).
+// The config-validation evaluator — verifies ConfigModule setup, environment variable
+// validation, and the scope of direct process.env references (guide: docs/architecture/config.md).
 //
-// Applicability: src/config 디렉토리 또는 ConfigModule 사용 코드가 있으면 실행 (maxScore = 20).
+// Applicability: runs if there's a src/config directory or ConfigModule-using code (maxScore = 20).
 //
 // Rules:
-// - ConfigModule.forRoot()에는 validationSchema 또는 validate 옵션이 있어야 한다.
-// - src/config/*.config.ts 외부에서 process.env를 직접 참조하면 실패한다.
-// - src/config/*.config.ts 파일명만 config factory로 인정한다.
+// - ConfigModule.forRoot() must have a validationSchema or validate option.
+// - Directly referencing process.env outside of src/config/*.config.ts fails.
+// - Only files named src/config/*.config.ts are recognized as a config factory.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'

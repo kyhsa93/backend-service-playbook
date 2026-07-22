@@ -8,12 +8,12 @@ import { SQS_CLIENT } from '@/outbox/sqs-client-provider'
 
 import { TaskOutboxEntity } from './task-outbox.entity'
 
-// task_outbox 테이블 → SQS 발행만 담당한다(outbox/outbox-poller.ts와 같은 모양). 어떤
-// Task Controller도 직접 호출하지 않는다 — 그건 TaskQueueConsumer의 몫이다.
+// Handles only publishing task_outbox table → SQS (shaped like outbox/outbox-poller.ts). It
+// never calls any Task Controller directly — that's TaskQueueConsumer's job.
 //
-// SQS 클라이언트는 outbox 모듈이 export하는 SQS_CLIENT를 그대로 재사용한다 — Task Queue와
-// Domain Event 큐는 개념이 달라 큐는 분리하지만, "같은 SDK/인프라를 재사용한다"는
-// scheduling.md의 원칙에 따라 커넥션은 공유한다.
+// The SQS client reuses SQS_CLIENT exported by the outbox module as-is — the Task Queue and
+// the Domain Event queue are different concepts so the queues themselves are kept separate,
+// but per scheduling.md's principle of "reusing the same SDK/infrastructure," the connection is shared.
 @Injectable()
 export class TaskOutboxRelay {
   private readonly logger = new Logger(TaskOutboxRelay.name)
@@ -61,7 +61,7 @@ export class TaskOutboxRelay {
         }))
         await manager.update(TaskOutboxEntity, { taskId: row.taskId }, { processed: true })
       } catch (error) {
-        // 발행 실패 행은 processed=false로 남겨 다음 tick에서 재시도한다.
+        // Leave a publish-failed row as processed=false so it retries on the next tick.
         this.logger.error({ message: 'Task SQS 발행 실패', task_type: row.taskType, task_id: row.taskId, error })
       }
     }

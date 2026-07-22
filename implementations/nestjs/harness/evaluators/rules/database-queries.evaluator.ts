@@ -31,7 +31,7 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
   let score = 20
   const rel = (f: string) => path.relative(root, f)
 
-  // Rule 1: Entity에 @PrimaryGeneratedColumn() 사용 금지 → @PrimaryColumn({ type: 'char', length: 32 }) 사용
+  // Rule 1: using @PrimaryGeneratedColumn() on an Entity is prohibited → use @PrimaryColumn({ type: 'char', length: 32 })
   for (const file of entityFiles) {
     const content = fs.readFileSync(file, 'utf-8')
     if (/@PrimaryGeneratedColumn\s*\(/.test(content)) {
@@ -45,11 +45,11 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
     }
   }
 
-  // Rule 2: hard delete(.delete()) 금지 — softDelete 사용
+  // Rule 2: hard delete (.delete()) is prohibited — use softDelete
   const infraFiles = files.filter((f) => f.includes('/infrastructure/'))
   for (const file of infraFiles) {
     const content = fs.readFileSync(file, 'utf-8')
-    // manager.delete(나 repository.delete( 패턴 감지 (softDelete가 아닌 것)
+    // Detects the manager.delete( or repository.delete( pattern (as opposed to softDelete)
     if (/\b(manager|repository|this\.\w+)\s*\.\s*delete\s*\(/.test(content) &&
         !/softDelete/.test(content)) {
       failures.push({
@@ -62,13 +62,14 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
     }
   }
 
-  // Rule 3: Entity는 BaseEntity를 상속해야 한다.
-  // - createdAt/updatedAt/deletedAt을 모두 인라인 데코레이터로 중복 선언 (BaseEntity를 상속하지 않고 그대로 베낀 경우)
-  // - 감사 컬럼이 하나도 없는 경우 (BaseEntity 상속 자체가 누락된 경우)
-  // 는 위반으로 본다. createdAt만 있는 append-only 로그성 테이블처럼 감사 컬럼 일부만 의도적으로
-  // 사용하는 경우는 BaseEntity 상속을 강제하지 않는다 (BaseEntity는 updatedAt/deletedAt이 필수라
-  // 상속 시 스키마에 없는 컬럼을 참조하게 되기 때문).
-  // BaseEntity 정의 파일 자신은 검사 대상에서 제외한다.
+  // Rule 3: an Entity must extend BaseEntity.
+  // Treated as a violation when:
+  // - createdAt/updatedAt/deletedAt are all redundantly declared with inline decorators (copied as-is instead of extending BaseEntity)
+  // - there are no audit columns at all (BaseEntity inheritance itself is missing)
+  // A case that intentionally uses only some audit columns, like an append-only log-style
+  // table with only createdAt, doesn't force BaseEntity inheritance (since BaseEntity requires
+  // updatedAt/deletedAt, inheriting it would reference columns not in the schema).
+  // The BaseEntity definition file itself is excluded from this check.
   for (const file of entityFiles) {
     const content = fs.readFileSync(file, 'utf-8')
     if (/export\s+abstract\s+class\s+\w*BaseEntity/.test(content)) continue
@@ -91,7 +92,7 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
     }
   }
 
-  // Rule 4: TransactionManager 파일 존재 여부
+  // Rule 4: whether a TransactionManager file exists
   const hasTxManager = fs.existsSync(path.join(srcRoot, 'database', 'transaction-manager.ts')) ||
     files.some((f) => f.endsWith('transaction-manager.ts'))
   if (!hasTxManager) {

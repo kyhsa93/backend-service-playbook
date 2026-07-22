@@ -1,96 +1,96 @@
-# 코딩 컨벤션
+# Coding Conventions
 
-## 1. 파일 네이밍 규칙
+## 1. File Naming Rules
 
-- 모든 파일명: `kebab-case`
-- Command Service: `<domain>-command-service.ts` (`application/command/`에 배치)
-- Query Service: `<domain>-query-service.ts` (`application/query/`에 배치)
-- Query 인터페이스: `<domain>-query.ts` (`application/query/`에 배치)
-- Query 구현체: `<domain>-query-impl.ts` (`infrastructure/`에 배치)
-- 모듈: `<domain>-module.ts` (NOT `<domain>.module.ts`)
-- 컨트롤러: `<domain>-controller.ts`
-- 에러 메시지: `<domain>-error-message.ts`
-- 에러 코드: `<domain>-error-code.ts` (모듈 루트에 위치, 메시지와 1:1 매핑)
-- enum: `<domain>-enum.ts` (모듈 루트 디렉토리에 위치)
-- 상수: `<domain>-constant.ts` (모듈 루트 디렉토리에 위치)
-- Aggregate Root: `<aggregate-root>.ts` (domain 레이어)
-- Entity: `<entity>.ts` (domain 레이어)
-- Value Object: `<value-object>.ts` (domain 레이어)
-- Domain Event: `<domain-event>.ts` (domain 레이어, 내부용)
-- Integration Event: `<name>-integration-event.ts` (`application/integration-event/`에 배치, 외부 공개 계약, 버전 접미사 포함)
-- Integration Event Controller: `<domain>-integration-event-controller.ts` (`interface/integration-event/`에 배치, 외부 BC Integration Event 수신)
-- Repository 인터페이스: `<aggregate>-repository.ts` (domain 레이어)
-- Repository 구현체: `<aggregate>-repository-impl.ts` (infrastructure 레이어)
-- DTO: 동사 우선, 서술적 — `get-orders-request-querystring.ts`, `create-order-request-body.ts`
-- 커맨드: `<verb>-<noun>-command.ts`
-- 쿼리 객체: `<verb>-<noun>-query.ts` / 결과: `<verb>-<noun>-result.ts` — querystring 기반(목록)이든 URL 파라미터 기반(단건)이든 읽기 요청 객체는 모두 `-query.ts`로 정의한다. `query/`에 배치한다. (동사는 `get`, `find` 등 Controller 메서드명과 일치시킨다)
-- Param (쓰기): URL 파라미터만 받는 쓰기 요청도 `<verb>-<noun>-command.ts`로 정의한다. `command/`에 배치한다.
-- Adapter 인터페이스: `<external-domain>-adapter.ts` (`application/adapter/`에 배치)
-- Adapter 구현체: `<external-domain>-adapter-impl.ts` (`infrastructure/`에 배치)
-- 기술 인프라 Service 인터페이스: `<concern>-service.ts` (`application/service/`에 배치) — 암복호화·스토리지 등 기술 인프라 추상화
-- 기술 인프라 Service 구현체: `<concern>-service-impl.ts` (`infrastructure/`에 배치)
+- All file names: `kebab-case`
+- Command Service: `<domain>-command-service.ts` (placed in `application/command/`)
+- Query Service: `<domain>-query-service.ts` (placed in `application/query/`)
+- Query interface: `<domain>-query.ts` (placed in `application/query/`)
+- Query implementation: `<domain>-query-impl.ts` (placed in `infrastructure/`)
+- Module: `<domain>-module.ts` (NOT `<domain>.module.ts`)
+- Controller: `<domain>-controller.ts`
+- Error message: `<domain>-error-message.ts`
+- Error code: `<domain>-error-code.ts` (located at the module root, 1:1 mapped with messages)
+- enum: `<domain>-enum.ts` (located in the module root directory)
+- Constant: `<domain>-constant.ts` (located in the module root directory)
+- Aggregate Root: `<aggregate-root>.ts` (domain layer)
+- Entity: `<entity>.ts` (domain layer)
+- Value Object: `<value-object>.ts` (domain layer)
+- Domain Event: `<domain-event>.ts` (domain layer, internal use)
+- Integration Event: `<name>-integration-event.ts` (placed in `application/integration-event/`, a public external contract, includes a version suffix)
+- Integration Event Controller: `<domain>-integration-event-controller.ts` (placed in `interface/integration-event/`, receives Integration Events from external BCs)
+- Repository interface: `<aggregate>-repository.ts` (domain layer)
+- Repository implementation: `<aggregate>-repository-impl.ts` (infrastructure layer)
+- DTO: verb-first, descriptive — `get-orders-request-querystring.ts`, `create-order-request-body.ts`
+- Command: `<verb>-<noun>-command.ts`
+- Query object: `<verb>-<noun>-query.ts` / result: `<verb>-<noun>-result.ts` — whether the read request object is querystring-based (list) or URL-parameter-based (single), always define it as `-query.ts`. Place it in `query/`. (The verb should match the Controller method name — `get`, `find`, etc.)
+- Param (write): a write request that only takes URL parameters is also defined as `<verb>-<noun>-command.ts`. Place it in `command/`.
+- Adapter interface: `<external-domain>-adapter.ts` (placed in `application/adapter/`)
+- Adapter implementation: `<external-domain>-adapter-impl.ts` (placed in `infrastructure/`)
+- Technical infrastructure Service interface: `<concern>-service.ts` (placed in `application/service/`) — abstraction over technical infrastructure such as encryption/decryption, storage, etc.
+- Technical infrastructure Service implementation: `<concern>-service-impl.ts` (placed in `infrastructure/`)
 - CommandHandler (`@nestjs/cqrs`): `<verb>-<noun>-command-handler.ts`
 - QueryHandler (`@nestjs/cqrs`): `<verb>-<noun>-query-handler.ts`
-- EventHandler (`@nestjs/cqrs`): `<domain-event>-handler.ts` (`application/event/`에 배치)
-- 설정 파일: `<concern>.config.ts` (`config/`에 배치) — `database.config.ts`, `jwt.config.ts` 등
-- 설정 검증: `validation.config.ts` (`config/`에 배치, harness의 `*.config.ts` 네이밍 규칙을 따름)
+- EventHandler (`@nestjs/cqrs`): `<domain-event>-handler.ts` (placed in `application/event/`)
+- Config file: `<concern>.config.ts` (placed in `config/`) — `database.config.ts`, `jwt.config.ts`, etc.
+- Config validation: `validation.config.ts` (placed in `config/`, follows the harness's `*.config.ts` naming rule)
 
 ---
 
-## 2. 클래스 네이밍 규칙
+## 2. Class Naming Rules
 
 - Command Service: `OrderCommandService`, `UserCommandService`
 - Query Service: `OrderQueryService`, `UserQueryService`
-- Query 인터페이스: `OrderQuery`, `UserQuery`
-- Query 구현체: `OrderQueryImpl`, `UserQueryImpl`
-- 컨트롤러: `OrderController`, `UserController`
-- 모듈: `OrderModule`, `UserModule`
-- Aggregate Root: `Order`, `User` (도메인 명사)
+- Query interface: `OrderQuery`, `UserQuery`
+- Query implementation: `OrderQueryImpl`, `UserQueryImpl`
+- Controller: `OrderController`, `UserController`
+- Module: `OrderModule`, `UserModule`
+- Aggregate Root: `Order`, `User` (domain noun)
 - Value Object: `Money`, `Address`, `OrderItem`
-- Domain Event: `OrderPlaced`, `OrderCancelled` (과거형, 내부용)
-- Integration Event: `OrderCancelledIntegrationEventV1` (과거형 + `IntegrationEventV<N>` 접미사, eventName 리터럴은 `order.cancelled.v1` 형식)
+- Domain Event: `OrderPlaced`, `OrderCancelled` (past tense, internal use)
+- Integration Event: `OrderCancelledIntegrationEventV1` (past tense + `IntegrationEventV<N>` suffix; eventName literal in `order.cancelled.v1` format)
 - Integration Event Controller: `OrderIntegrationEventController`, `PaymentIntegrationEventController`
-- Repository 인터페이스: `OrderRepository`, `UserRepository`
-- Repository 구현체: `OrderRepositoryImpl`, `UserRepositoryImpl`
-- Adapter 인터페이스: `UserAdapter`, `PaymentAdapter` (외부 도메인명 + Adapter)
-- Adapter 구현체: `UserAdapterImpl`, `PaymentAdapterImpl`
+- Repository interface: `OrderRepository`, `UserRepository`
+- Repository implementation: `OrderRepositoryImpl`, `UserRepositoryImpl`
+- Adapter interface: `UserAdapter`, `PaymentAdapter` (external domain name + Adapter)
+- Adapter implementation: `UserAdapterImpl`, `PaymentAdapterImpl`
 - DTO: `GetOrderRequestParam`, `GetOrdersResponseBody`, `FindUsersRequestQuerystring`
-- 커맨드: `CancelOrderCommand`, `CreateUserCommand`
-- 에러 메시지 enum: `OrderErrorMessage`, `UserErrorMessage`
-- 에러 코드 enum: `OrderErrorCode`, `UserErrorCode` (값은 `SCREAMING_SNAKE_CASE` 고정 문자열)
-- 쿼리 결과: `GetOrdersResult`, `FindUsersResult`
+- Command: `CancelOrderCommand`, `CreateUserCommand`
+- Error message enum: `OrderErrorMessage`, `UserErrorMessage`
+- Error code enum: `OrderErrorCode`, `UserErrorCode` (values are fixed `SCREAMING_SNAKE_CASE` strings)
+- Query result: `GetOrdersResult`, `FindUsersResult`
 - CommandHandler (`@nestjs/cqrs`): `CancelOrderCommandHandler`, `CreateOrderCommandHandler`
 - QueryHandler (`@nestjs/cqrs`): `GetOrdersQueryHandler`, `GetOrderQueryHandler`
 - EventHandler (`@nestjs/cqrs`): `OrderCancelledHandler`, `OrderPlacedHandler`
 
 ---
 
-## 3. Enum / 상수 파일 분리 규칙
+## 3. Enum / Constant File Separation Rules
 
-- **모든 enum, 상수는 반드시 별도의 파일로 정의한다** — 다른 파일 내에 인라인으로 선언하지 않는다
-- **모듈 내에서 사용하는 enum과 상수는 `<domain>-module.ts`가 위치한 디렉토리에 둔다**
-  - `<domain>-enum.ts` — 해당 모듈에서 사용하는 모든 enum
-  - `<domain>-constant.ts` — 해당 모듈에서 사용하는 모든 상수
-- Application 레이어(Query/Result/Command)에 사용되는 enum도 동일하게 모듈 루트에 정의하고 import해서 사용한다
+- **All enums and constants must be defined in a separate file** — never declared inline inside another file
+- **Enums and constants used within a module go in the directory where `<domain>-module.ts` is located**
+  - `<domain>-enum.ts` — all enums used by that module
+  - `<domain>-constant.ts` — all constants used by that module
+- Enums used in the Application layer (Query/Result/Command) are likewise defined at the module root and imported from there
 
 ```typescript
-// order-enum.ts — 모듈 루트에 위치
+// order-enum.ts — located at the module root
 export enum OrderStatus {
   PENDING = 'pending',
   PAID = 'paid',
   CANCELLED = 'cancelled'
 }
 
-// order-constant.ts — 모듈 루트에 위치
+// order-constant.ts — located at the module root
 export const MAX_ORDER_AMOUNT = 9_999_999
 export const ALLOW_ORDER_STATUS_ARRAY = ['pending', 'paid']
 ```
 
 ---
 
-## 4. TypeScript 타이핑 패턴
+## 4. TypeScript Typing Patterns
 
-### DTO / Result 클래스 — `public readonly` 필수
+### DTO / Result classes — `public readonly` required
 
 ```typescript
 export class Order {
@@ -105,7 +105,7 @@ export class Order {
 }
 ```
 
-### Command 객체 — `Object.assign` 생성자 패턴
+### Command objects — `Object.assign` constructor pattern
 
 ```typescript
 export class CancelOrderCommand {
@@ -119,7 +119,7 @@ export class CancelOrderCommand {
 }
 ```
 
-### 리터럴 유니온 타입 — 도메인 값에 사용
+### Literal union types — used for domain values
 
 ```typescript
 public readonly status: 'pending' | 'confirmed' | 'cancelled'
@@ -127,42 +127,42 @@ public readonly result: 'success' | 'fail'
 public readonly scope: 'all' | 'payment'
 ```
 
-### 시간대 규칙 — KST (UTC+9) 기준
+### Timezone rule — based on KST (UTC+9)
 
-- DB에 시간 값을 저장할 때 UTC를 KST로 변환하여 저장한다.
-- DB에서 읽은 시간 값은 이미 KST이므로 변환 없이 그대로 응답한다.
-- 서버/DB 타임존(TZ) 설정은 변경하지 않는다.
+- When saving a time value to the DB, convert it from UTC to KST before saving.
+- A time value read from the DB is already KST, so return it as-is without conversion.
+- Do not change the server/DB timezone (TZ) setting.
 
 ```typescript
-// KST 변환 유틸
+// KST conversion utility
 function toKST(date: Date): Date {
   return new Date(date.getTime() + 9 * 60 * 60 * 1000)
 }
 
-// 저장 시 — UTC → KST 변환 후 저장
+// When saving — convert UTC → KST before saving
 const manager = this.transactionManager.getManager()
 await manager.save(OrderEntity, { createdAt: toKST(new Date()) })
 
-// 조회 시 — DB 값이 이미 KST이므로 그대로 반환
+// When reading — the DB value is already KST, so return it as-is
 const order = await this.orderRepo.findOne({ where: { orderId } })
-return order.createdAt // KST 그대로 응답
+return order.createdAt // returned as KST, unchanged
 ```
 
 ```typescript
-// 잘못된 방식 — UTC 값을 그대로 저장
-await manager.save(OrderEntity, { createdAt: new Date() }) // UTC 기준 저장됨
+// Incorrect — saving the UTC value as-is
+await manager.save(OrderEntity, { createdAt: new Date() }) // saved in UTC
 
-// 잘못된 방식 — DB에서 읽은 KST 값을 다시 변환
-return toKST(order.createdAt) // 이중 변환으로 18시간 오차 발생
+// Incorrect — converting a KST value read from the DB again
+return toKST(order.createdAt) // double conversion causes an 18-hour offset
 ```
 
-### Null 처리 규칙
+### Null-handling rules
 
-- DB 필드: `string | null` (undefined X)
-- optional 파라미터: `?` 사용 (`T | undefined`)
-- `any` 사용 금지
+- DB field: `string | null` (not undefined)
+- Optional parameter: use `?` (`T | undefined`)
+- `any` is prohibited
 
-### ORM — Repository 구현체에서 TypeORM Repository와 TransactionManager 주입
+### ORM — inject the TypeORM Repository and TransactionManager in the Repository implementation
 
 ```typescript
 constructor(
@@ -173,7 +173,7 @@ constructor(
 }
 ```
 
-### 복잡한 타입 — type alias 사용
+### Complex types — use a type alias
 
 ```typescript
 type OrderWithItems = Order & { items: OrderItem[] }
@@ -181,84 +181,84 @@ type OrderWithItems = Order & { items: OrderItem[] }
 
 ---
 
-## 5. REST API 엔드포인트 설계 규칙
+## 5. REST API Endpoint Design Rules
 
-### URL 구조 — 리소스 중심, 복수 명사
+### URL structure — resource-centric, plural nouns
 
-URL은 **행위(동사)가 아닌 리소스(명사)**를 나타낸다. HTTP 메서드가 행위를 표현한다.
+A URL represents a **resource (noun), not an action (verb)**. The HTTP method expresses the action.
 
 ```
-// 올바른 방식
-GET    /orders              주문 목록 조회
-GET    /orders/:orderId     주문 단건 조회
-POST   /orders              주문 생성
-PUT    /orders/:orderId     주문 전체 수정
-PATCH  /orders/:orderId     주문 부분 수정
-DELETE /orders/:orderId     주문 삭제
+// Correct
+GET    /orders              List orders
+GET    /orders/:orderId     Get a single order
+POST   /orders              Create an order
+PUT    /orders/:orderId     Fully update an order
+PATCH  /orders/:orderId     Partially update an order
+DELETE /orders/:orderId     Delete an order
 
-// 잘못된 방식
-GET    /getOrders            동사를 URL에 넣지 않는다
-POST   /createOrder          동사를 URL에 넣지 않는다
-GET    /order/:orderId       단수형 사용 금지 — 항상 복수형
+// Incorrect
+GET    /getOrders            Don't put verbs in the URL
+POST   /createOrder          Don't put verbs in the URL
+GET    /order/:orderId       Singular form is prohibited — always plural
 ```
 
-### HTTP 메서드와 응답 코드
+### HTTP methods and response codes
 
-| 메서드 | 용도 | 성공 코드 | 응답 바디 |
+| Method | Purpose | Success code | Response body |
 |--------|------|----------|----------|
-| `GET` | 리소스 조회 | 200 OK | 있음 |
-| `POST` | 리소스 생성 | 201 Created | 선택 (생성된 리소스 또는 비어있음) |
-| `PUT` | 리소스 전체 수정 | 200 OK | 있음 |
-| `PATCH` | 리소스 부분 수정 | 200 OK | 있음 |
-| `DELETE` | 리소스 삭제 | 204 No Content | 없음 |
+| `GET` | Retrieve resource | 200 OK | Yes |
+| `POST` | Create resource | 201 Created | Optional (created resource or empty) |
+| `PUT` | Fully update resource | 200 OK | Yes |
+| `PATCH` | Partially update resource | 200 OK | Yes |
+| `DELETE` | Delete resource | 204 No Content | None |
 
-### 비 CRUD 행위 — 하위 리소스 또는 동사 경로
+### Non-CRUD actions — sub-resource or verb path
 
-CRUD로 표현하기 어려운 행위는 **하위 리소스 경로**로 표현한다.
-
-```
-POST   /orders/:orderId/cancel        주문 취소
-POST   /orders/:orderId/refund        주문 환불
-POST   /users/:userId/verify-email    이메일 인증
-POST   /payments/:paymentId/capture   결제 승인
-```
-
-### 계층 관계 — 중첩 리소스
-
-리소스 간 소유/포함 관계는 URL 중첩으로 표현한다. 2단계까지만 중첩하고, 그 이상은 최상위 리소스로 분리한다.
+An action that's hard to express as CRUD is expressed as a **sub-resource path**.
 
 ```
-// 올바른 방식 — 2단계 중첩
-GET    /orders/:orderId/items                   주문 항목 목록
-GET    /orders/:orderId/items/:itemId           주문 항목 단건
+POST   /orders/:orderId/cancel        Cancel an order
+POST   /orders/:orderId/refund        Refund an order
+POST   /users/:userId/verify-email    Verify email
+POST   /payments/:paymentId/capture   Capture a payment
+```
 
-// 잘못된 방식 — 3단계 이상 중첩
-GET    /users/:userId/orders/:orderId/items/:itemId    과도한 중첩
-// → 대신 최상위로 분리
+### Hierarchical relationships — nested resources
+
+Ownership/containment relationships between resources are expressed via URL nesting. Nest only up to 2 levels; beyond that, split into a top-level resource.
+
+```
+// Correct — 2-level nesting
+GET    /orders/:orderId/items                   List an order's items
+GET    /orders/:orderId/items/:itemId           Get a single order item
+
+// Incorrect — 3+ level nesting
+GET    /users/:userId/orders/:orderId/items/:itemId    Excessive nesting
+// → Split into a top-level resource instead
 GET    /order-items/:itemId
 ```
 
-### 목록 조회 — 페이지네이션과 필터링
+### List retrieval — pagination and filtering
 
 ```
 GET /orders?page=0&take=20&status=pending&status=paid
 ```
 
-- 페이지네이션: `page` (0부터 시작), `take` (페이지 크기)
-- 필터: querystring으로 전달
-- 정렬: `sort=createdAt:desc` 형식 (필요 시)
+- Pagination: `page` (0-based), `take` (page size)
+- Filter: passed via querystring
+- Sort: `sort=createdAt:desc` format (when needed)
 
-### URL 네이밍 규칙
+### URL naming rules
 
-- **복수 명사**: `/orders`, `/users`, `/payments` (단수형 사용 금지)
-- **kebab-case**: `/order-items`, `/payment-methods` (camelCase, snake_case 금지)
-- **소문자만 사용**: `/Orders` (X) → `/orders` (O)
-- **후행 슬래시 없음**: `/orders/` (X) → `/orders` (O)
-- **파일 확장자 없음**: `/orders.json` (X) → `/orders` (O)
+- **Plural nouns**: `/orders`, `/users`, `/payments` (singular form is prohibited)
+- **kebab-case**: `/order-items`, `/payment-methods` (camelCase, snake_case prohibited)
+- **Lowercase only**: `/Orders` (wrong) → `/orders` (correct)
+- **No trailing slash**: `/orders/` (wrong) → `/orders` (correct)
+- **No file extension**: `/orders.json` (wrong) → `/orders` (correct)
 
-### Deprecated 엔드포인트
+### Deprecated endpoints
 
-사용을 중단할 엔드포인트는 즉시 삭제하지 않고 `@ApiOperation({ deprecated: true })`로 표시하여 클라이언트가 마이그레이션할 시간을 확보한다.
+Don't delete an endpoint immediately when it's slated for removal — mark it with `@ApiOperation({ deprecated: true })` to give clients time to migrate.
 
 ```typescript
 @Post()
@@ -266,39 +266,39 @@ GET /orders?page=0&take=20&status=pending&status=paid
 async create(@Body() body: CreateOrderRequest): Promise<OrderResponse> { ... }
 ```
 
-- Swagger UI와 OpenAPI 스펙에 `deprecated: true`로 노출되어 클라이언트가 인지할 수 있다.
-- 호출이 발생하면 `logger.warn()`으로 기록하여 잔존 사용자를 추적한다.
-- 대체 엔드포인트와 제거 예정 시점을 `@ApiOperation({ description })`에 명시한다.
+- It's exposed as `deprecated: true` in the Swagger UI and OpenAPI spec so clients can notice it.
+- Log any calls with `logger.warn()` to track remaining usage.
+- Note the replacement endpoint and planned removal date in `@ApiOperation({ description })`.
 
 ---
 
-## 6. 메서드 네이밍 및 구성
+## 6. Method Naming and Organization
 
-### Controller 메서드
+### Controller methods
 
-- `get`, `find`, `create`, `update`, `delete`, `reset`, `cancel`, `transfer` 등 동사 사용
-- 모두 `public async` 이며 반환 타입 명시: `Promise<ResponseType>`
-- 로직 없이 Service 위임 후 catch 처리만
+- Use verbs like `get`, `find`, `create`, `update`, `delete`, `reset`, `cancel`, `transfer`, etc.
+- All are `public async`, with an explicit return type: `Promise<ResponseType>`
+- No logic — just delegate to the Service and handle catch
 
-### Service 메서드 구성 순서
+### Service method ordering
 
-1. `private readonly` 필드 (logger 등)
-2. constructor (Repository 주입)
-3. public 비즈니스 메서드
-4. private 유틸/헬퍼 메서드
+1. `private readonly` fields (logger, etc.)
+2. constructor (Repository injection)
+3. public business methods
+4. private util/helper methods
 
-### Service 메서드 반환 타입 — 항상 명시
+### Service method return types — always explicit
 
 ```typescript
-// 올바른 방식
+// Correct
 public async getOrder(param: { orderId: string }): Promise<GetOrderResult> { ... }
 public async cancelOrder(command: CancelOrderCommand): Promise<void> { ... }
 
-// 잘못된 방식
-public async getOrder(param: { orderId: string }) { ... }  // 반환 타입 누락
+// Incorrect
+public async getOrder(param: { orderId: string }) { ... }  // missing return type
 ```
 
-### private 환경 분기 헬퍼 메서드
+### private environment-branching helper method
 
 ```typescript
 private getPaymentApiUrl() {
@@ -309,16 +309,16 @@ private getPaymentApiUrl() {
 
 ---
 
-## 7. import 구성 패턴
+## 7. Import Organization Pattern
 
-### 2그룹 순서
+### 2-group ordering
 
 ```typescript
-// 1. 외부 패키지 (@nestjs/, 서드파티 등)
+// 1. External packages (@nestjs/, third-party, etc.)
 import { Injectable } from '@nestjs/common'
 import * as dayjs from 'dayjs'
 
-// 2. 내부 @/ alias imports (알파벳 순 — 경로 기준)
+// 2. Internal @/ alias imports (alphabetical order — by path)
 import { TransactionManager } from '@/database/transaction-manager'
 import { formatDate } from '@/libs/datetime'
 import { GetOrdersQuery } from '@/order/application/query/get-orders-query'
@@ -326,61 +326,61 @@ import { OrderRepository } from '@/order/domain/order-repository'
 import { OrderErrorMessage as ErrorMessage } from '@/order/order-error-message'
 ```
 
-### 상대경로 import 금지 — 절대경로만 사용
+### No relative-path imports — absolute paths only
 
-프로젝트 설정에 따라 아래 두 방식 중 하나를 사용한다:
+Depending on the project setup, use one of the following two approaches:
 
-**방식 1: `@/` alias (권장)**
+**Approach 1: `@/` alias (recommended)**
 
-`tsconfig.json`에 `"@/*": ["./src/*"]` alias가 정의된 프로젝트에서 사용한다.
+Use this in projects where the `"@/*": ["./src/*"]` alias is defined in `tsconfig.json`.
 
 ```typescript
-// 올바른 방식
+// Correct
 import { OrderErrorMessage } from '@/order/order-error-message'
 import { OrderRepository } from '@/order/domain/order-repository'
 ```
 
-**방식 2: `src/` 기반 절대경로**
+**Approach 2: `src/`-based absolute path**
 
-`@/` alias가 없고 `tsconfig.json`에 `"baseUrl": "./"` 가 설정된 프로젝트에서 사용한다.
+Use this in projects without the `@/` alias, where `"baseUrl": "./"` is set in `tsconfig.json`.
 
 ```typescript
-// 올바른 방식
+// Correct
 import { OrderErrorMessage } from 'src/order/order-error-message'
 import { OrderRepository } from 'src/order/domain/order-repository'
 ```
 
-**공통 — 잘못된 방식**
+**Common — incorrect**
 
 ```typescript
-// 잘못된 방식 (상대경로)
+// Incorrect (relative path)
 import { OrderErrorMessage } from '../order-error-message'
 import { OrderRepository } from './domain/order-repository'
 ```
 
-### Named export 사용 (default export X)
+### Use named exports (no default export)
 
 ```typescript
-// 올바른 방식
+// Correct
 export class OrderRepository { ... }
 
-// 잘못된 방식
+// Incorrect
 export default class OrderRepository { ... }
 ```
 
 ---
 
-## 8. Swagger 문서화 패턴
+## 8. Swagger Documentation Pattern
 
-모든 public 엔드포인트에 완전한 Swagger 문서화 필수:
+Complete Swagger documentation is required on every public endpoint:
 
 ```typescript
-@ApiProperty({ description: '주문 ID', type: String, nullable: false })
+@ApiProperty({ description: 'Order ID', type: String, nullable: false })
 @ApiProperty({ nullable: true, type: String })
 @ApiProperty({ nullable: true, type: Date })
 ```
 
-### DTO Validation — class-validator
+### DTO validation — class-validator
 
 ```typescript
 export class GetOrderRequestParam {
@@ -403,7 +403,7 @@ export class CreateOrderRequestBody {
 }
 ```
 
-### Querystring — optional 필드 처리
+### Querystring — handling optional fields
 
 ```typescript
 export class FindOrdersRequestQuerystring {
@@ -427,52 +427,52 @@ export class FindOrdersRequestQuerystring {
 }
 ```
 
-### `@ApiProperty` 위치 — Query/Result vs Interface DTO
+### `@ApiProperty` placement — Query/Result vs Interface DTO
 
-Application 레이어의 Query/Result 클래스에 `@ApiProperty`를 직접 작성한다.
-Interface DTO는 `extends`로 상속하므로 별도로 데코레이터를 추가하지 않는다.
+Write `@ApiProperty` directly on the Application layer's Query/Result classes.
+The Interface DTO inherits via `extends`, so no separate decorators are added there.
 
 ---
 
-## 9. 로거 패턴
+## 9. Logger Pattern
 
-### 항상 클래스 필드로 선언
+### Always declare as a class field
 
 ```typescript
 private readonly logger = new Logger(OrderController.name)
 ```
 
-### 구조화된 JSON 로그
+### Structured JSON logs
 
 ```typescript
-// 에러 로그
+// Error log
 this.logger.error(error)
 
-// 정보 로그 (외부 모니터링 연동 시 snake_case 필드명 권장)
-this.logger.log({ message: '주문 완료', order_id: orderId, amount })
+// Info log (snake_case field names recommended when integrating with external monitoring)
+this.logger.log({ message: 'Order completed', order_id: orderId, amount })
 ```
 
 ---
 
-## 10. 주석 스타일
+## 10. Comment Style
 
-- 비즈니스 도메인 설명은 팀의 기본 언어로 인라인 주석 작성
-- JSDoc 사용 안 함 — 순수 `//` 스타일만
-- 긴 서비스 메서드는 섹션 주석으로 구분:
+- Write business domain explanations as inline comments in the team's base language
+- No JSDoc — pure `//` style only
+- Break up long service methods with section comments:
 
 ```typescript
-// DB에서 주문 정보 조회
-// 결제 수단 유효성 확인
-// 주문 상태 변경
+// Fetch order info from the DB
+// Validate payment method
+// Change order status
 ```
 
 ---
 
-## 11. 커밋 메시지 컨벤션
+## 11. Commit Message Convention
 
-[Conventional Commits](https://www.conventionalcommits.org/) 스펙을 따른다.
+Follows the [Conventional Commits](https://www.conventionalcommits.org/) spec.
 
-### 메시지 구조
+### Message structure
 
 ```
 <type>(<scope>): <description>
@@ -482,163 +482,163 @@ this.logger.log({ message: '주문 완료', order_id: orderId, amount })
 [optional footer(s)]
 ```
 
-- **첫 줄 (header)**: 필수. `type(scope): description` 형식. 72자 이내.
-- **본문 (body)**: 선택. 빈 줄로 header와 구분. **무엇을** 변경했는지가 아니라 **왜** 변경했는지를 설명한다.
-- **꼬리말 (footer)**: 선택. `BREAKING CHANGE:`, PR 번호, 이슈 번호 등을 기재한다.
+- **First line (header)**: required. `type(scope): description` format. Within 72 characters.
+- **Body**: optional. Separated from the header by a blank line. Explain **why** the change was made, not **what** was changed.
+- **Footer**: optional. Include `BREAKING CHANGE:`, PR number, issue number, etc.
 
-### type 목록
+### type list
 
-| type | 설명 | 예시 |
+| type | Description | Example |
 |------|------|------|
-| `feat` | 새로운 기능 추가 | `feat(order): 주문 취소 기능 추가` |
-| `fix` | 버그 수정 | `fix(order): 결제 완료 후 주문 상태가 업데이트되지 않는 현상 수정` |
-| `refactor` | 기능 변경 없이 코드 구조 변경 | `refactor(user): 사용자 조회 로직 Repository로 이동` |
-| `docs` | 문서만 변경 | `docs: README 프로젝트 구조 설명 업데이트` |
-| `test` | 테스트 추가 또는 수정 | `test(order): 주문 취소 불변식 단위 테스트 추가` |
-| `chore` | 빌드, CI, 의존성 등 코드 외적인 작업 | `chore(ci): 배포 스크립트 수정` |
-| `style` | 코드 포맷팅, 세미콜론 등 동작에 영향 없는 변경 | `style: import 정렬 수정` |
-| `perf` | 성능 개선 | `perf(order): 주문 목록 조회 쿼리 최적화` |
+| `feat` | Add a new feature | `feat(order): add order cancellation` |
+| `fix` | Bug fix | `fix(order): fix order status not updating after payment completion` |
+| `refactor` | Restructure code without changing behavior | `refactor(user): move user lookup logic to Repository` |
+| `docs` | Documentation-only change | `docs: update README project structure section` |
+| `test` | Add or modify tests | `test(order): add unit test for order cancellation invariant` |
+| `chore` | Non-code work such as build, CI, dependencies | `chore(ci): fix deploy script` |
+| `style` | Code formatting, semicolons, etc. — no behavior change | `style: fix import ordering` |
+| `perf` | Performance improvement | `perf(order): optimize order list query` |
 
-### scope 규칙
+### scope rules
 
-- scope는 **서비스 도메인명**을 사용한다: `order`, `user`, `payment`, `auth` 등
-- 여러 도메인에 걸친 변경이면 scope를 생략하거나 상위 개념을 사용한다
-- 코드 외적인 변경은 대상을 scope로 사용한다: `ci`, `deps`, `docker` 등
+- Use the **service domain name** as the scope: `order`, `user`, `payment`, `auth`, etc.
+- For changes spanning multiple domains, omit the scope or use a higher-level concept
+- For non-code changes, use the target as the scope: `ci`, `deps`, `docker`, etc.
 
-### description 규칙
+### description rules
 
-- 한글로 작성한다
-- 명령형이 아닌 **서술형**으로 작성한다: "추가", "수정", "제거" (NOT "추가하라", "수정해")
-- 첫 글자를 대문자로 시작하지 않는다 (scope 뒤 소문자 시작)
-- 끝에 마침표를 붙이지 않는다
+- Write it in English
+- Use the **descriptive** form, not the imperative: "add", "fix", "remove" (NOT "please add", "fix this")
+- Don't capitalize the first letter (lowercase right after the scope)
+- No trailing period
 
 ### BREAKING CHANGE
 
-하위 호환성을 깨는 변경은 아래 두 가지 방법 중 하나로 표시한다:
+Indicate a backward-incompatible change using one of the two methods below:
 
 ```
-# 방법 1: footer에 BREAKING CHANGE 기재
-feat(order): 주문 응답 스키마 변경
+# Method 1: BREAKING CHANGE in the footer
+feat(order): change order response schema
 
-BREAKING CHANGE: GetOrderResponseBody에서 totalPrice 필드가 totalAmount로 변경됨
+BREAKING CHANGE: totalPrice field in GetOrderResponseBody renamed to totalAmount
 
-# 방법 2: type 뒤에 ! 붙이기
-feat(order)!: 주문 응답 스키마 변경
+# Method 2: append ! after the type
+feat(order)!: change order response schema
 ```
 
-### 예시
+### Examples
 
 ```
-# 기능 추가
-feat(order): 주문 취소 기능 추가
+# New feature
+feat(order): add order cancellation
 
-# 버그 수정 + PR 번호
-fix(order): 결제 완료 후 주문 상태가 업데이트되지 않는 현상 수정 (#123)
+# Bug fix + PR number
+fix(order): fix order status not updating after payment completion (#123)
 
-# 리팩터링 + 본문
-refactor(user): 사용자 조회 로직 Repository로 이동 (#124)
+# Refactoring + body
+refactor(user): move user lookup logic to Repository (#124)
 
-Service에서 직접 ORM을 호출하던 로직을 UserRepositoryImpl로 이동.
-Domain 레이어 분리 정책에 맞춰 변경.
+Moved logic that called the ORM directly from the Service into UserRepositoryImpl.
+Change made in line with the Domain layer separation policy.
 
-# 여러 도메인에 걸친 변경
-refactor: Repository 인터페이스를 abstract class로 통일
+# Change spanning multiple domains
+refactor: unify Repository interfaces as abstract classes
 
-# 문서 변경
-docs: enum 파일 분리 규칙 추가
+# Documentation change
+docs: add enum file separation rule
 
-# 테스트
-test(order): 주문 생성 불변식 단위 테스트 추가
+# Test
+test(order): add unit test for order creation invariant
 
 # BREAKING CHANGE
-feat(order)!: 주문 응답 스키마 변경
+feat(order)!: change order response schema
 
-BREAKING CHANGE: GetOrderResponseBody의 totalPrice → totalAmount 필드명 변경
+BREAKING CHANGE: renamed totalPrice → totalAmount field in GetOrderResponseBody
 ```
 
 ---
 
-## 12. 브랜치 및 PR 컨벤션
+## 12. Branch and PR Convention
 
-### 브랜치 네이밍 — Conventional Branch
+### Branch naming — Conventional Branch
 
-브랜치명은 커밋 메시지의 `type/scope/description` 구조와 동일한 패턴을 따른다.
+Branch names follow the same `type/scope/description` structure as commit messages.
 
 ```
 <type>/<scope>-<short-description>
 ```
 
-| type | 용도 | 예시 |
+| type | Purpose | Example |
 |------|------|------|
-| `feat` | 새 기능 개발 | `feat/order-cancel` |
-| `fix` | 버그 수정 | `fix/order-status-update` |
-| `refactor` | 리팩터링 | `refactor/user-repository-migration` |
-| `docs` | 문서 변경 | `docs/architecture-adapter-pattern` |
-| `test` | 테스트 추가/수정 | `test/order-cancel-invariant` |
-| `chore` | 빌드, CI, 의존성 | `chore/ci-deploy-script` |
+| `feat` | New feature development | `feat/order-cancel` |
+| `fix` | Bug fix | `fix/order-status-update` |
+| `refactor` | Refactoring | `refactor/user-repository-migration` |
+| `docs` | Documentation change | `docs/architecture-adapter-pattern` |
+| `test` | Add/modify tests | `test/order-cancel-invariant` |
+| `chore` | Build, CI, dependencies | `chore/ci-deploy-script` |
 
-**규칙:**
-- 모든 단어는 `kebab-case`로 작성한다.
-- scope가 불필요하면 생략한다: `docs/conventional-commits-guide`
-- `main` 브랜치에서 분기한다.
-- `main` 브랜치에 직접 commit/push하지 않는다.
+**Rules:**
+- Every word is written in `kebab-case`.
+- Omit the scope if it isn't needed: `docs/conventional-commits-guide`
+- Branch off from `main`.
+- Never commit/push directly to the `main` branch.
 
-### PR 워크플로우
+### PR workflow
 
 ```
-1. main에서 새 브랜치 생성
+1. Create a new branch from main
    git checkout main && git pull origin main
    git checkout -b <type>/<scope>-<short-description>
 
-2. 작업 후 commit (Conventional Commits 형식)
+2. Commit your work (Conventional Commits format)
    git add <files>
    git commit -m "<type>(<scope>): <description>"
 
-3. 원격에 push
+3. Push to remote
    git push -u origin <branch-name>
 
-4. main 브랜치로 PR 생성
+4. Create a PR against main
    gh pr create --base main --title "<type>(<scope>): <description>" --body "..."
 ```
 
-### PR 제목
+### PR title
 
-PR 제목은 Conventional Commits 형식과 동일하게 작성한다:
+Write the PR title in the same format as Conventional Commits:
 
 ```
-feat(order): 주문 취소 기능 추가
-fix(order): 결제 완료 후 주문 상태가 업데이트되지 않는 현상 수정
-docs: Adapter 패턴 가이드 추가
+feat(order): add order cancellation
+fix(order): fix order status not updating after payment completion
+docs: add Adapter pattern guide
 ```
 
-### PR 본문
+### PR body
 
 ```markdown
 ## Summary
-- 변경 사항을 1~3줄로 요약
+- Summarize the changes in 1-3 lines
 
 ## Test plan
-- [ ] 테스트 항목 1
-- [ ] 테스트 항목 2
+- [ ] Test item 1
+- [ ] Test item 2
 ```
 
-### 머지 전략
+### Merge strategy
 
-- **Squash and merge**를 기본으로 사용한다. 커밋 히스토리를 깔끔하게 유지한다.
-- 머지 후 원격 브랜치는 자동 삭제한다.
+- Use **Squash and merge** by default. Keeps commit history clean.
+- Automatically delete the remote branch after merging.
 
 ---
 
-## 13. 테스트 패턴
+## 13. Test Patterns
 
-### 단위 테스트 — Domain 레이어 (Aggregate, Value Object)
+### Unit tests — Domain layer (Aggregate, Value Object)
 
-Domain 레이어 단위 테스트는 프레임워크 없이 순수 TypeScript로 작성한다.
+Domain layer unit tests are written in pure TypeScript, without the framework.
 
 ```typescript
 // order/domain/order.spec.ts
 describe('Order', () => {
-  it('주문 항목이 비어있으면 생성 시 에러를 throw한다', () => {
+  it('throws an error on creation when order items are empty', () => {
     expect(() => new Order({
       orderId: 'order-1',
       userId: 'user-1',
@@ -647,7 +647,7 @@ describe('Order', () => {
     })).toThrow('주문 항목은 최소 1개 이상이어야 합니다.')
   })
 
-  it('이미 취소된 주문을 다시 취소하면 에러를 throw한다', () => {
+  it('throws an error when cancelling an already-cancelled order', () => {
     const order = new Order({
       orderId: 'order-1',
       userId: 'user-1',
@@ -657,7 +657,7 @@ describe('Order', () => {
     expect(() => order.cancel('변심')).toThrow('이미 취소된 주문입니다.')
   })
 
-  it('주문 취소 시 OrderCancelled 이벤트가 발행된다', () => {
+  it('publishes an OrderCancelled event when an order is cancelled', () => {
     const order = new Order({
       orderId: 'order-1',
       userId: 'user-1',
@@ -671,9 +671,9 @@ describe('Order', () => {
 })
 ```
 
-### 단위 테스트 — Application Service
+### Unit tests — Application Service
 
-Application Service 테스트는 Repository를 mock으로 대체한다.
+Application Service tests replace the Repository with a mock.
 
 ```typescript
 // order/application/command/order-command-service.spec.ts
@@ -704,7 +704,7 @@ describe('OrderCommandService', () => {
     orderRepository = module.get(OrderRepository)
   })
 
-  it('주문이 존재하지 않으면 에러를 throw한다', async () => {
+  it('throws an error when the order does not exist', async () => {
     orderRepository.findOrders.mockResolvedValue({ orders: [], count: 0 })
 
     await expect(service.cancelOrder({ orderId: 'non-existent-id', reason: '변심' }))
@@ -713,7 +713,7 @@ describe('OrderCommandService', () => {
 })
 ```
 
-### E2E 테스트 — Controller 레이어
+### E2E tests — Controller layer
 
 ```typescript
 // test/order.e2e-spec.ts
@@ -729,7 +729,7 @@ describe('OrderController (e2e)', () => {
     await app.init()
   })
 
-  it('GET /orders/:orderId — 존재하는 주문 조회', () => {
+  it('GET /orders/:orderId — fetch an existing order', () => {
     return request(app.getHttpServer())
       .get('/orders/1')
       .set('Authorization', `Bearer ${testToken}`)
@@ -740,9 +740,9 @@ describe('OrderController (e2e)', () => {
 })
 ```
 
-### 테스트 DB 설정 — SQLite In-Memory
+### Test DB configuration — SQLite in-memory
 
-E2E 테스트와 통합 테스트에서는 **SQLite in-memory DB**를 사용하여 테스트 환경을 격리한다.
+E2E tests and integration tests use a **SQLite in-memory DB** to isolate the test environment.
 
 ```typescript
 // test/test-database.ts
@@ -752,7 +752,7 @@ export const TestDatabaseModule = TypeOrmModule.forRoot({
   type: 'sqlite',
   database: ':memory:',
   entities: [__dirname + '/../src/**/*.entity.ts'],
-  synchronize: true  // 테스트 환경에서만 사용
+  synchronize: true  // used only in the test environment
 })
 ```
 
@@ -764,7 +764,7 @@ describe('OrderController (e2e)', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [
-        TestDatabaseModule,  // 실제 DB 대신 SQLite in-memory 사용
+        TestDatabaseModule,  // use SQLite in-memory instead of a real DB
         OrderModule
       ]
     }).compile()
@@ -778,29 +778,29 @@ describe('OrderController (e2e)', () => {
 })
 ```
 
-**원칙:**
-- E2E/통합 테스트는 `synchronize: true`인 SQLite in-memory DB를 사용한다.
-- 테스트마다 DB가 초기화되므로 테스트 간 데이터 간섭이 없다.
-- 운영 DB와 SQLite 간 SQL 차이가 문제될 경우 **testcontainers**로 실제 DB를 사용한다.
+**Principles:**
+- E2E/integration tests use a SQLite in-memory DB with `synchronize: true`.
+- The DB is reset for every test, so there's no data interference between tests.
+- If SQL differences between the production DB and SQLite become a problem, use **testcontainers** against a real DB.
 
-### 테스트 네이밍 패턴
+### Test naming pattern
 
 ```
-{도메인 행위}_when_{조건}_then_{기대 결과}
-예: placeOrder_whenStockInsufficient_thenThrowsOutOfStockException
+{domain-action}_when_{condition}_then_{expected-result}
+e.g.: placeOrder_whenStockInsufficient_thenThrowsOutOfStockException
 ```
 
 ---
 
 ## 14. Lint (ESLint)
 
-`examples/`, `harness/` 각각 독립적인 npm 프로젝트이며 각자 ESLint(flat config, `eslint.config.mjs`)를 갖는다. `eslint:recommended` + `typescript-eslint`의 `recommended`(non-type-checked) 프리셋을 사용한다 — 과도한 엄격함(`strict`/`strictTypeChecked`)보다 기본적인 코드 품질(미사용 변수/import, 명시적 `any` 등) 커버리지를 목표로 한다.
+`examples/` and `harness/` are each independent npm projects, each with their own ESLint (flat config, `eslint.config.mjs`). They use `eslint:recommended` + `typescript-eslint`'s `recommended` (non-type-checked) preset — the goal is baseline code-quality coverage (unused variables/imports, explicit `any`, etc.) rather than excessive strictness (`strict`/`strictTypeChecked`).
 
 ```bash
 cd implementations/nestjs/examples && npm run lint
 cd implementations/nestjs/harness && npm run lint
 ```
 
-- harness의 `tests/fixtures/**`는 harness 자체 테스트용으로 **의도적으로 잘못 작성된** 코드 샘플이다. `eslint.config.mjs`의 `ignores`에서 제외되어 있으며 lint 위반이 있어도 고치지 않는다.
-- 새 코드를 추가하거나 harness/`examples`를 수정한 뒤에는 `npm run build && npm test && npm run test:e2e`(examples) 또는 `npm run test:evaluators`(harness) 실행 전에 `npm run lint`로 기본 코드 품질 위반이 없는지 먼저 확인한다.
-- CI(`.github/workflows/nestjs.yml`)에서도 두 프로젝트 각각 `npm run lint`를 별도 스텝으로 실행하여 위반 시 빌드를 실패시킨다.
+- `tests/fixtures/**` in the harness are **intentionally incorrect** code samples used for the harness's own tests. They're excluded via `ignores` in `eslint.config.mjs`, and lint violations there are left unfixed.
+- After adding new code or modifying the harness/`examples`, run `npm run lint` first to confirm there are no baseline code-quality violations before running `npm run build && npm test && npm run test:e2e` (examples) or `npm run test:evaluators` (harness).
+- CI (`.github/workflows/nestjs.yml`) also runs `npm run lint` for each project as a separate step, failing the build on violations.

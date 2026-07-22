@@ -21,7 +21,7 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
 
   let score = 20
 
-  // Rule 1: jest.mock() in e2e files — mock은 단위 테스트 전용
+  // Rule 1: jest.mock() in e2e files — a mock is unit-test-only
   for (const file of e2eFiles) {
     const content = fs.readFileSync(path.join(testDir, file), 'utf-8')
     if (content.includes('jest.mock(')) {
@@ -29,15 +29,15 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
         ruleId: 'e2e.jest-mock-in-e2e',
         severity: 'high',
         message: `E2E 테스트에서 jest.mock() 사용 금지: test/${file} — 외부 HTTP는 nock, DB는 testcontainers로 대체하세요`,
-        docRef: `${DOC}#외부-http-모킹-nock`
+        docRef: `${DOC}#mocking-external-http-nock`
       })
       score -= penaltyFor('high')
     }
   }
 
-  // Rule 2: nock 또는 testcontainers가 없으면 경고
+  // Rule 2: warn if neither nock nor testcontainers is present
   const hasTooling = (() => {
-    // package.json 의존성 확인
+    // Check package.json's dependencies
     const pkgPath = path.join(root, 'package.json')
     if (fs.existsSync(pkgPath)) {
       try {
@@ -54,7 +54,7 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
       }
     }
 
-    // e2e 파일 내 import 확인 (package.json이 없거나 dep 목록이 불완전한 경우 보완)
+    // Check imports within the e2e files (supplements cases where package.json is missing or its dep list is incomplete)
     for (const file of e2eFiles) {
       const content = fs.readFileSync(path.join(testDir, file), 'utf-8')
       if (
@@ -75,7 +75,7 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
       ruleId: 'e2e.no-nock-or-testcontainers',
       severity: 'medium',
       message: 'E2E 테스트에 nock 또는 testcontainers 패키지가 없습니다. 외부 HTTP는 nock, DB는 testcontainers를 사용하세요.',
-      docRef: `${DOC}#sqlite-vs-testcontainers-선택-기준`
+      docRef: `${DOC}#sqlite-vs-testcontainers-selection-criteria`
     })
     score -= penaltyFor('medium')
   }

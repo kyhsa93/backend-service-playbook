@@ -24,8 +24,8 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig], validate: validateConfig }),
-    ScheduleModule.forRoot(), // OutboxPoller의 @Interval 등 스케줄링 데코레이터 활성화
-    ThrottlerModule.forRoot(getThrottlerConfig()), // 기본값: short 1초 3회 / medium 10초 20회 / long 1분 100회 — THROTTLE_* 환경 변수로 override
+    ScheduleModule.forRoot(), // enables scheduling decorators such as OutboxPoller's @Interval
+    ThrottlerModule.forRoot(getThrottlerConfig()), // defaults: short 3/second / medium 20/10 seconds / long 100/minute — override via THROTTLE_* environment variables
     TypeOrmModule.forRoot({
       ...AppDataSource.options,
       autoLoadEntities: false,

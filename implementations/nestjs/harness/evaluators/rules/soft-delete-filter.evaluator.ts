@@ -1,21 +1,23 @@
-// soft-delete-filter evaluator — persistence.md "Soft Delete" 규칙.
+// The soft-delete-filter evaluator — persistence.md's "Soft Delete" rule.
 //
-// 이 코드베이스의 soft-delete 메커니즘은 TypeORM의 자동 필터링이다: Entity가
-// `@DeleteDateColumn()`(직접 선언 또는 BaseEntity 상속)을 가지면, QueryBuilder/Repository API의
-// find 계열 메서드는 `.withDeleted()`를 명시하지 않는 한 자동으로 `deletedAt IS NULL`을 적용한다.
-// (database-queries evaluator가 이미 "hard delete(.delete()) 금지"와 "BaseEntity 상속"을 따로
-// 검사하지만, 그 규칙은 Entity 단독으로만 보고 Repository 구현체가 실제로 soft-delete 가능한
-// Entity를 조회하는지는 연결해서 보지 않는다 — 이 evaluator가 그 연결을 담당한다.)
+// This codebase's soft-delete mechanism is TypeORM's automatic filtering: once an Entity has
+// `@DeleteDateColumn()` (declared directly or via BaseEntity inheritance), a find-family method
+// on the QueryBuilder/Repository API automatically applies `deletedAt IS NULL` unless
+// `.withDeleted()` is specified. (The database-queries evaluator already separately checks
+// "hard delete (.delete()) is prohibited" and "BaseEntity inheritance," but that rule only
+// looks at the Entity in isolation and never connects it to whether a Repository
+// implementation actually queries a soft-deletable Entity — this evaluator handles that connection.)
 //
 // Rules:
-// - `*-repository-impl.ts`에 `find<X>` 메서드가 있고, 그 메서드가 `@InjectRepository(XEntity)`로
-//   주입된 Entity를 조회한다면, 해당 Entity는 soft-delete 가능해야 한다(BaseEntity 상속 또는
-//   자체 `@DeleteDateColumn()`) — 파일 자체에서 수동으로 `deletedAt` 필터를 걸지 않는 한.
-//   (append-only 로그성 Entity처럼 의도적으로 soft-delete를 쓰지 않는 경우는 해당 Entity를 조회하는
-//   `find` 메서드 자체가 없는 것이 일반적이므로 원천적으로 이 규칙 대상이 아니다.)
-// - Repository 구현체가 raw SQL(`.query(...)`)로 soft-delete 가능한 Entity를 조회하면서
-//   `deletedAt IS NULL`을 SQL에 직접 포함하지 않으면 실패 — raw SQL은 TypeORM의 자동 필터를
-//   우회하기 때문에 수동으로 필터링해야 한다.
+// - If a `*-repository-impl.ts` has a `find<X>` method, and that method queries an Entity
+//   injected via `@InjectRepository(XEntity)`, that Entity must be soft-deletable (BaseEntity
+//   inheritance or its own `@DeleteDateColumn()`) — unless the file itself manually applies a
+//   `deletedAt` filter. (A case that intentionally doesn't use soft-delete, like an
+//   append-only log-style Entity, typically has no `find` method querying that Entity at all,
+//   so it's inherently not a target of this rule.)
+// - Fails if a Repository implementation queries a soft-deletable Entity via raw SQL
+//   (`.query(...)`) without directly including `deletedAt IS NULL` in the SQL — raw SQL
+//   bypasses TypeORM's automatic filter, so it must be filtered manually.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -35,7 +37,7 @@ function isSoftDeletable(content: string): boolean {
   return /extends\s+\w*BaseEntity/.test(content) || /@DeleteDateColumn\s*\(/.test(content)
 }
 
-// 생성자의 @InjectRepository(XEntity) 파라미터에서 주입된 Entity 클래스명을 추출한다.
+// Extracts the injected Entity class name from a constructor's @InjectRepository(XEntity) parameter.
 function injectedEntityNames(filePath: string): string[] {
   const sf = readSourceFile(filePath)
   const names: string[] = []
@@ -64,7 +66,7 @@ function injectedEntityNames(filePath: string): string[] {
   return names
 }
 
-// 파일 안에서 `deletedAt`을 직접 필터링하는 흔적(수동 WHERE) — IsNull()/IS NULL 등.
+// A trace of directly filtering `deletedAt` within the file (a manual WHERE) — IsNull()/IS NULL, etc.
 function hasManualDeletedAtFilter(content: string): boolean {
   return /deletedAt[^;]{0,40}(IsNull\s*\(\s*\)|is\s+null)/i.test(content)
 }
@@ -78,7 +80,7 @@ export function evaluateSoftDeleteFilter(root: string): EvaluatorResult {
     return { name: 'soft-delete-filter', score: 0, maxScore: 0, failures: [] }
   }
 
-  // 프로젝트 전역 Entity 클래스명 → soft-delete 가능 여부 맵.
+  // A project-wide map of Entity class name → whether it's soft-deletable.
   const entityFiles = allFiles.filter((f) => f.endsWith('.entity.ts'))
   const entitySoftDeleteMap = new Map<string, boolean>()
   for (const ef of entityFiles) {
@@ -101,9 +103,9 @@ export function evaluateSoftDeleteFilter(root: string): EvaluatorResult {
     const manuallyFiltered = hasManualDeletedAtFilter(content)
 
     for (const entityName of entities) {
-      if (!entitySoftDeleteMap.has(entityName)) continue // 프로젝트 밖 타입 등 — 판단 불가, 스킵
-      if (entitySoftDeleteMap.get(entityName)) continue // soft-delete 가능한 Entity — TypeORM 자동 필터 적용
-      if (manuallyFiltered) continue // Entity는 soft-delete 컬럼이 없지만 수동으로 deletedAt을 필터링 — 허용
+      if (!entitySoftDeleteMap.has(entityName)) continue // a type outside the project, etc. — can't judge, skip
+      if (entitySoftDeleteMap.get(entityName)) continue // a soft-deletable Entity — TypeORM's automatic filter applies
+      if (manuallyFiltered) continue // the Entity has no soft-delete column, but deletedAt is filtered manually — allowed
 
       failures.push({
         ruleId: 'soft-delete-filter.entity-not-soft-deletable',
@@ -114,8 +116,8 @@ export function evaluateSoftDeleteFilter(root: string): EvaluatorResult {
       score -= penaltyFor('high')
     }
 
-    // raw SQL(.query())은 TypeORM의 자동 soft-delete 필터를 우회한다 — soft-delete 가능한
-    // Entity를 대상으로 한 raw SQL이면 SQL 문자열 자체에 deletedAt 필터가 있어야 한다.
+    // raw SQL (.query()) bypasses TypeORM's automatic soft-delete filter — if the raw SQL
+    // targets a soft-deletable Entity, the SQL string itself must include a deletedAt filter.
     const softDeletableEntityNames = entities.filter((e) => entitySoftDeleteMap.get(e))
     if (softDeletableEntityNames.length > 0) {
       const rawQueryMatches = [...content.matchAll(/\.query\s*\(\s*(`[\s\S]*?`|'[^']*'|"[^"]*")/g)]

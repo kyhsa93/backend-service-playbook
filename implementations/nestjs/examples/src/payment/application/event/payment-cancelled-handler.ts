@@ -4,9 +4,9 @@ import { HandleEvent } from '@/outbox/event-handler-registry'
 import { OutboxWriter } from '@/outbox/outbox-writer'
 import { PaymentCancelledIntegrationEventV1 } from '@/payment/application/integration-event/payment-cancelled-integration-event'
 
-// 내부 Domain Event(PaymentCancelled)를 수신해 외부 BC용 Integration Event
-// (payment.cancelled.v1)로 변환해 Outbox에 적재한다. Account BC가 이를 구독해
-// 보상 크레딧(deposit)을 실행한다 — 이미 차감된 금액을 되돌리는 보상 트랜잭션이다.
+// Receives the internal Domain Event (PaymentCancelled), converts it into an external-BC
+// Integration Event (payment.cancelled.v1), and writes it to the Outbox. Account BC subscribes
+// to this and executes the compensating credit (deposit) — a compensating transaction that reverses an already-debited amount.
 @Injectable()
 export class PaymentCancelledHandler {
   private readonly logger = new Logger(PaymentCancelledHandler.name)

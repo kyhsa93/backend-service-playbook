@@ -12,8 +12,8 @@ export class OutboxWriter {
     const manager = this.transactionManager.getManager()
     await manager.insert(OutboxEntity, events.map((event) => ({
       eventId: generateId(),
-      // Integration Event는 버전이 명시된 공개 계약명(eventName, 예: 'account.suspended.v1')을
-      // eventType으로 쓴다. Domain Event는 eventName이 없으므로 클래스명을 그대로 쓴다.
+      // An Integration Event uses its versioned public-contract name (eventName, e.g.
+      // 'account.suspended.v1') as the eventType. A Domain Event has no eventName, so the class name is used as-is.
       eventType: (event as { eventName?: string }).eventName ?? event.constructor.name,
       payload: JSON.stringify(event),
       processed: false

@@ -1,15 +1,15 @@
-# @nestjs/cqrs 적용 패턴
+# Applying the @nestjs/cqrs Pattern
 
-`@nestjs/cqrs` 패키지를 사용하면 Application 레이어의 Service를 Command Handler / Query Handler / Event Handler로 분리한다. 기존 아키텍처의 원칙(Domain 레이어 무의존, Aggregate 비즈니스 규칙 캡슐화, Repository 패턴)은 동일하게 유지한다.
+Using the `@nestjs/cqrs` package splits the Application layer's Service into a Command Handler / Query Handler / Event Handler. The existing architecture's principles (Domain layer independence, encapsulating business rules in the Aggregate, the Repository pattern) remain the same.
 
-### 디렉토리 구조 변경점
+### Directory Structure Changes
 
-`@nestjs/cqrs` 적용 시 `application/` 하위 구조가 변경된다:
+Applying `@nestjs/cqrs` changes the structure under `application/`:
 
 ```
 src/
   <domain>/
-    domain/                              # 변경 없음
+    domain/                              # unchanged
       <aggregate-root>.ts
       <entity>.ts
       <value-object>.ts
@@ -17,41 +17,41 @@ src/
       <aggregate>-repository.ts
     application/
       command/
-        <verb>-<noun>-command.ts          # Command 객체
-        <verb>-<noun>-command-handler.ts   # CommandHandler (기존 Service의 쓰기 로직)
+        <verb>-<noun>-command.ts          # Command object
+        <verb>-<noun>-command-handler.ts   # CommandHandler (the old Service's write logic)
       query/
-        <domain>-query.ts                 # Query 인터페이스 (abstract class) — 변경 없음
-        <verb>-<noun>-query.ts            # Query 객체
-        <verb>-<noun>-query-handler.ts    # QueryHandler (기존 Service의 읽기 로직)
+        <domain>-query.ts                 # Query interface (abstract class) — unchanged
+        <verb>-<noun>-query.ts            # Query object
+        <verb>-<noun>-query-handler.ts    # QueryHandler (the old Service's read logic)
         <verb>-<noun>-result.ts
       event/
-        <domain-event>-handler.ts         # EventHandler (이벤트 후속 처리)
-    interface/                           # 변경: Service 대신 CommandBus/QueryBus 사용
+        <domain-event>-handler.ts         # EventHandler (event follow-up processing)
+    interface/                           # change: uses CommandBus/QueryBus instead of a Service
       <domain>-controller.ts
       dto/
-    infrastructure/                      # 변경 없음
+    infrastructure/                      # unchanged
       <aggregate>-repository-impl.ts
-    <domain>-module.ts                   # 변경: CqrsModule import + Handler 등록
+    <domain>-module.ts                   # change: CqrsModule import + Handler registration
 ```
 
-### 의존 방향 변경
+### Dependency Direction Change
 
 ```
 Interface (Controller) → CommandBus / QueryBus → Command/Query Handler → Domain (Aggregate, Repository)
                                                                               ↑
-                                              EventHandler ←── SQS Consumer   Infrastructure (Repository 구현체)
+                                              EventHandler ←── SQS Consumer   Infrastructure (Repository implementation)
 ```
 
-- Controller는 Service 대신 `CommandBus.execute()` / `QueryBus.execute()`를 호출한다.
-- CommandHandler / QueryHandler가 기존 Application Service의 역할을 대체한다.
-- EventHandler는 `@nestjs/cqrs`의 인프로세스 EventBus를 사용하지 않는다. Domain Event는 Outbox → SQS → `EventConsumer` 경로로 전달되며, `@HandleEvent` 데코레이터로 핸들러를 등록한다 ([domain-events.md](domain-events.md) 참조).
+- The Controller calls `CommandBus.execute()` / `QueryBus.execute()` instead of a Service.
+- CommandHandler / QueryHandler replace the role of the old Application Service.
+- The EventHandler doesn't use `@nestjs/cqrs`'s in-process EventBus. The Domain Event is delivered via the Outbox → SQS → `EventConsumer` path, with the handler registered via the `@HandleEvent` decorator (see [domain-events.md](domain-events.md)).
 
-### Command와 CommandHandler
+### Command and CommandHandler
 
-Command는 쓰기 요청을 나타내는 데이터 객체이다. CommandHandler가 이를 처리한다.
+A Command is a data object representing a write request. The CommandHandler processes it.
 
 ```typescript
-// application/command/cancel-order-command.ts — Command 객체 (기존과 동일)
+// application/command/cancel-order-command.ts — the Command object (same as before)
 export class CancelOrderCommand {
   @ApiProperty({ minLength: 1 })
   @IsString()
@@ -70,7 +70,7 @@ export class CancelOrderCommand {
 ```
 
 ```typescript
-// application/command/cancel-order-command-handler.ts — CommandHandler
+// application/command/cancel-order-command-handler.ts — the CommandHandler
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
 import { TransactionManager } from '@/database/transaction-manager'
@@ -95,7 +95,7 @@ export class CancelOrderCommandHandler implements ICommandHandler<CancelOrderCom
 
     order.cancel(command.reason)
 
-    // Repository.saveOrder() 내부에서 Aggregate + outbox를 함께 저장
+    // Repository.saveOrder() saves the Aggregate + outbox together internally
     await this.transactionManager.run(async () => {
       await this.paymentRepository.deletePaymentMethods(order.orderId)
       await this.orderRepository.saveOrder(order)
@@ -104,12 +104,12 @@ export class CancelOrderCommandHandler implements ICommandHandler<CancelOrderCom
 }
 ```
 
-### Query와 QueryHandler
+### Query and QueryHandler
 
-Query는 읽기 요청을 나타내는 데이터 객체이다. QueryHandler가 이를 처리한다.
+A Query is a data object representing a read request. The QueryHandler processes it.
 
 ```typescript
-// application/query/get-orders-query.ts — Query 객체 (기존과 동일)
+// application/query/get-orders-query.ts — the Query object (same as before)
 export class GetOrdersQuery {
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
@@ -132,7 +132,7 @@ export class GetOrdersQuery {
 ```
 
 ```typescript
-// application/query/get-orders-query-handler.ts — QueryHandler
+// application/query/get-orders-query-handler.ts — the QueryHandler
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 
 import { GetOrdersQuery } from '@/order/application/query/get-orders-query'
@@ -149,25 +149,25 @@ export class GetOrdersQueryHandler implements IQueryHandler<GetOrdersQuery> {
 }
 ```
 
-### QueryHandler와 읽기 모델 (Read Model)
+### The QueryHandler and the Read Model
 
-QueryHandler는 **Domain 레이어의 `OrderRepository`를 사용하지 않는다.** Repository는 Aggregate 복원을 위한 쓰기 전용 인터페이스다. 대신 Application 레이어에 정의된 **`OrderQuery` 인터페이스(abstract class)** 를 주입받아 사용한다.
+The QueryHandler **never uses the Domain layer's `OrderRepository`.** The Repository is a write-only interface for reconstructing the Aggregate. Instead, it injects and uses the **`OrderQuery` interface (abstract class)** defined in the Application layer.
 
 ```
-읽기 전용 인터페이스 (Read Model)
-  application/query/order-query.ts        ← OrderQuery (abstract class) — QueryHandler가 주입받는 인터페이스
-  infrastructure/order-query-impl.ts      ← OrderQueryImpl — DB 직접 조회, Aggregate 복원 불필요
+Read-only interface (Read Model)
+  application/query/order-query.ts        ← OrderQuery (abstract class) — the interface the QueryHandler injects
+  infrastructure/order-query-impl.ts      ← OrderQueryImpl — queries the DB directly, no need to reconstruct the Aggregate
 
-쓰기 전용 인터페이스
-  domain/order-repository.ts              ← OrderRepository (abstract class) — CommandHandler만 사용
-  infrastructure/order-repository-impl.ts ← OrderRepositoryImpl — Aggregate 복원 + Outbox 저장
+Write-only interface
+  domain/order-repository.ts              ← OrderRepository (abstract class) — used only by the CommandHandler
+  infrastructure/order-repository-impl.ts ← OrderRepositoryImpl — reconstructs the Aggregate + saves to the Outbox
 ```
 
-`OrderQuery`와 `OrderQueryImpl`이 CQRS의 **읽기 모델(Read Model)** 역할을 한다. Service 방식의 `OrderQueryService`와 `@nestjs/cqrs`의 `GetOrdersQueryHandler`는 동일한 `OrderQuery` 인터페이스를 공유한다. 두 방식 중 어느 쪽을 선택하든 읽기/쓰기 분리 원칙은 동일하게 적용된다.
+`OrderQuery` and `OrderQueryImpl` play the role of CQRS's **Read Model**. The Service-based `OrderQueryService` and `@nestjs/cqrs`'s `GetOrdersQueryHandler` share the same `OrderQuery` interface. Whichever approach you choose, the same read/write separation principle applies.
 
 ### EventHandler
 
-Domain Event에 반응하여 후속 처리를 수행한다. 하나의 Event에 여러 EventHandler를 등록할 수 있다.
+Reacts to a Domain Event and performs follow-up processing. Multiple EventHandlers can be registered for a single Event.
 
 ```typescript
 // application/event/order-cancelled-handler.ts
@@ -181,15 +181,15 @@ export class OrderCancelledHandler {
 
   @HandleEvent('OrderCancelled')
   public async handle(event: { orderId: string; reason: string }): Promise<void> {
-    // 후속 처리: 알림 발송, 감사 로그 기록, 재고 복원 등
+    // follow-up processing: send a notification, log an audit record, restock, etc.
     this.logger.log({ message: '주문 취소됨', order_id: event.orderId, reason: event.reason })
   }
 }
 ```
 
-### Controller — CommandBus / QueryBus 사용
+### Controller — Using CommandBus / QueryBus
 
-Controller는 Service 대신 CommandBus와 QueryBus를 주입받아 사용한다.
+The Controller injects and uses the CommandBus and QueryBus instead of a Service.
 
 ```typescript
 // interface/order-controller.ts
@@ -240,7 +240,7 @@ export class OrderController {
 }
 ```
 
-### Module — CqrsModule 등록
+### Module — Registering CqrsModule
 
 ```typescript
 // order-module.ts
@@ -276,26 +276,26 @@ import { OrderController } from '@/order/interface/order-controller'
     // Repositories
     { provide: OrderRepository, useClass: OrderRepositoryImpl },
     { provide: PaymentRepository, useClass: PaymentRepositoryImpl },
-    // Query 구현체
+    // Query implementation
     { provide: OrderQuery, useClass: OrderQueryImpl }
   ]
 })
 export class OrderModule {}
 ```
 
-### 기존 Service 방식과의 차이 요약
+### Summary of Differences from the Old Service Approach
 
-| 항목 | Service 방식 | @nestjs/cqrs 방식 |
+| Item | Service approach | @nestjs/cqrs approach |
 |------|-------------|-------------------|
-| Application 레이어 | `CommandService` + `QueryService` 분리 | Command/Query별 개별 Handler 파일 |
-| Controller 의존성 | `OrderCommandService` + `OrderQueryService` 주입 | `CommandBus`, `QueryBus` 주입 |
-| 이벤트 처리 | Outbox + SQS + `@HandleEvent` 핸들러 | Outbox + SQS + `@HandleEvent` 핸들러 (동일) |
-| Module 등록 | `CommandService`, `QueryService`, `{ provide: Query, useClass: QueryImpl }` 등록 | 각 Handler를 개별 등록 |
-| 읽기/쓰기 분리 | Command Service(`OrderRepository`) / Query Service(`OrderQuery`) | CommandHandler(`OrderRepository`) / QueryHandler(`OrderQuery`) |
+| Application layer | Split into `CommandService` + `QueryService` | A separate Handler file per Command/Query |
+| Controller dependency | Injects `OrderCommandService` + `OrderQueryService` | Injects `CommandBus`, `QueryBus` |
+| Event handling | Outbox + SQS + `@HandleEvent` handler | Outbox + SQS + `@HandleEvent` handler (same) |
+| Module registration | Register `CommandService`, `QueryService`, `{ provide: Query, useClass: QueryImpl }` | Register each Handler individually |
+| Read/write separation | Command Service(`OrderRepository`) / Query Service(`OrderQuery`) | CommandHandler(`OrderRepository`) / QueryHandler(`OrderQuery`) |
 
-### 적용 기준
+### Selection Criteria
 
-- **Service 방식 권장**: 유스케이스가 적고, 이벤트 기반 처리가 불필요한 단순한 도메인
-- **@nestjs/cqrs 방식 권장**: 유스케이스가 많고, 읽기/쓰기 모델 분리가 필요하거나, Domain Event 기반 후속 처리가 있는 복잡한 도메인
+- **The Service approach is recommended**: for simple domains with few use cases and no need for event-based processing
+- **The @nestjs/cqrs approach is recommended**: for complex domains with many use cases, a need for read/write model separation, or Domain Event-based follow-up processing
 
-> 두 방식은 한 프로젝트 내에서 도메인별로 혼용할 수 있다. Core Domain에는 CQRS를, Supporting/Generic Subdomain에는 Service 방식을 적용하는 것이 일반적이다.
+> The two approaches can be mixed per domain within a single project. It's common to apply CQRS to the Core Domain and the Service approach to Supporting/Generic Subdomains.

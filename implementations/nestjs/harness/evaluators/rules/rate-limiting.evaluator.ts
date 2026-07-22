@@ -50,7 +50,7 @@ export function evaluateRateLimiting(root: string): EvaluatorResult {
   let score = 10
   const allContent = files.map((f) => fs.readFileSync(f, 'utf-8')).join('\n')
 
-  // ThrottlerModule.forRoot 또는 forRootAsync 설정
+  // ThrottlerModule.forRoot or forRootAsync configuration
   if (!/ThrottlerModule\.(forRoot|forRootAsync)\s*\(/.test(allContent)) {
     failures.push({
       ruleId: 'rate-limiting.throttler-module-missing',
@@ -61,10 +61,11 @@ export function evaluateRateLimiting(root: string): EvaluatorResult {
     score -= penaltyFor('high')
   }
 
-  // APP_GUARD + ThrottlerGuard가 실제로 적용되어 있는지 확인 — 정의(설치·import)만 있고 실제
-  // 등록이 안 된 dead code를 걸러내기 위해, 파일 전체를 이어붙인 문자열이 아니라 실제 @Module
-  // 데코레이터 본문(providers 배열) 또는 컨트롤러의 @UseGuards(ThrottlerGuard) 중 하나에 한정해
-  // 검사한다. 둘 중 하나도 없으면 ThrottlerModule 설정만 있고 미적용 상태로 본다.
+  // Confirms APP_GUARD + ThrottlerGuard is actually applied — to filter out dead code that's
+  // only defined (installed·imported) but never actually registered, the check is scoped to
+  // either the actual @Module decorator body (the providers array) or a controller's
+  // @UseGuards(ThrottlerGuard), rather than the whole file concatenated as one string. If
+  // neither is present, it's treated as ThrottlerModule being configured but never applied.
   const moduleFiles = files.filter((f) => /@Module\s*\(/.test(fs.readFileSync(f, 'utf-8')))
   const wiredGlobally = moduleFiles.some((f) => {
     const decoratorText = findClassDecorator(f, 'Module')

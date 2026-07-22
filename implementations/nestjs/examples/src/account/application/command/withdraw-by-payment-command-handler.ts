@@ -5,13 +5,15 @@ import { WithdrawByPaymentCommand } from '@/account/application/command/withdraw
 import { AccountRepository } from '@/account/domain/account-repository'
 import { Money } from '@/account/domain/money'
 
-// Payment BC의 payment.completed.v1 Integration Event에 대한 반응 유스케이스 —
-// 결제 시점에 이미 동기 Adapter로 판정된 차감을 여기서 실제로 수행한다.
+// The reacting use case for Payment BC's payment.completed.v1 Integration Event —
+// it actually performs here the debit that was already judged via the synchronous Adapter at
+// payment time.
 //
-// 멱등성: WithdrawCommandHandler(사용자 직접 출금)와 달리 이 반응은 같은 referenceId
-// (paymentId)의 거래가 이미 있으면 조용히 무시한다 — Card의 상태 기반 멱등성과 달리
-// 금액 이동은 반복 적용하면 잔액이 계속 줄어들므로 "이미 처리했는지"를 확인해야 한다
-// (Level 2 Ledger, docs/architecture/domain-events.md 참고).
+// Idempotency: unlike WithdrawCommandHandler (a user's direct withdrawal), this reaction
+// silently ignores it if a transaction with the same referenceId (paymentId) already exists —
+// unlike Card's state-based idempotency, moving money keeps decreasing the balance if
+// reapplied, so it must check "was this already processed"
+// (a Level 2 Ledger, see docs/architecture/domain-events.md).
 @CommandHandler(WithdrawByPaymentCommand)
 export class WithdrawByPaymentCommandHandler implements ICommandHandler<WithdrawByPaymentCommand, void> {
   constructor(
@@ -26,7 +28,7 @@ export class WithdrawByPaymentCommandHandler implements ICommandHandler<Withdraw
     const account = await this.accountRepository
       .findAccounts({ accountId: command.accountId, take: 1, page: 0 })
       .then((r) => r.accounts.pop())
-    if (!account) return // 반응할 대상 계좌가 없으면 조용히 무시한다(예: 계좌가 이미 삭제됨).
+    if (!account) return // silently ignore if there's no account to react against (e.g. it was already deleted)
 
     account.withdraw(new Money({ amount: command.amount, currency: account.balance.currency }), command.referenceId)
     await this.transactionManager.run(async () => {

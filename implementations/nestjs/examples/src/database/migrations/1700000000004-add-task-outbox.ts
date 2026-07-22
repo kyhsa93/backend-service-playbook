@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-// task-queue/ 공유 모듈의 task_outbox 테이블 — outbox 테이블(Domain Event용)과 같은
-// 모양이지만 별개 개념(Task: "X를 수행하라" vs Domain Event: "X가 일어났다")이라 테이블도
-// 분리한다(docs/architecture/scheduling.md#task-vs-domain-event).
+// The task-queue/ shared module's task_outbox table — shaped like the outbox table (for
+// Domain Events), but since it's a separate concept (a Task: "perform X" vs. a Domain Event:
+// "X happened"), the table is kept separate too (see docs/architecture/scheduling.md, the Task vs Domain Event section).
 export class AddTaskOutbox1700000000004 implements MigrationInterface {
   name = 'AddTaskOutbox1700000000004'
 

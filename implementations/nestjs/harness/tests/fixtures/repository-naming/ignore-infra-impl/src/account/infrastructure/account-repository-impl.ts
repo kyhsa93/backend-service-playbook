@@ -9,7 +9,7 @@ export class AccountRepositoryImpl extends AccountRepository {
 
   async saveAccount(): Promise<void> {}
 
-  // 내부 query-builder 헬퍼 — infrastructure 구현체는 이 규칙의 대상이 아니다.
+  // An internal query-builder helper — an infrastructure implementation isn't a target of this rule.
   private async countByOwnerId(ownerId: string): Promise<number> {
     return 0
   }

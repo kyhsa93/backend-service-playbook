@@ -1,17 +1,17 @@
-// interface-no-infrastructure evaluator — Controller(Interface 레이어)는
-// Application Service를 NestJS DI로 주입받아 호출하고, Infrastructure
-// 구현체(Repository impl, Query impl 등)를 직접 import하지 않는다
+// The interface-no-infrastructure evaluator — a Controller (Interface layer) injects and
+// calls the Application Service via NestJS DI, and never directly imports an Infrastructure
+// implementation (a Repository impl, Query impl, etc.)
 // (guide: docs/architecture/layer-architecture.md).
 //
-// Scope: src/<domain>/interface/**/*.ts 중 <domain>이 실제 Bounded Context인
-// 경우만 대상으로 한다 — src/<domain>/domain/ 이 존재하는지로 판별한다.
-// 이렇게 범위를 좁히는 이유: src/common/interface/health-controller.ts는
-// src/common/infrastructure/shutdown-state.ts를 의도적으로 직접 import한다
-// (docs/architecture/graceful-shutdown.md에 문서화된 패턴 — common은
-// interface/application/infrastructure 폴더는 있지만 domain/이 없는
-// 횡단 관심사 기술 모듈이라 BC 단위 Adapter 경유 원칙의 대상이 아니다).
+// Scope: only targets `src/<domain>/interface/**/*.ts` where `<domain>` is an actual Bounded
+// Context — judged by whether `src/<domain>/domain/` exists.
+// Why the scope is narrowed this way: src/common/interface/health-controller.ts
+// intentionally imports src/common/infrastructure/shutdown-state.ts directly
+// (a pattern documented in docs/architecture/graceful-shutdown.md — common has
+// interface/application/infrastructure folders but no domain/, making it a cross-cutting-concern
+// technical module that isn't a target of the per-BC Adapter-routing principle).
 //
-// Applicability: 위 조건을 만족하는 interface/*.ts 파일이 없으면 skip.
+// Applicability: skipped if there's no interface/*.ts file satisfying the above condition.
 
 import * as path from 'node:path'
 
@@ -26,7 +26,7 @@ import {
   walkTsFiles
 } from '../shared/ast-utils'
 
-const DOC_REF = 'docs/architecture/layer-architecture.md#interface-레이어-역할'
+const DOC_REF = 'docs/architecture/layer-architecture.md#interface-layer-responsibilities'
 
 export function evaluateInterfaceNoInfrastructure(root: string): EvaluatorResult {
   const srcRoot = path.join(root, 'src')

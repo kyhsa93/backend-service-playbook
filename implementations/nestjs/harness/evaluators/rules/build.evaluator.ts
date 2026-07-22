@@ -18,10 +18,10 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 const MAX_ERROR_LINES = 25
 const FALLBACK_TYPESCRIPT_VERSION = '5.7.2'
 
-// package.json의 typescript 버전 지정(^5.7.2, ~5.7.2, 5.7.2 등)에서 npx가 그대로
-// 받아들일 수 있는 semver 스펙을 뽑아낸다. 파싱에 실패하면(package.json 없음,
-// typescript 미지정 등) 이 저장소가 실제로 사용 중인 버전으로 대체한다 — "latest"보다
-// "이 프로젝트가 최근까지 쓰던 버전"이 훨씬 안전한 기본값이다.
+// Extracts a semver spec that npx can accept as-is from package.json's TypeScript version
+// specifier (^5.7.2, ~5.7.2, 5.7.2, etc.). If parsing fails (no package.json, TypeScript not
+// specified, etc.), it falls back to the version this repo actually uses — "the version this
+// project has been using recently" is a much safer default than "latest."
 function resolvePinnedTypescriptVersion(root: string): string {
   try {
     const pkgPath = path.join(root, 'package.json')

@@ -1,6 +1,6 @@
 import { DataSource } from 'typeorm'
 
-// 반대로 쓴 실수 — production일 때 오히려 true가 되어 버린다.
+// A reversed mistake — it ends up true precisely when it's production.
 export const AppDataSource = new DataSource({
   type: 'postgres',
   synchronize: process.env.NODE_ENV === 'production'

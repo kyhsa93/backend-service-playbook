@@ -12,7 +12,7 @@ class RefundTest {
     }
 
     @Test
-    void 생성하면_REQUESTED_상태이고_이벤트가_없다() {
+    void creating_starts_as_REQUESTED_with_no_events() {
         Refund refund = createRefund();
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.REQUESTED);
@@ -24,14 +24,14 @@ class RefundTest {
     }
 
     @Test
-    void 환불_ID는_하이픈_없는_32자리_hex_문자열이다() {
+    void refund_id_is_a_32_character_hex_string_with_no_hyphens() {
         Refund refund = createRefund();
 
         assertThat(refund.getRefundId()).matches("^[0-9a-f]{32}$");
     }
 
     @Test
-    void REQUESTED_환불을_승인하면_APPROVED_상태이고_RefundApprovedEvent가_수집된다() {
+    void approving_a_REQUESTED_refund_moves_to_APPROVED_and_collects_RefundApprovedEvent() {
         Refund refund = createRefund();
 
         refund.approve("account-1", "owner-1");
@@ -45,7 +45,7 @@ class RefundTest {
     }
 
     @Test
-    void REQUESTED가_아닌_환불을_승인하면_예외를_던진다() {
+    void throws_exception_when_approving_a_non_REQUESTED_refund() {
         Refund refund = createRefund();
         refund.approve("account-1", "owner-1");
 
@@ -56,7 +56,7 @@ class RefundTest {
     }
 
     @Test
-    void REQUESTED_환불을_거부하면_REJECTED_상태이고_사유가_기록된다() {
+    void rejecting_a_REQUESTED_refund_moves_to_REJECTED_and_records_the_reason() {
         Refund refund = createRefund();
 
         refund.reject("The refund amount exceeds the payment amount.");
@@ -68,7 +68,7 @@ class RefundTest {
     }
 
     @Test
-    void REQUESTED가_아닌_환불을_거부하면_예외를_던진다() {
+    void throws_exception_when_rejecting_a_non_REQUESTED_refund() {
         Refund refund = createRefund();
         refund.reject("reason");
 
@@ -79,7 +79,7 @@ class RefundTest {
     }
 
     @Test
-    void APPROVED_환불을_완료하면_COMPLETED_상태가_된다() {
+    void completing_an_APPROVED_refund_moves_to_COMPLETED() {
         Refund refund = createRefund();
         refund.approve("account-1", "owner-1");
 
@@ -89,7 +89,7 @@ class RefundTest {
     }
 
     @Test
-    void APPROVED가_아닌_환불을_완료하면_예외를_던진다() {
+    void throws_exception_when_completing_a_non_APPROVED_refund() {
         Refund refund = createRefund();
 
         assertThatThrownBy(refund::complete)

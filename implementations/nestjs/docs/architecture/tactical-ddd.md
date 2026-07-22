@@ -1,10 +1,10 @@
-# 전술적 설계 — Aggregate, Entity, Value Object (NestJS)
+# Tactical Design — Aggregate, Entity, Value Object (NestJS)
 
-> 개념 정의와 경계 기준은 root [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md)를 참조한다. 이 문서는 `examples/`의 실제 TypeScript 코드로 각 패턴을 보여준다.
+> For the concept definitions and boundary criteria, see the root [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md). This document shows each pattern using `examples/`'s actual TypeScript code.
 
 ## Value Object — `Money`
 
-불변(immutable), 값 기반 동등성, 자기 자신을 검증하는 생성자를 가진다.
+Immutable, value-based equality, with a constructor that validates itself.
 
 ```typescript
 // account/domain/money.ts
@@ -33,13 +33,13 @@ export class Money {
 }
 ```
 
-- **연산은 새 인스턴스를 반환**한다 (`add`, `subtract`는 `this`를 변경하지 않는다).
-- **생성자에서 불변식을 검증**한다 (음수 금액 금지).
-- **동등성은 값으로 비교**한다 (`equals`), 참조 동일성이 아니다.
+- **An operation returns a new instance** (`add`, `subtract` never mutate `this`).
+- **Invariants are validated in the constructor** (a negative amount is prohibited).
+- **Equality is compared by value** (`equals`), not by reference identity.
 
 ## Aggregate Root — `Account`
 
-`Account`는 이 도메인의 Aggregate Root다. 잔액(`Money`)과 거래 내역(`Transaction[]`)을 캡슐화하고, 상태를 바꾸는 모든 연산은 도메인 이벤트를 함께 기록한다.
+`Account` is this domain's Aggregate Root. It encapsulates the balance (`Money`) and the transaction history (`Transaction[]`), and every operation that changes state also records a domain event.
 
 ```typescript
 // account/domain/account.ts
@@ -87,19 +87,19 @@ export class Account {
 }
 ```
 
-핵심 규칙:
+Key rules:
 
-- **정적 팩토리 메서드(`Account.create`)로 생성**한다. `new Account(...)`를 직접 호출하는 곳은 생성자 내부와 Repository 구현체(DB에서 복원할 때)뿐이다.
-- **`_balance`, `_status`는 private, getter로만 노출**한다. 외부에서 직접 대입할 수 없다 — 반드시 `deposit()`/`withdraw()`/`suspend()` 같은 도메인 메서드를 통해서만 변경된다.
-- **모든 상태 변경 메서드가 불변식을 먼저 검증**한다 (`활성 상태의 계좌만 입금할 수 있습니다`, `금액은 0보다 커야 합니다`) — 위반 시 domain/error-message enum을 참조하는 plain `Error`를 던진다 ([error-handling.md](error-handling.md) 참조).
-- **상태 변경과 동시에 Domain Event를 `_events`에 push**한다 — Repository가 저장할 때 이 이벤트들을 함께 Outbox에 기록한다 ([domain-events.md](domain-events.md) 참조).
-- **`domainEvents` getter는 배열의 복사본을 반환**한다(`[...this._events]`) — 외부에서 내부 배열을 직접 조작할 수 없게 한다.
+- **Created via a static factory method (`Account.create`)**. The only places that call `new Account(...)` directly are inside the constructor itself and the Repository implementation (when reconstructing from the DB).
+- **`_balance` and `_status` are private, exposed only via getters**. They can't be assigned to directly from the outside — they're changed only through domain methods like `deposit()`/`withdraw()`/`suspend()`.
+- **Every state-changing method validates its invariants first** ("only an active account can accept a deposit", "the amount must be greater than 0") — on violation, it throws a plain `Error` referencing the domain/error-message enum (see [error-handling.md](error-handling.md)).
+- **Every state change simultaneously pushes a Domain Event to `_events`** — the Repository records these events into the Outbox together when saving (see [domain-events.md](domain-events.md)).
+- **The `domainEvents` getter returns a copy of the array** (`[...this._events]`) — preventing the outside from directly manipulating the internal array.
 
-**다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)** — 같은 BC 안의 서로 다른 Aggregate뿐 아니라 BC 경계를 넘는 경우도 동일하다. `harness/evaluators/rules/no-cross-aggregate-reference.evaluator.ts`가 같은 BC 안(`payment/domain/`의 Payment·Refund)의 위반을, `harness/evaluators/rules/no-cross-bc-domain-import.evaluator.ts`가 `src/<bc>/domain/*.ts`가 다른 BC의 `domain/*`를 직접 import하는 위반(`no-cross-bc-domain-import.cross-bc-domain-import`)을 잡아낸다.
+**Other Aggregates may only be referenced by ID (object references are prohibited)** — this applies equally whether it's a different Aggregate within the same BC or crossing a BC boundary. `harness/evaluators/rules/no-cross-aggregate-reference.evaluator.ts` catches violations within the same BC (Payment·Refund in `payment/domain/`), and `harness/evaluators/rules/no-cross-bc-domain-import.evaluator.ts` catches `src/<bc>/domain/*.ts` directly importing another BC's `domain/*` (`no-cross-bc-domain-import.cross-bc-domain-import`).
 
 ## Domain Event — `MoneyDeposited`
 
-도메인 이벤트도 값 객체다. 발생 시점의 사실을 불변으로 기록한다.
+A domain event is also a value object. It immutably records the fact as of the moment it occurred.
 
 ```typescript
 // account/domain/money-deposited.ts
@@ -122,16 +122,16 @@ export class MoneyDeposited {
 }
 ```
 
-- 클래스명은 과거형 동사로 짓는다 (`MoneyDeposited`, `AccountCreated`, `AccountClosed`).
-- 이벤트를 소비하는 쪽(알림 발송 등)이 필요로 하는 필드를 전부 담는다 — 이벤트 핸들러가 별도로 Aggregate를 다시 조회하지 않아도 되도록.
+- Name the class with a past-tense verb (`MoneyDeposited`, `AccountCreated`, `AccountClosed`).
+- Include every field the consuming side (sending a notification, etc.) needs — so the event handler never has to re-fetch the Aggregate separately.
 
 ## Entity — `Transaction`
 
-`Transaction`은 `Account` Aggregate에 속하는 하위 Entity다. Value Object와 달리 자기 식별자(`transactionId`)를 가지지만, Aggregate Root를 거치지 않고는 독립적으로 저장/조회되지 않는다.
+`Transaction` is a child Entity belonging to the `Account` Aggregate. Unlike a Value Object, it has its own identifier (`transactionId`), but it's never saved/retrieved independently without going through the Aggregate Root.
 
-## 관련 문서
+## Related Documents
 
-- [layer-architecture.md](layer-architecture.md) — Domain 레이어가 프레임워크에 의존하지 않아야 하는 이유
-- [repository-pattern.md](repository-pattern.md) — Aggregate 단위 저장/조회
-- [domain-events.md](domain-events.md) — Aggregate가 수집한 이벤트를 Outbox로 저장하는 흐름
-- [aggregate-id.md](aggregate-id.md) — `accountId`/`transactionId` 생성 규칙
+- [layer-architecture.md](layer-architecture.md) — why the Domain layer must not depend on the framework
+- [repository-pattern.md](repository-pattern.md) — saving/retrieving at the Aggregate level
+- [domain-events.md](domain-events.md) — the flow of saving the events an Aggregate collected into the Outbox
+- [aggregate-id.md](aggregate-id.md) — the generation rule for `accountId`/`transactionId`

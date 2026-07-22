@@ -9,9 +9,9 @@ import { PaymentStatus, RefundStatus } from '@/payment/payment-enum'
 import { PaymentErrorMessage } from '@/payment/payment-error-message'
 import { TransactionManager } from '@/database/transaction-manager'
 
-// RefundEligibilityService(Domain Service)는 순수 클래스라 목(mock)하지 않는다 —
-// 이 스펙은 Application 레이어가 두 Repository를 로드해 실제 판단 로직에 위임하고,
-// 그 결과에 따라 Refund를 승인/거부해 저장하는 흐름을 검증한다.
+// RefundEligibilityService (a Domain Service) is a plain class, so it isn't mocked — this
+// spec verifies the flow where the Application layer loads both Repositories, delegates to
+// the real judgment logic, and approves/rejects and saves the Refund based on the result.
 describe('RequestRefundCommandHandler', () => {
   let handler: RequestRefundCommandHandler
   let paymentRepository: jest.Mocked<PaymentRepository>

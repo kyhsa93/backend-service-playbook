@@ -1,38 +1,38 @@
-# Testing 아키텍처
+# Testing Architecture
 
-3개 테스트 레이어로 구성하며, 각 레이어는 검증 범위와 의존성 전략이 다르다.
+Organized into 3 test layers, each with a different verification scope and dependency strategy.
 
-## 테스트 분류
+## Test Classification
 
-| 레이어 | 검증 범위 | 의존성 전략 | 실행 속도 |
+| Layer | Verification scope | Dependency strategy | Execution speed |
 |--------|----------|------------|----------|
-| Domain 단위 테스트 | Aggregate, Value Object, Domain Event | 프레임워크 없음 (순수 TypeScript) | 매우 빠름 |
-| Application 단위 테스트 | Command/Query Service | Repository, Adapter를 mock | 빠름 |
-| E2E 테스트 | Controller → Service → Repository 전체 경로 | SQLite in-memory 또는 testcontainers | 느림 |
+| Domain unit tests | Aggregate, Value Object, Domain Event | No framework (pure TypeScript) | Very fast |
+| Application unit tests | Command/Query Service | Mocks the Repository, Adapter | Fast |
+| E2E tests | The full Controller → Service → Repository path | SQLite in-memory or testcontainers | Slow |
 
-## 테스트 디렉토리 구조
+## Test Directory Structure
 
 ```
 src/
   order/
     domain/
-      order.spec.ts                          # Domain 단위 테스트
+      order.spec.ts                          # Domain unit test
     application/
       command/
-        order-command-service.spec.ts        # Application 단위 테스트
+        order-command-service.spec.ts        # Application unit test
       query/
         order-query-service.spec.ts
 test/
-  order.e2e-spec.ts                          # E2E 테스트
-  test-database.ts                           # SQLite in-memory 설정
+  order.e2e-spec.ts                          # E2E test
+  test-database.ts                           # SQLite in-memory setup
 ```
 
-- **Domain / Application 단위 테스트**: 해당 소스 파일과 같은 디렉토리에 `.spec.ts`로 배치
-- **E2E 테스트**: 프로젝트 루트의 `test/` 디렉토리에 `.e2e-spec.ts`로 배치
+- **Domain / Application unit tests**: placed as `.spec.ts` in the same directory as the corresponding source file
+- **E2E tests**: placed as `.e2e-spec.ts` in the project root's `test/` directory
 
-## Domain 단위 테스트
+## Domain Unit Tests
 
-프레임워크 없이 순수 TypeScript로 작성한다. NestJS Test 모듈을 사용하지 않는다.
+Written in pure TypeScript, without the framework. Doesn't use the NestJS Test module.
 
 ```typescript
 // src/order/domain/order.spec.ts
@@ -48,17 +48,17 @@ describe('Order', () => {
     ...overrides
   })
 
-  it('주문_항목이_비어있으면_when_생성_then_에러를_throw한다', () => {
+  it('throws an error when created with empty order items', () => {
     expect(() => createOrder({ items: [] }))
       .toThrow('주문 항목은 최소 1개 이상이어야 합니다.')
   })
 
-  it('cancel_when_이미_취소된_주문_then_에러를_throw한다', () => {
+  it('cancel throws an error when the order is already cancelled', () => {
     const order = createOrder({ status: 'cancelled' })
     expect(() => order.cancel('변심')).toThrow('이미 취소된 주문입니다.')
   })
 
-  it('cancel_when_정상_주문_then_OrderCancelled_이벤트_발행', () => {
+  it('cancel publishes an OrderCancelled event for a normal order', () => {
     const order = createOrder()
     order.cancel('변심')
     expect(order.domainEvents).toHaveLength(1)
@@ -67,15 +67,15 @@ describe('Order', () => {
 })
 ```
 
-### 검증 대상
+### What to verify
 
-- Aggregate 생성 시 불변식 검증 (잘못된 입력 → 예외)
-- 비즈니스 메서드 실행 후 상태 변경
-- Domain Event 발행 여부 및 페이로드
+- Invariant checks on Aggregate creation (invalid input → exception)
+- State changes after a business method runs
+- Whether a Domain Event was published, and its payload
 
-## Application 단위 테스트
+## Application Unit Tests
 
-Repository와 Adapter를 mock으로 대체하여 Service 로직만 검증한다.
+Replace the Repository and Adapter with mocks, verifying only the Service logic.
 
 ```typescript
 // src/order/application/command/order-command-service.spec.ts
@@ -113,7 +113,7 @@ describe('OrderCommandService', () => {
     orderRepository = module.get(OrderRepository)
   })
 
-  it('cancelOrder_when_주문이_존재하지_않으면_then_에러를_throw한다', async () => {
+  it('cancelOrder throws an error when the order does not exist', async () => {
     orderRepository.findOrders.mockResolvedValue({ orders: [], count: 0 })
 
     await expect(service.cancelOrder({ orderId: 'non-existent-id', reason: '변심' }))
@@ -122,13 +122,13 @@ describe('OrderCommandService', () => {
 })
 ```
 
-### Mock 패턴
+### Mock pattern
 
 ```typescript
-// abstract class를 jest.Mocked로 타이핑
+// type the abstract class as jest.Mocked
 let orderRepository: jest.Mocked<OrderRepository>
 
-// useValue로 필요한 메서드만 mock 구현
+// mock only the methods you need via useValue
 {
   provide: OrderRepository,
   useValue: {
@@ -138,13 +138,13 @@ let orderRepository: jest.Mocked<OrderRepository>
 }
 ```
 
-- Repository: `jest.Mocked<AbstractClass>` 패턴 사용
-- TransactionManager: `run`은 콜백을 즉시 실행하도록 mock
-- Adapter: 외부 도메인 호출을 mock하여 격리
+- Repository: use the `jest.Mocked<AbstractClass>` pattern
+- TransactionManager: mock `run` so it executes the callback immediately
+- Adapter: mock the external-domain call to isolate it
 
-## E2E 테스트
+## E2E Tests
 
-HTTP 요청을 통해 전체 유스케이스 흐름을 검증한다.
+Verify the full use-case flow through HTTP requests.
 
 ### TestDatabaseModule — SQLite In-Memory
 
@@ -156,11 +156,11 @@ export const TestDatabaseModule = TypeOrmModule.forRoot({
   type: 'sqlite',
   database: ':memory:',
   entities: [__dirname + '/../src/**/*.entity.ts'],
-  synchronize: true  // 테스트 환경에서만 사용
+  synchronize: true  // used only in the test environment
 })
 ```
 
-### E2E 테스트 구조
+### E2E test structure
 
 ```typescript
 // test/order.e2e-spec.ts
@@ -184,7 +184,7 @@ describe('OrderController (e2e)', () => {
     await app.init()
   })
 
-  it('GET /orders/:orderId — 존재하는 주문 조회', () => {
+  it('GET /orders/:orderId — fetch an existing order', () => {
     return request(app.getHttpServer())
       .get('/orders/1')
       .set('Authorization', `Bearer ${testToken}`)
@@ -195,19 +195,19 @@ describe('OrderController (e2e)', () => {
 })
 ```
 
-### SQLite vs testcontainers 선택 기준
+### SQLite vs testcontainers selection criteria
 
-| 기준 | SQLite in-memory | testcontainers |
+| Criteria | SQLite in-memory | testcontainers |
 |------|-----------------|----------------|
-| 속도 | 빠름 | 느림 (컨테이너 기동) |
-| SQL 호환성 | PostgreSQL 전용 문법 사용 불가 | 운영 DB와 동일 |
-| 설정 복잡도 | 낮음 | Docker 필요 |
-| 권장 시점 | PostgreSQL 전용 문법을 쓰지 않는 단순 경로 검증 | **권장 기본값**; 운영 DB와 동일한 환경 보장 |
+| Speed | Fast | Slow (container startup) |
+| SQL compatibility | Can't use PostgreSQL-specific syntax | Same as production |
+| Setup complexity | Low | Requires Docker |
+| When to prefer | Verifying simple paths that use no PostgreSQL-specific syntax | **Recommended default**; guarantees an environment identical to production |
 
-testcontainers를 기본으로 사용한다. PostgreSQL 전용 문법이 전혀 없고 빠른 피드백이 필요한 경우에만 SQLite를 선택한다.
+Use testcontainers as the default. Only choose SQLite when there's no PostgreSQL-specific syntax at all and fast feedback is needed.
 
 ```typescript
-// test/test-database.ts — testcontainers 버전
+// test/test-database.ts — the testcontainers version
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { PostgreSqlContainer } from '@testcontainers/postgresql'
 
@@ -228,9 +228,9 @@ export async function stopTestDatabase() {
 }
 ```
 
-### 외부 HTTP 모킹: nock
+### Mocking external HTTP: nock
 
-E2E 테스트에서 외부 HTTP 호출(HttpModule, axios 등)은 `nock`으로 인터셉트한다. `jest.mock()`으로 모듈 전체를 교체하지 않는다. mock은 단위 테스트 전용이며, E2E 테스트에서는 실제 HTTP 스택을 통과시키고 네트워크 경계만 nock으로 가로챈다.
+Intercept external HTTP calls (HttpModule, axios, etc.) in E2E tests with `nock`. Don't replace the whole module with `jest.mock()`. Mocks are for unit tests only; in E2E tests, let requests pass through the real HTTP stack and intercept only at the network boundary with nock.
 
 ```typescript
 // test/order.e2e-spec.ts
@@ -238,7 +238,7 @@ import * as nock from 'nock'
 
 afterEach(() => nock.cleanAll())
 
-it('POST /orders — 결제 API 성공 시 주문 완료', async () => {
+it('POST /orders — completes the order when the payment API succeeds', async () => {
   nock('https://payment.internal')
     .post('/pay')
     .reply(200, { success: true })
@@ -249,7 +249,7 @@ it('POST /orders — 결제 API 성공 시 주문 완료', async () => {
     .expect(201)
 })
 
-it('POST /orders — 결제 API 실패 시 400 반환', async () => {
+it('POST /orders — returns 400 when the payment API fails', async () => {
   nock('https://payment.internal')
     .post('/pay')
     .reply(402, { error: 'insufficient_funds' })
@@ -261,7 +261,7 @@ it('POST /orders — 결제 API 실패 시 400 반환', async () => {
 })
 ```
 
-## Jest 설정
+## Jest Configuration
 
 ```typescript
 // jest.config.ts
@@ -289,26 +289,26 @@ export default {
 }
 ```
 
-## 테스트 네이밍
+## Test Naming
 
 ```
-{도메인행위}_when_{조건}_then_{기대결과}
+{domain-action}_when_{condition}_then_{expected-result}
 ```
 
 ```typescript
-// 예시
-it('placeOrder_when_재고_부족_then_OutOfStockException_throw')
-it('cancel_when_이미_취소된_주문_then_에러_throw')
-it('getOrder_when_존재하지_않는_주문_then_404_반환')
+// Examples
+it('placeOrder_whenStockInsufficient_thenThrowsOutOfStockException')
+it('cancel_whenAlreadyCancelled_thenThrowsError')
+it('getOrder_whenOrderDoesNotExist_thenReturns404')
 ```
 
-## 원칙
+## Principles
 
-- **Domain 테스트는 프레임워크 없이 작성**: `new Aggregate()`로 직접 생성하여 테스트한다. NestJS Test 모듈을 사용하지 않는다.
-- **Application 테스트는 mock으로 격리**: Repository, Adapter를 mock으로 대체하여 Service 로직만 검증한다.
-- **E2E 테스트는 testcontainers 기본**: 운영 DB와 동일한 환경을 보장한다. PostgreSQL 전용 문법이 없고 속도가 중요한 경우에만 SQLite in-memory를 사용한다.
-- **E2E 테스트에서 mock 최소화**: `jest.mock()`으로 모듈을 교체하지 않는다. 외부 HTTP는 nock, DB는 testcontainers로 실제 의존성을 대체한다. mock은 단위 테스트 레이어 전용이다.
-- **외부 HTTP는 nock으로 인터셉트**: E2E 테스트에서 외부 서비스 호출은 nock으로 네트워크 경계를 가로챈다.
-- **운영 DB에 직접 연결 금지**: 테스트 환경은 항상 격리된 DB를 사용한다.
-- **테스트 간 데이터 간섭 없음**: 각 테스트 스위트는 독립된 DB 상태에서 실행한다.
-- **Aggregate 불변식 테스트 필수**: 모든 비즈니스 규칙에 대해 위반 시 예외 발생을 검증한다.
+- **Write Domain tests without the framework**: create instances directly with `new Aggregate()` to test. Don't use the NestJS Test module.
+- **Isolate Application tests with mocks**: replace the Repository and Adapter with mocks, verifying only the Service logic.
+- **E2E tests default to testcontainers**: guarantees an environment identical to production. Only use SQLite in-memory when there's no PostgreSQL-specific syntax and speed matters.
+- **Minimize mocks in E2E tests**: don't replace a module with `jest.mock()`. Replace real dependencies with nock for external HTTP and testcontainers for the DB. Mocks are for the unit-test layer only.
+- **Intercept external HTTP with nock**: in E2E tests, intercept external service calls at the network boundary with nock.
+- **Never connect directly to the production DB**: the test environment always uses an isolated DB.
+- **No data interference between tests**: each test suite runs against independent DB state.
+- **Aggregate invariant tests are required**: verify that every business rule raises an exception when violated.

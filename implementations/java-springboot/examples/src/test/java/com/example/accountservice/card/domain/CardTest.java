@@ -13,7 +13,7 @@ class CardTest {
     }
 
     @Test
-    void 발급하면_ACTIVE_상태다() {
+    void issuing_starts_as_ACTIVE() {
         Card card = issueCard();
 
         assertThat(card.getStatus()).isEqualTo(CardStatus.ACTIVE);
@@ -23,14 +23,14 @@ class CardTest {
     }
 
     @Test
-    void 카드_ID는_하이픈_없는_32자리_hex_문자열이다() {
+    void card_id_is_a_32_character_hex_string_with_no_hyphens() {
         Card card = issueCard();
 
         assertThat(card.getCardId()).matches("^[0-9a-f]{32}$");
     }
 
     @Test
-    void 활성_카드를_정지하면_SUSPENDED_상태가_된다() {
+    void suspending_an_active_card_moves_to_SUSPENDED() {
         Card card = issueCard();
 
         card.suspend();
@@ -39,7 +39,7 @@ class CardTest {
     }
 
     @Test
-    void 이미_정지된_카드를_정지하면_예외를_던진다() {
+    void throws_exception_when_suspending_an_already_suspended_card() {
         Card card = issueCard();
         card.suspend();
 
@@ -50,7 +50,7 @@ class CardTest {
     }
 
     @Test
-    void 해지된_카드를_정지하면_예외를_던진다() {
+    void throws_exception_when_suspending_a_cancelled_card() {
         Card card = issueCard();
         card.cancel();
 
@@ -61,7 +61,7 @@ class CardTest {
     }
 
     @Test
-    void 활성_카드를_해지하면_CANCELLED_상태가_된다() {
+    void cancelling_an_active_card_moves_to_CANCELLED() {
         Card card = issueCard();
 
         card.cancel();
@@ -70,7 +70,7 @@ class CardTest {
     }
 
     @Test
-    void 정지된_카드를_해지하면_CANCELLED_상태가_된다() {
+    void cancelling_a_suspended_card_moves_to_CANCELLED() {
         Card card = issueCard();
         card.suspend();
 
@@ -80,7 +80,7 @@ class CardTest {
     }
 
     @Test
-    void 이미_해지된_카드를_해지하면_예외를_던진다() {
+    void throws_exception_when_cancelling_an_already_cancelled_card() {
         Card card = issueCard();
         card.cancel();
 
@@ -91,14 +91,14 @@ class CardTest {
     }
 
     @Test
-    void 활성_카드는_이번_달_안내를_아직_보내지_않았으면_발송_대상이다() {
+    void an_active_card_is_a_send_target_when_this_months_notice_has_not_been_sent_yet() {
         Card card = issueCard();
 
         assertThat(card.shouldSendStatement(YearMonth.of(2026, 7))).isTrue();
     }
 
     @Test
-    void 이번_달_안내를_이미_보냈으면_발송_대상이_아니다() {
+    void is_not_a_send_target_when_this_months_notice_was_already_sent() {
         Card card = issueCard();
         card.markStatementSent(YearMonth.of(2026, 7));
 
@@ -107,7 +107,7 @@ class CardTest {
     }
 
     @Test
-    void 다음_달에는_다시_발송_대상이_된다() {
+    void becomes_a_send_target_again_next_month() {
         Card card = issueCard();
         card.markStatementSent(YearMonth.of(2026, 7));
 
@@ -115,7 +115,7 @@ class CardTest {
     }
 
     @Test
-    void 정지되거나_해지된_카드는_발송_대상이_아니다() {
+    void a_suspended_or_cancelled_card_is_not_a_send_target() {
         Card suspended = issueCard();
         suspended.suspend();
         Card cancelled = issueCard();

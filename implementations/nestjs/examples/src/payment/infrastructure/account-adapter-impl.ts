@@ -5,8 +5,8 @@ import { AccountStatus } from '@/account/account-enum'
 import { AccountErrorMessage } from '@/account/account-error-message'
 import { AccountAdapter } from '@/payment/application/adapter/account-adapter'
 
-// AccountAdapter의 구현체(ACL). Account BC가 export한 읽기 서비스(AccountQuery)를
-// 주입받아 호출하고, Account BC의 모델·에러를 Payment BC가 쓰는 최소 형태로 번역한다.
+// The AccountAdapter implementation (ACL). Injects and calls the read service (AccountQuery)
+// exported by Account BC, translating Account BC's model·errors into the minimal shape Payment BC uses.
 @Injectable()
 export class AccountAdapterImpl extends AccountAdapter {
   constructor(private readonly accountQuery: AccountQuery) {

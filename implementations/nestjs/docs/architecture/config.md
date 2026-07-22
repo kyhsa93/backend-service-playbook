@@ -1,26 +1,26 @@
-# 환경 설정 패턴
+# Environment Configuration Pattern
 
-### 디렉토리 구조 — 실제 코드
+### Directory Structure — Actual Code
 
 ```
 src/
   config/
     app.config.ts          # PORT, NODE_ENV
-    aws.config.ts          # AWS_REGION, AWS_ENDPOINT_URL, 자격증명
+    aws.config.ts          # AWS_REGION, AWS_ENDPOINT_URL, credentials
     database.config.ts     # DATABASE_URL
-    jwt.config.ts          # JWT 관련 설정 (Secrets Manager 분기 포함)
+    jwt.config.ts          # JWT-related config (includes the Secrets Manager branch)
     notification.config.ts # SES_SENDER_EMAIL
-    throttle.config.ts     # THROTTLE_{SHORT,MEDIUM,LONG}_{TTL_MS,LIMIT} — rate-limiting.md 참고
-    validation.config.ts   # 환경 변수 검증 함수
+    throttle.config.ts     # THROTTLE_{SHORT,MEDIUM,LONG}_{TTL_MS,LIMIT} — see rate-limiting.md
+    validation.config.ts   # the environment variable validation function
 ```
 
-- 관심사별로 설정 파일을 분리한다.
-- 모든 설정 파일은 `src/config/` 디렉토리에 위치하고 `*.config.ts`로 끝난다(harness의 `config.file-naming` 규칙).
+- Split the config files by concern.
+- Every config file lives in the `src/config/` directory and ends in `*.config.ts` (the harness's `config.file-naming` rule).
 
-### 루트 모듈에 ConfigModule 등록
+### Registering ConfigModule in the Root Module
 
 ```typescript
-// app-module.ts — 실제 코드(발췌)
+// app-module.ts — actual code (excerpt)
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 
@@ -38,11 +38,11 @@ import { jwtConfig } from '@/config/jwt.config'
 export class AppModule {}
 ```
 
-- `isGlobal: true` — 모든 모듈에서 `ConfigService`를 별도 import 없이 주입받을 수 있다.
-- `load` — JWT 설정만 `ConfigModule`의 네임스페이스로 등록한다. DATABASE_URL 등 나머지는 `ConfigService`를 거치지 않고 `src/config/*.config.ts`가 내보내는 순수 함수(`getDatabaseUrl()`, `getAwsRegion()` 등)로 직접 읽는다 — TypeORM `DataSource`(`data-source.ts`)처럼 NestJS DI 컨테이너보다 먼저 생성되는 값에는 `ConfigService` 주입이 불가능하기 때문이다.
-- `validate` — 앱 기동 시 환경 변수를 검증한다. 검증 실패 시 기동을 중단한다.
+- `isGlobal: true` — lets every module inject `ConfigService` without a separate import.
+- `load` — registers only the JWT config under `ConfigModule`'s namespace. Everything else, like DATABASE_URL, is read directly via the pure functions (`getDatabaseUrl()`, `getAwsRegion()`, etc.) that `src/config/*.config.ts` exports, bypassing `ConfigService` — because a value like the TypeORM `DataSource` (`data-source.ts`), which is created before the NestJS DI container exists, can't have `ConfigService` injected into it.
+- `validate` — validates environment variables at app startup. Halts startup on a validation failure.
 
-### 설정 팩토리/헬퍼 함수 — 실제 코드
+### Config Factory/Helper Functions — Actual Code
 
 ```typescript
 // config/database.config.ts
@@ -52,14 +52,14 @@ export function getDatabaseUrl(): string {
 ```
 
 ```typescript
-// config/jwt.config.ts (요약) — Secrets Manager 분기 포함, 상세는 secret-manager.md
+// config/jwt.config.ts (summary) — includes the Secrets Manager branch; see secret-manager.md for detail
 export const jwtConfig = async () => {
-  // 운영(production)에서만 Secrets Manager를 호출한다 — jest가 자동 설정하는
-  // NODE_ENV=test를 포함해 그 외 환경은 네트워크 호출 없이 환경 변수만 쓴다.
+  // calls Secrets Manager only in production — every other environment, including the
+  // NODE_ENV=test that jest sets automatically, uses only the environment variable with no network call.
   if (process.env.NODE_ENV !== 'production') {
     return { jwt: { secret: process.env.JWT_SECRET ?? 'dev-secret', expiresIn: process.env.JWT_EXPIRES_IN ?? '1h' } }
   }
-  // ... Secrets Manager(app/jwt)에서 조회
+  // ... looked up from Secrets Manager (app/jwt)
 }
 ```
 
@@ -68,19 +68,19 @@ export const jwtConfig = async () => {
 export function getAwsRegion(): string { return process.env.AWS_REGION ?? 'us-east-1' }
 export function getAwsEndpoint(): string | undefined { return process.env.AWS_ENDPOINT_URL }
 export function getAwsCredentials() {
-  if (process.env.NODE_ENV === 'production') return undefined // SDK 기본 자격증명 체인(IAM 역할)
+  if (process.env.NODE_ENV === 'production') return undefined // the SDK's default credential chain (IAM role)
   return { accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test', secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test' }
 }
 ```
 
-- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts`는 `ConfigModule`을 거치지 않는 **순수 함수**다 — `ConfigService`에서 닷 노테이션으로 접근하는 대신 직접 호출한다. `jwt.config.ts`만 `ConfigModule.forRoot({ load: [jwtConfig] })`에 등록되어 `ConfigService`로 접근한다(아래 참고).
+- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts` are **pure functions** that bypass `ConfigModule` — called directly instead of being accessed via dot notation on `ConfigService`. Only `jwt.config.ts` is registered in `ConfigModule.forRoot({ load: [jwtConfig] })` and accessed through `ConfigService` (see below).
 
-### 환경 변수 검증 — class-validator
+### Environment Variable Validation — class-validator
 
-앱 기동 시 필수 환경 변수가 누락되거나 잘못된 값이 들어오면 **즉시 프로세스를 종료**한다. 잘못된 설정으로 런타임에 장애가 발생하는 것보다, 기동 단계에서 빠르게 실패(fail-fast)하는 것이 안전하다.
+If a required environment variable is missing or has an invalid value at app startup, **terminate the process immediately**. Failing fast at the startup stage is safer than letting a bad configuration cause a runtime outage later.
 
 ```typescript
-// config/validation.config.ts — 실제 코드
+// config/validation.config.ts — actual code
 import { Logger } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { IsNotEmpty, IsString, validateSync } from 'class-validator'
@@ -108,16 +108,16 @@ export function validateConfig(config: Record<string, unknown>): EnvironmentVari
 }
 ```
 
-`DATABASE_URL`만 검증 대상이다 — `JWT_SECRET`은 프로덕션에서 Secrets Manager로 대체되므로([secret-manager.md](secret-manager.md) 참고) 이 fail-fast 검증의 대상이 아니다.
+Only `DATABASE_URL` is validated here — `JWT_SECRET` is replaced by Secrets Manager in production (see [secret-manager.md](secret-manager.md)), so it isn't a target of this fail-fast validation.
 
-- `plainToInstance`의 `enableImplicitConversion: true` — 문자열로 들어오는 환경 변수를 데코레이터 타입에 맞게 자동 변환한다.
-- `validateSync` — 동기 검증. NestJS `ConfigModule`의 `validate` 옵션은 동기 함수를 기대한다.
-- 검증 실패 시 `process.exit(1)` — 잘못된 설정 상태로 앱이 기동되는 것을 방지한다. 클라이언트 로그 없이 `console.error`를 직접 쓰지 않고 `Logger.error`를 쓴다(observability.md의 구조화 로깅 원칙과 일치).
+- `plainToInstance`'s `enableImplicitConversion: true` — automatically converts an environment variable that comes in as a string into the type the decorator expects.
+- `validateSync` — synchronous validation. NestJS's `ConfigModule`'s `validate` option expects a synchronous function.
+- `process.exit(1)` on a validation failure — prevents the app from starting up in a broken configuration state. Uses `Logger.error` rather than calling `console.error` directly with no client log (consistent with observability.md's structured-logging principle).
 
-### ConfigService 사용 — JWT 설정에 한정
+### Using ConfigService — Limited to the JWT Configuration
 
 ```typescript
-// src/auth/auth-service.ts — 실제 코드(발췌)
+// src/auth/auth-service.ts — actual code (excerpt)
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 
@@ -133,6 +133,6 @@ export class AuthService {
 }
 ```
 
-- `ConfigService`는 `isGlobal: true`로 등록했으므로 별도 모듈 import 없이 주입 가능하다.
-- 설정 값 접근 시 닷 노테이션(`'jwt.secret'`)으로 네스팅된 값에 접근한다.
-- 프로덕션 환경에서 JWT secret 등 민감한 값은 환경 변수 대신 AWS Secrets Manager를 사용한다. 상세 패턴은 [secret-manager.md](secret-manager.md) 참조.
+- Since `ConfigService` is registered with `isGlobal: true`, it can be injected without a separate module import.
+- Access nested config values via dot notation (`'jwt.secret'`).
+- In production, sensitive values like the JWT secret use AWS Secrets Manager instead of an environment variable. See [secret-manager.md](secret-manager.md) for the detailed pattern.

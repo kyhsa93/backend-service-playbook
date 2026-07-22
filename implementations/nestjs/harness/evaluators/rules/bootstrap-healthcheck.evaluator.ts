@@ -1,4 +1,4 @@
-// bootstrap-healthcheck evaluator — NestJS bootstrap과 health endpoint 운영 필수 구성을 검증한다
+// The bootstrap-healthcheck evaluator — verifies the required operational configuration of the NestJS bootstrap and health endpoint
 // (guide: docs/architecture/bootstrap.md, docs/architecture/graceful-shutdown.md).
 
 import * as fs from 'node:fs'

@@ -5,9 +5,9 @@ import { SuspendCardsByAccountCommand } from '@/card/application/command/suspend
 import { CardRepository } from '@/card/domain/card-repository'
 import { CardStatus } from '@/card/card-enum'
 
-// Account BC의 account.suspended.v1 Integration Event에 대한 반응 유스케이스.
-// at-least-once 전달을 전제로 멱등하게 구현한다 — ACTIVE 카드만 골라 정지하므로
-// 같은 이벤트가 재수신되어도(이미 정지된 카드) 아무 일도 하지 않는다.
+// The reacting use case for Account BC's account.suspended.v1 Integration Event.
+// Implemented idempotently, assuming at-least-once delivery — since it only selects and
+// suspends ACTIVE cards, nothing happens even if the same event is re-received (the card is already suspended).
 @CommandHandler(SuspendCardsByAccountCommand)
 export class SuspendCardsByAccountCommandHandler implements ICommandHandler<SuspendCardsByAccountCommand> {
   constructor(

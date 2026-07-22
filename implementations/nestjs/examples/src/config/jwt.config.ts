@@ -1,10 +1,10 @@
 import { getAwsEndpoint } from '@/config/aws.config'
 
 export const jwtConfig = async () => {
-  // 운영(production)에서만 Secrets Manager를 호출한다 — 그 외(development/test 등)는
-  // 네트워크 호출 없이 환경 변수만 사용한다. jest는 NODE_ENV를 자동으로 'test'로
-  // 설정하므로, 'development'만 예외 처리하면 테스트 실행 시에도 실제 AWS로 나가려
-  // 시도해 부트스트랩이 깨진다 — 반드시 production만 명시적으로 선택해야 한다.
+  // Calls Secrets Manager only in production — every other environment (development/test,
+  // etc.) uses only the environment variable, with no network call. Since jest automatically
+  // sets NODE_ENV to 'test', if only 'development' were excluded, running tests would also try
+  // to reach out to real AWS and break the bootstrap — production must be the only explicitly-selected branch.
   if (process.env.NODE_ENV !== 'production') {
     return {
       jwt: {

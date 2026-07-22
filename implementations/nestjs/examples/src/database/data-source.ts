@@ -12,12 +12,12 @@ import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
 import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
 import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
 
-// CLI(typeorm migration:*)와 앱(app-module.ts) 모두 이 DataSource를 공유한다 —
-// 마이그레이션 대상 스키마와 런타임 연결 설정이 어긋나지 않도록 하기 위함이다.
+// Both the CLI (typeorm migration:*) and the app (app-module.ts) share this DataSource — this
+// keeps the migration target schema and the runtime connection config from drifting apart.
 //
-// Card BC 추가(PaymentEntity/RefundEntity/CredentialEntity) 이후 이 목록이 갱신되지
-// 않아 실제 앱 부팅(autoLoadEntities: false) 시 해당 Repository의 엔티티 메타데이터를
-// 찾지 못하는 상태였다 — 이번에 Task Queue 엔티티를 추가하면서 함께 맞춘다.
+// This list must be kept up to date whenever a new entity is added (autoLoadEntities: false),
+// or the app fails to find that Repository's entity metadata at boot — kept in sync here
+// alongside the Task Queue entities.
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: getDatabaseUrl(),

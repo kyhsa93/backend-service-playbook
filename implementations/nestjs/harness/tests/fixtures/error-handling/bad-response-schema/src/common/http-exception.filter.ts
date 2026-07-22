@@ -10,7 +10,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = HttpStatus.INTERNAL_SERVER_ERROR
     const message = exception instanceof Error ? exception.message : 'Internal server error'
 
-    // stack 필드가 추가되고 error 필드가 빠짐 — 4개 필드(statusCode/code/message/error) 위반
+    // a stack field is added and the error field is missing — violates the 4-field (statusCode/code/message/error) rule
     response.status(status).json({
       statusCode: status,
       code: 'INTERNAL_ERROR',

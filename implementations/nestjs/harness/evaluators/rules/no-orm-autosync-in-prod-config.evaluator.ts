@@ -1,22 +1,21 @@
-// no-orm-autosync-in-prod-config evaluator — TypeORM의 auto-schema-sync
-// (`synchronize: true`)는 운영 환경에서 금지된다. 스키마 변경은 반드시
-// 마이그레이션으로 관리한다 (guide: docs/architecture/persistence.md —
-// "synchronize: true는 개발 환경에서만 사용하고, 운영 환경에서는 마이그레이션으로
-// 스키마를 관리한다").
+// The no-orm-autosync-in-prod-config evaluator — TypeORM's auto-schema-sync
+// (`synchronize: true`) is prohibited in production. Schema changes must always be managed
+// via migrations (guide: docs/architecture/persistence.md — "use synchronize: true only in
+// the development environment; manage the schema via migrations in production").
 //
 // Check: `new DataSource({...})` / `TypeOrmModule.forRoot({...})` /
-// `TypeOrmModule.forRootAsync({...})` 호출 인자 안의 `synchronize` 프로퍼티를
-// 찾는다.
-//   - 리터럴 `true`로 하드코딩 → 항상 실패.
-//   - `process.env.NODE_ENV === 'production'` 형태(또는 그 삼항 연산자 버전)처럼
-//     "NODE_ENV가 production일 때 true로 평가되는" 조건식 → 실패
-//     (반대로 `!== 'production'`처럼 production일 때 false로 평가되는 형태는 허용).
-//   - 그 외(함수 호출, ConfigService 조회 등 정적으로 진위를 증명할 수 없는 표현)는
-//     오탐을 피하기 위해 실패로 잡지 않는다.
-//   - `synchronize` 프로퍼티 자체가 없으면 TypeORM 기본값(false)이므로 안전.
+// Finds the `synchronize` property inside a `TypeOrmModule.forRootAsync({...})` call argument (or `new DataSource({...})`).
+//   - Hardcoded as the literal `true` → always fails.
+//   - A conditional expression shaped like `process.env.NODE_ENV === 'production'` (or its
+//     ternary-operator version) — i.e. one that "evaluates to true when NODE_ENV is
+//     production" — fails
+//     (conversely, a form like `!== 'production'`, which evaluates to false in production, is allowed).
+//   - Anything else (a function call, a ConfigService lookup, etc. — an expression whose
+//     truthiness can't be statically proven) isn't flagged as a failure, to avoid false positives.
+//   - If the `synchronize` property is simply absent, it's safe since TypeORM's default is false.
 //
-// Applicability: 프로젝트 안에 DataSource/TypeOrmModule.forRoot(Async) 호출이
-// 하나도 없으면 skip.
+// Applicability: skipped if there's not a single DataSource/TypeOrmModule.forRoot(Async) call
+// anywhere in the project.
 
 import * as path from 'node:path'
 import ts from 'typescript'
@@ -43,8 +42,8 @@ function stringLiteralEquals(node: ts.Node, value: string): boolean {
   return ts.isStringLiteral(node) && node.text === value
 }
 
-// `left === 'production'` 형태(NODE_ENV 비교로 가정)인지 판별하고, 그 경우
-// 이 이항식 자체가 production일 때 true로 평가되는지(`equalsWhenProd`)를 함께 반환한다.
+// Determines whether it's shaped like `left === 'production'` (assumed to be a NODE_ENV
+// comparison), and if so, also returns whether this binary expression itself evaluates to true in production (`equalsWhenProd`).
 function productionComparison(node: ts.BinaryExpression): { matches: boolean; equalsWhenProd: boolean } {
   const op = node.operatorToken.getText()
   const isEq = op === '===' || op === '=='
@@ -56,8 +55,8 @@ function productionComparison(node: ts.BinaryExpression): { matches: boolean; eq
   return { matches: true, equalsWhenProd: isEq }
 }
 
-// 이 표현식이 NODE_ENV=production일 때 정적으로 true로 평가된다고 증명 가능하면 true.
-// 증명할 수 없는 표현(함수 호출 등)은 안전하다고 간주(false)해 오탐을 피한다.
+// True if it's provable that this expression statically evaluates to true when NODE_ENV=production.
+// An unprovable expression (a function call, etc.) is assumed safe (false), to avoid false positives.
 function evaluatesTrueInProduction(node: ts.Expression, sf: ts.SourceFile): boolean {
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true
   if (node.kind === ts.SyntaxKind.FalseKeyword) return false

@@ -23,7 +23,7 @@ class TransferEligibilityServiceTest {
     }
 
     @Test
-    void 모든_조건을_만족하면_승인된다() {
+    void approves_when_all_conditions_are_met() {
         Account source = fundedAccount("KRW", 10000);
         Account target = fundedAccount("KRW", 0);
 
@@ -34,7 +34,7 @@ class TransferEligibilityServiceTest {
     }
 
     @Test
-    void 출금_계좌와_입금_계좌가_같으면_거부된다() {
+    void rejects_when_source_and_destination_accounts_are_the_same() {
         Account source = fundedAccount("KRW", 10000);
 
         TransferDecision decision = service.evaluate(source, source, 5000);
@@ -44,7 +44,7 @@ class TransferEligibilityServiceTest {
     }
 
     @Test
-    void 출금_계좌가_비활성이면_거부된다() {
+    void rejects_when_source_account_is_inactive() {
         Account source = fundedAccount("KRW", 10000);
         source.suspend();
         Account target = fundedAccount("KRW", 0);
@@ -57,7 +57,7 @@ class TransferEligibilityServiceTest {
     }
 
     @Test
-    void 입금_계좌가_비활성이면_거부된다() {
+    void rejects_when_target_account_is_inactive() {
         Account source = fundedAccount("KRW", 10000);
         Account target = fundedAccount("KRW", 0);
         target.suspend();
@@ -70,7 +70,7 @@ class TransferEligibilityServiceTest {
     }
 
     @Test
-    void 통화가_일치하지_않으면_거부된다() {
+    void rejects_on_currency_mismatch() {
         Account source = fundedAccount("KRW", 10000);
         Account target = fundedAccount("USD", 0);
 
@@ -81,7 +81,7 @@ class TransferEligibilityServiceTest {
     }
 
     @Test
-    void 출금_계좌_잔액이_부족하면_거부된다() {
+    void rejects_when_source_account_balance_is_insufficient() {
         Account source = fundedAccount("KRW", 1000);
         Account target = fundedAccount("KRW", 0);
 

@@ -1,14 +1,14 @@
-// secret-manager evaluator — src/config/*.config.ts 팩토리가 민감 키를
-// process.env로만 받지 않고 Secrets Manager 경로를 갖추고 있는지 검증
+// The secret-manager evaluator — verifies that a src/config/*.config.ts factory doesn't
+// source a sensitive key from process.env alone, and has a Secrets Manager path in place
 // (guide: docs/architecture/secret-manager.md).
 //
-// Applicability: src/config/ 디렉토리가 존재해야 실행 (maxScore = 10).
+// Applicability: runs only if the src/config/ directory exists (maxScore = 10).
 //
 // Rule:
-// - 각 *.config.ts에서 `process.env.*` 참조 중 이름에 PASSWORD/SECRET/API_KEY/APIKEY/TOKEN을
-//   포함한 키가 있으면, 같은 파일에 NODE_ENV 분기, SecretsManagerClient,
-//   SecretService, secretService, getSecret 중 하나라도 없으면 실패.
-//   (가짜 가드 대응은 여기서는 하지 않는다 — 텍스트 휴리스틱)
+// - If a `process.env.*` reference in a *.config.ts file has a key name containing
+//   PASSWORD/SECRET/API_KEY/APIKEY/TOKEN, it fails unless that same file has at least one of a
+//   NODE_ENV branch, SecretsManagerClient, SecretService, secretService, or getSecret.
+//   (Detecting a fake guard isn't handled here — this is a text heuristic.)
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'

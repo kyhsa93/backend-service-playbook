@@ -1,24 +1,25 @@
 #!/usr/bin/env node
-// 새 도메인 스캐폴딩 생성기 — docs/reference.md의 "실전 구현 템플릿"(Order 예시)을
-// 실제로 코드화해 harness(evaluators/) 전체를 통과시킨 뒤, 도메인 이름만 파라미터로
-// 뽑아 재사용 가능하게 일반화한 것이다. Aggregate(단일 상태 필드) + CQRS
-// CommandHandler/QueryHandler(CommandBus/QueryBus) + 도메인 이벤트 1종 + 공유
-// outbox 모듈(EventHandlerRegistry)에 핸들러를 등록하는 OnModuleInit + Repository +
-// Controller + DTO + Module까지 한 번에 생성한다. Outbox 드레인은 도메인별 Relay가
-// 아니라 공유 OutboxPoller/OutboxConsumer가 담당한다(domain-events.md 참고).
+// A new-domain scaffolding generator — turns the "Reference Implementation Template" (the
+// Order example) in docs/reference.md into real code, passes the entire harness
+// (evaluators/), then generalizes it by parameterizing only the domain name so it can be
+// reused. It generates, in one pass, the Aggregate (a single state field) + CQRS
+// CommandHandler/QueryHandler (CommandBus/QueryBus) + one domain event + an OnModuleInit that
+// registers a handler with the shared outbox module (EventHandlerRegistry) + Repository +
+// Controller + DTO + Module. Outbox draining is handled not by a per-domain Relay but by the
+// shared OutboxPoller/OutboxConsumer (see domain-events.md).
 //
-// 사용법:
+// Usage:
 //   node scripts/create-domain.js <PascalCaseDomainName> [--out <targetSrcDir>] [--wire]
 //
-// 예:
+// Examples:
 //   node scripts/create-domain.js Coupon
-//     → ../examples/src/coupon/ 아래에 생성(스크립트 기본 대상)
+//     → generates under ../examples/src/coupon/ (the script's default target)
 //   node scripts/create-domain.js Coupon --out /tmp/scratch-app/src --wire
-//     → 지정한 src/ 아래 생성 + app-module.ts에 import/등록까지 자동 삽입
+//     → generates under the specified src/ + auto-inserts the import/registration into app-module.ts
 //
-// --wire를 주지 않으면 app-module.ts는 건드리지 않고, 붙여넣을 import/등록 스니펫만
-// 콘솔에 출력한다 — 기존 프로젝트의 app-module.ts를 스크립트가 임의로 고치는 걸
-// 원치 않을 수 있어 기본값은 안전한 쪽(수동 적용)으로 둔다.
+// If --wire isn't given, app-module.ts is left untouched, and only the import/registration
+// snippet to paste in is printed to the console — since you might not want the script to
+// arbitrarily modify an existing project's app-module.ts, the default is the safe side (manual application).
 
 'use strict'
 
@@ -41,8 +42,8 @@ function toScreamingSnakeCase(input) {
   return input.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()
 }
 
-// 아주 단순한 규칙 기반 복수형 — 불규칙 복수형(예: Category → Categories)은
-// 생성 후 수동으로 고쳐야 한다는 걸 스크립트 실행 결과에 안내한다.
+// A very simple rule-based pluralizer — the script's run output notes that an irregular
+// plural (e.g. Category → Categories) needs to be fixed manually after generation.
 function naivePluralize(input) {
   if (/[sxz]$|[cs]h$/.test(input)) return `${input}es`
   if (/[^aeiou]y$/.test(input)) return `${input.slice(0, -1)}ies`
@@ -55,10 +56,10 @@ function buildNames(rawDomainName) {
   const domainKebab = toKebabCase(Domain)
   const domains = naivePluralize(domain)
   const Domains = toPascalCase(domains)
-  // REST 경로용 복수형 kebab-case — domainKebab에서 하이픈만 지우고 's'를 붙이면
-  // (예: loyalty-category → loyaltycategorys) 단어 경계가 사라지고 복수형 규칙도
-  // 깨진다. 이미 올바르게 복수화한 Domains를 다시 kebab-case로 변환해야 한다
-  // (loyalty-category → LoyaltyCategories → loyalty-categories).
+  // The plural kebab-case for the REST path — if you just strip the hyphens from domainKebab
+  // and append 's' (e.g. loyalty-category → loyaltycategorys), the word boundary disappears and
+  // the pluralization rule breaks too. Domains, which was already correctly pluralized, must be
+  // converted back to kebab-case instead (loyalty-category → LoyaltyCategories → loyalty-categories).
   const domainsKebab = toKebabCase(Domains)
   const DOMAIN_SCREAM = toScreamingSnakeCase(Domain)
   return { Domain, domain, domainKebab, domains, Domains, domainsKebab, DOMAIN_SCREAM }
@@ -72,7 +73,7 @@ function writeFile(filePath, content) {
 function generateFiles(n) {
   const files = {}
 
-  // ---- Domain 레이어 ----
+  // ---- Domain layer ----
   files[`${n.domainKebab}/${n.domainKebab}-enum.ts`] = `export enum ${n.Domain}Status {
   PENDING = 'PENDING',
   ACTIVE = 'ACTIVE',
@@ -138,13 +139,13 @@ export class ${n.Domain} {
     return new ${n.Domain}({ ownerId: params.ownerId, status: ${n.Domain}Status.PENDING })
   }
 
-  // 이벤트를 발행하지 않는 단순 상태 전이 예시 — 도메인 이벤트가 필요 없는 변경은
-  // 이렇게 그냥 상태만 바꾼다.
+  // A simple state-transition example that doesn't publish an event — a change that doesn't
+  // need a domain event just changes the state like this.
   public activate(): void {
     this._status = ${n.Domain}Status.ACTIVE
   }
 
-  // 이벤트를 발행하는 상태 전이 예시.
+  // A state-transition example that publishes an event.
   public cancel(reason: string): void {
     if (this._status === ${n.Domain}Status.CANCELLED) {
       throw new Error(${n.Domain}ErrorMessage['이미 취소된 ${n.Domain}입니다.'])
@@ -173,7 +174,7 @@ export abstract class ${n.Domain}Repository {
 }
 `
 
-  // ---- Application 레이어 — Command ----
+  // ---- Application layer — Command ----
   files[`${n.domainKebab}/application/command/create-${n.domainKebab}-command.ts`] = `export class Create${n.Domain}Command {
   public readonly ownerId: string
 
@@ -202,8 +203,8 @@ export class Create${n.Domain}CommandHandler implements ICommandHandler<Create${
     await this.transactionManager.run(async () => {
       await this.${n.domain}Repository.save${n.Domain}(${n.domain})
     })
-    // Outbox 드레인은 공유 OutboxPoller/OutboxConsumer가 독립적으로 주기 실행하며
-    // 처리한다 — Command Handler는 저장이 끝나면 그대로 반환한다.
+    // Draining the Outbox is handled independently by the shared OutboxPoller/OutboxConsumer
+    // running on their own schedule — the Command Handler just returns once the save is done.
     return ${n.domain}
   }
 }
@@ -244,13 +245,13 @@ export class Cancel${n.Domain}CommandHandler implements ICommandHandler<Cancel${
     await this.transactionManager.run(async () => {
       await this.${n.domain}Repository.save${n.Domain}(${n.domain})
     })
-    // Outbox 드레인은 공유 OutboxPoller/OutboxConsumer가 독립적으로 주기 실행하며
-    // 처리한다 — Command Handler는 저장이 끝나면 그대로 반환한다.
+    // Draining the Outbox is handled independently by the shared OutboxPoller/OutboxConsumer
+    // running on their own schedule — the Command Handler just returns once the save is done.
   }
 }
 `
 
-  // ---- Application 레이어 — Query ----
+  // ---- Application layer — Query ----
   files[`${n.domainKebab}/application/query/get-${n.domainKebab}-result.ts`] = `export interface Get${n.Domain}Result {
   ${n.domain}Id: string
   ownerId: string
@@ -292,11 +293,11 @@ export class Get${n.Domain}QueryHandler implements IQueryHandler<Get${n.Domain}Q
 }
 `
 
-  // ---- Application 레이어 — Event ----
+  // ---- Application layer — Event ----
   files[`${n.domainKebab}/application/event/${n.domainKebab}-cancelled-handler.ts`] = `import { Injectable, Logger } from '@nestjs/common'
 
-// 취소된 ${n.Domain}에 대한 후속 처리(알림, 다른 BC로의 Integration Event 발행 등)를
-// 여기서 구현한다. 스캐폴딩 단계에서는 로깅만 한다.
+// Implement follow-up processing for a cancelled ${n.Domain} here (a notification, publishing
+// an Integration Event to another BC, etc.). At the scaffolding stage, only logging is done.
 @Injectable()
 export class ${n.Domain}CancelledHandler {
   private readonly logger = new Logger(${n.Domain}CancelledHandler.name)
@@ -307,7 +308,7 @@ export class ${n.Domain}CancelledHandler {
 }
 `
 
-  // ---- Infrastructure 레이어 ----
+  // ---- Infrastructure layer ----
   files[`${n.domainKebab}/infrastructure/entity/${n.domainKebab}.entity.ts`] = `import { Column, Entity, PrimaryColumn } from 'typeorm'
 
 import { BaseEntity } from '@/database/base.entity'
@@ -424,7 +425,7 @@ export class ${n.Domain}QueryImpl extends ${n.Domain}Query {
 }
 `
 
-  // ---- Interface 레이어 ----
+  // ---- Interface layer ----
   files[`${n.domainKebab}/interface/dto/create-${n.domainKebab}-response-body.ts`] = `import { ApiProperty } from '@nestjs/swagger'
 
 export class Create${n.Domain}ResponseBody {
@@ -599,13 +600,13 @@ import { ${n.Domain}Controller } from '@/${n.domainKebab}/interface/${n.domainKe
     Cancel${n.Domain}CommandHandler,
     // Query Handlers
     Get${n.Domain}QueryHandler,
-    // Domain Event 후속 처리 — 실제 Outbox 드레인은 공유 outbox 모듈의
-    // OutboxPoller/OutboxConsumer가 담당하며, 이 핸들러는 아래 onModuleInit에서
-    // EventHandlerRegistry에 등록된다.
+    // Domain Event follow-up processing — the actual Outbox draining is handled by the shared
+    // outbox module's OutboxPoller/OutboxConsumer, and this handler is registered with the
+    // EventHandlerRegistry in onModuleInit below.
     ${n.Domain}CancelledHandler,
     // Repositories
     { provide: ${n.Domain}Repository, useClass: ${n.Domain}RepositoryImpl },
-    // Query 구현체
+    // The Query implementation
     { provide: ${n.Domain}Query, useClass: ${n.Domain}QueryImpl }
   ]
 })
@@ -615,9 +616,9 @@ export class ${n.Domain}Module implements OnModuleInit {
     private readonly ${n.domain}CancelledHandler: ${n.Domain}CancelledHandler
   ) {}
 
-  // 자기 도메인이 발행하는 Domain Event(OutboxConsumer가 SQS에서 수신했을 때 호출할
-  // 핸들러)를 공유 EventHandlerRegistry에 등록한다 — 도메인별 OutboxRelay는 두지
-  // 않는다(account-module.ts와 동일한 패턴).
+  // Registers this domain's own published Domain Event (the handler to call when
+  // OutboxConsumer receives it from SQS) into the shared EventHandlerRegistry — no per-domain
+  // OutboxRelay is kept (the same pattern as account-module.ts).
   onModuleInit(): void {
     this.registry.register('${n.Domain}Cancelled', (payload) => this.${n.domain}CancelledHandler.handle(payload as never))
   }
@@ -657,7 +658,7 @@ function wireAppModule(appModulePath, n) {
   }
 
   if (!alreadyImported) {
-    // 마지막 import 문 다음 줄에 삽입
+    // Insert on the line after the last import statement
     const importRegex = /^import .+$/gm
     let lastImportEnd = 0
     let m
@@ -669,10 +670,10 @@ function wireAppModule(appModulePath, n) {
     console.warn('imports: [ 배열을 찾지 못해 자동 등록을 건너뜁니다. 아래를 수동으로 추가하세요.')
     console.log(`    ${n.Domain}Module`)
   } else if (!alreadyRegistered) {
-    // 배열 맨 앞에 삽입한다 — 닫는 대괄호를 정규식으로 찾으면 imports 배열 안에 중첩된
-    // 다른 배열(예: ConfigModule.forRoot({ load: [...] }))의 첫 `]`에 걸려 잘못된
-    // 위치에 삽입되는 버그가 있어(중첩 괄호는 정규식으로 안전하게 못 다룸), 여는
-    // 대괄호 바로 뒤에 붙이는 쪽이 훨씬 안전하다.
+    // Inserts at the very front of the array — searching for the closing bracket via regex has
+    // a bug where it can latch onto the first `]` of another array nested inside the imports
+    // array (e.g. ConfigModule.forRoot({ load: [...] })) and insert in the wrong place (nested
+    // brackets can't be safely handled with regex), so appending right after the opening bracket is much safer.
     content = content.replace(/imports:\s*\[/, `imports: [\n    ${n.Domain}Module,`)
   }
 

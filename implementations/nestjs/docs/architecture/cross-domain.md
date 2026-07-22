@@ -1,38 +1,38 @@
-# 크로스 도메인 호출 패턴
+# Cross-Domain Call Patterns
 
-BC 간 통신은 **동기(Adapter/ACL)** 와 **비동기(Integration Event)** 두 가지가 있다. 선택 기준은 루트 [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md)를 따른다. 이 문서는 그 두 패턴이 `examples/`에서 **실제로 동작하는 코드**로 어떻게 구현되어 있는지 NestJS 관점에서 설명한다.
+Communication between BCs comes in two forms: **synchronous (Adapter/ACL)** and **asynchronous (Integration Event)**. The selection criteria follow the root [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md). This document explains, from a NestJS perspective, how those two patterns are implemented as **actually-working code** in `examples/`.
 
-`examples/`에는 두 개의 Bounded Context가 있다.
+`examples/` has two Bounded Contexts.
 
-- **Account BC** (`src/account/`) — 계좌 개설·입출금·정지·해지. 상류(Supplier).
-- **Card BC** (`src/card/`) — 카드 발급. 계좌에 종속된 하류(Customer). Account와 **Customer-Supplier** 관계다.
+- **Account BC** (`src/account/`) — opening accounts, deposits/withdrawals, suspension, closure. The upstream (Supplier).
+- **Card BC** (`src/card/`) — card issuance. Downstream (Customer), dependent on the account. It has a **Customer-Supplier** relationship with Account.
 
-Card는 두 방향으로 Account에 의존한다.
+Card depends on Account in two directions.
 
-| 방향 | 필요 | 패턴 | 구현 위치 |
+| Direction | Need | Pattern | Implementation location |
 |------|------|------|----------|
-| 카드 발급 시 연결 계좌가 활성인지 **즉시 조회** | 응답에 필요 | 동기 **Adapter(ACL)** | `card/application/adapter/`, `card/infrastructure/account-adapter-impl.ts` |
-| 계좌가 정지/해지되면 카드도 **정지/해지** | 최종 일관성 허용 | 비동기 **Integration Event** | Account가 발행 → Outbox → `card/interface/integration-event/` 수신 |
+| **Immediately checking** whether the linked account is active when issuing a card | Needed for the response | Synchronous **Adapter (ACL)** | `card/application/adapter/`, `card/infrastructure/account-adapter-impl.ts` |
+| The card is also **suspended/closed** when the account is suspended/closed | Eventual consistency acceptable | Asynchronous **Integration Event** | Account publishes → Outbox → received by `card/interface/integration-event/` |
 
-Account는 Card를 **전혀 import하지 않는다**(의존 방향은 Card → Account 단방향). 비동기 전달은 Outbox와 `EventHandlerRegistry`가 두 BC를 느슨하게 연결한다.
+Account **never imports Card at all** (the dependency direction is one-way, Card → Account). For asynchronous delivery, the Outbox and `EventHandlerRegistry` loosely connect the two BCs.
 
 ---
 
-## 1. 동기 — Adapter 패턴 (ACL)
+## 1. Synchronous — the Adapter pattern (ACL)
 
-카드 발급은 "연결 계좌가 존재하고 활성인가?"의 응답이 현재 요청 처리에 필요하므로 동기 조회다.
+Card issuance is a synchronous lookup because the response to "does the linked account exist and is it active?" is needed to process the current request.
 
-### 원칙
+### Principles
 
-1. **Application(Command Handler)에서 Adapter 인터페이스를 통해서만 외부 도메인을 호출**한다. 외부 도메인의 Repository/도메인 객체를 직접 주입하지 않는다.
-2. **Adapter 인터페이스는 호출하는 쪽(`card/application/adapter/`)에** abstract class로 정의한다.
-3. **Adapter 구현체는 호출하는 쪽(`card/infrastructure/`)에** 배치하고, 외부 도메인 모듈이 `exports`한 읽기 서비스(`AccountQuery`)를 주입받아 호출한다.
-4. **ACL은 상류 모델을 번역**한다. Account의 `AccountStatus` enum을 그대로 노출하지 않고 Card가 필요로 하는 최소 형태(`{ accountId, active }`)로 바꾸며, "계좌 없음" 에러를 `null`로 번역한다.
+1. **From the Application (Command Handler), call the external domain only through an Adapter interface.** Never directly inject the external domain's Repository/domain object.
+2. **Define the Adapter interface on the calling side (`card/application/adapter/`)** as an abstract class.
+3. **Place the Adapter implementation on the calling side (`card/infrastructure/`)**, injecting and calling the read service (`AccountQuery`) that the external domain module `exports`.
+4. **The ACL translates the upstream model.** Instead of exposing Account's `AccountStatus` enum as-is, it converts it into the minimal shape Card needs (`{ accountId, active }`), and translates an "account not found" error into `null`.
 
-### 실제 코드
+### Actual code
 
 ```typescript
-// card/application/adapter/account-adapter.ts — 인터페이스 (abstract class)
+// card/application/adapter/account-adapter.ts — the interface (abstract class)
 export abstract class AccountAdapter {
   abstract findAccount(query: {
     readonly accountId: string
@@ -42,15 +42,15 @@ export abstract class AccountAdapter {
 ```
 
 ```typescript
-// card/infrastructure/account-adapter-impl.ts — 구현체(ACL)
+// card/infrastructure/account-adapter-impl.ts — the implementation (ACL)
 @Injectable()
 export class AccountAdapterImpl extends AccountAdapter {
-  constructor(private readonly accountQuery: AccountQuery) { super() }  // AccountModule이 export한 읽기 서비스
+  constructor(private readonly accountQuery: AccountQuery) { super() }  // the read service exported by AccountModule
 
   public async findAccount(query: { accountId: string; ownerId: string }) {
     try {
       const account = await this.accountQuery.getAccount({ accountId: query.accountId, ownerId: query.ownerId })
-      return { accountId: account.accountId, active: account.status === AccountStatus.ACTIVE }  // 상류 모델을 번역
+      return { accountId: account.accountId, active: account.status === AccountStatus.ACTIVE }  // translate the upstream model
     } catch (error) {
       if (error instanceof Error && error.message === AccountErrorMessage['계좌를 찾을 수 없습니다.']) return null
       throw error
@@ -60,7 +60,7 @@ export class AccountAdapterImpl extends AccountAdapter {
 ```
 
 ```typescript
-// card/application/command/issue-card-command-handler.ts — Adapter를 통해 동기 조회
+// card/application/command/issue-card-command-handler.ts — synchronous lookup through the Adapter
 const account = await this.accountAdapter.findAccount({ accountId: command.accountId, ownerId: command.requesterId })
 if (!account) throw new Error(ErrorMessage['연결할 계좌를 찾을 수 없습니다.'])
 if (!account.active) throw new Error(ErrorMessage['활성 상태의 계좌만 카드를 발급할 수 있습니다.'])
@@ -69,57 +69,57 @@ const card = Card.issue({ accountId: command.accountId, ownerId: command.request
 await this.transactionManager.run(async () => { await this.cardRepository.saveCard(card) })
 ```
 
-`AccountModule`은 `exports: [AccountQuery]`로 **읽기 서비스만** 공개한다. Repository·도메인 객체는 공개하지 않는다. `CardModule`은 `imports: [AccountModule]`로 이를 주입받아 `AccountAdapterImpl`에 연결한다.
+`AccountModule` exposes **only the read service** via `exports: [AccountQuery]`. It never exposes the Repository or domain objects. `CardModule` injects it via `imports: [AccountModule]` and wires it into `AccountAdapterImpl`.
 
-> **주의**: Adapter를 통해 외부 BC의 **쓰기 메서드**를 호출하지 않는다. 쓰기가 필요하면 Integration Event로 전환한다(아래 2절).
+> **Note**: never call the external BC's **write methods** through an Adapter. If a write is needed, switch to an Integration Event (see section 2 below).
 
 ---
 
-## 2. 비동기 — Integration Event
+## 2. Asynchronous — Integration Event
 
-계좌가 정지/해지되면 카드도 정지/해지되어야 하지만, 이는 **상태 변경**이고 최종 일관성이 허용되므로 두 BC를 하나의 트랜잭션으로 묶지 않는다. Account가 Integration Event를 발행하고 Card가 독립적으로 반응한다.
+When an account is suspended/closed, its cards must also be suspended/closed, but since this is a **state change** where eventual consistency is acceptable, the two BCs aren't bound into a single transaction. Account publishes an Integration Event, and Card reacts independently.
 
-### 전체 흐름 (실제 코드 기준)
+### Overall flow (based on actual code)
 
 ```
-[Account] suspend 커맨드
-  → Account.suspend() 가 AccountSuspended Domain Event 수집
-  → Repository.saveAccount() 가 Outbox에 적재 (eventType="AccountSuspended")
-  → Command Handler는 저장 후 곧바로 반환 (동기 드레인 없음)
-  → OutboxPoller(@Interval(1000)) 가 Outbox 행을 집어 SQS로 발행
-  → OutboxConsumer(long polling) 가 SQS에서 수신 → EventHandlerRegistry.handle('AccountSuspended')
-       → AccountSuspendedHandler(application/event/) 가
-         AccountSuspendedIntegrationEventV1 로 변환해 Outbox에 적재
+[Account] suspend command
+  → Account.suspend() collects the AccountSuspended Domain Event
+  → Repository.saveAccount() writes it to the Outbox (eventType="AccountSuspended")
+  → the Command Handler returns immediately after saving (no synchronous drain)
+  → OutboxPoller (@Interval(1000)) picks up the Outbox row and publishes it to SQS
+  → OutboxConsumer (long polling) receives it from SQS → EventHandlerRegistry.handle('AccountSuspended')
+       → AccountSuspendedHandler (application/event/)
+         transforms it into AccountSuspendedIntegrationEventV1 and writes it to the Outbox
          (eventType="account.suspended.v1")
-  → 이 새 Outbox 행도 같은 Poller/Consumer 경로를 다시 거쳐 SQS 왕복 →
+  → this new Outbox row also goes through the same Poller/Consumer path again, round-tripping through SQS →
     EventHandlerRegistry.handle('account.suspended.v1')
        → CardIntegrationEventController.onAccountSuspended (interface/integration-event/)
-       → SuspendCardsByAccountCommand → ACTIVE 카드들을 SUSPENDED로
+       → SuspendCardsByAccountCommand → turns ACTIVE cards into SUSPENDED
 ```
 
-핵심 파일:
+Key files:
 
-| 역할 | 파일 |
+| Role | File |
 |------|------|
-| Integration Event 정의(공개 계약) | `account/application/integration-event/account-suspended-integration-event.ts` (`account.suspended.v1`) |
-| Domain Event → Integration Event 변환 | `account/application/event/account-suspended-handler.ts` (`@HandleEvent`) |
-| Outbox 드레인(DB→SQS) + 라우팅(SQS→Handler) | `outbox/outbox-poller.ts` + `outbox/outbox-consumer.ts` + `outbox/event-handler-registry.ts` (모든 도메인 공유, 도메인별 relay 없음) |
-| 외부 BC 수신부 | `card/interface/integration-event/card-integration-event-controller.ts` (`@HandleIntegrationEvent`) |
-| 반응 유스케이스 | `card/application/command/suspend-cards-by-account-command-handler.ts` |
+| Integration Event definition (public contract) | `account/application/integration-event/account-suspended-integration-event.ts` (`account.suspended.v1`) |
+| Domain Event → Integration Event conversion | `account/application/event/account-suspended-handler.ts` (`@HandleEvent`) |
+| Outbox draining (DB→SQS) + routing (SQS→Handler) | `outbox/outbox-poller.ts` + `outbox/outbox-consumer.ts` + `outbox/event-handler-registry.ts` (shared by every domain, no per-domain relay) |
+| External BC receiving end | `card/interface/integration-event/card-integration-event-controller.ts` (`@HandleIntegrationEvent`) |
+| Reacting use case | `card/application/command/suspend-cards-by-account-command-handler.ts` |
 
-### Integration Event 정의 — 버전이 명시된 공개 계약
+### Defining the Integration Event — a versioned public contract
 
 ```typescript
 // account/application/integration-event/account-suspended-integration-event.ts
 export class AccountSuspendedIntegrationEventV1 {
-  public readonly eventName = 'account.suspended.v1' as const  // Outbox row의 eventType으로 사용
+  public readonly eventName = 'account.suspended.v1' as const  // used as the Outbox row's eventType
   constructor(public readonly accountId: string, public readonly suspendedAt: string) {}
 }
 ```
 
-내부 `AccountSuspended` Domain Event(스키마 자유롭게 변함)와 분리된 **외부 공개 계약**이다. `OutboxWriter`는 `eventName`이 있으면 그것을(없으면 클래스명을) `eventType`으로 적재한다.
+This is the **external public contract**, separate from the internal `AccountSuspended` Domain Event (whose schema can change freely). `OutboxWriter` writes `eventType` as the `eventName` if present (otherwise the class name).
 
-### 변환은 Application EventHandler에서만
+### Conversion happens only in the Application EventHandler
 
 ```typescript
 // account/application/event/account-suspended-handler.ts
@@ -128,13 +128,13 @@ public async handle(event: { accountId: string; email: string; suspendedAt: stri
   await this.outboxWriter.saveAll([
     new AccountSuspendedIntegrationEventV1(event.accountId, event.suspendedAt ?? new Date().toISOString())
   ])
-  // ...알림 등 같은 BC 내 후속 처리
+  // ...follow-up processing within the same BC, such as notifications
 }
 ```
 
-Aggregate는 Integration Event를 직접 만들지 않는다. `application/event/`의 EventHandler가 **유일한 변환 지점**이며, Application 레이어에서 `OutboxWriter`를 직접 쓸 수 있는 유일한 예외다(Command Handler는 금지).
+The Aggregate never creates an Integration Event directly. The EventHandler in `application/event/` is the **only conversion point**, and the one exception allowed to use `OutboxWriter` directly in the Application layer (the Command Handler is prohibited from doing so).
 
-### 수신은 Interface Integration Event Controller에서
+### Receiving happens in the Interface Integration Event Controller
 
 ```typescript
 // card/interface/integration-event/card-integration-event-controller.ts
@@ -149,19 +149,19 @@ export class CardIntegrationEventController {
 }
 ```
 
-HTTP Controller·Task Controller와 같은 **Interface 입력 어댑터**다. 자기 BC의 Command만 호출하고, 예외는 그대로 throw하여 OutboxConsumer가 메시지를 삭제하지 않고 재시도하게 한다.
+This is an **Interface input adapter**, the same as the HTTP Controller · Task Controller. It calls only its own BC's Command, and throws exceptions as-is so the OutboxConsumer doesn't delete the message and retries.
 
-### 라우팅 — 발행 BC가 수신 BC를 import하지 않는 이유
+### Routing — why the publishing BC doesn't import the receiving BC
 
-이 저장소의 Outbox는 도메인별 Relay 없이, 모든 BC가 공유하는 `outbox/` 모듈 하나가 SQS를 거쳐 비동기로 드레인한다([domain-events.md](domain-events.md) 참조). `OutboxPoller`는 eventType과 무관하게 Outbox 행을 그대로 SQS로 실어 나르고, `OutboxConsumer`가 SQS에서 수신한 eventType을 **`EventHandlerRegistry`로 위임**한다 — Account/Card 구분 없이 모든 이벤트가 이 하나의 레지스트리를 거친다.
+This repo's Outbox has no per-domain Relay — a single `outbox/` module shared by every BC drains asynchronously through SQS (see [domain-events.md](domain-events.md)). `OutboxPoller` carries an Outbox row to SQS as-is regardless of eventType, and `OutboxConsumer` **delegates the eventType it received from SQS to `EventHandlerRegistry`** — every event, whether Account's or Card's, passes through this single registry.
 
 ```typescript
-// outbox/outbox-consumer.ts (핵심)
+// outbox/outbox-consumer.ts (the key part)
 const eventType = message.MessageAttributes?.eventType?.StringValue
 await this.registry.handle(eventType, JSON.parse(message.Body ?? '{}'))
 ```
 
-발행 BC(Account)는 자기 모듈의 `onModuleInit`에서 자기 Domain Event 핸들러를 등록하고, 수신 BC(Card)는 같은 방식으로 자기 Integration Event 수신부를 등록한다.
+The publishing BC (Account) registers its own Domain Event handlers in its own module's `onModuleInit`, and the receiving BC (Card) registers its own Integration Event receiving end the same way.
 
 ```typescript
 // card/card-module.ts
@@ -171,26 +171,26 @@ onModuleInit(): void {
 }
 ```
 
-이렇게 하면 **Account는 Card를 import하지 않고도** Card에 이벤트를 전달한다. 발행 측과 수신 측의 유일한 접점은 버전이 명시된 이벤트명(`account.suspended.v1`)이다.
+This way, **Account delivers events to Card without importing Card**. The only point of contact between publisher and receiver is the versioned event name (`account.suspended.v1`).
 
-`AccountSuspendedHandler`가 변환해 새로 적재하는 Integration Event 행(`account.suspended.v1`)은 같은 커맨드 처리 안에서 즉시 이어지지 않는다 — `OutboxPoller`의 다음 tick(최대 1초 후)에 다시 집혀 같은 Poller→SQS→Consumer 경로를 한 번 더 거친다.
+The Integration Event row (`account.suspended.v1`) that `AccountSuspendedHandler` converts and newly writes doesn't continue immediately within the same command processing — it's picked up again on `OutboxPoller`'s next tick (up to 1 second later) and goes through the same Poller→SQS→Consumer path once more.
 
-### 멱등성
+### Idempotency
 
-Integration Event는 at-least-once 전달을 전제로 하므로 수신 측 유스케이스는 **멱등**해야 한다. `SuspendCardsByAccountCommandHandler`는 `ACTIVE` 카드만 골라 정지하므로, 같은 이벤트가 재수신되어도(이미 정지된 카드) 아무 일도 하지 않는다.
+Since Integration Events assume at-least-once delivery, the receiving side's use case must be **idempotent**. `SuspendCardsByAccountCommandHandler` only selects `ACTIVE` cards to suspend, so even if the same event is re-received (with the card already suspended), nothing happens.
 
 ---
 
-## Context Map 패턴과의 대응
+## Mapping onto Context Map patterns
 
-| Context Map 패턴 | 이 저장소의 구현 |
+| Context Map pattern | This repo's implementation |
 |----------------|------------------|
-| ACL (Anticorruption Layer) | `AccountAdapter` + `AccountAdapterImpl` — 상류 `AccountStatus`/에러를 번역 |
-| Customer-Supplier | Card(하류)가 Adapter로 조회 + Integration Event로 반응 |
-| OHS/PL (Published Language) | `account.suspended.v1` / `account.closed.v1` 버전 명시 |
+| ACL (Anticorruption Layer) | `AccountAdapter` + `AccountAdapterImpl` — translates the upstream `AccountStatus`/errors |
+| Customer-Supplier | Card (downstream) queries via the Adapter + reacts via Integration Event |
+| OHS/PL (Published Language) | Versioned as `account.suspended.v1` / `account.closed.v1` |
 
-## 관련 문서
+## Related Documents
 
-- [../../../../docs/architecture/cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) — 동기 vs 비동기 선택 기준(프레임워크 무관)
-- [domain-events.md](domain-events.md) — Outbox·Integration Event 발행/수신 상세
-- [module-pattern.md](module-pattern.md) — 모듈 간 의존, `exports`
+- [../../../../docs/architecture/cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) — criteria for choosing sync vs async (framework-agnostic)
+- [domain-events.md](domain-events.md) — details of publishing/receiving Outbox·Integration Events
+- [module-pattern.md](module-pattern.md) — dependencies between modules, `exports`
