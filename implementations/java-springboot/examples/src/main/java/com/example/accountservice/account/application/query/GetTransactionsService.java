@@ -27,7 +27,7 @@ public class GetTransactionsService {
                         () ->
                                 new AccountException(
                                         AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
-                                        "계좌를 찾을 수 없습니다."));
+                                        "Account not found."));
 
         TransactionsWithCount result = accountQuery.findTransactions(accountId, page, take);
         List<Transaction> transactions = result.transactions();

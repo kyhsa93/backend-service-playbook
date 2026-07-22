@@ -12,8 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 외부 BC(Payment)가 발행한 {@code payment.cancelled.v1} Integration Event 수신부 — 이미 차감된 금액을 되돌리는 보상
- * 크레딧(deposit)을 실행한다.
+ * The receiver for the {@code payment.cancelled.v1} Integration Event published by the external BC
+ * (Payment) — it performs the compensating credit (deposit) that reverses an amount already
+ * deducted.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,7 +36,7 @@ public class PaymentCancelledIntegrationEventHandler implements OutboxEventHandl
         PaymentIntegrationEventPayload event =
                 objectMapper.readValue(payload, PaymentIntegrationEventPayload.class);
         log.info(
-                "payment.cancelled.v1 수신",
+                "payment.cancelled.v1 received",
                 kv("payment_id", event.paymentId()),
                 kv("account_id", event.accountId()));
         depositByPaymentService.deposit(

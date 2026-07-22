@@ -11,7 +11,7 @@ import static harness.JavaFiles.pathContains;
 import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
-/** [4] domain/ 에 Spring 어노테이션 금지 */
+/** [4] Spring annotations are forbidden under domain/ */
 public final class DomainPurity {
     private DomainPurity() {
     }
@@ -29,12 +29,12 @@ public final class DomainPurity {
             String rel = relTo(f, root);
             String content = readText(f);
             if (FORBIDDEN_ANNOTATIONS.matcher(content).find()) {
-                result.add(Finding.fail(rel, "domain/ 클래스에 Spring 어노테이션 사용 금지"));
+                result.add(Finding.fail(rel, "Spring annotations are forbidden on domain/ classes"));
             } else {
-                result.add(Finding.pass(rel + " (domain 순수성)"));
+                result.add(Finding.pass(rel + " (domain purity)"));
             }
         }
-        if (!found) result.add(Finding.skip("domain/ Java 파일 없음"));
+        if (!found) result.add(Finding.skip("No Java files under domain/"));
         return result;
     }
 }

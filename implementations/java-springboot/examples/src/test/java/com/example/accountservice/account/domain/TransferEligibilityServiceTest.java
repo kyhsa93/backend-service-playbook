@@ -5,9 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * TransferEligibilityService는 Account 어느 한쪽 인스턴스도 혼자서는 판단할 수 없는 규칙(동일 계좌 여부 + 두 계좌 활성 상태 + 통화 일치 +
- * 잔액 충분)을 조율하는 Domain Service다 — 프레임워크 애노테이션이 없으므로 Spring 컨텍스트 없이 {@code new}로 직접 인스턴스화해 판단 로직만
- * 검증한다.
+ * TransferEligibilityService is a Domain Service that coordinates rules neither Account instance
+ * can decide on its own (whether the accounts are the same, whether both accounts are active,
+ * currency match, and sufficient balance) — since it carries no framework annotations, it is
+ * instantiated directly with {@code new} (no Spring context) to verify only the eligibility logic.
  */
 class TransferEligibilityServiceTest {
 

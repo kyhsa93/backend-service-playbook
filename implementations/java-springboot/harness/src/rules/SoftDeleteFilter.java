@@ -14,23 +14,27 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [26] Soft Delete 필터 — {@code deletedAt} 컬럼을 가진 JPA Entity는 hard delete가 금지되고, 조회
- * 시 항상 {@code deletedAt IS NULL}(또는 동일한 의미의 필터)이 적용되어야 한다(persistence.md —
- * "삭제는 기본적으로 soft delete, 조회 시 deletedAt IS NULL이 기본 적용").
+ * [26] The soft-delete filter — a JPA Entity with a {@code deletedAt} column must never
+ * be hard-deleted, and every read must always apply {@code deletedAt IS NULL} (or an
+ * equivalent filter) (persistence.md — "deletion defaults to soft delete; reads apply
+ * deletedAt IS NULL by default").
  *
- * <p>이 저장소가 실제로 쓰는 메커니즘을 먼저 확인했다: {@code AccountJpaEntity}에 전역 Hibernate
- * {@code @SQLRestriction}/{@code @Where} 애노테이션을 붙이는 방식이 아니라, {@code
- * AccountRepositoryImpl}이 수동 조립하는 JPQL({@code buildJpql()})에 매번 {@code "a.deletedAt IS
- * NULL"} 조건을 포함시키는 방식이다. 두 메커니즘 중 어느 쪽을 쓰든 통과하도록 둘 다 인식한다 —
- * Entity 클래스에 {@code @SQLRestriction}/{@code @Where}가 있으면 전역 필터로 간주해 해당
- * RepositoryImpl 검사를 건너뛰고, 없으면 조회(find) 메서드를 가진 *RepositoryImpl.java 파일
- * 전체에서 deletedAt 필터 텍스트를 찾는다(메서드 단위가 아니라 파일 단위 검사 — buildJpql처럼
- * find 메서드가 별도 private 헬퍼로 JPQL을 위임하는 구조가 흔해 메서드 본문만 보면 오탐하기
- * 쉽다).
+ * <p>The actual mechanism this repository uses was checked first: rather than attaching a
+ * global Hibernate {@code @SQLRestriction}/{@code @Where} annotation on {@code
+ * AccountJpaEntity}, it includes an {@code "a.deletedAt IS NULL"} condition every time in
+ * the manually-assembled JPQL ({@code buildJpql()}) inside {@code AccountRepositoryImpl}.
+ * Both mechanisms are recognized so that either one passes — if the Entity class has
+ * {@code @SQLRestriction}/{@code @Where}, it's treated as a global filter and the
+ * RepositoryImpl check is skipped; otherwise the deletedAt filter text is searched for
+ * across the entire *RepositoryImpl.java file that has a find method (checked at the file
+ * level, not the method level — because a structure like buildJpql, where a find method
+ * delegates its JPQL to a separate private helper, is common, and looking only at the
+ * method body would easily false-positive).
  *
- * <p>{@code deletedAt} 컬럼이 아예 없는 Entity(Card/Payment/Refund/Credential/Transaction 등 —
- * 아직 삭제 유스케이스가 없는 Aggregate)는 soft delete 요구사항 자체가 적용되지 않으므로 검사
- * 대상에서 자연히 제외된다(persistence.md도 Transaction에 대해 이를 명시적으로 허용한다).
+ * <p>An Entity that has no {@code deletedAt} column at all (Card/Payment/Refund/Credential/
+ * Transaction, etc. — Aggregates that have no delete use case yet) is naturally excluded
+ * from this check, since the soft-delete requirement itself doesn't apply
+ * (persistence.md explicitly allows this for Transaction too).
  */
 public final class SoftDeleteFilter {
     private SoftDeleteFilter() {
@@ -55,7 +59,7 @@ public final class SoftDeleteFilter {
         }
 
         if (entitiesWithDeletedAt.isEmpty()) {
-            result.add(Finding.skip("deletedAt 컬럼을 가진 JPA Entity 없음"));
+            result.add(Finding.skip("No JPA Entity has a deletedAt column"));
             return result;
         }
 
@@ -67,7 +71,7 @@ public final class SoftDeleteFilter {
 
             if (GLOBAL_FILTER_ANNOTATION.matcher(entityCode).find()) {
                 anyChecked = true;
-                result.add(Finding.pass(entityRel + " (@SQLRestriction/@Where 전역 soft-delete 필터 확인)"));
+                result.add(Finding.pass(entityRel + " (confirmed a @SQLRestriction/@Where global soft-delete filter)"));
                 continue;
             }
 
@@ -76,26 +80,26 @@ public final class SoftDeleteFilter {
                 if (!nameWithoutExtension(f).endsWith("RepositoryImpl")) continue;
                 String code = stripComments(readText(f));
                 if (!code.contains(entityName)) continue;
-                if (!FIND_METHOD_DECL.matcher(code).find()) continue; // find 메서드가 없으면(쓰기 전용) 검사 대상 아님
+                if (!FIND_METHOD_DECL.matcher(code).find()) continue; // not checked if there's no find method (write-only)
                 referenced = true;
                 anyChecked = true;
 
                 String rel = relTo(f, root);
                 if (containsDeletedAtFilter(code)) {
-                    result.add(Finding.pass(rel + " (" + entityName + " 조회 시 deletedAt 필터 확인)"));
+                    result.add(Finding.pass(rel + " (confirmed the deletedAt filter is applied when reading " + entityName + ")"));
                 } else {
                     result.add(Finding.fail(rel,
-                        entityName + "를 조회하는 find 메서드가 있지만 deletedAt IS NULL(또는 동일 의미의 필터)이 없음 — soft delete된 행이 그대로 노출될 수 있음(persistence.md)"));
+                        "Has a find method that reads " + entityName + " but is missing deletedAt IS NULL (or an equivalent filter) — soft-deleted rows may be exposed as-is (persistence.md)"));
                 }
             }
 
             if (!referenced) {
-                result.add(Finding.skip(entityRel + " — 조회(find) 메서드를 가진 *RepositoryImpl.java 없음"));
+                result.add(Finding.skip(entityRel + " — no *RepositoryImpl.java has a find method"));
             }
         }
 
         if (!anyChecked) {
-            result.add(Finding.skip("deletedAt 컬럼을 가진 Entity를 조회하는 *RepositoryImpl.java 없음"));
+            result.add(Finding.skip("No *RepositoryImpl.java reads an Entity with a deletedAt column"));
         }
         return result;
     }

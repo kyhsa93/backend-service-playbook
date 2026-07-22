@@ -11,14 +11,14 @@ import java.util.Set;
 
 import static harness.JavaFiles.relTo;
 
-/** [6] 패키지 구조 검사 (4레이어 + CQRS) */
+/** [6] Package structure check (4 layers + CQRS) */
 public final class PackageStructure {
     private PackageStructure() {
     }
 
-    // build/는 컴파일된 .class 파일이 패키지 구조를 그대로 미러링하므로, 제외하지 않으면
-    // 실제 소스와 build/classes 양쪽에서 같은 도메인이 중복으로 잡힌다(JavaFiles.java와
-    // 동일한 이유로 제외).
+    // build/ mirrors the package structure of the compiled .class files, so without
+    // excluding it the same domain would get picked up twice — once from real source and
+    // once from build/classes (excluded for the same reason as in JavaFiles.java).
     private static final Set<String> EXCLUDED_DIRS = Set.of("test", ".git", "build");
 
     public static RuleResult check(String rootPath) {
@@ -30,7 +30,7 @@ public final class PackageStructure {
         domainDirs.sort(Comparator.comparing(File::getPath));
 
         if (domainDirs.isEmpty()) {
-            result.add(Finding.skip("domain/ 디렉토리 없음"));
+            result.add(Finding.skip("No domain/ directory"));
             return result;
         }
 
@@ -42,7 +42,7 @@ public final class PackageStructure {
                 if (dir.isDirectory()) {
                     result.add(Finding.pass(relParent + "/" + layer + "/"));
                 } else {
-                    result.add(Finding.fail(relParent + "/" + layer + "/", "디렉토리 없음"));
+                    result.add(Finding.fail(relParent + "/" + layer + "/", "Directory does not exist"));
                 }
             }
             for (String sub : List.of("command", "query")) {
@@ -50,7 +50,7 @@ public final class PackageStructure {
                 if (dir.isDirectory()) {
                     result.add(Finding.pass(relParent + "/application/" + sub + "/"));
                 } else {
-                    result.add(Finding.fail(relParent + "/application/" + sub + "/", "CQRS 디렉토리 없음"));
+                    result.add(Finding.fail(relParent + "/application/" + sub + "/", "CQRS directory does not exist"));
                 }
             }
         }

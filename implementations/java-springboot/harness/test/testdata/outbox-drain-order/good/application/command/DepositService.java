@@ -3,6 +3,6 @@ class DepositService {
 
     void deposit() {
         accountRepository.save(account);
-        // Outbox → 큐 발행/수신은 OutboxPoller/OutboxConsumer가 독립적으로 처리한다.
+        // Outbox → queue publish/consume is handled independently by OutboxPoller/OutboxConsumer.
     }
 }

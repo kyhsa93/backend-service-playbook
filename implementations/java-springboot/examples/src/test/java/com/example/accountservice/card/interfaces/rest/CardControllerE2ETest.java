@@ -28,14 +28,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Card BC의 E2E 테스트. 두 크로스 도메인 흐름을 실제 HTTP API로 검증한다.
+ * E2E test for the Card BC. Verifies two cross-domain flows through the real HTTP API.
  *
  * <ol>
- *   <li>동기 흐름: 카드 발급 시 {@code AccountAdapter}를 통해 실제 Account BC를 조회해 활성/비활성/존재하지 않는 계좌 경로를 모두 확인한다.
- *   <li>비동기 흐름: Account를 정지/해지하는 실제 HTTP 요청이 Outbox → SQS(LocalStack)를 거쳐 Card BC의 {@code
- *       OutboxEventHandler}로 라우팅되어 연결된 카드의 상태가 바뀌는지 확인한다. {@code OutboxPoller}(1초 주기)가 이벤트를 SQS로
- *       발행하고 {@code OutboxConsumer}(long polling)가 수신해야 처리되므로, HTTP 응답 시점에는 아직 카드 상태가 바뀌지 않았을 수 있다
- *       — {@code waitForCardStatus}로 폴링해서 검증한다.
+ *   <li>Synchronous flow: when a card is issued, it looks up the real Account BC through {@code
+ *       AccountAdapter}, covering the active/inactive/non-existent account paths.
+ *   <li>Asynchronous flow: a real HTTP request that suspends/closes an Account is routed through
+ *       Outbox → SQS (LocalStack) to the Card BC's {@code OutboxEventHandler}, confirming that the
+ *       linked card's status changes. Since {@code OutboxPoller} (1-second cycle) has to publish
+ *       the event to SQS and {@code OutboxConsumer} (long polling) has to receive it before it is
+ *       processed, the card status may not have changed yet at the moment the HTTP response is
+ *       received — verified by polling with {@code waitForCardStatus}.
  * </ol>
  */
 @Testcontainers
@@ -54,8 +57,9 @@ class CardControllerE2ETest {
             new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                     .withServices(LocalStackContainer.Service.SQS);
 
-    // @DynamicPropertySource의 Supplier는 프로퍼티가 조회될 때마다(여러 번일 수 있다) 호출될 수
-    // 있으므로, 큐 생성은 한 번만 수행하고 결과를 캐시해 재호출 시 재사용한다.
+    // The @DynamicPropertySource supplier can be invoked every time a property is looked up
+    // (possibly multiple times), so the queue is created only once and the result is cached for
+    // reuse on subsequent calls.
     private static String domainEventQueueUrl;
 
     private static synchronized String domainEventQueueUrl() {
@@ -74,8 +78,9 @@ class CardControllerE2ETest {
         registry.add("spring.flyway.enabled", () -> "false");
         registry.add(
                 "resilience4j.ratelimiter.instances.createAccount.limit-for-period", () -> "1000");
-        // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
-        // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+        // The tests call the write API far more times in a short window than the default
+        // limit-for-period (10), so we relax it generously for tests only, so that each endpoint's
+        // logic is verified rather than rate limiting itself.
         registry.add(
                 "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
 
@@ -145,12 +150,14 @@ class CardControllerE2ETest {
         return response.getBody();
     }
 
-    // Account를 정지/종료하면 AccountSuspended/AccountClosed(Domain Event) → account.suspended.v1/
-    // account.closed.v1(Integration Event)이 Outbox에 적재되고, OutboxPoller(1초 주기)가 SQS로
-    // 발행한 뒤 OutboxConsumer(long polling)가 수신해 Card BC의 OutboxEventHandler를 실행해야
-    // 카드 상태가 바뀐다 — HTTP 응답 시점에는 아직 반영되지 않았을 수 있으므로 폴링한다. 실제
-    // SQS(LocalStack) 왕복 지연(폴링 주기 1초 + long poll 대기)을 감안해 넉넉한 타임아웃을 둔다.
-    // untilAsserted는 타임아웃 시 마지막 AssertionError(실제 vs 기대값)를 그대로 노출해준다.
+    // When an Account is suspended/closed, AccountSuspended/AccountClosed (Domain Event) →
+    // account.suspended.v1/account.closed.v1 (Integration Event) is written to the Outbox, and
+    // only once OutboxPoller (1-second cycle) publishes it to SQS and OutboxConsumer (long
+    // polling) receives it and runs the Card BC's OutboxEventHandler does the card status change
+    // — it may not be reflected yet at the moment of the HTTP response, so we poll. We allow a
+    // generous timeout to account for the real SQS (LocalStack) round-trip delay (1-second poll
+    // interval + long-poll wait). untilAsserted exposes the last AssertionError (actual vs.
+    // expected) as-is on timeout.
     private void waitForCardStatus(String cardId, String expected, String ownerId) {
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(200))
@@ -251,10 +258,11 @@ class CardControllerE2ETest {
                 post("/accounts/" + accountId + "/suspend", OWNER_ID, Map.of());
         assertThat(suspendResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
-        // OutboxPoller(1초 주기)가 AccountSuspended(Domain Event) → account.suspended.v1
-        // (Integration Event)을 SQS로 발행하고, OutboxConsumer(long polling)가 수신해 Card BC의
-        // OutboxEventHandler를 실행해야 카드 상태가 바뀐다 — 이 흐름은 비동기이므로 응답을 받은
-        // 시점에 아직 반영되지 않았을 수 있다. 폴링해서 검증한다.
+        // Only once OutboxPoller (1-second cycle) publishes AccountSuspended (Domain Event) →
+        // account.suspended.v1 (Integration Event) to SQS, and OutboxConsumer (long polling)
+        // receives it and runs the Card BC's OutboxEventHandler, does the card status change —
+        // since this flow is asynchronous, it may not be reflected yet at the moment the response
+        // is received. Verify by polling.
         waitForCardStatus((String) card1.get("cardId"), "SUSPENDED");
         waitForCardStatus((String) card2.get("cardId"), "SUSPENDED");
     }
@@ -266,9 +274,10 @@ class CardControllerE2ETest {
         Map<String, Object> card = issueCard(OWNER_ID, accountId);
         post("/accounts/" + accountId + "/suspend", OWNER_ID, Map.of());
         waitForCardStatus((String) card.get("cardId"), "SUSPENDED");
-        // 계좌를 재개했다가 다시 정지시켜 같은 이벤트 계열(account.suspended.v1)을 한 번 더
-        // 발행시킨다 — SuspendCardsByAccountService는 ACTIVE 카드만 대상으로 삼으므로, 이미
-        // SUSPENDED인 카드는 두 번째 정지에서 다시 처리되지 않고 SUSPENDED로 그대로 남아야 한다.
+        // Reactivate the account and then suspend it again, publishing the same event series
+        // (account.suspended.v1) once more — since SuspendCardsByAccountService only targets
+        // ACTIVE cards, a card that is already SUSPENDED must not be processed again on the
+        // second suspension and must remain SUSPENDED.
         post("/accounts/" + accountId + "/reactivate", OWNER_ID, Map.of());
 
         ResponseEntity<Map> secondSuspend =
@@ -299,7 +308,8 @@ class CardControllerE2ETest {
         post("/accounts/" + accountId + "/suspend", OWNER_ID, Map.of());
         waitForCardStatus((String) card.get("cardId"), "SUSPENDED");
 
-        // 잔액이 0인 정지 계좌도 종료할 수 있다 — close()는 상태가 아니라 잔액만 검증한다.
+        // A suspended account with a zero balance can also be closed — close() only checks the
+        // balance, not the status.
         ResponseEntity<Map> closeResponse =
                 post("/accounts/" + accountId + "/close", OWNER_ID, Map.of());
         assertThat(closeResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);

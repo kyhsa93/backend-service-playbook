@@ -25,7 +25,7 @@ public class GetPaymentService {
                                 () ->
                                         new PaymentException(
                                                 PaymentException.ErrorCode.PAYMENT_NOT_FOUND,
-                                                "결제를 찾을 수 없습니다."));
+                                                "Payment not found."));
         return GetPaymentResult.from(payment);
     }
 }

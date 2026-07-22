@@ -8,11 +8,13 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * root 아래 모든 .java 파일을 찾는다 — test/, .git/, build/ 디렉토리는(깊이 무관하게) 통째로
- * 제외한다. 원본 bash 버전(find로 test/.git 경로를 -not -path로 제외하던 것)과 동일한 동작.
- * build/는 Gradle/Spotless가 만드는 캐시·산출물 디렉토리라, 빌드 시점에 따라 일부 파일만
- * 미러링된 불완전한 트리를 실제 소스처럼 스캔해 오탐(예: 디렉토리-구조 규칙이 "레이어 디렉토리가
- * 없다"고 잘못 잡는 것)을 낼 수 있어 제외한다.
+ * Finds every .java file under root — the test/, .git/, and build/ directories are excluded
+ * entirely (at any depth). This matches the original bash version's behavior (which excluded
+ * test/.git paths via find's -not -path). build/ is excluded because it's a cache/output
+ * directory produced by Gradle/Spotless; depending on when the build ran, it may contain an
+ * incomplete tree mirroring only some files, and scanning it as if it were real source can
+ * produce false positives (e.g. a directory-structure rule wrongly flagging "the layer
+ * directory is missing").
  */
 public final class JavaFiles {
     private JavaFiles() {

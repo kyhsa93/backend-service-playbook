@@ -1,35 +1,35 @@
-# 영속성 패턴 (Spring Boot / Spring Data JPA)
+# Persistence Pattern (Spring Boot / Spring Data JPA)
 
-> 프레임워크 무관 원칙은 루트 [persistence.md](../../../../docs/architecture/persistence.md) 참고.
+> For the framework-agnostic principles, see the root [persistence.md](../../../../docs/architecture/persistence.md).
 
-## 트랜잭션 전파 — `@Transactional`이 Unit of Work를 대체
+## Transaction propagation — `@Transactional` replaces the Unit of Work
 
-root는 `AsyncLocalStorage`/`ThreadLocal` 기반 수동 TransactionManager를 설명하지만, Spring은 이를 선언적 `@Transactional`(AOP 프록시 기반)로 완전히 대체한다. 별도의 TransactionManager 클래스를 직접 구현할 필요가 없다.
+The root describes a manual TransactionManager based on `AsyncLocalStorage`/`ThreadLocal`, but Spring replaces this entirely with declarative `@Transactional` (based on an AOP proxy). There's no need to implement a separate TransactionManager class by hand.
 
 ```java
-// account/infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드(일부)
+// account/infrastructure/persistence/AccountRepositoryImpl.java — actual code (excerpt)
 @Repository
 @RequiredArgsConstructor
 public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     @Transactional
     public void saveAccount(Account account) {
-        // Account 저장 + Outbox 적재가 하나의 물리 트랜잭션으로 실행된다 (domain-events.md 참고)
+        // Saving the Account + writing to the Outbox run as one physical transaction (see domain-events.md)
     }
 }
 ```
 
-`@Transactional`이 메서드에 진입하는 순간 Spring이 트랜잭션을 시작하고, 정상 반환 시 커밋, unchecked 예외(`RuntimeException` 하위) 발생 시 롤백한다. 트랜잭션 컨텍스트는 스레드 로컬로 전파되므로, 같은 호출 스택 안에서 여러 Repository를 호출해도 자동으로 같은 트랜잭션에 묶인다 — root의 `AsyncLocalStorage`가 하는 역할을 Spring 프록시가 대신한다.
+The moment `@Transactional` is entered, Spring begins a transaction; it commits on a normal return, and rolls back on an unchecked exception (a subclass of `RuntimeException`). Since the transaction context propagates via thread-local, calling multiple Repositories within the same call stack automatically joins the same transaction — a Spring proxy plays the role the root's `AsyncLocalStorage` plays.
 
-**유일한 물리 트랜잭션 경계는 이 `Repository.save*()` 메서드다.** `CreateAccountService` 등 Command Service 자신은 `@Transactional`을 전혀 갖지 않는다 — 저장(및 그 안의 Outbox 적재)이 끝나면 Command Service는 곧바로 반환하고, Outbox 드레인은 완전히 별도의 프로세스(`OutboxPoller`/`OutboxConsumer`, [domain-events.md](domain-events.md) 참고)가 나중에(최대 1초 뒤) 담당한다. Command Service에 `@Transactional`을 다시 붙이는 것은 회귀다.
+**The sole physical transaction boundary is this `Repository.save*()` method.** The Command Service itself (e.g. `CreateAccountService`) carries no `@Transactional` at all — once the save (and the Outbox write inside it) finishes, the Command Service returns immediately, and the Outbox drain is handled later (up to 1 second afterward) by a completely separate process (`OutboxPoller`/`OutboxConsumer`, see [domain-events.md](domain-events.md)). Re-adding `@Transactional` to a Command Service is a regression.
 
 ---
 
-## `REQUIRES_NEW` — 알림 발송 트랜잭션 격리
+## `REQUIRES_NEW` — isolating the notification-send transaction
 
-`account/infrastructure/notification/NotificationServiceImpl`이 이 저장소에서 유일하게 실제로 사용 중인 전파 속성 커스터마이징이다:
+`account/infrastructure/notification/NotificationServiceImpl` is the only place in this repository that actually customizes the propagation attribute:
 
 ```java
-// account/infrastructure/notification/NotificationServiceImpl.java — 실제 코드
+// account/infrastructure/notification/NotificationServiceImpl.java — actual code
 @Component
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
@@ -46,33 +46,33 @@ public class NotificationServiceImpl implements NotificationService {
 }
 ```
 
-**왜 `REQUIRES_NEW`인가**: 이 메서드는 `AccountCreatedEventHandler` 같은 `outbox/OutboxEventHandler` 구현체를 거쳐, `OutboxConsumer.handleMessage()`가 호출한다 — 계좌 저장 트랜잭션은 그 시점에 이미 커밋되어 끝난 뒤고, SQS 수신도 별도 프로세스/스레드에서 일어난다([domain-events.md](domain-events.md) 참고). `OutboxConsumer`의 dispatch 경로는 `OutboxPoller.poll()`과 달리 **`@Transactional`이 아니다** — 메시지 하나마다 개별적으로 처리되고 여러 메시지를 하나의 물리 트랜잭션으로 묶지 않으므로, `sendEmail()`을 호출하는 시점에는 애초에 오염시킬 "상위 배치 트랜잭션"이 없다. 그럼에도 `REQUIRES_NEW`를 유지하는 이유는 방어적이다: SES 호출 + `SentEmail` 기록을 담당하는 이 Technical Service는 호출자의 트랜잭션 상태와 무관하게 항상 자신만의 물리 트랜잭션에서 커밋/롤백해야 한다는 원칙을 명시적으로 강제한다 — 향후 누군가 `AccountSuspendedEventHandler.handle()` 같은 호출부나 `OutboxConsumer`의 dispatch 경로에 `@Transactional`을 다시 추가하더라도(예: 여러 메시지를 한 트랜잭션으로 묶는 최적화), SES 호출 실패가 그 트랜잭션을 rollback-only로 오염시키는 회귀를 `REQUIRES_NEW`가 계속 차단한다.
+**Why `REQUIRES_NEW`**: this method is called by `OutboxConsumer.handleMessage()`, through an `outbox/OutboxEventHandler` implementation such as `AccountCreatedEventHandler` — by that point the account-save transaction has already committed and finished, and receiving from SQS happens in a completely separate process/thread (see [domain-events.md](domain-events.md)). Unlike `OutboxPoller.poll()`, `OutboxConsumer`'s dispatch path is **not `@Transactional`** — each message is handled individually and multiple messages are never bundled into one physical transaction, so at the moment `sendEmail()` is called there is no "parent batch transaction" to contaminate in the first place. `REQUIRES_NEW` is kept anyway as a defensive measure: this Technical Service, responsible for the SES call plus the `SentEmail` record, must always commit/roll back in its own physical transaction regardless of the caller's transaction state — this principle is explicitly enforced so that even if someone later adds `@Transactional` back to a call site like `AccountSuspendedEventHandler.handle()` or to `OutboxConsumer`'s dispatch path (e.g. as an optimization bundling multiple messages into one transaction), `REQUIRES_NEW` continues to block the regression where an SES call failure would contaminate that transaction into rollback-only.
 
-| 전파 속성 | 동작 | 이 저장소에서 사용 위치 |
+| Propagation attribute | Behavior | Where it's used in this repository |
 |---|---|---|
-| `REQUIRED`(기본값) | 기존 트랜잭션이 있으면 참여, 없으면 새로 시작 | `AccountRepositoryImpl.saveAccount()` 등 Repository 구현체, `OutboxPoller.poll()` |
-| `REQUIRES_NEW` | 항상 새 물리 트랜잭션 시작, 기존 트랜잭션은 일시 중단 | `NotificationServiceImpl.sendEmail()` |
-| `readOnly = true` | dirty checking/flush 생략 (성능 최적화, 전파 속성은 아님) | 모든 Query Service |
+| `REQUIRED` (default) | Joins an existing transaction if one exists, otherwise starts a new one | Repository implementations like `AccountRepositoryImpl.saveAccount()`, `OutboxPoller.poll()` |
+| `REQUIRES_NEW` | Always starts a new physical transaction, suspending any existing one | `NotificationServiceImpl.sendEmail()` |
+| `readOnly = true` | Skips dirty checking/flush (a performance optimization, not a propagation attribute) | Every Query Service |
 
-Command Service 자신(`CreateAccountService` 등)은 `@Transactional`을 갖지 않는다 — 위 "트랜잭션 전파" 절 참고.
+The Command Service itself (`CreateAccountService`, etc.) carries no `@Transactional` — see the "Transaction propagation" section above.
 
 ---
 
-## 여러 Repository 저장을 하나의 트랜잭션으로 묶기 — 실제 예시(계좌 간 송금)
+## Bundling multiple Repository saves into one transaction — a real example (transfer between accounts)
 
-`saveAccount()` 하나로는 부족한 대표 유스케이스가 계좌 간 송금(Transfer)이다 — 출금 계좌 저장과 입금 계좌 저장이 각자 커밋되면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다. `AccountRepository`에 전용 메서드를 추가해 트랜잭션 경계를 여전히 Repository에 둔다(Command Service에는 두지 않는다):
+A representative use case where a single `saveAccount()` isn't enough is a transfer between accounts — if the withdrawal-account save and the deposit-account save each commit independently, a failure mode arises where "the withdrawal took effect but the deposit was lost." A dedicated method is added to `AccountRepository`, keeping the transaction boundary in the Repository as always (never in the Command Service):
 
 ```java
-// account/domain/AccountRepository.java — 실제 코드
+// account/domain/AccountRepository.java — actual code
 public interface AccountRepository {
     void saveAccount(Account account);
 
-    // source/target 두 Account를 하나의 물리 트랜잭션으로 저장한다.
+    // saves both the source and target Account as one physical transaction.
     void saveAccounts(Account source, Account target);
     // ...
 }
 
-// account/infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드
+// account/infrastructure/persistence/AccountRepositoryImpl.java — actual code
 @Override
 @Transactional
 public void saveAccounts(Account source, Account target) {
@@ -80,14 +80,14 @@ public void saveAccounts(Account source, Account target) {
     saveAccountInternal(target);
 }
 
-// account/application/command/TransferService.java — 실제 코드, @Transactional 없음
+// account/application/command/TransferService.java — actual code, no @Transactional
 @Service
 @RequiredArgsConstructor
 public class TransferService {
     private final AccountRepository accountRepository;
 
     public TransferResult transfer(TransferCommand command) {
-        // ... source/target 로드, TransferEligibilityService로 판단, withdraw/deposit 호출 ...
+        // ... load source/target, judge via TransferEligibilityService, call withdraw/deposit ...
         accountRepository.saveAccounts(source, target);
         // ...
     }
@@ -96,9 +96,9 @@ public class TransferService {
 
 ---
 
-## Entity 공통 컬럼 — `createdAt`/`updatedAt`/`deletedAt`
+## Common Entity columns — `createdAt`/`updatedAt`/`deletedAt`
 
-`Account`(domain, 순수 객체)와 이에 대응하는 `AccountJpaEntity`(infrastructure, JPA 매핑)는 세 컬럼을 모두 갖는다:
+`Account` (domain, a pure object) and its counterpart `AccountJpaEntity` (infrastructure, JPA mapping) both carry all three columns:
 
 ```java
 @Column(nullable = false)
@@ -111,53 +111,53 @@ private LocalDateTime updatedAt;
 private LocalDateTime deletedAt;
 ```
 
-`createdAt`/`updatedAt`은 도메인 메서드(`create()`, `deposit()` 등)가 `LocalDateTime.now()`로 수동 설정한다. `@CreatedDate`/`@LastModifiedDate`(Spring Data JPA Auditing) 자동화는 [repository-pattern.md](repository-pattern.md)의 공통 컬럼 절 참고.
+`createdAt`/`updatedAt` are set manually by domain methods (`create()`, `deposit()`, etc.) via `LocalDateTime.now()`. For automating this with `@CreatedDate`/`@LastModifiedDate` (Spring Data JPA Auditing), see the common-columns section of [repository-pattern.md](repository-pattern.md).
 
 ---
 
-## Soft Delete — 실제 배선됨
+## Soft delete — genuinely wired up
 
-루트 원칙: 삭제는 hard delete가 아니라 `deletedAt` 타임스탬프를 기록하는 soft delete를 기본으로 사용하며, 조회 시 `deletedAt IS NULL`이 기본 적용되어야 한다.
+Root principle: deletion defaults to soft delete, recording a `deletedAt` timestamp, rather than a hard delete, and `deletedAt IS NULL` must be applied by default on lookups.
 
-`Account`는 `deletedAt` 컬럼을 갖고 있고, 실제로 조회 쿼리들이 `deletedAt IS NULL` 조건을 적용한다:
+`Account` has a `deletedAt` column, and its lookup queries genuinely apply a `deletedAt IS NULL` condition:
 
 ```java
-// AccountRepositoryImpl — 실제 코드, 조회는 올바르게 필터링됨
+// AccountRepositoryImpl — actual code, lookups are correctly filtered
 AccountsWithCount findAccounts(AccountFindQuery query) {
-    // buildJpql()이 항상 "WHERE a.deletedAt IS NULL"로 시작 — 단건 조회도 take:1로 이 메서드를 재사용(repository-pattern.md)
+    // buildJpql() always starts with "WHERE a.deletedAt IS NULL" — single-record lookups also reuse this method via take:1 (see repository-pattern.md)
 }
 ```
 
-**`deletedAt`을 실제로 설정하는 배선이 갖춰져 있다.** `Account.close()`는 `status = CLOSED`로 상태만 바꿀 뿐 삭제가 아니다 — "계좌 종료"(비즈니스 상태 전이)와 "레코드 삭제"(관리적 행위)는 서로 다른 개념이며, 각각 별도의 도메인 메서드/Repository 메서드/유스케이스로 구현되어 있다.
+**The wiring that genuinely sets `deletedAt` is in place.** `Account.close()` only changes the status to `status = CLOSED` — it is not a deletion. "Closing an account" (a business status transition) and "deleting the record" (an administrative action) are distinct concepts, each implemented via its own domain method/Repository method/use case.
 
-### 배선 — Aggregate 메서드 + Repository 메서드 + Application 유스케이스
+### The wiring — an Aggregate method + a Repository method + an Application use case
 
 ```java
-// domain/Account.java — 실제 코드
+// domain/Account.java — actual code
 public void delete() {
     if (this.status != AccountStatus.CLOSED) {
-        throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "종료된 계좌만 삭제할 수 있습니다.");
+        throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "Only a closed account can be deleted.");
     }
     if (this.deletedAt != null) {
-        throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED, "이미 삭제된 계좌입니다.");
+        throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED, "This account has already been deleted.");
     }
     this.deletedAt = LocalDateTime.now();
 }
 ```
 
 ```java
-// domain/AccountRepository.java — 실제 코드
+// domain/AccountRepository.java — actual code
 void deleteAccount(String accountId);
 ```
 
 ```java
-// AccountRepositoryImpl — 실제 코드
+// AccountRepositoryImpl — actual code
 @Override
 @Transactional
 public void deleteAccount(String accountId) {
     jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(entity -> {
         Account account = AccountMapper.toDomain(entity);
-        account.delete();                          // 도메인 메서드로 불변식 검증 후 deletedAt 설정
+        account.delete();                          // validates the invariant via the domain method, then sets deletedAt
         AccountMapper.updateEntity(entity, account);
         jpaRepository.save(entity);
     });
@@ -165,7 +165,7 @@ public void deleteAccount(String accountId) {
 ```
 
 ```java
-// application/command/DeleteAccountService.java — 실제 코드
+// application/command/DeleteAccountService.java — actual code
 @Service
 @RequiredArgsConstructor
 public class DeleteAccountService {
@@ -175,21 +175,21 @@ public class DeleteAccountService {
         accountRepository
                 .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
                 .accounts().stream().findFirst()
-                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "Account not found."));
         accountRepository.deleteAccount(command.accountId());
     }
 }
 ```
 
-`AccountController`의 `DELETE /accounts/{accountId}`가 이 유스케이스를 호출한다. 소유권 확인(`findAccounts`를 `take: 1`로 호출)은 Application 레이어에서, "CLOSED 상태만 삭제 가능"이라는 불변식 검증은 Domain 레이어(`Account.delete()`)에서 각각 담당한다.
+`AccountController`'s `DELETE /accounts/{accountId}` calls this use case. Ownership verification (calling `findAccounts` with `take: 1`) is handled in the Application layer, while validating the invariant that "only a CLOSED account can be deleted" is handled in the Domain layer (`Account.delete()`).
 
-**하위 Entity도 함께 soft delete**: `Transaction`(하위 Entity)에도 `deletedAt`을 전파해야 한다면, `Account.delete()` 내부에서 `Transaction`들에도 삭제를 반영하거나, Repository가 명시적으로 순서를 처리해야 한다. 현재 `Transaction`은 `deletedAt` 컬럼 자체가 없다 — 계좌 삭제 시 거래 내역까지 숨길지는 감사(audit) 요구사항에 따라 결정할 사항으로, 이 저장소는 아직 거래 내역을 그대로 유지하는 쪽을 택하고 있다.
+**Child entities also need soft delete propagated**: if `deletedAt` needs to propagate to `Transaction` (a child entity) as well, either `Account.delete()` must reflect the deletion onto its `Transaction`s internally, or the Repository must explicitly handle the ordering. Currently `Transaction` has no `deletedAt` column at all — whether to hide transaction history when an account is deleted is a decision that depends on audit requirements, and this repository currently chooses to keep transaction history intact.
 
 ---
 
-## 마이그레이션 — Flyway로 관리
+## Migrations — managed by Flyway
 
-루트 원칙: 스키마 변경은 마이그레이션 파일로 관리한다. `ddl-auto: update`/`synchronize` 같은 자동 스키마 동기화는 **개발 환경 전용**이다. 이 예제는 Flyway를 도입해 이 원칙을 따른다.
+Root principle: schema changes are managed via migration files. Automatic schema synchronization like `ddl-auto: update`/`synchronize` is **for development environments only**. This example adopts Flyway to follow this principle.
 
 ```groovy
 // build.gradle
@@ -202,7 +202,7 @@ implementation 'org.flywaydb:flyway-database-postgresql'
 spring:
   jpa:
     hibernate:
-      ddl-auto: validate     # 마이그레이션과 엔티티 매핑이 일치하는지만 검증. 자동 변경 없음
+      ddl-auto: validate     # only verifies that migrations and entity mapping match. No automatic changes
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -224,35 +224,35 @@ CREATE TABLE accounts (
     CONSTRAINT uk_accounts_account_id UNIQUE (account_id)
 );
 
--- V2__create_transactions.sql, V3__create_outbox.sql, V4__create_sent_email.sql — 나머지 3개 테이블도 동일한 방식
+-- V2__create_transactions.sql, V3__create_outbox.sql, V4__create_sent_email.sql — the remaining 3 tables follow the same approach
 ```
 
-`amount`/`currency` 컬럼명에 `balance_`/`transaction amount` 같은 접두어가 없는 이유: `AccountJpaEntity.balance`/`TransactionJpaEntity.amount`(infrastructure) 모두 `@Embedded MoneyEmbeddable`이고 `@AttributeOverride`를 쓰지 않아 Hibernate가 `MoneyEmbeddable`의 필드명(`amount`, `currency`)을 그대로 컬럼명으로 쓴다. 두 테이블에 각각 있으므로 이름이 겹쳐도 문제는 없다.
+Why the `amount`/`currency` column names have no prefix like `balance_`/`transaction amount`: both `AccountJpaEntity.balance`/`TransactionJpaEntity.amount` (infrastructure) are `@Embedded MoneyEmbeddable` and don't use `@AttributeOverride`, so Hibernate uses `MoneyEmbeddable`'s own field names (`amount`, `currency`) directly as column names. Since each is in its own separate table, the names overlapping causes no problem.
 
-`ddl-auto: validate`는 Hibernate가 스키마를 변경하지 않고 엔티티 매핑과 실제 스키마가 일치하는지만 검사한다 — 불일치 시 기동이 실패하므로(fail-fast), 마이그레이션 누락을 배포 전에 잡아낸다. 실제로 빈 DB에 앱을 기동해 Flyway가 4개 마이그레이션을 자동 적용하고 `ddl-auto: validate`가 통과하는 것까지 확인함.
+`ddl-auto: validate` never lets Hibernate change the schema — it only checks that the entity mapping matches the actual schema. On a mismatch, startup fails (fail-fast), catching a missing migration before deployment. Booting the app against an empty DB confirms that Flyway applies all 4 migrations automatically and that `ddl-auto: validate` passes.
 
-**테스트 환경은 예외**: `AccountControllerE2ETest`/`NotificationE2ETest`의 `@DynamicPropertySource`가 `ddl-auto: create-drop` + `spring.flyway.enabled: false`를 쓰는 것은 root가 명시한 대로 "개발/테스트 전용" 허용 범위 안에 있다 — Testcontainers가 매 테스트 실행마다 새 컨테이너를 띄우므로 자동 스키마 생성이 오히려 적절하고, Flyway와 create-drop을 동시에 켜면 스키마가 중복 생성되므로 테스트에서는 Flyway를 꺼둔다.
+**The test environment is an exception**: `AccountControllerE2ETest`/`NotificationE2ETest`'s `@DynamicPropertySource` using `ddl-auto: create-drop` + `spring.flyway.enabled: false` falls within the "development/test only" allowance the root explicitly states — since Testcontainers spins up a fresh container for every test run, automatic schema generation is actually appropriate there, and enabling Flyway and create-drop at the same time would duplicate schema creation, so Flyway is disabled in tests.
 
 ---
 
-## 원칙 요약
+## Principle summary
 
-| 원칙 | 이 저장소 상태 |
+| Principle | State in this repository |
 |---|---|
-| 트랜잭션은 컨텍스트-로컬로 암묵 전파 | `@Transactional` AOP 프록시로 대체 — 준수 |
-| `REQUIRES_NEW`로 부수 효과 격리 | `NotificationServiceImpl.sendEmail()` — 준수 |
-| 모든 테이블에 `createdAt`/`updatedAt`/`deletedAt` | `Account`/`AccountJpaEntity`는 3컬럼 모두 보유 — 준수 |
-| 삭제는 기본적으로 soft delete | `Account.delete()` + `AccountRepository.delete()` + `DeleteAccountService`로 배선됨 — 준수 |
-| 스키마 변경은 마이그레이션으로 관리 | Flyway(`db/migration/`) + `ddl-auto: validate` — 준수 |
+| Transactions propagate implicitly, context-local | Replaced by the `@Transactional` AOP proxy — followed |
+| Isolate side effects with `REQUIRES_NEW` | `NotificationServiceImpl.sendEmail()` — followed |
+| Every table has `createdAt`/`updatedAt`/`deletedAt` | `Account`/`AccountJpaEntity` carry all 3 columns — followed |
+| Deletion defaults to soft delete | Wired via `Account.delete()` + `AccountRepository.delete()` + `DeleteAccountService` — followed |
+| Schema changes are managed via migrations | Flyway (`db/migration/`) + `ddl-auto: validate` — followed |
 
-## harness 검증
+## Harness verification
 
-`harness/src/rules/SoftDeleteFilter.java`(rule: `soft-delete-filter`)가 `deletedAt` 컬럼을 가진 `*JpaEntity`를 조회하는 `*RepositoryImpl.java`의 find 메서드에 `deletedAt IS NULL`(또는 동일 의미의 필터)이 있는지 검사한다 — 하드 삭제로 soft-delete된 행이 노출되는 회귀를 잡는다. Entity 클래스에 Hibernate `@SQLRestriction`/`@Where` 전역 필터가 있으면 그쪽을 인정해 RepositoryImpl 검사를 생략한다(두 메커니즘 중 어느 쪽을 쓰든 통과). `deletedAt` 컬럼이 없는 Entity(아직 삭제 유스케이스가 없는 Card/Payment/Refund 등)는 검사 대상에서 자연히 제외된다.
+`harness/src/rules/SoftDeleteFilter.java` (rule: `soft-delete-filter`) checks that a `*RepositoryImpl.java`'s find methods, when querying a `*JpaEntity` that has a `deletedAt` column, include `deletedAt IS NULL` (or an equivalent filter) — catching the regression where a hard-deleted-looking row leaks through despite being soft-deleted. If an Entity class has a Hibernate `@SQLRestriction`/`@Where` global filter, that's accepted instead and the RepositoryImpl check is skipped (passing via either mechanism is fine). Entities with no `deletedAt` column (Card/Payment/Refund, etc., which don't yet have a deletion use case) are naturally excluded from this check.
 
-`harness/src/rules/NoOrmAutoSyncInProdConfig.java`(rule: `no-orm-autosync-in-prod-config`)가 위 "마이그레이션 — Flyway로 관리" 원칙의 회귀 가드다. `src/main/resources/application.yml`(기본/프로필 없음)과 `application-prod.yml`(prod 프로필) 각각의 `spring.jpa.hibernate.ddl-auto` 값이 `update`/`create`/`create-drop`이면 실패시킨다. 기본 파일도 검사하는 이유: `SPRING_PROFILES_ACTIVE`가 누락되면 기본 파일 값이 프로덕션에도 그대로 적용되기 때문이다. `ddl-auto` 키 자체가 없는 파일은 자동 스키마 동기화가 없다는 뜻이므로 통과시킨다. `@DynamicPropertySource`로 `create-drop`을 쓰는 E2E 테스트 코드(Java)는 YAML이 아니라서 애초에 파싱 대상이 아니다 — 위에서 설명한 "테스트 환경은 예외"에 해당한다.
+`harness/src/rules/NoOrmAutoSyncInProdConfig.java` (rule: `no-orm-autosync-in-prod-config`) is the regression guard for the "migrations — managed by Flyway" principle above. It fails the build if `spring.jpa.hibernate.ddl-auto` in either `src/main/resources/application.yml` (the base file, no profile) or `application-prod.yml` (the prod profile) is set to `update`/`create`/`create-drop`. The reason the base file is also checked: if `SPRING_PROFILES_ACTIVE` is missing, the base file's value applies to production as-is. A file with no `ddl-auto` key at all means there's no automatic schema sync, so it passes. E2E test code (Java) using `create-drop` via `@DynamicPropertySource` isn't YAML, so it was never a target for parsing in the first place — this falls under the "the test environment is an exception" case described above.
 
-### 관련 문서
+### Related documents
 
-- [repository-pattern.md](repository-pattern.md) — Repository의 `delete<Noun>` 메서드
-- [domain-events.md](domain-events.md) — Outbox 저장도 같은 트랜잭션에서 처리
-- [config.md](config.md) — 환경별 `ddl-auto` 분기
+- [repository-pattern.md](repository-pattern.md) — the Repository's `delete<Noun>` method
+- [domain-events.md](domain-events.md) — the Outbox write is also handled in the same transaction
+- [config.md](config.md) — branching `ddl-auto` by environment

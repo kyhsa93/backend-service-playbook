@@ -8,19 +8,26 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * Payment BC의 {@code payment.completed.v1} Integration Event에 대한 반응 유스케이스 — 결제 시점에 이미 동기 Adapter로
- * 판정된 차감을 여기서 실제로 수행한다.
+ * The reaction use case for the Payment BC's {@code payment.completed.v1} Integration Event — it
+ * actually performs the deduction that was already decided synchronously by the Adapter at payment
+ * time.
  *
- * <p>멱등성: {@link WithdrawService}(사용자 직접 출금)와 달리 이 반응은 같은 referenceId(paymentId)의 WITHDRAWAL 거래가 이미
- * 있으면 조용히 무시한다 — Card의 상태 기반 멱등성과 달리 금액 이동은 반복 적용하면 잔액이 계속 줄어들므로 "이미 처리했는지"를 확인해야 한다(Level 2
- * Ledger, domain-events.md 참고).
+ * <p>Idempotency: unlike {@link WithdrawService} (a user's direct withdrawal), this reaction
+ * silently ignores the event if a WITHDRAWAL transaction with the same referenceId (paymentId)
+ * already exists — unlike Card's status-based idempotency, moving money repeatedly would keep
+ * decreasing the balance, so "has this already been processed" must be checked (Level 2 Ledger, see
+ * domain-events.md).
  *
- * <p>공유 Outbox 드레인 컴포넌트(outbox 패키지의 릴레이)를 생성자로 주입받지 않는다 — 이 서비스는 항상 {@code
- * PaymentCompletedIntegrationEventHandler}(자신도 {@code OutboxEventHandler}로서 그 릴레이의 진행 중인 드레인 루프 안에서
- * 호출됨)를 거쳐서만 실행된다. 여기서 그 릴레이를 주입하면 릴레이가 자신이 생성 중인 핸들러 목록(List&lt;OutboxEventHandler&gt;) 안의 이
- * 서비스로부터 다시 자기 자신을 요구하게 되는 순환 빈 의존성이 생겨 컨텍스트 기동이 실패한다(Card의 {@code SuspendCardsByAccountService}가
- * 같은 이유로 그 릴레이를 쓰지 않는 것과 동일한 제약). 이 메서드가 새로 적재하는 {@code MoneyWithdrawnEvent}는 이미 실행 중인 바깥 드레인 호출의
- * 다음 패스에서 자동으로 처리된다.
+ * <p>The shared Outbox drain component (the relay in the outbox package) is not injected via the
+ * constructor — this service is always invoked only through {@code
+ * PaymentCompletedIntegrationEventHandler} (which is itself called, as an {@code
+ * OutboxEventHandler}, from within that relay's in-progress drain loop). Injecting the relay here
+ * would create a circular bean dependency, where the relay would require itself again from this
+ * service inside the handler list (List&lt;OutboxEventHandler&gt;) it is currently constructing,
+ * causing context startup to fail (the same constraint that keeps Card's {@code
+ * SuspendCardsByAccountService} from using that relay). The {@code MoneyWithdrawnEvent} newly
+ * persisted by this method is automatically picked up on the next pass of the already-running outer
+ * drain call.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,7 +51,8 @@ public class WithdrawByPaymentService {
                         .findFirst()
                         .orElse(null);
         if (account == null) {
-            return; // 반응할 대상 계좌가 없으면 조용히 무시한다(예: 계좌가 이미 삭제됨).
+            return; // Silently ignore if there is no account to react to (e.g., the account was
+            // already deleted).
         }
 
         account.withdraw(command.amount(), command.referenceId());

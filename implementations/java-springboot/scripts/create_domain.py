@@ -1,31 +1,34 @@
 #!/usr/bin/env python3
-"""새 도메인 스캐폴딩 생성기 (Java Spring Boot).
+"""New domain scaffolding generator (Java Spring Boot).
 
-docs/reference.md/repository-pattern.md/cqrs-pattern.md/domain-events.md가 정의하는
-"실전 구현 템플릿"을 실제로 코드화해 harness(전체 규칙)를 통과시킨 뒤, 도메인 이름만
-파라미터로 뽑아 재사용 가능하게 일반화한 것이다. Card(2번째 도메인, 이벤트 없음)의
-domain/JPA 분리 구조 + Account의 Repository/Outbox 패턴을 조합해, 단일 status 필드가
-PENDING -> ACTIVE/CANCELLED로 순환하는 최소 Aggregate(create/activate/cancel(reason))를
-생성한다. cancel()만 도메인 이벤트 1종을 발행한다.
+This turns the "practical implementation template" defined by
+docs/reference.md/repository-pattern.md/cqrs-pattern.md/domain-events.md into
+actual code that passes the harness (all rules), then generalizes it into a
+reusable form by parameterizing only the domain name. It combines Card's
+(2nd domain, no events) domain/JPA separation structure with Account's
+Repository/Outbox pattern to generate a minimal Aggregate
+(create/activate/cancel(reason)) whose single status field cycles
+PENDING -> ACTIVE/CANCELLED. Only cancel() publishes a domain event.
 
-nestjs의 create-domain.js와 달리 "모듈 등록" 단계가 없다 — Spring은
-@Service/@Component/@Repository/@RestController를 클래스패스 전체에서 자동으로
-수집하므로(component scanning), 새 도메인의 OutboxEventHandler 구현체도
-OutboxConsumer가 자동으로 주입받는다. 즉 이 생성기는 파일만 정확히 생성하면 되고,
-central wiring 파일을 찾아 고치는 단계가 없다(AccountServiceApplication.java에는
-domain bean을 나열하는 곳이 없음 — 직접 확인함).
+Unlike nestjs's create-domain.js, there is no "module registration" step —
+Spring automatically collects @Service/@Component/@Repository/@RestController
+across the whole classpath (component scanning), so the new domain's
+OutboxEventHandler implementation is also auto-injected by OutboxConsumer.
+In other words, this generator only needs to create the files correctly; there
+is no step to find and patch a central wiring file (there is no place in
+AccountServiceApplication.java that lists domain beans — verified directly).
 
-사용법:
+Usage:
     python3 scripts/create_domain.py <PascalCaseDomainName> [--out <projectRoot>] [--package <basePackage>]
 
-예:
+Examples:
     python3 scripts/create_domain.py Coupon
-        -> ../examples/src/main/java/com/example/accountservice/coupon/ 아래에 생성(기본 대상)
+        -> generates under ../examples/src/main/java/com/example/accountservice/coupon/ (default target)
     python3 scripts/create_domain.py LoyaltyCategory --out /tmp/scratch-app
-        -> /tmp/scratch-app/src/main/java/com/example/accountservice/loyaltycategory/ 아래 생성
-           (--out은 examples/와 같은 레이아웃의 프로젝트 루트 — src/main/... 를 포함하는 디렉터리)
+        -> generates under /tmp/scratch-app/src/main/java/com/example/accountservice/loyaltycategory/
+           (--out is a project root with the same layout as examples/ — a directory containing src/main/...)
 
-생성 후 확인:
+After generating, verify:
     cd <projectRoot> && ./gradlew spotlessApply && ./gradlew build
     bash harness.sh <projectRoot>
 """
@@ -41,13 +44,13 @@ DEFAULT_BASE_PACKAGE = "com.example.accountservice"
 
 
 # ---------------------------------------------------------------------------
-# 이름 변환
+# Name conversion
 # ---------------------------------------------------------------------------
 
 
 def to_pascal(raw: str) -> str:
     if not raw:
-        raise ValueError("도메인 이름이 비어 있습니다.")
+        raise ValueError("Domain name is empty.")
     return raw[0].upper() + raw[1:]
 
 
@@ -56,7 +59,7 @@ def to_camel(pascal: str) -> str:
 
 
 def split_words(pascal: str) -> list[str]:
-    # PascalCase -> 단어 목록. 연속 대문자(약어)는 하나의 단어로 묶는다.
+    # PascalCase -> word list. Consecutive uppercase letters (an acronym) are grouped as one word.
     return re.findall(r"[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z][a-z0-9]*|[a-z0-9]+", pascal)
 
 
@@ -72,8 +75,9 @@ def to_scream_snake(pascal: str) -> str:
     return "_".join(w.upper() for w in split_words(pascal))
 
 
-# 아주 단순한 규칙 기반 복수형 — 불규칙 복수형(예: Category -> Categories)은 생성 후
-# 수동으로 고쳐야 한다는 걸 실행 결과에 안내한다(nestjs create-domain.js와 동일한 방침).
+# A very simple rule-based pluralizer — irregular plurals (e.g. Category -> Categories)
+# must be fixed by hand after generation; the run output notes this (same policy as
+# nestjs's create-domain.js).
 def naive_pluralize(camel: str) -> str:
     if re.search(r"[sxz]$|[cs]h$", camel):
         return camel + "es"
@@ -88,14 +92,15 @@ class Names:
         domain = to_camel(Domain)
         domains_camel = naive_pluralize(domain)
         Domains = to_pascal(domains_camel)
-        # kebab/snake는 이미 올바르게 복수화한 Domains에서 다시 파생한다 — kebab-case
-        # 문자열에 직접 's'를 붙이면(loyalty-category -> loyalty-categorys) 단어 경계와
-        # 복수형 규칙이 모두 깨진다(nestjs create-domain.js에서 동일한 이유로 겪은 버그).
+        # kebab/snake are derived again from the already-correctly-pluralized Domains —
+        # appending 's' directly to the kebab-case string (loyalty-category ->
+        # loyalty-categorys) breaks both word boundaries and the pluralization rule
+        # (the same bug hit in nestjs's create-domain.js for the same reason).
         domains_kebab = to_kebab(Domains)
         domains_snake = to_snake(Domains)
         domain_snake = to_snake(Domain)
         DOMAIN_SCREAM = to_scream_snake(Domain)
-        pkg = Domain.lower()  # Java 패키지 세그먼트 — 소문자, 구분자 없음(관용)
+        pkg = Domain.lower()  # Java package segment — lowercase, no separators (idiomatic)
 
         self.Domain = Domain
         self.domain = domain
@@ -113,7 +118,7 @@ class Names:
             f"{DOMAIN_SCREAM}_ACTIVATION_REQUIRES_PENDING_STATUS"
         )
         self.err_already_cancelled = f"{DOMAIN_SCREAM}_ALREADY_CANCELLED"
-        # naive_pluralize가 실제로 규칙(+s 이외)을 적용했는지 — 안내 메시지용
+        # Whether naive_pluralize actually applied a rule other than +s — for the advisory message
         self.plural_is_irregular = domains_camel != domain + "s"
 
     def tokens(self) -> dict[str, str]:
@@ -143,7 +148,7 @@ def render(template: str, tokens: dict[str, str]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 파일 템플릿 (경로는 basePackage 디렉터리 기준 상대 경로)
+# File templates (paths are relative to the basePackage directory)
 # ---------------------------------------------------------------------------
 
 TEMPLATES: dict[str, str] = {}
@@ -200,9 +205,9 @@ TEMPLATES["domain/__Domains__WithCount.java"] = """package __basepkg__.__pkg__.d
 import java.util.List;
 
 /**
- * {@code find__Domains__} 조회 결과 — 목록과 총 개수를 함께 반환한다. 단건 조회도 이 타입을 재사용한다: {@code
- * __Domain__FindQuery.take}를 1로 설정해 호출한 뒤 {@code __domains__()}의 첫 번째 결과를 꺼내 쓴다(repository-pattern.md
- * 참고).
+ * Result of a {@code find__Domains__} query — returns the list together with the total count.
+ * A single-record lookup also reuses this type: call with {@code __Domain__FindQuery.take} set to
+ * 1 and take the first result from {@code __domains__()} (see repository-pattern.md).
  */
 public record __Domains__WithCount(List<__Domain__> __domains__, long count) {}
 """
@@ -210,8 +215,9 @@ public record __Domains__WithCount(List<__Domain__> __domains__, long count) {}
 TEMPLATES["domain/__Domain__Repository.java"] = """package __basepkg__.__pkg__.domain;
 
 /**
- * __Domain__ Aggregate의 쓰기용 Repository 계약(domain 소유). 읽기 전용 조회는 별도의
- * application/query/__Domain__Query 인터페이스로 분리한다(cqrs-pattern.md 참고).
+ * The write-side Repository contract for the __Domain__ Aggregate (owned by domain). Read-only
+ * queries are separated into a distinct application/query/__Domain__Query interface (see
+ * cqrs-pattern.md).
  */
 public interface __Domain__Repository {
     __Domains__WithCount find__Domains__(__Domain__FindQuery query);
@@ -228,9 +234,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * __Domain__ Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 영속성 매핑은
- * infrastructure/persistence/__Domain__JpaEntity + __Domain__Mapper가 전담한다 (account/domain/Account.java와
- * 동일한 domain/JPA 분리 구조).
+ * __Domain__ Aggregate Root — a pure domain object. It does not depend on any framework/ORM.
+ * Persistence mapping is handled entirely by
+ * infrastructure/persistence/__Domain__JpaEntity + __Domain__Mapper (the same domain/JPA
+ * separation as account/domain/Account.java).
  */
 public class __Domain__ {
 
@@ -244,8 +251,9 @@ public class __Domain__ {
     private __Domain__() {}
 
     /**
-     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 __Domain__을 복원할 때 사용한다. create()와 달리 새
-     * 식별자·상태를 만들지 않고 저장된 상태를 그대로 재구성한다.
+     * Used by the Repository implementation to restore a __Domain__ from persisted data (a JPA
+     * entity, etc). Unlike create(), it does not create a new identifier/status — it reconstructs
+     * the saved state as-is.
      */
     public static __Domain__ reconstitute(
             String __domain__Id, String ownerId, __Domain__Status status, LocalDateTime createdAt) {
@@ -266,27 +274,28 @@ public class __Domain__ {
         return __domain__;
     }
 
-    // 이벤트를 발행하지 않는 단순 상태 전이 예시 — 도메인 이벤트가 필요 없는 변경은 이렇게 그냥 상태만 바꾼다.
+    // An example of a simple state transition that publishes no event — a change that needs no
+    // domain event just changes the status like this.
     public void activate() {
         if (this.status != __Domain__Status.PENDING) {
             throw new __Domain__Exception(
                     __Domain__Exception.ErrorCode.__ERR_ACTIVATION_REQUIRES_PENDING__,
-                    "대기 상태의 __Domain__만 활성화할 수 있습니다.");
+                    "Only a pending __Domain__ can be activated.");
         }
         this.status = __Domain__Status.ACTIVE;
     }
 
-    // 이벤트를 발행하는 상태 전이 예시.
+    // An example of a state transition that publishes an event.
     public void cancel(String reason) {
         if (this.status == __Domain__Status.CANCELLED) {
             throw new __Domain__Exception(
-                    __Domain__Exception.ErrorCode.__ERR_ALREADY_CANCELLED__, "이미 취소된 __Domain__입니다.");
+                    __Domain__Exception.ErrorCode.__ERR_ALREADY_CANCELLED__, "The __Domain__ is already cancelled.");
         }
         this.status = __Domain__Status.CANCELLED;
         this.domainEvents.add(new __Domain__CancelledEvent(this.__domain__Id, reason, LocalDateTime.now()));
     }
 
-    /** Repository 구현체가 저장 직후 호출해 미발행 이벤트를 꺼내고 비운다(domain-events.md 참고). */
+    /** Called by the Repository implementation right after saving to pull and clear unpublished events (see domain-events.md). */
     public List<Object> pullDomainEvents() {
         List<Object> events = new ArrayList<>(this.domainEvents);
         this.domainEvents.clear();
@@ -383,7 +392,7 @@ public class Activate__Domain__Service {
                                 () ->
                                         new __Domain__Exception(
                                                 __Domain__Exception.ErrorCode.__ERR_NOT_FOUND__,
-                                                "__Domain__을(를) 찾을 수 없습니다."));
+                                                "__Domain__ not found."));
         __domain__.activate();
         __domain__Repository.save__Domain__(__domain__);
     }
@@ -422,11 +431,11 @@ public class Cancel__Domain__Service {
                                 () ->
                                         new __Domain__Exception(
                                                 __Domain__Exception.ErrorCode.__ERR_NOT_FOUND__,
-                                                "__Domain__을(를) 찾을 수 없습니다."));
+                                                "__Domain__ not found."));
         __domain__.cancel(command.reason());
         __domain__Repository.save__Domain__(__domain__);
-        // Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer가 독립적으로 처리한다
-        // (domain-events.md) — Command Service는 저장 후 곧바로 반환한다.
+        // Outbox → SQS publish/consume is handled independently by OutboxPoller/OutboxConsumer
+        // (see domain-events.md) — the Command Service returns right after saving.
     }
 }
 """
@@ -439,8 +448,9 @@ import __basepkg__.__pkg__.domain.__Domain__FindQuery;
 import __basepkg__.__pkg__.domain.__Domains__WithCount;
 
 /**
- * Query Service 전용 읽기 인터페이스. 쓰기용 {@code __Domain__Repository}(domain)와 분리된 좁은 계약이다. Query
- * Service는 이 인터페이스만 의존해야 한다 — 쓰기 메서드를 노출하지 않는다(cqrs-pattern.md 참고).
+ * A read-only interface dedicated to the Query Service. A narrow contract separate from the
+ * write-side {@code __Domain__Repository} (domain). The Query Service must depend only on this
+ * interface — it exposes no write methods (see cqrs-pattern.md).
  */
 public interface __Domain__Query {
     __Domains__WithCount find__Domains__(__Domain__FindQuery query);
@@ -482,7 +492,7 @@ public class Get__Domain__Service {
                                 () ->
                                         new __Domain__Exception(
                                                 __Domain__Exception.ErrorCode.__ERR_NOT_FOUND__,
-                                                "__Domain__을(를) 찾을 수 없습니다."));
+                                                "__Domain__ not found."));
         return new Get__Domain__Result(
                 __domain__.get__Domain__Id(),
                 __domain__.getOwnerId(),
@@ -505,12 +515,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Outbox에 쌓인 {@link __Domain__CancelledEvent}(내부 Domain Event)를 처리한다. {@code OutboxConsumer}가
- * 클래스패스의 모든 {@link OutboxEventHandler} 구현체를 자동으로 수집해, SQS에서 이 이벤트를 수신하면 이 핸들러를
- * 호출한다 — 별도의 수동 등록이 필요 없다(모듈 등록 파일이 없는 이유는 module-pattern.md 참고).
+ * Processes a {@link __Domain__CancelledEvent} (an internal Domain Event) accumulated in the
+ * Outbox. {@code OutboxConsumer} automatically collects every {@link OutboxEventHandler}
+ * implementation on the classpath, so when this event is received from SQS, this handler is
+ * invoked — no separate manual registration is needed (see module-pattern.md for why there is no
+ * module-registration file).
  *
- * <p>스캐폴딩 단계에서는 로깅만 한다 — 실제 후속 처리(알림, 다른 BC로의 Integration Event 발행 등)는 도메인 요구사항이
- * 정해지면 여기에 구현한다(account/application/event/AccountSuspendedEventHandler.java 참고).
+ * <p>At the scaffolding stage this only logs — actual follow-up processing (notifications,
+ * publishing an Integration Event to another BC, etc) should be implemented here once the domain
+ * requirements are settled (see account/application/event/AccountSuspendedEventHandler.java).
  */
 @Component
 @RequiredArgsConstructor
@@ -529,7 +542,7 @@ public class __Domain__CancelledEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         __Domain__CancelledEvent event = objectMapper.readValue(payload, __Domain__CancelledEvent.class);
         log.info(
-                "__Domain__ 취소됨 - __domain__Id={}, reason={}", event.__domain__Id(), event.reason());
+                "__Domain__ cancelled - __domain__Id={}, reason={}", event.__domain__Id(), event.reason());
     }
 }
 """
@@ -550,9 +563,10 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * __pkg__/domain/__Domain__.java의 JPA 매핑 전용 대응물. Domain Aggregate(__Domain__)는 이 클래스를 전혀 알지 못한다 —
- * 변환은 __Domain__Mapper가 전담한다 (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조,
- * layer-architecture.md 참고).
+ * The JPA-mapping-only counterpart of __pkg__/domain/__Domain__.java. The Domain Aggregate
+ * (__Domain__) knows nothing about this class at all — conversion is handled entirely by
+ * __Domain__Mapper (the same structure as account/infrastructure/persistence/AccountJpaEntity, see
+ * layer-architecture.md).
  */
 @Entity
 @Table(name = "__domains_snake__")
@@ -586,7 +600,7 @@ public class __Domain__JpaEntity {
         this.createdAt = createdAt;
     }
 
-    /** 기존 row(id 보존)에 도메인 __Domain__의 최신 상태를 반영한다 — status 전이 저장에 사용. */
+    /** Applies the domain __Domain__'s latest state to an existing row (preserving id) — used to save a status transition. */
     void applyMutableState(__Domain__Status status) {
         this.status = status;
     }
@@ -618,8 +632,9 @@ TEMPLATES["infrastructure/persistence/__Domain__Mapper.java"] = """package __bas
 import __basepkg__.__pkg__.domain.__Domain__;
 
 /**
- * __Domain__(순수 도메인) ↔ __Domain__JpaEntity(JPA 매핑) 변환 전담 클래스. __Domain__RepositoryImpl 내부에서만
- * 사용된다 — Domain/Application 레이어는 이 클래스를 알지 못한다.
+ * A class dedicated to converting between __Domain__ (pure domain) and __Domain__JpaEntity (JPA
+ * mapping). Used only inside __Domain__RepositoryImpl — the Domain/Application layers know nothing
+ * about this class.
  */
 final class __Domain__Mapper {
 
@@ -630,7 +645,7 @@ final class __Domain__Mapper {
                 entity.get__Domain__Id(), entity.getOwnerId(), entity.getStatus(), entity.getCreatedAt());
     }
 
-    /** 신규 __Domain__을 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
+    /** Creates a new entity for a new __Domain__ (no PK, to be inserted). */
     static __Domain__JpaEntity toNewEntity(__Domain__ __domain__) {
         return new __Domain__JpaEntity(
                 null,
@@ -640,7 +655,7 @@ final class __Domain__Mapper {
                 __domain__.getCreatedAt());
     }
 
-    /** 기존 엔티티(PK 보존)에 도메인 __Domain__의 최신 상태를 반영한다 — update 대상. */
+    /** Applies the domain __Domain__'s latest state to an existing entity (preserving PK) — to be updated. */
     static __Domain__JpaEntity updateEntity(__Domain__JpaEntity entity, __Domain__ __domain__) {
         entity.applyMutableState(__domain__.getStatus());
         return entity;
@@ -675,9 +690,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * __Domain__의 쓰기용 {@link __Domain__Repository}와 읽기용 {@link __Domain__Query}를 한 클래스에서 구현한다
- * (account/infrastructure/persistence/AccountRepositoryImpl과 동일한 구조). 각 Application 레이어는 자신에게 필요한
- * 좁은 인터페이스(Repository 또는 Query)만 주입받는다.
+ * Implements both the write-side {@link __Domain__Repository} and the read-side {@link
+ * __Domain__Query} for __Domain__ in a single class (the same structure as
+ * account/infrastructure/persistence/AccountRepositoryImpl). Each Application layer is injected
+ * only with the narrow interface it needs (Repository or Query).
  */
 @Repository
 @RequiredArgsConstructor
@@ -715,7 +731,7 @@ public class __Domain__RepositoryImpl implements __Domain__Repository, __Domain_
                         .map(existing -> __Domain__Mapper.updateEntity(existing, __domain__))
                         .orElseGet(() -> __Domain__Mapper.toNewEntity(__domain__));
         jpaRepository.save(entity);
-        // Aggregate 저장과 같은 물리 트랜잭션 안에서 Outbox에 이벤트를 기록한다(domain-events.md 참고).
+        // Records events to the Outbox inside the same physical transaction as the Aggregate save (see domain-events.md).
         outboxWriter.saveAll(__domain__.pullDomainEvents());
     }
 
@@ -838,7 +854,7 @@ public class __Domain__Controller {
                 e.code() == __Domain__Exception.ErrorCode.__ERR_NOT_FOUND__
                         ? HttpStatus.NOT_FOUND
                         : HttpStatus.BAD_REQUEST;
-        log.warn("__Domain__ 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
+        log.warn("__Domain__ request failed", kv("code", e.code()), kv("message", e.getMessage()));
         return ResponseEntity.status(status)
                 .body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }
@@ -859,7 +875,7 @@ CREATE INDEX __idx_owner__ ON __domains_snake__ (owner_id);
 
 
 # ---------------------------------------------------------------------------
-# 생성 로직
+# Generation logic
 # ---------------------------------------------------------------------------
 
 
@@ -883,7 +899,8 @@ def generate(raw_domain_name: str, project_root: Path, base_package: str) -> Non
 
     written: list[Path] = []
     for rel_path, template in TEMPLATES.items():
-        # rel_path 자체도 토큰을 포함하므로(예: __Domain__.java) 렌더링해야 실제 파일명이 나온다.
+        # rel_path itself contains tokens too (e.g. __Domain__.java), so it must be rendered to
+        # produce the actual file name.
         target = java_root / render(rel_path, tokens)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(render(template, tokens), encoding="utf-8")
@@ -896,52 +913,54 @@ def generate(raw_domain_name: str, project_root: Path, base_package: str) -> Non
     migration_path.write_text(render(MIGRATION_TEMPLATE, tokens), encoding="utf-8")
     written.append(migration_path)
 
-    print(f"{names.Domain} 도메인 생성 완료: {java_root} ({len(written)}개 파일)")
+    print(f"{names.Domain} domain generated: {java_root} ({len(written)} files)")
     print(
-        f"REST 경로: /{names.domains_kebab} "
-        f"(POST 생성, POST /:{{{names.domain}Id}}/activate 활성화, "
-        f"POST /:{{{names.domain}Id}}/cancel 취소, GET /:{{{names.domain}Id}} 조회)"
+        f"REST paths: /{names.domains_kebab} "
+        f"(POST to create, POST /:{{{names.domain}Id}}/activate to activate, "
+        f"POST /:{{{names.domain}Id}}/cancel to cancel, GET /:{{{names.domain}Id}} to fetch)"
     )
-    print(f"Flyway 마이그레이션: {migration_path}")
+    print(f"Flyway migration: {migration_path}")
     print()
     if names.plural_is_irregular:
         print(
-            f"참고: 나이브 복수형 규칙이 아닌 y->ies 규칙이 적용됐습니다 "
-            f"({names.domain} -> {names.domains}). 불규칙 복수형(예: person -> people)이면 "
-            f"find{names.Domains}/{names.domains}/{names.domains_kebab} 등을 수동으로 다듬어야 할 수 있습니다."
+            f"Note: the y->ies rule was applied instead of the naive pluralization rule "
+            f"({names.domain} -> {names.domains}). If this is an irregular plural (e.g. person -> people), "
+            f"you may need to manually adjust generated names such as "
+            f"find{names.Domains}/{names.domains}/{names.domains_kebab}."
         )
     else:
         print(
-            "참고: 나이브 복수형 규칙(+s / +es / y->ies)을 썼습니다 — 불규칙 복수형 도메인이면 "
-            f"find{names.Domains}/{names.domains} 등을 수동으로 다듬어야 할 수 있습니다."
+            "Note: the naive pluralization rule (+s / +es / y->ies) was used — for an irregular "
+            f"plural domain, you may need to manually adjust names such as find{names.Domains}/{names.domains}."
         )
     print()
     print(
-        "모듈 등록 단계 없음: Spring이 @Service/@Component/@Repository/@RestController를 "
-        "classpath 전체에서 자동 수집한다(component scanning) — OutboxEventHandler 구현체도 "
-        "OutboxConsumer가 자동으로 주입받는다. 손으로 고칠 central wiring 파일이 없다."
+        "No module-registration step: Spring automatically collects "
+        "@Service/@Component/@Repository/@RestController across the whole classpath "
+        "(component scanning) — the OutboxEventHandler implementation is also auto-injected by "
+        "OutboxConsumer. There is no central wiring file to fix by hand."
     )
     print()
-    print(f"다음: cd {project_root} && ./gradlew spotlessApply && ./gradlew build")
+    print(f"Next: cd {project_root} && ./gradlew spotlessApply && ./gradlew build")
     print(f"      bash harness.sh {project_root}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="새 도메인 스캐폴딩 생성기 (Java Spring Boot)"
+        description="New domain scaffolding generator (Java Spring Boot)"
     )
-    parser.add_argument("domain_name", help="PascalCase 도메인 이름 (예: Coupon, LoyaltyCategory)")
+    parser.add_argument("domain_name", help="PascalCase domain name (e.g. Coupon, LoyaltyCategory)")
     parser.add_argument(
         "--out",
         dest="out",
         default=None,
-        help="대상 프로젝트 루트(src/main/... 를 포함하는 디렉터리). 기본값: ../examples",
+        help="Target project root (a directory containing src/main/...). Default: ../examples",
     )
     parser.add_argument(
         "--package",
         dest="package",
         default=DEFAULT_BASE_PACKAGE,
-        help=f"베이스 패키지 (기본값: {DEFAULT_BASE_PACKAGE})",
+        help=f"Base package (default: {DEFAULT_BASE_PACKAGE})",
     )
     args = parser.parse_args()
 

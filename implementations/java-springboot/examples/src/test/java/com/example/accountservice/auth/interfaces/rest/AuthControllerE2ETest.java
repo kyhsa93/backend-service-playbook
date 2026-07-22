@@ -37,8 +37,9 @@ class AuthControllerE2ETest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.flyway.enabled", () -> "false");
-        // 이 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
-        // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+        // This test calls the write API more times in a short window than the default
+        // limit-for-period (10), so we relax it generously for tests only, so that each endpoint's
+        // logic is verified rather than rate limiting itself.
         registry.add(
                 "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }
@@ -47,10 +48,11 @@ class AuthControllerE2ETest {
 
     private static final String PASSWORD = "password123!";
 
-    // TestRestTemplate 기본 요청 팩토리(JDK HttpURLConnection 기반)는 POST 응답이 401이면
-    // "cannot retry due to server authentication, in streaming mode" 예외를 던지는 알려진 제약이
-    // 있다 — sign-in 실패(401) 응답을 검증하는 이 테스트에서는 이 문제가 없는 httpclient5 기반
-    // 팩토리로 바꿔서 피한다(build.gradle의 testImplementation httpclient5 참고).
+    // TestRestTemplate's default request factory (based on JDK HttpURLConnection) has a known
+    // limitation where it throws a "cannot retry due to server authentication, in streaming mode"
+    // exception when a POST response is 401 — since this test verifies sign-in failure (401)
+    // responses, we avoid the issue by switching to an httpclient5-based factory instead (see the
+    // testImplementation httpclient5 dependency in build.gradle).
     @BeforeEach
     void useApacheHttpClientRequestFactory() {
         restTemplate

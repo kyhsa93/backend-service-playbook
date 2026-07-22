@@ -9,8 +9,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * Account BC의 {@code account.suspended.v1} Integration Event에 대한 반응 유스케이스. at-least-once 전달을 전제로
- * 멱등하게 구현한다 — ACTIVE 카드만 골라 정지하므로 같은 이벤트가 재수신되어도(이미 정지된 카드) 아무 일도 하지 않는다.
+ * Reaction use case for the Account BC's {@code account.suspended.v1} Integration Event.
+ * Implemented idempotently under the assumption of at-least-once delivery — only ACTIVE cards are
+ * selected for suspension, so redelivery of the same event (when the card is already suspended)
+ * does nothing.
  */
 @Service
 @RequiredArgsConstructor

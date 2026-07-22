@@ -1,4 +1,4 @@
-// 트랜잭션 어노테이션 없이 Outbox 저장을 언급하는 fixture
+// Fixture that mentions saving to the Outbox without a transaction annotation
 class AccountRepositoryImpl {
     void save() {
         // writes Outbox row

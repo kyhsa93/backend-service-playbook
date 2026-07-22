@@ -1,6 +1,7 @@
--- Task Outbox 테이블 — Scheduler(Cron)가 Task를 적재하고 TaskOutboxPoller가 드레인해 Task Queue(SQS
--- FIFO)로 발행한다. outbox 테이블(Domain/Integration Event 전용)과 동일한 이유·구조지만 개념적으로
--- 다른 것(명령 vs 사실)이라 별도 테이블로 분리한다(docs/architecture/scheduling.md).
+-- The Task Outbox table — a Scheduler (Cron) enqueues a Task and TaskOutboxPoller drains it,
+-- publishing to the Task Queue (SQS FIFO). Same rationale and structure as the outbox table
+-- (dedicated to Domain/Integration Events), but kept as a separate table because it is
+-- conceptually different (a command vs. a fact) (see docs/architecture/scheduling.md).
 CREATE TABLE task_outbox (
     task_id VARCHAR(32) NOT NULL PRIMARY KEY,
     task_type VARCHAR(255) NOT NULL,

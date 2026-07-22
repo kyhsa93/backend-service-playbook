@@ -13,26 +13,32 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [28] Rate Limiting이 실제로 배선됐는지 — rate-limiting.md는 전역 {@code Filter}(메서드 기준)와
- * 엔드포인트별 {@code @RateLimiter}(Resilience4j 애노테이션) 이중 방어를 요구한다. "정의는 있지만
- * 실제로 적용되지 않는" dead code 회귀를 잡는다.
+ * [28] Whether Rate Limiting is actually wired up — rate-limiting.md requires
+ * double protection: a global {@code Filter} (per-method) plus a per-endpoint {@code
+ * @RateLimiter} (Resilience4j annotation). This catches a "defined but never actually
+ * applied" dead-code regression.
  *
- * <p>{@code RateLimitFilter}가 {@code RateLimiterConfig.custom().limitForPeriod(100)...}처럼
- * 제한 값을 필드에 하드코딩하면 {@code application.yml}/환경 변수로 배포 시점에 조정할 수 없다 —
- * 반드시 {@code RateLimiterRegistry}에서 named instance(`http-write`/`http-read`)를 동적으로
- * 조회해야 한다. 이 규칙은 세 가지를 확인한다:
+ * <p>If {@code RateLimitFilter} hardcodes its limit values in a field, like {@code
+ * RateLimiterConfig.custom().limitForPeriod(100)...}, they can't be adjusted at deploy
+ * time via {@code application.yml}/environment variables — it must dynamically look up a
+ * named instance (`http-write`/`http-read`) from {@code RateLimiterRegistry} instead. This
+ * rule confirms three things:
  *
  * <ol>
- *   <li>{@code RateLimitFilter}가 {@code @Component}로 Spring bean 등록되어 있는지(Spring Boot가
- *   Filter bean을 자동으로 필터 체인에 등록해 실제 요청 경로에 적용됨 — 별도 등록 파일 없음)</li>
- *   <li>{@code RateLimiterConfig.custom(}으로 제한 값을 필드에 직접 하드코딩하지 않는지</li>
- *   <li>{@code RateLimiterRegistry}를 주입받아 {@code .rateLimiter(...)}로 named instance를
- *   동적으로 조회하는지</li>
+ *   <li>Whether {@code RateLimitFilter} is registered as a Spring bean via {@code
+ *   @Component} (Spring Boot auto-registers a Filter bean into the filter chain, applying
+ *   it to the real request path — no separate registration file needed)</li>
+ *   <li>Whether it avoids hardcoding limit values directly in a field via {@code
+ *   RateLimiterConfig.custom(}</li>
+ *   <li>Whether it injects {@code RateLimiterRegistry} and dynamically looks up a named
+ *   instance via {@code .rateLimiter(...)}</li>
  * </ol>
  *
- * <p>추가로 {@code interfaces/}(REST Controller) 어딘가에 {@code @RateLimiter} 애노테이션이 실제
- * 엔드포인트에 붙어 있는지도 확인한다 — 애노테이션 자체는 선택 사항(엔드포인트별 세분화)이라
- * 전혀 없어도 실패로 잡지 않고, "필터만 있고 애노테이션 방식은 아직 안 씀"을 SKIP으로 남긴다.
+ * <p>It additionally checks whether an {@code @RateLimiter} annotation is actually
+ * attached to an endpoint somewhere in {@code interfaces/} (REST Controller) — the
+ * annotation itself is optional (per-endpoint granularity), so having none at all is not
+ * flagged as a failure; "only the filter exists, the annotation approach isn't used yet"
+ * is left as a SKIP.
  */
 public final class RateLimitWired {
     private RateLimitWired() {
@@ -60,7 +66,7 @@ public final class RateLimitWired {
         }
 
         if (filterFile == null) {
-            result.add(Finding.skip("common/web/RateLimitFilter.java(전역 Rate Limiting Filter) 없음"));
+            result.add(Finding.skip("No common/web/RateLimitFilter.java (global Rate Limiting Filter)"));
             return result;
         }
 
@@ -69,19 +75,19 @@ public final class RateLimitWired {
 
         if (!COMPONENT_ANNOTATION.matcher(code).find()) {
             result.add(Finding.fail(rel,
-                "RateLimitFilter에 @Component가 없음 — Spring bean으로 등록되지 않으면 필터 체인에 자동 적용되지 않는 dead code(rate-limiting.md)"));
+                "RateLimitFilter has no @Component — if it isn't registered as a Spring bean, it's dead code that never gets applied to the filter chain automatically (rate-limiting.md)"));
         } else {
-            result.add(Finding.pass(rel + " (@Component로 Spring bean 등록 확인)"));
+            result.add(Finding.pass(rel + " (confirmed it's registered as a Spring bean via @Component)"));
         }
 
         if (HARDCODED_CONFIG.matcher(code).find()) {
             result.add(Finding.fail(rel,
-                "RateLimiterConfig.custom()으로 제한 값을 필드에 직접 하드코딩함 — application.yml의 RateLimiterRegistry named instance를 조회해야 배포 시점 조정이 가능함(rate-limiting.md)"));
+                "Hardcodes limit values directly in a field via RateLimiterConfig.custom() — must look up a named instance from application.yml's RateLimiterRegistry instead, so it can be adjusted at deploy time (rate-limiting.md)"));
         } else if (REGISTRY_FIELD.matcher(code).find() && REGISTRY_LOOKUP.matcher(code).find()) {
-            result.add(Finding.pass(rel + " (RateLimiterRegistry 동적 조회 확인 — 하드코딩 없음)"));
+            result.add(Finding.pass(rel + " (confirmed dynamic RateLimiterRegistry lookup — no hardcoding)"));
         } else {
             result.add(Finding.fail(rel,
-                "RateLimiterRegistry에서 named instance를 조회하는 코드를 찾을 수 없음 — 제한 값이 배포 시점에 조정 가능한지 확인 불가(rate-limiting.md)"));
+                "Could not find code that looks up a named instance from RateLimiterRegistry — could not confirm whether limit values are adjustable at deploy time (rate-limiting.md)"));
         }
 
         boolean disabledSomewhere = false;
@@ -91,11 +97,11 @@ public final class RateLimitWired {
             if (DISABLED_REGISTRATION.matcher(content).find()) {
                 disabledSomewhere = true;
                 result.add(Finding.fail(relTo(f, root),
-                    "RateLimitFilter를 FilterRegistrationBean.setEnabled(false)로 비활성화함 — 필터가 등록되어도 실제로 요청에 적용되지 않는 dead code(rate-limiting.md)"));
+                    "Disables RateLimitFilter via FilterRegistrationBean.setEnabled(false) — dead code that isn't actually applied to requests even though the filter is registered (rate-limiting.md)"));
             }
         }
         if (!disabledSomewhere) {
-            result.add(Finding.pass("RateLimitFilter를 명시적으로 비활성화하는 설정 없음(자동 필터 체인 적용 유지)"));
+            result.add(Finding.pass("No configuration explicitly disables RateLimitFilter (automatic filter-chain application is preserved)"));
         }
 
         boolean annotationUsed = false;
@@ -104,11 +110,11 @@ public final class RateLimitWired {
             String content = stripComments(readText(f));
             if (RATE_LIMITER_ANNOTATION_USE.matcher(content).find()) {
                 annotationUsed = true;
-                result.add(Finding.pass(relTo(f, root) + " (@RateLimiter 애노테이션으로 엔드포인트별 세분화 적용 확인)"));
+                result.add(Finding.pass(relTo(f, root) + " (confirmed per-endpoint granularity applied via the @RateLimiter annotation)"));
             }
         }
         if (!annotationUsed) {
-            result.add(Finding.skip("interfaces/의 어떤 Controller도 @RateLimiter 애노테이션(엔드포인트별 세분화)을 쓰지 않음 — 전역 Filter만으로도 원칙상 허용되므로 실패는 아님"));
+            result.add(Finding.skip("No Controller under interfaces/ uses the @RateLimiter annotation (per-endpoint granularity) — this is not a failure since a global Filter alone is permitted by the principle"));
         }
 
         return result;

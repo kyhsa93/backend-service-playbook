@@ -7,7 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** Outbox에 쌓인 {@link AccountReactivatedEvent}를 처리해 계좌 소유자에게 알림 이메일을 발송한다. */
+/**
+ * Handles the {@link AccountReactivatedEvent} accumulated in the Outbox to send a notification
+ * email to the account owner.
+ */
 @Component
 @RequiredArgsConstructor
 public class AccountReactivatedEventHandler implements OutboxEventHandler {
@@ -28,7 +31,7 @@ public class AccountReactivatedEventHandler implements OutboxEventHandler {
                 event.accountId(),
                 "AccountReactivated",
                 event.email(),
-                "[Account] 계좌가 재개되었습니다",
-                "계좌(" + event.accountId() + ")가 재개되었습니다.");
+                "[Account] Your account has been reactivated",
+                "Account (" + event.accountId() + ") has been reactivated.");
     }
 }

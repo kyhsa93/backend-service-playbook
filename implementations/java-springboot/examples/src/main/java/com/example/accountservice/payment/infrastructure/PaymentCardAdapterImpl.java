@@ -10,12 +10,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * {@link CardAdapter}의 구현체(ACL). Card BC가 노출한 읽기 인터페이스({@link CardQuery})를 주입받아 호출하고, Card BC의 모델을
- * Payment BC가 쓰는 최소 형태({@link CardAdapter.CardView})로 번역한다. Card의 Repository/도메인 객체를 Payment의
- * Application·Domain 레이어로 노출하지 않는 유일한 경계 지점이다(card/infrastructure/AccountAdapterImpl.java와 동일한 구조).
+ * The implementation (ACL) of {@link CardAdapter}. Injects and calls the read interface ({@link
+ * CardQuery}) exposed by the Card BC, and translates the Card BC's model into the minimal shape the
+ * Payment BC uses ({@link CardAdapter.CardView}). This is the sole boundary point that keeps Card's
+ * Repository/domain objects from being exposed to Payment's Application/Domain layers (the same
+ * structure as card/infrastructure/AccountAdapterImpl.java).
  */
-// PaymentCardAdapterImpl로 명명한 이유는 PaymentAccountAdapterImpl과 동일하다 — 향후 다른 BC가
-// 같은 단순 클래스명(CardAdapterImpl)으로 또 다른 구현체를 추가할 여지를 남기지 않는다.
+// The reason it's named PaymentCardAdapterImpl is the same as PaymentAccountAdapterImpl — this
+// leaves no room for another BC to later add a different implementation under the same simple
+// class name (CardAdapterImpl).
 @Component
 @RequiredArgsConstructor
 public class PaymentCardAdapterImpl implements CardAdapter {

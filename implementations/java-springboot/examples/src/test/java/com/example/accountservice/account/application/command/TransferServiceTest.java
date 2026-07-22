@@ -18,9 +18,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-// TransferEligibilityService(Domain Service)는 순수 클래스라 목(mock)하지 않는다 — 이 스펙은
-// Application 레이어가 두 계좌를 로드해 실제 판단 로직에 위임하고, 승인 시 두 계좌를 하나의
-// 트랜잭션(saveAccounts)으로 저장하는 흐름을 검증한다.
+// TransferEligibilityService (a Domain Service) is a plain class, so it is not mocked here — this
+// spec verifies that the Application layer loads both accounts, delegates to the actual
+// eligibility logic, and, once approved, saves both accounts in a single transaction
+// (saveAccounts).
 @ExtendWith(MockitoExtension.class)
 class TransferServiceTest {
 

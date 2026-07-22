@@ -1,6 +1,6 @@
 package harness;
 
-/** 한 규칙의 섹션 출력 안에 들어가는 항목 하나. Skip인 경우 name이 skip 메시지를 담는다. */
+/** A single entry within a rule's section output. For a skip, name holds the skip message. */
 public final class Finding {
     public final Kind kind;
     public final String name;

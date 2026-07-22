@@ -39,7 +39,8 @@ class CancelPaymentServiceTest {
                         new PaymentFindQuery(0, 1, payment.getPaymentId(), "owner-1")))
                 .thenReturn(new PaymentsWithCount(List.of(payment), 1));
 
-        service.cancel(new CancelPaymentCommand(payment.getPaymentId(), "고객 요청", "owner-1"));
+        service.cancel(
+                new CancelPaymentCommand(payment.getPaymentId(), "customer request", "owner-1"));
 
         assertThat(payment.getStatus().name()).isEqualTo("CANCELLED");
         verify(paymentRepository).savePayment(payment);
@@ -54,7 +55,7 @@ class CancelPaymentServiceTest {
                         () ->
                                 service.cancel(
                                         new CancelPaymentCommand(
-                                                "non-existent", "고객 요청", "owner-1")))
+                                                "non-existent", "customer request", "owner-1")))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_NOT_FOUND);
@@ -71,7 +72,9 @@ class CancelPaymentServiceTest {
                         () ->
                                 service.cancel(
                                         new CancelPaymentCommand(
-                                                payment.getPaymentId(), "고객 요청", "owner-1")))
+                                                payment.getPaymentId(),
+                                                "customer request",
+                                                "owner-1")))
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT);

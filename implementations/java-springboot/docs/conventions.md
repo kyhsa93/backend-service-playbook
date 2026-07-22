@@ -1,87 +1,87 @@
-# 코딩 컨벤션 (Java Spring Boot)
+# Coding Conventions (Java Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [conventions.md](../../../docs/conventions.md) 참고. 이 문서는 Java/Spring 관용으로 다시 쓰였다 — Kotlin Spring Boot 구현과 Spring 메커니즘 자체는 겹치지만, 네이밍·타이핑 표현은 각 언어의 관용을 따른다([java-springboot/CLAUDE.md](../CLAUDE.md) 참고).
+> For framework-agnostic principles, see the root [conventions.md](../../../docs/conventions.md). This document is rewritten in Java/Spring idiom — while the Kotlin Spring Boot implementation and Spring's mechanics themselves overlap, naming/typing expressions follow each language's own idiom (see [java-springboot/CLAUDE.md](../CLAUDE.md)).
 
-## 1. 파일 네이밍 규칙
+## 1. File naming rules
 
-- 모든 파일명: `PascalCase`, **파일명 = public 클래스명** (Java 컴파일러 요구사항)
-- 패키지명: 소문자, 하이픈/언더스코어 없음 — `com.example.accountservice.account.domain`
-- Aggregate Root: `<Aggregate>.java` (`domain/`) — 예: `Account.java`
-- 하위 Entity: `<Entity>.java` (`domain/`) — 예: `Transaction.java`
-- Value Object: `<Concept>.java`, `record` (`domain/`) — 예: `Money.java`
-- Domain Event: `<DomainEvent>.java`, `record`, 과거형 (`domain/`) — 예: `MoneyDepositedEvent.java`
-- Repository 인터페이스: `<Aggregate>Repository.java` (`domain/`)
-- Repository 구현체: `<Aggregate>RepositoryImpl.java` (`infrastructure/persistence/`)
-- Spring Data JPA 인터페이스: `<Aggregate>JpaRepository.java` (`infrastructure/persistence/`)
-- Command Service: `<Verb><Noun>Service.java` (`application/command/`) — 예: `CreateAccountService.java`
-- Query Service: `Get<Noun>Service.java` (`application/query/`) — 예: `GetAccountService.java`
-- Query 인터페이스(도입 시): `<Aggregate>Query.java` (`application/query/`)
-- Query 구현체(도입 시): `<Aggregate>QueryImpl.java` (`infrastructure/persistence/`)
-- Command: `<Verb><Noun>Command.java`, `record` (`application/command/`)
-- Result: `<Verb><Noun>Result.java`, `record` (`application/{command,query}/`)
-- 예외: `<Domain>Exception.java` (`domain/`) — 내부에 `ErrorCode` enum을 중첩 정의
-- Domain Event Handler: `<DomainEvent>Handler.java`, `outbox.OutboxEventHandler` 구현 (`application/event/`) — 예: `AccountCreatedEventHandler.java`
-- Technical Service 인터페이스: `<Concern>Service.java` (`application/service/`) — 예: `NotificationService.java`
-- Technical Service 구현체: `<Concern>ServiceImpl.java` (`infrastructure/`)
-- Adapter 인터페이스: `<ExternalDomain>Adapter.java` (`application/adapter/`)
-- Adapter 구현체: `<ExternalDomain>AdapterImpl.java` (`infrastructure/`)
+- All file names: `PascalCase`, **file name = public class name** (a Java compiler requirement)
+- Package names: lowercase, no hyphens/underscores — `com.example.accountservice.account.domain`
+- Aggregate Root: `<Aggregate>.java` (`domain/`) — e.g. `Account.java`
+- Child Entity: `<Entity>.java` (`domain/`) — e.g. `Transaction.java`
+- Value Object: `<Concept>.java`, a `record` (`domain/`) — e.g. `Money.java`
+- Domain Event: `<DomainEvent>.java`, a `record`, past tense (`domain/`) — e.g. `MoneyDepositedEvent.java`
+- Repository interface: `<Aggregate>Repository.java` (`domain/`)
+- Repository implementation: `<Aggregate>RepositoryImpl.java` (`infrastructure/persistence/`)
+- Spring Data JPA interface: `<Aggregate>JpaRepository.java` (`infrastructure/persistence/`)
+- Command Service: `<Verb><Noun>Service.java` (`application/command/`) — e.g. `CreateAccountService.java`
+- Query Service: `Get<Noun>Service.java` (`application/query/`) — e.g. `GetAccountService.java`
+- Query interface (once introduced): `<Aggregate>Query.java` (`application/query/`)
+- Query implementation (once introduced): `<Aggregate>QueryImpl.java` (`infrastructure/persistence/`)
+- Command: `<Verb><Noun>Command.java`, a `record` (`application/command/`)
+- Result: `<Verb><Noun>Result.java`, a `record` (`application/{command,query}/`)
+- Exception: `<Domain>Exception.java` (`domain/`) — defines a nested `ErrorCode` enum inside
+- Domain Event Handler: `<DomainEvent>Handler.java`, implements `outbox.OutboxEventHandler` (`application/event/`) — e.g. `AccountCreatedEventHandler.java`
+- Technical Service interface: `<Concern>Service.java` (`application/service/`) — e.g. `NotificationService.java`
+- Technical Service implementation: `<Concern>ServiceImpl.java` (`infrastructure/`)
+- Adapter interface: `<ExternalDomain>Adapter.java` (`application/adapter/`)
+- Adapter implementation: `<ExternalDomain>AdapterImpl.java` (`infrastructure/`)
 - HTTP Controller: `<Domain>Controller.java` (`interfaces/rest/`)
-- Interface DTO(요청): `<Verb><Noun>Request.java`, `record` (`interfaces/rest/`) — 예: `DepositRequest.java`
-- 에러 응답: `ErrorResponse.java`, `record` (`interfaces/rest/`)
-- `@ConfigurationProperties` 클래스: `<Concern>Properties.java`, `record` (`config/`) — 예: `AwsProperties.java`
-- `@Configuration` 설정 클래스: `<Concern>Config.java` (해당 도메인의 `infrastructure/` 또는 공용 `config/`) — 예: `SesConfig.java`
-- 순수 유틸: `<Concern>.java` (`common/`, 프레임워크 무의존) — 예: `IdGenerator.java`
+- Interface DTO (request): `<Verb><Noun>Request.java`, a `record` (`interfaces/rest/`) — e.g. `DepositRequest.java`
+- Error response: `ErrorResponse.java`, a `record` (`interfaces/rest/`)
+- `@ConfigurationProperties` class: `<Concern>Properties.java`, a `record` (`config/`) — e.g. `AwsProperties.java`
+- `@Configuration` config class: `<Concern>Config.java` (in that domain's `infrastructure/` or shared `config/`) — e.g. `SesConfig.java`
+- Pure utility: `<Concern>.java` (`common/`, no framework dependency) — e.g. `IdGenerator.java`
 
 ---
 
-## 2. 클래스 네이밍 규칙
+## 2. Class naming rules
 
-- Aggregate Root: 도메인 명사 — `Account`
-- 하위 Entity: 도메인 명사 — `Transaction`
-- Value Object: 개념명 — `Money`
-- 상태 enum: `<Domain>Status` — `AccountStatus`
-- Domain Event: 과거형 — `MoneyDepositedEvent`, `AccountClosedEvent`
-- Repository 인터페이스: `AccountRepository` / 구현체: `AccountRepositoryImpl`
-- Spring Data JPA 인터페이스: `AccountJpaRepository`
+- Aggregate Root: a domain noun — `Account`
+- Child Entity: a domain noun — `Transaction`
+- Value Object: a concept name — `Money`
+- Status enum: `<Domain>Status` — `AccountStatus`
+- Domain Event: past tense — `MoneyDepositedEvent`, `AccountClosedEvent`
+- Repository interface: `AccountRepository` / implementation: `AccountRepositoryImpl`
+- Spring Data JPA interface: `AccountJpaRepository`
 - Command Service: `CreateAccountService`, `DepositService`, `SuspendAccountService`
 - Query Service: `GetAccountService`, `GetTransactionsService`
 - Command: `DepositCommand`, `CreateAccountCommand`
 - Result: `CreateAccountResult`, `GetAccountResult`, `TransactionResult`
-- 예외: `AccountException` (내부 `ErrorCode` enum은 `SCREAMING_SNAKE_CASE` 상수 — `ACCOUNT_NOT_FOUND`)
+- Exception: `AccountException` (its inner `ErrorCode` enum uses `SCREAMING_SNAKE_CASE` constants — `ACCOUNT_NOT_FOUND`)
 - Domain Event Handler: `AccountCreatedEventHandler`, `MoneyDepositedEventHandler`
-- Technical Service 인터페이스: `NotificationService`, `SecretService`
-- Adapter 인터페이스: `UserAdapter` (외부 BC명 + `Adapter`)
+- Technical Service interface: `NotificationService`, `SecretService`
+- Adapter interface: `UserAdapter` (external BC name + `Adapter`)
 - HTTP Controller: `AccountController`
 - Interface DTO: `DepositRequest`, `CreateAccountRequest`
-- 상수: `UPPER_SNAKE_CASE` — `MAX_TRANSACTIONS_PER_PAGE`
-- 메서드·필드: `camelCase` — `getAccountId()`, `pullDomainEvents()`
-- Enum 상수: `UPPER_SNAKE_CASE` — `AccountStatus.ACTIVE`
+- Constants: `UPPER_SNAKE_CASE` — `MAX_TRANSACTIONS_PER_PAGE`
+- Methods/fields: `camelCase` — `getAccountId()`, `pullDomainEvents()`
+- Enum constants: `UPPER_SNAKE_CASE` — `AccountStatus.ACTIVE`
 
 ---
 
-## 3. `interfaces`(복수형) — Java 예약어 회피
+## 3. `interfaces` (plural) — avoiding a Java reserved word
 
-`interface`는 Java 언어 키워드이므로 패키지명으로 쓸 수 없다. 루트 문서의 `interface/`(단수)를 이 저장소는 `interfaces/`(복수형)로 표기한다 — go/kotlin-springboot도 각자의 언어 제약에 맞춰 조정하는 지점과 동일한 종류의 타협이다. 새 도메인 패키지를 만들 때 `interface/`로 잘못 쓰지 않도록 주의한다.
+`interface` is a Java language keyword, so it cannot be used as a package name. Where the root document uses `interface/` (singular), this repository uses `interfaces/` (plural) — the same kind of accommodation go/kotlin-springboot each make for their own language constraints. Be careful not to mistakenly write `interface/` when creating a new domain package.
 
 ```
-com.example.accountservice.account.interfaces.rest   // 올바른 방식
-com.example.accountservice.account.interface.rest    // 컴파일 에러 — interface는 예약어
+com.example.accountservice.account.interfaces.rest   // correct
+com.example.accountservice.account.interface.rest    // compile error — interface is a reserved word
 ```
 
 ---
 
-## 4. Enum / 예외 코드 배치 규칙
+## 4. Enum / error code placement rules
 
-- **상태를 나타내는 enum은 domain/에 별도 파일로 정의한다** — `AccountStatus.java`, `TransactionType.java`. Aggregate 클래스 내부에 인라인 정의하지 않는다.
-- **에러 코드는 `<Domain>Exception` 내부에 중첩 enum(`ErrorCode`)으로 정의한다** — root의 별도 `<Domain>ErrorCode.ts` 파일 분리 대신, Java는 예외 클래스와 코드가 한 파일에서 응집되는 편이 자연스럽다(예외를 던지는 지점에서 `AccountException.ErrorCode.INSUFFICIENT_BALANCE`로 항상 정적 참조된다 — free-form 문자열 코드가 원천적으로 불가능하다).
+- **An enum representing status is defined as a separate file in domain/** — `AccountStatus.java`, `TransactionType.java`. It is not defined inline inside the Aggregate class.
+- **Error codes are defined as a nested enum (`ErrorCode`) inside `<Domain>Exception`** — instead of the root's separate `<Domain>ErrorCode.ts` file, Java naturally cohesive-groups the exception class and its codes in one file (at every throw site, it is always statically referenced as `AccountException.ErrorCode.INSUFFICIENT_BALANCE` — a free-form string code is impossible from the start).
 
 ```java
-// account/domain/AccountStatus.java — 별도 파일
+// account/domain/AccountStatus.java — a separate file
 public enum AccountStatus {
     ACTIVE, SUSPENDED, CLOSED
 }
 
-// account/domain/AccountException.java — 예외 + ErrorCode 중첩 정의
+// account/domain/AccountException.java — the exception + nested ErrorCode
 public class AccountException extends RuntimeException {
 
     public enum ErrorCode {
@@ -102,19 +102,19 @@ public class AccountException extends RuntimeException {
 }
 ```
 
-- **`ErrorCode`의 모든 값에 대응하는 실제 throw 지점이 있어야 한다** — 정의만 해두고 쓰지 않는 코드를 남기지 않는다.
+- **Every value of `ErrorCode` must have an actual throw site somewhere** — don't leave a code defined but never used.
 
 ---
 
-## 5. 타이핑 패턴
+## 5. Typing patterns
 
 ### Value Object / Command / Result — `record`
 
 ```java
-// 올바른 방식 — record로 불변성 + equals/hashCode 자동 획득
+// Correct — a record automatically gives immutability + equals/hashCode
 public record Money(long amount, String currency) {
-    public Money {   // compact canonical constructor — 모든 생성 경로에 검증 적용
-        if (amount < 0) throw new AccountException(AccountException.ErrorCode.INVALID_MONEY_AMOUNT, "금액은 0 이상이어야 합니다.");
+    public Money {   // compact canonical constructor — validation applies to every construction path
+        if (amount < 0) throw new AccountException(AccountException.ErrorCode.INVALID_MONEY_AMOUNT, "Amount must be 0 or greater.");
     }
 }
 
@@ -123,22 +123,22 @@ public record CreateAccountResult(String accountId, String ownerId, long balance
 ```
 
 ```java
-// 잘못된 방식 — 가변 필드를 갖는 일반 class로 Command/Result를 표현
+// Incorrect — expressing a Command/Result as a plain class with mutable fields
 public class DepositCommand {
     private String accountId;
-    public void setAccountId(String accountId) { this.accountId = accountId; }   // setter 존재 — 불변성 위반
+    public void setAccountId(String accountId) { this.accountId = accountId; }   // a setter exists — violates immutability
 }
 ```
 
-### Aggregate Root / 하위 Entity — 정적 팩토리 + `protected` 생성자
+### Aggregate Root / child Entity — static factory + `protected` constructor
 
 ```java
-// 올바른 방식
-protected Account() {}   // JPA가 요구하는 기본 생성자만 열어둠
+// Correct
+protected Account() {}   // leaves open only the no-arg constructor JPA requires
 
 public static Account create(String ownerId, String email, String currency) {
     Account account = new Account();
-    account.accountId = IdGenerator.generate();   // 32자리 hex, 하이픈 없음 — aggregate-id.md 참고
+    account.accountId = IdGenerator.generate();   // 32-character hex, no hyphens — see aggregate-id.md
     account.balance = new Money(0, currency);
     account.status = AccountStatus.ACTIVE;
     return account;
@@ -146,44 +146,44 @@ public static Account create(String ownerId, String email, String currency) {
 ```
 
 ```java
-// 잘못된 방식 — public 생성자로 임의 상태의 Account를 직접 생성 가능
+// Incorrect — a public constructor lets you directly create an Account in an arbitrary state
 public Account(String accountId, Money balance, AccountStatus status) { ... }
 ```
 
-### `Optional<T>` — 단건 조회의 부재 표현
+### `Optional<T>` — expressing the absence of a single-record lookup
 
-Repository는 단건 전용 메서드를 따로 두지 않는다(repository-pattern.md 참고) — `findAccounts`를 `take: 1`로 호출한 뒤 `Stream.findFirst()`로 `Optional`을 얻는다:
+The Repository does not have a separate single-record-only method (see repository-pattern.md) — call `findAccounts` with `take: 1`, then get an `Optional` via `Stream.findFirst()`:
 
 ```java
-// 올바른 방식 — take:1 + findFirst()로 Optional을 얻어 부재를 표현
+// Correct — get an Optional via take:1 + findFirst() to express absence
 Account account = accountRepository
         .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
         .accounts().stream().findFirst()
-        .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+        .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "Account not found."));
 ```
 
 ```java
-// 잘못된 방식 — null을 그대로 반환해 호출부마다 null 체크를 반복시킴
-Account findFirstOrNull(AccountFindQuery query);   // null 반환 가능
+// Incorrect — returning null directly forces every caller to repeat a null check
+Account findFirstOrNull(AccountFindQuery query);   // may return null
 ```
 
-### `var` 사용 범위 — 지역 변수에 한정
+### `var` usage scope — limited to local variables
 
 ```java
-// 허용 — 우변 타입이 명확한 지역 변수
+// Allowed — a local variable whose right-hand-side type is clear
 var qb = accountRepo.createQueryBuilder("account");
 
-// 금지 — 필드, 메서드 파라미터, 반환 타입에는 var를 쓰지 않는다 (Java는 애초에 불가능하지만 명시)
+// Forbidden — do not use var for fields, method parameters, or return types (Java doesn't allow this to begin with, but stated explicitly)
 ```
 
-### Lombok 사용 범위
+### Lombok usage scope
 
-- **`@RequiredArgsConstructor`**: Application Service, Repository 구현체, Technical Service 구현체 등 생성자 주입이 필요한 모든 클래스에 사용한다.
-- **Domain 레이어(Aggregate, Value Object, Domain Event)에는 Lombok을 쓰지 않는다** — `record`가 이미 불변성/`equals`/`toString`을 제공하고, Aggregate는 정적 팩토리·불변식 검증이 있는 특수 생성 로직이 필요해 `@AllArgsConstructor`/`@Data` 같은 범용 애노테이션이 오히려 불변식을 우회하는 생성자를 열어버릴 수 있다.
-- **`@Getter`/`@Setter`를 Aggregate Root에 붙이지 않는다** — `@Setter`는 캡슐화를 깨고 도메인 메서드를 우회한 상태 변경을 허용한다. Getter가 필요하면 직접 작성하거나 `@Getter`만 선택적으로 사용한다.
+- **`@RequiredArgsConstructor`**: used on every class that needs constructor injection — Application Services, Repository implementations, Technical Service implementations, etc.
+- **Lombok is not used in the Domain layer (Aggregate, Value Object, Domain Event)** — a `record` already provides immutability/`equals`/`toString`, and an Aggregate needs special construction logic (static factories, invariant validation), so general-purpose annotations like `@AllArgsConstructor`/`@Data` could open up a constructor that bypasses invariants.
+- **Do not attach `@Getter`/`@Setter` to an Aggregate Root** — `@Setter` breaks encapsulation and allows state changes that bypass domain methods. If a getter is needed, write it by hand or selectively use only `@Getter`.
 
 ```java
-// 올바른 방식 — Application Service
+// Correct — an Application Service
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -191,46 +191,46 @@ public class CreateAccountService {
     private final AccountRepository accountRepository;
 }
 
-// 금지 — Domain 레이어에 @Data/@Setter
+// Forbidden — @Data/@Setter on the Domain layer
 @Entity
-@Data   // 금지 — equals/hashCode/setter가 불변식을 우회할 수 있음
+@Data   // forbidden — equals/hashCode/setters can bypass invariants
 public class Account { ... }
 ```
 
 ---
 
-## 6. REST API 엔드포인트 설계 규칙
+## 6. REST API endpoint design rules
 
-### URL 구조 — 리소스 중심, 복수 명사
+### URL structure — resource-centric, plural nouns
 
-URL은 **행위(동사)가 아닌 리소스(명사)**를 나타낸다. HTTP 메서드가 행위를 표현한다.
+A URL represents a **resource (noun), not an action (verb)**. The HTTP method expresses the action.
 
 ```
-// 올바른 방식
-GET    /accounts                     계좌 목록 조회
-GET    /accounts/{accountId}         계좌 단건 조회
-POST   /accounts                     계좌 개설
-POST   /accounts/{accountId}/deposit 입금 (비 CRUD 행위 — 하위 리소스 경로)
+// Correct
+GET    /accounts                     list accounts
+GET    /accounts/{accountId}         get a single account
+POST   /accounts                     open an account
+POST   /accounts/{accountId}/deposit deposit (a non-CRUD action — a sub-resource path)
 
-// 잘못된 방식
-GET    /getAccounts        동사를 URL에 넣지 않는다
-POST   /createAccount      동사를 URL에 넣지 않는다
-GET    /account/{id}       단수형 사용 금지 — 항상 복수형
+// Incorrect
+GET    /getAccounts        don't put a verb in the URL
+POST   /createAccount      don't put a verb in the URL
+GET    /account/{id}       don't use the singular form — always plural
 ```
 
-### HTTP 메서드와 응답 코드 — `@ResponseStatus`
+### HTTP methods and response codes — `@ResponseStatus`
 
-| 메서드 | 용도 | 성공 코드 | Spring 표현 |
+| Method | Purpose | Success code | Spring expression |
 |--------|------|----------|-------------|
-| `GET` | 리소스 조회 | 200 OK | 기본값 (별도 애노테이션 불필요) |
-| `POST` (생성) | 리소스 생성 | 201 Created | `@ResponseStatus(HttpStatus.CREATED)` |
-| `POST` (상태 전이) | 상태 변경, 응답 바디 없음 | 204 No Content | `@ResponseStatus(HttpStatus.NO_CONTENT)` |
-| `PUT` | 리소스 전체 수정 | 200 OK | 기본값 |
-| `PATCH` | 리소스 부분 수정 | 200 OK | 기본값 |
-| `DELETE` | 리소스 삭제 | 204 No Content | `@ResponseStatus(HttpStatus.NO_CONTENT)` |
+| `GET` | Fetch a resource | 200 OK | Default (no annotation needed) |
+| `POST` (create) | Create a resource | 201 Created | `@ResponseStatus(HttpStatus.CREATED)` |
+| `POST` (state transition) | Change state, no response body | 204 No Content | `@ResponseStatus(HttpStatus.NO_CONTENT)` |
+| `PUT` | Replace a resource entirely | 200 OK | Default |
+| `PATCH` | Partially update a resource | 200 OK | Default |
+| `DELETE` | Delete a resource | 204 No Content | `@ResponseStatus(HttpStatus.NO_CONTENT)` |
 
 ```java
-// 올바른 방식
+// Correct
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 public CreateAccountResult createAccount(@Valid @RequestBody CreateAccountRequest request) { ... }
@@ -240,17 +240,17 @@ public CreateAccountResult createAccount(@Valid @RequestBody CreateAccountReques
 public void suspendAccount(@PathVariable String accountId) { ... }
 ```
 
-### 비 CRUD 행위 — 하위 리소스 경로
+### Non-CRUD actions — sub-resource paths
 
 ```
-POST /accounts/{accountId}/deposit     입금
-POST /accounts/{accountId}/withdraw    출금
-POST /accounts/{accountId}/suspend     계좌 정지
-POST /accounts/{accountId}/reactivate  계좌 재개
-POST /accounts/{accountId}/close       계좌 종료
+POST /accounts/{accountId}/deposit     deposit
+POST /accounts/{accountId}/withdraw    withdraw
+POST /accounts/{accountId}/suspend     suspend the account
+POST /accounts/{accountId}/reactivate  reactivate the account
+POST /accounts/{accountId}/close       close the account
 ```
 
-### 목록 조회 — 페이지네이션
+### Listing — pagination
 
 ```java
 @GetMapping("/{accountId}/transactions")
@@ -265,28 +265,28 @@ public GetTransactionsResult getTransactions(
 GET /accounts/{accountId}/transactions?page=0&take=20
 ```
 
-- `page`: 0부터 시작. `take`: 페이지 크기. Spring MVC가 `@RequestParam(defaultValue = ...)`로 문자열 → 기본 타입 변환을 자동 처리한다 — 별도 파싱 코드가 필요 없다.
-- 목록 응답의 키 이름은 도메인 객체명 복수형(`transactions`)이어야 한다 — `data`/`result`/`items` 같은 범용 키 금지.
+- `page`: starts at 0. `take`: the page size. Spring MVC automatically handles string → primitive-type conversion via `@RequestParam(defaultValue = ...)` — no separate parsing code is needed.
+- The list response's key name must be the domain object's name, plural (`transactions`) — generic keys like `data`/`result`/`items` are forbidden.
 
-### URL 네이밍 규칙
+### URL naming rules
 
-- **복수 명사**: `/accounts`, `/transactions` (단수형 금지)
-- **kebab-case**: 다단어 리소스는 하이픈으로 구분 (예: `/payment-methods`)
-- **소문자만**: `/Accounts` (X) → `/accounts` (O)
-- **후행 슬래시 없음**, **파일 확장자 없음**
+- **Plural nouns**: `/accounts`, `/transactions` (singular is forbidden)
+- **kebab-case**: multi-word resources are separated with hyphens (e.g. `/payment-methods`)
+- **Lowercase only**: `/Accounts` (wrong) → `/accounts` (right)
+- **No trailing slash**, **no file extension**
 
 ---
 
-## 7. 메서드 네이밍 및 구성
+## 7. Method naming and organization
 
-### Controller 메서드
+### Controller methods
 
-- `create`, `deposit`, `withdraw`, `suspend`, `reactivate`, `close`, `get`, `getTransactions` 등 행위가 드러나는 동사 사용
-- 반환 타입은 Application Result record를 그대로 사용 (별도 Response 클래스로 감싸지 않는다 — `layer-architecture.md` "Interface DTO — thin wrapper" 참고)
-- 로직 없이 Command/Query 변환 + Service 위임만 수행
+- Use verbs that reveal the action: `create`, `deposit`, `withdraw`, `suspend`, `reactivate`, `close`, `get`, `getTransactions`, etc.
+- The return type is the Application Result record used as-is (it is not wrapped in a separate Response class — see "Interface DTO — a thin wrapper" in `layer-architecture.md`)
+- No logic — only Command/Query conversion + delegation to the Service
 
 ```java
-// 올바른 방식
+// Correct
 @PostMapping("/{accountId}/deposit")
 @ResponseStatus(HttpStatus.CREATED)
 public TransactionResult deposit(
@@ -297,30 +297,30 @@ public TransactionResult deposit(
 }
 ```
 
-### Application Service 메서드 구성 순서
+### Application Service method ordering
 
-1. `private final` 필드 (Lombok `@RequiredArgsConstructor`가 생성자 생성)
-2. public 유스케이스 메서드
-3. private 헬퍼 메서드 (있는 경우)
+1. `private final` fields (Lombok's `@RequiredArgsConstructor` generates the constructor)
+2. Public use-case methods
+3. Private helper methods (if any)
 
-### Repository 메서드 네이밍
+### Repository method naming
 
-- 조회: `find<Noun>s`(복수형) 하나로 통일 — 단건 조회도 `take: 1` + `Stream.findFirst()`로 이 메서드를 재사용한다(`repository-pattern.md` 참고). Spring Data 파생 쿼리(`findBy...`)는 `AccountJpaRepository`(infrastructure 내부 전용) 레벨에서만 쓴다.
-- 저장: `save<Noun>`(예: `saveAccount`)
-- 삭제: `delete<Noun>` — soft delete로 구현 (`repository-pattern.md` 참고)
-- `update<Noun>` 메서드는 두지 않는다 — 조회 후 Aggregate 도메인 메서드로 상태를 바꾸고 `save<Noun>`으로 저장한다.
+- Query: unified into a single `find<Noun>s` (plural) — a single-record lookup also reuses this method via `take: 1` + `Stream.findFirst()` (see `repository-pattern.md`). Spring Data derived queries (`findBy...`) are used only at the `AccountJpaRepository` (infrastructure-internal-only) level.
+- Save: `save<Noun>` (e.g. `saveAccount`)
+- Delete: `delete<Noun>` — implemented as a soft delete (see `repository-pattern.md`)
+- No `update<Noun>` method is provided — fetch, change state via an Aggregate domain method, and save via `save<Noun>`.
 
-### Aggregate 도메인 메서드
+### Aggregate domain methods
 
-- 동사형 — `deposit()`, `withdraw()`, `suspend()`, `reactivate()`, `close()`
-- 반환 타입은 필요한 경우만 (하위 Entity 생성 결과를 반환하는 `deposit()` 등), 대부분은 `void`
-- 불변식 위반 시 메서드 진입 초반에 즉시 예외를 던진다 (guard clause 스타일)
+- Verb form — `deposit()`, `withdraw()`, `suspend()`, `reactivate()`, `close()`
+- A return type only when needed (e.g. `deposit()`, which returns the created child-Entity result) — otherwise mostly `void`
+- On an invariant violation, throw immediately near the start of the method (guard-clause style)
 
 ---
 
-## 8. import / 패키지 구성 패턴
+## 8. import / package organization patterns
 
-### import 그룹 순서 — 표준 Java 관례
+### import group order — standard Java convention
 
 ```java
 // 1. java.* / javax.* / jakarta.*
@@ -328,120 +328,120 @@ import java.time.LocalDateTime;
 import java.util.List;
 import jakarta.persistence.Entity;
 
-// 2. 서드파티 (org.springframework.*, lombok.* 등)
+// 2. Third-party (org.springframework.*, lombok.*, etc)
 import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 
-// 3. 프로젝트 내부 (com.example.accountservice.*)
+// 3. Project-internal (com.example.accountservice.*)
 import com.example.accountservice.account.domain.Account;
 import com.example.accountservice.account.domain.AccountRepository;
 ```
 
-- IDE(IntelliJ) 기본 import 정렬이 이 순서를 자동 적용한다 — 와일드카드 import(`import com.example.accountservice.account.application.command.*`)는 같은 패키지 내 다수 클래스를 한 번에 참조할 때만 예외적으로 허용한다(`AccountController`가 실제로 이 패턴을 쓴다).
-- **상대 경로 개념 자체가 Java에는 없다** — 패키지 선언(`package com.example.accountservice.account.domain;`)과 완전한 import 경로만 존재하므로 root의 "상대경로 import 금지" 규칙은 Java에서는 자동으로 충족된다.
+- The IDE's (IntelliJ) default import sorting applies this order automatically — a wildcard import (`import com.example.accountservice.account.application.command.*`) is only allowed as an exception when referencing many classes in the same package at once (`AccountController` actually uses this pattern).
+- **Java has no concept of a relative path at all** — only a package declaration (`package com.example.accountservice.account.domain;`) and a fully-qualified import path exist, so the root's "no relative-path imports" rule is automatically satisfied in Java.
 
-### 패키지 = Bounded Context 경계
+### Package = Bounded Context boundary
 
 ```
 com.example.accountservice/
-  account/     ← domain/application/infrastructure/interfaces 4레이어 전부 포함 (notification Technical Service도 이 안에 있다)
-  common/      ← 공유 유틸/부품 (shared-modules.md 참고)
+  account/     ← contains all 4 layers: domain/application/infrastructure/interfaces (the notification Technical Service is inside this too)
+  common/      ← shared utilities/components (see shared-modules.md)
   AccountServiceApplication.java
 ```
 
-레이어(`controllers/`, `services/`) 기준으로 최상위 패키지를 나누지 않는다 — 도메인(BC) 기준으로 나눈다.
+Top-level packages are not split by layer (`controllers/`, `services/`) — they are split by domain (BC).
 
 ---
 
-## 9. Swagger / OpenAPI 문서화 패턴 — springdoc-openapi (도입 시)
+## 9. Swagger / OpenAPI documentation pattern — springdoc-openapi (once introduced)
 
-`build.gradle`에 `springdoc-openapi` 의존성이 아직 없다(`bootstrap.md` 참고) — 이 절은 도입 시 따를 패턴이며, 임의로 이미 구현된 것처럼 문서화하지 않는다.
+`build.gradle` does not yet have the `springdoc-openapi` dependency (see `bootstrap.md`) — this section is the pattern to follow once it's introduced; do not document it as if it's already implemented.
 
 ```groovy
-// build.gradle — 도입 시 추가
+// build.gradle — add once introduced
 implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 ```
 
 ```java
-// 올바른 방식 — record 필드에 springdoc 애노테이션
+// Correct — springdoc annotations on record fields
 public record CreateAccountRequest(
-        @Schema(description = "이메일", example = "owner@example.com") @NotBlank @Email String email,
-        @Schema(description = "통화 코드 (ISO 4217)", example = "KRW") @NotBlank String currency
+        @Schema(description = "Email", example = "owner@example.com") @NotBlank @Email String email,
+        @Schema(description = "Currency code (ISO 4217)", example = "KRW") @NotBlank String currency
 ) {}
 ```
 
 ```java
-// Controller 메서드 — @Operation으로 요약, @ApiResponse로 상태 코드 문서화
-@Operation(summary = "계좌 개설")
-@ApiResponse(responseCode = "201", description = "생성 성공")
+// Controller method — @Operation for a summary, @ApiResponse to document status codes
+@Operation(summary = "Open an account")
+@ApiResponse(responseCode = "201", description = "Created successfully")
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 public CreateAccountResult createAccount(@Valid @RequestBody CreateAccountRequest request) { ... }
 ```
 
-- **DTO Validation은 Bean Validation(`jakarta.validation.constraints.*`)**로 표현한다 — `@NotBlank`, `@Email`, `@Min`, `@Max` 등. NestJS의 `class-validator` 데코레이터에 대응한다.
-- springdoc은 `@RestController`/`@RequestMapping`/`@Valid` 애노테이션을 리플렉션으로 읽어 `/v3/api-docs`, `/swagger-ui.html`을 **자동** 노출한다 — NestJS의 `SwaggerModule.createDocument()`처럼 `main()`에서 문서 객체를 조립할 필요가 없다(`bootstrap.md` 참고).
-- Bearer 인증 스킴, 제목/버전 등 커스터마이징은 `@Configuration` 클래스의 `@Bean OpenAPI` 하나로 충분하다.
+- **DTO validation is expressed via Bean Validation** (`jakarta.validation.constraints.*`) — `@NotBlank`, `@Email`, `@Min`, `@Max`, etc. This corresponds to NestJS's `class-validator` decorators.
+- springdoc reads `@RestController`/`@RequestMapping`/`@Valid` annotations via reflection and **automatically** exposes `/v3/api-docs`, `/swagger-ui.html` — unlike NestJS's `SwaggerModule.createDocument()`, there's no need to assemble a document object in `main()` (see `bootstrap.md`).
+- Customizing the Bearer auth scheme, title/version, etc. only requires a single `@Bean OpenAPI` in a `@Configuration` class.
 
 ---
 
-## 10. 로거 패턴
+## 10. Logger pattern
 
-### 선언 — 클래스 필드로 고정, SLF4J
+### Declaration — fixed as a class field, SLF4J
 
 ```java
 private static final Logger log = LoggerFactory.getLogger(NotificationServiceImpl.class);
 ```
 
-### 구조화된 로그 — `StructuredArguments.kv(...)`
+### Structured logging — `StructuredArguments.kv(...)`
 
 ```java
-// 올바른 방식 — snake_case 필드명을 명시적으로 구성
+// Correct — explicitly structure snake_case field names
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
-log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", messageId));
+log.info("Email sent", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", messageId));
 ```
 
 ```java
-// 지양 — {} 플레이스홀더만으로는 로그 수집기가 필드를 개별 인덱싱할 수 없다
-log.info("이메일 발송됨: accountId={}, eventType={}", accountId, eventType);
+// Avoid — with only {} placeholders, a log collector can't index the fields individually
+log.info("Email sent: accountId={}, eventType={}", accountId, eventType);
 ```
 
-- 로컬 프로필은 사람이 읽기 쉬운 평문(`%d{HH:mm:ss} %-5level %logger{36} - %msg%n`), 운영 프로필은 JSON(Logstash 인코더)으로 `springProfile` 분기한다 (`observability.md` 참고).
-- Correlation ID는 `Filter`가 MDC에 주입하고, JSON 인코더가 `includeMdcKeyName`으로 자동 포함한다 — 매 로그 호출마다 correlationId를 인자로 넘길 필요가 없다.
+- The local profile branches to human-readable plain text (`%d{HH:mm:ss} %-5level %logger{36} - %msg%n`), and the production profile branches to JSON (a Logstash encoder) via `springProfile` (see `observability.md`).
+- The Correlation ID is injected into the MDC by a `Filter`, and the JSON encoder automatically includes it via `includeMdcKeyName` — there's no need to pass correlationId as an argument on every log call.
 
-### 레이어별 로깅 기준
+### Logging criteria by layer
 
-| 레이어 | 로깅 대상 |
+| Layer | What to log |
 |---|---|
-| Domain | **금지** — 어떤 도메인 메서드도 Logger를 import하지 않는다 |
-| Application | 비즈니스 이벤트, 외부 호출 결과 |
-| Infrastructure | 외부 연동 실패/재시도 |
-| Interfaces | 요청 에러(`@ExceptionHandler` 진입 시 `log.warn`) |
+| Domain | **Forbidden** — no domain method imports a Logger |
+| Application | Business events, results of external calls |
+| Infrastructure | External-integration failures/retries |
+| Interfaces | Request errors (`log.warn` on entry to `@ExceptionHandler`) |
 
 ---
 
-## 11. 주석 스타일
+## 11. Comment style
 
-- 비즈니스 도메인 설명은 한글 인라인 주석(`//`)으로 작성한다.
-- Javadoc(`/** ... */`)은 **다른 BC/팀이 호출하는 public API**(Adapter 인터페이스 등)에만 선택적으로 사용한다 — 내부 구현 세부사항에는 쓰지 않는다.
-- 긴 메서드는 섹션 주석으로 논리적 구분을 표시한다.
+- Business-domain explanations are written as inline comments (`//`), in English.
+- Javadoc (`/** ... */`) is used selectively, only for a **public API called by another BC/team** (an Adapter interface, etc) — it is not used for internal implementation details.
+- A long method uses section comments to mark logical divisions.
 
 ```java
-// 올바른 방식 — Adapter 인터페이스에는 Javadoc으로 계약을 설명
+// Correct — an Adapter interface explains the contract via Javadoc
 public interface UserAdapter {
     /**
-     * accountId 소유자의 표시 이름을 조회한다.
-     * User BC의 내부 구조는 이 메서드 시그니처 뒤에 완전히 숨겨진다.
+     * Fetches the display name of the owner of accountId.
+     * The User BC's internal structure is completely hidden behind this method signature.
      */
     Optional<UserSummary> findUser(String ownerId);
 }
 
-// 올바른 방식 — Service 메서드 내부는 // 섹션 주석
+// Correct — inside a Service method, use // section comments
 public CreateAccountResult create(CreateAccountCommand command) {
-    // Aggregate 생성 (불변식은 생성자/팩토리에서 검증)
+    // Create the Aggregate (invariants are validated in the constructor/factory)
     Account account = Account.create(command.ownerId(), command.email(), command.currency());
-    // 저장 (Outbox 포함, 같은 트랜잭션)
+    // Save (including the Outbox, in the same transaction)
     accountRepository.saveAccount(account);
     return new CreateAccountResult(account.getAccountId(), account.getOwnerId(), account.getBalance().amount(), account.getBalance().currency());
 }
@@ -449,11 +449,11 @@ public CreateAccountResult create(CreateAccountCommand command) {
 
 ---
 
-## 12. 커밋 메시지 컨벤션
+## 12. Commit message convention
 
-루트 [conventions.md](../../../docs/conventions.md) 2절과 동일한 [Conventional Commits](https://www.conventionalcommits.org/) 스펙을 따른다 — Java Spring Boot 구현이라고 해서 다른 스킴을 쓰지 않는다.
+Follows the same [Conventional Commits](https://www.conventionalcommits.org/) spec as section 2 of the root [conventions.md](../../../docs/conventions.md) — being a Java Spring Boot implementation is no reason to use a different scheme.
 
-### 메시지 구조
+### Message structure
 
 ```
 <type>(<scope>): <description>
@@ -463,56 +463,56 @@ public CreateAccountResult create(CreateAccountCommand command) {
 [optional footer(s)]
 ```
 
-### type 목록
+### type list
 
-| type | 설명 | 예시 |
+| type | Description | Example |
 |------|------|------|
-| `feat` | 새로운 기능 추가 | `feat(account): 계좌 정지 기능 추가` |
-| `fix` | 버그 수정 | `fix(account): 잔액 부족 시에도 출금이 성공하는 문제 수정` |
-| `refactor` | 기능 변경 없이 코드 구조 변경 | `refactor(account): 조회 로직을 AccountQuery로 분리` |
-| `docs` | 문서만 변경 | `docs: aggregate-id 가이드 추가` |
-| `test` | 테스트 추가 또는 수정 | `test(account): 계좌 정지 불변식 단위 테스트 추가` |
-| `chore` | 빌드, CI, 의존성 등 코드 외적인 작업 | `chore(deps): springdoc-openapi 의존성 추가` |
-| `style` | 코드 포맷팅, 동작에 영향 없는 변경 | `style: import 순서 정리` |
-| `perf` | 성능 개선 | `perf(account): 거래 내역 조회 쿼리 projection 최적화` |
+| `feat` | Add a new feature | `feat(account): add account suspension` |
+| `fix` | Fix a bug | `fix(account): fix withdrawal succeeding despite insufficient balance` |
+| `refactor` | Restructure code with no behavior change | `refactor(account): extract query logic into AccountQuery` |
+| `docs` | Documentation-only change | `docs: add aggregate-id guide` |
+| `test` | Add or modify tests | `test(account): add unit tests for account suspension invariants` |
+| `chore` | Build, CI, dependencies, and other non-code-behavior work | `chore(deps): add springdoc-openapi dependency` |
+| `style` | Code formatting, no behavior change | `style: clean up import order` |
+| `perf` | Performance improvement | `perf(account): optimize the transaction-history query projection` |
 
-### scope / description 규칙
+### scope / description rules
 
-- scope는 **서비스 도메인명**(`account`, `notification` 등) 또는 코드 외적 변경 대상(`ci`, `deps`, `docker`)
-- description은 한글 서술형("추가", "수정", "제거"), 끝에 마침표 없음
+- scope is the **service domain name** (`account`, `notification`, etc) or a non-code target (`ci`, `deps`, `docker`)
+- description is a descriptive English phrase, with no trailing period
 
 ### BREAKING CHANGE
 
 ```
-feat(account)!: 계좌 응답 스키마 변경
+feat(account)!: change the account response schema
 
-BREAKING CHANGE: GetAccountResult의 balance 필드가 balance.amount/balance.currency로 분리됨
+BREAKING CHANGE: GetAccountResult's balance field is split into balance.amount/balance.currency
 ```
 
 ---
 
-## 13. 브랜치 및 PR 컨벤션
+## 13. Branch and PR conventions
 
-루트 [conventions.md](../../../docs/conventions.md) 3절과 동일한 Conventional Branch 스킴을 따른다.
+Follows the same Conventional Branch scheme as section 3 of the root [conventions.md](../../../docs/conventions.md).
 
 ```
 <type>/<scope>-<short-description>
 ```
 
-| type | 용도 | 예시 |
+| type | Purpose | Example |
 |------|------|------|
-| `feat` | 새 기능 개발 | `feat/account-suspend` |
-| `fix` | 버그 수정 | `fix/account-withdraw-balance-check` |
-| `refactor` | 리팩터링 | `refactor/account-query-separation` |
-| `docs` | 문서 변경 | `docs/aggregate-id-guide` |
-| `test` | 테스트 추가/수정 | `test/account-invariant` |
-| `chore` | 빌드, CI, 의존성 | `chore/gradle-springdoc` |
+| `feat` | New feature development | `feat/account-suspend` |
+| `fix` | Bug fix | `fix/account-withdraw-balance-check` |
+| `refactor` | Refactoring | `refactor/account-query-separation` |
+| `docs` | Documentation change | `docs/aggregate-id-guide` |
+| `test` | Add/modify tests | `test/account-invariant` |
+| `chore` | Build, CI, dependencies | `chore/gradle-springdoc` |
 
-**규칙:**
-- 모든 단어는 `kebab-case`로 작성한다.
-- `main` 브랜치에서 분기하고, `main`에 직접 commit/push하지 않는다.
+**Rules:**
+- Every word is written in `kebab-case`.
+- Branch off `main`, and never commit/push directly to `main`.
 
-### PR 워크플로우
+### PR workflow
 
 ```
 1. git checkout main && git pull origin main
@@ -522,37 +522,37 @@ BREAKING CHANGE: GetAccountResult의 balance 필드가 balance.amount/balance.cu
 5. gh pr create --base main --title "<type>(<scope>): <description>" --body "..."
 ```
 
-### PR 본문
+### PR body
 
 ```markdown
 ## Summary
-- 변경 사항을 1~3줄로 요약
+- Summarize the change in 1-3 lines
 
 ## Test plan
-- [ ] ./harness.sh <projectRoot> 통과
-- [ ] Domain/Application 단위 테스트 통과
-- [ ] E2E 테스트 통과 (Testcontainers)
+- [ ] ./harness.sh <projectRoot> passes
+- [ ] Domain/Application unit tests pass
+- [ ] E2E tests pass (Testcontainers)
 ```
 
-### 머지 전략
+### Merge strategy
 
-- **Squash and merge**를 기본으로 사용한다. 머지 후 원격 브랜치는 자동 삭제한다.
+- **Squash and merge** is the default. The remote branch is automatically deleted after merging.
 
 ---
 
-## 14. 테스트 패턴
+## 14. Testing patterns
 
-**상세 근거와 코드 예시는 [architecture/testing.md](architecture/testing.md) 참고.** 여기서는 컨벤션 요약만 다룬다.
+**See [architecture/testing.md](architecture/testing.md) for detailed rationale and code examples.** This section only covers a convention summary.
 
-### 3계층 — Domain / Application / E2E
+### 3 tiers — Domain / Application / E2E
 
-| 계층 | 프레임워크 | mock 대상 |
+| Tier | Framework | What's mocked |
 |---|---|---|
-| Domain | 없음 (`new Account.create(...)` 직접 호출) | 없음 |
-| Application | JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`) | Repository/Query **인터페이스** |
-| E2E | `@SpringBootTest` + Testcontainers | 없음 (실제 컨테이너) |
+| Domain | None (calls `Account.create(...)` directly) | None |
+| Application | JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`) | Repository/Query **interfaces** |
+| E2E | `@SpringBootTest` + Testcontainers | None (real containers) |
 
-### 테스트 파일 배치 — Gradle 표준 소스셋
+### Test file placement — the standard Gradle source set
 
 ```
 src/test/java/com/example/accountservice/account/
@@ -561,12 +561,12 @@ src/test/java/com/example/accountservice/account/
   interfaces/rest/AccountControllerE2ETest.java
 ```
 
-NestJS처럼 소스 파일 옆에 `.spec.ts`를 두는 것이 아니라, `src/main`과 분리된 `src/test` 트리 안에서 동일한 패키지 구조를 미러링한다.
+Rather than placing a `.spec.ts` next to the source file as NestJS does, this mirrors the same package structure inside a `src/test` tree separate from `src/main`.
 
-### 테스트 메서드 네이밍 — 완전한 한글 문장 (이 저장소의 확립된 관례)
+### Test method naming — full Korean sentences (this repository's established convention)
 
 ```java
-// 올바른 방식 — 이미 채택된 관례
+// Correct — the already-adopted convention
 @Test
 void 정지된_계좌에_입금하면_예외를_던진다() { ... }
 
@@ -574,12 +574,12 @@ void 정지된_계좌에_입금하면_예외를_던진다() { ... }
 void 생성_요청이_유효하면_201과_계좌_정보를_반환한다() { ... }
 ```
 
-Java 메서드명은 밑줄과 한글을 그대로 쓸 수 있다(유니코드 식별자 허용). root의 `<행위>_when_<조건>_then_<기대결과>` 영문 스네이크 케이스 패턴을 강제로 옮기지 않고, 완전한 한글 문장으로 테스트 의도를 표현하는 이 저장소의 관례를 그대로 따른다. `@DisplayName` 없이도 메서드명 자체가 읽힌다.
+Java method names can use underscores and Korean characters as-is (Unicode identifiers are allowed). Rather than forcing the root's `<action>_when_<condition>_then_<expected_result>` English snake_case pattern, this repository follows its own established convention of expressing test intent as full Korean sentences. The method name itself reads clearly with no `@DisplayName` needed.
 
-### 예외 검증 — 문자열이 아닌 `ErrorCode`로
+### Verifying exceptions — via `ErrorCode`, not a string
 
 ```java
-// 올바른 방식
+// Correct
 assertThatThrownBy(() -> account.withdraw(2000))
         .isInstanceOf(AccountException.class)
         .extracting(e -> ((AccountException) e).code())
@@ -587,11 +587,11 @@ assertThatThrownBy(() -> account.withdraw(2000))
 ```
 
 ```java
-// 잘못된 방식 — 메시지 문구가 바뀌면 테스트가 깨짐
-assertThatThrownBy(() -> account.withdraw(2000)).hasMessage("잔액이 부족합니다.");
+// Incorrect — the test breaks if the message wording changes
+assertThatThrownBy(() -> account.withdraw(2000)).hasMessage("Insufficient balance.");
 ```
 
-### E2E — Testcontainers 전용, in-memory DB 금지
+### E2E — Testcontainers only, no in-memory DB
 
 ```java
 @Testcontainers
@@ -608,4 +608,4 @@ class AccountControllerE2ETest {
 }
 ```
 
-H2 같은 in-memory DB로 대체하지 않는다 — 운영 DB(Postgres)와 SQL 방언 차이로 인한 거짓 양성/음성을 피하기 위함이다.
+Do not substitute an in-memory DB like H2 — this is to avoid false positives/negatives caused by SQL dialect differences from the production DB (Postgres).

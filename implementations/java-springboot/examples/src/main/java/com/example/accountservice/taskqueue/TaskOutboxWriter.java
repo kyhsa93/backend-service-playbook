@@ -6,9 +6,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Scheduler가 Task를 task_outbox 테이블에 적재한다 — {@code outbox/OutboxWriter}와 동일한 역할을 Task에 대해 수행한다.
- * Scheduler(Cron)는 자연스러운 DB 트랜잭션 문맥이 없으므로, 이 단일 insert 자체가 원자적 적재 단위다(scheduling.md "Task Outbox
- * 패턴" — dual-write 문제 차단).
+ * A Scheduler enqueues a Task into the task_outbox table — performing the same role for Tasks that
+ * {@code outbox/OutboxWriter} performs for events. A Scheduler (Cron) has no natural DB transaction
+ * context, so this single insert is itself the atomic unit of enqueueing (see the "Task Outbox
+ * pattern" in scheduling.md — blocking the dual-write problem).
  */
 @Component
 @RequiredArgsConstructor
@@ -26,7 +27,7 @@ public class TaskOutboxWriter {
                             groupId,
                             deduplicationId));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Task 페이로드 직렬화 실패: " + taskType, e);
+            throw new IllegalStateException("Failed to serialize task payload: " + taskType, e);
         }
     }
 }

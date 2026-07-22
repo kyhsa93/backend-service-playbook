@@ -3,8 +3,9 @@ package com.example.accountservice.account.infrastructure.persistence;
 import com.example.accountservice.account.domain.Account;
 
 /**
- * Account(순수 도메인) ↔ AccountJpaEntity(JPA 매핑) 변환 전담 클래스. AccountRepositoryImpl 내부에서만 사용된다 —
- * Domain/Application 레이어는 이 클래스를 알지 못한다.
+ * The class dedicated to converting between Account (pure domain) and AccountJpaEntity (JPA
+ * mapping). It is used only inside AccountRepositoryImpl — the Domain/Application layers have no
+ * knowledge of this class.
  */
 final class AccountMapper {
 
@@ -23,7 +24,7 @@ final class AccountMapper {
                 entity.getLastInterestPaidAt());
     }
 
-    /** 신규 Account를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
+    /** Creates a new entity (no PK, to be inserted) for a new Account. */
     static AccountJpaEntity toNewEntity(Account account) {
         return new AccountJpaEntity(
                 null,
@@ -38,7 +39,10 @@ final class AccountMapper {
                 account.getLastInterestPaidAt());
     }
 
-    /** 기존 엔티티(PK 보존)에 도메인 Account의 최신 상태를 반영한다 — update 대상. */
+    /**
+     * Applies the domain Account's latest state onto the existing entity (PK preserved) — to be
+     * updated.
+     */
     static AccountJpaEntity updateEntity(AccountJpaEntity entity, Account account) {
         entity.applyMutableState(
                 account.getEmail(),

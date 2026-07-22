@@ -5,9 +5,9 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 
 /**
- * Card Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 영속성 매핑은
- * infrastructure/persistence/CardJpaEntity + CardMapper가 전담한다 (account/domain/Account.java와 동일한
- * domain/JPA 분리 구조).
+ * Card Aggregate Root — a pure domain object. It does not depend on any framework/ORM. Persistence
+ * mapping is handled entirely by infrastructure/persistence/CardJpaEntity + CardMapper (the same
+ * domain/JPA separation as account/domain/Account.java).
  */
 public class Card {
 
@@ -17,14 +17,16 @@ public class Card {
     private String brand;
     private CardStatus status;
     private LocalDateTime createdAt;
-    // 이번 달 카드 사용내역 안내를 이미 보냈는지 판단하는 Level 2 Ledger 필드 — shouldSendStatement() 참고.
+    // Level 2 Ledger field used to determine whether this month's card statement notice has
+    // already been sent — see shouldSendStatement().
     private YearMonth lastStatementSentMonth;
 
     private Card() {}
 
     /**
-     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Card를 복원할 때 사용한다. issue()와 달리 새 식별자·상태를 만들지 않고 저장된 상태를
-     * 그대로 재구성한다.
+     * Used by the Repository implementation to restore a Card from persisted data (a JPA entity,
+     * etc). Unlike issue(), it does not create a new identifier/status — it reconstructs the saved
+     * state as-is.
      */
     public static Card reconstitute(
             String cardId,
@@ -46,8 +48,9 @@ public class Card {
     }
 
     /**
-     * 연결 계좌의 활성 여부는 Card Aggregate가 알 수 없다 — 발급 가능 여부(계좌 상태)는 Application 레이어가 AccountAdapter(ACL)로
-     * 동기 조회해 판단한 뒤 이 팩토리를 호출한다.
+     * The Card Aggregate cannot know whether the linked account is active — the Application layer
+     * synchronously checks issuability (account status) via AccountAdapter (ACL) and only then
+     * calls this factory.
      */
     public static Card issue(String accountId, String ownerId, String brand) {
         Card card = new Card();
@@ -64,25 +67,31 @@ public class Card {
         if (this.status == CardStatus.CANCELLED) {
             throw new CardException(
                     CardException.ErrorCode.CANCELLED_CARD_CANNOT_BE_SUSPENDED,
-                    "해지된 카드는 정지할 수 없습니다.");
+                    "A cancelled card cannot be suspended.");
         }
         if (this.status == CardStatus.SUSPENDED) {
             throw new CardException(
-                    CardException.ErrorCode.CARD_ALREADY_SUSPENDED, "이미 정지된 카드입니다.");
+                    CardException.ErrorCode.CARD_ALREADY_SUSPENDED,
+                    "The card is already suspended.");
         }
         this.status = CardStatus.SUSPENDED;
     }
 
     /**
-     * 이번 달 카드 사용내역 안내를 아직 보내지 않은, 안내 대상 카드인지 판단한다 — Level 2 Ledger 멱등성을 Aggregate 필드에 인라인한
-     * 설계다(domain-events.md 멱등성 3단계, account/domain/Account.java의 lastInterestPaidAt과 동일한 이유).
-     * 해지/정지된 카드는 대상에서 제외한다 — ACTIVE 카드만 매월 안내를 받는다.
+     * Determines whether this card is a target that hasn't yet been sent this month's card
+     * statement notice — this design inlines Level 2 Ledger idempotency into an Aggregate field
+     * (see the 3 levels of idempotency in domain-events.md, for the same reason as
+     * lastInterestPaidAt in account/domain/Account.java). Cancelled/suspended cards are excluded
+     * from the target set — only ACTIVE cards receive the monthly notice.
      */
     public boolean shouldSendStatement(YearMonth month) {
         return this.status == CardStatus.ACTIVE && !month.equals(this.lastStatementSentMonth);
     }
 
-    /** 이번 달 안내를 보냈음을 기록한다 — 같은 달에 배치가 at-least-once로 재실행돼도 재발송하지 않는다. */
+    /**
+     * Records that this month's notice has been sent — even if the batch job re-runs at-least-once
+     * in the same month, it will not resend.
+     */
     public void markStatementSent(YearMonth month) {
         this.lastStatementSentMonth = month;
     }
@@ -90,7 +99,8 @@ public class Card {
     public void cancel() {
         if (this.status == CardStatus.CANCELLED) {
             throw new CardException(
-                    CardException.ErrorCode.CARD_ALREADY_CANCELLED, "이미 해지된 카드입니다.");
+                    CardException.ErrorCode.CARD_ALREADY_CANCELLED,
+                    "The card is already cancelled.");
         }
         this.status = CardStatus.CANCELLED;
     }

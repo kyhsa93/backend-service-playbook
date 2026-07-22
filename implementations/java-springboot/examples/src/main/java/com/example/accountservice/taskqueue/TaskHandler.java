@@ -1,11 +1,13 @@
 package com.example.accountservice.taskqueue;
 
 /**
- * Task Queue 메시지 한 건을 처리하는 계약. {@code taskType()}은 Scheduler가 {@link TaskOutboxWriter#enqueue}에 넘긴
- * taskType과 일치해야 {@link TaskConsumer}가 올바른 핸들러로 라우팅한다. 구현체는 각 도메인의 {@code interfaces/task/}에 위치하는
- * Task Controller다 — HTTP Controller가 Application Service에 위임하듯 이 핸들러도 Command Service를 호출할 뿐 비즈니스
- * 로직을 갖지 않는다 (scheduling.md "Task Controller — Interface 레이어"). 예외를 삼키지 않고 그대로 던져야 {@link
- * TaskConsumer}가 메시지를 삭제하지 않고 재시도(at-least-once)/DLQ로 넘길 수 있다.
+ * A contract for processing one Task Queue message. {@code taskType()} must match the taskType the
+ * Scheduler passed to {@link TaskOutboxWriter#enqueue} for {@link TaskConsumer} to route it to the
+ * correct handler. Implementations are the Task Controller located under each domain's {@code
+ * interfaces/task/} — just as an HTTP Controller delegates to an Application Service, this handler
+ * only calls a Command Service and holds no business logic itself (see "Task Controller — the
+ * Interface layer" in scheduling.md). Exceptions must be thrown as-is, not swallowed, so that
+ * {@link TaskConsumer} can leave the message undeleted for retry (at-least-once) / DLQ.
  */
 public interface TaskHandler {
 

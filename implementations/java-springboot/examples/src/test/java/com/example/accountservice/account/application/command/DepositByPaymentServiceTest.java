@@ -47,9 +47,11 @@ class DepositByPaymentServiceTest {
 
     @Test
     void 결제완료_출금과_같은_paymentId를_참조해도_type이_다르면_중복처리로_판단하지_않는다() {
-        // 결제완료(WITHDRAWAL)와 그 결제취소 보상 크레딧(DEPOSIT)은 같은 paymentId를 referenceId로 공유하는
-        // 서로 다른 거래다 — hasTransactionWithReference가 (referenceId, type) 조합으로 확인하므로,
-        // WITHDRAWAL이 이미 존재해도 DEPOSIT 여부는 별도로 확인되어야 한다(이 테스트는 그 호출 스코프를 검증한다).
+        // A completed payment (WITHDRAWAL) and its cancellation compensation credit (DEPOSIT) share
+        // the same paymentId as referenceId, but they are different transactions —
+        // hasTransactionWithReference checks the (referenceId, type) combination, so whether a
+        // DEPOSIT exists must be checked separately even if a WITHDRAWAL already exists (this test
+        // verifies that call scope).
         Account account = Account.create("owner-1", "owner-1@example.com", "KRW");
         when(accountRepository.hasTransactionWithReference("payment-1", TransactionType.DEPOSIT))
                 .thenReturn(false);

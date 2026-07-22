@@ -15,7 +15,8 @@ public class IssueCardService {
     private final AccountAdapter accountAdapter;
 
     public IssueCardResult issue(IssueCardCommand command) {
-        // 동기 Adapter(ACL)로 연결 계좌를 조회 — 응답(발급 가부)에 필요하므로 동기 호출.
+        // Query the linked account via the synchronous Adapter (ACL) — a synchronous call is
+        // needed because the response (whether issuance succeeds) depends on it.
         AccountAdapter.AccountView account =
                 accountAdapter
                         .findAccount(command.accountId(), command.requesterId())
@@ -23,11 +24,11 @@ public class IssueCardService {
                                 () ->
                                         new CardException(
                                                 CardException.ErrorCode.LINKED_ACCOUNT_NOT_FOUND,
-                                                "연결할 계좌를 찾을 수 없습니다."));
+                                                "The account to link could not be found."));
         if (!account.active()) {
             throw new CardException(
                     CardException.ErrorCode.CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT,
-                    "활성 상태의 계좌만 카드를 발급할 수 있습니다.");
+                    "Only an active account can have a card issued.");
         }
 
         Card card = Card.issue(command.accountId(), command.requesterId(), command.brand());

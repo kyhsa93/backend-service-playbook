@@ -26,10 +26,11 @@ dependencyManagement {
 }
 
 dependencies {
-    // Spring Boot 4의 기본 JSON 스택은 Jackson 3(tools.jackson.*)이다. 이 프로젝트의 기존 코드
-    // (OutboxWriter, 각 EventHandler 등)는 Jackson 2(com.fasterxml.jackson.databind.ObjectMapper)를
-    // 생성자 주입으로 사용하므로, Jackson 3 전면 마이그레이션 대신 Spring이 공식 제공하는 Jackson 2
-    // 호환 모듈(spring-boot-jackson2)로 전환해 기존 ObjectMapper 빈 타입을 유지한다.
+    // Spring Boot 4's default JSON stack is Jackson 3 (tools.jackson.*). This project's existing
+    // code (OutboxWriter, each EventHandler, etc) uses Jackson 2
+    // (com.fasterxml.jackson.databind.ObjectMapper) via constructor injection, so instead of a full
+    // Jackson 3 migration, we switch to Spring's officially provided Jackson 2 compatibility module
+    // (spring-boot-jackson2) to keep the existing ObjectMapper bean type.
     implementation('org.springframework.boot:spring-boot-starter-web') {
         exclude group: 'org.springframework.boot', module: 'spring-boot-starter-jackson'
     }
@@ -45,10 +46,11 @@ dependencies {
     implementation 'software.amazon.awssdk:ses'
     implementation 'software.amazon.awssdk:secretsmanager'
     implementation 'software.amazon.awssdk:sqs'
-    // AWS SDK v2의 apache-client 모듈이 내부적으로 Apache HttpClient 5(Apache5HttpClient)를 사용한다.
-    // Spring Boot의 dependency-management BOM이 org.apache.httpcomponents.client5:httpclient5를
-    // 더 낮은 버전으로 downgrade시켜 AWS SDK가 요구하는 클래스(예: TlsSocketStrategy, 5.4+)가
-    // 런타임에 없어 NoClassDefFoundError가 발생하므로, AWS SDK가 요청하는 버전으로 명시 고정한다.
+    // AWS SDK v2's apache-client module internally uses Apache HttpClient 5 (Apache5HttpClient).
+    // Spring Boot's dependency-management BOM downgrades
+    // org.apache.httpcomponents.client5:httpclient5 to a lower version, causing a class the AWS
+    // SDK requires (e.g. TlsSocketStrategy, 5.4+) to be missing at runtime and throwing
+    // NoClassDefFoundError, so we explicitly pin it to the version the AWS SDK requires.
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.6.2'
     implementation 'org.apache.httpcomponents.core5:httpcore5:5.4.3'
     implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
@@ -58,27 +60,30 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    // Spring Boot 4의 모듈 분리로 TestRestTemplate/@AutoConfigureTestRestTemplate이
-    // spring-boot-starter-test에서 spring-boot-resttestclient 모듈로 이동했고, 이 모듈은
-    // spring-boot-restclient를 스스로 끌어오지 않아(spring-projects/spring-boot#48588) 둘 다
-    // 명시적으로 선언해야 한다.
+    // Due to Spring Boot 4's module split, TestRestTemplate/@AutoConfigureTestRestTemplate moved
+    // from spring-boot-starter-test to the spring-boot-resttestclient module, and this module does
+    // not pull in spring-boot-restclient on its own (spring-projects/spring-boot#48588), so both
+    // must be declared explicitly.
     testImplementation 'org.springframework.boot:spring-boot-resttestclient'
     testImplementation 'org.springframework.boot:spring-boot-restclient'
-    // Testcontainers 2.x부터 모듈 아티팩트가 testcontainers-<module> 접두사로 이름이 바뀌었다
-    // (org.testcontainers:junit-jupiter -> org.testcontainers:testcontainers-junit-jupiter 등).
-    // 이전 이름은 testcontainers-bom 2.0.5에 더 이상 없어 Spring Boot 4에서 버전 관리가 사라지며
-    // 빌드가 깨진다(Boot 3.3.5의 spring-boot-dependencies가 예전 이름에 우연히 fallback 버전을
-    // 제공해 왔을 뿐, 실제로는 testcontainers-bom 2.0.5가 적용되지 않고 있었다).
+    // Since Testcontainers 2.x, module artifacts were renamed with a testcontainers-<module>
+    // prefix (org.testcontainers:junit-jupiter -> org.testcontainers:testcontainers-junit-jupiter,
+    // etc). The old names no longer exist in testcontainers-bom 2.0.5, so their version management
+    // disappears under Spring Boot 4 and the build breaks (Boot 3.3.5's spring-boot-dependencies
+    // just happened to provide a fallback version for the old names — testcontainers-bom 2.0.5 was
+    // never actually being applied).
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testImplementation 'org.testcontainers:testcontainers-postgresql'
     testImplementation 'org.testcontainers:testcontainers-localstack'
-    // AuthControllerE2ETest가 sign-in 실패(401) 응답을 검증한다 — 기본 TestRestTemplate
-    // 요청 팩토리(JDK HttpURLConnection 기반)는 POST 요청에 401이 오면 "cannot retry due to
-    // server authentication" 예외를 던지는 알려진 제약이 있어, 이 문제가 없는 httpclient5로 교체한다.
-    // (httpclient5 자체는 위 implementation 블록에서 AWS SDK용으로 이미 선언되어 있어 테스트
-    // classpath에도 전이적으로 포함된다.)
-    // Outbox가 OutboxPoller/OutboxConsumer를 거쳐 SQS로 비동기 처리되므로, 커맨드 응답 이후에도
-    // 크로스 BC 반응(Card 상태 전환, Account 잔액 변경 등)이 완결되기까지 폴링-타임아웃이 필요하다.
+    // AuthControllerE2ETest verifies a sign-in failure (401) response — the default
+    // TestRestTemplate request factory (based on JDK HttpURLConnection) has a known limitation
+    // where it throws a "cannot retry due to server authentication" exception when a POST request
+    // gets a 401, so we swap in httpclient5, which doesn't have this problem.
+    // (httpclient5 itself is already declared for the AWS SDK in the implementation block above,
+    // so it's also transitively included on the test classpath.)
+    // Since the Outbox is processed asynchronously to SQS via OutboxPoller/OutboxConsumer, a
+    // polling timeout is needed even after the command response, until the cross-BC reaction
+    // (Card status transition, Account balance change, etc) completes.
     testImplementation 'org.awaitility:awaitility:4.2.2'
 }
 
@@ -86,10 +91,11 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-// 코드 품질 baseline: 포맷/불필요한 import 등 기계적으로 잡을 수 있는 이슈를 자동 교정한다.
-// Checkstyle(순수 린터, 별도 ruleset 필요)보다 googleJavaFormat 기반 자동 수정이 diff를
-// 최소화하면서 baseline 커버리지를 확보하는 데 더 낮은 마찰 비용을 가진다고 판단해 채택했다.
-// `./gradlew spotlessApply`로 자동 수정, `./gradlew spotlessCheck`(= build에 포함)로 검증한다.
+// Code quality baseline: automatically fixes mechanically-detectable issues like formatting and
+// unused imports. We adopted googleJavaFormat-based auto-fixing over Checkstyle (a pure linter
+// that needs a separate ruleset) because it achieves baseline coverage with lower friction while
+// minimizing diffs. `./gradlew spotlessApply` auto-fixes, `./gradlew spotlessCheck` (included in
+// build) verifies.
 spotless {
     java {
         target 'src/main/java/**/*.java', 'src/test/java/**/*.java'

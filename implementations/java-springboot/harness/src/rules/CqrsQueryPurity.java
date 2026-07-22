@@ -12,13 +12,15 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [11] CQRS Query 순수성 — application/query/ 아래 파일은 쓰기용 Repository 타입을
- * 참조하면 안 된다(cqrs-pattern.md). nestjs harness의 cqrs-pattern evaluator와 동일한
- * 취지를 이 코드베이스의 관용구(javac 기반 정적 검사)로 이식한 규칙이다.
+ * [11] CQRS Query purity — files under application/query/ must not reference a
+ * write-side Repository type (cqrs-pattern.md). This rule ports the same intent as the
+ * nestjs harness's cqrs-pattern evaluator into this codebase's idiom (javac-based static
+ * analysis).
  *
- * "Repository" 문자열 탐지는 주석(Javadoc 등)을 제외한 실제 코드에서만 수행한다 —
- * 예를 들어 {@code AccountQuery}의 Javadoc은 분리 취지를 설명하려고 일부러
- * {@code AccountRepository}를 언급하는데, 이런 문서용 언급까지 위반으로 잡으면 안 된다.
+ * The "Repository" string detection runs only against the actual code, excluding comments
+ * (Javadoc, etc.) — for example, {@code AccountQuery}'s Javadoc deliberately mentions
+ * {@code AccountRepository} to explain the separation's intent, and such documentation
+ * references must not be flagged as violations.
  */
 public final class CqrsQueryPurity {
     private CqrsQueryPurity() {
@@ -39,13 +41,13 @@ public final class CqrsQueryPurity {
             String code = stripComments(readText(f));
             if (code.contains("Repository")) {
                 result.add(Finding.fail(rel,
-                    "application/query/ 하위 파일은 쓰기용 Repository 타입을 참조하면 안 됨 — Query 전용 인터페이스(예: AccountQuery)에 의존해야 함(cqrs-pattern.md)"));
+                    "A file under application/query/ must not reference a write-side Repository type — it must depend on a Query-only interface (e.g. AccountQuery) instead (cqrs-pattern.md)"));
             } else {
-                result.add(Finding.pass(rel + " (Repository 미참조 확인)"));
+                result.add(Finding.pass(rel + " (confirmed no Repository reference)"));
             }
         }
 
-        if (!found) result.add(Finding.skip("application/query/ 없음"));
+        if (!found) result.add(Finding.skip("No application/query/"));
         return result;
     }
 

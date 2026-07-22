@@ -28,13 +28,15 @@ CREATE TABLE refund (
 
 CREATE INDEX idx_refund_payment_id ON refund (payment_id);
 
--- Payment BC의 Integration Event(payment.completed.v1 등)에 대한 Account BC의 반응이 at-least-once
--- 재수신에도 같은 거래를 중복 생성하지 않도록 하는 멱등성 판단 키다(Level 2 Ledger, domain-events.md 참고).
+-- The idempotency key that keeps the Account BC's reaction to a Payment BC Integration Event
+-- (payment.completed.v1, etc) from creating a duplicate transaction even under at-least-once
+-- redelivery (Level 2 Ledger, see domain-events.md).
 ALTER TABLE transactions ADD COLUMN reference_id VARCHAR(255);
 
--- (reference_id, type) 조합에 한해서만 유니크 — 결제완료(WITHDRAWAL)와 그 결제취소 보상 크레딧(DEPOSIT)은
--- 같은 paymentId를 reference_id로 공유하는 서로 다른 거래이므로 reference_id 단독 유니크는 보상 크레딧 삽입
--- 자체를 막아버린다. 동시에 도착한 중복 Integration Event가 애플리케이션의 체크
--- (AccountRepository.hasTransactionWithReference)를 통과해버리는 극히 짧은 race를 DB 제약으로 한 번 더
--- 막는다(Level 2 Ledger의 방어선을 이중화).
+-- Unique only on the (reference_id, type) combination — a payment completion (WITHDRAWAL) and its
+-- payment-cancellation compensating credit (DEPOSIT) are different transactions that share the
+-- same paymentId as reference_id, so a unique constraint on reference_id alone would block the
+-- compensating credit insert itself. This also blocks, via a DB constraint, the extremely narrow
+-- race where a duplicate Integration Event arriving at the same time slips past the application's
+-- check (AccountRepository.hasTransactionWithReference) — doubling up Level 2 Ledger's defense.
 CREATE UNIQUE INDEX uk_transactions_reference_id_type ON transactions (reference_id, type) WHERE reference_id IS NOT NULL;

@@ -1,118 +1,118 @@
-# 공유 코드 구조 (Spring Boot)
+# Shared Code Structure (Spring Boot)
 
-> NestJS 대비 문서. NestJS의 `src/common/`/`src/database/`/`src/outbox/`/`src/auth/`(각각 별도 `@Module`)에 대응하되, Spring Boot는 "공유 모듈"이라는 별도 컨테이너 단위가 없다 — [module-pattern.md](module-pattern.md)에서 설명하듯 패키지 자체가 곧 관례상 경계다.
+> A document contrasted with NestJS. This corresponds to NestJS's `src/common/`/`src/database/`/`src/outbox/`/`src/auth/` (each a separate `@Module`), but Spring Boot has no separate container unit called a "shared module" — as [module-pattern.md](module-pattern.md) explains, the package itself is already the conventional boundary.
 
-## 현재 실제 상태 — `common/`/`config/`/`outbox/`/`auth/` 모두 존재
+## Current actual state — `common/`/`config/`/`outbox/`/`auth/` all exist
 
-`examples/src/main/java/com/example/accountservice/` 트리 전체를 확인한 결과, 최상위 패키지는 `account/`(1번째 도메인), `card/`(2번째 도메인), `payment/`(3번째 도메인 — Payment/Refund, `RefundEligibilityService`), `auth/`(인증/가입), `common/`, `config/`, `outbox/`, `taskqueue/`다. `notification`(Technical Service)은 `account`/`card` 각자 안에 있다 — 최상위가 아니라 각 도메인 내부(`account/application/service/`+`account/infrastructure/notification/`, `card/application/service/`+`card/infrastructure/notification/`)에 별도 인터페이스+구현체를 갖는다 — 공유되지 않는 코드를 미리 공용 패키지로 끌어올리지 않는다는 원칙의 실제 예다(두 도메인이 "이메일 발송"이라는 같은 개념을 쓰지만, 구현체는 서로 다른 발송 이력 테이블을 가지므로 공유 인스턴스를 두지 않는다).
+Looking at the full tree of `examples/src/main/java/com/example/accountservice/`, the top-level packages are `account/` (1st domain), `card/` (2nd domain), `payment/` (3rd domain — Payment/Refund, `RefundEligibilityService`), `auth/` (authentication/sign-up), `common/`, `config/`, `outbox/`, `taskqueue/`. `notification` (a Technical Service) sits inside each of `account`/`card` separately — rather than being top-level, each domain has its own separate interface+implementation inside it (`account/application/service/`+`account/infrastructure/notification/`, `card/application/service/`+`card/infrastructure/notification/`) — a real example of the principle that code isn't preemptively promoted to a shared package before it's actually shared (both domains use the same concept of "sending email," but since the implementations each have their own separate send-history table, no shared instance is used).
 
-여러 도메인이 실제로 공유해 최상위에 있는 패키지는 `common/`(`IdGenerator`, `web/`의 Filter/Interceptor, `SecretService`), `config/`(`@ConfigurationProperties` record들), `outbox/`(`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), `taskqueue/`(`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — scheduling.md 참고, `outbox/`와 형제 구조지만 Task 전용 별도 테이블·큐)다. `database/`는 없다 — 여러 Repository 저장을 하나의 트랜잭션으로 묶어야 하는 시나리오(계좌 간 송금, `AccountRepository.saveAccounts()`) 자체는 있지만, Spring의 `@Transactional`(AOP 프록시 기반)이 이미 그 역할을 대신하므로 별도 공유 패키지가 필요 없다 — 트랜잭션 경계가 필요한 Repository 메서드에 `@Transactional`만 붙이면 된다([persistence.md](persistence.md) 참고).
+The packages actually shared by multiple domains and living at the top level are `common/` (`IdGenerator`, the Filter/Interceptor in `web/`, `SecretService`), `config/` (`@ConfigurationProperties` records), `outbox/` (`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), and `taskqueue/` (`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — see scheduling.md; a sibling structure to `outbox/`, but with its own dedicated table/queue for Tasks). There is no `database/` — while the scenario of bundling multiple Repository saves into one transaction does exist (a transfer between accounts, `AccountRepository.saveAccounts()`), Spring's `@Transactional` (based on an AOP proxy) already plays that role, so no separate shared package is needed — a Repository method that needs a transaction boundary just needs `@Transactional` attached (see [persistence.md](persistence.md)).
 
-상세는 [directory-structure.md](directory-structure.md)의 실제 트리를 참고한다 — 이 문서는 그 배치를 NestJS의 공유 모듈 구조와 대응시켜 설명한다.
+For details, see the actual tree in [directory-structure.md](directory-structure.md) — this document maps that placement against NestJS's shared-module structure.
 
 ---
 
-## 실제 배치
+## The actual placement
 
 ```
 com.example.accountservice/
-  common/                  # 프레임워크 무의존 순수 유틸 + Interface 레이어 공용 부품
-    IdGenerator.java        # aggregate-id.md 참고 — 순수 Java, 어떤 프레임워크도 import 안 함
+  common/                  # framework-independent pure utilities + shared Interface-layer components
+    IdGenerator.java        # see aggregate-id.md — pure Java, imports no framework
     web/
-      GlobalExceptionHandler.java   # @RestControllerAdvice, error-handling.md 참고
-      CorrelationIdFilter.java      # cross-cutting-concerns.md 참고
+      GlobalExceptionHandler.java   # @RestControllerAdvice, see error-handling.md
+      CorrelationIdFilter.java      # see cross-cutting-concerns.md
       RequestLoggingInterceptor.java
       RateLimitFilter.java
     service/
-      SecretService.java            # 인터페이스 — secret-manager.md 참고
+      SecretService.java            # interface — see secret-manager.md
     infrastructure/
-      SecretServiceImpl.java        # TTL 캐시 포함 구현체
+      SecretServiceImpl.java        # implementation with a TTL cache
     config/
-      SecretsEnvironmentPostProcessor.java   # secret-manager.md 참고, prod 프로필에서 jwt.secret 주입
+      SecretsEnvironmentPostProcessor.java   # see secret-manager.md, injects jwt.secret in the prod profile
 
-  config/                  # @ConfigurationProperties record 전용 (common/config와 역할 구분)
-    AwsProperties.java       # config.md 참고
+  config/                  # dedicated to @ConfigurationProperties records (a distinct role from common/config)
+    AwsProperties.java       # see config.md
     SesProperties.java
     JwtProperties.java
-    SecurityConfig.java      # @Configuration, JWT SecurityFilterChain — authentication.md 참고
-    WebConfig.java           # Filter/Interceptor 등록 — cross-cutting-concerns.md 참고
+    SecurityConfig.java      # @Configuration, the JWT SecurityFilterChain — see authentication.md
+    WebConfig.java           # Filter/Interceptor registration — see cross-cutting-concerns.md
 
-  outbox/                   # domain-events.md 참고
-    OutboxEvent.java          # @Entity — Outbox 테이블 매핑
+  outbox/                   # see domain-events.md
+    OutboxEvent.java          # @Entity — maps the Outbox table
     OutboxEventJpaRepository.java
-    OutboxEventHandler.java   # 이벤트 타입별 Handler가 구현하는 인터페이스
-    OutboxWriter.java         # Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
-    OutboxPoller.java         # @Scheduled(fixedDelay=1000) — Outbox 테이블을 폴링해 SQS로 발행
-    OutboxConsumer.java       # SmartLifecycle — SQS 수신 후 OutboxEventHandler로 라우팅
+    OutboxEventHandler.java   # the interface each event type's Handler implements
+    OutboxWriter.java         # writes events as Outbox rows inside the Repository.save() transaction
+    OutboxPoller.java         # @Scheduled(fixedDelay=1000) — polls the Outbox table and publishes to SQS
+    OutboxConsumer.java       # SmartLifecycle — receives from SQS and routes to an OutboxEventHandler
 
-  taskqueue/                # scheduling.md 참고 — outbox/와 형제, Task Queue 전용
-    TaskOutboxEntry.java      # @Entity — task_outbox 테이블 매핑 (groupId/deduplicationId 포함)
+  taskqueue/                # see scheduling.md — a sibling of outbox/, dedicated to the Task Queue
+    TaskOutboxEntry.java      # @Entity — maps the task_outbox table (includes groupId/deduplicationId)
     TaskOutboxJpaRepository.java
-    TaskHandler.java          # taskType별 핸들러가 구현하는 인터페이스 — 구현체는 각 도메인 interfaces/task/
-    TaskOutboxWriter.java     # Scheduler(또는 Command Service)가 task_outbox 행으로 적재
-    TaskOutboxPoller.java     # @Scheduled(fixedDelay=1000) — task_outbox를 폴링해 Task Queue(SQS FIFO)로 발행
-    TaskConsumer.java         # SmartLifecycle — Task Queue 수신 후 TaskHandler로 라우팅
+    TaskHandler.java          # the interface each taskType's handler implements — implementations live in each domain's interfaces/task/
+    TaskOutboxWriter.java     # a Scheduler (or Command Service) writes a task_outbox row
+    TaskOutboxPoller.java     # @Scheduled(fixedDelay=1000) — polls task_outbox and publishes to the Task Queue (SQS FIFO)
+    TaskConsumer.java         # SmartLifecycle — receives from the Task Queue and routes to a TaskHandler
 
-  auth/                     # 인증/가입 — authentication.md 참고
-    domain/                   # Credential Aggregate(userId + bcrypt 해시)
+  auth/                     # authentication/sign-up — see authentication.md
+    domain/                   # the Credential Aggregate (userId + bcrypt hash)
     application/              # SignInService/SignUpService
     infrastructure/           # BCryptPasswordHasher, CredentialRepositoryImpl
     interfaces/rest/           # AuthController
 
-  account/                  # 1번째 도메인
+  account/                  # 1st domain
     domain/ application/ infrastructure/ interfaces/
-    application/service/NotificationService.java        # 도메인 스코프 Technical Service
-    infrastructure/notification/                          # 구현체 — account만 사용, 공유 패키지 아님
+    application/service/NotificationService.java        # domain-scoped Technical Service
+    infrastructure/notification/                          # implementation — used only by account, not a shared package
     infrastructure/scheduling/InterestPaymentScheduler.java  # scheduling.md Feature 1
     interfaces/task/PayInterestTaskController.java            # scheduling.md Feature 1
 
-  card/                     # 2번째 도메인 — account와 Integration Event로 통신
+  card/                     # 2nd domain — communicates with account via Integration Events
     domain/ application/ infrastructure/ interfaces/
-    application/service/NotificationService.java        # 도메인 스코프 Technical Service — account와 별개 구현
-    infrastructure/notification/                          # 구현체 — card만 사용, 공유 패키지 아님
+    application/service/NotificationService.java        # domain-scoped Technical Service — a separate implementation from account's
+    infrastructure/notification/                          # implementation — used only by card, not a shared package
     infrastructure/scheduling/CardStatementScheduler.java    # scheduling.md Feature 2
     interfaces/task/SendCardStatementTaskController.java     # scheduling.md Feature 2
 
-  payment/                  # 3번째 도메인 — Payment/Refund, 여러 Aggregate를 조율하는 Domain Service 예시
+  payment/                  # 3rd domain — Payment/Refund, an example of a Domain Service coordinating multiple Aggregates
     domain/ application/ infrastructure/ interfaces/
-    domain/RefundEligibilityService.java   # 여러 Aggregate(Payment/Refund)를 조율하는 Domain Service — domain-service.md 참고
+    domain/RefundEligibilityService.java   # a Domain Service coordinating multiple Aggregates (Payment/Refund) — see domain-service.md
 
   AccountServiceApplication.java
 ```
 
-여러 도메인/`Technical Service`가 두루 쓰는 항목만 최상위(`common/`, `config/`, `outbox/`)에 있고, `notification`처럼 한 도메인만 쓰는 Technical Service는 그 도메인 내부에 남는다 — `database/`(여러 Repository를 하나의 트랜잭션으로 묶는 유틸)는 그 시나리오(계좌 간 송금)가 실제로 생긴 뒤에도 만들지 않았다 — Spring의 `@Transactional`이 이미 그 역할을 하므로 별도 공유 패키지가 필요 없기 때문이다.
+Only items used broadly across multiple domains/Technical Services live at the top level (`common/`, `config/`, `outbox/`), while a Technical Service used by just one domain, like `notification`, stays inside that domain — `database/` (a utility for bundling multiple Repositories into one transaction) was never created even after that scenario (a transfer between accounts) actually arose, because Spring's `@Transactional` already plays that role, so no separate shared package is needed.
 
-**`common/`과 `config/`를 나눈 이유**: `common/`은 도메인 무관 **범용 유틸/Interface 레이어 부품**(ID 생성, 전역 예외 처리, 필터, Secret 조회)이고, `config/`는 **`@ConfigurationProperties` 바인딩 전용 record + Security/Web 설정**([config.md](config.md) 참고)이다. 후자는 Infrastructure 레이어에서만 주입받는다는 제약이 있어 역할이 명확히 다르므로 분리했다.
+**Why `common/` and `config/` are split**: `common/` holds domain-agnostic **general-purpose utilities/Interface-layer components** (ID generation, global exception handling, filters, secret lookup), while `config/` is dedicated to **records for `@ConfigurationProperties` binding + Security/Web configuration** (see [config.md](config.md)). The latter has the constraint that it's only ever injected in the Infrastructure layer, so their roles are clearly distinct and they're kept separate.
 
 ---
 
-## NestJS 공유 모듈과의 대응
+## Mapping to NestJS's shared modules
 
-| NestJS (`@Module`, `@Global`) | Spring Boot 대응 | 이 저장소의 상태 |
+| NestJS (`@Module`, `@Global`) | Spring Boot equivalent | State in this repository |
 |---|---|---|
-| `src/common/` (필터, 인터셉터, 유틸) | `common/` 패키지 — `@Component`/순수 유틸 혼재 | 있음 — `IdGenerator`, `web/`의 Filter·Interceptor, `SecretService`(secret-manager.md 참고) |
-| `src/database/` (`@Global` — DataSource, TransactionManager) | `database/` 패키지 — 단, Spring은 `@Global` 개념 자체가 불필요 | 없음 (JPA `DataSource`는 auto-configuration이 이미 전역 제공. 여러 Repository를 묶는 시나리오(계좌 간 송금 — `AccountRepository.saveAccounts()`)도 `@Transactional`이 그 역할을 대신하므로 별도 공유 유틸이 필요 없다 — persistence.md 참고) |
-| `src/outbox/` (`@Global` — OutboxWriter/Poller/Consumer) | `outbox/` 패키지 | 있음 — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`(domain-events.md 참고) |
-| (NestJS에 대응 패키지 없음 — Task Queue는 domain-events.md의 Outbox와 별도 신규 개념) | `taskqueue/` 패키지 | 있음 — `TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler`(scheduling.md 참고) |
-| `src/auth/` (인증 공유 모듈) | `auth/` 패키지 | 있음 — `Credential` Aggregate + `SignInService`/`SignUpService`(authentication.md 참고) |
+| `src/common/` (filters, interceptors, utilities) | The `common/` package — a mix of `@Component`/pure utilities | Present — `IdGenerator`, the Filter/Interceptor in `web/`, `SecretService` (see secret-manager.md) |
+| `src/database/` (`@Global` — DataSource, TransactionManager) | A `database/` package — except Spring has no need for the `@Global` concept at all | Absent (JPA's `DataSource` is already globally provided by auto-configuration. The scenario of bundling multiple Repositories together — a transfer between accounts, `AccountRepository.saveAccounts()` — is also handled by `@Transactional` instead, so no separate shared utility is needed — see persistence.md) |
+| `src/outbox/` (`@Global` — OutboxWriter/Poller/Consumer) | The `outbox/` package | Present — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler` (see domain-events.md) |
+| (No corresponding package in NestJS — the Task Queue is a new concept separate from domain-events.md's Outbox) | The `taskqueue/` package | Present — `TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` (see scheduling.md) |
+| `src/auth/` (a shared authentication module) | The `auth/` package | Present — the `Credential` Aggregate + `SignInService`/`SignUpService` (see authentication.md) |
 
-**`@Global` 데코레이터가 Spring에는 없는 이유**: NestJS는 기본적으로 모듈 스코프가 닫혀 있어 `@Global`로 명시해야 모든 모듈에서 `imports` 없이 주입 가능해진다. Spring Boot는 애초에 전역 스코프가 기본값이다([module-pattern.md](module-pattern.md) "근본적 차이" 참고) — `database/`에 `DataSource` `@Bean`을 두면 별도 표시 없이 이미 어디서든 주입 가능하다. 즉 Spring에서는 "공유 모듈"이 NestJS처럼 특별한 선언을 요구하는 개념이 아니라, **그냥 패키지를 나누는 정리 방식**일 뿐이다.
-
----
-
-## 공유 코드와 도메인 코드를 나누는 기준
-
-- **두 개 이상의 도메인/Technical Service가 참조하면 공유 코드다.** `IdGenerator`는 `account`/`card`/`auth`가 모두 쓰는 유틸이므로 `common/`에 둔다. 반대로 `NotificationServiceImpl`은 `account` 도메인 하나만 쓰므로 최상위 공유 패키지가 아니라 `account/infrastructure/notification/`에 남는다.
-- **공유 코드도 레이어 규율을 그대로 따른다.** `common/IdGenerator`는 어떤 프레임워크도 import하지 않는 순수 유틸이라 Domain 레이어(`Account.create()`)에서 직접 호출할 수 있다. 반면 `common/web/GlobalExceptionHandler`는 Spring MVC 타입(`ResponseEntity`, `@RestControllerAdvice`)에 의존하므로 Interface 레이어 성격의 공유 코드이고, Domain/Application에서 참조해서는 안 된다.
-- **여러 도메인이 실제로 공유하게 될 때만 최상위로 끌어올린다.** `database/`가 없는 것이 좋은 대조 사례다 — 여러 Repository를 하나의 트랜잭션으로 묶어야 하는 시나리오(계좌 간 송금)가 있어도, Spring `@Transactional`이 이미 그 역할을 대신하므로 별도 공유 패키지를 만들 필요 자체가 없다.
+**Why Spring has no `@Global` decorator**: NestJS's module scope is closed by default, requiring `@Global` to be declared explicitly for a provider to be injectable from any module without `imports`. In Spring Boot, global scope is the default from the start (see the "fundamental difference" section of [module-pattern.md](module-pattern.md)) — putting a `DataSource` `@Bean` in `database/` already makes it injectable from anywhere, with no special marker needed. In other words, in Spring, a "shared module" isn't a concept requiring a special declaration the way it does in NestJS — it's **simply an organizational convention of splitting packages**.
 
 ---
 
-### 관련 문서
+## The criteria for separating shared code from domain code
 
-- [directory-structure.md](directory-structure.md) — 전체 실제 트리
-- [aggregate-id.md](aggregate-id.md) — `common.IdGenerator` 실제 배치
-- [secret-manager.md](secret-manager.md) — `common.config.SecretsEnvironmentPostProcessor` 실제 배치
-- [domain-events.md](domain-events.md) — `outbox/` 패키지의 실제 구조
-- [authentication.md](authentication.md) — `auth/` 패키지의 실제 구조
-- [module-pattern.md](module-pattern.md) — Spring이 "공유 모듈" 개념 자체를 요구하지 않는 이유
+- **If two or more domains/Technical Services reference it, it's shared code.** `IdGenerator` is a utility used by `account`/`card`/`auth` all alike, so it belongs in `common/`. Conversely, `NotificationServiceImpl` is used only by the `account` domain, so it stays in `account/infrastructure/notification/` rather than a top-level shared package.
+- **Shared code still follows layer discipline exactly.** `common/IdGenerator` is a pure utility importing no framework, so it can be called directly from the Domain layer (`Account.create()`). By contrast, `common/web/GlobalExceptionHandler` depends on Spring MVC types (`ResponseEntity`, `@RestControllerAdvice`), so it's Interface-layer-flavored shared code and must never be referenced from Domain/Application.
+- **Something is promoted to the top level only once multiple domains genuinely share it.** The absence of `database/` is a good contrasting example — even though the scenario of bundling multiple Repositories into one transaction exists (a transfer between accounts), Spring's `@Transactional` already plays that role, so there's no need to create a separate shared package at all.
+
+---
+
+### Related documents
+
+- [directory-structure.md](directory-structure.md) — the full actual tree
+- [aggregate-id.md](aggregate-id.md) — the actual placement of `common.IdGenerator`
+- [secret-manager.md](secret-manager.md) — the actual placement of `common.config.SecretsEnvironmentPostProcessor`
+- [domain-events.md](domain-events.md) — the actual structure of the `outbox/` package
+- [authentication.md](authentication.md) — the actual structure of the `auth/` package
+- [module-pattern.md](module-pattern.md) — why Spring doesn't require the concept of a "shared module" at all

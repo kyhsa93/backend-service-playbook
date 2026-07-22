@@ -4,9 +4,10 @@ import com.example.accountservice.common.IdGenerator;
 import java.time.LocalDateTime;
 
 /**
- * Credential Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 평문 비밀번호는 domain/application 어디에도
- * 보관하지 않는다 — passwordHash만 갖는다. 영속성 매핑은 infrastructure/persistence/CredentialJpaEntity +
- * CredentialMapper가 전담한다 (account/domain/Account.java와 동일한 domain/JPA 분리 구조).
+ * The Credential Aggregate Root — a pure domain object. It depends on no framework/ORM. The
+ * plaintext password is not held anywhere in domain/application — only passwordHash is kept. The
+ * persistence mapping is handled entirely by infrastructure/persistence/CredentialJpaEntity +
+ * CredentialMapper (the same domain/JPA separation structure as account/domain/Account.java).
  */
 public class Credential {
 
@@ -18,8 +19,9 @@ public class Credential {
     private Credential() {}
 
     /**
-     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Credential을 복원할 때 사용한다. create()와 달리 새 식별자를 만들지 않고 저장된
-     * 상태를 그대로 재구성한다.
+     * Used by a Repository implementation to reconstitute a Credential from persisted data (a JPA
+     * entity, etc.). Unlike create(), it does not generate a new identifier — it reconstructs the
+     * stored state as-is.
      */
     public static Credential reconstitute(
             String credentialId, String userId, String passwordHash, LocalDateTime createdAt) {
@@ -32,8 +34,9 @@ public class Credential {
     }
 
     /**
-     * 신규 가입. 비밀번호 해싱은 Application 레이어가 PasswordHasher(Technical Service)로 미리 수행한 뒤 그
-     * 결과(passwordHash)만 이 팩토리에 넘긴다 — Domain은 해싱 알고리즘을 모른다.
+     * A new sign-up. Password hashing is performed beforehand by the Application layer via
+     * PasswordHasher (a Technical Service), and only the result (passwordHash) is passed to this
+     * factory — the Domain does not know the hashing algorithm.
      */
     public static Credential create(String userId, String passwordHash) {
         Credential credential = new Credential();

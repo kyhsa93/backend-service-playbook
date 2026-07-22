@@ -1,57 +1,57 @@
-# 인증 패턴 (Spring Boot / Spring Security)
+# Authentication Pattern (Spring Boot / Spring Security)
 
-> 프레임워크 무관 원칙은 루트 [authentication.md](../../../../docs/architecture/authentication.md) 참고.
+> For the framework-agnostic principles, see the root [authentication.md](../../../../docs/architecture/authentication.md).
 
-## 현재 예제의 상태
+## State of the current example
 
-`account/interfaces/rest/AccountController.java`의 모든 엔드포인트는 `Authentication` 파라미터로 이미 인증된 사용자만 받는다:
+Every endpoint in `account/interfaces/rest/AccountController.java` accepts only already-authenticated users via the `Authentication` parameter:
 
 ```java
-// AccountController.java — 실제 코드
+// AccountController.java — actual code
 @PostMapping("/{accountId}/deposit")
 public TransactionResult deposit(
         Authentication authentication,
         @PathVariable String accountId,
         @RequestBody DepositRequest request
 ) {
-    String requesterId = authentication.getName();   // JWT의 subject claim
+    String requesterId = authentication.getName();   // subject claim of the JWT
     return depositService.deposit(new DepositCommand(accountId, requesterId, request.amount()));
 }
 ```
 
-`config/SecurityConfig.java`(JWT `SecurityFilterChain`, Nimbus 대칭키 인코더/디코더)와 `build.gradle`의 `spring-boot-starter-security`/`spring-boot-starter-oauth2-resource-server` 의존성이 인증을 담당한다 — 모든 요청은 `Authorization: Bearer <token>`의 JWT를 검증받은 뒤에만 처리된다. `AccountControllerE2ETest`도 `X-User-Id` 헤더 대신 `Authorization: Bearer <token>`으로 인증하며(`headersFor(ownerId)`/`tokenFor(ownerId)` 헬퍼), 다른 소유자가 조회하면 404를 반환하는 검증은 실제로 인증된 `requesterId`를 기준으로 이루어진다.
+`config/SecurityConfig.java` (the JWT `SecurityFilterChain`, Nimbus symmetric-key encoder/decoder) together with the `spring-boot-starter-security`/`spring-boot-starter-oauth2-resource-server` dependencies in `build.gradle` handle authentication — every request is only processed after its JWT in `Authorization: Bearer <token>` is verified. `AccountControllerE2ETest` also authenticates via `Authorization: Bearer <token>` rather than an `X-User-Id` header (using the `headersFor(ownerId)`/`tokenFor(ownerId)` helpers), and the check that a different owner querying the resource gets a 404 is performed against the actual authenticated `requesterId`.
 
-**로그인은 실제 자격증명 검증을 거친다.** `auth/domain/Credential`(userId + bcrypt 해시된 passwordHash) Aggregate와 `PasswordHasher`(Technical Service)를 통해, `POST /auth/sign-in`은 저장된 해시와 비교한 뒤에만 토큰을 발급한다. `POST /auth/sign-up`은 아이디 중복 확인 → 비밀번호 해싱 → 저장 순서로 신규 가입을 처리한다. 아래에서 이 구조 전체(레이어 배치, `SecurityConfig`, 가입/로그인 흐름, 토큰 payload 설계)를 상세히 설명한다.
+**Sign-in performs real credential verification.** Through the `auth/domain/Credential` (userId + bcrypt-hashed passwordHash) Aggregate and the `PasswordHasher` (Technical Service), `POST /auth/sign-in` only issues a token after comparing against the stored hash. `POST /auth/sign-up` handles new registrations in the order: check for a duplicate user ID → hash the password → save. The rest of this document describes the entire structure in detail (layer placement, `SecurityConfig`, the sign-up/sign-in flow, and token payload design).
 
 ---
 
-## 레이어 배치 원칙
+## Layer placement principle
 
-**인증은 Interface 레이어에서만 처리한다.** Domain/Application 레이어는 인증 컨텍스트에 의존하지 않는다.
+**Authentication is handled only in the Interface layer.** The Domain/Application layers never depend on the authentication context.
 
 ```
-Interface 레이어 (Spring Security Filter + Controller): 토큰 추출 → 검증 → SecurityContext에 Authentication 저장
-Application 레이어 (XxxService): Command/Query 객체에 담긴 userId 등 값만 사용
-Domain 레이어 (Account, Money, ...): 인증 개념 없음. Spring Security를 import하지 않는다
+Interface layer (Spring Security Filter + Controller): extract token → verify → store Authentication in SecurityContext
+Application layer (XxxService): uses only plain values such as userId carried in Command/Query objects
+Domain layer (Account, Money, ...): has no concept of authentication. Never imports Spring Security
 ```
 
-잘못된 패턴 — Application Service에서 토큰을 직접 파싱:
+Incorrect pattern — an Application Service parsing the token directly:
 
 ```java
-// 금지 — Application Service가 Authorization 헤더/JWT를 직접 다룸
+// Forbidden — an Application Service handling the Authorization header/JWT directly
 @Service
 public class DepositService {
     public TransactionResult deposit(String bearerToken, DepositCommand command) {
-        String userId = jwtDecoder.decode(bearerToken).getSubject();  // ← Interface 레이어 책임
+        String userId = jwtDecoder.decode(bearerToken).getSubject();  // ← this is the Interface layer's responsibility
         ...
     }
 }
 ```
 
-올바른 패턴 — Controller가 이미 인증된 `Authentication`에서 userId만 꺼내 Command에 담아 전달한다. 이 저장소는 커스텀 `UserDetails`/`AppUserDetails`를 두지 않고 `Authentication.getName()`(JWT의 subject claim)을 그대로 `requesterId`로 사용한다 — payload에 subject 외의 클레임을 담지 않으므로(아래 "토큰 payload 설계" 참고) 커스텀 principal 타입이 굳이 필요 없다:
+Correct pattern — the Controller extracts only the userId from the already-authenticated `Authentication` and passes it in via a Command. This project does not define a custom `UserDetails`/`AppUserDetails`, and simply uses `Authentication.getName()` (the JWT's subject claim) as `requesterId` — since the payload carries no claims beyond the subject (see "Token payload design" below), a custom principal type isn't needed:
 
 ```java
-// AccountController.java — 실제 코드
+// AccountController.java — actual code
 @PostMapping("/{accountId}/deposit")
 public TransactionResult deposit(
         Authentication authentication,
@@ -65,20 +65,20 @@ public TransactionResult deposit(
 
 ---
 
-## 의존성
+## Dependencies
 
 ```groovy
-// build.gradle — 실제 코드
+// build.gradle — actual code
 implementation 'org.springframework.boot:spring-boot-starter-security'
-implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'  // JWT 검증
+implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'  // JWT verification
 ```
 
 ---
 
-## Security 설정 — `SecurityFilterChain`
+## Security configuration — `SecurityFilterChain`
 
 ```java
-// config/SecurityConfig.java — 실제 코드
+// config/SecurityConfig.java — actual code
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -113,48 +113,48 @@ public class SecurityConfig {
 }
 ```
 
-`authorizeHttpRequests`를 **필터 체인 전역**에 적용하는 것이 루트가 강조하는 "Guard는 클래스/전역 레벨에서 적용, 메서드별 적용은 누락 위험" 원칙의 Spring Security식 구현이다. `@PreAuthorize`를 개별 메서드에 붙이는 방식보다 화이트리스트(`permitAll()`)만 예외로 관리하는 편이 안전하다 — 새 엔드포인트를 추가할 때 기본값이 "인증 필요"이기 때문이다. `jwt.secret`은 [secret-manager.md](secret-manager.md)의 `SecretsEnvironmentPostProcessor`가 운영 프로필에서 Secrets Manager로부터 주입한다.
+Applying `authorizeHttpRequests` **filter-chain-wide** is the Spring Security implementation of the root principle that "guards should be applied at the class/global level; applying them per-method risks omissions." Managing only a whitelist (`permitAll()`) as the exception is safer than attaching `@PreAuthorize` to individual methods, because the default for any newly added endpoint is "authentication required." `jwt.secret` is injected from Secrets Manager in the production profile by the `SecretsEnvironmentPostProcessor` described in [secret-manager.md](secret-manager.md).
 
-**`/error`도 permitAll에 포함해야 한다.** 인증이 필요 없는 엔드포인트(`/auth/sign-up` 등)에서 Bean Validation이 실패하면 서블릿 컨테이너가 `/error`로 재디스패치하는데, Spring Boot는 기본적으로 이 재디스패치에도 Security 필터 체인을 다시 적용한다. 원 요청이 인증되지 않은 상태였다면(permitAll로 통과) `/error` 재디스패치 시점에는 `SecurityContext`가 비어 있어 `anyRequest().authenticated()`에 걸려 401로 응답이 뒤바뀐다 — 원래 응답이어야 할 `400 VALIDATION_FAILED`가 아니라 엉뚱한 `401`이 나가는 오탐이었다. `/auth/sign-up`의 비밀번호 길이 검증 실패를 검증하는 `AuthControllerE2ETest`가 이 문제를 실제로 잡아냈다.
+**`/error` must also be included in permitAll.** When Bean Validation fails on an endpoint that doesn't require authentication (e.g. `/auth/sign-up`), the servlet container re-dispatches to `/error`, and Spring Boot re-applies the Security filter chain to this re-dispatch by default. If the original request was unauthenticated (and passed through via permitAll), the `SecurityContext` is empty at the time of the `/error` re-dispatch, so it hits `anyRequest().authenticated()` and the response gets swapped to 401 instead of the intended `400 VALIDATION_FAILED`. `AuthControllerE2ETest`, which verifies the password-length validation failure on `/auth/sign-up`, confirms that the response is the correct `400 VALIDATION_FAILED` rather than `401`.
 
 ---
 
-## 가입/로그인 — Credential Aggregate + PasswordHasher(Technical Service)
+## Sign-up/sign-in — the Credential Aggregate + PasswordHasher (Technical Service)
 
-`auth/` 아래에 다른 도메인(`account/`, `card/`)과 동일한 4레이어 구조가 있다:
+`auth/` has the same 4-layer structure as the other domains (`account/`, `card/`):
 
 ```
 auth/
   domain/
     Credential.java             ← Aggregate Root (credentialId, userId, passwordHash, createdAt)
     CredentialFindQuery.java    ← record(page, take, userId)
-    CredentialsWithCount.java   ← record(credentials, count) — root의 {orders, count} 패턴
-    CredentialRepository.java   ← 쓰기 전용: saveCredential(Credential)
+    CredentialsWithCount.java   ← record(credentials, count) — the root's {orders, count} pattern
+    CredentialRepository.java   ← write-only: saveCredential(Credential)
     AuthException.java          ← ErrorCode.INVALID_CREDENTIALS / USER_ID_ALREADY_EXISTS
   application/
     command/
-      SignUpCommand.java / SignUpService.java   ← 아이디 중복 확인 → 해싱 → 저장
-      SignInCommand.java / SignInService.java   ← 해시 조회 → 검증 → 토큰 발급
+      SignUpCommand.java / SignUpService.java   ← check for duplicate ID → hash → save
+      SignInCommand.java / SignInService.java   ← look up hash → verify → issue token
     query/
-      CredentialQuery.java       ← 읽기 전용: findCredentials(CredentialFindQuery)
+      CredentialQuery.java       ← read-only: findCredentials(CredentialFindQuery)
     service/
-      PasswordHasher.java        ← Technical Service 인터페이스 (domain-service.md 참고)
+      PasswordHasher.java        ← Technical Service interface (see domain-service.md)
   infrastructure/
-    BCryptPasswordHasher.java    ← PasswordHasher 구현체 (Spring Security BCryptPasswordEncoder)
+    BCryptPasswordHasher.java    ← PasswordHasher implementation (Spring Security BCryptPasswordEncoder)
     persistence/
       CredentialJpaEntity.java / CredentialJpaRepository.java / CredentialMapper.java
-      CredentialRepositoryImpl.java  ← CredentialRepository + CredentialQuery 동시 구현
+      CredentialRepositoryImpl.java  ← implements both CredentialRepository and CredentialQuery
   interfaces/
     rest/
       AuthController.java, SignUpRequest.java, SignInRequest.java
 ```
 
-**비밀번호 해싱은 알림 발송(`NotificationService`)과 동일한 Technical Service 패턴이다** — `application/service/`에 인터페이스, `infrastructure/`에 구현체(`BCryptPasswordHasher`, `@Component`)를 두어 Domain/Application이 `BCryptPasswordEncoder` 같은 구체 라이브러리에 의존하지 않게 한다.
+**Password hashing follows the same Technical Service pattern as notification sending (`NotificationService`)** — an interface lives in `application/service/` and its implementation (`BCryptPasswordHasher`, `@Component`) lives in `infrastructure/`, so the Domain/Application layers never depend on a concrete library like `BCryptPasswordEncoder`.
 
-**`CredentialQuery`를 두 Command Service가 함께 쓴다.** `Credential`은 가입(`sign-up`) 이후 수정되지 않는 불변 레코드이므로 `CredentialRepository`(domain, 쓰기)에는 `saveCredential`만 있다 — 조회는 전부 `CredentialQuery`(application/query, 읽기 전용)를 거친다. `SignUpService`는 아이디 중복 확인에, `SignInService`는 저장된 해시 조회에 각각 `CredentialQuery`를 사용한다(cqrs-pattern.md의 `AccountQuery`/`CardQuery`와 동일한 역할 분리). `CredentialRepositoryImpl`이 두 인터페이스를 모두 구현한다(`AccountRepositoryImpl implements AccountRepository, AccountQuery`와 동일한 구조).
+**`CredentialQuery` is shared by both Command Services.** Since `Credential` is an immutable record that is never modified after sign-up, `CredentialRepository` (domain, write) only has `saveCredential` — all lookups go through `CredentialQuery` (application/query, read-only). `SignUpService` uses `CredentialQuery` to check for a duplicate ID, and `SignInService` uses it to look up the stored hash (the same separation of roles as `AccountQuery`/`CardQuery` in cqrs-pattern.md). `CredentialRepositoryImpl` implements both interfaces (the same structure as `AccountRepositoryImpl implements AccountRepository, AccountQuery`).
 
 ```java
-// auth/interfaces/rest/AuthController.java — 실제 코드
+// auth/interfaces/rest/AuthController.java — actual code
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -185,7 +185,7 @@ public class AuthController {
 ```
 
 ```java
-// auth/application/command/SignUpService.java — 실제 코드
+// auth/application/command/SignUpService.java — actual code
 @Service
 @RequiredArgsConstructor
 public class SignUpService {
@@ -199,7 +199,7 @@ public class SignUpService {
                 .findCredentials(new CredentialFindQuery(0, 1, command.userId()))
                 .credentials().isEmpty();
         if (exists) {
-            throw new AuthException(AuthException.ErrorCode.USER_ID_ALREADY_EXISTS, "이미 사용 중인 아이디입니다.");
+            throw new AuthException(AuthException.ErrorCode.USER_ID_ALREADY_EXISTS, "This user ID is already in use.");
         }
 
         String passwordHash = passwordHasher.hash(command.password());
@@ -210,7 +210,7 @@ public class SignUpService {
 ```
 
 ```java
-// auth/application/command/SignInService.java — 실제 코드
+// auth/application/command/SignInService.java — actual code
 @Service
 @RequiredArgsConstructor
 public class SignInService {
@@ -219,18 +219,18 @@ public class SignInService {
     private final PasswordHasher passwordHasher;
     private final JwtEncoder jwtEncoder;
 
-    // 아이디 미존재와 비밀번호 불일치를 동일한 에러 코드/메시지(INVALID_CREDENTIALS)로 응답한다 —
-    // 둘을 구분해서 응답하면 공격자가 존재하는 아이디를 추측할 수 있다(user enumeration).
+    // A missing user ID and a wrong password respond with the same error code/message (INVALID_CREDENTIALS) —
+    // distinguishing between them would let an attacker guess which user IDs exist (user enumeration).
     public SignInResult signIn(SignInCommand command) {
         Credential credential = credentialQuery
                 .findCredentials(new CredentialFindQuery(0, 1, command.userId()))
                 .credentials().stream().findFirst()
                 .orElseThrow(() -> new AuthException(
-                        AuthException.ErrorCode.INVALID_CREDENTIALS, "아이디 또는 비밀번호가 올바르지 않습니다."));
+                        AuthException.ErrorCode.INVALID_CREDENTIALS, "Invalid user ID or password."));
 
         if (!passwordHasher.verify(command.password(), credential.getPasswordHash())) {
             throw new AuthException(
-                    AuthException.ErrorCode.INVALID_CREDENTIALS, "아이디 또는 비밀번호가 올바르지 않습니다.");
+                    AuthException.ErrorCode.INVALID_CREDENTIALS, "Invalid user ID or password.");
         }
 
         Instant now = Instant.now();
@@ -239,7 +239,7 @@ public class SignInService {
                 .issuer("account-service")
                 .issuedAt(now)
                 .expiresAt(now.plus(1, ChronoUnit.HOURS))
-                .subject(credential.getUserId())    // ← payload는 최소한만: userId 하나
+                .subject(credential.getUserId())    // ← payload is kept minimal: just userId
                 .build();
 
         String token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
@@ -248,58 +248,58 @@ public class SignInService {
 }
 ```
 
-`BCryptPasswordHasher`는 `BCryptPasswordEncoder(12)`(strength 12)를 사용한다 — `spring-boot-starter-security`에 이미 포함되어 있어 새 의존성이 필요 없다. 회원가입 비밀번호는 `SignUpRequest`에서 `@Size(min = 8)`로 최소 길이를 검증한다.
+`BCryptPasswordHasher` uses `BCryptPasswordEncoder(12)` (strength 12) — this is already included in `spring-boot-starter-security`, so no new dependency is needed. The sign-up password's minimum length is validated with `@Size(min = 8)` on `SignUpRequest`.
 
 ---
 
-## 토큰 검증 — Resource Server가 자동 처리
+## Token verification — handled automatically by the Resource Server
 
-Spring Security의 `oauth2ResourceServer().jwt()`는 `Authorization: Bearer <token>` 헤더 추출, 서명 검증, 만료 확인을 필터 체인에서 자동으로 수행한다. 별도 `AuthGuard`/`Filter`를 직접 구현할 필요가 없다 — NestJS의 `AuthGuard`에 해당하는 역할을 Spring Security 표준 필터가 대신한다.
+Spring Security's `oauth2ResourceServer().jwt()` automatically extracts the `Authorization: Bearer <token>` header, verifies the signature, and checks expiration, all within the filter chain. There's no need to implement a separate `AuthGuard`/`Filter` by hand — the standard Spring Security filter plays the role that NestJS's `AuthGuard` would.
 
-검증에 성공하면 `SecurityContextHolder`에 `Authentication`이 채워지고, Controller는 `Authentication` 파라미터로 이를 꺼낸다:
+Once verification succeeds, `SecurityContextHolder` is populated with an `Authentication`, and the Controller extracts it via the `Authentication` parameter:
 
 ```java
-// AccountController.java — 실제 코드
+// AccountController.java — actual code
 @GetMapping("/{accountId}")
 public GetAccountResult getAccount(Authentication authentication, @PathVariable String accountId) {
-    String userId = authentication.getName();   // JWT의 subject claim
+    String userId = authentication.getName();   // subject claim of the JWT
     return getAccountService.getAccount(accountId, userId);
 }
 ```
 
 ---
 
-## 토큰 payload 설계
+## Token payload design
 
-JWT claim에는 `userId`(subject)만 담는다. 역할(role)/이메일 등은 담지 않는다 — payload는 서명만 되고 암호화되지 않으므로(`base64url` 디코딩으로 누구나 읽을 수 있음), 자주 바뀌거나 민감한 정보를 넣으면 토큰 재발급 전까지 변경이 반영되지 않거나 정보가 노출된다. 역할/권한이 필요하면 요청 처리 시점에 `userId`로 DB에서 조회한다. 실제 `SignInService`가 이 원칙을 따른다 — `subject(credential.getUserId())` 하나만 claim에 담는다.
+The JWT claims carry only `userId` (subject). Roles, email, and similar data are not included — because the payload is signed but not encrypted (anyone can read it via `base64url` decoding), putting frequently-changing or sensitive information in it means changes won't take effect until the token is reissued, or the information gets exposed. If roles/permissions are needed, look them up from the DB using `userId` at request-handling time. The actual `SignInService` follows this principle — it puts only `subject(credential.getUserId())` in the claims.
 
 ```java
-// 올바른 방식 (실제 코드가 이 패턴)
+// Correct approach (this is the pattern the actual code uses)
 JwtClaimsSet.builder().subject(credential.getUserId()).issuedAt(now).expiresAt(exp).build()
 
-// 잘못된 방식 — 민감/가변 정보 포함
+// Incorrect approach — includes sensitive/mutable information
 JwtClaimsSet.builder().subject(user.getUserId()).claim("email", user.getEmail())
         .claim("role", user.getRole()).claim("permissions", user.getPermissions()).build()
 ```
 
 ---
 
-## 인증/인가 파이프라인 구성 요소
+## Components of the authentication/authorization pipeline
 
-전체 인증/인가 파이프라인은 다음 구성 요소로 이루어진다:
+The full authentication/authorization pipeline consists of the following components:
 
-1. `SecurityConfig`가 JWT 검증을 담당하고, `AuthController`/`SignUpService`/`SignInService`가 가입/로그인 엔드포인트를 제공한다.
-2. `AccountController`의 모든 엔드포인트가 `Authentication authentication`을 받고 `authentication.getName()`을 사용한다.
-3. `AccountControllerE2ETest`/`CardControllerE2ETest`/`NotificationE2ETest`의 `tokenFor(ownerId)`가 `/auth/sign-up` → `/auth/sign-in` 순서로 호출해 테스트용 JWT를 발급받아 캐싱한다.
-4. `/health/**`, `/error`, `/auth/sign-in`, `/auth/sign-up`만 인증 예외이고 나머지 전체 엔드포인트는 기본적으로 인증을 요구한다(`SecurityConfig`의 `anyRequest().authenticated()`).
-5. 로그인 자체의 자격증명 검증도 `Credential`/`PasswordHasher`로 실제 구현되었다(위 "가입/로그인" 절 참고).
+1. `SecurityConfig` handles JWT verification, and `AuthController`/`SignUpService`/`SignInService` provide the sign-up/sign-in endpoints.
+2. Every endpoint in `AccountController` accepts an `Authentication authentication` and uses `authentication.getName()`.
+3. `tokenFor(ownerId)` in `AccountControllerE2ETest`/`CardControllerE2ETest`/`NotificationE2ETest` calls `/auth/sign-up` → `/auth/sign-in` in sequence to obtain and cache a test JWT.
+4. Only `/health/**`, `/error`, `/auth/sign-in`, and `/auth/sign-up` are authentication exceptions; every other endpoint requires authentication by default (`anyRequest().authenticated()` in `SecurityConfig`).
+5. Credential verification for sign-in itself is implemented for real via `Credential`/`PasswordHasher` (see the "Sign-up/sign-in" section above).
 
-인증/인가 파이프라인 전체(토큰 발급부터 검증, 자격증명 검증까지)가 올바르게 배선되어 있다.
+The entire authentication/authorization pipeline — from token issuance through verification to credential verification — is wired correctly.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — 요청 파이프라인에서 인증 필터 위치
-- [layer-architecture.md](layer-architecture.md) — Interface 레이어 역할
-- [secret-manager.md](secret-manager.md) — JWT secret 관리
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — where the authentication filter sits in the request pipeline
+- [layer-architecture.md](layer-architecture.md) — the Interface layer's responsibilities
+- [secret-manager.md](secret-manager.md) — JWT secret management

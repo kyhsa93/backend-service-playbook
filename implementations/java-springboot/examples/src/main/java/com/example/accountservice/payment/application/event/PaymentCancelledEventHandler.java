@@ -13,8 +13,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Outbox에 쌓인 {@link PaymentCancelledEvent}를 처리해 {@code payment.cancelled.v1} Integration Event로 변환해
- * 적재한다. Account BC가 이를 구독해 보상 크레딧(deposit)을 실행한다 — 이미 차감된 금액을 되돌리는 보상 트랜잭션이다.
+ * Processes the {@link PaymentCancelledEvent} accumulated in the Outbox, translates it into the
+ * {@code payment.cancelled.v1} Integration Event, and stores it. The Account BC subscribes to this
+ * and runs a compensating credit (deposit) — a compensating transaction that reverses the amount
+ * already deducted.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,7 +36,7 @@ public class PaymentCancelledEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         PaymentCancelledEvent event = objectMapper.readValue(payload, PaymentCancelledEvent.class);
         log.info(
-                "결제 취소됨",
+                "Payment cancelled",
                 kv("payment_id", event.paymentId()),
                 kv("account_id", event.accountId()),
                 kv("reason", event.reason()));

@@ -11,16 +11,20 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [16] Aggregate 간 직접 참조 금지 — 같은 Bounded Context 안에 여러 Aggregate가 있을 때
- * (Payment BC의 {@code Payment}/{@code Refund}), 한 Aggregate가 다른 Aggregate의 타입을
- * 필드/생성자 파라미터로 직접 들고 있으면 안 된다. ID 문자열({@code paymentId} 등) 참조만
- * 허용된다(domain-service.md — "Refund는 원 결제의 금액·상태를 모른다(paymentId로 참조만 한다)").
+ * [16] Direct references between Aggregates are forbidden — when multiple Aggregates
+ * exist within the same Bounded Context ({@code Payment}/{@code Refund} in the Payment
+ * BC), one Aggregate must not directly hold the other Aggregate's type as a field or
+ * constructor parameter. Only referencing an ID string (e.g. {@code paymentId}) is
+ * allowed (domain-service.md — "Refund does not know the amount/status of the original
+ * payment (it references it only via paymentId)").
  *
- * <p>{@code payment/domain/}으로 범위를 좁힌다 — 현재 이 저장소에서 한 BC 안에 Aggregate가 둘
- * 이상인 유일한 실제 사례이기 때문이다(Account/Card BC는 각자 단일 Aggregate). 다른 BC에 두 번째
- * Aggregate가 생기면 이 규칙을 그 경로까지 일반화해야 한다 — 지금은 실재하는 케이스만 정밀하게
- * 잡는 블록리스트 방식을 따른다(오탐 위험을 낮추기 위해 "domain/ 안의 모든 Aggregate 쌍"을
- * 추론하는 일반 규칙은 만들지 않았다 — Aggregate 여부를 정적으로 판별할 신뢰할 만한 신호가 없다).
+ * <p>Scoped narrowly to {@code payment/domain/} — because it's currently the only real
+ * case in this repository where a single BC has more than one Aggregate (the Account/Card
+ * BCs each have a single Aggregate). If a second Aggregate appears in another BC, this
+ * rule needs to be generalized to that path too — for now it follows a blocklist approach
+ * that precisely targets only the case that actually exists (to lower false-positive
+ * risk, no general rule was written to infer "every Aggregate pair under domain/" — there
+ * is no reliable static signal for whether something is an Aggregate).
  */
 public final class NoCrossAggregateReference {
     private NoCrossAggregateReference() {
@@ -50,19 +54,20 @@ public final class NoCrossAggregateReference {
 
             if (referencesType(code, otherAggregate)) {
                 result.add(Finding.fail(rel,
-                    "payment/domain/" + fileName + "가 다른 Aggregate 타입 '" + otherAggregate
-                        + "'을 직접 참조 — ID 문자열 참조만 허용(예: paymentId), domain-service.md"));
+                    "payment/domain/" + fileName + " directly references the other Aggregate type '" + otherAggregate
+                        + "' — only an ID string reference is allowed (e.g. paymentId), domain-service.md"));
             } else {
-                result.add(Finding.pass(rel + " (다른 Aggregate 타입 미참조 확인)"));
+                result.add(Finding.pass(rel + " (confirmed no reference to the other Aggregate type)"));
             }
         }
 
-        if (!found) result.add(Finding.skip("payment/domain/Payment.java 또는 Refund.java 없음"));
+        if (!found) result.add(Finding.skip("No payment/domain/Payment.java or Refund.java"));
         return result;
     }
 
-    // \b 단어 경계 정규식 대신 수동 스캔 — PaymentException/PaymentStatus 같이 대상 이름을 접두어로
-    // 갖는 다른 식별자는 오탐하지 않아야 한다(양쪽 다 영숫자/밑줄이 아닌 경계일 때만 매치).
+    // Manual scan instead of a \b word-boundary regex — must not false-positive on another
+    // identifier that has the target name as a prefix, like PaymentException/PaymentStatus
+    // (only matches when both sides are a non-alphanumeric/underscore boundary).
     private static boolean referencesType(String code, String typeName) {
         int idx = 0;
         while ((idx = code.indexOf(typeName, idx)) != -1) {

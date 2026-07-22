@@ -11,14 +11,16 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [17] domain/·application/은 {@code System.getenv(...)}를 직접 호출할 수 없다 — 환경 변수 접근은
- * {@code @ConfigurationProperties}로 감싸 config/(또는 infrastructure/)에서만 한다(config.md —
- * "설정 접근은 Infrastructure 레이어: @Value/@ConfigurationProperties 주입 대상은 Infrastructure의
- * @Configuration/@Component 클래스로 한정한다").
+ * [17] domain/ and application/ must not directly call {@code System.getenv(...)} —
+ * environment-variable access must be wrapped in {@code @ConfigurationProperties} and done
+ * only in config/ (or infrastructure/) (config.md — "config access lives in the
+ * Infrastructure layer: @Value/@ConfigurationProperties injection targets are restricted
+ * to Infrastructure's @Configuration/@Component classes").
  *
- * <p>{@code config/}는 도메인별 하위 패키지가 아니라 최상위 공용 패키지(`com/example/accountservice/config/`)라
- * "/domain/"·"/application/" 세그먼트를 포함하지 않으므로 자연히 검사 대상에서 제외된다 —
- * infrastructure/도 마찬가지로 통과한다(예: config/AwsProperties.java, config/SesProperties.java).
+ * <p>{@code config/} is not a per-domain subpackage but a top-level shared package
+ * (`com/example/accountservice/config/`), so it contains no "/domain/" or "/application/"
+ * segment and is naturally excluded from this check — infrastructure/ passes for the same
+ * reason (e.g. config/AwsProperties.java, config/SesProperties.java).
  */
 public final class NoDirectEnvAccessOutsideConfig {
     private NoDirectEnvAccessOutsideConfig() {
@@ -40,13 +42,13 @@ public final class NoDirectEnvAccessOutsideConfig {
 
             if (content.contains(FORBIDDEN_CALL)) {
                 result.add(Finding.fail(rel,
-                    "domain/ 또는 application/에서 System.getenv() 직접 호출 금지 — @ConfigurationProperties로 config/에서만 접근해야 함(config.md)"));
+                    "Directly calling System.getenv() from domain/ or application/ is forbidden — access must go through @ConfigurationProperties in config/ only (config.md)"));
             } else {
-                result.add(Finding.pass(rel + " (System.getenv 미사용 확인)"));
+                result.add(Finding.pass(rel + " (confirmed System.getenv is not used)"));
             }
         }
 
-        if (!found) result.add(Finding.skip("domain/ 또는 application/ Java 파일 없음"));
+        if (!found) result.add(Finding.skip("No Java files under domain/ or application/"));
         return result;
     }
 }

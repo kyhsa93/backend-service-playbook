@@ -23,8 +23,9 @@ public class SignInService {
     private final PasswordHasher passwordHasher;
     private final JwtEncoder jwtEncoder;
 
-    // 아이디 미존재와 비밀번호 불일치를 동일한 에러 코드/메시지(INVALID_CREDENTIALS)로 응답한다 —
-    // 둘을 구분해서 응답하면 공격자가 존재하는 아이디를 추측할 수 있다(user enumeration, authentication.md 참고).
+    // A nonexistent ID and an incorrect password are both answered with the same error code/message
+    // (INVALID_CREDENTIALS) — responding differently for each would let an attacker guess which IDs
+    // exist (user enumeration, see authentication.md).
     public SignInResult signIn(SignInCommand command) {
         Credential credential =
                 credentialQuery
@@ -36,11 +37,11 @@ public class SignInService {
                                 () ->
                                         new AuthException(
                                                 AuthException.ErrorCode.INVALID_CREDENTIALS,
-                                                "아이디 또는 비밀번호가 올바르지 않습니다."));
+                                                "Incorrect ID or password."));
 
         if (!passwordHasher.verify(command.password(), credential.getPasswordHash())) {
             throw new AuthException(
-                    AuthException.ErrorCode.INVALID_CREDENTIALS, "아이디 또는 비밀번호가 올바르지 않습니다.");
+                    AuthException.ErrorCode.INVALID_CREDENTIALS, "Incorrect ID or password.");
         }
 
         Instant now = Instant.now();

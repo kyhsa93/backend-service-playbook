@@ -10,7 +10,7 @@ import static harness.JavaFiles.pathContains;
 import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
-/** [2] @Repository — infrastructure/ 에만 허용 */
+/** [2] @Repository — only allowed under infrastructure/ */
 public final class RepositoryAnnotation {
     private RepositoryAnnotation() {
     }
@@ -27,10 +27,10 @@ public final class RepositoryAnnotation {
             if (pathContains(f, "/infrastructure/")) {
                 result.add(Finding.pass(rel + " (@Repository)"));
             } else {
-                result.add(Finding.fail(rel, "@Repository는 infrastructure/ 패키지 안에 있어야 함"));
+                result.add(Finding.fail(rel, "@Repository must be inside the infrastructure/ package"));
             }
         }
-        if (!found) result.add(Finding.skip("@Repository 없음"));
+        if (!found) result.add(Finding.skip("No @Repository"));
         return result;
     }
 }

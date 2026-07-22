@@ -28,10 +28,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * 정기 이자 지급(scheduling.md Feature 1)의 실제 인프라 왕복을 검증하는 E2E 테스트. 진짜 Cron tick(새벽 3시)을 기다리는 대신 {@link
- * InterestPaymentScheduler#enqueueDailyInterestPayment()}를 직접 호출해, Scheduler → task_outbox →
- * TaskOutboxPoller → Task Queue(SQS FIFO, LocalStack) → TaskConsumer → PayInterestTaskController →
- * PayInterestService → Account.payInterest()로 이어지는 전체 경로를 실제로 태운다.
+ * E2E test verifying the actual infrastructure round trip for the periodic interest payment
+ * (scheduling.md Feature 1). Instead of waiting for a real Cron tick (3 AM), it calls {@link
+ * InterestPaymentScheduler#enqueueDailyInterestPayment()} directly, exercising the full path:
+ * Scheduler → task_outbox → TaskOutboxPoller → Task Queue (SQS FIFO, LocalStack) → TaskConsumer →
+ * PayInterestTaskController → PayInterestService → Account.payInterest().
  */
 @Testcontainers
 @SuppressWarnings("unchecked")
@@ -52,8 +53,8 @@ class InterestPaymentSchedulingE2ETest {
             new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                     .withServices(LocalStackContainer.Service.SQS);
 
-    // @DynamicPropertySource의 Supplier는 여러 번 호출될 수 있으므로(CardControllerE2ETest와 동일한
-    // 이유) 큐 생성은 한 번만 하고 캐시한다.
+    // The @DynamicPropertySource supplier can be invoked multiple times (same reason as
+    // CardControllerE2ETest), so the queue is created only once and cached.
     private static String domainEventQueueUrl;
     private static String taskQueueUrl;
 
@@ -146,20 +147,22 @@ class InterestPaymentSchedulingE2ETest {
         return ((Number) balance.get("amount")).longValue();
     }
 
-    // Scheduler.enqueueDailyInterestPayment() 호출 시점부터 실제 잔액 반영까지는 task_outbox →
-    // TaskOutboxPoller(1초 주기) → SQS(LocalStack) → TaskConsumer(long polling) → Task Controller →
-    // PayInterestService 전체 경로를 거쳐야 하므로 즉시 반영되지 않는다 — CardControllerE2ETest의
-    // waitForCardStatus와 동일한 이유로 폴링한다.
+    // From the moment Scheduler.enqueueDailyInterestPayment() is called until the balance is
+    // actually updated, the request has to travel the full path: task_outbox →
+    // TaskOutboxPoller (1-second cycle) → SQS (LocalStack) → TaskConsumer (long polling) → Task
+    // Controller → PayInterestService, so it is not reflected immediately — we poll for the same
+    // reason as waitForCardStatus in CardControllerE2ETest.
     private void waitForBalance(String accountId, String ownerId, long expected) {
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(200))
                 .untilAsserted(() -> assertThat(balanceOf(accountId, ownerId)).isEqualTo(expected));
     }
 
-    // 두 시나리오(전체 경로 반영 + 멱등성)를 한 테스트 안에서 같은 계좌·같은 날짜로 검증한다 — 별도
-    // 테스트 메서드로 나누면 둘 다 "오늘" 날짜의 같은 taskType(account.pay-interest)을 적재하게 되어
-    // FIFO 큐의 5분 dedup 윈도우가 서로 다른 계좌를 대상으로 한 두 번째 테스트의 적재를 억제해버릴 수
-    // 있다 — 같은 계좌를 대상으로 두 번 적재해 이 레이스를 근본적으로 피한다.
+    // Both scenarios (end-to-end propagation + idempotency) are verified in a single test against
+    // the same account and date — if they were split into separate test methods, both would
+    // enqueue the same taskType (account.pay-interest) for "today", and the FIFO queue's 5-minute
+    // dedup window could suppress the enqueue of a second test targeting a different account. We
+    // avoid that race entirely by enqueuing twice against the same account.
     @Test
     void 이자_지급_배치를_적재하면_잔액에_반영되고_같은_날_다시_적재해도_한번만_반영된다() {
         String accountId = createAccountWithBalance(OWNER_ID, 1_000_000);
@@ -181,9 +184,10 @@ class InterestPaymentSchedulingE2ETest {
                             assertThat(((Number) amount.get("amount")).longValue()).isEqualTo(100);
                         });
 
-        // 같은 날 두 번째로 적재 — Account.payInterest()의 Level 1 멱등성(lastInterestPaidAt)이 실제로
-        // 두 번째 처리를 no-op으로 만드는지 확인한다(FIFO dedup이 두 번째 발행 자체를 막든, 막지 못해
-        // TaskConsumer가 다시 처리하든 결과는 동일해야 한다).
+        // Enqueue a second time on the same day — confirms that Account.payInterest()'s Level 1
+        // idempotency (lastInterestPaidAt) actually makes the second processing a no-op (whether
+        // FIFO dedup blocks the second publish outright, or it fails to and TaskConsumer processes
+        // it again, the result must be the same).
         interestPaymentScheduler.enqueueDailyInterestPayment();
 
         await().pollDelay(Duration.ofSeconds(3))
