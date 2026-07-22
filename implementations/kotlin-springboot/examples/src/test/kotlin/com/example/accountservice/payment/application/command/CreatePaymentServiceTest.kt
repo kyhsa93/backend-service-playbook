@@ -25,7 +25,7 @@ class CreatePaymentServiceTest {
     private val service = CreatePaymentService(paymentRepository, cardAdapter, accountAdapter)
 
     @Test
-    fun `카드가 활성이고 잔액이 충분하면 결제가 즉시 완료되고 저장이 일어난다`() {
+    fun `when the card is active and the balance is sufficient, the payment completes immediately and is saved`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns
             CardView(cardId = "card-1", accountId = "account-1", active = true)
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
@@ -39,7 +39,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    fun `연결할 카드를 찾을 수 없으면 예외를 던진다`() {
+    fun `throws an exception when the card to link cannot be found`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns null
 
         assertThrows<LinkedCardNotFoundException> {
@@ -49,7 +49,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    fun `카드가 비활성 상태면 예외를 던진다`() {
+    fun `throws an exception when the card is inactive`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns
             CardView(cardId = "card-1", accountId = "account-1", active = false)
 
@@ -60,7 +60,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    fun `연결된 계좌를 찾을 수 없으면 예외를 던진다`() {
+    fun `throws an exception when the linked account cannot be found`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns
             CardView(cardId = "card-1", accountId = "account-1", active = true)
         every { accountAdapter.findAccount("account-1", "owner-1") } returns null
@@ -71,7 +71,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    fun `계좌가 비활성 상태면 예외를 던진다`() {
+    fun `throws an exception when the account is inactive`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns
             CardView(cardId = "card-1", accountId = "account-1", active = true)
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
@@ -83,7 +83,7 @@ class CreatePaymentServiceTest {
     }
 
     @Test
-    fun `잔액이 부족하면 예외를 던진다`() {
+    fun `throws an exception when the balance is insufficient`() {
         every { cardAdapter.findCard("card-1", "owner-1") } returns
             CardView(cardId = "card-1", accountId = "account-1", active = true)
         every { accountAdapter.findAccount("account-1", "owner-1") } returns

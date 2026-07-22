@@ -75,8 +75,9 @@ func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// cardErrorMapping은 sentinel error → (HTTP 상태 코드, client-facing 에러 코드) 매핑 테이블이다
-// (account_handler.go의 accountErrorMapping과 동일한 관용구 — error-handling.md).
+// cardErrorMapping is the sentinel error → (HTTP status code, client-facing
+// error code) mapping table (the same idiom as accountErrorMapping in
+// account_handler.go — error-handling.md).
 var cardErrorMapping = []struct {
 	err    error
 	status int

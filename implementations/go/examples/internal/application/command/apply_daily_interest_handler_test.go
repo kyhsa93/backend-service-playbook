@@ -25,7 +25,7 @@ func TestApplyDailyInterestHandler_Handle_AppliesInterestAndSaves(t *testing.T) 
 	_, _ = a1.Deposit(1_000_000, "")
 	a1.ClearEvents()
 
-	a2 := account.New("owner-2", "a2@example.com", "KRW") // 잔액 0 — 이자 0이라 스킵되어야 함
+	a2 := account.New("owner-2", "a2@example.com", "KRW") // balance 0 — interest is 0, should be skipped
 	a2.ClearEvents()
 
 	var saved []*account.Account

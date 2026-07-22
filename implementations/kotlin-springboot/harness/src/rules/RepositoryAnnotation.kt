@@ -3,7 +3,7 @@ package harness.rules
 import harness.*
 import java.io.File
 
-/** [2] @Repository — infrastructure/ 에만 허용 */
+/** [2] @Repository — allowed only in infrastructure/ */
 fun checkRepositoryAnnotation(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("repository-annotation")
@@ -16,9 +16,9 @@ fun checkRepositoryAnnotation(rootPath: String): RuleResult {
         if (f.pathContains("/infrastructure/")) {
             result.add(passFinding("$rel (@Repository)"))
         } else {
-            result.add(failFinding(rel, "@Repository는 infrastructure/ 패키지 안에 있어야 함"))
+            result.add(failFinding(rel, "@Repository must be inside the infrastructure/ package"))
         }
     }
-    if (!found) result.add(skipFinding("@Repository 없음"))
+    if (!found) result.add(skipFinding("no @Repository"))
     return result
 }

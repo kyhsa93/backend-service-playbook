@@ -15,8 +15,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Refund의 쓰기용 {@link RefundRepository}와 읽기용 {@link RefundQuery}를 한 클래스에서 구현한다 — {@link
- * PaymentRepositoryImpl}과 동일한 구조.
+ * Implements both the write-side {@link RefundRepository} and the read-side {@link RefundQuery} for
+ * Refund in a single class — the same structure as {@link PaymentRepositoryImpl}.
  */
 @Repository
 @RequiredArgsConstructor

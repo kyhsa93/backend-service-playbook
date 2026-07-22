@@ -21,15 +21,16 @@ class CardModel(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
-    # 매월 카드 사용내역 발송 배치의 Level 1 멱등성 마커 — Card.send_statement() 참고.
+    # The Level 1 idempotency marker for the monthly card-statement delivery batch — see Card.send_statement().
     last_statement_sent_month: Mapped[str | None] = mapped_column(nullable=True, default=None)
 
 
 class SqlAlchemyCardRepository(CardRepository):
     def __init__(self, session: AsyncSession) -> None:
-        # 지연 import — outbox_model.py가 account_repository.py의 Base를 import하므로,
-        # 모듈 최상단에서 OutboxWriter를 import하면 순환 참조가 발생한다
-        # (module-pattern.md "Python의 순환 참조" 참조. account/payment repository와 동일한 처리).
+        # deferred import — since outbox_model.py imports account_repository.py's Base,
+        # importing OutboxWriter at the module's top level would create a circular import
+        # (see "Python's circular imports" in module-pattern.md — handled the same way as
+        # the account/payment repositories).
         from ....outbox.outbox_writer import OutboxWriter
 
         self._session = session

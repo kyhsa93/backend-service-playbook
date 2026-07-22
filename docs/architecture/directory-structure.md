@@ -1,183 +1,183 @@
-# 디렉토리 구조
+# Directory Structure
 
-도메인 우선, 4레이어 구조를 따른다. 공용 인프라는 도메인 디렉토리 밖에 배치한다.
+Follows a domain-first, 4-layer structure. Shared infrastructure is placed outside the domain directories.
 
-## 전체 구조
+## Overall structure
 
 ```
 src/
-  common/                              # 프로젝트 공통 유틸 (순수 함수)
-    generate-id.ts                     # UUID 기반 고유 ID 생성
-    is-unique-violation.ts             # DB unique 위반 판별
+  common/                              # project-wide utilities (pure functions)
+    generate-id.ts                     # generates a UUID-based unique ID
+    is-unique-violation.ts             # detects a DB unique-constraint violation
 
-  database/                            # DB 연결 모듈
-    transaction-manager.ts             # TransactionManager (AsyncLocalStorage 기반)
+  database/                            # the DB connection module
+    transaction-manager.ts             # TransactionManager (AsyncLocalStorage-based)
 
-  outbox/                              # Outbox 모듈
-    outbox-writer.ts                   # 트랜잭션 안에서 이벤트 저장 (Repository에서 호출)
-    outbox-relay.ts                    # Outbox → 메시지 큐 전송 (폴링)
-    event-consumer.ts                  # 메시지 큐 → EventHandler 수신 (폴링)
-    event-handler-registry.ts          # eventType → Handler 라우팅
+  outbox/                              # the Outbox module
+    outbox-writer.ts                   # saves events within a transaction (called from a Repository)
+    outbox-relay.ts                    # Outbox → message-queue send (polling)
+    event-consumer.ts                  # message queue → EventHandler receive (polling)
+    event-handler-registry.ts          # eventType → Handler routing
 
-  task-queue/                          # Task Queue 모듈 (공용)
-    task-queue.ts                      # TaskQueue 인터페이스 (abstract class)
-    task-outbox-relay.ts               # task_outbox → 메시지 큐 발행 (폴링)
-    task-consumer-registry.ts          # taskType → Handler 라우팅
-    task-queue-consumer.ts             # 메시지 큐 → Task Controller 디스패치 (폴링)
+  task-queue/                          # the Task Queue module (shared)
+    task-queue.ts                      # the TaskQueue interface (abstract class)
+    task-outbox-relay.ts               # task_outbox → message-queue publish (polling)
+    task-consumer-registry.ts          # taskType → Handler routing
+    task-queue-consumer.ts             # message queue → Task Controller dispatch (polling)
 
   config/
-    <concern>.config.ts                # 관심사별 설정 (database, jwt 등)
-    config-validator.ts                # 환경 변수 검증 (Fail-fast)
+    <concern>.config.ts                # per-concern config (database, jwt, etc.)
+    config-validator.ts                # env-var validation (fail-fast)
 
   <domain>/
-    domain/                            # 도메인 레이어 — 프레임워크 무의존
+    domain/                            # the Domain layer — framework-independent
       <aggregate-root>.ts
       <entity>.ts
       <value-object>.ts
       <domain-event>.ts
-      <aggregate>-repository.ts        # Repository 인터페이스 (abstract class)
+      <aggregate>-repository.ts        # the Repository interface (abstract class)
     application/
       adapter/
-        <external-domain>-adapter.ts   # 외부 도메인 호출 인터페이스 (abstract class)
+        <external-domain>-adapter.ts   # an interface for calling an external domain (abstract class)
       service/
-        <concern>-service.ts           # 기술 인프라 인터페이스 (abstract class)
+        <concern>-service.ts           # a technical-infrastructure interface (abstract class)
       command/
-        <domain>-command-service.ts    # Command Service (쓰기 — Repository 사용)
+        <domain>-command-service.ts    # the Command Service (writes — uses the Repository)
         <verb>-<noun>-command.ts
       query/
-        <domain>-query-service.ts      # Query Service (읽기 — Query 인터페이스 사용)
-        <domain>-query.ts              # Query 인터페이스 (abstract class)
+        <domain>-query-service.ts      # the Query Service (reads — uses the Query interface)
+        <domain>-query.ts              # the Query interface (abstract class)
         <verb>-<noun>-query.ts
         <verb>-<noun>-result.ts
       event/
-        <domain-event>-handler.ts      # Domain Event Handler (application/event/)
+        <domain-event>-handler.ts      # a Domain Event Handler (application/event/)
       integration-event/
-        <name>-integration-event.ts    # Integration Event 정의 (공개 계약)
+        <name>-integration-event.ts    # an Integration Event definition (a published contract)
     interface/
-      <domain>-controller.ts           # HTTP Controller
-      <domain>-task-controller.ts      # Task Consumer (메시지 큐 진입점)
+      <domain>-controller.ts           # the HTTP Controller
+      <domain>-task-controller.ts      # a Task Consumer (the message-queue entry point)
       dto/
         <verb>-<noun>-request-body.ts
         <verb>-<noun>-request-param.ts
         <verb>-<noun>-response-body.ts
     infrastructure/
-      <aggregate>-repository-impl.ts   # Repository 구현체
-      <domain>-query-impl.ts           # Query 구현체 (읽기 전용 DB 접근)
-      <external-domain>-adapter-impl.ts # Adapter 구현체
-      <concern>-service-impl.ts        # 기술 인프라 Service 구현체
-      <concern>-scheduler.ts           # Scheduler (Cron → TaskQueue.enqueue)
-    <domain>-error-message.ts          # 에러 메시지 enum (모듈 루트)
-    <domain>-enum.ts                   # 도메인 enum (모듈 루트)
-    <domain>-constant.ts               # 도메인 상수 (모듈 루트)
+      <aggregate>-repository-impl.ts   # the Repository implementation
+      <domain>-query-impl.ts           # the Query implementation (read-only DB access)
+      <external-domain>-adapter-impl.ts # the Adapter implementation
+      <concern>-service-impl.ts        # a technical-infrastructure Service implementation
+      <concern>-scheduler.ts           # a Scheduler (Cron → TaskQueue.enqueue)
+    <domain>-error-message.ts          # the error-message enum (module root)
+    <domain>-enum.ts                   # a domain enum (module root)
+    <domain>-constant.ts               # domain constants (module root)
 ```
 
 ---
 
-## 레이어별 원칙
+## Principles per layer
 
 ### domain/
 
-- **프레임워크 무의존**: 어떤 외부 라이브러리도 import하지 않는다. 순수한 언어 코드.
-- **비즈니스 규칙 캡슐화**: Aggregate Root 메서드 내부에서만 불변식을 검증한다.
-- Repository는 **인터페이스(abstract class)만** 여기에 둔다. 구현체는 infrastructure/.
+- **Framework-independent**: import no external library at all. Pure language code.
+- **Encapsulates business rules**: invariants are checked only inside an Aggregate Root's methods.
+- Put **only the Repository interface (an abstract class)** here. The implementation goes in infrastructure/.
 
 ### application/
 
-- 유스케이스 **조율자**. 비즈니스 로직을 직접 수행하지 않고 Aggregate에 위임한다.
-- `command/`: Repository를 사용하는 쓰기 유스케이스.
-- `query/`: Query 인터페이스를 사용하는 읽기 유스케이스.
-- `adapter/`: 외부 도메인 호출 인터페이스 (Anticorruption Layer).
-- `service/`: 기술 인프라 인터페이스 (암복호화, 파일 스토리지, 외부 API 등).
-- `event/`: Domain Event Handler.
-- `integration-event/`: Integration Event 정의 및 인바운드 처리.
+- The **coordinator** of a use case. Never carries out business logic directly — delegates to the Aggregate.
+- `command/`: write use cases that use a Repository.
+- `query/`: read use cases that use a Query interface.
+- `adapter/`: an interface for calling an external domain (an Anticorruption Layer).
+- `service/`: a technical-infrastructure interface (encryption, file storage, an external API, etc.).
+- `event/`: a Domain Event Handler.
+- `integration-event/`: Integration Event definitions and inbound handling.
 
 ### interface/
 
-- 외부 진입점. HTTP Controller, Task Consumer, Integration Event Handler.
-- 입력을 Command/Query로 변환하여 Application Service에 위임한다.
-- **에러 변환은 여기에서만**: Application이 던진 plain Error를 HTTP/프로토콜 예외로 변환한다.
+- The external entry point. The HTTP Controller, a Task Consumer, an Integration Event Handler.
+- Converts input into a Command/Query and delegates to an Application Service.
+- **Error conversion happens only here**: converts a plain Error thrown by Application into an HTTP/protocol exception.
 
 ### infrastructure/
 
-- 외부 시스템에 실제로 접근하는 유일한 레이어.
-- Domain/Application의 abstract class 구현체가 모두 여기에 위치한다.
-- ORM, 메시지 큐 SDK, 외부 API 클라이언트를 직접 사용한다.
+- The only layer that actually reaches external systems.
+- Every implementation of a Domain/Application abstract class lives here.
+- Uses the ORM, message-queue SDK, and external API clients directly.
 
 ---
 
-## 파일 네이밍 규칙
+## File-naming rules
 
-모든 파일명은 `kebab-case`를 사용한다.
+Every file name uses `kebab-case`.
 
-| 종류 | 위치 | 파일명 패턴 |
+| Kind | Location | File-name pattern |
 |------|------|------------|
-| Aggregate Root | `domain/` | `<aggregate-root>.ts` (예: `order.ts`) |
-| Entity | `domain/` | `<entity>.ts` (예: `order-item.ts`) |
-| Value Object | `domain/` | `<value-object>.ts` (예: `money.ts`) |
-| Domain Event | `domain/` | `<domain-event>.ts` (예: `order-cancelled.ts`) |
-| Repository 인터페이스 | `domain/` | `<aggregate>-repository.ts` |
-| Repository 구현체 | `infrastructure/` | `<aggregate>-repository-impl.ts` |
-| Query 인터페이스 | `application/query/` | `<domain>-query.ts` |
-| Query 구현체 | `infrastructure/` | `<domain>-query-impl.ts` |
+| Aggregate Root | `domain/` | `<aggregate-root>.ts` (e.g. `order.ts`) |
+| Entity | `domain/` | `<entity>.ts` (e.g. `order-item.ts`) |
+| Value Object | `domain/` | `<value-object>.ts` (e.g. `money.ts`) |
+| Domain Event | `domain/` | `<domain-event>.ts` (e.g. `order-cancelled.ts`) |
+| Repository interface | `domain/` | `<aggregate>-repository.ts` |
+| Repository implementation | `infrastructure/` | `<aggregate>-repository-impl.ts` |
+| Query interface | `application/query/` | `<domain>-query.ts` |
+| Query implementation | `infrastructure/` | `<domain>-query-impl.ts` |
 | Command Service | `application/command/` | `<domain>-command-service.ts` |
 | Query Service | `application/query/` | `<domain>-query-service.ts` |
 | Command | `application/command/` | `<verb>-<noun>-command.ts` |
 | Query DTO | `application/query/` | `<verb>-<noun>-query.ts` |
 | Result | `application/query/` | `<verb>-<noun>-result.ts` |
 | Domain Event Handler | `application/event/` | `<domain-event>-handler.ts` |
-| Adapter 인터페이스 | `application/adapter/` | `<external-domain>-adapter.ts` |
-| Adapter 구현체 | `infrastructure/` | `<external-domain>-adapter-impl.ts` |
-| 기술 인프라 Service 인터페이스 | `application/service/` | `<concern>-service.ts` |
-| 기술 인프라 Service 구현체 | `infrastructure/` | `<concern>-service-impl.ts` |
+| Adapter interface | `application/adapter/` | `<external-domain>-adapter.ts` |
+| Adapter implementation | `infrastructure/` | `<external-domain>-adapter-impl.ts` |
+| Technical-infrastructure Service interface | `application/service/` | `<concern>-service.ts` |
+| Technical-infrastructure Service implementation | `infrastructure/` | `<concern>-service-impl.ts` |
 | HTTP Controller | `interface/` | `<domain>-controller.ts` |
 | Task Controller | `interface/` | `<domain>-task-controller.ts` |
 | Scheduler | `infrastructure/` | `<concern>-scheduler.ts` |
-| 에러 메시지 enum | 모듈 루트 | `<domain>-error-message.ts` |
-| 도메인 enum | 모듈 루트 | `<domain>-enum.ts` |
-| 도메인 상수 | 모듈 루트 | `<domain>-constant.ts` |
+| Error-message enum | module root | `<domain>-error-message.ts` |
+| Domain enum | module root | `<domain>-enum.ts` |
+| Domain constants | module root | `<domain>-constant.ts` |
 
 ---
 
-## 클래스 네이밍 규칙
+## Class-naming rules
 
-| 종류 | 규칙 | 예시 |
+| Kind | Rule | Example |
 |------|------|------|
-| Aggregate Root | 도메인 명사 (PascalCase) | `Order`, `User` |
-| Entity | 도메인 명사 | `OrderItem`, `Address` |
-| Value Object | 도메인 개념 | `Money`, `PhoneNumber` |
-| Domain Event | 과거형 PascalCase | `OrderPlaced`, `OrderCancelled` |
-| Repository 인터페이스 | `<Aggregate>Repository` | `OrderRepository` |
-| Repository 구현체 | `<Aggregate>RepositoryImpl` | `OrderRepositoryImpl` |
-| Query 인터페이스 | `<Domain>Query` | `OrderQuery` |
-| Query 구현체 | `<Domain>QueryImpl` | `OrderQueryImpl` |
+| Aggregate Root | A domain noun (PascalCase) | `Order`, `User` |
+| Entity | A domain noun | `OrderItem`, `Address` |
+| Value Object | A domain concept | `Money`, `PhoneNumber` |
+| Domain Event | Past-tense PascalCase | `OrderPlaced`, `OrderCancelled` |
+| Repository interface | `<Aggregate>Repository` | `OrderRepository` |
+| Repository implementation | `<Aggregate>RepositoryImpl` | `OrderRepositoryImpl` |
+| Query interface | `<Domain>Query` | `OrderQuery` |
+| Query implementation | `<Domain>QueryImpl` | `OrderQueryImpl` |
 | Command | `<Verb><Noun>Command` | `CancelOrderCommand` |
 | Query DTO | `<Verb><Noun>Query` | `GetOrdersQuery` |
 | Result | `<Verb><Noun>Result` | `GetOrdersResult` |
-| Adapter 인터페이스 | `<ExternalDomain>Adapter` | `PaymentAdapter` |
-| Adapter 구현체 | `<ExternalDomain>AdapterImpl` | `PaymentAdapterImpl` |
+| Adapter interface | `<ExternalDomain>Adapter` | `PaymentAdapter` |
+| Adapter implementation | `<ExternalDomain>AdapterImpl` | `PaymentAdapterImpl` |
 | Error Message enum | `<Domain>ErrorMessage` | `OrderErrorMessage` |
 
 ---
 
-## 공용 인프라 배치 기준
+## Criteria for placing shared infrastructure
 
-`domain/` 밖에 있는 공용 코드는 도메인에 속하지 않는 공유 인프라다.
+Shared code that lives outside `domain/` is shared infrastructure that doesn't belong to any domain.
 
-| 디렉토리 | 포함 내용 |
+| Directory | What it contains |
 |---------|----------|
-| `common/` | 순수 유틸 함수 — ID 생성, DB 위반 판별 등. 프레임워크 무의존. |
-| `database/` | DB 연결, TransactionManager — 모든 도메인 Repository에서 공유 |
-| `outbox/` | OutboxWriter, OutboxPoller(Outbox → 메시지 큐 발행), OutboxConsumer(큐 수신 → Handler 실행), EventHandlerRegistry |
-| `task-queue/` | TaskQueue 인터페이스/구현, Consumer, 멱등성 Ledger |
-| `config/` | 환경 변수 로드·검증. 관심사별 설정 파일 분리. |
+| `common/` | Pure utility functions — ID generation, DB-violation detection, etc. Framework-independent. |
+| `database/` | DB connection, TransactionManager — shared by every domain's Repository |
+| `outbox/` | OutboxWriter, OutboxPoller (Outbox → message-queue publish), OutboxConsumer (queue receive → run Handler), EventHandlerRegistry |
+| `task-queue/` | The TaskQueue interface/implementation, the Consumer, the idempotency ledger |
+| `config/` | Loading/validating environment variables. Config files split per concern. |
 
-→ 프레임워크별 모듈 등록 방법은 `docs/implementations/` 참조
+→ See `docs/implementations/` for how module registration works per framework
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향과 역할 상세
-- [repository-pattern.md](repository-pattern.md) — Repository 패턴 상세
-- [domain-events.md](domain-events.md) — Outbox 구조
-- [config.md](config.md) — 환경 설정 관리
+- [layer-architecture.md](layer-architecture.md) — details on the layer dependency direction and roles
+- [repository-pattern.md](repository-pattern.md) — details on the Repository pattern
+- [domain-events.md](domain-events.md) — the Outbox structure
+- [config.md](config.md) — configuration management

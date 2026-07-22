@@ -12,7 +12,7 @@ type statementTaskPayload struct {
 	Period string `json:"period"`
 }
 
-// StatementTaskController는 "card.send-usage-statement" Task의 입력 어댑터다.
+// StatementTaskController is the input adapter for the "card.send-usage-statement" Task.
 type StatementTaskController struct {
 	handler *command.SendCardUsageStatementHandler
 }
@@ -26,5 +26,5 @@ func (c *StatementTaskController) HandleSendStatement(ctx context.Context, paylo
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return fmt.Errorf("unmarshal card.send-usage-statement task payload: %w", err)
 	}
-	return c.handler.Handle(ctx, command.SendCardUsageStatementCommand{Period: p.Period}) // 예외는 그대로 위로
+	return c.handler.Handle(ctx, command.SendCardUsageStatementCommand{Period: p.Period}) // let the error propagate as-is
 }

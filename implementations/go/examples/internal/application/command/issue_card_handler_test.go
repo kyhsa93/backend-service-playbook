@@ -20,7 +20,7 @@ func TestIssueCardHandler_Handle(t *testing.T) {
 		wantSaved   bool
 	}{
 		{
-			name: "활성_계좌면_카드가_발급되고_저장된다",
+			name: "an_active_account_issues_and_saves_a_card",
 			findAccount: func(ctx context.Context, accountID, ownerID string) (*command.AccountView, error) {
 				return activeView, nil
 			},
@@ -28,7 +28,7 @@ func TestIssueCardHandler_Handle(t *testing.T) {
 			wantSaved: true,
 		},
 		{
-			name: "계좌를_찾지_못하면_LinkedAccountNotFound_에러",
+			name: "account_not_found_returns_LinkedAccountNotFound_error",
 			findAccount: func(ctx context.Context, accountID, ownerID string) (*command.AccountView, error) {
 				return nil, nil
 			},
@@ -36,7 +36,7 @@ func TestIssueCardHandler_Handle(t *testing.T) {
 			wantSaved: false,
 		},
 		{
-			name: "비활성_계좌면_IssueRequiresActiveAccount_에러",
+			name: "inactive_account_returns_IssueRequiresActiveAccount_error",
 			findAccount: func(ctx context.Context, accountID, ownerID string) (*command.AccountView, error) {
 				return inactiveView, nil
 			},
@@ -83,7 +83,7 @@ func TestSuspendCardsByAccountHandler_OnlyTouchesActiveCards(t *testing.T) {
 	var savedIDs []string
 	repo := &stubCardRepository{
 		findAllFn: func(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error) {
-			// 핸들러가 ACTIVE 상태만 조회하는지 확인(멱등성의 근거).
+			// Verify the handler queries only ACTIVE status (the basis for idempotency).
 			if len(q.Status) != 1 || q.Status[0] != card.StatusActive {
 				t.Fatalf("want query for ACTIVE only, got %v", q.Status)
 			}
@@ -105,5 +105,5 @@ func TestSuspendCardsByAccountHandler_OnlyTouchesActiveCards(t *testing.T) {
 	if len(savedIDs) != 1 || savedIDs[0] != active.CardID {
 		t.Fatalf("want only the active card saved, got %v", savedIDs)
 	}
-	_ = suspended // 이미 정지된 카드는 조회 대상이 아니므로 건드리지 않는다.
+	_ = suspended // An already-suspended card is not a query target, so it's left untouched.
 }

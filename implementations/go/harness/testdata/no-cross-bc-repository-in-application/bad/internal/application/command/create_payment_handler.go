@@ -5,8 +5,9 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// bad — Payment BC의 Command Handler가 Account BC의 domain.Repository를 직접
-// import함(Adapter를 거치지 않음). cross-domain-communication.md 위반 fixture.
+// bad — the Payment BC's Command Handler directly imports the Account BC's
+// domain.Repository (bypassing the Adapter). Violates
+// cross-domain-communication.md.
 type CreatePaymentHandler struct {
 	paymentRepo payment.Repository
 	accountRepo account.Repository

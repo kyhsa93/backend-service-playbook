@@ -8,14 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// issueCard는 카드를 발급하고 성공 응답 본문을 반환한다.
+// issueCard issues a card and returns the successful response body.
 func issueCard(t *testing.T, ownerID, accountID, brand string) *http.Response {
 	t.Helper()
 	return doRequest(t, http.MethodPost, "/cards", ownerID,
 		map[string]string{"accountId": accountID, "brand": brand})
 }
 
-// getCardStatus는 카드를 조회해 status를 반환한다(조회 실패 시 빈 문자열).
+// getCardStatus looks up the card and returns its status (empty string on
+// lookup failure).
 func getCardStatus(t *testing.T, ownerID, cardID string) string {
 	t.Helper()
 	resp := doRequest(t, http.MethodGet, "/cards/"+cardID, ownerID, nil)
@@ -30,12 +31,15 @@ func getCardStatus(t *testing.T, ownerID, cardID string) string {
 	return ""
 }
 
-// waitForCardStatus는 비동기 Integration Event 반영을 기다리며 카드 상태를 폴링한다.
+// waitForCardStatus polls the card status while waiting for the asynchronous
+// Integration Event to be applied.
 //
-// Outbox → SQS → Handler 경로는 Poller의 1초 tick + Consumer의 5초 long polling +
-// LocalStack 자체 지연이 겹쳐 옛 동기 드레인(즉시 반영)보다 왕복이 훨씬 오래 걸린다 —
-// nestjs 구현체가 실측한 2~4초 왕복을 감당하도록 예산을 30초(200ms 간격 150회, nestjs와
-// 동일)로 잡는다.
+// The Outbox → SQS → Handler path takes far longer round-trip than the old
+// synchronous drain (immediate application), since the Poller's 1-second
+// tick, the Consumer's 5-second long polling, and LocalStack's own latency
+// all stack up — the budget is set to 30 seconds (150 iterations at 200ms
+// intervals, same as nestjs) to absorb the 2-4 second round trip measured
+// against the nestjs implementation.
 func waitForCardStatus(t *testing.T, ownerID, cardID, want string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -50,11 +54,12 @@ func waitForCardStatus(t *testing.T, ownerID, cardID, want string) {
 	t.Fatalf("card %s status = %q, want %q (timed out)", cardID, last, want)
 }
 
-// TestIssueCard는 동기 Adapter/ACL 경로를 검증한다 — 카드 발급이 계좌 상태에 게이트된다.
+// TestIssueCard verifies the synchronous Adapter/ACL path — card issuance is
+// gated on account state.
 func TestIssueCard(t *testing.T) {
 	const owner = "card-owner-1"
 
-	t.Run("활성_계좌에_카드를_발급하면_201과_ACTIVE_카드를_반환한다", func(t *testing.T) {
+	t.Run("issuing_a_card_to_an_active_account_returns_201_and_an_ACTIVE_card", func(t *testing.T) {
 		account := createAccount(t, owner, "KRW")
 		accountID := account["accountId"].(string)
 
@@ -69,23 +74,24 @@ func TestIssueCard(t *testing.T) {
 		require.NotEmpty(t, body["cardId"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404_LINKED_ACCOUNT_NOT_FOUND를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404_LINKED_ACCOUNT_NOT_FOUND", func(t *testing.T) {
 		resp := issueCard(t, owner, "non-existent-account", "VISA")
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 		body := decodeBody(t, resp)
 		require.Equal(t, "LINKED_ACCOUNT_NOT_FOUND", body["code"])
 	})
 
-	t.Run("다른_소유자의_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("another_owners_account_returns_404", func(t *testing.T) {
 		account := createAccount(t, owner, "KRW")
 		accountID := account["accountId"].(string)
 
-		// ACL이 owner 매칭에 실패해 "계좌 없음"으로 번역 → LINKED_ACCOUNT_NOT_FOUND.
+		// The ACL fails to match the owner and translates it as "account not
+		// found" -> LINKED_ACCOUNT_NOT_FOUND.
 		resp := issueCard(t, "card-owner-other", accountID, "VISA")
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("정지된_계좌면_400_CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT를_반환한다", func(t *testing.T) {
+	t.Run("suspended_account_returns_400_CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT", func(t *testing.T) {
 		account := createAccount(t, owner, "KRW")
 		accountID := account["accountId"].(string)
 		doRequest(t, http.MethodPost, "/accounts/"+accountID+"/suspend", owner, nil)
@@ -100,7 +106,7 @@ func TestIssueCard(t *testing.T) {
 func TestGetCard(t *testing.T) {
 	const owner = "card-owner-get"
 
-	t.Run("발급한_카드를_조회하면_200과_카드_정보를_반환한다", func(t *testing.T) {
+	t.Run("looking_up_an_issued_card_returns_200_and_card_info", func(t *testing.T) {
 		account := createAccount(t, owner, "KRW")
 		accountID := account["accountId"].(string)
 		issued := decodeBody(t, issueCard(t, owner, accountID, "MASTER"))
@@ -113,12 +119,12 @@ func TestGetCard(t *testing.T) {
 		require.Equal(t, "MASTER", body["brand"])
 	})
 
-	t.Run("존재하지_않는_카드면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_card_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodGet, "/cards/non-existent", owner, nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("다른_소유자가_조회하면_404를_반환한다", func(t *testing.T) {
+	t.Run("lookup_by_another_owner_returns_404", func(t *testing.T) {
 		account := createAccount(t, owner, "KRW")
 		accountID := account["accountId"].(string)
 		issued := decodeBody(t, issueCard(t, owner, accountID, "VISA"))
@@ -129,8 +135,9 @@ func TestGetCard(t *testing.T) {
 	})
 }
 
-// TestCardReactsToAccountSuspended는 비동기 Integration Event 반응을 검증한다 —
-// 계좌를 정지하면 그 계좌의 ACTIVE 카드가 SUSPENDED로 전환된다.
+// TestCardReactsToAccountSuspended verifies the asynchronous Integration
+// Event reaction — suspending an account transitions its ACTIVE cards to
+// SUSPENDED.
 func TestCardReactsToAccountSuspended(t *testing.T) {
 	const owner = "card-owner-suspend"
 	account := createAccount(t, owner, "KRW")
@@ -146,8 +153,9 @@ func TestCardReactsToAccountSuspended(t *testing.T) {
 	waitForCardStatus(t, owner, card2, "SUSPENDED")
 }
 
-// TestCardReactsToAccountClosed는 계좌 해지 시 카드가 CANCELLED로 전환되는지 검증한다.
-// SUSPENDED 카드도 CANCELLED로 전환된다(ACTIVE·SUSPENDED 모두 대상).
+// TestCardReactsToAccountClosed verifies that cards transition to CANCELLED
+// when an account is closed. SUSPENDED cards also transition to CANCELLED
+// (both ACTIVE and SUSPENDED are targeted).
 func TestCardReactsToAccountClosed(t *testing.T) {
 	const owner = "card-owner-close"
 	account := createAccount(t, owner, "KRW")
@@ -155,11 +163,13 @@ func TestCardReactsToAccountClosed(t *testing.T) {
 
 	activeCard := decodeBody(t, issueCard(t, owner, accountID, "VISA"))["cardId"].(string)
 
-	// 먼저 정지시켜 SUSPENDED 카드를 만든 뒤 재개하고, 다시 발급해 ACTIVE·과거정지 카드를 섞는다.
+	// First suspend to create a SUSPENDED card, then reactivate, then issue
+	// again to mix an ACTIVE card with a previously-suspended one.
 	doRequest(t, http.MethodPost, "/accounts/"+accountID+"/suspend", owner, nil)
 	waitForCardStatus(t, owner, activeCard, "SUSPENDED")
 	doRequest(t, http.MethodPost, "/accounts/"+accountID+"/reactivate", owner, nil)
-	// 재개해도 카드는 자동 복구되지 않는다(정지→재개 대칭 이벤트는 설계상 없음) — SUSPENDED 유지.
+	// Reactivation does not automatically restore the card (there is no
+	// suspend->reactivate symmetric event by design) — it stays SUSPENDED.
 	require.Equal(t, "SUSPENDED", getCardStatus(t, owner, activeCard))
 
 	newCard := decodeBody(t, issueCard(t, owner, accountID, "MASTER"))["cardId"].(string)
@@ -167,13 +177,14 @@ func TestCardReactsToAccountClosed(t *testing.T) {
 	resp := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/close", owner, nil)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
-	// SUSPENDED 카드와 ACTIVE 카드 모두 CANCELLED가 된다.
+	// Both the SUSPENDED card and the ACTIVE card become CANCELLED.
 	waitForCardStatus(t, owner, activeCard, "CANCELLED")
 	waitForCardStatus(t, owner, newCard, "CANCELLED")
 }
 
-// TestCardCascadeIsIdempotent는 같은 계좌를 반복 정지 시도해도(재수신 모사) 카드 상태가
-// 안정적으로 유지되는지 확인한다 — ACTIVE 카드만 처리하므로 재적용이 무해하다.
+// TestCardCascadeIsIdempotent checks that card state remains stable even
+// when the same account is repeatedly suspended (simulating redelivery) —
+// since only ACTIVE cards are processed, reapplication is harmless.
 func TestCardCascadeIsIdempotent(t *testing.T) {
 	const owner = "card-owner-idem"
 	account := createAccount(t, owner, "KRW")
@@ -183,8 +194,9 @@ func TestCardCascadeIsIdempotent(t *testing.T) {
 	doRequest(t, http.MethodPost, "/accounts/"+accountID+"/suspend", owner, nil)
 	waitForCardStatus(t, owner, cardID, "SUSPENDED")
 
-	// 이미 정지된 계좌를 다시 정지 시도하면 400(도메인 규칙)이지만, 설령 이벤트가 재발행돼도
-	// 카드는 SUSPENDED로 유지된다.
+	// Attempting to suspend an already-suspended account returns 400 (a
+	// domain rule), but even if the event were republished, the card stays
+	// SUSPENDED.
 	doRequest(t, http.MethodPost, "/accounts/"+accountID+"/suspend", owner, nil)
 	require.Equal(t, "SUSPENDED", getCardStatus(t, owner, cardID))
 }

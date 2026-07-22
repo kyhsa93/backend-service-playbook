@@ -15,10 +15,11 @@ from src.account.infrastructure.persistence.account_repository import Base
 from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.database import get_session
 
-# 다른 e2e 테스트 파일(test_account_e2e.py/test_card_e2e.py)과 동일하게, 이 파일도 자신만의
-# session-scope `client` fixture로 별도의 Postgres/LocalStack testcontainer를 띄운다 —
-# 파일 간에는 공유하지 않으므로 서로 오염되지 않는다(파일 내 여러 테스트 함수 사이의 오염은
-# 각 테스트가 자신만의 신규 계좌/카드를 만들어 피한다).
+# Just like the other e2e test files (test_account_e2e.py/test_card_e2e.py), this file also
+# starts its own separate Postgres/LocalStack testcontainer with its own session-scope
+# `client` fixture — they aren't shared across files, so they don't contaminate each other
+# (contamination between multiple test functions within a file is avoided by each test
+# creating its own fresh account/card).
 OWNER_ID = "owner-1"
 OTHER_OWNER_ID = "owner-2"
 OWNER_EMAIL = "owner1@example.com"
@@ -129,7 +130,8 @@ async def make_funded_card(client: AsyncClient, owner_id: str, balance: int = 10
     return account, card
 
 
-# --- 동기 Adapter(ACL) 흐름: POST /payments가 Card/Account BC를 즉시 조회해 결제 가부를 판정한다 ---
+# --- Synchronous Adapter (ACL) flow: POST /payments immediately queries the Card/Account BCs to
+# decide whether payment is allowed ---
 
 
 @pytest.mark.asyncio
@@ -142,16 +144,18 @@ async def test_create_payment_success_debits_account_immediately(client: AsyncCl
     assert payment["account_id"] == account["account_id"]
     assert payment["amount"] == 30000
 
-    # payment.completed.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리되어
-    # 잔액이 반영된다 — 응답 직후 즉시 반영되어 있지 않을 수 있으므로 폴링한다
-    # (test_card_e2e.py의 account.suspended.v1과 동일 패턴).
+    # payment.completed.v1 is processed asynchronously through OutboxPoller → SQS →
+    # OutboxConsumer, and the balance is reflected — it may not be reflected immediately
+    # right after the response, so this polls (the same pattern as account.suspended.v1 in
+    # test_card_e2e.py).
     await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
 
 @pytest.mark.asyncio
 async def test_create_payment_inactive_card_returns_400(client: AsyncClient) -> None:
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
-    # 계좌를 정지하면 account.suspended.v1을 Card BC가 구독해 카드도 비동기로 정지된다.
+    # Once the account is suspended, the Card BC subscribes to account.suspended.v1 and the card
+    # is suspended asynchronously too.
     suspend_response = await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
     assert suspend_response.status_code == 204
 
@@ -167,7 +171,7 @@ async def test_create_payment_inactive_card_returns_400(client: AsyncClient) -> 
 @pytest.mark.asyncio
 async def test_create_payment_insufficient_balance_returns_400(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID)
-    card = await issue_card(client, OWNER_ID, account["account_id"])  # 잔액 0
+    card = await issue_card(client, OWNER_ID, account["account_id"])  # zero balance
 
     response = await client.post(
         "/payments", json={"card_id": card["card_id"], "amount": 1000}, headers=auth_headers(OWNER_ID)
@@ -200,23 +204,23 @@ async def test_create_payment_other_owners_card_returns_404(client: AsyncClient)
     assert response.status_code == 404
 
 
-# --- 비동기 Integration Event 흐름: 결제취소가 보상 크레딧을 트리거한다 ---
+# --- Async Integration Event flow: cancelling a payment triggers a compensating credit ---
 
 
 @pytest.mark.asyncio
 async def test_cancel_payment_restores_balance_via_compensating_credit(client: AsyncClient) -> None:
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 30000)
-    # payment.completed.v1이 비동기로 처리되어 잔액이 반영될 때까지 기다린다.
+    # Wait until payment.completed.v1 is processed asynchronously and the balance is reflected.
     await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
     cancel_response = await client.post(
-        f"/payments/{payment['payment_id']}/cancel", json={"reason": "고객 요청"}, headers=auth_headers(OWNER_ID)
+        f"/payments/{payment['payment_id']}/cancel", json={"reason": "customer request"}, headers=auth_headers(OWNER_ID)
     )
     assert cancel_response.status_code == 204
 
-    # payment.cancelled.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리되어
-    # 보상 크레딧으로 잔액이 복구된다.
+    # payment.cancelled.v1 is processed asynchronously through OutboxPoller → SQS →
+    # OutboxConsumer, and the balance is restored via a compensating credit.
     await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 100000))
 
     get_payment_response = await client.get(f"/payments/{payment['payment_id']}", headers=auth_headers(OWNER_ID))
@@ -228,18 +232,22 @@ async def test_cancel_pending_or_already_cancelled_payment_returns_400(client: A
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 10000)
     await client.post(
-        f"/payments/{payment['payment_id']}/cancel", json={"reason": "1차 취소"}, headers=auth_headers(OWNER_ID)
+        f"/payments/{payment['payment_id']}/cancel",
+        json={"reason": "first cancellation"},
+        headers=auth_headers(OWNER_ID),
     )
 
     response = await client.post(
-        f"/payments/{payment['payment_id']}/cancel", json={"reason": "2차 취소"}, headers=auth_headers(OWNER_ID)
+        f"/payments/{payment['payment_id']}/cancel",
+        json={"reason": "second cancellation"},
+        headers=auth_headers(OWNER_ID),
     )
 
     assert response.status_code == 400
     assert response.json()["code"] == "PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT"
 
 
-# --- RefundEligibilityService(Domain Service) 판단 검증 ---
+# --- Verifying RefundEligibilityService (Domain Service) decisions ---
 
 
 @pytest.mark.asyncio
@@ -250,17 +258,17 @@ async def test_refund_within_payment_amount_is_approved_and_credits_account(clie
 
     response = await client.post(
         f"/payments/{payment['payment_id']}/refunds",
-        json={"amount": 30000, "reason": "단순 변심"},
+        json={"amount": 30000, "reason": "personal change of mind"},
         headers=auth_headers(OWNER_ID),
     )
 
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "APPROVED"
-    assert body["decision_note"] == "환불이 승인되었습니다."
+    assert body["decision_note"] == "The refund has been approved."
 
-    # refund.approved.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리되어
-    # 환불 크레딧이 반영된다.
+    # refund.approved.v1 is processed asynchronously through OutboxPoller → SQS →
+    # OutboxConsumer, and the refund credit is applied.
     await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 100000))
 
 
@@ -271,18 +279,19 @@ async def test_refund_exceeding_payment_amount_is_rejected_with_201(client: Asyn
 
     response = await client.post(
         f"/payments/{payment['payment_id']}/refunds",
-        json={"amount": 30001, "reason": "단순 변심"},
+        json={"amount": 30001, "reason": "personal change of mind"},
         headers=auth_headers(OWNER_ID),
     )
 
-    # 환불 거부는 유효한 도메인 판단 결과다 — 4xx 에러가 아니라 201 + status: REJECTED로 응답한다.
+    # A refund rejection is a valid domain decision outcome — it responds with 201 + status: REJECTED, not a 4xx error.
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "REJECTED"
-    assert body["decision_note"] == "환불 금액은 결제 금액을 초과할 수 없습니다."
+    assert body["decision_note"] == "The refund amount cannot exceed the payment amount."
 
-    # 거부된 환불은 Domain Event가 없으므로 잔액에 아무 영향을 주지 않는다 — 다만 결제
-    # 자체의 debit(payment.completed.v1)은 비동기이므로, 70000으로 반영될 때까지 기다린다.
+    # A rejected refund has no Domain Event, so it doesn't affect the balance at all —
+    # however, since the payment's own debit (payment.completed.v1) is async, this waits
+    # until it's reflected as 70000.
     await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 70000))
 
 
@@ -291,40 +300,42 @@ async def test_refund_on_non_completed_payment_is_rejected_with_201(client: Asyn
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 30000)
     await client.post(
-        f"/payments/{payment['payment_id']}/cancel", json={"reason": "고객 요청"}, headers=auth_headers(OWNER_ID)
+        f"/payments/{payment['payment_id']}/cancel", json={"reason": "customer request"}, headers=auth_headers(OWNER_ID)
     )
 
     response = await client.post(
         f"/payments/{payment['payment_id']}/refunds",
-        json={"amount": 30000, "reason": "단순 변심"},
+        json={"amount": 30000, "reason": "personal change of mind"},
         headers=auth_headers(OWNER_ID),
     )
 
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "REJECTED"
-    assert body["decision_note"] == "완료된 결제에 대해서만 환불을 요청할 수 있습니다."
+    assert body["decision_note"] == "A refund can only be requested for a completed payment."
 
 
 @pytest.mark.asyncio
 async def test_request_refund_payment_not_found_returns_404(client: AsyncClient) -> None:
     response = await client.post(
-        "/payments/non-existent/refunds", json={"amount": 1000, "reason": "단순 변심"}, headers=auth_headers(OWNER_ID)
+        "/payments/non-existent/refunds",
+        json={"amount": 1000, "reason": "personal change of mind"},
+        headers=auth_headers(OWNER_ID),
     )
 
     assert response.status_code == 404
     assert response.json()["code"] == "PAYMENT_NOT_FOUND"
 
 
-# --- 조회(Query) — 인증된 요청자 본인 소유로만 스코프된다 ---
+# --- Lookup (Query) — scoped only to the authenticated requester's own records ---
 
 
 @pytest.mark.asyncio
 async def test_get_payments_lists_only_requesters_own_payments(client: AsyncClient) -> None:
-    # client fixture는 세션 전체(다른 e2e 테스트 파일 포함)에서 같은 Postgres를 공유하므로,
-    # 개수를 정확히 검증하는 이 테스트는 공용 OWNER_ID/OTHER_OWNER_ID를 재사용하지 않고
-    # 이 테스트만의 고유한 owner id를 쓴다 — 그래야 다른 테스트가 만든 결제 데이터와
-    # 섞이지 않는다.
+    # The client fixture shares the same Postgres across the whole session (including other
+    # e2e test files), so this test, which verifies an exact count, doesn't reuse the shared
+    # OWNER_ID/OTHER_OWNER_ID and instead uses an owner id unique to this test — so it doesn't
+    # mix with payment data created by other tests.
     owner_id = f"owner-payments-list-{uuid.uuid4().hex}"
     other_owner_id = f"owner-payments-list-other-{uuid.uuid4().hex}"
     _, card_a = await make_funded_card(client, owner_id, balance=100000)
@@ -347,7 +358,7 @@ async def test_get_refunds_lists_refunds_for_a_payment(client: AsyncClient) -> N
     payment = await create_payment(client, OWNER_ID, card["card_id"], 30000)
     await client.post(
         f"/payments/{payment['payment_id']}/refunds",
-        json={"amount": 30001, "reason": "초과 환불 시도"},
+        json={"amount": 30001, "reason": "excessive refund attempt"},
         headers=auth_headers(OWNER_ID),
     )
 

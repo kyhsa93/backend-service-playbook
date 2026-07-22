@@ -11,9 +11,11 @@ type SuspendCardsByAccountCommand struct {
 	AccountID string
 }
 
-// SuspendCardsByAccountHandler는 Account BC의 account.suspended.v1 Integration Event에
-// 대한 반응 유스케이스다. at-least-once 전달을 전제로 멱등하게 구현한다 — ACTIVE 카드만
-// 골라 정지하므로 같은 이벤트가 재수신되어도(이미 정지된 카드) 아무 일도 하지 않는다.
+// SuspendCardsByAccountHandler is a use case reacting to the Account BC's
+// account.suspended.v1 Integration Event. It is implemented idempotently,
+// assuming at-least-once delivery — since it only picks out and suspends
+// ACTIVE cards, redelivery of the same event (against an already-suspended
+// card) does nothing.
 type SuspendCardsByAccountHandler struct {
 	repo card.Repository
 }

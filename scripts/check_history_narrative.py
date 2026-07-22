@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXCLUDE_DIR_NAMES = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist",
     "target", ".gradle", "bin", "obj", ".pytest_cache", "htmlcov",
-    ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode",
+    ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode", ".claude",
 }
 
 INCLUDE_SUFFIXES = {".md", ".ts", ".go", ".java", ".kt", ".py", ".yml", ".yaml"}
@@ -80,7 +80,7 @@ def iter_files() -> list[Path]:
             continue
         if path.suffix not in INCLUDE_SUFFIXES:
             continue
-        if any(part in EXCLUDE_DIR_NAMES for part in path.parts):
+        if any(part in EXCLUDE_DIR_NAMES for part in path.relative_to(REPO_ROOT).parts):
             continue
         files.append(path)
     return files

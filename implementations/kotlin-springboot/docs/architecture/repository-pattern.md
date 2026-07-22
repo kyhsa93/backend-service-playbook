@@ -1,36 +1,36 @@
-# Repository 패턴 — Kotlin Spring Boot
+# Repository Pattern — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root repository-pattern.md](../../../../docs/architecture/repository-pattern.md) 참조.
+> For the framework-agnostic principles, see [root repository-pattern.md](../../../../docs/architecture/repository-pattern.md).
 
-## 현재 구현 — 인터페이스/구현 분리는 올바르다
+## Current implementation — the interface/implementation split is correct
 
 ```
 account/
   domain/
-    AccountRepository.kt          ← interface (Spring 무의존)
+    AccountRepository.kt          ← interface (no Spring dependency)
   infrastructure/
     persistence/
-      AccountJpaRepository.kt     ← Spring Data JpaRepository 확장
-      AccountRepositoryImpl.kt    ← @Repository, AccountRepository 구현체
+      AccountJpaRepository.kt     ← extends Spring Data's JpaRepository
+      AccountRepositoryImpl.kt    ← @Repository, the AccountRepository implementation
 ```
 
-1 Aggregate(`Account`) = 1 Repository 인터페이스 + 1 구현체, `domain/`에 인터페이스·`infrastructure/persistence/`에 구현체 배치는 root 원칙과 정확히 일치한다. harness의 `repository-annotation` 검사(`@Repository`가 `infrastructure/` 안에 있는지)가 이를 실제로 강제한다.
+1 Aggregate (`Account`) = 1 Repository interface + 1 implementation, with the interface in `domain/` and the implementation in `infrastructure/persistence/` — this matches the root principle exactly. The harness's `repository-annotation` check (whether `@Repository` is inside `infrastructure/`) actually enforces this.
 
-DI 바인딩은 root의 TypeScript `abstract class` 토큰 대신 **Kotlin `interface` 자체**가 토큰이 된다 — Spring이 클래스패스에서 `AccountRepository`의 유일한 구현체(`@Repository` Bean)를 찾아 자동 주입한다.
+For DI binding, instead of the root's TypeScript `abstract class` token, **the Kotlin `interface` itself** becomes the token — Spring finds `AccountRepository`'s sole implementation (the `@Repository` Bean) on the classpath and auto-injects it.
 
 ```kotlin
-// Application Service — interface 타입으로 주입받음 (실제 코드)
+// an Application Service — injected as the interface type (actual code)
 class CreateAccountService(private val accountRepository: AccountRepository)
 ```
 
 ---
 
-## 조회/저장 메서드 네이밍 — `find<Noun>s`/`save<Noun>`으로 통일 (harness `repository-naming` 규칙으로 강제)
+## Query/save method naming — unified into `find<Noun>s`/`save<Noun>` (enforced by the harness's `repository-naming` rule)
 
 ```kotlin
-// domain/AccountRepository.kt — 실제 코드
+// domain/AccountRepository.kt — actual code
 interface AccountRepository {
-    fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>   // 목록 + count를 함께 반환
+    fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>   // returns the list + count together
     fun saveAccount(account: Account)
     fun deleteAccount(accountId: String)
     fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
@@ -51,20 +51,20 @@ data class TransactionFindQuery(
 )
 ```
 
-root 컨벤션이 요구하는 세 가지가 모두 실제 코드에 반영되어 있다.
+All three things the root convention requires are reflected in the actual code.
 
-| 목적 | root 패턴 | 현재 코드 |
+| Purpose | Root pattern | Current code |
 |------|--------------|------|
-| 목록 조회 | `find<Noun>s` 하나만, 단건도 `take: 1`로 재사용 | `findAccounts` 하나로 통일 — 과거의 `findByAccountIdAndOwnerId`(단건 전용) + `findAll`/`countAll`(목록/count 분리) 세 메서드가 사라졌다 |
-| 저장 | `save<Noun>` | `saveAccount` — noun 접미사 포함 |
-| 삭제 | `delete<Noun>` | `deleteAccount(accountId)` — 이전부터 일치 |
+| List query | only a single `find<Noun>s`, single-item lookups also reuse it via `take: 1` | unified into a single `findAccounts` — the old `findByAccountIdAndOwnerId` (single-item-only) + `findAll`/`countAll` (separate list/count) three methods are gone |
+| Save | `save<Noun>` | `saveAccount` — includes the noun suffix |
+| Delete | `delete<Noun>` | `deleteAccount(accountId)` — already matched before |
 
-과거에 있던 `findByAccountIdAndOwnerId`처럼 전용 단건 조회 메서드를 두는 것은 root가 명시적으로 금지하는 "findOne 전용 메서드" 패턴이었다 — 조회 조건이 하나 늘어날 때마다(`findByAccountIdAndStatus` 등) 메서드가 계속 늘어나는 확장성 문제도 있었다. `Pair<List<Account>, Long>`이 root의 `{ orders: Order[], count: number }` 객체 반환에 대응한다 — Kotlin에서는 전용 응답 `data class`(예: `AccountsWithCount(accounts: List<Account>, count: Long)`)를 별도로 선언해도 되고, 호출부가 소수뿐이라면 `Pair`로 충분하다. 필드가 2개뿐이므로 `Pair`가 과하지 않지만, 이후 필드가 늘어날 여지가 있다면 named `data class`가 가독성이 낫다.
+Having a dedicated single-item lookup method like the old `findByAccountIdAndOwnerId` was exactly the "dedicated findOne method" pattern the root explicitly forbids — it also had a scalability problem where the method count kept growing every time a query condition was added (`findByAccountIdAndStatus`, etc). `Pair<List<Account>, Long>` corresponds to the root's `{ orders: Order[], count: number }` object return — in Kotlin you could also declare a dedicated response `data class` (e.g. `AccountsWithCount(accounts: List<Account>, count: Long)`), and if there are only a few call sites, a `Pair` is sufficient. Since there are only 2 fields, `Pair` isn't overkill, but if there's room for more fields later, a named `data class` reads better.
 
-`Transaction`(Account Aggregate의 하위 엔티티) 조회도 같은 원칙을 적용해 `findTransactions`/`countTransactions` 두 메서드를 `findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>` 하나로 합쳤다.
+The same principle is applied to querying `Transaction` (a child entity of the Account Aggregate) too — the two methods `findTransactions`/`countTransactions` have been merged into a single `findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>`.
 
 ```kotlin
-// application/command/DepositService.kt — 단건 조회는 take=1로 재사용 (실제 코드)
+// application/command/DepositService.kt — a single-item lookup reused via take=1 (actual code)
 @Service
 class DepositService(
     private val accountRepository: AccountRepository,
@@ -75,23 +75,23 @@ class DepositService(
         )
         val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
         val transaction = account.deposit(command.amount)
-        accountRepository.saveAccount(account)   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        accountRepository.saveAccount(account)   // @Transactional — saving the Account + writing the Outbox, one transaction
         /* ... */
-        // 여기서 끝난다 — Outbox 드레인(OutboxPoller/OutboxConsumer)은 별도 컴포넌트가 담당한다.
+        // Ends here — draining the Outbox (OutboxPoller/OutboxConsumer) is handled by a separate component.
     }
 }
 ```
 
-`.firstOrNull()`이 root의 `.pop()` / `.then(r => r.orders.pop())` 패턴에 대응하는 Kotlin 관용구다 — 리스트가 비어 있으면 `null`, `?:`로 즉시 예외를 던진다. Java의 `Optional<T>` 래핑이나 인덱스 접근(`[0]`, `IndexOutOfBoundsException` 위험) 없이 한 줄로 끝난다. 계좌를 조회 후 변경하는 6개 Command Service(`Deposit`/`Withdraw`/`Suspend`/`Close`/`Reactivate`/`Delete`)가 모두 이 패턴을 쓴다. `CreateAccountService`는 신규 Aggregate를 생성하므로 조회 없이 `saveAccount(account)`만 호출한다.
+`.firstOrNull()` is the Kotlin idiom corresponding to the root's `.pop()` / `.then(r => r.orders.pop())` pattern — if the list is empty it's `null`, and `?:` throws the exception right away. It ends in one line, with none of Java's `Optional<T>` wrapping or index access (`[0]`, with the risk of `IndexOutOfBoundsException`). All 6 Command Services that query then modify an account (`Deposit`/`Withdraw`/`Suspend`/`Close`/`Reactivate`/`Delete`) use this pattern. `CreateAccountService` creates a new Aggregate, so it just calls `saveAccount(account)` without a query.
 
-**CQRS 읽기 전용 포트(`AccountQuery`)도 같은 시그니처를 재사용한다.** `GetAccountService`/`GetTransactionsService`는 `AccountRepository`(쓰기 모델)가 아니라 `application/query/AccountQuery`에 의존한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다(harness `cqrs-pattern` 규칙이 실제로 검사한다). `AccountQuery`는 별개 인터페이스지만 `findAccounts(query: AccountFindQuery)`/`findTransactions(query: TransactionFindQuery)`를 `AccountRepository`와 정확히 같은 시그니처로 선언한다 — `AccountRepositoryImpl`이 두 인터페이스를 모두 구현할 때 하나의 override가 양쪽을 동시에 만족시킨다. Card/Payment/Refund의 `*Query` 인터페이스(`CardQuery.findCards`/`PaymentQuery.findPayments`/`RefundQuery.findRefunds`)도 모두 같은 패턴이다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+**The CQRS read-only port (`AccountQuery`) reuses the same signature too.** `GetAccountService`/`GetTransactionsService` depend on `application/query/AccountQuery`, not `AccountRepository` (the write model) — this compile-time-enforces that a Query Service can never access a write method like `saveAccount`/`deleteAccount` (the harness's `cqrs-pattern` rule actually checks this). `AccountQuery` is a separate interface, but declares `findAccounts(query: AccountFindQuery)`/`findTransactions(query: TransactionFindQuery)` with exactly the same signature as `AccountRepository` — when `AccountRepositoryImpl` implements both interfaces, a single override satisfies both at once. Card/Payment/Refund's `*Query` interfaces (`CardQuery.findCards`/`PaymentQuery.findPayments`/`RefundQuery.findRefunds`) all follow the same pattern — see [cqrs-pattern.md](cqrs-pattern.md) for details.
 
 ---
 
-## 구현체
+## The implementation
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
+// infrastructure/persistence/AccountRepositoryImpl.kt — actual code
 @Repository
 class AccountRepositoryImpl(
     private val jpaRepository: AccountJpaRepository,
@@ -101,8 +101,8 @@ class AccountRepositoryImpl(
 ) : AccountRepository, AccountQuery {
 
     override fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long> {
-        val accounts = /* 기존 findAll 로직 재사용 */ /* ... */
-        val count = /* 기존 countAll 로직 재사용 */ /* ... */
+        val accounts = /* reuses the old findAll logic */ /* ... */
+        val count = /* reuses the old countAll logic */ /* ... */
         return accounts to count
     }
 
@@ -117,7 +117,7 @@ class AccountRepositoryImpl(
     @Transactional
     override fun deleteAccount(accountId: String) {
         val account = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
-        account.markDeleted()   // Account.markDeleted() — CLOSED 상태가 아니면 DeleteRequiresClosedAccountException
+        account.markDeleted()   // Account.markDeleted() — throws DeleteRequiresClosedAccountException unless the state is CLOSED
         jpaRepository.save(account)
     }
 
@@ -129,21 +129,22 @@ class AccountRepositoryImpl(
         return transactions to count
     }
 
-    // AccountQuery(읽기 전용 포트)는 findAccounts/findTransactions를 AccountRepository와 정확히 같은
-    // 시그니처로 선언하므로, 위의 두 override가 두 인터페이스를 동시에 만족시킨다 — 별도 오버로드 불필요.
+    // AccountQuery (the read-only port) declares findAccounts/findTransactions with exactly the same
+    // signature as AccountRepository, so the two overrides above satisfy both interfaces at once — no
+    // separate overload is needed.
 }
 ```
 
-**Repository에 update 메서드를 별도로 두지 않는다** — `AccountRepositoryImpl`에 `updateAccount()` 류의 메서드가 없고, 모든 상태 변경은 `Account.deposit()`/`suspend()`/`close()`/`markDeleted()` 등 도메인 메서드로 이루어진 뒤 `saveAccount()`로 영속화된다. harness `repository-naming` 규칙이 `update`로 시작하는 메서드도 blocklist로 잡아 이 원칙을 강제한다.
+**The Repository never has a separate update method** — `AccountRepositoryImpl` has no `updateAccount()`-style method; every state change happens through a domain method (`Account.deposit()`/`suspend()`/`close()`/`markDeleted()`, etc), then is persisted via `saveAccount()`. The harness's `repository-naming` rule also catches a method starting with `update` on its blocklist, enforcing this principle.
 
-**`close()`(상태 전환)와 `markDeleted()`(soft delete)는 서로 다른 생명주기 이벤트다.** `Account.close()`는 `AccountStatus.CLOSED`로 상태를 바꿀 뿐 `deletedAt`을 건드리지 않는다 — `CLOSED` 계좌도 `GetAccountService`로 계속 조회 가능해야 하기 때문이다(계좌 이력 확인 등). `deleteAccount()`는 반대로 `deletedAt`을 설정해 이후 모든 조회(`deletedAt IS NULL` 조건)에서 제외시킨다. `Account.markDeleted()`는 `status != CLOSED`이면 `DeleteRequiresClosedAccountException`을 던져, 활성 계좌가 종료 절차 없이 곧바로 삭제되는 것을 막는다 — 삭제는 항상 "종료 → 삭제" 두 단계를 거친다.
+**`close()` (a state transition) and `markDeleted()` (soft delete) are different lifecycle events.** `Account.close()` only changes the state to `AccountStatus.CLOSED` and never touches `deletedAt` — a `CLOSED` account must still be queryable via `GetAccountService` (checking account history, etc). `deleteAccount()`, on the other hand, sets `deletedAt`, excluding it from every subsequent query (the `deletedAt IS NULL` condition). `Account.markDeleted()` throws `DeleteRequiresClosedAccountException` if `status != CLOSED`, blocking an active account from being deleted directly without going through the closing procedure — deletion always goes through the two steps "close → delete."
 
 ---
 
-## 동적 필터
+## Dynamic filters
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
+// infrastructure/persistence/AccountRepositoryImpl.kt — actual code
 private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
     val select = if (count) "SELECT COUNT(a)" else "SELECT a"
     val sb = StringBuilder("$select FROM Account a WHERE a.deletedAt IS NULL")
@@ -155,23 +156,23 @@ private fun buildJpql(query: AccountFindQuery, count: Boolean): String {
 }
 ```
 
-값이 있을 때만 조건을 추가하는 방식(`if (!query.accountId.isNullOrBlank())`)이 root의 동적 필터 원칙과 정확히 일치한다. `deletedAt IS NULL` 조건이 모든 조회에 기본 적용되는 것도 soft delete 조회 원칙에 맞다.
+Adding a condition only when a value is present (`if (!query.accountId.isNullOrBlank())`) matches the root's dynamic-filter principle exactly. Having the `deletedAt IS NULL` condition applied by default on every query also matches the soft-delete query principle.
 
 ---
 
-## 원칙 요약
+## Principle summary
 
-- **1 Aggregate = 1 Repository 인터페이스 + 구현체**.
-- **`delete<Noun>` 추가 완료**: `deleteAccount(accountId)`가 실제 코드에 존재하고 `Account.markDeleted()`를 통해 CLOSED 상태만 삭제 가능하도록 강제한다.
-- **`find<Noun>s`/`save<Noun>`으로 통일**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → `findAccounts`/`saveAccount`로 리네이밍되었다. `findTransactions`/`countTransactions`도 `findTransactions(query): Pair<...>` 하나로 합쳐졌다. 이 통일은 `AccountRepository`(쓰기 모델)뿐 아니라 `AccountQuery`(읽기 전용 포트)에도 그대로 적용되어 있고, Card(`findCards`/`saveCard`)·Payment(`findPayments`/`savePayment`)·Refund(`findRefunds`/`saveRefund`)·Auth(`CredentialQuery.findCredentials`)의 Repository/Query 양쪽 모두 같은 형태다. 이 규칙은 harness의 `repository-naming` 검사(`domain/`, `application/query/` 안의 `*Repository`/`*Query` 인터페이스 메서드를 스캔, `findBy...`/bare `findAll`/`count*`/`save`/`delete` 를 blocklist로 잡는다)가 자동으로 강제한다 — 문서가 "완료"라고 적어도 실제로 리네이밍이 빠진 인터페이스가 있으면(과거 `CredentialQuery.findByUserId`가 그랬듯) harness FAIL로 드러난다.
-- **단건 조회는 `take: 1` + `firstOrNull()`**: 전용 findOne 메서드를 만들지 않는다 — Command Service 6곳이 모두 이 패턴을 쓴다.
-- **Repository에 update 메서드 없음**: 상태 변경은 Aggregate 도메인 메서드 + `saveAccount`/`deleteAccount`로 이루어진다.
-- **동적 필터, soft-delete 조회 조건**: 값이 있을 때만 조건을 추가하고, `deletedAt IS NULL`이 모든 조회에 기본 적용된다.
+- **1 Aggregate = 1 Repository interface + implementation**.
+- **`delete<Noun>` has been added**: `deleteAccount(accountId)` exists in the actual code, and enforces via `Account.markDeleted()` that only a CLOSED account can be deleted.
+- **Unified into `find<Noun>s`/`save<Noun>`**: `findByAccountIdAndOwnerId`/`findAll`/`countAll`/`save` → renamed to `findAccounts`/`saveAccount`. `findTransactions`/`countTransactions` have also been merged into a single `findTransactions(query): Pair<...>`. This unification is applied not only to `AccountRepository` (the write model) but also to `AccountQuery` (the read-only port) as-is, and both the Repository/Query of Card (`findCards`/`saveCard`)·Payment (`findPayments`/`savePayment`)·Refund (`findRefunds`/`saveRefund`)·Auth (`CredentialQuery.findCredentials`) follow the same shape. This rule is automatically enforced by the harness's `repository-naming` check (it scans `*Repository`/`*Query` interface methods inside `domain/`, `application/query/`, catching `findBy...`/a bare `findAll`/`count*`/`save`/`delete` on a blocklist) — even if a doc says "done," if an interface's renaming was actually missed (as `CredentialQuery.findByUserId` once was), it surfaces as a harness FAIL.
+- **A single-item lookup uses `take: 1` + `firstOrNull()`**: no dedicated findOne method is created — all 6 Command Services use this pattern.
+- **No update method on the Repository**: state changes happen via an Aggregate domain method + `saveAccount`/`deleteAccount`.
+- **Dynamic filters, soft-delete query conditions**: a condition is only added when a value is present, and `deletedAt IS NULL` is applied by default to every query.
 
-### 관련 문서
+### Related documents
 
-- [persistence.md](persistence.md) — 트랜잭션 전파, Soft Delete 배선, 마이그레이션
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계
-- [api-response.md](api-response.md) — Repository 반환 형식과 API 응답의 관계
-- [domain-events.md](domain-events.md) — Repository에서 Outbox 저장
-- [cqrs-pattern.md](cqrs-pattern.md) — 읽기 전용 `AccountQuery` 포트와의 관계
+- [persistence.md](persistence.md) — transaction propagation, Soft Delete wiring, migrations
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root design
+- [api-response.md](api-response.md) — the relationship between the Repository return format and the API response
+- [domain-events.md](domain-events.md) — saving to the Outbox from the Repository
+- [cqrs-pattern.md](cqrs-pattern.md) — the relationship with the read-only `AccountQuery` port

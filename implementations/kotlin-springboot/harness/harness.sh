@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Kotlin Spring Boot Harness — Kotlin 프로젝트 구조·어노테이션 규칙 검사
+# Kotlin Spring Boot Harness — checks Kotlin project structure/annotation rules
 # Usage: ./harness.sh <projectRoot>
 #
-# 사전 조건: JDK 17+, kotlinc(Kotlin 컴파일러).
-# kotlinc이 PATH에 없으면 KOTLINC 환경변수로 실행 파일 경로를 지정할 수 있다.
+# Prerequisites: JDK 17+, kotlinc (the Kotlin compiler).
+# If kotlinc is not on PATH, specify the executable path via the KOTLINC environment variable.
 #
-# src/ 아래 소스가 바뀌지 않았으면 이전에 컴파일한 build/harness.jar를 그대로 재사용한다
-# (kotlinc 기동 자체가 느려서 매번 재컴파일하면 반복 실행이 번거롭다).
+# If the source under src/ hasn't changed, reuses the previously compiled build/harness.jar as-is
+# (kotlinc startup itself is slow, so recompiling every time would make repeated runs tedious).
 
 set -uo pipefail
 

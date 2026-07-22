@@ -1,34 +1,34 @@
-# Secret 관리
+# Secret Management
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/secret-manager.md](../../../../docs/architecture/secret-manager.md)
+> Framework-agnostic principles: [../../../../docs/architecture/secret-manager.md](../../../../docs/architecture/secret-manager.md)
 
-## `SecretService`/`AwsSecretService` — Secrets Manager는 JWT secret에만 연동됨
+## `SecretService`/`AwsSecretService` — Secrets Manager is only wired up for the JWT secret
 
-`src/common/secret_service.py`(ABC)와 `src/common/aws_secret_service.py`(TTL 캐시를 가진 Secrets Manager 구현체)가 실제 코드로 존재한다. `main.py`의 `lifespan`이 `APP_ENV == "production"`일 때만 `AwsSecretService().get_secret("app/jwt")`를 호출해 JWT secret을 조회하고 `set_jwt_secret()`으로 주입한다.
+`src/common/secret_service.py` (ABC) and `src/common/aws_secret_service.py` (a Secrets Manager implementation with a TTL cache) exist as actual code. `main.py`'s `lifespan` calls `AwsSecretService().get_secret("app/jwt")` only when `APP_ENV == "production"`, fetching the JWT secret and injecting it via `set_jwt_secret()`.
 
-**언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소는 `APP_ENV == "production"`("production이면 클라우드")으로 게이팅한다. go도 변수명은 같은 `APP_ENV`를 쓰지만 **극성이 반대**(`env != "production"`, "production이 아니면 로컬"). nestjs는 `NODE_ENV !== 'production'`(go와 같은 극성, 변수명만 다름). kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+**Cross-language difference — the gating variable name and polarity differ**: this repository gates on `APP_ENV == "production"` ("if production, use the cloud"). Go uses the same variable name `APP_ENV`, but with **reversed polarity** (`env != "production"`, "if not production, use local"). NestJS uses `NODE_ENV !== 'production'` (same polarity as Go, just a different variable name). Kotlin/java-springboot gate not on an environment variable but on the Spring **profile** (`Profiles.of("prod")`). Don't assume the name and polarity map directly when consulting another language's docs.
 
-다만 **DB 접속 정보와 AWS 자격 증명 자체는 여전히 Secrets Manager를 거치지 않는다** — 둘 다 로컬 개발용 기본값이 있는 값이라 fail-fast 대상도 아니다.
+That said, **the DB connection info and the AWS credentials themselves still don't go through Secrets Manager** — both have local-development defaults, so neither is subject to fail-fast.
 
 ```python
-# src/common/aws_secret_service.py — 실제 코드. AwsConfig(config.md 참고)로 자격 증명을 캡슐화한다
+# src/common/aws_secret_service.py — actual code. Encapsulates credentials via AwsConfig (see config.md)
 async with self._boto_session.client(
     "secretsmanager", **AwsConfig().client_kwargs()
 ) as client:
 ```
 
-AWS 자격 증명은 `src/config/aws_config.py`의 `AwsConfig`로 캡슐화되어 있다([config.md](config.md) 참고). `region`/`access_key_id`/`secret_access_key` 모두 로컬 개발용 기본값을 갖고 있어 fail-fast 대상이 아니다 — AWS 자격 증명은 운영에서 IAM 역할로 대체되는 것이 일반적이기 때문이다.
+The AWS credentials are encapsulated in `AwsConfig` in `src/config/aws_config.py` (see [config.md](config.md)). `region`/`access_key_id`/`secret_access_key` all have local-development defaults, so they aren't subject to fail-fast — this is because AWS credentials are typically replaced by an IAM role in production.
 
-또한 DB 비밀번호(`DatabaseConfig.url` — [config.md](config.md) 참조)는 여전히 환경 변수 하나에 통째로 담겨 있고, Secrets Manager 조회 경로가 없다 — 아래 "DB 설정에 Secrets Manager 적용" 절 참조.
+Also, the DB password (`DatabaseConfig.url` — see [config.md](config.md)) is still packed whole into a single environment variable, with no Secrets Manager lookup path — see the "Applying Secrets Manager to DB config" section below.
 
 ---
 
-## 실제 구현 — `SecretService`를 Technical Service로 추상화
+## Actual implementation — abstracting `SecretService` as a Technical Service
 
-`application/service/notification_service.py`가 보여준 Technical Service 패턴(Application에 ABC, Infrastructure에 구현체)과 같은 정신을 따르지만, 실제 배치 위치는 도메인별 `application/service/`·`infrastructure/`가 아니라 **여러 도메인이 공유하는 `src/common/`**이다 — Secret 조회는 Account 도메인에 속하지 않는 순수 인프라 관심사이기 때문이다([shared-modules.md](shared-modules.md) 참조).
+It follows the same spirit as the Technical Service pattern shown by `application/service/notification_service.py` (ABC in Application, implementation in Infrastructure), but its actual placement is not the per-domain `application/service/`/`infrastructure/` — it's **`src/common/`, shared by multiple domains** — because secret lookup is a purely infrastructural concern that doesn't belong to the Account domain (see [shared-modules.md](shared-modules.md)).
 
 ```python
-# src/common/secret_service.py — 실제 코드. application/service/가 아니라 common/에 있다
+# src/common/secret_service.py — actual code. Lives in common/, not application/service/
 from abc import ABC, abstractmethod
 
 
@@ -38,7 +38,7 @@ class SecretService(ABC):
 ```
 
 ```python
-# src/common/aws_secret_service.py — 실제 코드. infrastructure/secret/이 아니라 common/에 있다
+# src/common/aws_secret_service.py — actual code. Lives in common/, not infrastructure/secret/
 import json
 import time
 
@@ -61,7 +61,7 @@ class AwsSecretService(SecretService):
                 return value
 
         async with self._boto_session.client(
-            "secretsmanager", **AwsConfig().client_kwargs()   # 로컬은 LocalStack
+            "secretsmanager", **AwsConfig().client_kwargs()   # local uses LocalStack
         ) as client:
             response = await client.get_secret_value(SecretId=secret_id)
 
@@ -70,59 +70,59 @@ class AwsSecretService(SecretService):
         return value
 ```
 
-- **TTL 캐시**: 동일 `secret_id`를 5분 내에 다시 조회하면 API 호출 없이 캐시를 반환한다. Secrets Manager는 호출당 과금되므로 요청마다 조회하지 않는다.
-- **JSON 형태로 저장**: DB 접속 정보처럼 논리적으로 묶이는 값은 하나의 시크릿에 JSON으로 저장해 API 호출 수를 줄인다.
-- **엔드포인트 분기**: `AWS_ENDPOINT_URL`이 설정되면 LocalStack, 없으면 실제 Secrets Manager — `notification_service.py`가 이미 쓰는 패턴과 동일하다.
+- **TTL cache**: looking up the same `secret_id` again within 5 minutes returns the cached value with no API call. Secrets Manager charges per call, so it isn't queried on every request.
+- **Stored as JSON**: logically grouped values, like DB connection info, are stored as JSON in a single secret to reduce the number of API calls.
+- **Endpoint branching**: LocalStack if `AWS_ENDPOINT_URL` is set, the real Secrets Manager otherwise — the same pattern already used by `notification_service.py`.
 
 ---
 
-## 기동 시 주입 — 실제로는 JWT secret에만 적용됨
+## Injection at startup — currently applied only to the JWT secret
 
-시크릿은 요청마다가 아니라 **앱 기동 시 한 번** 조회한다. 실제 코드에서 이 패턴이 적용된 것은 JWT secret 하나뿐이다.
+Secrets are fetched **once at app startup**, not on every request. In the actual code, this pattern is applied to only one secret: the JWT secret.
 
 ```python
-# main.py — 실제 코드
+# main.py — actual code
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 프로덕션에서만 Secrets Manager를 호출한다 — 그 외(로컬/테스트 기본값)는
-    # 네트워크 호출 없이 환경 변수(JWT_SECRET)만 사용한다.
+    # Secrets Manager is only called in production — elsewhere (local/test defaults),
+    # only the environment variable (JWT_SECRET) is used, with no network call.
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
     yield
 ```
 
-**DB 설정에는 이 패턴이 적용되지 않았다 — 여전히 순수 환경 변수다.** [config.md](config.md)의 실제 `DatabaseConfig`는 다음과 같다.
+**This pattern is not applied to the DB configuration — it's still a plain environment variable.** The actual `DatabaseConfig` from [config.md](config.md) is as follows.
 
 ```python
-# src/config/database_config.py — 실제 코드
+# src/config/database_config.py — actual code
 class DatabaseConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DATABASE_")
-    url: str   # 필수값 — Secrets Manager 경로 없음, 환경 변수(DATABASE_URL)에서만 채워진다
+    url: str   # required — no Secrets Manager path, filled only from the environment variable (DATABASE_URL)
 ```
 
-아래는 DB 접속 정보를 Secrets Manager에서 조회해 `DatabaseConfig`를 구성하는 확장 제안이다 — **아직 구현되지 않았다.** 실제로 구현한다면 `url`을 필수 `str`로 유지한 채 아래처럼 별도 팩토리 함수로 조합해야 한다(위 실제 `DatabaseConfig`의 `url: str` 정의와 모순되지 않도록, `url` 자체를 옵셔널로 바꾸는 대신 팩토리가 채워서 넘긴다).
+Below is a proposed extension for looking up DB connection info from Secrets Manager to build `DatabaseConfig` — **it has not been implemented yet.** If actually implemented, `url` should stay a required `str`, composed via a separate factory function like below (rather than contradicting the actual `DatabaseConfig.url: str` definition above by making `url` itself optional, the factory fills it in and passes it along).
 
 ```python
-# (신설 제안, 아직 구현되지 않음) — DatabaseConfig.url은 필수값 그대로 두고, 값 자체를
-# Secrets Manager에서 만들어 생성자에 넘긴다
+# (proposed, not yet implemented) — keeps DatabaseConfig.url required, but builds the
+# value itself from Secrets Manager and passes it to the constructor
 async def load_database_config(secret_service: SecretService) -> DatabaseConfig:
     if os.getenv("APP_ENV") == "production":
         secret = await secret_service.get_secret("app/database")
         return DatabaseConfig(
             url=f"postgresql+asyncpg://{secret['username']}:{secret['password']}@{secret['host']}:{secret['port']}/{secret['dbname']}"
         )
-    return DatabaseConfig()   # 로컬 — 환경 변수(DATABASE_URL)에서 그대로 로드
+    return DatabaseConfig()   # local — loaded as-is from the environment variable (DATABASE_URL)
 ```
 
-`main.py`의 `validate_env()`(모듈 임포트 시점 — [graceful-shutdown.md](graceful-shutdown.md) 참조)와 같은 시점에 이 로딩을 수행하면 시크릿 조회 실패도 기동 단계에서 fail-fast로 드러난다.
+Performing this loading at the same point as `main.py`'s `validate_env()` (module-import time — see [graceful-shutdown.md](graceful-shutdown.md)) would surface a secret-lookup failure as a fail-fast at startup too.
 
 ---
 
-## 로컬 개발 — LocalStack
+## Local development — LocalStack
 
 ```bash
-# localstack/init-secrets.sh — 실제 코드. app/database가 아니라 app/jwt를 생성한다
+# localstack/init-secrets.sh — actual code. Creates app/jwt, not app/database
 #!/bin/sh
 set -e
 
@@ -132,27 +132,27 @@ awslocal secretsmanager create-secret \
 ```
 
 ```yaml
-# docker-compose.yml — 실제 코드. SERVICES에 secretsmanager가 포함되어 있다
+# docker-compose.yml — actual code. secretsmanager is included in SERVICES
 localstack:
   image: localstack/localstack:3.0
   environment:
     SERVICES: ses,secretsmanager
 ```
 
-→ 전체 LocalStack 구성은 [local-dev.md](local-dev.md) 참조.
+→ See [local-dev.md](local-dev.md) for the full LocalStack setup.
 
 ---
 
-## 원칙
+## Principles
 
-- **민감값은 환경 변수에 직접 넣지 않는다**: 운영에서는 Secrets Manager에서 조회한다. `"test"` 같은 하드코딩된 기본값은 로컬 전용이며, 운영 미설정 시 fail-fast로 이어져야 한다(무음 실패 금지).
-- **TTL 캐시를 적용한다**: Secrets Manager 호출은 과금/rate limit이 있다.
-- **SecretService ABC로 추상화한다**: `notification_service.py`와 동일한 Technical Service 구조.
-- **논리적으로 묶이는 값은 하나의 시크릿에 JSON으로 저장한다**.
-- **로컬 개발은 LocalStack**: 실제 Secrets Manager에 접근하지 않는다.
+- **Never put sensitive values directly in environment variables**: in production, look them up from Secrets Manager. A hardcoded default like `"test"` is for local use only, and its absence in production must lead to fail-fast (silent failure is forbidden).
+- **Apply a TTL cache**: Secrets Manager calls are billed and rate-limited.
+- **Abstract via the `SecretService` ABC**: the same Technical Service structure as `notification_service.py`.
+- **Store logically grouped values as JSON in a single secret**.
+- **Local development uses LocalStack**: never accesses the real Secrets Manager.
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 vs Secrets Manager 사용 기준, fail-fast 검증
-- [layer-architecture.md](layer-architecture.md) — Technical Service 패턴
-- [local-dev.md](local-dev.md) — LocalStack 기반 로컬 개발 환경
+- [config.md](config.md) — criteria for choosing environment variables vs. Secrets Manager, fail-fast validation
+- [layer-architecture.md](layer-architecture.md) — the Technical Service pattern
+- [local-dev.md](local-dev.md) — the LocalStack-based local development environment

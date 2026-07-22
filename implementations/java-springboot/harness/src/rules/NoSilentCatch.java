@@ -12,16 +12,20 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [21] application/·infrastructure/에서 빈 catch 블록(로깅도 재throw도 없는 {@code catch (...) {}})
- * 금지 — 실패가 조용히 사라지면 관찰 불가능해진다(observability.md — "에러는 반드시 로깅한 뒤
- * 예외를 던지거나 응답한다").
+ * [21] An empty catch block ({@code catch (...) {}} with neither logging nor a rethrow) is
+ * forbidden in application/·infrastructure/ — a failure that silently disappears becomes
+ * unobservable (observability.md — "an error must always be logged before being thrown or
+ * returned as a response").
  *
- * <p>주석만 담긴 catch 블록도(코드 없이) 여전히 조용한 실패이므로 잡아낸다 — 먼저 주석을 제거한 뒤
- * "catch (...) { }" 형태(공백만 존재)만 매칭한다. 의도적으로 매우 좁게 잡는다: 블록 안에 어떤 코드
- * (로깅 호출이든, 무시한다는 이유를 설명하는 변수 대입이든)라도 있으면 이 규칙은 관여하지 않는다 —
- * "로깅 없는 catch"처럼 폭넓게 잡으면 이미 합법적으로 존재하는 재throw-only catch 등을 오탐할
- * 위험이 커서, 가장 명백한 패턴(완전히 빈 블록)만 블록리스트로 잡는다. 이 저장소의 현재
- * application/·infrastructure/ 코드에는 이 패턴이 없음을 확인했다 — 순수 회귀 가드다.
+ * <p>A catch block that contains only a comment (no code) is still a silent failure and is
+ * also caught — comments are stripped first, then only the "catch (...) { }" form
+ * (whitespace only) is matched. This is deliberately narrow: if the block contains any code
+ * at all (a logging call, or even an assignment explaining why it's being ignored), this
+ * rule does not get involved — a broader match like "catch without logging" would carry a
+ * high risk of false-positiving on an already-legitimate rethrow-only catch, so only the
+ * most unambiguous pattern (a completely empty block) is blocklisted. It's been confirmed
+ * that this pattern doesn't currently exist in this repository's application/·
+ * infrastructure/ code — a pure regression guard.
  */
 public final class NoSilentCatch {
     private NoSilentCatch() {
@@ -43,13 +47,13 @@ public final class NoSilentCatch {
 
             if (EMPTY_CATCH.matcher(code).find()) {
                 result.add(Finding.fail(rel,
-                    "빈 catch 블록 금지 — 예외를 무시하지 말고 로깅 후 처리하거나 재throw해야 함(observability.md)"));
+                    "An empty catch block is forbidden — do not silently ignore an exception; log it and handle it, or rethrow it (observability.md)"));
             } else {
-                result.add(Finding.pass(rel + " (빈 catch 블록 없음 확인)"));
+                result.add(Finding.pass(rel + " (confirmed no empty catch block)"));
             }
         }
 
-        if (!found) result.add(Finding.skip("application/ 또는 infrastructure/ Java 파일 없음"));
+        if (!found) result.add(Finding.skip("No Java files under application/ or infrastructure/"));
         return result;
     }
 

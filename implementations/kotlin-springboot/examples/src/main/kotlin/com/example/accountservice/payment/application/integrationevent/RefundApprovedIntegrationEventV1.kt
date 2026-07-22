@@ -3,8 +3,8 @@ package com.example.accountservice.payment.application.integrationevent
 import com.example.accountservice.outbox.IntegrationEventContract
 
 /**
- * Payment BC가 외부 BC(Account)에 공개하는 Integration Event(공개 계약).
- * Account가 환불 크레딧(deposit)을 실행하는 데 필요한 최소 정보만 싣는다.
+ * The Integration Event (public contract) that Payment BC exposes to an external BC (Account).
+ * Carries only the minimal information Account needs to execute the refund credit (deposit).
  */
 data class RefundApprovedIntegrationEventV1(
     val refundId: String,

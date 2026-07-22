@@ -82,8 +82,9 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// isValidEmail은 표준 라이브러리만으로 처리 가능한 최소한의 형식 검증을 한다.
-// 별도 의존성을 추가하지 않기 위한 의도적으로 단순한 체크다.
+// isValidEmail performs minimal format validation that can be handled with
+// the standard library alone. It's a deliberately simple check, to avoid
+// adding an extra dependency.
 func isValidEmail(email string) bool {
 	email = strings.TrimSpace(email)
 	if email == "" {
@@ -291,9 +292,10 @@ func parsePagination(r *http.Request) (page, take int) {
 	return page, take
 }
 
-// accountErrorMapping은 sentinel error → (HTTP 상태 코드, client-facing 에러 코드) 매핑 테이블이다.
-// root docs/architecture/error-handling.md의 <Domain>ErrorCode enum에 대응하는 Go 관용구 —
-// SCREAMING_SNAKE_CASE 문자열을 sentinel error 옆에 나란히 둔다.
+// accountErrorMapping is the sentinel error → (HTTP status code,
+// client-facing error code) mapping table. It's the Go idiom corresponding
+// to the <Domain>ErrorCode enum in root docs/architecture/error-handling.md —
+// a SCREAMING_SNAKE_CASE string sits alongside each sentinel error.
 var accountErrorMapping = []struct {
 	err    error
 	status int
@@ -323,8 +325,8 @@ func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 
-// writeJSONError는 root docs/architecture/error-handling.md가 요구하는
-// {statusCode, code, message, error} 표준 JSON 에러 응답을 기록한다.
+// writeJSONError writes the standard {statusCode, code, message, error} JSON
+// error response required by root docs/architecture/error-handling.md.
 func writeJSONError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -336,8 +338,9 @@ func writeJSONError(w http.ResponseWriter, r *http.Request, status int, code, me
 	})
 }
 
-// writeJSON은 v를 응답 바디로 인코딩한다. 이 시점에는 이미 상태 코드/헤더가
-// 기록된 뒤이므로 Encode 실패를 클라이언트에 다시 알릴 방법이 없다 — 로그만 남긴다.
+// writeJSON encodes v as the response body. By this point the status
+// code/headers have already been written, so there is no way to notify the
+// client of an Encode failure — only a log is left.
 func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.ErrorContext(r.Context(), "failed to encode json response", "error", err)

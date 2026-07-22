@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Go Harness 실행 래퍼
+# Go Harness execution wrapper
 #
 # Usage: ./implementations/go/harness.sh [projectRoot]
 #
-# 사전 조건: Go 1.22+
+# Prerequisite: Go 1.22+
 
 set -uo pipefail
 

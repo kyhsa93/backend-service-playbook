@@ -1,52 +1,52 @@
-# 디렉토리 구조
+# Directory Structure
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/directory-structure.md](../../../../docs/architecture/directory-structure.md)
+> Framework-agnostic principles: [../../../../docs/architecture/directory-structure.md](../../../../docs/architecture/directory-structure.md)
 
-이 저장소의 실제 구현(`examples/src/account/`)을 기준으로 한 FastAPI 패키지 구조다.
+This is the FastAPI package structure, based on this repository's actual implementation (`examples/src/account/`).
 
-## 전체 구조
+## Overall structure
 
 ```
 implementations/fastapi/examples/
-  main.py                              ← FastAPI 앱 생성, validate_env(), lifespan, 라우터 등록,
+  main.py                              ← creates the FastAPI app, validate_env(), lifespan, router registration,
                                           correlation_id_middleware, exception_handler
   requirements.txt
   pytest.ini
-  alembic.ini                          ← Alembic 마이그레이션 설정
-  Dockerfile                           ← 멀티스테이지 빌드 (container.md)
+  alembic.ini                          ← Alembic migration configuration
+  Dockerfile                           ← multi-stage build (container.md)
   .dockerignore
-  docker-compose.yml                   ← 로컬 인프라 (Postgres + LocalStack(SES, Secrets Manager) + app profile)
-  .env.example                         ← 커밋되는 환경 변수 템플릿
-  .gitignore                           ← .env* 등 로컬 전용 파일 제외
+  docker-compose.yml                   ← local infrastructure (Postgres + LocalStack(SES, Secrets Manager) + app profile)
+  .env.example                         ← the committed environment-variable template
+  .gitignore                           ← excludes local-only files such as .env*
   localstack/
-    init-ses.sh                        ← LocalStack SES 초기화 스크립트
-    init-secrets.sh                    ← LocalStack Secrets Manager 초기화 스크립트 (app/jwt)
-  migrations/                          ← Alembic 마이그레이션
+    init-ses.sh                        ← LocalStack SES initialization script
+    init-secrets.sh                    ← LocalStack Secrets Manager initialization script (app/jwt)
+  migrations/                          ← Alembic migrations
     env.py
     script.py.mako
     versions/
       110ed0152981_create_initial_tables.py
   src/
-    database.py                        ← 엔진/세션 팩토리, get_session() 의존성 (DatabaseConfig 사용)
+    database.py                        ← engine/session factory, the get_session() dependency (uses DatabaseConfig)
 
-    common/                            ← 도메인에 속하지 않는 공유 유틸/인프라 (shared-modules.md)
-      generate_id.py                   ← generate_id() — UUID hex ID 생성
+    common/                            ← shared utils/infrastructure that don't belong to any domain (shared-modules.md)
+      generate_id.py                   ← generate_id() — generates a UUID hex ID
       logging_config.py                ← JsonFormatter, configure_logging()
-      correlation.py                   ← contextvars 기반 Correlation ID
+      correlation.py                   ← contextvars-based Correlation ID
       secret_service.py                ← SecretService ABC
-      aws_secret_service.py            ← AwsSecretService(SecretService) — TTL 캐시
+      aws_secret_service.py            ← AwsSecretService(SecretService) — TTL cache
 
-    config/                            ← 관심사별 설정 클래스, fail-fast 검증 (config.md)
-      database_config.py               ← DatabaseConfig(BaseSettings) — DATABASE_URL 필수값
+    config/                            ← per-concern configuration classes, fail-fast validation (config.md)
+      database_config.py               ← DatabaseConfig(BaseSettings) — DATABASE_URL required
       validator.py                     ← validate_env()
 
-    auth/                              ← 공유 인증 (authentication.md) — account/와 동일한 4레이어 구조
+    auth/                              ← shared authentication (authentication.md) — the same 4-layer structure as account/
       domain/
         errors.py                      ← InvalidTokenError
         token.py                       ← TokenPayload
       application/
         service/
-          auth_service.py               ← AuthService ABC (Technical Service 인터페이스)
+          auth_service.py               ← AuthService ABC (Technical Service interface)
       infrastructure/
         jwt_auth_service.py             ← JwtAuthService(AuthService), set_jwt_secret()
       interface/
@@ -55,21 +55,21 @@ implementations/fastapi/examples/
           dependencies.py                ← get_current_user(), CurrentUser
           schemas.py
 
-    outbox/                            ← 공유 Outbox 패턴 (domain-events.md)
+    outbox/                            ← the shared Outbox pattern (domain-events.md)
       outbox_model.py                  ← OutboxModel(Base)
-      outbox_writer.py                  ← OutboxWriter — Repository.save()가 같은 세션에서 호출
-      outbox_poller.py                  ← OutboxPoller — Outbox → SQS 발행, main.py의 lifespan이 백그라운드 task로 기동
-      outbox_consumer.py                ← OutboxConsumer — SQS → EventHandler 수신, 마찬가지로 백그라운드 task
-      event_handlers.py                 ← build_event_handlers() — eventType → 핸들러 dict 조립(composition root)
+      outbox_writer.py                  ← OutboxWriter — called by Repository.save() in the same session
+      outbox_poller.py                  ← OutboxPoller — publishes Outbox → SQS, started as a background task by main.py's lifespan
+      outbox_consumer.py                ← OutboxConsumer — receives SQS → EventHandler, also a background task
+      event_handlers.py                 ← build_event_handlers() — assembles the eventType → handler dict (composition root)
 
-    account/                           ← Bounded Context (도메인) 단위 패키지
-      domain/                          ← 프레임워크 무의존
+    account/                           ← a package per Bounded Context (domain)
+      domain/                          ← framework-agnostic
         account.py                     ← Aggregate Root
-        transaction.py                 ← Entity (frozen dataclass, 하위 개체)
+        transaction.py                 ← Entity (frozen dataclass, child object)
         money.py                       ← Value Object (frozen dataclass)
-        account_status.py              ← 도메인 enum
-        events.py                      ← Domain Event (frozen dataclass 모음)
-        errors.py                      ← 도메인 예외 계층 (AccountError 및 하위 클래스)
+        account_status.py              ← domain enum
+        events.py                      ← Domain Events (a collection of frozen dataclasses)
+        errors.py                      ← the domain exception hierarchy (AccountError and its subclasses)
         repository.py                  ← AccountRepository ABC
 
       application/
@@ -80,7 +80,7 @@ implementations/fastapi/examples/
           suspend_account_handler.py
           reactivate_account_handler.py
           close_account_handler.py
-        event/                         ← EventHandler — event_type별로 하나씩, Outbox 페이로드를 역직렬화
+        event/                         ← an EventHandler per event_type, deserializing the Outbox payload
           account_created_event_handler.py
           account_closed_event_handler.py
           account_reactivated_event_handler.py
@@ -90,31 +90,31 @@ implementations/fastapi/examples/
         query/
           get_account_handler.py       ← GetAccountQuery + GetAccountHandler
           get_transactions_handler.py
-          result.py                    ← GetAccountResult, GetTransactionsResult 등 응답 DTO
+          result.py                    ← response DTOs such as GetAccountResult, GetTransactionsResult
         service/
-          notification_service.py      ← NotificationService ABC (Technical Service 인터페이스)
+          notification_service.py      ← NotificationService ABC (Technical Service interface)
 
       infrastructure/
         persistence/
           account_repository.py        ← Base(DeclarativeBase), AccountModel, TransactionModel,
                                           SqlAlchemyAccountRepository(AccountRepository)
         notification/
-          notification_service.py      ← SesNotificationService(NotificationService) — aioboto3 SES 구현
-          sent_email_model.py           ← SentEmailModel (발송 이력 테이블)
+          notification_service.py      ← SesNotificationService(NotificationService) — an aioboto3 SES implementation
+          sent_email_model.py           ← SentEmailModel (the send-history table)
 
       interface/
         rest/
-          account_router.py             ← APIRouter(dependencies=[Depends(get_current_user)]), Depends 조립, Handler 호출
-          schemas.py                    ← Pydantic 요청/응답 모델
+          account_router.py             ← APIRouter(dependencies=[Depends(get_current_user)]), Depends assembly, calls the Handler
+          schemas.py                    ← Pydantic request/response models
 
   tests/
-    conftest.py                        ← DATABASE_URL setdefault (validate_env() fail-fast 우회용)
+    conftest.py                        ← sets a DATABASE_URL default (to bypass validate_env()'s fail-fast)
     unit/
       domain/
-        test_account.py                ← Domain 단위 테스트
+        test_account.py                ← Domain unit tests
         test_money.py
       application/
-        test_create_account_handler.py ← Application 단위 테스트 (mock 기반)
+        test_create_account_handler.py ← Application unit tests (mock-based)
         test_deposit_handler.py
     test_account_e2e.py                ← E2E (testcontainers Postgres)
     test_notification_e2e.py           ← E2E (testcontainers Postgres + LocalStack SES)
@@ -122,12 +122,12 @@ implementations/fastapi/examples/
 
 ---
 
-## Technical Service 분리 예시 — `notification_service`
+## An example of Technical Service separation — `notification_service`
 
-이 저장소에서 [domain-service.md](../../../../docs/architecture/domain-service.md)의 **Technical Service 패턴**(Application에 인터페이스, Infrastructure에 구현체)이 실제로 적용된 유일한 예다. 새로운 기술 인프라 관심사(파일 스토리지, Secrets Manager 등)를 추가할 때 이 구조를 그대로 따른다.
+This is the only place in this repository where the **Technical Service pattern** from [domain-service.md](../../../../docs/architecture/domain-service.md) (an interface in Application, an implementation in Infrastructure) is actually applied. When adding a new technical infrastructure concern (file storage, Secrets Manager, etc.), follow this same structure.
 
 ```python
-# application/service/notification_service.py — 인터페이스 (ABC)
+# application/service/notification_service.py — the interface (ABC)
 from abc import ABC, abstractmethod
 
 from ...domain.account import AccountDomainEvent
@@ -139,7 +139,7 @@ class NotificationService(ABC):
 ```
 
 ```python
-# infrastructure/notification/notification_service.py — 구현체 (SES + aioboto3)
+# infrastructure/notification/notification_service.py — the implementation (SES + aioboto3)
 class SesNotificationService(NotificationService):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -149,86 +149,86 @@ class SesNotificationService(NotificationService):
         ...
 ```
 
-`application/command/deposit_handler.py`는 구체 클래스(`SesNotificationService`)가 아니라 인터페이스(`NotificationService`)를 생성자에서 받는다. `interface/rest/account_router.py`의 `_notification_service()` 팩토리가 `Depends`로 실제 구현체를 바인딩한다 — DI 컨테이너가 없는 FastAPI에서는 이 팩토리 함수 자체가 "바인딩 지점" 역할을 한다.
+`application/command/deposit_handler.py` receives the interface (`NotificationService`) in its constructor, not the concrete class (`SesNotificationService`). The `_notification_service()` factory in `interface/rest/account_router.py` binds the actual implementation via `Depends` — in FastAPI, which has no DI container, this factory function itself serves as the "binding point."
 
 ---
 
-## 레이어별 원칙
+## Principles per layer
 
 ### domain/
 
-- **프레임워크 무의존**: `fastapi`, `sqlalchemy`, `aioboto3` 등 어떤 외부 라이브러리도 import하지 않는다. 표준 라이브러리(`dataclasses`, `abc`, `datetime`, `enum`)만 사용한다.
-- **비즈니스 규칙 캡슐화**: `Account`의 `deposit()`/`withdraw()`/`close()` 등 메서드 내부에서만 상태를 변경하고 불변식을 검증한다.
-- Repository는 **ABC만** 여기에 둔다 (`repository.py`). 구현체는 `infrastructure/`.
+- **Framework-agnostic**: imports no external library such as `fastapi`, `sqlalchemy`, `aioboto3`. Only the standard library (`dataclasses`, `abc`, `datetime`, `enum`) is used.
+- **Business rules are encapsulated**: state is changed and invariants are validated only inside methods such as `Account`'s `deposit()`/`withdraw()`/`close()`.
+- Only the Repository's **ABC** lives here (`repository.py`). The implementation lives in `infrastructure/`.
 
 ### application/
 
-- 유스케이스 **조율자**. `command/`와 `query/`의 Handler는 비즈니스 로직을 직접 수행하지 않고 Aggregate에 위임한다.
-- `service/`: 기술 인프라 인터페이스(ABC) — 현재 `notification_service.py` 하나가 있다. 파일 스토리지, Secrets Manager 등을 추가하면 같은 디렉토리에 인터페이스를 늘린다.
+- The **orchestrator** of the use case. The Handlers in `command/` and `query/` don't perform business logic directly — they delegate to the Aggregate.
+- `service/`: technical infrastructure interfaces (ABCs) — currently there's just one, `notification_service.py`. As file storage, Secrets Manager, etc. are added, more interfaces are added to the same directory.
 
 ### interface/rest/
 
-- 외부 진입점. `account_router.py`가 HTTP 요청을 Command/Query로 변환해 Handler에 위임한다.
-- `schemas.py`의 Pydantic 모델은 요청/응답 스키마 전용이며, `application/query/result.py`의 Result 객체를 감싸는 얇은 변환만 한다.
+- The external entry point. `account_router.py` converts an HTTP request into a Command/Query and delegates to the Handler.
+- The Pydantic models in `schemas.py` are dedicated to the request/response schema, doing only thin conversion that wraps the Result object from `application/query/result.py`.
 
 ### infrastructure/
 
-- 외부 시스템에 실제로 접근하는 유일한 레이어. `persistence/`는 SQLAlchemy, `notification/`은 aioboto3(SES)를 직접 사용한다.
-- `domain/repository.py`, `application/service/notification_service.py`의 ABC 구현체가 모두 여기 있다.
+- The only layer that actually accesses external systems. `persistence/` uses SQLAlchemy directly, `notification/` uses aioboto3 (SES) directly.
+- The ABC implementations for `domain/repository.py` and `application/service/notification_service.py` all live here.
 
 ---
 
-## 파일명·모듈 네이밍
+## File/module naming
 
-| 대상 | 규칙 | 예시 |
+| Target | Rule | Example |
 |------|------|------|
-| 파일명·모듈명 | `snake_case.py` | `account_repository.py` |
-| 패키지(디렉토리)명 | 소문자 | `domain`, `persistence`, `notification` |
-| 클래스명 | `PascalCase` | `Account`, `AccountRepository`, `SesNotificationService` |
-| 함수·변수 | `snake_case` | `create_account`, `pull_events` |
-| 상수 | `UPPER_SNAKE_CASE` | `DEFAULT_SENDER_EMAIL` |
-| 예외 클래스 | `PascalCase` + `Error` | `AccountNotFoundError` |
-| ABC (인터페이스) | 구현 기술을 이름에 넣지 않음 | `AccountRepository`, `NotificationService` |
-| ABC 구현체 | 구현 기술을 접두사로 | `SqlAlchemyAccountRepository`, `SesNotificationService` |
+| File/module names | `snake_case.py` | `account_repository.py` |
+| Package (directory) names | lowercase | `domain`, `persistence`, `notification` |
+| Class names | `PascalCase` | `Account`, `AccountRepository`, `SesNotificationService` |
+| Functions/variables | `snake_case` | `create_account`, `pull_events` |
+| Constants | `UPPER_SNAKE_CASE` | `DEFAULT_SENDER_EMAIL` |
+| Exception classes | `PascalCase` + `Error` | `AccountNotFoundError` |
+| ABC (interface) | never includes the implementation technology in its name | `AccountRepository`, `NotificationService` |
+| ABC implementation | prefixed with the implementation technology | `SqlAlchemyAccountRepository`, `SesNotificationService` |
 
 ---
 
-## 클래스 네이밍 규칙
+## Class naming rules
 
-| 종류 | 규칙 | 예시 |
+| Kind | Rule | Example |
 |------|------|------|
-| Aggregate Root | 도메인 명사 (PascalCase) | `Account` |
-| Entity (하위 개체) | 도메인 명사 | `Transaction` |
-| Value Object | 도메인 개념 | `Money` |
-| Domain Event | 과거형 PascalCase | `AccountCreated`, `MoneyDeposited` |
-| Repository 인터페이스 | `<Aggregate>Repository` | `AccountRepository` |
-| Repository 구현체 | `SqlAlchemy<Aggregate>Repository` | `SqlAlchemyAccountRepository` |
+| Aggregate Root | a domain noun (PascalCase) | `Account` |
+| Entity (child object) | a domain noun | `Transaction` |
+| Value Object | a domain concept | `Money` |
+| Domain Event | past-tense PascalCase | `AccountCreated`, `MoneyDeposited` |
+| Repository interface | `<Aggregate>Repository` | `AccountRepository` |
+| Repository implementation | `SqlAlchemy<Aggregate>Repository` | `SqlAlchemyAccountRepository` |
 | Command | `<Verb><Noun>Command` | `DepositCommand` |
 | CommandHandler | `<Verb><Noun>Handler` | `DepositHandler` |
 | Query | `<Verb><Noun>Query` | `GetAccountQuery` |
 | Result | `<Verb><Noun>Result`/`<Noun>Result` | `GetAccountResult`, `MoneyResult` |
-| Technical Service 인터페이스 | `<Concern>Service` | `NotificationService` |
-| Technical Service 구현체 | `<Provider><Concern>Service` | `SesNotificationService` |
+| Technical Service interface | `<Concern>Service` | `NotificationService` |
+| Technical Service implementation | `<Provider><Concern>Service` | `SesNotificationService` |
 
 ---
 
-## 공용 인프라 배치 기준
+## Criteria for placing shared infrastructure
 
-`common/`, `config/`, `auth/`, `outbox/`는 `account`와 `card` 두 도메인이 함께 쓰는 공유 패키지다 — 순수 기술적/횡단적 관심사는 도메인 수와 무관하게 도메인 패키지 바깥에 둔다는 원칙을 처음부터 적용했기 때문이다.
+`common/`, `config/`, `auth/`, `outbox/` are shared packages used together by both the `account` and `card` domains — because the principle of placing a purely technical/cross-cutting concern outside any domain package, regardless of the number of domains, was applied from the very start.
 
-| 디렉토리 | 포함 내용 |
+| Directory | Contents |
 |---------|----------|
-| `src/common/` | 순수 유틸/인프라 — `generate_id.py`([aggregate-id.md](aggregate-id.md)), `logging_config.py`/`correlation.py`([observability.md](observability.md)), `secret_service.py`/`aws_secret_service.py`([secret-manager.md](secret-manager.md)) |
-| `src/config/` | 관심사별 설정 클래스, fail-fast 검증 — `database_config.py`/`jwt_config.py`/`aws_config.py`/`rate_limit_config.py`, `validator.py` ([config.md](config.md) 참조) |
-| `src/auth/` | 공유 인증 — `account/`와 동일한 4레이어 구조 ([authentication.md](authentication.md) 참조) |
-| `src/outbox/` | 공유 Outbox 패턴 ([domain-events.md](domain-events.md) 참조) |
-| `src/database.py` | DB 엔진/세션 팩토리 — 현재 위치 유지 (모듈 파일로 충분) |
+| `src/common/` | Pure utils/infrastructure — `generate_id.py` ([aggregate-id.md](aggregate-id.md)), `logging_config.py`/`correlation.py` ([observability.md](observability.md)), `secret_service.py`/`aws_secret_service.py` ([secret-manager.md](secret-manager.md)) |
+| `src/config/` | Per-concern configuration classes, fail-fast validation — `database_config.py`/`jwt_config.py`/`aws_config.py`/`rate_limit_config.py`, `validator.py` (see [config.md](config.md)) |
+| `src/auth/` | Shared authentication — the same 4-layer structure as `account/` (see [authentication.md](authentication.md)) |
+| `src/outbox/` | The shared Outbox pattern (see [domain-events.md](domain-events.md)) |
+| `src/database.py` | The DB engine/session factory — kept at its current location (a single module file is sufficient) |
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향과 역할 상세
-- [repository-pattern.md](repository-pattern.md) — Repository 패턴 상세
-- [domain-events.md](domain-events.md) — Domain Event, Outbox 구조
-- [config.md](config.md) — 환경 설정 관리
+- [layer-architecture.md](layer-architecture.md) — layer dependency direction and responsibilities in detail
+- [repository-pattern.md](repository-pattern.md) — Repository pattern details
+- [domain-events.md](domain-events.md) — Domain Event, the Outbox structure
+- [config.md](config.md) — environment configuration management

@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// forbiddenLoggingImports — observability.md: "Domain 레이어에서 로깅하지 않는다."
-// 표준 라이브러리 로거(log, log/slog)와 이 저장소가 실제로 검토했던 대표적인 서드파티
-// 로깅 라이브러리를 함께 막는다 — Domain은 로깅 자체를 하지 않아야 하므로 어떤
-// 로거든 import 자체가 신호다.
+// forbiddenLoggingImports — observability.md: "the Domain layer does not log."
+// Blocks both standard library loggers (log, log/slog) and the representative
+// third-party logging libraries this repository has actually reviewed —
+// Domain must not log at all, so importing any logger is itself the signal.
 var forbiddenLoggingImports = []string{
 	"log",
 	"log/slog",
@@ -18,10 +18,10 @@ var forbiddenLoggingImports = []string{
 	"github.com/rs/zerolog",
 }
 
-// checkNoLoggingInDomain — [15] no-logging-in-domain: internal/domain/**/*.go는 로깅
-// 라이브러리를 import할 수 없다(observability.md — "Domain 레이어에서 로깅하지 않는
-// 이유: Domain은 프레임워크 무의존을 유지한다. 도메인 로직의 결과는 Application
-// 레이어에서 로깅한다").
+// checkNoLoggingInDomain — [15] no-logging-in-domain: internal/domain/**/*.go
+// must not import a logging library (observability.md — "why the Domain layer
+// does not log: Domain remains framework-agnostic. The result of domain logic
+// is logged by the Application layer").
 func checkNoLoggingInDomain(root string) RuleResult {
 	result := RuleResult{Section: "no-logging-in-domain"}
 	found := false
@@ -40,7 +40,7 @@ func checkNoLoggingInDomain(root string) RuleResult {
 		imports, parseErr := fileImportPaths(path)
 		if parseErr != nil {
 			found = true
-			result.Findings = append(result.Findings, failFinding(rel, "Go 파일 파싱 실패: "+parseErr.Error()))
+			result.Findings = append(result.Findings, failFinding(rel, "failed to parse Go file: "+parseErr.Error()))
 			return nil
 		}
 		found = true
@@ -55,16 +55,16 @@ func checkNoLoggingInDomain(root string) RuleResult {
 		}
 		if len(violated) > 0 {
 			result.Findings = append(result.Findings, failFinding(rel,
-				"domain/ 레이어가 로깅 라이브러리를 import함("+strings.Join(violated, ", ")+") — Domain 레이어에서는 로깅하지 않는다. 도메인 로직의 결과는 Application 레이어가 로깅한다(docs/architecture/observability.md)"))
+				"the domain/ layer imports a logging library ("+strings.Join(violated, ", ")+") — the Domain layer must not log. The Application layer logs the outcome of domain logic (docs/architecture/observability.md)"))
 		} else {
 			result.Findings = append(result.Findings, passFinding(rel))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("internal/domain/ 없음"))
+		result.Findings = append(result.Findings, skipFinding("internal/domain/ not found"))
 	}
 	return result
 }

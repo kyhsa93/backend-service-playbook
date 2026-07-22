@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// checkEventPlacement — [7] 이벤트 핸들러·인티그레이션 이벤트 배치
+// checkEventPlacement — [7] event handler / integration event placement
 func checkEventPlacement(root string) RuleResult {
 	result := RuleResult{Section: "event-placement"}
 	found := false
@@ -23,7 +23,7 @@ func checkEventPlacement(root string) RuleResult {
 			if strings.Contains(pathSlash, "/application/event/") {
 				result.Findings = append(result.Findings, passFinding(rel))
 			} else {
-				result.Findings = append(result.Findings, failFinding(rel, "이벤트 핸들러는 application/event/ 에 있어야 함"))
+				result.Findings = append(result.Findings, failFinding(rel, "an event handler must be under application/event/"))
 			}
 		}
 		if strings.HasSuffix(name, "_integration_event.go") {
@@ -31,15 +31,15 @@ func checkEventPlacement(root string) RuleResult {
 			if strings.Contains(pathSlash, "/application/integration-event/") {
 				result.Findings = append(result.Findings, passFinding(rel))
 			} else {
-				result.Findings = append(result.Findings, failFinding(rel, "integration event는 application/integration-event/ 에 있어야 함"))
+				result.Findings = append(result.Findings, failFinding(rel, "an integration event must be under application/integration-event/"))
 			}
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("이벤트 핸들러 없음"))
+		result.Findings = append(result.Findings, skipFinding("no event handlers"))
 	}
 	return result
 }

@@ -44,12 +44,14 @@ import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest;
 
 /**
- * 월간 카드 사용내역 발송(scheduling.md Feature 2)의 실제 인프라 왕복을 검증하는 E2E 테스트. 진짜 Cron tick(매월 1일 새벽 4시)을 기다리는
- * 대신 {@link CardStatementScheduler#enqueueMonthlyStatement()}를 직접 호출해, Scheduler → task_outbox →
- * TaskOutboxPoller → Task Queue(SQS FIFO, LocalStack) → TaskConsumer →
- * SendCardStatementTaskController → SendCardStatementService → Payment BC 조회(ACL) →
- * NotificationService(SES)로 이어지는 전체 경로를 실제로 태운다. {@code CardSentEmail}이 이 패키지 소속(package-private)이라
- * 이 테스트도 같은 패키지에 둔다(account/infrastructure/notification/ NotificationE2ETest와 동일한 이유).
+ * E2E test verifying the actual infrastructure round trip for the monthly card statement send
+ * (scheduling.md Feature 2). Instead of waiting for a real Cron tick (4 AM on the 1st of each
+ * month), it calls {@link CardStatementScheduler#enqueueMonthlyStatement()} directly, exercising
+ * the full path: Scheduler → task_outbox → TaskOutboxPoller → Task Queue (SQS FIFO, LocalStack) →
+ * TaskConsumer → SendCardStatementTaskController → SendCardStatementService → a Payment BC lookup
+ * (ACL) → NotificationService (SES). Since {@code CardSentEmail} belongs to this package
+ * (package-private), this test is placed in the same package (same reason as NotificationE2ETest
+ * under account/infrastructure/notification/).
  */
 @Testcontainers
 @SuppressWarnings("unchecked")
@@ -113,9 +115,10 @@ class CardStatementSchedulingE2ETest {
         registry.add("sqs.task-queue-url", CardStatementSchedulingE2ETest::taskQueueUrl);
     }
 
-    // LocalStack SES는 검증되지 않은 발신 주소로 sendEmail을 호출하면 MessageRejectedException을
-    // 던진다(실제 SES의 sandbox 모드와 동일한 제약) — account/infrastructure/notification/
-    // NotificationE2ETest와 동일한 이유로 테스트 시작 전 발신 주소를 미리 검증해둔다.
+    // LocalStack SES throws a MessageRejectedException if sendEmail is called with an unverified
+    // sender address (the same constraint as real SES's sandbox mode) — for the same reason as
+    // account/infrastructure/notification/NotificationE2ETest, we pre-verify the sender address
+    // before the test starts.
     @BeforeAll
     static void verifySenderIdentity() {
         try (SesClient sesClient =
@@ -187,7 +190,7 @@ class CardStatementSchedulingE2ETest {
 
     @Test
     void 이번_달_카드_사용내역_안내를_적재하면_사용_건수와_합계가_담긴_이메일이_발송된다() throws Exception {
-        // 계좌 개설 + 카드 발급 + 결제 2건(합계 30,000원) 실행.
+        // Open an account + issue a card + make 2 payments (totaling 30,000 KRW).
         ResponseEntity<Map> account =
                 post("/accounts", OWNER_ID, Map.of("currency", "KRW", "email", RECIPIENT_EMAIL));
         assertThat(account.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -212,27 +215,31 @@ class CardStatementSchedulingE2ETest {
 
         CardSentEmail sentEmail = waitForStatementEmail(cardId).orElseThrow();
         assertThat(sentEmail.getRecipient()).isEqualTo(RECIPIENT_EMAIL);
-        assertThat(sentEmail.getSubject()).contains("카드 사용내역");
+        assertThat(sentEmail.getSubject()).contains("card statement");
         assertThat(sentEmail.getSesMessageId()).isNotBlank();
 
-        // LocalStack SES가 실제로 수신한 메시지 본문에 결제 건수(2건)·합계(30000원)가 정확히 담겼는지
-        // 확인한다 — PaymentAdapter(ACL)가 Payment BC의 실제 데이터를 올바르게 집계해 전달했는지의 증거다.
+        // Confirm that the message body LocalStack SES actually received precisely contains the
+        // payment count (2) and total (30000) — evidence that PaymentAdapter (ACL) correctly
+        // aggregated and passed along the actual Payment BC data.
         List<Map<String, Object>> messages = fetchSesMessages();
         Map<String, Object> matched =
                 messages.stream()
                         .filter(m -> sentEmail.getSesMessageId().equals(m.get("Id")))
                         .findFirst()
                         .orElseThrow(
-                                () -> new AssertionError("localstack SES에서 해당 메시지를 찾을 수 없습니다."));
-        // LocalStack의 /_aws/ses 디버그 엔드포인트는 실제 SES SendEmail 요청 스키마(Body.Text.Data)가
-        // 아니라 자체 introspection 스키마(Body.text_part/html_part, 값은 문자열 그대로)로 응답한다 —
-        // 직접 SendEmail 후 이 엔드포인트를 호출해 실제 응답 형태를 확인했다.
+                                () ->
+                                        new AssertionError(
+                                                "Could not find the matching message in localstack SES."));
+        // LocalStack's /_aws/ses debug endpoint responds with its own introspection schema
+        // (Body.text_part/html_part, values as plain strings) rather than the real SES SendEmail
+        // request schema (Body.Text.Data) — confirmed by calling this endpoint after a real
+        // SendEmail and inspecting the actual response shape.
         Map<String, Object> messageBody = (Map<String, Object>) matched.get("Body");
         String bodyText = String.valueOf(messageBody.get("text_part"));
-        assertThat(bodyText).contains("2건").contains("30000원");
+        assertThat(bodyText).contains("2 transaction(s)").contains("30000 KRW");
 
-        // 다시 적재해도(같은 달) 재발송하지 않는다 — Card.markStatementSent()가 남긴 Level 2 Ledger
-        // 멱등성 확인.
+        // Enqueuing again (same month) does not resend — confirms the Level 2 Ledger idempotency
+        // left behind by Card.markStatementSent().
         cardStatementScheduler.enqueueMonthlyStatement();
 
         await().pollDelay(Duration.ofSeconds(3))

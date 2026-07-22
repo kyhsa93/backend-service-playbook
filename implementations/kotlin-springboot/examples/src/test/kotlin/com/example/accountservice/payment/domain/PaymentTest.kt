@@ -8,7 +8,7 @@ class PaymentTest {
     private fun createPayment(): Payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
 
     @Test
-    fun `create 하면 PENDING 상태의 결제가 생성된다`() {
+    fun `create produces a payment in the PENDING state`() {
         val payment = createPayment()
 
         assertThat(payment.status).isEqualTo(PaymentStatus.PENDING)
@@ -20,14 +20,14 @@ class PaymentTest {
     }
 
     @Test
-    fun `결제 ID는 하이픈 없는 32자리 hex 문자열이다`() {
+    fun `the payment ID is a 32-character hex string without hyphens`() {
         val payment = createPayment()
 
         assertThat(payment.paymentId).matches("^[0-9a-f]{32}$")
     }
 
     @Test
-    fun `complete 하면 COMPLETED 상태가 되고 PaymentCompletedEvent가 수집된다`() {
+    fun `complete transitions to COMPLETED and collects a PaymentCompletedEvent`() {
         val payment = createPayment()
 
         payment.complete()
@@ -42,7 +42,7 @@ class PaymentTest {
     }
 
     @Test
-    fun `PENDING이 아닌 결제를 complete 하면 예외를 던진다`() {
+    fun `completing a payment that is not PENDING throws an exception`() {
         val payment = createPayment()
         payment.complete()
 
@@ -50,52 +50,52 @@ class PaymentTest {
     }
 
     @Test
-    fun `fail 하면 FAILED 상태가 된다`() {
+    fun `fail transitions to the FAILED state`() {
         val payment = createPayment()
 
-        payment.fail("게이트웨이 오류")
+        payment.fail("Gateway error")
 
         assertThat(payment.status).isEqualTo(PaymentStatus.FAILED)
         assertThat(payment.pullDomainEvents()).isEmpty()
     }
 
     @Test
-    fun `PENDING이 아닌 결제를 fail 하면 예외를 던진다`() {
+    fun `failing a payment that is not PENDING throws an exception`() {
         val payment = createPayment()
         payment.complete()
 
-        assertThrows<PaymentFailRequiresPendingPaymentException> { payment.fail("게이트웨이 오류") }
+        assertThrows<PaymentFailRequiresPendingPaymentException> { payment.fail("Gateway error") }
     }
 
     @Test
-    fun `COMPLETED 결제를 cancel 하면 CANCELLED 상태가 되고 PaymentCancelledEvent가 수집된다`() {
+    fun `cancelling a COMPLETED payment transitions to CANCELLED and collects a PaymentCancelledEvent`() {
         val payment = createPayment()
         payment.complete()
         payment.pullDomainEvents()
 
-        payment.cancel("고객 요청")
+        payment.cancel("Customer request")
 
         assertThat(payment.status).isEqualTo(PaymentStatus.CANCELLED)
         val events = payment.pullDomainEvents()
         assertThat(events).hasSize(1)
         val event = events.first() as PaymentCancelledEvent
-        assertThat(event.reason).isEqualTo("고객 요청")
+        assertThat(event.reason).isEqualTo("Customer request")
         assertThat(event.amount).isEqualTo(1000)
     }
 
     @Test
-    fun `PENDING 결제를 cancel 하면 예외를 던진다`() {
+    fun `cancelling a PENDING payment throws an exception`() {
         val payment = createPayment()
 
-        assertThrows<PaymentCancelRequiresCompletedPaymentException> { payment.cancel("고객 요청") }
+        assertThrows<PaymentCancelRequiresCompletedPaymentException> { payment.cancel("Customer request") }
     }
 
     @Test
-    fun `이미 취소된 결제를 다시 cancel 하면 예외를 던진다`() {
+    fun `cancelling an already-cancelled payment again throws an exception`() {
         val payment = createPayment()
         payment.complete()
-        payment.cancel("고객 요청")
+        payment.cancel("Customer request")
 
-        assertThrows<PaymentCancelRequiresCompletedPaymentException> { payment.cancel("고객 요청") }
+        assertThrows<PaymentCancelRequiresCompletedPaymentException> { payment.cancel("Customer request") }
     }
 }

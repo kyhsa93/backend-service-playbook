@@ -12,8 +12,8 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [9] Command Service는 Outbox 경유만 허용 — ApplicationEventPublisher/@EventListener/
- * publishEvent() 직접 사용 금지 (domain-events.md)
+ * [9] Command Service must go through the Outbox only — direct use of
+ * ApplicationEventPublisher/@EventListener/publishEvent() is forbidden (domain-events.md)
  */
 public final class NoEventPublisherInCommand {
     private NoEventPublisherInCommand() {
@@ -32,12 +32,12 @@ public final class NoEventPublisherInCommand {
             String rel = relTo(f, root);
             String content = readText(f);
             if (EVENT_PUBLISHER.matcher(content).find()) {
-                result.add(Finding.fail(rel, "Command Service는 ApplicationEventPublisher/@EventListener/publishEvent()를 쓰지 않아야 함 — Outbox 경유(domain-events.md)"));
+                result.add(Finding.fail(rel, "Command Service must not use ApplicationEventPublisher/@EventListener/publishEvent() — go through the Outbox instead (domain-events.md)"));
             } else {
-                result.add(Finding.pass(rel + " (Outbox 경유 확인)"));
+                result.add(Finding.pass(rel + " (confirmed it goes through the Outbox)"));
             }
         }
-        if (!found) result.add(Finding.skip("Command Service 없음"));
+        if (!found) result.add(Finding.skip("No Command Service"));
         return result;
     }
 }

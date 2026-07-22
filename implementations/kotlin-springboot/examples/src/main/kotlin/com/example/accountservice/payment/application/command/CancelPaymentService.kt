@@ -18,7 +18,8 @@ class CancelPaymentService(
 
         payment.cancel(command.reason)
         paymentRepository.savePayment(payment)
-        // PaymentCancelledEvent → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다
-        // (OutboxPoller/OutboxConsumer가 독립적으로 담당 — 동기 드레인 금지).
+        // Account BC subscribes to PaymentCancelledEvent → payment.cancelled.v1 and executes the
+        // compensating credit (handled independently by OutboxPoller/OutboxConsumer — no synchronous
+        // drain here).
     }
 }

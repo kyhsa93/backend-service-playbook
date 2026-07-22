@@ -59,7 +59,7 @@ public class CardController {
     public ResponseEntity<ErrorResponse> handleCardException(CardException e) {
         HttpStatus status =
                 NOT_FOUND_CODES.contains(e.code()) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
-        log.warn("카드 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
+        log.warn("Card request failed", kv("code", e.code()), kv("message", e.getMessage()));
         return ResponseEntity.status(status)
                 .body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }

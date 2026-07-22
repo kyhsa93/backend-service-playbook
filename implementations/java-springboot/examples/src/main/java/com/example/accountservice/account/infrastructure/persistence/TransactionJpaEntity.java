@@ -13,8 +13,9 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * account/domain/Transaction.java의 JPA 매핑 전용 대응물. Domain 하위 Entity(Transaction)는 이 클래스를 전혀 알지 못한다 —
- * 변환은 TransactionMapper가 전담한다.
+ * The JPA-mapping counterpart of account/domain/Transaction.java. The Domain child Entity
+ * (Transaction) has no knowledge of this class at all — the conversion is handled entirely by
+ * TransactionMapper.
  */
 @Entity
 @Table(name = "transactions")
@@ -36,8 +37,11 @@ public class TransactionJpaEntity {
 
     @Embedded private MoneyEmbeddable amount;
 
-    // Payment BC 반응(withdraw-by-payment/deposit-by-payment)에서만 채워지는 상관관계 키 — 멱등성 판단(같은
-    // referenceId+type의 거래가 이미 있으면 재처리하지 않음)에 쓰인다.
+    // A correlation key populated only by Payment BC reactions
+    // (withdraw-by-payment/deposit-by-payment)
+    // — used for idempotency checks (do not reprocess if a transaction with the same
+    // referenceId+type
+    // already exists).
     @Column(nullable = true)
     private String referenceId;
 

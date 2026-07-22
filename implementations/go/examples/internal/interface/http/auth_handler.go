@@ -10,8 +10,8 @@ import (
 	"github.com/example/account-service/internal/domain/credential"
 )
 
-// minPasswordLength는 nestjs 구현(class-validator @MinLength(8))과 동일한 최소
-// 비밀번호 길이다.
+// minPasswordLength is the same minimum password length as the nestjs
+// implementation (class-validator @MinLength(8)).
 const minPasswordLength = 8
 
 type AuthHandler struct {
@@ -41,7 +41,8 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-// SignIn은 저장된 해시와 비교해 비밀번호를 검증한 뒤에만 토큰을 발급한다.
+// SignIn issues a token only after verifying the password against the
+// stored hash.
 func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	var body SignInRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.UserID == "" || body.Password == "" {
@@ -59,10 +60,12 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, SignInResponse{AccessToken: accessToken})
 }
 
-// authErrorMapping은 account_handler.go의 accountErrorMapping과 동일한 관용구다
-// (error-handling.md). ErrUserIDAlreadyExists를 409가 아니라 400으로 매핑하는 것은
-// 이 저장소의 기존 관용(ErrAlreadyClosed 등 "현재 상태와 충돌하는 요청"류를 전부
-// 400으로 매핑)과 nestjs 구현(BadRequestException) 모두를 따른 것이다.
+// authErrorMapping follows the same idiom as accountErrorMapping in
+// account_handler.go (error-handling.md). Mapping ErrUserIDAlreadyExists to
+// 400 rather than 409 follows both this repository's existing convention
+// (mapping all "requests that conflict with the current state" errors, such
+// as ErrAlreadyClosed, to 400) and the nestjs implementation
+// (BadRequestException).
 var authErrorMapping = []struct {
 	err    error
 	status int

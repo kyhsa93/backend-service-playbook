@@ -1,21 +1,21 @@
-# Secret 관리 (Go)
+# Secret Management (Go)
 
-원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md)를 따른다: 민감값은 환경 변수에 직접 두지 않고 AWS Secrets Manager 등에서 런타임에 조회하며, TTL 캐시로 반복 호출을 줄인다. JWT secret이 이 패턴으로 구현되어 있다. SES 자격증명은 여전히 `os.Getenv`로 직접 읽는다(`ses_client.go`) — SES는 민감값이 아니라 리전/자격증명 자체(운영에서는 IAM 역할로 대체 가능)이므로 이 문서의 대상이 아니다.
+The principle follows the root [secret-manager.md](../../../../docs/architecture/secret-manager.md): sensitive values are never placed directly in environment variables — they're looked up at runtime from something like AWS Secrets Manager, and a TTL cache reduces repeated calls. The JWT secret is implemented with this pattern. The SES credentials are still read directly via `os.Getenv` (`ses_client.go`) — since these aren't sensitive values but the region/credentials themselves (which in production can be replaced by an IAM role), they're out of scope for this document.
 
 ---
 
-## SecretService — Technical Service 인터페이스
+## SecretService — a Technical Service interface
 
-root의 Technical Service 패턴([domain-service.md](../../../../docs/architecture/domain-service.md))을 그대로 적용한다: Application 레이어에 인터페이스, Infrastructure 레이어에 구현체. 이 저장소가 이미 쓰고 있는 패턴(`command.PasswordHasher` ← bcrypt 구현체)과 동일한 구조다.
+Applies the root's Technical Service pattern ([domain-service.md](../../../../docs/architecture/domain-service.md)) as-is: an interface in the Application layer, an implementation in the Infrastructure layer. This is the same structure as the pattern this repository already uses (`command.PasswordHasher` ← the bcrypt implementation).
 
 ```go
-// internal/config/secret_service.go — 실제 코드 (인터페이스는 사용하는 쪽 패키지에 정의)
+// internal/config/secret_service.go — actual code (the interface is defined in the consuming package)
 package config
 
 import "context"
 
-// SecretService는 이 패키지(설정 로딩)가 사용하는 관점에서 정의한 인터페이스다 —
-// 구현체는 internal/infrastructure/secret에 있다.
+// SecretService is an interface defined from the perspective of this package (config loading) —
+// the implementation lives in internal/infrastructure/secret.
 type SecretService interface {
 	GetSecret(ctx context.Context, secretID string) (string, error)
 }
@@ -23,10 +23,10 @@ type SecretService interface {
 
 ---
 
-## Infrastructure 구현체 — AWS Secrets Manager + TTL 캐시
+## Infrastructure implementation — AWS Secrets Manager + TTL cache
 
 ```go
-// internal/infrastructure/secret/service.go — 실제 코드
+// internal/infrastructure/secret/service.go — actual code
 package secret
 
 import (
@@ -46,8 +46,9 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-// Service는 Secrets Manager를 조회하고 결과를 TTL 동안 메모리에 캐시한다.
-// sync.Mutex로 보호한다 — 여러 고루틴(요청 핸들러)이 동시에 같은 키를 조회할 수 있다.
+// Service looks up Secrets Manager and caches the result in memory for the TTL.
+// It's protected by sync.Mutex — multiple goroutines (request handlers) may
+// look up the same key concurrently.
 type Service struct {
 	client *secretsmanager.Client
 	ttl    time.Duration
@@ -81,8 +82,8 @@ func (s *Service) GetSecret(ctx context.Context, secretID string) (string, error
 	return value, nil
 }
 
-// NewSecretsManagerClient는 이 저장소의 ses_client.go와 동일한 관용구를 따른다:
-// 명시적 정적 자격증명(IMDS 지연 회피) + AWS_ENDPOINT_URL로 LocalStack 분기.
+// NewSecretsManagerClient follows the same idiom as this repository's ses_client.go:
+// explicit static credentials (to avoid IMDS latency) + branching to LocalStack via AWS_ENDPOINT_URL.
 func NewSecretsManagerClient() *secretsmanager.Client {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -108,13 +109,13 @@ func NewSecretsManagerClient() *secretsmanager.Client {
 }
 ```
 
-`sync.Mutex` + `map`이 Go에서 가장 단순한 TTL 캐시 구현이다 — Node의 `Map` 기반 캐시와 달리 Go는 동시 접근(여러 HTTP 요청 고루틴이 같은 시크릿을 동시에 조회)에 대비해 락이 필수다. 캐시가 커지거나 만료 스윕이 필요해지면 `github.com/patrickmn/go-cache` 같은 라이브러리로 교체할 수 있지만, 시크릿 개수가 적은 이 저장소 규모에서는 위 구현으로 충분하다.
+`sync.Mutex` + `map` is the simplest TTL cache implementation in Go — unlike Node's `Map`-based cache, Go requires a lock to handle concurrent access (multiple HTTP request goroutines looking up the same secret at once). If the cache grows or an expiry sweep becomes necessary, this can be swapped for a library like `github.com/patrickmn/go-cache`, but at this repository's scale — a small number of secrets — the implementation above is sufficient.
 
 ---
 
-## JSON 형태의 시크릿
+## Secrets in JSON form
 
-root와 동일하게 논리적으로 묶이는 값(DB 접속 정보 전체)은 하나의 시크릿에 JSON으로 저장한다.
+As with the root document, values that are logically grouped (the full DB connection info) are stored as JSON in a single secret.
 
 ```go
 type databaseSecret struct {
@@ -136,12 +137,13 @@ if err := json.Unmarshal([]byte(raw), &dbSecret); err != nil {
 
 ---
 
-## Config 팩토리에서 사용 — 환경별 분기
+## Usage in the config factory — branching by environment
 
-[config.md](config.md)에서 다루는 설정 구조체 생성 시점에 한 번만 조회한다.
+Looked up only once, at the point where the config struct discussed in [config.md](config.md) is created.
 
 ```go
-// internal/config/database.go — 목표 형태. 실제 LoadJWTSecret(config/jwt.go)과 같은 극성(env != "production")을 쓴다.
+// internal/config/database.go — target shape. Uses the same polarity (env != "production")
+// as the actual LoadJWTSecret (config/jwt.go).
 func LoadDatabaseConfig(ctx context.Context, secretService SecretService, env string) (DatabaseConfig, error) {
 	if env != "production" {
 		return DatabaseConfig{
@@ -162,16 +164,16 @@ func LoadDatabaseConfig(ctx context.Context, secretService SecretService, env st
 }
 ```
 
-**언어 간 차이 — 게이팅 변수명·극성이 다르다**: 이 저장소(및 실제 `LoadJWTSecret`)는 `env != "production"`(변수 `APP_ENV`, "production이 아니면 로컬")로 게이팅한다. nestjs는 변수명이 다르지만(`NODE_ENV`) 극성은 동일하다. fastapi는 변수명이 이 저장소와 같은 `APP_ENV`이지만 **극성이 반대**(`== "production"`, "production이면 클라우드"). kotlin/java-springboot는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+**A cross-language difference — the gating variable name and polarity differ**: this repository (and the actual `LoadJWTSecret`) gates on `env != "production"` (the variable `APP_ENV`, "if not production, it's local"). nestjs uses a different variable name (`NODE_ENV`) but the same polarity. fastapi uses the same variable name as this repository, `APP_ENV`, but the **opposite polarity** (`== "production"`, "if production, use the cloud"). kotlin/java-springboot gate not on an environment variable but on a Spring **profile** (`Profiles.of("prod")`). When consulting another language's document, don't assume the name and polarity map over directly.
 
 ---
 
-## 로컬 개발 — LocalStack
+## Local development — LocalStack
 
-[local-dev.md](local-dev.md)와 동일한 방식으로 `docker-compose.yml`의 `SERVICES`에 `secretsmanager`를 추가하고 초기화 스크립트를 둔다:
+Following the same approach as [local-dev.md](local-dev.md), add `secretsmanager` to `docker-compose.yml`'s `SERVICES` and add an initialization script:
 
 ```yaml
-# docker-compose.yml — SERVICES에 secretsmanager 추가 (현재는 ses만 있음)
+# docker-compose.yml — add secretsmanager to SERVICES (currently only ses is present)
 localstack:
   image: localstack/localstack:3.0
   environment:
@@ -180,7 +182,7 @@ localstack:
 
 ```sh
 #!/bin/sh
-# localstack/init-secrets.sh — init-ses.sh와 같은 방식으로 ready.d에 마운트
+# localstack/init-secrets.sh — mounted into ready.d the same way as init-ses.sh
 set -e
 awslocal secretsmanager create-secret \
   --name app/database \
@@ -189,8 +191,8 @@ awslocal secretsmanager create-secret \
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 vs Secrets Manager 사용 기준, fail-fast 검증
-- [local-dev.md](local-dev.md) — LocalStack 구성 패턴(SES에서 이미 실증됨)
-- [container.md](container.md) — 운영 환경에서 시크릿을 이미지에 굽지 않는 원칙
+- [config.md](config.md) — criteria for environment variables vs Secrets Manager, fail-fast validation
+- [local-dev.md](local-dev.md) — the LocalStack setup pattern (already demonstrated with SES)
+- [container.md](container.md) — the principle of never baking secrets into the image in production

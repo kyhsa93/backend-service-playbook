@@ -1,18 +1,20 @@
-"""[23] error-response-schema: 전역 예외 핸들러의 응답 바디가 정확히 4개 필드인지
-(error-handling.md)
+"""[23] error-response-schema: whether the global exception handlers' response body has
+exactly 4 fields (error-handling.md)
 
-error-handling.md는 모든 에러 응답이 정확히 `statusCode`(number)/`code`(string)/
-`message`(string|array)/`error`(string) 네 필드만 가져야 한다고 못박는다. `@app.exception_handler(...)`
-로 등록된 핸들러가 만드는 응답 바디(`JSONResponse(..., content=...)`)를 추적해, 그 바디의
-필드 집합이 이 네 개와 정확히 일치하는지(더 많지도 적지도, 이름이 다르지도 않게) 검사한다.
+error-handling.md pins down that every error response must have exactly 4 fields —
+`statusCode` (number)/`code` (string)/`message` (string|array)/`error` (string) — and no
+others. It traces the response body (`JSONResponse(..., content=...)`) built by a handler
+registered via `@app.exception_handler(...)`, and checks whether that body's field set
+matches these 4 exactly (no more, no fewer, no different names).
 
-바디 구성은 두 패턴을 지원한다:
-1. `content=` 에 dict 리터럴을 직접 쓰는 경우 — 그 dict의 키를 그대로 비교
-2. `content=builder_func(...)` 처럼 별도 함수를 호출하는 경우 — 그 함수 정의를 찾아가 반환식을
-   재귀적으로 추적한다. 반환식이 `SomeModel(...).model_dump()`/`.dict()` 형태면 `SomeModel`
-   (Pydantic `BaseModel` 서브클래스) 정의를 찾아 클래스 바디의 필드 애노테이션(`AnnAssign`)을
-   필드 집합으로 사용한다 — 실제로 직렬화되는 필드는 호출자가 넘긴 키워드가 아니라 모델
-   자체의 필드 정의이므로 이쪽이 정확하다.
+Two patterns are supported for how the body is built:
+1. A dict literal written directly in `content=` — its keys are compared as-is
+2. Calling a separate function, like `content=builder_func(...)` — its function definition
+   is located and its return expression is traced recursively. If the return expression is
+   shaped like `SomeModel(...).model_dump()`/`.dict()`, the `SomeModel` (a Pydantic
+   `BaseModel` subclass) definition is located and its class body's field annotations
+   (`AnnAssign`) are used as the field set — this is accurate because the fields actually
+   serialized are the model's own field definitions, not the keywords the caller passed.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ MAX_HOPS = 4
 
 
 def _is_exception_handler_decorator(dec: ast.expr) -> bool:
-    # @app.exception_handler(SomeError) 형태 — Call(func=Attribute(attr="exception_handler"))
+    # The shape @app.exception_handler(SomeError) — Call(func=Attribute(attr="exception_handler"))
     if not isinstance(dec, ast.Call):
         return False
     func = dec.func
@@ -39,7 +41,7 @@ def _dict_keys(node: ast.Dict) -> set[str] | None:
         if isinstance(k, ast.Constant) and isinstance(k.value, str):
             keys.add(k.value)
         else:
-            return None  # 동적 키 — 정적으로 판단 불가
+            return None  # a dynamic key — can't be determined statically
     return keys
 
 
@@ -145,7 +147,9 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                     break
 
             if content_expr is None:
-                result.add(failed(label, "응답 바디(content=)를 찾을 수 없음 — JSONResponse(content=...) 형태여야 함"))
+                result.add(
+                    failed(label, "Cannot find the response body (content=) — expected JSONResponse(content=...)")
+                )
                 continue
 
             fields = _resolve_field_set(content_expr, all_trees)
@@ -153,30 +157,31 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                 result.add(
                     failed(
                         label,
-                        "응답 바디의 필드 구성을 정적으로 추적할 수 없음 — dict 리터럴이거나"
-                        " Pydantic 모델(.model_dump()/.dict())을 반환하는 빌더 함수여야 함",
+                        "Cannot statically trace the response body's field composition —"
+                        " it must be a dict literal or a builder function returning a"
+                        " Pydantic model (.model_dump()/.dict())",
                     )
                 )
                 continue
 
             if fields == REQUIRED_FIELDS:
-                result.add(passed(f"{label} (statusCode/code/message/error 4개 필드 일치)"))
+                result.add(passed(f"{label} (matches the 4 fields statusCode/code/message/error)"))
             else:
                 missing = REQUIRED_FIELDS - fields
                 extra = fields - REQUIRED_FIELDS
                 detail = []
                 if missing:
-                    detail.append(f"누락: {sorted(missing)}")
+                    detail.append(f"missing: {sorted(missing)}")
                 if extra:
-                    detail.append(f"불필요/이름 다름: {sorted(extra)}")
+                    detail.append(f"unnecessary/differently named: {sorted(extra)}")
                 result.add(
                     failed(
                         label,
-                        f"에러 응답 필드가 statusCode/code/message/error 4개와 정확히 일치하지 않음"
-                        f" — {', '.join(detail)} (error-handling.md)",
+                        f"The error response's fields don't exactly match the 4 fields"
+                        f" statusCode/code/message/error — {', '.join(detail)} (error-handling.md)",
                     )
                 )
 
     if not found_any:
-        result.add(skipped("@app.exception_handler(...) 등록이 없음"))
+        result.add(skipped("No @app.exception_handler(...) registration"))
     return result

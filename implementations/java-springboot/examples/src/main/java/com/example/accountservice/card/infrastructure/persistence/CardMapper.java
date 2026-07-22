@@ -4,8 +4,9 @@ import com.example.accountservice.card.domain.Card;
 import java.time.YearMonth;
 
 /**
- * Card(순수 도메인) ↔ CardJpaEntity(JPA 매핑) 변환 전담 클래스. CardRepositoryImpl 내부에서만 사용된다 —
- * Domain/Application 레이어는 이 클래스를 알지 못한다.
+ * A class dedicated to converting between Card (pure domain) and CardJpaEntity (JPA mapping). Used
+ * only internally within CardRepositoryImpl — the Domain/Application layers have no knowledge of
+ * this class.
  */
 final class CardMapper {
 
@@ -22,7 +23,7 @@ final class CardMapper {
                 toYearMonth(entity.getLastStatementSentMonth()));
     }
 
-    /** 신규 Card를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
+    /** Creates a new entity (no PK, to be inserted) for a newly issued Card. */
     static CardJpaEntity toNewEntity(Card card) {
         return new CardJpaEntity(
                 null,
@@ -35,7 +36,10 @@ final class CardMapper {
                 toColumn(card.getLastStatementSentMonth()));
     }
 
-    /** 기존 엔티티(PK 보존)에 도메인 Card의 최신 상태를 반영한다 — update 대상. */
+    /**
+     * Applies the domain Card's latest state onto an existing entity (preserving its PK) — to be
+     * updated.
+     */
     static CardJpaEntity updateEntity(CardJpaEntity entity, Card card) {
         entity.applyMutableState(card.getStatus(), toColumn(card.getLastStatementSentMonth()));
         return entity;

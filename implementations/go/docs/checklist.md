@@ -1,435 +1,435 @@
-# AI Agent 자기 검토 체크리스트 (Go)
+# AI Agent Self-Review Checklist (Go)
 
-작업 완료 후, 아래 체크리스트를 순서대로 검토한다.
-각 항목을 점검하여 위반이 발견되면 즉시 수정한 뒤 다음 항목으로 넘어간다.
+After completing work, review the checklist below in order.
+Check each item, and if a violation is found, fix it immediately before moving to the next item.
 
-### 검증 수행 규칙
+### Verification rules
 
-- 각 STEP을 검증할 때 반드시 해당 파일을 Read 도구로 읽고 실제 코드와 대조한다.
-- 코드를 읽지 않고 통과 처리하는 것은 금지한다.
-- 위반 발견 시 즉시 수정한 후 다음 STEP으로 넘어간다.
-- `implementations/go/harness/main.go`가 자동 검증하는 항목(파일명 snake_case, 4레이어 디렉토리 존재, Repository/Handler/Scheduler/Task Controller/Event Handler 배치)은 `./harness.sh <projectRoot>`로도 교차 확인한다 — 다만 harness는 구조·배치만 검사하고 의미적 규칙(메서드 네이밍, 에러 처리, 트랜잭션 등)은 검사하지 않으므로 이 체크리스트로 보완한다.
+- When verifying each STEP, always read the relevant file with the Read tool and cross-check it against the actual code.
+- Passing an item without reading the code is forbidden.
+- If a violation is found, fix it immediately, then move to the next STEP.
+- Items `implementations/go/harness/main.go` automatically verifies (snake_case filenames, existence of the 4-layer directories, placement of Repository/Handler/Scheduler/Task Controller/Event Handler) should also be cross-checked with `./harness.sh <projectRoot>` — however, the harness only checks structure/placement, not semantic rules (method naming, error handling, transactions, etc.), so this checklist supplements it.
 
 ---
 
-## STEP 1 — 파일 구조 및 네이밍
+## STEP 1 — File structure and naming
 
-**관련 문서**: [conventions.md](./conventions.md) · [architecture/directory-structure.md](./architecture/directory-structure.md)
+**Related documents**: [conventions.md](./conventions.md) · [architecture/directory-structure.md](./architecture/directory-structure.md)
 
 ```
-[ ] 파일명이 snake_case.go 형식이 아닌 것이 있는가?
-    → 있다면 snake_case.go로 변경 (예: get_transactions_handler.go)
-[ ] 패키지명이 소문자 단일 단어(언더스코어/캐멀케이스 없음)이고 디렉토리명과 일치하는가?
-    → package account, package persistence 등
-[ ] Domain 레이어(internal/domain/<domain>/)에 Aggregate Root, Entity, Value Object, Domain Event, sentinel error, Repository interface가 모두 있는가?
-    → <aggregate-root>.go, transaction.go(Entity), money.go(VO), events.go, errors.go, repository.go
-[ ] 상태(status)류 값 객체가 별도 파일(<domain>_status.go)로 분리되어 있는가?
-    → account_status.go처럼 도메인 파일 하나에 여러 개념을 몰아넣지 않는다
-[ ] Application 레이어 파일명이 <verb>_<noun>_handler.go 형식이고 command/ 또는 query/에 배치되어 있는가?
+[ ] Is there any file whose name isn't in snake_case.go form?
+    → If so, rename it to snake_case.go (e.g. get_transactions_handler.go)
+[ ] Is the package name a single lowercase word (no underscores/camelCase) matching the directory name?
+    → package account, package persistence, etc.
+[ ] Does the Domain layer (internal/domain/<domain>/) have an Aggregate Root, Entity, Value Object, Domain Event, sentinel errors, and Repository interface — all present?
+    → <aggregate-root>.go, transaction.go (Entity), money.go (VO), events.go, errors.go, repository.go
+[ ] Is a status-like value object split into its own file (<domain>_status.go)?
+    → like account_status.go — don't cram multiple concepts into one domain file
+[ ] Is the Application layer filename in <verb>_<noun>_handler.go form, placed under command/ or query/?
     → create_account_handler.go, get_transactions_handler.go
-[ ] Result DTO들이 application/query/result.go(또는 유사 파일)에 모여 있는가?
-[ ] Technical Service 인터페이스(알림, 시크릿, 스토리지 등)가 사용하는 쪽 application 패키지에 정의되어 있는가?
+[ ] Are Result DTOs gathered in application/query/result.go (or a similar file)?
+[ ] Is a Technical Service interface (notification, secret, storage, etc.) defined in the application package that uses it?
     → command.AccountAdapter, command.PasswordHasher, command.SecretService, command.StorageService
-[ ] Infrastructure 레이어 파일이 internal/infrastructure/<concern>/<aggregate>_repository.go 형식으로 배치되어 있는가?
+[ ] Is an Infrastructure layer file placed as internal/infrastructure/<concern>/<aggregate>_repository.go?
     → persistence/account_repository.go, notification/service.go
-[ ] Interface 레이어 파일이 internal/interface/http/<domain>_handler.go, dto.go, router.go로 배치되어 있는가?
-[ ] 도메인이 여러 개로 늘어났다면 application/command/<domain>/, infrastructure/persistence/<domain>_repository.go처럼 세분화를 검토했는가?
-    → 단일 도메인뿐이면 평평한 구조 그대로 두어도 된다(YAGNI)
-[ ] 공용 코드(ID 생성 등)가 internal/common/처럼 프레임워크 무의존 순수 함수 전용 패키지에 있는가?
-    → 도메인 전용 코드를 공유 패키지로 옮기지 않았는가
-[ ] 타입명이 PascalCase, 공개 함수/메서드가 PascalCase, 비공개 함수/메서드가 camelCase인가?
-[ ] 에러 변수명이 ErrXxx 형식인가? (ErrNotFound, ErrInsufficientBalance 등)
-[ ] 인터페이스명이 동사+er보다 역할 명사를 우선하는가? (Repository, AccountAdapter — Fetcher/Sender류 지양)
-[ ] Repository 구현체에 컴파일 타임 인터페이스 검증(`var _ <domain>.Repository = (*XRepository)(nil)`)이 있는가?
+[ ] Is an Interface layer file placed as internal/interface/http/<domain>_handler.go, dto.go, router.go?
+[ ] If the number of domains has grown, was subdividing into application/command/<domain>/, infrastructure/persistence/<domain>_repository.go, etc. considered?
+    → with only a single domain, a flat structure is fine as-is (YAGNI)
+[ ] Is shared code (ID generation, etc.) in a framework-agnostic pure-function-only package like internal/common/?
+    → has domain-specific code been kept out of the shared package?
+[ ] Are type names PascalCase, public functions/methods PascalCase, and private functions/methods camelCase?
+[ ] Are error variable names in ErrXxx form? (ErrNotFound, ErrInsufficientBalance, etc.)
+[ ] Do interface names prefer role nouns over verb+er? (Repository, AccountAdapter — avoid Fetcher/Sender-style names)
+[ ] Does the Repository implementation have compile-time interface verification (`var _ <domain>.Repository = (*XRepository)(nil)`)?
 ```
 
 ---
 
-## STEP 2 — Domain 레이어
+## STEP 2 — Domain layer
 
-**관련 문서**: [architecture/tactical-ddd.md](architecture/tactical-ddd.md) · [architecture/layer-architecture.md](architecture/layer-architecture.md) · [architecture/aggregate-id.md](architecture/aggregate-id.md) · [domain-service.md](../../../docs/architecture/domain-service.md) (루트 공용)
-
-```
-[ ] Domain 패키지가 표준 라이브러리 기본 패키지 + 최소 의존성(google/uuid 등)만 import하는가?
-    → log, net/http, context, os, database/sql 등 프레임워크/인프라 import가 없는지 확인
-[ ] 불변식이 Aggregate 메서드 내부에서만 검증되는가?
-    → Handler나 다른 패키지가 필드를 직접 대입해 상태를 바꾸고 있지 않은지 확인
-[ ] Aggregate 외부에 노출하면 안 되는 필드(이벤트 슬라이스, 하위 Entity 슬라이스 등)가 unexported(소문자)로 선언되어 있는가?
-    → events, transactions 등
-[ ] 이벤트/하위 Entity 접근이 DomainEvents()/ClearEvents() 같은 명시적 공개 메서드로만 이루어지는가?
-[ ] 신규 생성(`New(...)`)과 DB 복원(`Reconstitute(...)`)이 별도 함수로 분리되어 있는가?
-    → New()는 이벤트를 발행하고 ID를 새로 발급, Reconstitute()는 이벤트 없이 상태만 채운다
-[ ] New(...)의 파라미터 목록에 ID가 없는가? (클라이언트가 제공한 ID를 받지 않는다)
-[ ] Aggregate ID가 UUID v4에서 하이픈을 제거한 32자리 hex 문자열로 생성되는가? (`common.NewID()`)
-    → `uuid.NewString()`을 하이픈 포함 그대로 쓰고 있지 않은가 (이 저장소 examples/의 알려진 격차 — 새로 작성하는 코드는 재현하지 않는다)
-[ ] Value Object 메서드가 값 리시버(`(m Money)`)를 사용해 원본을 변형하지 않고 새 값을 반환하는가?
-[ ] Value Object에 속성 기반 동등성 비교(`Equals(other T) bool`) 메서드가 있는가?
-[ ] Domain Event 타입명이 과거형(AccountCreated, MoneyDeposited)인가?
-[ ] Domain Event들이 공통 마커 인터페이스(예: `isAccountDomainEvent()`)를 공유해 임의 타입의 오혼입을 막는가?
-[ ] Repository interface가 domain 패키지에 시그니처만 정의되어 있고 구현이 없는가?
-[ ] Aggregate 간 참조가 ID 참조만 사용하고 다른 Aggregate 객체를 직접 필드로 들고 있지 않은가?
-[ ] 여러 Aggregate가 같은 패키지에 섞여 있지 않은가? (Aggregate 하나당 패키지 분리가 원칙)
-[ ] 같은 패키지 내부 코드가 Aggregate 필드를 메서드를 거치지 않고 직접 조작하지 않는가?
-    → Go는 패키지 단위 캡슐화만 지원하므로 이 규율은 코드 리뷰로 보완해야 한다
-```
-
----
-
-## STEP 3 — 레이어 아키텍처 / CQRS / 크로스 도메인
-
-**관련 문서**: [architecture/layer-architecture.md](architecture/layer-architecture.md) · [architecture/cqrs-pattern.md](architecture/cqrs-pattern.md) · [architecture/cross-domain.md](architecture/cross-domain.md) · [architecture/domain-events.md](architecture/domain-events.md)
+**Related documents**: [architecture/tactical-ddd.md](architecture/tactical-ddd.md) · [architecture/layer-architecture.md](architecture/layer-architecture.md) · [architecture/aggregate-id.md](architecture/aggregate-id.md) · [domain-service.md](../../../docs/architecture/domain-service.md) (shared root document)
 
 ```
-[ ] 의존 방향이 Interface → Application → Domain이고, Infrastructure가 Domain의 interface를 구현하는가?
-    → domain 패키지의 import 목록에 infrastructure/interface/application이 없는지 확인
-[ ] CommandHandler/QueryHandler가 구조체 + `Handle(ctx context.Context, cmd/query X) (결과, error)` 시그니처를 따르는가?
-[ ] Handler가 비즈니스 로직(상태 전이 조건 검사, 금액 계산 등)을 직접 수행하는가?
-    → 있다면 Aggregate 도메인 메서드로 이동
-[ ] Handler가 (1) Repository 조회 → (2) 도메인 메서드 호출 → (3) Repository 저장 → (4) 부가 효과(알림 등) 순서로 조율만 하는가?
-[ ] Handler가 에러를 그대로 반환하거나 `fmt.Errorf("...: %w", err)`로 래핑해 반환하는가? (패닉으로 던지지 않는가)
-[ ] 별도 Query interface 없이 Command와 동일한 Repository를 재사용하고 있다면, 이것이 이 저장소의 알려진 편차임을 인지했는가?
-    → 읽기 모델을 별도 저장소로 분리해야 하는 시점이 되면 `application/query/`에 Query interface + `infrastructure/`에 읽기 전용 구현체를 새로 만든다
-[ ] CommandBus/QueryBus 같은 런타임 라우팅 계층을 새로 만들려 하지 않는가?
-    → Handler 인스턴스를 필드로 직접 보유해 호출한다 (Bus 불필요 — 컴파일 타임에 타입이 이미 확정됨)
-[ ] 다른 도메인의 Repository/Service를 Application 레이어에서 직접 참조하는가?
-    → 있다면 Adapter 패턴으로 변경: 호출하는 쪽 application 패키지에 interface, 호출하는 쪽 infrastructure 패키지에 구현체
-[ ] Adapter interface가 호출받는 쪽의 전체 API가 아니라 호출하는 쪽이 필요로 하는 최소 모양만 선언하는가?
-[ ] Adapter 구현체에도 `var _ Interface = (*Impl)(nil)` 컴파일 타임 검증이 있는가?
-[ ] 도메인 이벤트가 Aggregate 도메인 메서드 내부에서만 생성되는가?
-    → Handler가 직접 이벤트 구조체를 만들어 append하고 있지 않은가
-[ ] 새 도메인의 Handler가 Outbox 없이 Repository 저장 직후 별도 동기 호출로 알림을 보내고 있다면, 이것이 dual-write 위험임을 인지했는가?
-    → 실패해도 무방한 부가 기능(이메일 알림 등)이면 현재 패턴이 실용적 절충일 수 있다. 법적 통지처럼 중요한 이벤트라면 Outbox(Repository 저장과 같은 트랜잭션에 이벤트 적재) + `outbox.Poller`/`outbox.Consumer`(비동기 발행·수신) 패턴 도입을 검토한다(domain-events.md)
-[ ] 패키지 순환 의존(import cycle)이 있는가?
-    → Go는 `forwardRef()` 같은 우회 수단이 없다. 공유 개념을 세 번째 패키지로 추출하거나, Adapter로 한쪽 방향을 강제하거나, 비동기(Integration Event) 전환을 검토한다
+[ ] Does the Domain package import only standard-library base packages plus a minimal dependency (google/uuid, etc.)?
+    → confirm there's no framework/infrastructure import such as log, net/http, context, os, database/sql
+[ ] Are invariants validated only inside Aggregate methods?
+    → confirm a Handler or another package isn't directly assigning a field to change state
+[ ] Are fields that must never be exposed outside the Aggregate (an event slice, a child Entity slice, etc.) declared unexported (lowercase)?
+    → events, transactions, etc.
+[ ] Is access to events/child Entities done only through explicit public methods like DomainEvents()/ClearEvents()?
+[ ] Are new creation (`New(...)`) and DB restoration (`Reconstitute(...)`) split into separate functions?
+    → New() raises events and issues a new ID; Reconstitute() only fills in state, with no events
+[ ] Does New(...)'s parameter list have no ID? (a client-supplied ID is never accepted)
+[ ] Is the Aggregate ID generated as a 32-character hex string, a UUID v4 with hyphens removed (`common.NewID()`)?
+    → is `uuid.NewString()` being used as-is with hyphens included (a known gap in this repository's examples/ — don't reproduce it in newly written code)
+[ ] Do Value Object methods use a value receiver (`(m Money)`) and return a new value instead of mutating the original?
+[ ] Does the Value Object have an attribute-based equality comparison method (`Equals(other T) bool`)?
+[ ] Are Domain Event type names past-tense (AccountCreated, MoneyDeposited)?
+[ ] Do Domain Events share a common marker interface (e.g. `isAccountDomainEvent()`) to prevent an arbitrary type from being mixed in accidentally?
+[ ] Is the Repository interface defined with only a signature in the domain package, with no implementation?
+[ ] Do references between Aggregates use only ID references, with no other Aggregate object held directly as a field?
+[ ] Are multiple Aggregates never mixed into the same package? (one package per Aggregate is the principle)
+[ ] Does code within the same package never manipulate an Aggregate field directly without going through a method?
+    → since Go only supports package-level encapsulation, this discipline must be supplemented via code review
 ```
 
 ---
 
-## STEP 4 — Repository 패턴
+## STEP 3 — Layer architecture / CQRS / cross-domain
 
-**관련 문서**: [architecture/repository-pattern.md](architecture/repository-pattern.md) · [architecture/persistence.md](architecture/persistence.md)
-
-```
-[ ] Repository가 Aggregate Root 단위로 정의되어 있는가? (테이블/Entity 단위 X)
-[ ] Repository interface가 domain 패키지에, 구현체가 infrastructure 패키지에 있는가?
-[ ] 구현체에 `var _ <domain>.Repository = (*XRepository)(nil)` 컴파일 타임 검증이 있는가?
-[ ] Repository 메서드가 find<Noun>s(단건도 take:1로 통일)/save<Noun>/delete<Noun>(/필요 시 별도 상태 전환 메서드) 패턴을 따르는가?
-    → 단건 조회 전용 메서드(FindByID 등)는 두지 않는다 — 항상 find<Noun>s를 take:1로 호출하는 FindOne 헬퍼로 감싼다(account/card/payment 모두 동일)
-[ ] update<Noun> 성격의 메서드가 있는가?
-    → 있다면 제거. 조회 후 Aggregate 도메인 메서드로 상태 변경, Save로 반영
-[ ] Repository 구현체가 DB row를 도메인 Aggregate로 변환하는가? (`Reconstitute(...)` 사용, row를 그대로 반환하지 않는지)
-[ ] 동적 WHERE 조건이 값이 있을 때만(zero value가 아닐 때만) 슬라이스에 append되는 패턴을 따르는가?
-    → `$N` 플레이스홀더 번호가 조건 추가마다 올바르게 증가하는가, 값이 문자열에 직접 삽입되지 않고 항상 args로 바인딩되는가(SQL 인젝션 방지)
-[ ] 목록 조회 메서드가 (도메인 객체 슬라이스, count, error) 형태로 반환하는가?
-[ ] Soft Delete 컬럼(deleted_at)이 조회 쿼리 WHERE에 기본 포함되는가? (`deleted_at IS NULL`)
-[ ] hard delete(`DELETE FROM ...`)를 사용하지 않고 soft delete(UPDATE ... SET deleted_at)를 사용하는가?
-[ ] 여러 Repository를 하나의 트랜잭션으로 묶어야 하는 Command가 있는가?
-    → 현재 이 저장소는 `context.Context` 기반 트랜잭션 전파(`database.WithTx`)가 구현되어 있지 않다(알려진 격차). 단일 Repository 범위를 넘는 트랜잭션이 필요해지면 이 패턴을 새로 도입한다
-[ ] 마이그레이션이 순번 SQL 파일(`migrations/000X_*.sql`)로 관리되는가? (자동 스키마 동기화 사용 금지 — `database/sql`은 애초에 자동 동기화 기능이 없다)
-```
-
----
-
-## STEP 5 — 의존성 조립 (DI 컨테이너 없음)
-
-**관련 문서**: [architecture/module-pattern.md](architecture/module-pattern.md) · [architecture/shared-modules.md](architecture/shared-modules.md) · [architecture/bootstrap.md](architecture/bootstrap.md)
+**Related documents**: [architecture/layer-architecture.md](architecture/layer-architecture.md) · [architecture/cqrs-pattern.md](architecture/cqrs-pattern.md) · [architecture/cross-domain.md](architecture/cross-domain.md) · [architecture/domain-events.md](architecture/domain-events.md)
 
 ```
-[ ] 새 Infrastructure 구현체가 `New...()` 생성자 함수로 만들어지는가?
-[ ] Application Handler 생성자가 구체 타입이 아니라 domain 패키지의 interface 타입으로 의존성을 주입받는가?
-    → `repo account.Repository`이지 `repo *persistence.AccountRepository`가 아니다
-[ ] main.go(또는 router.go)의 조립 순서가 의존 방향과 정확히 일치하는가? (DB → Infrastructure → Application → Interface → 서버 시작)
-[ ] main()이 배선 외의 비즈니스 로직이나 조건 분기를 포함하는가?
-    → 있다면 제거. main()은 생성자를 순서대로 호출하고 서버를 시작하는 것만 담당
-[ ] 공유 인스턴스(DB 커넥션 풀, logger 등)가 여러 도메인의 생성자에 동일한 값으로 전달되는가?
-    → "공유"는 NestJS의 `@Global()` 선언이 아니라 같은 변수를 여러 생성자 인자로 넘기는 것으로 이루어진다
-[ ] 도메인 전용 코드가 `internal/common/` 같은 공유 패키지로 잘못 옮겨져 있지 않은가?
-    → 공유 패키지는 실제로 두 도메인 이상이 필요로 할 때만 만든다(YAGNI)
-[ ] 패키지 순환 의존이 있는가?
-    → Go는 우회 수단이 없다. 공유 개념 추출, Adapter로 단방향화, 또는 비동기 전환 중 하나로 즉시 재설계한다
-[ ] 다른 도메인 호출이 필요한 경우 Adapter interface가 호출하는 쪽 application 패키지에, 구현체가 호출하는 쪽 infrastructure 패키지에 있는가?
-[ ] 여러 도메인이 생겨 `application/command/`, `application/query/`가 평평한 구조로 남아있다면 `command/<domain>/`, `query/<domain>/` 세분화가 필요한 시점인지 검토했는가?
-[ ] 리플렉션 기반 DI 컨테이너나 서비스 로케이터를 직접 구현하려 하지 않았는가? (Go에서는 생성자 체이닝을 그대로 받아들인다)
+[ ] Is the dependency direction Interface → Application → Domain, with Infrastructure implementing Domain's interface?
+    → confirm the domain package's import list has no infrastructure/interface/application
+[ ] Does the CommandHandler/QueryHandler follow the struct + `Handle(ctx context.Context, cmd/query X) (result, error)` signature?
+[ ] Does the Handler perform business logic directly (checking state-transition conditions, calculating amounts, etc.)?
+    → if so, move it into an Aggregate domain method
+[ ] Does the Handler only orchestrate, in the order (1) Repository lookup → (2) call a domain method → (3) Repository save → (4) side effects (notification, etc.)?
+[ ] Does the Handler return the error as-is, or wrap it with `fmt.Errorf("...: %w", err)`? (it never panics instead)
+[ ] If the Command reuses the same Repository as Query without a separate Query interface, has this been recognized as a known deviation in this repository?
+    → once the read model needs to be split into a separate store, create a new Query interface in `application/query/` + a read-only implementation in `infrastructure/`
+[ ] Is a new runtime routing layer such as CommandBus/QueryBus being introduced?
+    → the Handler instance should be held directly as a field and called (no Bus needed — the type is already fixed at compile time)
+[ ] Is another domain's Repository/Service referenced directly from the Application layer?
+    → if so, switch to the Adapter pattern: an interface in the calling side's application package, an implementation in the calling side's infrastructure package
+[ ] Does the Adapter interface declare only the minimal shape the calling side needs, rather than the callee's full API?
+[ ] Does the Adapter implementation also have `var _ Interface = (*Impl)(nil)` compile-time verification?
+[ ] Are domain events created only inside Aggregate domain methods?
+    → confirm the Handler isn't directly constructing an event struct and appending it
+[ ] If a new domain's Handler sends a notification via a separate synchronous call right after a Repository save, with no Outbox, has this been recognized as a dual-write risk?
+    → for a side feature that's fine to fail (email notification, etc.), the current pattern may be a practical trade-off. For an important event like a legal notice, consider introducing the Outbox (recording the event in the same transaction as the Repository save) + `outbox.Poller`/`outbox.Consumer` (asynchronous publish/receive) pattern (domain-events.md)
+[ ] Is there a package circular dependency (import cycle)?
+    → Go has no workaround like `forwardRef()`. Extract the shared concept into a third package, force one direction via an Adapter, or consider switching to asynchronous (Integration Event)
 ```
 
 ---
 
-## STEP 6 — Go 타이핑 및 도메인 모델링 패턴
+## STEP 4 — Repository pattern
 
-**관련 문서**: [conventions.md](./conventions.md)
-
-```
-[ ] 실패 가능성이 있는 함수/메서드가 모두 `error`를 반환값으로 명시하는가?
-[ ] 레이어 경계를 넘는 함수의 첫 인자가 `context.Context`인가? (Repository, Handler, Adapter, Technical Service 전부)
-[ ] DTO/Result/Command/Query struct 필드가 exported(PascalCase)로 선언되어 있는가?
-[ ] `any`(interface{})를 근거 없이 사용한 곳이 있는가?
-    → 있다면 구체 타입 또는 명확한 인터페이스로 교체
-[ ] nullable 값 표현이 zero value(`""`, `0`, `nil`) 관용으로 충분한지, 아니면 포인터(`*string` 등)로 명시적 null이 필요한지 의도적으로 판단했는가?
-[ ] Value Object 메서드가 값 리시버를 사용해 원본을 변형하지 않는가?
-[ ] Aggregate 메서드가 포인터 리시버(`(a *Account)`)를 사용해 상태를 변경하는가?
-[ ] 복잡한 반환 타입에 named struct/type을 정의해 가독성을 높였는가? (익명 struct 남용 금지)
-[ ] enum 성격의 값(Status 등)이 `type Status string` + 상수 그룹으로 정의되어 있는가? (magic string 직접 비교 금지)
-```
-
----
-
-## STEP 7 — 에러 처리
-
-**관련 문서**: [architecture/error-handling.md](architecture/error-handling.md)
+**Related documents**: [architecture/repository-pattern.md](architecture/repository-pattern.md) · [architecture/persistence.md](architecture/persistence.md)
 
 ```
-[ ] 새 에러가 sentinel error(`var ErrXxx = errors.New("...")`)로 정의되어 있는가?
-[ ] 에러 메시지가 소문자로 시작하고 마침표 등 구두점이 없는가? (Go 표준 컨벤션)
-[ ] 상위 레이어에서 에러를 감쌀 때 `fmt.Errorf("<작업 설명>: %w", err)`로 래핑해 원본을 보존하는가?
-[ ] 이미 sentinel error인 값을 불필요하게 다시 래핑하고 있지 않은가? (정보 없이 errors.Is 체인만 길어짐)
-[ ] Interface 레이어(HTTP Handler)에서만 `errors.Is`로 HTTP 상태 코드를 매핑하는가?
-    → Domain/Application 레이어가 `net/http` 상태 코드나 HTTP 개념을 알고 있지 않은지 확인
-[ ] 매핑에 없는 에러(default 분기)가 500 + 클라이언트에 내부 구현 세부사항을 노출하지 않는 일반 메시지로 처리되는가?
-[ ] 표준 에러 응답 JSON 스키마(`{statusCode, code, message, error}`)가 필요한 작업이면 도입했는가?
-    → 현재 이 저장소는 `http.Error`로 평문 텍스트만 반환하는 알려진 격차가 있다. 클라이언트가 `code`로 분기해야 하는 요구사항이 있다면 JSON 스키마로 전환한다
-[ ] Aggregate/Repository/Handler 어디서든 `panic`으로 정상적인 실패를 표현하고 있지 않은가? (`error` 반환이 원칙)
-[ ] 새 sentinel error를 추가했다면 해당 도메인의 `errors.go`에 함께 모아두었는가?
+[ ] Is the Repository defined per Aggregate Root? (not per table/Entity)
+[ ] Is the Repository interface in the domain package, with the implementation in the infrastructure package?
+[ ] Does the implementation have `var _ <domain>.Repository = (*XRepository)(nil)` compile-time verification?
+[ ] Does the Repository method follow the find<Noun>s (single item unified via take:1)/save<Noun>/delete<Noun> (/a separate state-transition method if needed) pattern?
+    → never add a single-item-only lookup method (FindByID, etc.) — always wrap a find<Noun>s call with take:1 in a FindOne helper (the same across account/card/payment)
+[ ] Is there an update<Noun>-style method?
+    → if so, remove it. Change state via an Aggregate domain method after lookup, apply it via Save
+[ ] Does the Repository implementation convert a DB row into the domain Aggregate? (uses `Reconstitute(...)`, doesn't return the row as-is)
+[ ] Does the dynamic WHERE condition follow the pattern of appending to a slice only when a value is present (not the zero value)?
+    → does the `$N` placeholder number increment correctly with each added condition, and are values always bound via args instead of being inserted directly into the string (preventing SQL injection)?
+[ ] Does a list-query method return in the form (a slice of domain objects, count, error)?
+[ ] Is the soft-delete column (deleted_at) included in the query's WHERE by default? (`deleted_at IS NULL`)
+[ ] Is soft delete (UPDATE ... SET deleted_at) used instead of hard delete (`DELETE FROM ...`)?
+[ ] Is there a Command that needs to bundle multiple Repositories into one transaction?
+    → this repository currently has no `context.Context`-based transaction propagation (`database.WithTx`) implemented (a known gap). Introduce this pattern once a transaction spanning more than a single Repository becomes necessary
+[ ] Are migrations managed as sequentially numbered SQL files (`migrations/000X_*.sql`)? (automatic schema sync is forbidden — `database/sql` has no auto-sync feature to begin with)
 ```
 
 ---
 
-## STEP 8 — REST API 엔드포인트
+## STEP 5 — Dependency assembly (no DI container)
 
-**관련 문서**: [architecture/api-response.md](architecture/api-response.md) · [conventions.md](./conventions.md) 섹션 5 · [conventions.md](../../../docs/conventions.md) (루트 공용) 섹션 1
-
-```
-[ ] URL이 동사가 아닌 복수 명사 리소스로 구성되어 있는가?
-    → 올바른 예: GET /accounts, POST /accounts
-    → 잘못된 예: GET /getAccounts, POST /createAccount
-[ ] 비 CRUD 행위가 하위 리소스 경로로 표현되는가?
-    → 올바른 예: POST /accounts/{id}/deposit, POST /accounts/{id}/suspend
-[ ] HTTP 메서드와 응답 코드가 올바른가? (GET/PUT/PATCH 200, POST 201, DELETE 204)
-[ ] 라우팅이 `net/http`의 method+path 패턴(`mux.HandleFunc("GET /accounts/{id}", ...)`, Go 1.22+)으로 등록되어 있는가?
-[ ] 페이지네이션이 `page`(0-base)/`take` 쿼리 파라미터로 파싱되는가?
-    → `r.URL.Query()`에서 직접 파싱, 파싱 실패 시 기본값으로 흡수할지 400으로 처리할지 의도적으로 결정했는가
-[ ] 목록 응답이 범용 키(`data`/`result`/`items`) 대신 도메인 복수형 키(`accounts`, `transactions` 등) + `count`로 구성되어 있는가?
-[ ] `count`가 페이지 크기가 아니라 필터 적용 후 전체 건수인가?
-[ ] 단건 응답이 `{ success, data }` 같은 범용 래퍼 없이 필드를 평탄하게 노출하는가?
-[ ] Result 구조체(Application 레이어)가 도메인 Aggregate를 그대로 노출하지 않고 응답 전용 필드로 매핑되는가?
-[ ] Interface DTO가 Application Result/Command의 필드를 재선언한 얇은 래퍼이고, Handler가 필드를 명시적으로 매핑하는가?
-    → Go에는 상속이 없으므로 TypeScript의 `extends`를 필드 재선언 + 명시적 매핑으로 대신한다
-```
-
----
-
-## STEP 9 — 인증 · 횡단 관심사 · Rate Limiting
-
-**관련 문서**: [architecture/authentication.md](architecture/authentication.md) · [architecture/cross-cutting-concerns.md](architecture/cross-cutting-concerns.md) · [architecture/rate-limiting.md](architecture/rate-limiting.md) · [architecture/observability.md](architecture/observability.md)
+**Related documents**: [architecture/module-pattern.md](architecture/module-pattern.md) · [architecture/shared-modules.md](architecture/shared-modules.md) · [architecture/bootstrap.md](architecture/bootstrap.md)
 
 ```
-[ ] 인증 검증이 Interface 레이어(미들웨어)에서만 이루어지는가?
-    → Application/Domain 패키지가 `jwt` 관련 패키지를 import하지 않는지 확인
-[ ] 인증 미들웨어가 `Authorization: Bearer` 헤더를 추출해 검증한 뒤 `context.WithValue`로 사용자 정보를 다음 핸들러에 전달하는가?
-[ ] JWT payload가 `userId` 등 최소한의 정보만 담는가? (역할/이메일 등 민감·가변 정보 금지)
-[ ] 인증이 필요한 라우트가 그룹(서브 mux) 단위로 미들웨어에 감싸여 있는가?
-    → 개별 핸들러마다 따로 감싸 새 엔드포인트 추가 시 누락되는 위험을 만들지 않는가
-[ ] 검증되지 않은 헤더(`X-User-Id` 등)를 인증으로 착각해 그대로 신뢰하고 있지 않은가?
-    → 이 저장소 `examples/`의 알려진 격차다. 새로 작성하는 기능이라면 JWT 기반 미들웨어로 구현했는가
-[ ] 미들웨어 체인이 관심사별로 하나씩 분리되어 있는가? (Correlation ID → 인증 → Rate Limit → Handler → 로깅 순서가 합리적인가)
-[ ] Rate Limiting이 필요한 엔드포인트에 `golang.org/x/time/rate` 기반 토큰 버킷이 적용되어 있는가?
-[ ] 클라이언트별 제한이 필요한 경우 limiter map에 cleanup(오래된 항목 제거) 로직이 있는가? (없으면 메모리 누수)
-[ ] 쓰기 엔드포인트가 읽기보다 엄격한 제한을 받는가?
-[ ] 헬스체크/내부 엔드포인트가 인증·Rate Limit 미들웨어에서 제외되어 있는가?
-[ ] Domain 레이어에서 로거·HTTP·인증 등 횡단 관심사를 import하고 있지 않은가?
+[ ] Is a new Infrastructure implementation created via a `New...()` constructor function?
+[ ] Is the Application Handler constructor injected with the dependency as the domain package's interface type, not a concrete type?
+    → `repo account.Repository`, not `repo *persistence.AccountRepository`
+[ ] Does main.go's (or router.go's) assembly order exactly match the dependency direction? (DB → Infrastructure → Application → Interface → server start)
+[ ] Does main() contain business logic or conditional branching beyond wiring?
+    → if so, remove it. main() is only responsible for calling constructors in order and starting the server
+[ ] Is a shared instance (DB connection pool, logger, etc.) passed as the same value to multiple domains' constructors?
+    → "sharing" is achieved by passing the same variable as an argument to multiple constructors, not by a NestJS-style `@Global()` declaration
+[ ] Has domain-specific code been mistakenly moved into a shared package like `internal/common/`?
+    → create a shared package only once two or more domains actually need it (YAGNI)
+[ ] Is there a package circular dependency?
+    → Go has no workaround. Immediately redesign via extracting a shared concept, unidirectionalizing with an Adapter, or switching to asynchronous
+[ ] When a call to another domain is needed, is the Adapter interface in the calling side's application package, with the implementation in the calling side's infrastructure package?
+[ ] If `application/command/`, `application/query/` remain flat despite more domains having appeared, has it been considered whether it's time to subdivide into `command/<domain>/`, `query/<domain>/`?
+[ ] Has a reflection-based DI container or service locator not been implemented directly? (in Go, constructor chaining is accepted as-is)
 ```
 
 ---
 
-## STEP 10 — import 구성
+## STEP 6 — Go typing and domain modeling patterns
 
-**관련 문서**: [conventions.md](./conventions.md) 섹션 7
-
-```
-[ ] import가 표준 라이브러리 → 서드파티 → 내부 패키지 3그룹(그룹 사이 빈 줄)으로 정렬되어 있는가?
-[ ] 각 그룹 내부가 알파벳 순으로 정렬되어 있는가? (`goimports` 실행 결과와 다르지 않은지)
-[ ] 내부 패키지 alias(`httphandler "internal/interface/http"` 등)가 이름 충돌 회피 목적으로만 합리적으로 사용되었는가?
-[ ] blank import(`_ "github.com/lib/pq"` 등 드라이버 등록용)가 서드파티 그룹의 올바른 위치에 있는가?
-[ ] Domain 레이어 파일이 infrastructure/interface/application 패키지를 import하고 있지 않은가?
-[ ] `gofmt -l .`과 `goimports -l .`이 빈 출력을 반환하는가? (포맷팅 위반 없음)
-```
-
----
-
-## STEP 11 — 스케줄링 · Task Queue · Graceful Shutdown
-
-**관련 문서**: [architecture/scheduling.md](architecture/scheduling.md) · [architecture/graceful-shutdown.md](architecture/graceful-shutdown.md) · [architecture/domain-events.md](architecture/domain-events.md) · [architecture/container.md](architecture/container.md)
+**Related documents**: [conventions.md](./conventions.md)
 
 ```
-[ ] Scheduler(`*_scheduler.go`)가 infrastructure 레이어(`internal/infrastructure/scheduling/` 등)에 위치하는가?
-[ ] Scheduler가 비즈니스 로직을 직접 실행하지 않고 `TaskQueue.Enqueue`만 호출하는가?
-[ ] Scheduler의 `time.Ticker` 루프가 `ctx.Done()`으로 종료되는가? (graceful shutdown과 연동)
-[ ] Ticker 콜백에서 발생한 에러가 무시되지 않고 `slog.ErrorContext` 등으로 명시적으로 로깅되는가?
-    → Cron/Ticker 콜백의 예외는 조용히 삼켜지기 쉬우므로 반드시 직접 로깅한다
-[ ] Task 적재가 DB 변경과 같은 트랜잭션 안에서 이루어지는가? (dual-write 방지)
-[ ] Task Consumer가 에러를 삼키지 않고 그대로 반환해 재시도/DLQ 메커니즘에 위임하는가?
-[ ] 이벤트/Task 핸들러가 멱등하게 구현되어 있는가? (본질적 멱등 / 처리 기록 테이블 / 강한 원자성 중 필요한 단계를 판단했는가)
-[ ] `signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)`로 종료 신호를 컨텍스트 취소로 변환하는가?
-[ ] SIGTERM 수신 시 readiness를 먼저 503으로 전환한 뒤 `srv.Shutdown(ctx)`을 호출하는가? (순서가 뒤바뀌지 않았는가)
-[ ] Shutdown 타임아웃이 오케스트레이터의 `terminationGracePeriodSeconds`와 맞춰져 있는가?
-[ ] 컨테이너 `ENTRYPOINT`/`CMD`가 exec form(`["/bin/server"]`)으로 되어 있어 SIGTERM이 셸에 가로채이지 않는가?
+[ ] Do all functions/methods that can fail explicitly declare `error` as a return value?
+[ ] Is `context.Context` the first argument of every function crossing a layer boundary? (Repository, Handler, Adapter, Technical Service — all of them)
+[ ] Are DTO/Result/Command/Query struct fields declared exported (PascalCase)?
+[ ] Is `any` (interface{}) used anywhere without good reason?
+    → if so, replace it with a concrete type or a well-defined interface
+[ ] Has it been deliberately decided whether a zero-value idiom (`""`, `0`, `nil`) is sufficient for expressing a nullable value, or whether an explicit null via a pointer (`*string`, etc.) is needed?
+[ ] Do Value Object methods use a value receiver and never mutate the original?
+[ ] Do Aggregate methods use a pointer receiver (`(a *Account)`) to change state?
+[ ] Has a named struct/type been defined for a complex return type to improve readability? (no overuse of anonymous structs)
+[ ] Is an enum-like value (Status, etc.) defined as `type Status string` + a constant group? (no direct magic-string comparisons)
 ```
 
 ---
 
-## STEP 12 — DB / 인프라 패턴
+## STEP 7 — Error handling
 
-**관련 문서**: [architecture/persistence.md](architecture/persistence.md) · [architecture/config.md](architecture/config.md) · [architecture/secret-manager.md](architecture/secret-manager.md) · [architecture/local-dev.md](architecture/local-dev.md) · [architecture/container.md](architecture/container.md) · [architecture/observability.md](architecture/observability.md)
+**Related documents**: [architecture/error-handling.md](architecture/error-handling.md)
 
 ```
-[ ] 필수 환경 변수가 기동 시 검증되고 실패하면 `log.Fatal`(즉시 종료)로 이어지는가?
-    → `os.Getenv`를 검증 없이 바로 `sql.Open` 등에 넘기고 있지 않은가
-[ ] 관심사별 Config 구조체(`Load...Config()`)로 환경 변수가 분리되어 있는가?
-[ ] 로컬 개발 전용 기본값(`getEnvOr`)과 운영에서 반드시 필요한 값(빈 문자열이면 에러)이 구분되어 있는가?
-[ ] 민감 값(DB 비밀번호, JWT secret, API 키)이 하드코딩되어 있지 않은가?
-    → 운영 환경에서 AWS Secrets Manager 등으로 조회하는가
-[ ] SecretService 조회 결과가 TTL 캐시(`sync.Mutex` + map)로 캐싱되어 반복 조회를 피하는가?
-[ ] Domain/Application 패키지에 `os.Getenv` 호출이 없는가? (설정 접근은 Infrastructure/`main.go`에서만)
-[ ] `created_at`/`updated_at`/`deleted_at` 컬럼이 스키마에 있고, 조회 쿼리가 `deleted_at IS NULL`로 필터링하는가?
-[ ] 마이그레이션이 순번 SQL 파일로 관리되는가? (down 스크립트 부재 등 알려진 격차를 인지하고 있는가)
-[ ] 구조화 로그가 `log/slog`로 남는가? (JSON 핸들러, snake_case 필드명, `ctx`를 받는 `InfoContext`/`ErrorContext` 사용)
-[ ] Correlation ID가 `context.Context`로 전파되어 모든 로그에 포함되는가?
-[ ] 컨테이너 이미지가 멀티스테이지 빌드(`CGO_ENABLED=0` 정적 빌드 + `distroless`/`scratch`)로 구성되어 있는가?
-[ ] `ENTRYPOINT`가 exec form이고 이미지에 환경 변수(`ENV DATABASE_URL=...` 등 민감 값)를 굽지 않는가?
-[ ] 헬스체크 엔드포인트(`/health/live`, `/health/ready`)가 `net/http`로 직접 구현되어 있는가?
-[ ] LocalStack 등 로컬 인프라가 `docker-compose.yml`에 버전 고정 이미지(`:latest` 금지)로 정의되어 있는가?
+[ ] Is a new error defined as a sentinel error (`var ErrXxx = errors.New("...")`)?
+[ ] Does the error message start lowercase with no trailing punctuation? (standard Go convention)
+[ ] When an upper layer wraps an error, is it wrapped with `fmt.Errorf("<operation description>: %w", err)` to preserve the original?
+[ ] Is an already-sentinel error being unnecessarily rewrapped? (this only lengthens the errors.Is chain without adding information)
+[ ] Is HTTP status code mapping via `errors.Is` done only in the Interface layer (HTTP Handler)?
+    → confirm the Domain/Application layers know nothing about `net/http` status codes or HTTP concepts
+[ ] Is an error not present in the mapping (the default branch) handled as a 500 + a generic message that doesn't expose internal implementation details to the client?
+[ ] If the standard error response JSON schema (`{statusCode, code, message, error}`) is needed for the work at hand, has it been introduced?
+    → this repository currently has a known gap of returning only plain text via `http.Error`. If there's a requirement for the client to branch on `code`, switch to the JSON schema
+[ ] Is `panic` never used anywhere — Aggregate/Repository/Handler — to express an ordinary failure? (returning `error` is the principle)
+[ ] If a new sentinel error was added, was it gathered together in that domain's `errors.go`?
 ```
 
 ---
 
-## STEP 13 — 테스트 패턴
+## STEP 8 — REST API endpoints
 
-**관련 문서**: [architecture/testing.md](architecture/testing.md)
-
-```
-[ ] Domain 단위 테스트가 `package <domain>_test`(외부 테스트 패키지)로 공개 API만 사용해 작성되어 있는가?
-[ ] table-driven test(`[]struct{...}` + `t.Run` 서브테스트) 스타일을 따르는가?
-[ ] 기대 에러가 `errors.Is`로 비교되는가? (문자열 비교 금지)
-[ ] Application 단위 테스트가 Repository 등 interface를 수동 stub 구조체로 대체하는가? (구체 타입 mock 금지)
-[ ] Application 테스트가 비즈니스 로직을 재검증하지 않고 Handler의 호출 순서(조회 → 도메인 메서드 → 저장 → 알림)만 검증하는가?
-[ ] E2E 테스트가 testcontainers-go로 실제 Postgres/LocalStack 컨테이너를 띄우는가? (운영 DB 직접 연결 금지)
-[ ] E2E 테스트가 `TestMain`에서 컨테이너를 한 번 띄우고 마이그레이션 파일을 순서대로 실행하는가?
-[ ] 테스트 간 데이터 격리를 위해 각 테스트가 고유한 ID/오너를 생성하는가?
-[ ] 단위 테스트가 소스 옆(`_test.go`)에, E2E 테스트가 별도 `test/` 디렉토리에 배치되어 있는가?
-[ ] 테스트 함수명이 `TestXxx_When<조건>_Then<기대결과>` 패턴을 따르는가?
-    → 예: `TestDepositHandler_Handle_AccountNotFound`, `TestAccount_Withdraw`(서브테스트 이름에 조건/기대결과 명시)
-[ ] Aggregate 불변식 위반 테스트와 Domain Event 발행 여부 검증 테스트가 작성되어 있는가?
-```
-
----
-
-## STEP 14 — 전체 일관성 최종 확인
-
-**관련 문서**: [conventions.md](./conventions.md) · [architecture/design-principles.md](architecture/design-principles.md)
+**Related documents**: [architecture/api-response.md](architecture/api-response.md) · [conventions.md](./conventions.md) section 5 · [conventions.md](../../../docs/conventions.md) (shared root document) section 1
 
 ```
-[ ] 새로 추가한 파일이 필요한 곳(main.go/router.go)에서 생성자로 조립되었는가?
-[ ] 새 Command/Query/Result를 추가했다면 Interface DTO가 얇은 매핑 구조체로 함께 추가되었는가?
-[ ] 작업한 코드에 TODO, 임시 `fmt.Println`/디버그 출력, 임시 주석이 남아있지 않은가?
-[ ] 유비쿼터스 언어가 타입명/메서드명/필드명에 일관되게 반영되어 있는가?
-[ ] exported 식별자에 Go doc comment(식별자명으로 시작하는 `//` 주석)가 있는가?
-[ ] 비즈니스 로직 설명이 인라인 `//` 주석으로 되어 있는가? (블록 주석 남용 금지)
-[ ] 로그 필드가 구조화되고(snake_case) Correlation ID를 포함하는가?
-[ ] `gofmt`/`goimports`/`go vet`을 통과하는가?
-[ ] 커밋 메시지가 Conventional Commits 형식(feat/fix/refactor + scope)을 따르는가?
-[ ] 커밋 메시지의 scope가 서비스 도메인명(account, user 등)인가?
-[ ] 커밋 메시지의 description이 한글 서술형이며 끝에 마침표가 없는가?
-    → 올바른 예: `feat(account): 계좌 정지 기능 추가`
-[ ] 커밋 메시지의 body가 "왜(why)" 변경했는지를 설명하는가?
-[ ] BREAKING CHANGE가 있는 경우 footer 또는 type 뒤 `!` 표시로 명시되어 있는가?
-[ ] 브랜치명이 Conventional Branch 형식(`<type>/<scope>-<description>`)이고 kebab-case이며 main에서 분기했는가?
-[ ] main 브랜치에 직접 commit/push하지 않고 PR을 통해 반영하는가?
-[ ] PR 제목이 Conventional Commits 형식과 동일하고, 본문이 Summary + Test plan 형식을 따르는가?
-[ ] 머지 전략이 Squash and merge인가?
-[ ] 테스트 네이밍이 `TestXxx_When_Then` 패턴을 따르는가?
-[ ] `go build ./...` 및 `go test ./...`가 모두 통과하는가?
-[ ] `./harness.sh <projectRoot>`가 FAIL 없이 통과하는가?
+[ ] Is the URL made up of plural noun resources, not verbs?
+    → correct example: GET /accounts, POST /accounts
+    → incorrect example: GET /getAccounts, POST /createAccount
+[ ] Are non-CRUD actions expressed as sub-resource paths?
+    → correct example: POST /accounts/{id}/deposit, POST /accounts/{id}/suspend
+[ ] Are the HTTP method and response code correct? (GET/PUT/PATCH 200, POST 201, DELETE 204)
+[ ] Is routing registered using `net/http`'s method+path pattern (`mux.HandleFunc("GET /accounts/{id}", ...)`, Go 1.22+)?
+[ ] Is pagination parsed from the `page` (0-based)/`take` query parameters?
+    → parsed directly from `r.URL.Query()` — has it been deliberately decided whether a parse failure is absorbed into a default value or turned into a 400?
+[ ] Is a list response made up of a domain-plural key (`accounts`, `transactions`, etc.) + `count`, instead of a generic key (`data`/`result`/`items`)?
+[ ] Is `count` the total count after filters are applied, not the page size?
+[ ] Does a single-item response expose fields flat, with no generic wrapper like `{ success, data }`?
+[ ] Does the Result struct (Application layer) map onto response-only fields instead of exposing the domain Aggregate as-is?
+[ ] Is the Interface DTO a thin wrapper that redeclares the Application Result/Command's fields, with the Handler mapping fields explicitly?
+    → since Go has no inheritance, TypeScript's `extends` is replaced with field redeclaration + explicit mapping
 ```
 
 ---
 
-## STEP 15 — 설계 산출물 형태 (설계 단계 작업인 경우)
+## STEP 9 — Authentication, cross-cutting concerns, rate limiting
 
-**관련 문서**: [development-process.md](../../../docs/development-process.md) (루트 공용) · [reference.md](./reference.md)
-
-> 설계 단계(RA, SD, DM, TD) 산출물을 작성한 경우에만 적용한다. 이 단계의 산출물 형식은 언어에 종속되지 않으므로 루트 문서를 그대로 따른다.
+**Related documents**: [architecture/authentication.md](architecture/authentication.md) · [architecture/cross-cutting-concerns.md](architecture/cross-cutting-concerns.md) · [architecture/rate-limiting.md](architecture/rate-limiting.md) · [architecture/observability.md](architecture/observability.md)
 
 ```
-[ ] RA 산출물: 기능 요구사항이 FR-### 번호, 설명, 수용 기준(Acceptance Criteria), 우선순위(MoSCoW)를 포함하는가?
-[ ] RA 산출물: 유스케이스가 UC-### 번호, Actor, 선행 조건, 주요 흐름(Happy Path), 예외 흐름, 후행 조건을 포함하는가?
-[ ] RA 산출물: 제약 조건 정리표가 기술 스택, 외부 시스템, 일정, 규제, 트래픽 항목을 포함하는가?
-[ ] SD 산출물: 서브도메인 분류표가 유형(Core/Supporting/Generic)과 구현 전략을 포함하는가?
-[ ] SD 산출물: Bounded Context 정의서가 책임, 핵심 개념, 소속 서브도메인을 포함하는가?
-[ ] SD 산출물: Context Map이 관계 유형(Partnership/Shared Kernel/Customer-Supplier/Conformist/ACL/OHS·PL)과 선택 이유를 포함하는가?
-[ ] DM 산출물: 이벤트 스토밍 결과 매핑 테이블이 Actor/Command/Aggregate/Domain Event/Policy/External System 열을 포함하는가?
-[ ] DM 산출물: 유비쿼터스 언어 용어 사전이 용어(영문)/용어(한글)/정의/소속 Context/비고 열을 포함하는가?
-[ ] DM 산출물: 서로 다른 Context에서 같은 단어가 다른 의미로 쓰이는 경우 용어 사전에 명시되어 있는가?
-[ ] DM 산출물: Aggregate별 도메인 모델 구조가 Root/Entity 목록/VO 목록/관계를 포함하는가?
-[ ] DM 산출물: Domain Event 상세 목록이 이벤트명/발생 조건/포함 데이터/후속 처리(Policy) 열을 포함하는가?
-[ ] DM 산출물: 비즈니스 규칙/불변식이 INV-### 번호와 위반 시 처리 방식을 포함하는가?
-[ ] TD 산출물: 파일 구조 트리가 `internal/{domain,application,infrastructure,interface}` 4레이어를 포함하는가?
-    → NestJS와 달리 Go는 레이어가 최상위, 도메인이 그 하위에 온다([directory-structure.md](architecture/directory-structure.md) 참고)
-[ ] TD 산출물: 의존성 조립 계획이 어떤 생성자를 어디서(main.go/router.go) 호출하는지 명시하는가? (DI 컨테이너가 없으므로 provide/useClass 대신 생성자 호출 순서로 표현)
-[ ] TD 산출물: Aggregate 설계서가 Root/내부 Entity/내부 VO/외부 참조(ID)/생성 규칙/불변식을 포함하는가?
-[ ] TD 산출물: Repository 인터페이스 정의서가 find<Noun>s/save<Noun>(/필요 시 상태 전환 메서드) 시그니처를 포함하는가? (단건 조회 전용 메서드는 포함하지 않는다)
-[ ] TD 산출물: Application Handler 정의서가 유스케이스 매핑/처리 흐름/트랜잭션 범위/실패 시 처리를 포함하는가?
-[ ] TD 산출물: Event 흐름도가 동기/비동기 처리 방식과 보상 트랜잭션을 포함하는가?
-[ ] IM 산출물: Vertical Slicing(유스케이스 단위 구현)으로 진행하고 있는가?
-    → 레이어 단위(수평)가 아닌 유스케이스 단위(수직)로 모든 레이어를 한 번에 구현
-[ ] IM 산출물: 슬라이스 계획이 슬라이스 번호/유스케이스/포함 파일/우선순위 형식으로 정리되어 있는가?
+[ ] Is authentication validation done only in the Interface layer (middleware)?
+    → confirm the Application/Domain packages don't import any `jwt`-related package
+[ ] Does the authentication middleware extract and validate the `Authorization: Bearer` header, then pass user info to the next handler via `context.WithValue`?
+[ ] Does the JWT payload carry only minimal information such as `userId`? (role/email or other sensitive/mutable info is forbidden)
+[ ] Are routes requiring authentication wrapped with middleware at the group (sub-mux) level?
+    → confirm this isn't wrapped separately per individual handler, creating a risk of omission when adding a new endpoint
+[ ] Is an unvalidated header (`X-User-Id`, etc.) being mistaken for authentication and trusted as-is?
+    → this is a known gap in this repository's `examples/`. For newly written features, has it been implemented with JWT-based middleware?
+[ ] Is the middleware chain split one-per-concern? (is the order Correlation ID → Auth → Rate Limit → Handler → Logging reasonable?)
+[ ] Is a `golang.org/x/time/rate`-based token bucket applied to endpoints that need rate limiting?
+[ ] If per-client limiting is needed, does the limiter map have cleanup logic (removing stale entries)? (without it, it's a memory leak)
+[ ] Are write endpoints limited more strictly than reads?
+[ ] Are healthcheck/internal endpoints excluded from the authentication/rate-limit middleware?
+[ ] Does the Domain layer avoid importing cross-cutting concerns such as logger/HTTP/authentication?
 ```
 
 ---
 
-## STEP 16 — 가이드 수정 작업인 경우
+## STEP 10 — Import organization
 
-**관련 문서**: [development-process.md](../../../docs/development-process.md) (루트 공용) · [conventions.md](./conventions.md)
-
-> 코드 작업이 아니라 가이드 자체(`implementations/go/docs/**`)를 수정하는 경우에만 적용한다.
+**Related documents**: [conventions.md](./conventions.md) section 7
 
 ```
-[ ] 새로 추가하거나 수정한 설명이 한글로 작성되어 있는가?
-[ ] 새 규칙에 올바른 예시와 잘못된 예시가 함께 작성되어 있는가?
-[ ] 작성한 예시가 실제 Go 관용구(에러 반환, context.Context 전파, 컴파일 타임 interface 검증 등)와 모순되지 않는가?
-[ ] 문서가 "목표 구현"과 "이 저장소 examples/의 실제 코드"를 명확히 구분해 서술하는가?
-    → 이 저장소의 여러 architecture 문서가 알려진 격차(UUID 하이픈 등)를 의도적으로 남겨두고 있다. 새 문서를 쓸 때도 목표와 현재 상태를 혼동하지 않는다
-[ ] 작성한 예시가 이 가이드의 다른 규칙(파일 네이밍, import, 에러 처리 등)을 위반하지 않는가?
-    → 위반이 있다면 예시를 먼저 수정한 뒤 규칙을 확정
-[ ] 가이드 변경 시 main 브랜치가 아닌 새 브랜치에서 PR을 생성하는가?
+[ ] Are imports sorted into 3 groups — standard library → third-party → internal packages (with a blank line between groups)?
+[ ] Is each group sorted alphabetically internally? (does it match `goimports`'s output?)
+[ ] Is an internal package alias (`httphandler "internal/interface/http"`, etc.) used reasonably, only to avoid a name collision?
+[ ] Is a blank import (`_ "github.com/lib/pq"`, etc., for driver registration) in the correct position within the third-party group?
+[ ] Does a Domain layer file avoid importing the infrastructure/interface/application packages?
+[ ] Do `gofmt -l .` and `goimports -l .` return empty output? (no formatting violations)
 ```
 
 ---
 
-## 체크리스트 활용 방법
+## STEP 11 — Scheduling, Task Queue, graceful shutdown
 
-AI Agent는 작업 완료 후 다음 순서로 자기 검토를 수행한다:
+**Related documents**: [architecture/scheduling.md](architecture/scheduling.md) · [architecture/graceful-shutdown.md](architecture/graceful-shutdown.md) · [architecture/domain-events.md](architecture/domain-events.md) · [architecture/container.md](architecture/container.md)
 
-1. **STEP 1~14를 순서대로** 점검한다.
-2. 위반 항목 발견 시 **즉시 해당 파일을 수정**하고 체크한다.
-3. 수정 후 **연관된 파일(main.go/router.go의 생성자 조립 등)에도 영향이 없는지** 확인한다.
-4. 설계 단계 작업이었다면 **STEP 15**도 함께 점검한다.
-5. 가이드 수정 작업이었다면 **STEP 16**도 함께 점검한다.
-6. 모든 체크 완료 후 `./harness.sh <projectRoot>`로 구조·배치 규칙을 교차 확인하고 작업을 마무리한다.
+```
+[ ] Is the Scheduler (`*_scheduler.go`) located in the infrastructure layer (`internal/infrastructure/scheduling/`, etc.)?
+[ ] Does the Scheduler only call `TaskQueue.Enqueue` without directly running business logic?
+[ ] Is the Scheduler's `time.Ticker` loop terminated via `ctx.Done()`? (tied to graceful shutdown)
+[ ] Is an error from the Ticker callback never ignored, and instead explicitly logged via `slog.ErrorContext`, etc.?
+    → exceptions in a Cron/Ticker callback are easily swallowed silently, so always log them explicitly
+[ ] Is Task enqueueing done inside the same transaction as the DB change? (preventing dual-write)
+[ ] Does the Task Consumer return an error as-is instead of swallowing it, deferring to the retry/DLQ mechanism?
+[ ] Is the event/Task handler implemented idempotently? (has it been judged which tier is needed among intrinsic idempotency / a processing-record table / strong atomicity?)
+[ ] Is the shutdown signal converted into context cancellation via `signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)`?
+[ ] On receiving SIGTERM, is readiness flipped to 503 first, before `srv.Shutdown(ctx)` is called? (is the order not reversed?)
+[ ] Is the shutdown timeout matched with the orchestrator's `terminationGracePeriodSeconds`?
+[ ] Is the container's `ENTRYPOINT`/`CMD` in exec form (`["/bin/server"]`) so SIGTERM isn't intercepted by a shell?
+```
 
-> 체크리스트는 가이드의 규칙을 요약한 것이다.
-> 항목의 의도가 불명확하다면 해당 문서를 참조한다:
-> - STEP 1 파일 구조 및 네이밍 → [conventions.md](conventions.md) 섹션 1-3, [directory-structure.md](architecture/directory-structure.md)
-> - STEP 2 Domain 레이어 → [tactical-ddd.md](architecture/tactical-ddd.md), [aggregate-id.md](architecture/aggregate-id.md)
-> - STEP 3 레이어 아키텍처 / CQRS / 크로스 도메인 → [layer-architecture.md](architecture/layer-architecture.md), [cqrs-pattern.md](architecture/cqrs-pattern.md), [cross-domain.md](architecture/cross-domain.md), [domain-events.md](architecture/domain-events.md)
-> - STEP 4 Repository 패턴 → [repository-pattern.md](architecture/repository-pattern.md), [persistence.md](architecture/persistence.md)
-> - STEP 5 의존성 조립 → [module-pattern.md](architecture/module-pattern.md), [bootstrap.md](architecture/bootstrap.md)
-> - STEP 6 Go 타이핑 → [conventions.md](conventions.md) 섹션 4
-> - STEP 7 에러 처리 → [error-handling.md](architecture/error-handling.md)
-> - STEP 8 REST API 엔드포인트 → [conventions.md](conventions.md) 섹션 5, [api-response.md](architecture/api-response.md)
-> - STEP 9 인증 · 횡단 관심사 · Rate Limiting → [authentication.md](architecture/authentication.md), [cross-cutting-concerns.md](architecture/cross-cutting-concerns.md), [rate-limiting.md](architecture/rate-limiting.md)
-> - STEP 10 import → [conventions.md](conventions.md) 섹션 7
-> - STEP 11 스케줄링 / Task Queue / Graceful Shutdown → [scheduling.md](architecture/scheduling.md), [graceful-shutdown.md](architecture/graceful-shutdown.md)
-> - STEP 12 DB/인프라 → [persistence.md](architecture/persistence.md), [config.md](architecture/config.md), [observability.md](architecture/observability.md)
-> - STEP 13 테스트 패턴 → [testing.md](architecture/testing.md)
-> - STEP 14 전체 일관성 → 전체 문서 참조
-> - STEP 15 설계 산출물 형태 → [development-process.md](../../../docs/development-process.md) (루트 공용)
-> - STEP 16 가이드 수정 → [CLAUDE.md](../CLAUDE.md) 가이드 관리 원칙
+---
+
+## STEP 12 — DB / infrastructure patterns
+
+**Related documents**: [architecture/persistence.md](architecture/persistence.md) · [architecture/config.md](architecture/config.md) · [architecture/secret-manager.md](architecture/secret-manager.md) · [architecture/local-dev.md](architecture/local-dev.md) · [architecture/container.md](architecture/container.md) · [architecture/observability.md](architecture/observability.md)
+
+```
+[ ] Are required environment variables validated at startup, leading to `log.Fatal` (immediate exit) on failure?
+    → is `os.Getenv` being passed straight into `sql.Open`, etc. without validation?
+[ ] Are environment variables split into per-concern Config structs (`Load...Config()`)?
+[ ] Is a local-development-only default value (`getEnvOr`) distinguished from a value that must be present in production (an error if the string is empty)?
+[ ] Are sensitive values (DB password, JWT secret, API key) never hardcoded?
+    → are they looked up via something like AWS Secrets Manager in production?
+[ ] Is the SecretService lookup result cached via a TTL cache (`sync.Mutex` + map) to avoid repeated lookups?
+[ ] Do the Domain/Application packages have no `os.Getenv` calls? (config access is Infrastructure/`main.go` only)
+[ ] Are the `created_at`/`updated_at`/`deleted_at` columns present in the schema, and does the query filter with `deleted_at IS NULL`?
+[ ] Are migrations managed as sequentially numbered SQL files? (are known gaps such as the absence of down scripts acknowledged?)
+[ ] Are structured logs written via `log/slog`? (a JSON handler, snake_case field names, using `InfoContext`/`ErrorContext`, which take a `ctx`)
+[ ] Does the correlation ID propagate via `context.Context` and get included in every log?
+[ ] Is the container image built with a multi-stage build (`CGO_ENABLED=0` static build + `distroless`/`scratch`)?
+[ ] Is `ENTRYPOINT` in exec form, and does the image avoid baking in environment variables (`ENV DATABASE_URL=...`, sensitive values, etc.)?
+[ ] Are the healthcheck endpoints (`/health/live`, `/health/ready`) implemented directly with `net/http`?
+[ ] Is local infrastructure such as LocalStack defined in `docker-compose.yml` with a version-pinned image (`:latest` is forbidden)?
+```
+
+---
+
+## STEP 13 — Testing patterns
+
+**Related documents**: [architecture/testing.md](architecture/testing.md)
+
+```
+[ ] Are Domain unit tests written as `package <domain>_test` (an external test package), using only the public API?
+[ ] Does it follow the table-driven test style (`[]struct{...}` + `t.Run` subtests)?
+[ ] Is the expected error compared with `errors.Is`? (string comparison is forbidden)
+[ ] Do Application unit tests replace an interface such as Repository with a manual stub struct? (mocking a concrete type is forbidden)
+[ ] Does the Application test verify only the Handler's call order (lookup → domain method → save → notify), without re-verifying business logic?
+[ ] Do E2E tests start real Postgres/LocalStack containers via testcontainers-go? (connecting directly to a production DB is forbidden)
+[ ] Does the E2E test start the container once in `TestMain` and run the migration files in order?
+[ ] Does each test generate a unique ID/owner to keep test data isolated?
+[ ] Are unit tests placed next to the source (`_test.go`), and E2E tests in a separate `test/` directory?
+[ ] Does the test function name follow the `TestXxx_When<condition>_Then<expected result>` pattern?
+    → e.g. `TestDepositHandler_Handle_AccountNotFound`, `TestAccount_Withdraw` (with the condition/expected result stated in the subtest name)
+[ ] Are there tests for Aggregate invariant violations and for whether a Domain Event was raised?
+```
+
+---
+
+## STEP 14 — Final overall consistency check
+
+**Related documents**: [conventions.md](./conventions.md) · [architecture/design-principles.md](architecture/design-principles.md)
+
+```
+[ ] Was a newly added file assembled via a constructor wherever it's needed (main.go/router.go)?
+[ ] If a new Command/Query/Result was added, was the Interface DTO added together as a thin mapping struct?
+[ ] Does the code worked on have no leftover TODOs, temporary `fmt.Println`/debug output, or temporary comments?
+[ ] Is the ubiquitous language consistently reflected in type names/method names/field names?
+[ ] Does every exported identifier have a Go doc comment (a `//` comment starting with the identifier's name)?
+[ ] Is business logic explained via inline `//` comments? (no overuse of block comments)
+[ ] Are log fields structured (snake_case) and do they include the correlation ID?
+[ ] Does it pass `gofmt`/`goimports`/`go vet`?
+[ ] Does the commit message follow the Conventional Commits format (feat/fix/refactor + scope)?
+[ ] Is the commit message's scope the service domain name (account, user, etc.)?
+[ ] Is the commit message's description written in descriptive form, with no trailing period?
+    → correct example: `feat(account): add account suspend feature`
+[ ] Does the commit message's body explain "why" the change was made?
+[ ] If there's a BREAKING CHANGE, is it noted in the footer or with a `!` after the type?
+[ ] Is the branch name in Conventional Branch format (`<type>/<scope>-<description>`), kebab-case, and branched from main?
+[ ] Is work never committed/pushed directly to the main branch, and always merged via a PR?
+[ ] Is the PR title identical in form to Conventional Commits, and does the body follow the Summary + Test plan format?
+[ ] Is the merge strategy Squash and merge?
+[ ] Does the test naming follow the `TestXxx_When_Then` pattern?
+[ ] Do both `go build ./...` and `go test ./...` pass?
+[ ] Does `./harness.sh <projectRoot>` pass with no FAILs?
+```
+
+---
+
+## STEP 15 — Design artifact format (for design-phase work)
+
+**Related documents**: [development-process.md](../../../docs/development-process.md) (shared root document) · [reference.md](./reference.md)
+
+> Applies only when a design-phase (RA, SD, DM, TD) artifact was produced. Since the artifact format at this stage isn't language-dependent, the root document is followed as-is.
+
+```
+[ ] RA artifact: do functional requirements include an FR-### number, description, acceptance criteria, and priority (MoSCoW)?
+[ ] RA artifact: does a use case include a UC-### number, Actor, preconditions, the main flow (Happy Path), exception flows, and postconditions?
+[ ] RA artifact: does the constraint summary table include tech stack, external systems, schedule, regulations, and traffic items?
+[ ] SD artifact: does the subdomain classification table include the type (Core/Supporting/Generic) and the implementation strategy?
+[ ] SD artifact: does the Bounded Context definition sheet include responsibilities, key concepts, and its parent subdomain?
+[ ] SD artifact: does the Context Map include the relationship type (Partnership/Shared Kernel/Customer-Supplier/Conformist/ACL/OHS·PL) and the reason it was chosen?
+[ ] DM artifact: does the event-storming result mapping table include Actor/Command/Aggregate/Domain Event/Policy/External System columns?
+[ ] DM artifact: does the ubiquitous language glossary include term (English)/term (Korean)/definition/parent Context/notes columns?
+[ ] DM artifact: is it noted in the glossary when the same word carries a different meaning in different Contexts?
+[ ] DM artifact: does the per-Aggregate domain model structure include the Root/Entity list/VO list/relationships?
+[ ] DM artifact: does the detailed Domain Event list include event name/trigger condition/included data/follow-up processing (Policy) columns?
+[ ] DM artifact: do business rules/invariants include an INV-### number and the handling on violation?
+[ ] TD artifact: does the file structure tree include the 4 layers `internal/{domain,application,infrastructure,interface}`?
+    → unlike NestJS, in Go the layer is at the top level and the domain sits underneath it (see [directory-structure.md](architecture/directory-structure.md))
+[ ] TD artifact: does the dependency-assembly plan specify which constructor is called where (main.go/router.go)? (since there's no DI container, this is expressed as constructor call order instead of provide/useClass)
+[ ] TD artifact: does the Aggregate design sheet include the Root/internal Entities/internal VOs/external references (ID)/creation rules/invariants?
+[ ] TD artifact: does the Repository interface definition sheet include find<Noun>s/save<Noun> (/a state-transition method if needed) signatures? (a single-item-only lookup method is never included)
+[ ] TD artifact: does the Application Handler definition sheet include the use-case mapping/processing flow/transaction scope/failure handling?
+[ ] TD artifact: does the Event flow diagram include the synchronous/asynchronous processing approach and compensating transactions?
+[ ] IM artifact: is the work proceeding via Vertical Slicing (implementation per use case)?
+    → implement every layer at once per use case (vertically), not per layer (horizontally)
+[ ] IM artifact: is the slice plan organized in slice-number/use-case/included-files/priority format?
+```
+
+---
+
+## STEP 16 — When modifying the guide itself
+
+**Related documents**: [development-process.md](../../../docs/development-process.md) (shared root document) · [conventions.md](./conventions.md)
+
+> Applies only when modifying the guide itself (`implementations/go/docs/**`), not code.
+
+```
+[ ] Is the newly added or modified description written in Korean?
+[ ] Does a new rule come with both a correct example and an incorrect example?
+[ ] Does the written example not contradict actual Go idioms (returning errors, propagating context.Context, compile-time interface verification, etc.)?
+[ ] Does the document clearly distinguish between "the target implementation" and "the actual code in this repository's examples/"?
+    → several of this repository's architecture documents deliberately leave known gaps in place (UUID hyphens, etc.). When writing a new document, don't conflate the target state with the current state
+[ ] Does the written example avoid violating another rule in this guide (file naming, imports, error handling, etc.)?
+    → if there's a violation, fix the example first, then finalize the rule
+[ ] Is a guide change made via a PR from a new branch, not the main branch?
+```
+
+---
+
+## How to use this checklist
+
+After completing work, the AI Agent performs self-review in the following order:
+
+1. Check **STEP 1 through 14 in order**.
+2. When a violation is found, **fix the file immediately** and check it off.
+3. After fixing, confirm **there's no impact on related files** as well (constructor assembly in main.go/router.go, etc.).
+4. If the work was design-phase work, also check **STEP 15**.
+5. If the work was a guide modification, also check **STEP 16**.
+6. After completing every check, cross-check the structure/placement rules with `./harness.sh <projectRoot>` and wrap up the work.
+
+> The checklist is a summary of the guide's rules.
+> If an item's intent is unclear, consult the relevant document:
+> - STEP 1 File structure and naming → [conventions.md](conventions.md) sections 1-3, [directory-structure.md](architecture/directory-structure.md)
+> - STEP 2 Domain layer → [tactical-ddd.md](architecture/tactical-ddd.md), [aggregate-id.md](architecture/aggregate-id.md)
+> - STEP 3 Layer architecture / CQRS / cross-domain → [layer-architecture.md](architecture/layer-architecture.md), [cqrs-pattern.md](architecture/cqrs-pattern.md), [cross-domain.md](architecture/cross-domain.md), [domain-events.md](architecture/domain-events.md)
+> - STEP 4 Repository pattern → [repository-pattern.md](architecture/repository-pattern.md), [persistence.md](architecture/persistence.md)
+> - STEP 5 Dependency assembly → [module-pattern.md](architecture/module-pattern.md), [bootstrap.md](architecture/bootstrap.md)
+> - STEP 6 Go typing → [conventions.md](conventions.md) section 4
+> - STEP 7 Error handling → [error-handling.md](architecture/error-handling.md)
+> - STEP 8 REST API endpoints → [conventions.md](conventions.md) section 5, [api-response.md](architecture/api-response.md)
+> - STEP 9 Authentication, cross-cutting concerns, rate limiting → [authentication.md](architecture/authentication.md), [cross-cutting-concerns.md](architecture/cross-cutting-concerns.md), [rate-limiting.md](architecture/rate-limiting.md)
+> - STEP 10 Imports → [conventions.md](conventions.md) section 7
+> - STEP 11 Scheduling / Task Queue / graceful shutdown → [scheduling.md](architecture/scheduling.md), [graceful-shutdown.md](architecture/graceful-shutdown.md)
+> - STEP 12 DB/infrastructure → [persistence.md](architecture/persistence.md), [config.md](architecture/config.md), [observability.md](architecture/observability.md)
+> - STEP 13 Testing patterns → [testing.md](architecture/testing.md)
+> - STEP 14 Overall consistency → refer to all documents
+> - STEP 15 Design artifact format → [development-process.md](../../../docs/development-process.md) (shared root document)
+> - STEP 16 Guide modification → [CLAUDE.md](../CLAUDE.md) guide-management principles

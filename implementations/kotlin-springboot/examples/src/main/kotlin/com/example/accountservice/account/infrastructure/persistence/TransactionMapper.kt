@@ -3,8 +3,9 @@ package com.example.accountservice.account.infrastructure.persistence
 import com.example.accountservice.account.domain.Transaction
 
 /**
- * Transaction(순수 도메인) ↔ TransactionJpaEntity(JPA 매핑) 변환 전담 오브젝트.
- * AccountRepositoryImpl 내부에서만 사용된다. Transaction은 생성 후 불변이므로 insert 전용 변환만 필요하다.
+ * An object dedicated to converting between Transaction (pure domain) and TransactionJpaEntity (JPA
+ * mapping). Used only inside AccountRepositoryImpl. Because a Transaction is immutable once created,
+ * only an insert-only conversion is needed.
  */
 internal object TransactionMapper {
     fun toDomain(entity: TransactionJpaEntity): Transaction =

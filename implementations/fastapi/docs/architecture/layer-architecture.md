@@ -1,37 +1,37 @@
-# 레이어 아키텍처
+# Layer Architecture
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/layer-architecture.md](../../../../docs/architecture/layer-architecture.md)
+> Framework-agnostic principles: [../../../../docs/architecture/layer-architecture.md](../../../../docs/architecture/layer-architecture.md)
 
-## 의존 방향
+## Dependency direction
 
 ```
 Interface (APIRouter)  →  Application (Handler)  →  Domain (Aggregate, Repository ABC)
                                                           ↑
-                                                   Infrastructure (Repository 구현체, Technical Service 구현체)
+                                                   Infrastructure (Repository implementation, Technical Service implementation)
 ```
 
-- 상위 레이어는 하위 레이어에 의존할 수 있지만, 하위 레이어는 상위 레이어에 의존하지 않는다.
-- Domain 레이어는 어떤 레이어에도 의존하지 않는다 — `fastapi`, `sqlalchemy`, `aioboto3` import 없음.
-- Infrastructure 레이어는 Domain/Application의 ABC를 구현한다 (의존성 역전) — FastAPI에는 전용 DI 컨테이너가 없으므로, `Depends`의 팩토리 함수가 이 바인딩을 담당한다.
+- An upper layer may depend on a lower layer, but a lower layer never depends on an upper layer.
+- The Domain layer depends on no layer at all — no `fastapi`, `sqlalchemy`, `aioboto3` imports.
+- The Infrastructure layer implements the ABCs of Domain/Application (dependency inversion) — since FastAPI has no dedicated DI container, `Depends`'s factory functions handle this binding.
 
-`domain/`이 (같은 도메인이든 다른 도메인이든) `application/`·`infrastructure/`·`interface/`를 import하는지는 harness의 `domain-layer-isolation` 규칙이 AST로 검사한다 — `domain-purity`(프레임워크 이름 블록리스트)보다 넓은, 경로 기반 구조 검사다.
+Whether `domain/` (of the same domain or another) imports `application/`/`infrastructure/`/`interface/` is checked via AST by the harness's `domain-layer-isolation` rule — a broader, path-based structural check than `domain-purity` (the framework-name blocklist).
 
-이 저장소의 실제 코드로 각 레이어를 살펴본다 (`examples/src/account/`).
+Let's look at each layer using this repository's actual code (`examples/src/account/`).
 
 ---
 
-## Domain 레이어 — `domain/`
+## The Domain layer — `domain/`
 
-비즈니스 규칙의 핵심. 어떤 프레임워크에도 의존하지 않는다.
+The core of the business rules. Depends on no framework.
 
-1. **Aggregate Root** — `account.py`의 `Account`. 일반 클래스(`__init__` + 메서드)로 구현되어 있다 — 상태 변경(`deposit`, `withdraw`, `suspend`, `reactivate`, `close`)은 모두 Aggregate 메서드를 통해서만 일어난다.
-2. **Entity** — `transaction.py`의 `Transaction`. `@dataclass(frozen=True)`이지만 `transaction_id`라는 고유 식별자로 동등성이 결정되므로 Entity다.
-3. **Value Object** — `money.py`의 `Money`. `@dataclass(frozen=True)`, 식별자 없음, 속성 조합으로 동등성 판단.
-4. **Domain Event** — `events.py`의 `AccountCreated`, `MoneyDeposited` 등. 모두 `@dataclass(frozen=True)`, 과거형 이름.
-5. **Repository 인터페이스** — `repository.py`의 `AccountRepository(ABC)`. 구현은 `infrastructure/`.
+1. **Aggregate Root** — `Account` in `account.py`. Implemented as a plain class (`__init__` + methods) — every state change (`deposit`, `withdraw`, `suspend`, `reactivate`, `close`) happens only through an Aggregate method.
+2. **Entity** — `Transaction` in `transaction.py`. A `@dataclass(frozen=True)`, but it's an Entity since its equality is determined by the unique identifier `transaction_id`.
+3. **Value Object** — `Money` in `money.py`. `@dataclass(frozen=True)`, no identifier, equality determined by the combination of attributes.
+4. **Domain Event** — `AccountCreated`, `MoneyDeposited`, etc. in `events.py`. All `@dataclass(frozen=True)`, past-tense names.
+5. **Repository interface** — `AccountRepository(ABC)` in `repository.py`. Implemented in `infrastructure/`.
 
 ```python
-# domain/repository.py — Repository 인터페이스 (ABC)
+# domain/repository.py — the Repository interface (ABC)
 from abc import ABC, abstractmethod
 
 from .account import Account
@@ -49,13 +49,13 @@ class AccountRepository(ABC):
     async def save(self, account: Account) -> None: ...
 ```
 
-→ Aggregate/Entity/Value Object 설계 상세는 [tactical-ddd.md](tactical-ddd.md) 참조.
+→ See [tactical-ddd.md](tactical-ddd.md) for detailed Aggregate/Entity/Value Object design.
 
 ---
 
-## Application 레이어 — `application/`
+## The Application layer — `application/`
 
-유스케이스 **조율자**. 비즈니스 로직을 직접 수행하지 않고 Aggregate에 위임한다. `command/`(쓰기)와 `query/`(읽기)로 분리되어 있다.
+The use case's **orchestrator**. It never performs business logic directly, delegating to the Aggregate. Split into `command/` (writes) and `query/` (reads).
 
 ```python
 # application/command/deposit_handler.py
@@ -68,61 +68,61 @@ class DepositHandler:
         account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
-        transaction = account.deposit(cmd.amount)   # 비즈니스 로직은 Aggregate에 위임
-        await self._repo.save(account)               # Aggregate 저장 + Outbox 적재, 한 트랜잭션
-        return transaction   # 저장 후 곧바로 반환 — Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer의 몫(domain-events.md)
+        transaction = account.deposit(cmd.amount)   # business logic is delegated to the Aggregate
+        await self._repo.save(account)               # Aggregate save + Outbox load, one transaction
+        return transaction   # returns immediately after saving — publishing/receiving Outbox → SQS is OutboxPoller/OutboxConsumer's job (domain-events.md)
 ```
 
-Handler 생성자는 구체 클래스가 아니라 ABC(`AccountRepository`)를 타입으로 받는다 — Outbox → SQS 발행/수신을 담당하는 `OutboxPoller`/`OutboxConsumer`는 Command Handler와 전혀 무관하게 독립적으로 주기 실행되므로 생성자에 등장하지 않는다. 이 덕분에 [testing.md](testing.md)에서 다루는 Application 단위 테스트가 실제 DB/SES 없이 mock만으로 가능하다. `NotificationService`는 Command Handler가 아니라, `OutboxConsumer`가 SQS 수신 시 호출하는 `application/event/<event>_event_handler.py`가 의존한다([domain-events.md](domain-events.md) 참고).
+The Handler's constructor takes the ABC (`AccountRepository`) as its type, not a concrete class — `OutboxPoller`/`OutboxConsumer`, which handle publishing/receiving from Outbox → SQS, run independently and periodically with no relation to the Command Handler at all, so they never appear in its constructor. Thanks to this, the Application unit tests covered in [testing.md](testing.md) are possible with mocks alone, with no real DB/SES. `NotificationService` isn't depended on by the Command Handler — it's depended on by `application/event/<event>_event_handler.py`, which `OutboxConsumer` calls upon receiving from SQS (see [domain-events.md](domain-events.md)).
 
-→ Command/Query Handler 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+→ See [cqrs-pattern.md](cqrs-pattern.md) for Command/Query Handler details.
 
-### Technical Service 인터페이스 — `application/service/`
+### Technical Service interfaces — `application/service/`
 
-기술적 구현이 핵심인 관심사(이메일 발송, 파일 스토리지, Secrets Manager 등)는 Application에 ABC를 두고 Infrastructure에서 구현한다. 이 저장소의 예:
+For a concern whose core is a technical implementation (sending email, file storage, Secrets Manager, etc.), the ABC lives in Application and the implementation in Infrastructure. Examples in this repository:
 
 ```python
-# application/service/notification_service.py — 인터페이스
+# application/service/notification_service.py — the interface
 class NotificationService(ABC):
     @abstractmethod
     async def notify(self, event: AccountDomainEvent, outbox_event_id: str) -> None: ...
 ```
 
 ```python
-# infrastructure/notification/notification_service.py — 구현체 (SES)
+# infrastructure/notification/notification_service.py — the implementation (SES)
 class SesNotificationService(NotificationService):
     async def notify(self, event: AccountDomainEvent, outbox_event_id: str) -> None:
         try:
-            await self._send_and_record(event, outbox_event_id)  # outbox_event_id로 중복 발송 여부를 먼저 확인한다
+            await self._send_and_record(event, outbox_event_id)  # first checks for a duplicate send via outbox_event_id
         except Exception:
-            logger.exception("알림 이메일 발송 실패: ...")
+            logger.exception("Failed to send notification email: ...")
 ```
 
-**이 분리의 이유:**
-- `DepositHandler`가 `aioboto3`나 SES API에 직접 의존하지 않는다.
-- 발송 채널이 SES → SNS/Slack 등으로 바뀌어도 구현체만 교체하면 된다.
-- 테스트 시 `NotificationService`를 mock 객체로 대체해 실제 이메일 발송 없이 Handler 로직만 검증할 수 있다.
+**Why this is separated:**
+- `DepositHandler` never depends directly on `aioboto3` or the SES API.
+- Even if the send channel changes from SES → SNS/Slack etc., only the implementation needs to be swapped.
+- In tests, `NotificationService` can be replaced with a mock object, verifying only the Handler logic with no actual email sent.
 
-두 번째 기술 관심사(파일 스토리지, Secrets Manager)를 추가할 때도 같은 구조(`application/service/<concern>_service.py` ABC + `infrastructure/<concern>/<provider>_<concern>_service.py` 구현체)를 따른다 — [file-storage.md](file-storage.md), [secret-manager.md](secret-manager.md) 참조.
+When adding a second technical concern (file storage, Secrets Manager), follow the same structure (an ABC at `application/service/<concern>_service.py` + an implementation at `infrastructure/<concern>/<provider>_<concern>_service.py`) — see [file-storage.md](file-storage.md), [secret-manager.md](secret-manager.md).
 
 ---
 
-### Domain Service — 여러 Aggregate를 조율하는 순수 도메인 로직
+### Domain Service — pure domain logic coordinating multiple Aggregates
 
-Account/Card는 각자 단일 Aggregate BC라 "하나의 Aggregate로는 판단할 수 없는 규칙"을 보여줄 수 없었다.
-`examples/src/payment/`(Payment BC)는 `Payment`/`Refund` 두 Aggregate를 갖는 첫 도메인이라, 이
-패턴을 실제로 동작하는 코드로 확인할 수 있다.
+Since Account/Card are each a single-Aggregate BC, they couldn't demonstrate "a rule that can't be decided by a single Aggregate alone."
+`examples/src/payment/` (the Payment BC) is the first domain with two Aggregates, `Payment`/`Refund`, so this pattern
+can be confirmed with actually working code.
 
-**도메인 규칙**: "환불은 원 결제가 COMPLETED 상태여야 하고, 환불 금액이 결제 금액을 넘을 수 없다."
-`Payment`는 자신에 대한 환불 시도(`Refund`)를 모르고(환불은 별도 Aggregate로만 존재), `Refund`는
-원 결제의 금액·상태를 모른다(`payment_id`로 참조만 한다). 어느 한쪽 Aggregate의 메서드로 이
-판단을 넣으려면 다른 쪽 Aggregate 전체를 파라미터로 받아야 해서 경계가 무너지므로, 두 Aggregate를
-모두 로드한 Application 레이어가 위임하는 별도의 Domain Service에 위치한다:
+**Domain rule**: "A refund requires the original payment to be in the COMPLETED state, and the refund amount cannot exceed the payment amount."
+`Payment` doesn't know about a refund attempt (`Refund`) against it (a refund only exists as a separate Aggregate), and `Refund`
+doesn't know the original payment's amount/status (it only references it via `payment_id`). Putting this decision into either
+Aggregate's method would require taking the other Aggregate entirely as a parameter, breaking the boundary, so it lives in a
+separate Domain Service that the Application layer — having loaded both Aggregates — delegates to:
 
 ```python
-# domain/refund_eligibility_service.py — Domain Service. FastAPI의 Depends(다른 어떤
-# DI 컨테이너)에도 등록하지 않는다 — 상태가 없는 순수 판단 로직이라 Application
-# 레이어가 필요할 때 직접 인스턴스화해 쓴다.
+# domain/refund_eligibility_service.py — a Domain Service. Never registered in FastAPI's Depends
+# (or any other DI container) — it's stateless, pure decision logic, so the Application
+# layer instantiates it directly whenever needed.
 @dataclass(frozen=True)
 class RefundDecision:
     approved: bool
@@ -132,14 +132,14 @@ class RefundDecision:
 class RefundEligibilityService:
     def evaluate(self, payment: Payment, refund: Refund) -> RefundDecision:
         if payment.status != PaymentStatus.COMPLETED:
-            return RefundDecision(approved=False, reason="완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+            return RefundDecision(approved=False, reason="A refund can only be requested for a completed payment.")
         if refund.amount > payment.amount:
-            return RefundDecision(approved=False, reason="환불 금액은 결제 금액을 초과할 수 없습니다.")
+            return RefundDecision(approved=False, reason="The refund amount cannot exceed the payment amount.")
         return RefundDecision(approved=True)
 ```
 
 ```python
-# application/command/request_refund_handler.py — 두 Repository를 로드해 위임
+# application/command/request_refund_handler.py — loads both Repositories and delegates
 class RequestRefundHandler:
     def __init__(self, payment_repo: PaymentRepository, refund_repo: RefundRepository) -> None:
         self._payment_repo = payment_repo
@@ -158,34 +158,33 @@ class RequestRefundHandler:
         if decision.approved:
             refund.approve(account_id=payment.account_id, owner_id=payment.owner_id)
         else:
-            # 환불 거부는 유효한 도메인 판단 결과다 — 예외를 던지지 않고 REJECTED로
-            # 저장한 Refund를 그대로 반환한다. Interface 레이어가 이를 201 + status
-            # 필드로 응답한다(4xx 에러가 아니다).
-            refund.reject(decision.reason or "환불 요청이 거부되었습니다.")
+            # A refund rejection is a valid domain decision outcome — instead of throwing
+            # an exception, the Refund saved as REJECTED is returned as-is. The Interface
+            # layer responds with 201 + a status field for this (not a 4xx error).
+            refund.reject(decision.reason or "The refund request has been rejected.")
 
         await self._refund_repo.save(refund)
         return refund
 ```
 
-`RefundEligibilityService`는 순수 함수적 판단만 한다 — Repository를 직접 호출하지 않는다(그랬다면
-Domain Service를 잘못 쓰는 패턴, root [domain-service.md](../../../../docs/architecture/domain-service.md)의
-"Domain Service를 잘못 쓰는 패턴" 참고). 로드는 항상 Application 레이어(`RequestRefundHandler`)의 몫이다.
+`RefundEligibilityService` performs only a purely functional decision — it never calls a Repository directly (doing so would be
+the "misusing a Domain Service" anti-pattern; see "Anti-patterns when using a Domain Service" in root [domain-service.md](../../../../docs/architecture/domain-service.md)). Loading is always the Application layer's (`RequestRefundHandler`'s) job.
 
-단위 테스트도 Application 레이어를 거치지 않고 `RefundEligibilityService`를 직접 인스턴스화해 판단
-로직만 검증한다(`tests/unit/domain/test_refund_eligibility_service.py`).
+The unit test also instantiates `RefundEligibilityService` directly without going through the Application layer, verifying only
+the decision logic (`tests/unit/domain/test_refund_eligibility_service.py`).
 
-전체 코드: `examples/src/payment/domain/refund_eligibility_service.py`, `payment.py`, `refund.py`,
+Full code: `examples/src/payment/domain/refund_eligibility_service.py`, `payment.py`, `refund.py`,
 `examples/src/payment/application/command/request_refund_handler.py`.
 
-`Payment`가 `Refund` 클래스를(또는 그 반대를) 필드/생성자 파라미터 타입으로 직접 참조하지 않고
-`payment_id: str` 같은 ID 참조만 쓰는지는 harness의 `no-cross-aggregate-reference` 규칙이
-`src/payment/domain/{payment.py,refund.py}`를 대상으로 검사한다.
+Whether `Payment` references the `Refund` class (or vice versa) directly as a field/constructor-parameter type, rather than
+only via an ID reference such as `payment_id: str`, is checked by the harness's `no-cross-aggregate-reference` rule, targeting
+`src/payment/domain/{payment.py,refund.py}`.
 
 ---
 
-## Infrastructure 레이어 — `infrastructure/`
+## The Infrastructure layer — `infrastructure/`
 
-외부 시스템에 실제로 접근하는 유일한 레이어.
+The only layer that actually accesses external systems.
 
 ```python
 # infrastructure/persistence/account_repository.py
@@ -199,37 +198,37 @@ class SqlAlchemyAccountRepository(AccountRepository):
             stmt = stmt.where(AccountModel.id == account_id)
         if owner_id:
             stmt = stmt.where(AccountModel.owner_id == owner_id)
-        # ... (전체 건수 count_stmt, offset/limit 적용은 repository-pattern.md 참고)
+        # ... (see repository-pattern.md for the full-count count_stmt, applying offset/limit)
         rows = (await self._session.execute(stmt.offset(page * take).limit(take))).scalars().all()
         return [self._to_domain(row) for row in rows], total
 ```
 
-Domain/Application의 ABC 구현체(`SqlAlchemyAccountRepository`, `SesNotificationService`)가 모두 여기 있다. FastAPI에는 전용 DI 컨테이너가 없으므로, `interface/rest/account_router.py`의 `Depends` 팩토리 함수가 "바인딩 지점" 역할을 한다:
+The ABC implementations of Domain/Application (`SqlAlchemyAccountRepository`, `SesNotificationService`) all live here. Since FastAPI has no dedicated DI container, the `Depends` factory functions in `interface/rest/account_router.py` serve as the "binding point":
 
 ```python
 # interface/rest/account_router.py
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
-    return SqlAlchemyAccountRepository(session)   # AccountRepository(ABC) ← SqlAlchemyAccountRepository(구현체)
+    return SqlAlchemyAccountRepository(session)   # AccountRepository(ABC) ← SqlAlchemyAccountRepository(implementation)
 
 
 def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
-    return SesNotificationService(session)        # NotificationService(ABC) ← SesNotificationService(구현체)
+    return SesNotificationService(session)        # NotificationService(ABC) ← SesNotificationService(implementation)
 ```
 
-라우트 함수의 파라미터 타입은 ABC(`AccountRepository`)로 선언되지만, 실제로 주입되는 것은 팩토리가 반환하는 구현체다. `NotificationService`는 라우트가 전혀 받지 않는다 — `src/outbox/event_handlers.py`의 `build_event_handlers()` 안에서만 조립되어 `OutboxConsumer`가 SQS 메시지를 처리할 때 이벤트 핸들러에 전달된다([domain-events.md](domain-events.md) 참고).
+A route function's parameter type is declared as the ABC (`AccountRepository`), but what's actually injected is the implementation the factory returns. `NotificationService` is never received by any route at all — it's only assembled inside `build_event_handlers()` in `src/outbox/event_handlers.py`, and passed to an event handler when `OutboxConsumer` processes an SQS message (see [domain-events.md](domain-events.md)).
 
 ---
 
-## Interface 레이어 — `interface/rest/`
+## The Interface layer — `interface/rest/`
 
-외부 요청(HTTP)의 진입점.
+The entry point for external requests (HTTP).
 
-1. 요청 수신 (`account_router.py`)
-2. Handler 생성 및 `execute()` 호출
-3. 에러는 `main.py`의 `@app.exception_handler`가 캐치하여 HTTP 응답으로 변환 (Router 자체는 캐치하지 않는다)
+1. Receives the request (`account_router.py`)
+2. Constructs the Handler and calls `execute()`
+3. Errors are caught by `main.py`'s `@app.exception_handler` and converted into an HTTP response (the Router itself never catches them)
 
 ```python
-# interface/rest/account_router.py — 실제 코드
+# interface/rest/account_router.py — actual code
 @router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
 async def deposit(
     account_id: str,
@@ -243,19 +242,19 @@ async def deposit(
     return TransactionResponse(...)
 ```
 
-`current_user`는 JWT 검증을 통과한 사용자 정보다([authentication.md](authentication.md) 참고) — 클라이언트가 임의로 넣을 수 있는 헤더 값이 아니다.
+`current_user` is the user info that passed JWT verification (see [authentication.md](authentication.md)) — it's not a header value the client can set arbitrarily.
 
-### Interface DTO는 얇은 변환만
+### Interface DTOs perform only thin conversion
 
-`interface/rest/schemas.py`의 Pydantic 모델(`DepositRequest`, `TransactionResponse`)은 HTTP 요청/응답 형태만 정의하고, 검증 이상의 로직을 갖지 않는다. Application의 Command/Result를 그대로 감싸는 역할이다.
+The Pydantic models in `interface/rest/schemas.py` (`DepositRequest`, `TransactionResponse`) only define the HTTP request/response shape, with no logic beyond validation. They only wrap Application's Command/Result as-is.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate, Entity, Value Object, Domain Event 상세
-- [repository-pattern.md](repository-pattern.md) — Repository 패턴 상세
-- [cqrs-pattern.md](cqrs-pattern.md) — Command/Query Handler 상세
-- [domain-events.md](domain-events.md) — Domain Event, Outbox 패턴
-- [directory-structure.md](directory-structure.md) — 전체 디렉토리 트리
-- root [domain-service.md](../../../../docs/architecture/domain-service.md) — Domain Service/Technical Service 패턴의 프레임워크 무관 원칙(이 문서 "Domain Service" 섹션의 `RefundEligibilityService`가 실제 코드 근거)
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate, Entity, Value Object, Domain Event details
+- [repository-pattern.md](repository-pattern.md) — Repository pattern details
+- [cqrs-pattern.md](cqrs-pattern.md) — Command/Query Handler details
+- [domain-events.md](domain-events.md) — Domain Event, the Outbox pattern
+- [directory-structure.md](directory-structure.md) — the full directory tree
+- root [domain-service.md](../../../../docs/architecture/domain-service.md) — the framework-agnostic principles of the Domain Service/Technical Service pattern (this document's "Domain Service" section's `RefundEligibilityService` is the actual-code evidence for it)

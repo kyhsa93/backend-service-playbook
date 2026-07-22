@@ -9,9 +9,11 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// PaymentCancelledEventHandler는 outbox에 적재된 PaymentCancelled 도메인 이벤트를 수신해
-// payment.cancelled.v1 Integration Event로 변환해 Outbox에 적재한다. Account BC가 이를
-// 구독해 보상 크레딧(deposit)을 실행한다 — 이미 차감된 금액을 되돌리는 보상 트랜잭션이다.
+// PaymentCancelledEventHandler receives the PaymentCancelled domain event
+// persisted in the outbox, translates it into a payment.cancelled.v1
+// Integration Event, and persists it to the Outbox. The Account BC
+// subscribes to this and executes a compensating credit (deposit) — a
+// compensating transaction that reverses an amount already debited.
 type PaymentCancelledEventHandler struct {
 	publisher IntegrationPublisher
 }

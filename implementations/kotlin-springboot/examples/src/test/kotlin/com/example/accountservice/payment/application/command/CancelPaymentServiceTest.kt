@@ -23,26 +23,26 @@ class CancelPaymentServiceTest {
     }
 
     @Test
-    fun `완료된 결제를 취소하면 CANCELLED 상태로 저장된다`() {
+    fun `cancelling a completed payment saves it in the CANCELLED state`() {
         val payment = completedPayment()
         every {
             paymentRepository.findPayments(PaymentFindQuery(page = 0, take = 1, paymentId = payment.paymentId, ownerId = "owner-1"))
         } returns (listOf(payment) to 1L)
 
-        service.cancel(CancelPaymentCommand(paymentId = payment.paymentId, reason = "고객 요청", requesterId = "owner-1"))
+        service.cancel(CancelPaymentCommand(paymentId = payment.paymentId, reason = "Customer request", requesterId = "owner-1"))
 
         assertThat(payment.status.name).isEqualTo("CANCELLED")
         verify(exactly = 1) { paymentRepository.savePayment(payment) }
     }
 
     @Test
-    fun `결제를 찾을 수 없으면 예외를 던진다`() {
+    fun `throws an exception when the payment cannot be found`() {
         every {
             paymentRepository.findPayments(PaymentFindQuery(page = 0, take = 1, paymentId = "non-existent", ownerId = "owner-1"))
         } returns (emptyList<Payment>() to 0L)
 
         assertThrows<PaymentNotFoundException> {
-            service.cancel(CancelPaymentCommand(paymentId = "non-existent", reason = "고객 요청", requesterId = "owner-1"))
+            service.cancel(CancelPaymentCommand(paymentId = "non-existent", reason = "Customer request", requesterId = "owner-1"))
         }
         verify(exactly = 0) { paymentRepository.savePayment(any()) }
     }

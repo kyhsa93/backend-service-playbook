@@ -1,17 +1,20 @@
-"""[24] soft-delete-filter: 상태 변경 가능한 SQLAlchemy 모델은 deleted_at 컬럼을 갖고, find
-계열 쿼리는 deleted_at IS NULL로 필터링하는지 (persistence.md)
+"""[24] soft-delete-filter: whether a SQLAlchemy model with mutable state has a deleted_at
+column, and a find-family query filters on deleted_at IS NULL (persistence.md)
 
-persistence.md 원칙 두 가지를 기계 검증한다:
-1. "모든 상태 변경 가능한 Entity에 created_at/updated_at/deleted_at을 둔다" — `updated_at`
-   컬럼이 있는(=상태가 바뀌는) 모델인데 `deleted_at` 컬럼이 없으면 실패. 불변 기록
-   (`TransactionModel`처럼 `updated_at` 자체가 없는 모델)은 애초에 대상이 아니다 — 문서가
-   명시한 것과 동일한 기준(불변 기록은 예외)을 그대로 코드로 옮긴 것.
-2. "삭제는 soft delete, 조회는 항상 deleted_at IS NULL" — 위 기준으로 `deleted_at`을
-   가진 모델에 대해, 그 모델을 조회하는 `find_*` 메서드가 `<Model>.deleted_at.is_(None)`
-   류의 필터를 포함하는지 검사한다. 정확한 SQLAlchemy 체이닝(`select(X).where(...)`가 여러
-   줄에 걸쳐 재대입되는 이 저장소의 실제 패턴)을 AST로 완벽히 추적하기보다, `find_*` 메서드
-   소스 슬라이스 안에 `select(<Model>)`과 `<Model>.deleted_at.is_(None)`이 함께 있는지를
-   텍스트로 확인한다 — 이 저장소가 실제로 쓰는 구성 패턴에 맞춘 실용적 선택.
+Mechanically verifies 2 persistence.md principles:
+1. "Every Entity with mutable state gets created_at/updated_at/deleted_at" — fails if a
+   model has an `updated_at` column (i.e. its state changes) but no `deleted_at` column.
+   An immutable record (a model with no `updated_at` at all, like `TransactionModel`) isn't
+   targeted from the start — this carries over, as-is into code, the same criterion the
+   document states (an immutable record is the exception).
+2. "Deletion is a soft delete, a lookup always includes deleted_at IS NULL" — for a model
+   with `deleted_at` per the criterion above, checks whether a `find_*` method that looks
+   it up includes a filter like `<Model>.deleted_at.is_(None)`. Rather than perfectly
+   tracing the exact SQLAlchemy chaining via AST (this repository's actual pattern, where
+   `select(X).where(...)` gets reassigned across multiple lines), it checks as text whether
+   `select(<Model>)` and `<Model>.deleted_at.is_(None)` are both present within the
+   `find_*` method's source slice — a practical choice matching the composition pattern
+   this repository actually uses.
 """
 
 from __future__ import annotations
@@ -46,7 +49,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         try:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
-            result.add(failed(rel(root, f), f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(rel(root, f), f"Failed to parse the file: {e}"))
             continue
 
         lines = src.splitlines()
@@ -70,21 +73,21 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             label = f"{r}::{model.name}"
 
             if not is_mutable:
-                # 불변 기록(예: TransactionModel) — persistence.md의 명시적 예외, 검사 대상 아님
+                # An immutable record (e.g. TransactionModel) — persistence.md's explicit exception, not targeted
                 continue
 
             if not has_deleted_at:
                 result.add(
                     failed(
                         label,
-                        "updated_at 컬럼이 있어 상태 변경 가능한 Entity인데 deleted_at 컬럼이 없음 —"
-                        " 모든 상태 변경 가능한 Entity는 created_at/updated_at/deleted_at을 가져야 함"
-                        " (persistence.md)",
+                        "It's an Entity with mutable state (it has an updated_at column),"
+                        " but has no deleted_at column — every Entity with mutable state"
+                        " must have created_at/updated_at/deleted_at (persistence.md)",
                     )
                 )
                 continue
 
-            # deleted_at을 가진 모델을 참조하는 find_* 메서드가 필터를 포함하는지 확인
+            # Checks whether a find_* method referencing a model with deleted_at includes the filter
             select_pattern = f"select({model.name})"
             filter_pattern = f"{model.name}.deleted_at.is_(None)"
             referencing_methods = [
@@ -92,7 +95,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             ]
 
             if not referencing_methods:
-                result.add(passed(f"{label} (deleted_at 컬럼 보유, 이 파일에서 조회하는 find_* 없음)"))
+                result.add(passed(f"{label} (has a deleted_at column; no find_* in this file looks it up)"))
                 continue
 
             all_filtered = True
@@ -103,14 +106,14 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                     result.add(
                         failed(
                             f"{r}::{m.name}",
-                            f"select({model.name})을 사용하지만 {filter_pattern} 필터가 없음 —"
-                            " soft-delete된 행이 조회 결과에 포함될 수 있음(persistence.md)",
+                            f"Uses select({model.name}) but has no {filter_pattern} filter —"
+                            " a soft-deleted row could be included in the query result (persistence.md)",
                         )
                     )
 
             if all_filtered:
-                result.add(passed(f"{label} (find_* 전부 deleted_at IS NULL 필터 포함)"))
+                result.add(passed(f"{label} (every find_* includes the deleted_at IS NULL filter)"))
 
     if not found:
-        result.add(skipped("infrastructure/persistence/의 SQLAlchemy 모델(Base 상속) 없음"))
+        result.add(skipped("No SQLAlchemy model (extending Base) in infrastructure/persistence/"))
     return result

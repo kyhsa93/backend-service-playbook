@@ -30,13 +30,14 @@ public final class EventPlacement {
             if (name.endsWith("EventHandler")) {
                 found = true;
                 reported.add(f.getPath());
-                // Outbox 패턴의 디스패치 계약(OutboxEventHandler 등)은 도메인별 핸들러가 아니라
-                // OutboxRelay와 함께 동작하는 공용 인프라이므로 outbox/ 패키지 배치도 허용한다
-                // (domain-events.md, shared-modules.md 참고).
+                // The Outbox pattern's dispatch contract (OutboxEventHandler, etc.) is not a
+                // per-domain handler but shared infrastructure that operates together with
+                // OutboxRelay, so placement under the outbox/ package is also allowed
+                // (see domain-events.md, shared-modules.md).
                 if (pathContains(f, "/application/event/") || pathContains(f, "/outbox/")) {
                     result.add(Finding.pass(rel + " (EventHandler)"));
                 } else {
-                    result.add(Finding.fail(rel, "EventHandler는 application/event/(도메인별 핸들러) 또는 outbox/(Outbox 디스패치 계약) 패키지 안에 있어야 함"));
+                    result.add(Finding.fail(rel, "EventHandler must be inside the application/event/ package (per-domain handlers) or the outbox/ package (Outbox dispatch contract)"));
                 }
             } else if (name.matches(".*IntegrationEvent(V\\d+)?$")) {
                 found = true;
@@ -44,15 +45,16 @@ public final class EventPlacement {
                 if (pathContains(f, "/application/integrationevent/")) {
                     result.add(Finding.pass(rel + " (IntegrationEvent)"));
                 } else {
-                    result.add(Finding.fail(rel, "IntegrationEvent는 application/integrationevent/ 패키지 안에 있어야 함"));
+                    result.add(Finding.fail(rel, "IntegrationEvent must be inside the application/integrationevent/ package"));
                 }
             }
         }
 
-        // @EventListener — Spring ApplicationEventPublisher 기반 동기 도메인 이벤트 구독.
-        // 파일명이 *EventHandler/*IntegrationEvent 규칙을 따르지 않더라도 @EventListener
-        // 애노테이션이 있으면 실질적인 이벤트 핸들러이므로 동일하게 application/event/ 배치
-        // 규칙을 적용한다.
+        // @EventListener — synchronous domain-event subscription based on Spring's
+        // ApplicationEventPublisher. Even if the file name doesn't follow the
+        // *EventHandler/*IntegrationEvent convention, having the @EventListener
+        // annotation makes it a de facto event handler, so the same application/event/
+        // placement rule applies.
         for (File f : collectJavaFiles(root)) {
             if (reported.contains(f.getPath())) continue;
             String content = readText(f);
@@ -62,11 +64,11 @@ public final class EventPlacement {
             if (pathContains(f, "/application/event/")) {
                 result.add(Finding.pass(rel + " (@EventListener)"));
             } else {
-                result.add(Finding.fail(rel, "@EventListener 사용 클래스는 application/event/ 패키지 안에 있어야 함"));
+                result.add(Finding.fail(rel, "A class using @EventListener must be inside the application/event/ package"));
             }
         }
 
-        if (!found) result.add(Finding.skip("이벤트 핸들러 없음"));
+        if (!found) result.add(Finding.skip("No event handlers"));
         return result;
     }
 }

@@ -15,8 +15,8 @@ class SesConfig(
 ) {
     @Bean
     fun sesClient(): SesClient {
-        // 자격 증명은 항상 명시적으로 설정한다. DefaultCredentialsProvider(IMDS 등)에 의존하면
-        // 자격 증명이 없을 때 탐색 과정에서 응답이 느려질 수 있다.
+        // Always set credentials explicitly. Relying on DefaultCredentialsProvider (IMDS, etc.) can slow
+        // down the response during the lookup process when credentials aren't available.
         val builder =
             SesClient
                 .builder()

@@ -23,26 +23,32 @@ var handleMethodSig = regexp.MustCompile(`(?m)^func\s+\([^)]+\)\s+Handle\([^)]*\
 var domainQualifiedPointer = regexp.MustCompile(`^\*(\w+)\.(\w+)$`)
 
 // checkQueryHandlerNoRawAggregate — query-handler-no-raw-aggregate:
-// docs/architecture/api-response.md, "Result 객체 설계" — Query Service(Handler)는
-// Result/DTO 객체를 반환해야 하고 도메인 Aggregate를 직접 반환하지 않는다("Aggregate는
-// 비즈니스 로직과 내부 상태를 포함한다. 직렬화하면 내부 구현이 외부에 노출된다").
+// docs/architecture/api-response.md, "Result object design" — a Query
+// Service (Handler) must return a Result/DTO object and must not return the
+// domain Aggregate directly ("an Aggregate carries business logic and
+// internal state. Serializing it exposes the internal implementation to the
+// outside").
 //
-// internal/application/query/*.go의 각 Handle 메서드가 성공 시 반환하는 타입이
-// 그 파일이 import하는 internal/domain/<bc> 패키지로 한정된(qualified) 포인터
-// 타입(예: *account.Account)이면 실패로 본다. 특정 타입 이름(Account/Card/Payment/
-// Refund)을 하드코딩하지 않고 "domain 패키지로 qualify된 포인터 타입이면 전부 위반"
-// 이라는 일반 규칙을 쓴다 — Query Handler가 반환할 정당한 타입은 언제나 그 Handler와
-// 같은 query 패키지에 있는 전용 Result 타입(GetAccountResult 등, 패키지 한정자 없음)
-// 뿐이고, 다른 domain 패키지의 Value Object를 그대로 반환하는 패턴도 이 저장소에는
-// 없다 — 그래서 이 하드코딩 없는 형태가 새 도메인(create-domain 스캐폴딩 등)에도
-// 그대로 일반화된다. Command Handler(예: Create{{.Domain}}Handler가 생성 직후의
-// Aggregate를 그대로 반환하는 패턴)는 이 규칙의 대상이 아니다 — root 문서는 Query
-// 응답에 한해 Aggregate 직접 노출을 금지한다.
+// This treats it as a failure when the type each Handle method in
+// internal/application/query/*.go returns on success is a pointer type
+// qualified by the internal/domain/<bc> package that file imports (e.g.
+// *account.Account). Rather than hardcoding specific type names
+// (Account/Card/Payment/Refund), it uses the general rule "any pointer type
+// qualified by a domain package is a violation" — the only legitimate type a
+// Query Handler can return is always a dedicated Result type in the same
+// query package as that Handler (e.g. GetAccountResult, with no package
+// qualifier), and this repository has no pattern of returning another
+// domain package's Value Object as-is either — which is why this
+// hardcoding-free form generalizes cleanly to new domains too (e.g. the
+// create-domain scaffolding). A Command Handler (e.g. the pattern where
+// Create{{.Domain}}Handler returns the just-created Aggregate as-is) is not
+// covered by this rule — the root document forbids exposing the Aggregate
+// directly only for Query responses.
 func checkQueryHandlerNoRawAggregate(root string) RuleResult {
 	result := RuleResult{Section: "query-handler-no-raw-aggregate"}
 	queryDir := filepath.Join(root, "internal", "application", "query")
 	if _, err := os.Stat(queryDir); os.IsNotExist(err) {
-		result.Findings = append(result.Findings, skipFinding("internal/application/query/ 없음"))
+		result.Findings = append(result.Findings, skipFinding("internal/application/query/ not found"))
 		return result
 	}
 
@@ -60,13 +66,13 @@ func checkQueryHandlerNoRawAggregate(root string) RuleResult {
 
 		sigMatches := handleMethodSig.FindAllStringSubmatch(src, -1)
 		if len(sigMatches) == 0 {
-			return nil // 이 파일에 Handle 메서드가 없음(result.go 등)
+			return nil // this file has no Handle method (e.g. result.go)
 		}
 
 		imports, parseErr := fileImportPaths(path)
 		if parseErr != nil {
 			found = true
-			result.Findings = append(result.Findings, failFinding(rel, "Go 파일 파싱 실패: "+parseErr.Error()))
+			result.Findings = append(result.Findings, failFinding(rel, "failed to parse Go file: "+parseErr.Error()))
 			return nil
 		}
 		domainAliases := map[string]bool{}
@@ -82,7 +88,7 @@ func checkQueryHandlerNoRawAggregate(root string) RuleResult {
 			m := domainQualifiedPointer.FindStringSubmatch(returnType)
 			if m != nil && domainAliases[m[1]] {
 				result.Findings = append(result.Findings, failFinding(rel,
-					"Handle()이 domain 패키지의 raw 타입("+returnType+")을 그대로 반환함 — 전용 Result/DTO 타입을 반환해야 한다(docs/architecture/api-response.md)"))
+					"Handle() returns a raw domain-package type ("+returnType+") as-is — it must return a dedicated Result/DTO type (docs/architecture/api-response.md)"))
 			} else {
 				result.Findings = append(result.Findings, passFinding(rel+" (Handle → "+returnType+")"))
 			}
@@ -90,9 +96,9 @@ func checkQueryHandlerNoRawAggregate(root string) RuleResult {
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(queryDir, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(queryDir, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("application/query/ 안에 Handle 메서드 없음"))
+		result.Findings = append(result.Findings, skipFinding("no Handle methods in application/query/"))
 	}
 	return result
 }

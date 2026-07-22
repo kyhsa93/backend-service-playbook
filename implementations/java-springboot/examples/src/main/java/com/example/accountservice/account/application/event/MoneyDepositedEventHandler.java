@@ -7,7 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** Outbox에 쌓인 {@link MoneyDepositedEvent}를 처리해 계좌 소유자에게 알림 이메일을 발송한다. */
+/**
+ * Handles the {@link MoneyDepositedEvent} accumulated in the Outbox to send a notification email to
+ * the account owner.
+ */
 @Component
 @RequiredArgsConstructor
 public class MoneyDepositedEventHandler implements OutboxEventHandler {
@@ -27,11 +30,11 @@ public class MoneyDepositedEventHandler implements OutboxEventHandler {
                 event.accountId(),
                 "MoneyDeposited",
                 event.email(),
-                "[Account] 입금이 완료되었습니다",
+                "[Account] Your deposit is complete",
                 event.amount().amount()
                         + " "
                         + event.amount().currency()
-                        + "이 입금되었습니다. 입금 후 잔액: "
+                        + " has been deposited. Balance after deposit: "
                         + event.balanceAfter().amount()
                         + " "
                         + event.balanceAfter().currency());

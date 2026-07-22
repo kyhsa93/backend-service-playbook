@@ -9,7 +9,7 @@ class AccountTest {
         Account.create(ownerId = "owner-1", currency = currency, email = "owner-1@example.com")
 
     @Test
-    fun `계좌 생성 시 잔액은 0이고 ACTIVE 상태다`() {
+    fun `creating an account starts with a 0 balance and the ACTIVE status`() {
         val account = createAccount()
 
         assertThat(account.balance.amount).isEqualTo(0)
@@ -18,14 +18,14 @@ class AccountTest {
     }
 
     @Test
-    fun `계좌 ID는 하이픈 없는 32자리 hex 문자열이다`() {
+    fun `the account ID is a 32-character hex string without hyphens`() {
         val account = createAccount()
 
         assertThat(account.accountId).matches("^[0-9a-f]{32}$")
     }
 
     @Test
-    fun `정지된 계좌에 입금하면 예외를 던진다`() {
+    fun `depositing to a suspended account throws an exception`() {
         val account = createAccount()
         account.suspend()
 
@@ -33,14 +33,14 @@ class AccountTest {
     }
 
     @Test
-    fun `0 이하 금액을 입금하면 예외를 던진다`() {
+    fun `depositing an amount of 0 or less throws an exception`() {
         val account = createAccount()
 
         assertThrows<InvalidAmountException> { account.deposit(0) }
     }
 
     @Test
-    fun `입금하면 MoneyDepositedEvent가 수집된다`() {
+    fun `depositing collects a MoneyDepositedEvent`() {
         val account = createAccount()
         account.pullDomainEvents()
 
@@ -54,7 +54,7 @@ class AccountTest {
     }
 
     @Test
-    fun `정지된 계좌에서 출금하면 예외를 던진다`() {
+    fun `withdrawing from a suspended account throws an exception`() {
         val account = createAccount()
         account.suspend()
 
@@ -62,7 +62,7 @@ class AccountTest {
     }
 
     @Test
-    fun `잔액보다 큰 금액을 출금하면 예외를 던진다`() {
+    fun `withdrawing more than the balance throws an exception`() {
         val account = createAccount()
         account.deposit(1000)
 
@@ -70,7 +70,7 @@ class AccountTest {
     }
 
     @Test
-    fun `출금하면 MoneyWithdrawnEvent가 수집된다`() {
+    fun `withdrawing collects a MoneyWithdrawnEvent`() {
         val account = createAccount()
         account.deposit(1000)
         account.pullDomainEvents()
@@ -84,7 +84,7 @@ class AccountTest {
     }
 
     @Test
-    fun `정지하면 SUSPENDED 상태가 되고 AccountSuspendedEvent가 수집된다`() {
+    fun `suspending transitions to SUSPENDED and collects an AccountSuspendedEvent`() {
         val account = createAccount()
         account.pullDomainEvents()
 
@@ -95,7 +95,7 @@ class AccountTest {
     }
 
     @Test
-    fun `이미 정지된 계좌를 정지하면 예외를 던진다`() {
+    fun `suspending an already-suspended account throws an exception`() {
         val account = createAccount()
         account.suspend()
 
@@ -103,7 +103,7 @@ class AccountTest {
     }
 
     @Test
-    fun `정지된 계좌를 재개하면 ACTIVE 상태가 되고 AccountReactivatedEvent가 수집된다`() {
+    fun `reactivating a suspended account transitions to ACTIVE and collects an AccountReactivatedEvent`() {
         val account = createAccount()
         account.suspend()
         account.pullDomainEvents()
@@ -115,14 +115,14 @@ class AccountTest {
     }
 
     @Test
-    fun `활성 계좌를 재개하면 예외를 던진다`() {
+    fun `reactivating an active account throws an exception`() {
         val account = createAccount()
 
         assertThrows<ReactivateRequiresSuspendedAccountException> { account.reactivate() }
     }
 
     @Test
-    fun `잔액이 0이 아닌 계좌를 종료하면 예외를 던진다`() {
+    fun `closing an account with a non-zero balance throws an exception`() {
         val account = createAccount()
         account.deposit(1000)
 
@@ -130,7 +130,7 @@ class AccountTest {
     }
 
     @Test
-    fun `잔액이 0인 계좌를 종료하면 CLOSED 상태가 되고 AccountClosedEvent가 수집된다`() {
+    fun `closing an account with a 0 balance transitions to CLOSED and collects an AccountClosedEvent`() {
         val account = createAccount()
         account.pullDomainEvents()
 
@@ -141,7 +141,7 @@ class AccountTest {
     }
 
     @Test
-    fun `이미 종료된 계좌를 종료하면 예외를 던진다`() {
+    fun `closing an already-closed account throws an exception`() {
         val account = createAccount()
         account.close()
 
@@ -149,14 +149,14 @@ class AccountTest {
     }
 
     @Test
-    fun `종료되지 않은 계좌를 삭제하면 예외를 던진다`() {
+    fun `deleting an account that is not closed throws an exception`() {
         val account = createAccount()
 
         assertThrows<DeleteRequiresClosedAccountException> { account.markDeleted() }
     }
 
     @Test
-    fun `종료된 계좌를 삭제하면 deletedAt이 설정된다`() {
+    fun `deleting a closed account sets deletedAt`() {
         val account = createAccount()
         account.close()
 
@@ -166,7 +166,7 @@ class AccountTest {
     }
 
     @Test
-    fun `pullPendingTransactions 호출하면 대기중인 거래가 반환되고 비워진다`() {
+    fun `calling pullPendingTransactions returns the pending transactions and clears them`() {
         val account = createAccount()
         account.deposit(1000)
 

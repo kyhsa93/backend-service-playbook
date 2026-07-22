@@ -9,10 +9,11 @@ from ..domain.errors import InvalidTokenError
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 
-# 프로덕션에서는 main.py의 lifespan 기동 시 Secrets Manager에서 조회한 값으로
-# set_jwt_secret()이 이 값을 채운다. 그 전까지는 환경 변수를 쓴다 — validate_env()
-# (config/validator.py)가 프로덕션이 아닌 환경에서 JWT_SECRET 누락을 이미 fail-fast로
-# 막았으므로, 여기서는 더 이상 "dev-secret" 같은 조용한 기본값을 두지 않는다.
+# In production, set_jwt_secret() fills in this value from what's looked up in Secrets
+# Manager at main.py's lifespan startup. Until then, the environment variable is used —
+# since validate_env() (config/validator.py) already blocks a missing JWT_SECRET via
+# fail-fast in non-production environments, no silent default such as "dev-secret" is kept
+# here anymore.
 _jwt_secret: str = os.getenv("JWT_SECRET", "")
 
 

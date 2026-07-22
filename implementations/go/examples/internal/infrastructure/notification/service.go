@@ -14,23 +14,27 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// SESClient는 알림 발송에 필요한 SES 동작만 노출하는 최소 인터페이스다.
-// 실제 구현은 *ses.Client가 맡고, 테스트에서는 목으로 대체할 수 있다.
+// SESClient is a minimal interface exposing only the SES operations needed
+// to send notifications. The real implementation is *ses.Client, and it
+// can be replaced with a mock in tests.
 type SESClient interface {
 	SendEmail(ctx context.Context, params *ses.SendEmailInput, optFns ...func(*ses.Options)) (*ses.SendEmailOutput, error)
 }
 
-// Service는 Account 도메인 이벤트를 SES 이메일로 발송하고, 발송 내역을 DB에 남긴다.
+// Service sends Account domain events as SES emails and records the send
+// history in the DB.
 //
-// 발송 실패(SES 오류, DB 오류 등)는 에러로 반환된다 — 호출부인 Outbox의 이벤트
-// 핸들러(internal/application/event/)가 이 에러를 받아 로그를 남기고, 해당 이벤트가
-// outbox 테이블에서 미처리 상태로 남도록 두어 다음 Drain 때 재시도되게 한다.
+// Send failures (SES errors, DB errors, etc.) are returned as an error —
+// the caller, the Outbox's event handler
+// (internal/application/event/), receives this error, logs it, and leaves
+// the event unprocessed in the outbox table so it's retried on the next
+// Drain.
 type Service struct {
 	sesClient SESClient
 	db        *sql.DB
 }
 
-// NewService는 SES 클라이언트와 DB 커넥션으로 알림 서비스를 만든다.
+// NewService creates a notification service from an SES client and a DB connection.
 func NewService(client SESClient, db *sql.DB) *Service {
 	return &Service{sesClient: client, db: db}
 }
@@ -42,9 +46,11 @@ type emailContent struct {
 	body      string
 }
 
-// Notify는 도메인 이벤트에 대응하는 알림 이메일을 발송하고 발송 내역을 저장한다.
-// 이메일 발송 또는 저장에 실패하면 에러를 반환한다 — 계좌 커맨드 자체는 이미 커밋된
-// 뒤(Outbox 경유)에 호출되므로 이 실패가 계좌 상태 변경에 영향을 주지는 않는다.
+// Notify sends the notification email corresponding to a domain event and
+// saves the send history. It returns an error if sending the email or
+// saving fails — since this is called after the account command itself has
+// already been committed (via the Outbox), this failure has no effect on
+// the account state change.
 func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	eventType, content, ok := describe(event)
 	if !ok {
@@ -57,19 +63,21 @@ func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	return nil
 }
 
-// NotifyCardStatement는 월간 카드 사용내역 명세서 이메일을 발송하고 발송 내역을
-// sent_emails에 저장한다 — Notify(계좌 Domain Event → 이메일)와 동일한 send() 경로를
-// 재사용한다(scheduling.md, "Task Controller는 로직 없이 Command로 위임" 원칙에 맞춰
-// 이 Service 자체가 Card BC 전용 알림 메커니즘을 새로 만들지 않고 기존 것을 공유한다).
-// send()는 account.DomainEvent에 의존하지 않는 순수 (eventType, emailContent) 시그니처라
-// account 패키지 없이도 재사용할 수 있다.
+// NotifyCardStatement sends the monthly card usage statement email and
+// saves the send history to sent_emails — it reuses the same send() path
+// as Notify (account Domain Event → email) (scheduling.md; in keeping with
+// the "Task Controller delegates to a Command with no logic of its own"
+// principle, this Service itself shares the existing mechanism rather than
+// building a new Card-BC-specific notification mechanism). send() has a
+// pure (eventType, emailContent) signature with no dependency on
+// account.DomainEvent, so it can be reused without the account package.
 func (s *Service) NotifyCardStatement(ctx context.Context, accountID, recipient, cardID, period string, paymentCount int, totalAmount int64) error {
 	content := emailContent{
 		accountID: accountID,
 		recipient: recipient,
-		subject:   fmt.Sprintf("[Card] %s 카드 이용내역 안내 (%s)", cardID, period),
-		body: fmt.Sprintf("%s 기간 동안 카드(%s) 이용내역: %d건, 합계 %d원",
-			period, cardID, paymentCount, totalAmount),
+		subject:   fmt.Sprintf("[Card] Usage statement for card %s (%s)", cardID, period),
+		body: fmt.Sprintf("Card (%s) usage for period %s: %d transaction(s), total %d",
+			cardID, period, paymentCount, totalAmount),
 	}
 	if err := s.send(ctx, "CardUsageStatement", content); err != nil {
 		return fmt.Errorf("notify card statement: %w", err)
@@ -117,53 +125,53 @@ func describe(event account.DomainEvent) (string, emailContent, bool) {
 		return "AccountCreated", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 계좌가 개설되었습니다",
-			body:      fmt.Sprintf("계좌(%s)가 개설되었습니다. 통화: %s", e.AccountID, e.Currency),
+			subject:   "[Account] Your account has been opened",
+			body:      fmt.Sprintf("Account (%s) has been opened. Currency: %s", e.AccountID, e.Currency),
 		}, true
 	case account.MoneyDeposited:
 		return "MoneyDeposited", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 입금이 완료되었습니다",
-			body: fmt.Sprintf("%d %s이 입금되었습니다. 입금 후 잔액: %d %s",
+			subject:   "[Account] Deposit completed",
+			body: fmt.Sprintf("%d %s was deposited. Balance after deposit: %d %s",
 				e.Amount.Amount, e.Amount.Currency, e.BalanceAfter.Amount, e.BalanceAfter.Currency),
 		}, true
 	case account.MoneyWithdrawn:
 		return "MoneyWithdrawn", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 출금이 완료되었습니다",
-			body: fmt.Sprintf("%d %s이 출금되었습니다. 출금 후 잔액: %d %s",
+			subject:   "[Account] Withdrawal completed",
+			body: fmt.Sprintf("%d %s was withdrawn. Balance after withdrawal: %d %s",
 				e.Amount.Amount, e.Amount.Currency, e.BalanceAfter.Amount, e.BalanceAfter.Currency),
 		}, true
 	case account.InterestPaid:
 		return "InterestPaid", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 이자가 지급되었습니다",
-			body: fmt.Sprintf("%d %s의 이자가 지급되었습니다. 지급 후 잔액: %d %s",
+			subject:   "[Account] Interest paid",
+			body: fmt.Sprintf("Interest of %d %s was paid. Balance after payment: %d %s",
 				e.Amount.Amount, e.Amount.Currency, e.BalanceAfter.Amount, e.BalanceAfter.Currency),
 		}, true
 	case account.AccountSuspended:
 		return "AccountSuspended", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 계좌가 정지되었습니다",
-			body:      fmt.Sprintf("계좌(%s)가 정지되었습니다.", e.AccountID),
+			subject:   "[Account] Your account has been suspended",
+			body:      fmt.Sprintf("Account (%s) has been suspended.", e.AccountID),
 		}, true
 	case account.AccountReactivated:
 		return "AccountReactivated", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 계좌가 재개되었습니다",
-			body:      fmt.Sprintf("계좌(%s)가 재개되었습니다.", e.AccountID),
+			subject:   "[Account] Your account has been reactivated",
+			body:      fmt.Sprintf("Account (%s) has been reactivated.", e.AccountID),
 		}, true
 	case account.AccountClosed:
 		return "AccountClosed", emailContent{
 			accountID: e.AccountID,
 			recipient: e.Email,
-			subject:   "[Account] 계좌가 종료되었습니다",
-			body:      fmt.Sprintf("계좌(%s)가 종료되었습니다.", e.AccountID),
+			subject:   "[Account] Your account has been closed",
+			body:      fmt.Sprintf("Account (%s) has been closed.", e.AccountID),
 		}, true
 	default:
 		return "", emailContent{}, false

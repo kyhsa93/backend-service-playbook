@@ -4,13 +4,15 @@ from .credential import Credential
 
 
 class CredentialRepository(ABC):
-    """Credential Aggregate 전용 Repository. Query Handler가 없어(별도 조회 유스케이스 없음)
-    account/card처럼 읽기 전용 ABC를 분리하지 않는다 — sign-up/sign-in 두 Command Handler가
-    이 하나의 인터페이스로 조회/저장을 모두 수행한다.
+    """The Repository dedicated to the Credential Aggregate. Since there is no Query
+    Handler (no separate lookup use case), it doesn't split out a read-only ABC the way
+    account/card do — the two Command Handlers, sign-up/sign-in, both perform lookup/save
+    through this single interface.
 
-    조회 메서드는 account/card 도메인과 동일하게 단일 `find_credentials(...)`로 통일한다
-    (repository-pattern.md) — user_id 유일성 검사(sign-up)와 단건 조회(sign-in) 모두
-    `take=1` + `user_id` 필터로 표현하고, 전용 `find_by_user_id`류 메서드는 두지 않는다.
+    The lookup method is unified into a single `find_credentials(...)`, the same as the
+    account/card domains (repository-pattern.md) — both the user_id uniqueness check
+    (sign-up) and the single-item lookup (sign-in) are expressed with a `take=1` +
+    `user_id` filter, and no dedicated `find_by_user_id`-style method is added.
     """
 
     @abstractmethod

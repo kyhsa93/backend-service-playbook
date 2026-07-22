@@ -17,9 +17,10 @@ type AccountRepository struct {
 	outboxWriter *outbox.Writer
 }
 
-// 컴파일 타임 interface 충족 검증 — AccountRepository는 Repository(Command)와
-// Query 양쪽을 모두 만족한다. Go interface는 구조적 타이핑이므로
-// 구현체를 별도로 두 벌 만들 필요 없이 같은 concrete struct가 양쪽 역할을 겸한다.
+// Compile-time interface satisfaction check — AccountRepository satisfies
+// both Repository (Command) and Query. Since Go interfaces use structural
+// typing, the same concrete struct serves both roles without needing two
+// separate implementations.
 var _ account.Repository = (*AccountRepository)(nil)
 var _ account.Query = (*AccountRepository)(nil)
 
@@ -90,19 +91,23 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuer
 	return accounts, total, rows.Err()
 }
 
-// SaveAccount는 앰비언트 트랜잭션(database.WithTx/Manager.RunInTx가 ctx에 심어둔
-// *sql.Tx)이 있으면 거기 참여만 하고 커밋은 호출부(TransferHandler 등)에 맡긴다 —
-// 없으면(기존의 모든 단독 호출부와 동일하게) 스스로 트랜잭션을 열고 커밋까지 책임진다.
-// 두 경로 모두 실제 SQL은 saveAccount 하나를 공유하므로, 앰비언트 트랜잭션이 없는
-// 기존 호출부의 동작은 한 글자도 바뀌지 않는다.
+// SaveAccount, if there's an ambient transaction (the *sql.Tx that
+// database.WithTx/Manager.RunInTx stashed in ctx), only participates in it
+// and leaves committing to the caller (TransferHandler, etc.) — if there
+// isn't one (same as every existing standalone caller), it opens its own
+// transaction and is responsible for committing it too. Both paths share
+// the same underlying SQL via saveAccount, so the behavior of existing
+// callers with no ambient transaction doesn't change in the slightest.
 func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account) error {
 	if tx, ok := database.TxFromContext(ctx); ok {
 		if err := r.saveAccount(ctx, tx, a); err != nil {
 			return err
 		}
-		// 커밋은 앰비언트 트랜잭션 소유자(TransferHandler 등)의 몫이라 여기서 진짜
-		// 커밋 성공을 확인할 수는 없지만, 이 경로를 쓰는 신규 유스케이스(Transfer)는
-		// 같은 *Account 인스턴스를 이 호출 이후 재사용하거나 재시도하지 않으므로 무해하다.
+		// Committing is the ambient transaction owner's job (TransferHandler,
+		// etc.), so we can't actually confirm commit success here — but this
+		// is harmless because the new use case (Transfer) that takes this
+		// path never reuses or retries the same *Account instance after this
+		// call.
 		a.ClearTransactions()
 		a.ClearEvents()
 		return nil
@@ -120,15 +125,18 @@ func (r *AccountRepository) SaveAccount(ctx context.Context, a *account.Account)
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit save account: %w", err)
 	}
-	// 기존 동작과 동일하게, 실제 커밋이 성공을 확인한 뒤에만 in-memory pending 상태를
-	// 비운다 — 커밋 실패 시 재시도가 거래/이벤트를 다시 시도할 수 있어야 한다.
+	// Same as the existing behavior — the in-memory pending state is only
+	// cleared after actually confirming commit success. On commit failure, a
+	// retry must be able to try the transaction/event again.
 	a.ClearTransactions()
 	a.ClearEvents()
 	return nil
 }
 
-// saveAccount는 계좌 저장 + 거래 저장 + Outbox 적재 3개 statement를 주어진 tx로
-// 실행한다 — 커밋/롤백은 호출부(SaveAccount 또는 앰비언트 트랜잭션 소유자)의 책임이다.
+// saveAccount runs 3 statements — saving the account, saving the
+// transaction, and loading the Outbox — using the given tx. Committing/
+// rolling back is the caller's responsibility (SaveAccount or the ambient
+// transaction owner).
 func (r *AccountRepository) saveAccount(ctx context.Context, tx *sql.Tx, a *account.Account) error {
 	var lastInterestPaidAt any
 	if !a.LastInterestPaidAt.IsZero() {
@@ -160,8 +168,9 @@ func (r *AccountRepository) saveAccount(ctx context.Context, tx *sql.Tx, a *acco
 		}
 	}
 
-	// Outbox row는 계좌/거래 row와 같은 트랜잭션 안에서 적재된다 — 커밋이 원자적이므로
-	// "계좌는 바뀌었는데 이벤트는 유실됨"(dual-write) 실패 모드가 존재하지 않는다.
+	// The Outbox row is loaded within the same transaction as the account/
+	// transaction rows — since the commit is atomic, the "account changed
+	// but the event was lost" (dual-write) failure mode cannot occur.
 	if err := r.outboxWriter.SaveAll(ctx, tx, a.DomainEvents()); err != nil {
 		return err
 	}
@@ -169,8 +178,9 @@ func (r *AccountRepository) saveAccount(ctx context.Context, tx *sql.Tx, a *acco
 	return nil
 }
 
-// HasTransactionWithReference는 account.Query가 요구하는 멱등성 체크를 구현한다.
-// (referenceID, type) 조합으로 확인해야 하는 이유는 account.Query 인터페이스의 주석 참고.
+// HasTransactionWithReference implements the idempotency check required by
+// account.Query. See the account.Query interface's comment for why it must
+// be checked as the (referenceID, type) combination.
 func (r *AccountRepository) HasTransactionWithReference(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error) {
 	var count int
 	if err := r.db.QueryRowContext(ctx,

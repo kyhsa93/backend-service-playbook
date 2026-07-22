@@ -12,8 +12,10 @@ type GetCardQuery struct {
 	RequesterID string
 }
 
-// GetCardHandler는 읽기 전용 card.Query에만 의존한다(쓰기 인터페이스를 참조하지 않는다 —
-// cqrs-pattern.md). 요청자(RequesterID)를 소유자로 매칭해 다른 사람의 카드는 조회되지 않는다.
+// GetCardHandler depends only on the read-only card.Query (it does not
+// reference the write interface — cqrs-pattern.md). It matches the
+// requester (RequesterID) as the owner, so another person's card cannot be
+// looked up.
 type GetCardHandler struct {
 	cards card.Query
 }

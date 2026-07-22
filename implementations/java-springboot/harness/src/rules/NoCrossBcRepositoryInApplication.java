@@ -13,19 +13,24 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [18] BC 간 Repository/Query 직접 참조 금지 — 한 도메인의 application/ 파일이 다른 도메인의
- * domain/*Repository 인터페이스나 application/query/*Query 인터페이스를 직접 import하면 안 된다.
- * 크로스 도메인 읽기는 반드시 호출하는 쪽이 소유한 Adapter(application/adapter/ 인터페이스 +
- * infrastructure/의 구현체, ACL)를 거쳐야 한다(cross-domain-communication.md, 이 저장소의 실제
- * 구현은 cross-domain.md의 {@code AccountAdapter}/{@code PaymentCardAdapterImpl} 등 참고).
+ * [18] Direct Repository/Query references across BCs are forbidden — an application/ file
+ * in one domain must not directly import another domain's domain/*Repository interface or
+ * application/query/*Query interface. Cross-domain reads must go through an Adapter owned
+ * by the calling side (an application/adapter/ interface + an infrastructure/
+ * implementation, ACL) (cross-domain-communication.md; for this repository's actual
+ * implementation see {@code AccountAdapter}/{@code PaymentCardAdapterImpl} etc. in
+ * cross-domain.md).
  *
- * <p>같은 도메인 안에서 자신의 Repository/Query를 참조하는 것은 당연히 허용된다 — 파일 경로의 첫
- * 세그먼트(예: {@code payment/application/command/CreatePaymentService.java}의 "payment")를
- * "소속 도메인"으로 보고, import된 Repository/Query가 속한 도메인과 다를 때만 위반으로 잡는다.
+ * <p>Referencing your own domain's Repository/Query within the same domain is of course
+ * allowed — the first path segment (e.g. "payment" in {@code
+ * payment/application/command/CreatePaymentService.java}) is treated as the "owning
+ * domain," and a violation is flagged only when the imported Repository/Query belongs to
+ * a different domain.
  *
- * <p>Adapter 구현체(예: {@code payment/infrastructure/PaymentAccountAdapterImpl.java})는
- * infrastructure/에 있으므로 이 규칙의 검사 대상이 아니다 — ACL 패턴이 의도적으로 그 위치에서
- * 다른 도메인의 Query 인터페이스를 주입받는 것을 허용한다(cross-domain.md).
+ * <p>An Adapter implementation (e.g. {@code
+ * payment/infrastructure/PaymentAccountAdapterImpl.java}) lives under infrastructure/, so
+ * it is not checked by this rule — the ACL pattern deliberately allows injecting another
+ * domain's Query interface at that location (cross-domain.md).
  */
 public final class NoCrossBcRepositoryInApplication {
     private NoCrossBcRepositoryInApplication() {
@@ -45,7 +50,7 @@ public final class NoCrossBcRepositoryInApplication {
             if (!pathContains(f, "/application/")) continue;
             String rel = relTo(f, root);
             String ownDomain = ownDomain(f);
-            if (ownDomain == null) continue; // 도메인 경로 규칙(<domain>/application/...)을 따르지 않는 파일
+            if (ownDomain == null) continue; // a file that doesn't follow the domain-path convention (<domain>/application/...)
 
             found = true;
             String code = readText(f);
@@ -53,22 +58,23 @@ public final class NoCrossBcRepositoryInApplication {
 
             if (violation != null) {
                 result.add(Finding.fail(rel,
-                    "application/ 파일이 다른 도메인의 Repository/Query를 직접 import — '" + violation
-                        + "' (소속 도메인: " + ownDomain + "). 크로스 도메인 읽기는 Adapter(ACL)를 거쳐야 함(cross-domain-communication.md)"));
+                    "An application/ file directly imports another domain's Repository/Query — '" + violation
+                        + "' (owning domain: " + ownDomain + "). Cross-domain reads must go through an Adapter (ACL) (cross-domain-communication.md)"));
             } else {
-                result.add(Finding.pass(rel + " (도메인 간 Repository/Query 직접 참조 없음 확인)"));
+                result.add(Finding.pass(rel + " (confirmed no direct cross-domain Repository/Query reference)"));
             }
         }
 
-        if (!found) result.add(Finding.skip("<domain>/application/ Java 파일 없음"));
+        if (!found) result.add(Finding.skip("No Java files under <domain>/application/"));
         return result;
     }
 
     /**
-     * "/application/" 바로 앞의 경로 세그먼트를 소속 도메인으로 본다 — 실제 저장소 레이아웃
-     * ({@code .../com/example/accountservice/payment/application/command/X.java})과 fixture
-     * 레이아웃({@code payment/application/command/X.java}) 둘 다에서 "payment"를 정확히 뽑아낸다
-     * (rel 경로의 첫 세그먼트만 보면 실제 레이아웃에서 "src"가 나와 틀린다).
+     * Treats the path segment immediately before "/application/" as the owning domain —
+     * this correctly extracts "payment" from both the real repository layout ({@code
+     * .../com/example/accountservice/payment/application/command/X.java}) and the fixture
+     * layout ({@code payment/application/command/X.java}) (just looking at the rel path's
+     * first segment would incorrectly yield "src" for the real layout).
      */
     private static String ownDomain(File file) {
         String path = file.getPath().replace(File.separatorChar, '/');

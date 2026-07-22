@@ -1,16 +1,17 @@
 package com.example.accountservice.account.domain
 
 /**
- * Account Aggregate가 발행하는 Domain Event 공통 계층.
+ * The common layer for Domain Events published by the Account Aggregate.
  *
- * `data class`로만 흩어져 있던 6개 이벤트 타입을 이 `sealed interface`로 묶으면, 이벤트를 다루는
- * `when` 분기(추가될 향후 코드 포함)에서 컴파일러가 완전성(exhaustiveness)을 검사해준다 — 새 이벤트
- * 타입이 추가되는데 처리를 빠뜨리면 컴파일 타임에 잡힌다. `Account.pullDomainEvents()`가 반환하는
- * 컬렉션 타입도 `List<Any>` 대신 `List<DomainEvent>`를 쓴다(domain-events.md 1단계 참고).
+ * This `sealed interface` groups all 6 event types together, so the compiler checks exhaustiveness in
+ * any `when` branch that handles events (including future code yet to be added) — if a new event type is
+ * added and its handling is missed, it is caught at compile time. The collection type returned by
+ * `Account.pullDomainEvents()` also uses `List<DomainEvent>` instead of `List<Any>` (see
+ * domain-events.md step 1).
  *
- * `accountId`/`email`은 모든 이벤트가 공통으로 갖는 필드라 여기서 계약으로 명시한다 — 이벤트별로
- * 달라지는 타임스탬프 필드명(`createdAt`/`suspendedAt`/`reactivatedAt`/`closedAt`)은 공통화하지
- * 않는다.
+ * `accountId`/`email` are fields common to every event, so they are declared as a contract here — the
+ * timestamp field names that differ per event (`createdAt`/`suspendedAt`/`reactivatedAt`/`closedAt`) are
+ * not unified.
  */
 sealed interface DomainEvent {
     val accountId: String

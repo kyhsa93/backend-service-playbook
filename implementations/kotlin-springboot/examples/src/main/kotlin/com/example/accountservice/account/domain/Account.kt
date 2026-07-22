@@ -7,8 +7,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
- * Account Aggregate Root — 어떤 프레임워크/ORM에도 의존하지 않는 순수 Kotlin 객체.
- * 영속성 매핑은 infrastructure/persistence/AccountJpaEntity + AccountMapper가 전담한다.
+ * The Account Aggregate Root — a pure Kotlin object with no dependency on any framework/ORM.
+ * Persistence mapping is handled exclusively by infrastructure/persistence/AccountJpaEntity + AccountMapper.
  */
 class Account private constructor() {
     var accountId: String = ""
@@ -35,9 +35,10 @@ class Account private constructor() {
     var deletedAt: LocalDateTime? = null
         private set
 
-    // 정기 이자 지급(PayInterestService)의 Level 1(본질적 멱등) 키다 — "오늘 이미 이자를 받았는가"를
-    // Account 스스로 알고 있으므로, 같은 날 Task가 at-least-once로 두 번 실행돼도 두 번째 호출은
-    // 아무 부작용 없이 스킵된다(별도 Ledger 테이블 불필요, domain-events.md 멱등성 1단계).
+    // The Level 1 (essential idempotency) key for the recurring interest payment (PayInterestService) —
+    // the Account itself knows "whether it already received interest today," so even if the Task runs
+    // twice in the same day under at-least-once execution, the second call is skipped with no side
+    // effects (no separate Ledger table needed, domain-events.md idempotency step 1).
     var lastInterestPaidAt: LocalDate? = null
         private set
 
@@ -46,10 +47,12 @@ class Account private constructor() {
     private val pendingTransactions: MutableList<Transaction> = mutableListOf()
 
     companion object {
-        // 일 이자율 0.01% — 정기 이자 지급(payInterest) 전용 상수. Application 레이어(Scheduler/
-        // Command Service)가 값을 주입하지 않고 Aggregate가 스스로 갖는다 — "이자를 얼마나 주는가"는
-        // Account의 불변식이 아니라 정책값이지만, 이 저장소 규모에서는 별도 정책 테이블/설정으로
-        // 분리할 실익이 없어 도메인 상수로 둔다(YAGNI).
+        // A daily interest rate of 0.01% — a constant used only for the recurring interest payment
+        // (payInterest). The Aggregate holds this value itself rather than having it injected by the
+        // Application layer (Scheduler/Command Service) — "how much interest to pay" is a policy value
+        // rather than an Account invariant, but at this repository's scale there is no real benefit to
+        // splitting it out into a separate policy table/config, so it is kept as a domain constant
+        // (YAGNI).
         private val DAILY_INTEREST_RATE = BigDecimal("0.0001")
 
         fun create(
@@ -69,8 +72,9 @@ class Account private constructor() {
             }
 
         /**
-         * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Account를 복원할 때 사용한다.
-         * create()와 달리 도메인 이벤트를 생성하지 않는다 — 이미 과거에 커밋된 상태를 그대로 재구성하는 것뿐이다.
+         * Used by a Repository implementation to reconstitute an Account from persisted data (a JPA
+         * entity, etc.). Unlike create(), it does not generate domain events — it merely reconstitutes
+         * a state that was already committed in the past.
          */
         fun reconstitute(
             accountId: String,
@@ -128,16 +132,19 @@ class Account private constructor() {
     }
 
     /**
-     * 정기 이자 지급(system-initiated, PayInterestTaskController → PayInterestService가 호출) —
-     * 사용자 Command가 아니므로 deposit()과 달리 예외를 던지지 않고 "적용할 게 없으면" `null`을
-     * 반환한다. PayInterestService는 수천 개 계좌를 한 Task 안에서 순회하므로, 계좌 하나가 이미
-     * 처리됐거나(레이스로 인한 상태 변경 등) 이자가 0원이라는 이유로 배치 전체가 예외로 중단되면 안
-     * 된다 — deposit()/withdraw()의 "잘못된 커맨드는 즉시 실패"와는 다른 요구사항이다.
+     * Recurring interest payment (system-initiated, called by PayInterestTaskController →
+     * PayInterestService) — since it is not a user Command, unlike deposit() it does not throw an
+     * exception and instead returns `null` when "there is nothing to apply." PayInterestService iterates
+     * over thousands of accounts within a single Task, so the whole batch must not abort with an
+     * exception just because one account was already processed (e.g. a state change from a race) or its
+     * interest amount is zero — this is a different requirement from deposit()/withdraw()'s "an invalid
+     * command fails immediately."
      *
-     * 멱등성은 [lastInterestPaidAt]이 [payDate]와 같은지 확인하는 것만으로 충분하다(Level 1, 본질적
-     * 멱등) — 같은 날짜로 두 번 호출돼도(at-least-once 재전달) 두 번째 호출은 아무것도 바꾸지 않고
-     * `null`을 반환한다. 호출자(PayInterestService)도 `AccountFindQuery.excludeInterestPaidDate`로
-     * 이미 지급된 계좌를 조회 단계에서 걸러내지만, 이 메서드 자체도 방어적으로 다시 확인한다.
+     * Idempotency only requires checking whether [lastInterestPaidAt] equals [payDate] (Level 1,
+     * essential idempotency) — even if this is called twice for the same date (at-least-once
+     * redelivery), the second call changes nothing and returns `null`. The caller (PayInterestService)
+     * also filters out already-paid accounts at the query stage via
+     * `AccountFindQuery.excludeInterestPaidDate`, but this method itself re-checks defensively as well.
      */
     fun payInterest(payDate: LocalDate): Transaction? {
         if (status != AccountStatus.ACTIVE) return null

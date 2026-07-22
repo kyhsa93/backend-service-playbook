@@ -8,23 +8,27 @@ import (
 	"strings"
 )
 
-// checkErrorResponseSchema — error-response-schema: docs/architecture/error-handling.md는
-// 모든 에러 응답이 정확히 4개 필드(statusCode/code/message/error)만 갖도록 못박는다
+// checkErrorResponseSchema — error-response-schema: docs/architecture/error-handling.md
+// mandates that every error response has exactly 4 fields (statusCode/code/message/error)
 // ({"statusCode":404,"code":"ORDER_NOT_FOUND","message":"...","error":"Not Found"}).
 //
-// internal/interface/http/**의 struct 선언 중 `json:"statusCode"` 태그를 가진 것을
-// "에러 응답 struct" 후보로 삼는다 — 다른 DTO(CreateAccountRequest 등)까지 모두
-// "정확히 4개 필드여야 한다"고 검사하면 전혀 무관한 정상 DTO가 대량으로 오탐하므로,
-// statusCode 필드를 가진 struct만 표적으로 좁힌다. 후보로 잡힌 struct는 json 태그
-// 집합이 정확히 {statusCode, code, message, error}와 일치해야 한다 — 더 많아도(예:
-// timestamp 필드 추가), 더 적어도(예: error 필드 누락), 이름이 달라도(예: errorCode)
-// 위반이다.
+// Among struct declarations under internal/interface/http/**, any with a
+// `json:"statusCode"` tag is treated as a candidate "error response struct" —
+// checking every DTO (CreateAccountRequest, etc.) for "must have exactly 4
+// fields" would produce a flood of false positives on completely unrelated,
+// legitimate DTOs, so the target is narrowed to only structs with a statusCode
+// field. A candidate struct's set of json tags must match exactly
+// {statusCode, code, message, error} — having more (e.g. an added timestamp
+// field), fewer (e.g. a missing error field), or differently named fields
+// (e.g. errorCode) are all violations.
 //
-// 이 저장소는 middleware 패키지가 interface/http 패키지를 import하면 순환 참조가
-// 되는 제약 때문에(순환 방지, module-pattern.md) rate_limit_middleware.go가 스키마만
-// 동일하게 복제한 rateLimitErrorResponse를 별도로 갖는다 — 이 규칙은 struct 선언
-// 위치·이름을 가리지 않고 internal/interface/**의 모든 구조체를 각각 독립적으로
-// 검사하므로 이런 "같은 스키마의 복제 struct" 패턴도 자연스럽게 커버한다.
+// Because the middleware package importing the interface/http package would
+// create a circular dependency in this repository (avoiding cycles,
+// module-pattern.md), rate_limit_middleware.go keeps its own
+// rateLimitErrorResponse that duplicates the same schema separately — this
+// rule inspects every struct under internal/interface/** independently
+// regardless of the struct's location or name, so this "duplicated struct with
+// the same schema" pattern is naturally covered too.
 var (
 	structDecl  = regexp.MustCompile(`(?ms)^type\s+(\w+)\s+struct\s*\{`)
 	jsonTagLine = regexp.MustCompile(`json:"([^"]*)"`)
@@ -56,7 +60,7 @@ func checkErrorResponseSchema(root string) RuleResult {
 		matches := structDecl.FindAllStringSubmatchIndex(src, -1)
 		for _, m := range matches {
 			name := src[m[2]:m[3]]
-			bodyStart := m[1] - 1 // '{' 위치
+			bodyStart := m[1] - 1 // position of '{'
 			body := extractBalancedBlock(src, bodyStart, '{', '}')
 
 			tagMatches := jsonTagLine.FindAllStringSubmatch(body, -1)
@@ -73,7 +77,7 @@ func checkErrorResponseSchema(root string) RuleResult {
 				fields = append(fields, key)
 			}
 			if !hasStatusCode {
-				continue // 에러 응답 struct 후보가 아님(statusCode 필드 없음)
+				continue // not a candidate error response struct (no statusCode field)
 			}
 			found = true
 
@@ -86,15 +90,16 @@ func checkErrorResponseSchema(root string) RuleResult {
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("json:\"statusCode\" 태그를 가진 에러 응답 struct 없음"))
+		result.Findings = append(result.Findings, skipFinding("no error-response struct with a json:\"statusCode\" tag"))
 	}
 	return result
 }
 
-// errorResponseSchemaViolation은 fields가 wantErrorResponseFields와 정확히 일치하는지
-// 검사한다(순서 무관, 개수·이름 모두 일치해야 함). 위반이 아니면 빈 문자열을 반환한다.
+// errorResponseSchemaViolation checks whether fields matches wantErrorResponseFields
+// exactly (order does not matter, but both count and names must match). Returns
+// an empty string if there is no violation.
 func errorResponseSchemaViolation(fields []string) string {
 	want := append([]string(nil), wantErrorResponseFields...)
 	sort.Strings(want)
@@ -116,17 +121,17 @@ func errorResponseSchemaViolation(fields []string) string {
 
 	missing := diffFields(want, got)
 	extra := diffFields(got, want)
-	reason := "json 필드 구성이 표준 에러 응답 스키마(statusCode/code/message/error)와 다름"
+	reason := "the json field composition differs from the standard error-response schema (statusCode/code/message/error)"
 	if len(missing) > 0 {
-		reason += " — 누락: " + strings.Join(missing, ", ")
+		reason += " — missing: " + strings.Join(missing, ", ")
 	}
 	if len(extra) > 0 {
-		reason += " — 초과/이름 다름: " + strings.Join(extra, ", ")
+		reason += " — extra/misnamed: " + strings.Join(extra, ", ")
 	}
 	return reason + "(docs/architecture/error-handling.md)"
 }
 
-// diffFields는 a에는 있지만 b에는 없는 원소를 반환한다(중복 무시).
+// diffFields returns the elements present in a but not in b (duplicates ignored).
 func diffFields(a, b []string) []string {
 	inB := make(map[string]bool, len(b))
 	for _, x := range b {

@@ -20,11 +20,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 import com.example.accountservice.payment.domain.LinkedAccountNotFoundException as PaymentLinkedAccountNotFoundException
 
 /**
- * 애플리케이션 전역 예외 → HTTP 응답 변환.
+ * Converts application-wide exceptions into HTTP responses.
  *
- * Controller마다 `@ExceptionHandler`를 흩어두지 않고 이 클래스 하나로 모은다 — 새 Controller를
- * 추가해도 이 핸들러를 그대로 재사용한다. `sealed class AccountException` 계층 덕분에
- * `AccountException`(부모) 하나만 잡아도 모든 하위 타입이 자동으로 커버된다.
+ * Rather than scattering `@ExceptionHandler`s across every Controller, they are all gathered in this
+ * one class — adding a new Controller just reuses this handler as-is. Thanks to the
+ * `sealed class AccountException` hierarchy, catching just `AccountException` (the parent) alone
+ * automatically covers every subtype.
  */
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -32,81 +33,81 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(AccountNotFoundException::class)
     fun handleNotFound(e: AccountNotFoundException): ResponseEntity<ErrorResponse> {
-        logger.warn("계좌를 찾을 수 없음: {}", e.message)
+        logger.warn("Account not found: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(AccountException::class)
     fun handleAccountException(e: AccountException): ResponseEntity<ErrorResponse> {
-        logger.warn("계좌 요청 실패: {}", e.message)
+        logger.warn("Account request failed: {}", e.message)
         return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(CardNotFoundException::class)
     fun handleCardNotFound(e: CardNotFoundException): ResponseEntity<ErrorResponse> {
-        logger.warn("카드를 찾을 수 없음: {}", e.message)
+        logger.warn("Card not found: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(LinkedAccountNotFoundException::class)
     fun handleLinkedAccountNotFound(e: LinkedAccountNotFoundException): ResponseEntity<ErrorResponse> {
-        logger.warn("연결할 계좌를 찾을 수 없음: {}", e.message)
+        logger.warn("Could not find the account to link: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(CardException::class)
     fun handleCardException(e: CardException): ResponseEntity<ErrorResponse> {
-        logger.warn("카드 요청 실패: {}", e.message)
+        logger.warn("Card request failed: {}", e.message)
         return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(PaymentNotFoundException::class)
     fun handlePaymentNotFound(e: PaymentNotFoundException): ResponseEntity<ErrorResponse> {
-        logger.warn("결제를 찾을 수 없음: {}", e.message)
+        logger.warn("Payment not found: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(LinkedCardNotFoundException::class)
     fun handleLinkedCardNotFound(e: LinkedCardNotFoundException): ResponseEntity<ErrorResponse> {
-        logger.warn("연결할 카드를 찾을 수 없음: {}", e.message)
+        logger.warn("Could not find the card to link: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(PaymentLinkedAccountNotFoundException::class)
     fun handlePaymentLinkedAccountNotFound(e: PaymentLinkedAccountNotFoundException): ResponseEntity<ErrorResponse> {
-        logger.warn("연결된 계좌를 찾을 수 없음: {}", e.message)
+        logger.warn("Could not find the linked account: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(PaymentException::class)
     fun handlePaymentException(e: PaymentException): ResponseEntity<ErrorResponse> {
-        logger.warn("결제 요청 실패: {}", e.message)
+        logger.warn("Payment request failed: {}", e.message)
         return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(InvalidCredentialsException::class)
     fun handleInvalidCredentials(e: InvalidCredentialsException): ResponseEntity<ErrorResponse> {
-        logger.warn("인증 실패: {}", e.message)
+        logger.warn("Authentication failed: {}", e.message)
         return errorResponse(HttpStatus.UNAUTHORIZED, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(AuthException::class)
     fun handleAuthException(e: AuthException): ResponseEntity<ErrorResponse> {
-        logger.warn("인증 요청 실패: {}", e.message)
+        logger.warn("Auth request failed: {}", e.message)
         return errorResponse(HttpStatus.BAD_REQUEST, e.code.name, e.message ?: "")
     }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidation(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
         val message = e.bindingResult.fieldErrors.joinToString { "${it.field}: ${it.defaultMessage}" }
-        logger.warn("요청 검증 실패: {}", message)
+        logger.warn("Request validation failed: {}", message)
         return errorResponse(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message)
     }
 
     @ExceptionHandler(Exception::class)
     fun handleUnknown(e: Exception): ResponseEntity<ErrorResponse> {
-        logger.error("예상치 못한 오류", e)
-        return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "예상치 못한 오류가 발생했습니다.")
+        logger.error("Unexpected error", e)
+        return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "An unexpected error occurred.")
     }
 
     private fun errorResponse(

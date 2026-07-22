@@ -12,8 +12,9 @@ import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.SesClientBuilder;
 
 /**
- * AWS SES 클라이언트 빈 설정. IMDS 등 기본 credential provider chain은 sandbox 환경에서 실패까지 지연이 크므로 항상 정적
- * credential(StaticCredentialsProvider)을 명시적으로 사용한다.
+ * AWS SES client bean configuration. The default credential provider chain (IMDS, etc.) has a large
+ * delay before failing in a sandbox environment, so static credentials (StaticCredentialsProvider)
+ * are always used explicitly.
  */
 @Configuration
 @RequiredArgsConstructor

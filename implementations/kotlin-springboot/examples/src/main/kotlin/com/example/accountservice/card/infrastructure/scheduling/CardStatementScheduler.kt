@@ -8,14 +8,16 @@ import org.springframework.stereotype.Component
 import java.time.YearMonth
 
 /**
- * 매월 카드 사용내역 명세서 발송 Scheduler — Infrastructure 레이어
- * ([com.example.accountservice.account.infrastructure.scheduling.InterestPaymentScheduler]와
- * 동일한 역할·구조). Task를 [TaskQueue]에 적재만 하고, 실제 집계/발송은 `card.send-statement`
- * Task를 수신하는 [com.example.accountservice.card.interfaces.task.SendCardStatementTaskController] →
- * `SendMonthlyCardStatementsService`가 담당한다.
+ * The Scheduler for monthly card-usage-statement delivery — Infrastructure layer (the same
+ * role/structure as
+ * [com.example.accountservice.account.infrastructure.scheduling.InterestPaymentScheduler]). It only
+ * enqueues the Task onto the [TaskQueue]; the actual aggregation/delivery is handled by
+ * [com.example.accountservice.card.interfaces.task.SendCardStatementTaskController] →
+ * `SendMonthlyCardStatementsService`, which receive the `card.send-statement` Task.
  *
- * [yearMonth](enqueue 시점의 현재 월)는 중복 발송 방지 키로만 쓰인다 — 실제 집계 기간(최근 30일)은
- * `SendMonthlyCardStatementsService`가 Task 처리 시점 기준으로 별도 계산한다(그 클래스 KDoc 참고).
+ * [yearMonth] (the current month at enqueue time) is used only as the duplicate-send-prevention key —
+ * the actual aggregation period (the last 30 days) is calculated separately by
+ * `SendMonthlyCardStatementsService` based on when the Task is processed (see that class's KDoc).
  */
 @Component
 class CardStatementScheduler(
@@ -24,7 +26,7 @@ class CardStatementScheduler(
 ) {
     private val logger = LoggerFactory.getLogger(CardStatementScheduler::class.java)
 
-    @Scheduled(cron = "0 0 4 1 * *") // 매월 1일 04:00
+    @Scheduled(cron = "0 0 4 1 * *") // 04:00 on the 1st of every month
     fun enqueueMonthlyCardStatement() {
         val yearMonth = YearMonth.now().toString()
         val dedupId = "$TASK_TYPE-$yearMonth"
@@ -40,7 +42,7 @@ class CardStatementScheduler(
                 .atError()
                 .addKeyValue("year_month", yearMonth)
                 .setCause(it)
-                .log("월간 카드 명세서 Task 적재 실패")
+                .log("Failed to enqueue the monthly card statement Task")
         }
     }
 

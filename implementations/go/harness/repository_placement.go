@@ -7,17 +7,21 @@ import (
 	"strings"
 )
 
-// 실제 Go interface 타입 선언(예: `type AccountRepository interface {`)만 매칭.
-// "type"·"interface"·"Repository" 단어가 파일 어딘가에 각각 등장하는 것만으로는
-// (예: struct 정의, 주석, 문자열, import 경로)는 매칭하지 않는다.
+// Matches only an actual Go interface type declaration
+// (e.g. `type AccountRepository interface {`). It does not match merely
+// because the words "type"/"interface"/"Repository" each appear somewhere in
+// the file (e.g. in a struct definition, a comment, a string, or an import
+// path).
 var repositoryInterfaceDecl = regexp.MustCompile(`(?m)^\s*type\s+\w*Repository\w*\s+interface\b`)
 
-// 실제 컴파일 타임 인터페이스 검증 선언(예: `var _ account.Repository = (*AccountRepository)(nil)`)만
-// 매칭. "var _"·"Repository"·"nil" 세 문자열이 파일 어딘가에 각각 등장하는 것만으로는
-// (예: 무관한 변수 선언, 주석, 다른 종류의 검증문) 매칭하지 않는다.
+// Matches only an actual compile-time interface verification declaration
+// (e.g. `var _ account.Repository = (*AccountRepository)(nil)`). It does not
+// match merely because the three strings "var _"/"Repository"/"nil" each
+// appear somewhere in the file (e.g. in an unrelated variable declaration, a
+// comment, or a different kind of assertion).
 var repositoryImplAssertion = regexp.MustCompile(`(?m)^\s*var\s+_\s+\w+\.\w*Repository\w*\s*=\s*\(\*\w+\)\(nil\)`)
 
-// checkRepositoryPlacement — [3] Repository interface → domain/, 구현체 → infrastructure/
+// checkRepositoryPlacement — [3] Repository interface -> domain/, implementation -> infrastructure/
 func checkRepositoryPlacement(root string) RuleResult {
 	result := RuleResult{Section: "repository-placement"}
 	found := false
@@ -40,24 +44,24 @@ func checkRepositoryPlacement(root string) RuleResult {
 			if strings.Contains(filepath.ToSlash(path), "/domain/") {
 				result.Findings = append(result.Findings, passFinding(rel+" (Repository interface)"))
 			} else {
-				result.Findings = append(result.Findings, failFinding(rel, "Repository interface는 domain/ 패키지 안에 있어야 함"))
+				result.Findings = append(result.Findings, failFinding(rel, "a Repository interface must be inside the domain/ package"))
 			}
 		}
 
 		if repositoryImplAssertion.MatchString(src) {
 			found = true
 			if strings.Contains(filepath.ToSlash(path), "/infrastructure/") {
-				result.Findings = append(result.Findings, passFinding(rel+" (Repository impl 검증)"))
+				result.Findings = append(result.Findings, passFinding(rel+" (Repository impl verified)"))
 			} else {
-				result.Findings = append(result.Findings, failFinding(rel, "Repository 구현체는 infrastructure/ 패키지 안에 있어야 함"))
+				result.Findings = append(result.Findings, failFinding(rel, "a Repository implementation must be inside the infrastructure/ package"))
 			}
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("Repository 정의 없음"))
+		result.Findings = append(result.Findings, skipFinding("no Repository definitions"))
 	}
 	return result
 }

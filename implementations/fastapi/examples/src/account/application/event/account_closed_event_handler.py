@@ -9,11 +9,13 @@ from ..service.notification_service import NotificationService
 
 
 class AccountClosedEventHandler:
-    """내부 Domain Event(AccountClosed)를 수신해 후속 처리를 수행하는 Application EventHandler.
+    """An Application EventHandler that receives the internal Domain Event (AccountClosed)
+    and performs follow-up processing.
 
-    application/event/의 EventHandler는 OutboxWriter를 직접 사용할 수 있는 유일한 예외로,
-    여기서 외부 BC(Card 등)용 Integration Event(account.closed.v1)로 변환해 같은 세션의
-    Outbox에 적재한다(변환 지점은 항상 EventHandler다).
+    An EventHandler in application/event/ is the sole exception allowed to use OutboxWriter
+    directly — here it converts the event into an Integration Event (account.closed.v1) for
+    external BCs (Card, etc.) and loads it into the Outbox of the same session (the
+    conversion point is always the EventHandler).
     """
 
     def __init__(self, notification_service: NotificationService, outbox_writer: OutboxWriter) -> None:

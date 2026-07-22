@@ -7,9 +7,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * 내부 Domain Event(PaymentCompletedEvent)를 수신해 외부 BC용 Integration Event
- * (payment.completed.v1)로 변환해 Outbox에 적재하는 Application EventHandler.
- * Account BC가 이 Integration Event를 구독해 실제 차감(withdraw)을 수행한다.
+ * The Application EventHandler that receives the internal Domain Event (PaymentCompletedEvent),
+ * converts it into the Integration Event for external BCs (payment.completed.v1), and loads it into
+ * the Outbox. Account BC subscribes to this Integration Event and performs the actual deduction
+ * (withdraw).
  */
 @Component
 class PaymentCompletedEventHandler(
@@ -22,7 +23,7 @@ class PaymentCompletedEventHandler(
             .atInfo()
             .addKeyValue("payment_id", event.paymentId)
             .addKeyValue("account_id", event.accountId)
-            .log("결제 완료됨")
+            .log("Payment completed")
 
         outboxWriter.saveAll(
             listOf(

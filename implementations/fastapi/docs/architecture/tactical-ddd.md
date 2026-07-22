@@ -1,23 +1,23 @@
-# 전술적 설계 — Aggregate, Entity, Value Object, Domain Event
+# Tactical Design — Aggregate, Entity, Value Object, Domain Event
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md)
+> Framework-agnostic principles: [../../../../docs/architecture/tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md)
 
-이 저장소는 Python 객체를 세 가지 다른 방식으로 모델링한다 — 각각 Aggregate Root, Entity, Value Object의 성격 차이를 그대로 반영한다.
+This repository models Python objects in three different ways — each directly reflecting the difference in nature between an Aggregate Root, an Entity, and a Value Object.
 
-| 개념 | 이 저장소의 구현 방식 | 이유 |
+| Concept | How this repository implements it | Why |
 |------|----------------------|------|
-| Aggregate Root | 일반 클래스 (`__init__` + 메서드) | 내부 상태가 시간에 따라 변하고, 변경은 메서드를 통해서만 허용되어야 한다 — `@dataclass`의 자동 생성 `__init__`은 필드를 자유롭게 덮어쓸 수 있어 불변식 보호에 적합하지 않다 |
-| Entity (하위 개체) | `@dataclass(frozen=True)` | 생성 이후 값이 바뀌지 않는 하위 레코드 — 식별자(`transaction_id`)로 동등성이 결정된다 |
-| Value Object | `@dataclass(frozen=True)` | 불변, 식별자 없음, 속성 조합으로 동등성 결정 |
-| Domain Event | `@dataclass(frozen=True)` | 과거에 일어난 사실의 불변 기록 |
+| Aggregate Root | A plain class (`__init__` + methods) | Its internal state changes over time, and changes must only be allowed through methods — a `@dataclass`'s auto-generated `__init__` lets fields be freely overwritten, which doesn't suit protecting invariants |
+| Entity (child object) | `@dataclass(frozen=True)` | A child record whose value never changes after creation — its equality is determined by its identifier (`transaction_id`) |
+| Value Object | `@dataclass(frozen=True)` | Immutable, no identifier, equality determined by the combination of attributes |
+| Domain Event | `@dataclass(frozen=True)` | An immutable record of a fact that happened in the past |
 
 ---
 
 ## Aggregate Root — `Account`
 
-`src/account/domain/account.py`의 `Account`는 비즈니스 규칙과 불변식을 캡슐화하는 일반 클래스다. 외부에서 `account.balance = ...`처럼 속성을 직접 바꿀 수 없게 강제하지는 않지만(Python은 진짜 private이 없다), **모든 상태 변경은 도메인 메서드(`deposit`, `withdraw`, `suspend`, `reactivate`, `close`)를 통해서만 이루어지도록 설계**되어 있고, 호출부(Application Handler)는 이 메서드만 사용한다.
+`Account` in `src/account/domain/account.py` is a plain class that encapsulates business rules and invariants. It doesn't enforce that an attribute can't be changed directly from the outside like `account.balance = ...` (Python has no true private), but **every state change is designed to happen only through a domain method** (`deposit`, `withdraw`, `suspend`, `reactivate`, `close`), and the caller (an Application Handler) only ever uses these methods.
 
-`@property`+`@x.setter` 쌍으로 외부에서 직접 대입 가능한 쓰기용 프로퍼티를 두지 않는 것도 이 컨벤션의 일부다 — harness의 `aggregate-no-public-setters` 규칙이 `domain/` 클래스에 public `@x.setter`가 있는지 AST로 검사한다(Python에 진짜 접근 제어가 없으므로, 이 규칙은 명확히 식별 가능한 `@x.setter` 데코레이터만 좁게 잡는다).
+Not having a writable property that can be directly assigned from outside via a `@property`+`@x.setter` pair is also part of this convention — the harness's `aggregate-no-public-setters` rule checks via AST whether a `domain/` class has a public `@x.setter` (since Python has no true access control, this rule narrowly targets only the clearly identifiable `@x.setter` decorator).
 
 ```python
 # src/account/domain/account.py
@@ -60,16 +60,16 @@ class Account:
         return transaction
 ```
 
-**핵심 원칙이 지켜지는 방식:**
-- **불변식은 도메인 메서드 진입 시 즉시 검증**: 정지된 계좌 출금(`WithdrawRequiresActiveAccountError`), 잔액 부족(`InsufficientBalanceError`), 음수/0 금액(`InvalidAmountError`) 모두 상태 변경 전에 검증하고 실패 시 즉시 예외를 던진다.
-- **팩토리 classmethod로 생성**: `Account.create()`가 유일한 생성 경로이며, 생성 시점에 `AccountCreated` 이벤트를 함께 기록한다. `Account.__init__`은 (Repository가 DB row를 복원할 때 쓰는) 저수준 생성자다.
-- **다른 Aggregate는 ID로만 참조한다**: 같은 BC 안의 다른 Aggregate(`src/payment/domain/payment.py`의 `Payment`와 `refund.py`의 `Refund`)든, 다른 BC의 Aggregate(`card`가 `payment`의 Aggregate를 참조하는 경우)든 서로 `payment_id: str` 같은 ID로만 참조하고 객체 참조는 하지 않는다 — 루트 [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md) "다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)" 원칙. 같은 BC 내부는 harness `no-cross-aggregate-reference` 규칙(`src/payment/domain/{payment.py,refund.py}` 대상, [layer-architecture.md](layer-architecture.md) "Domain Service" 절 참고)이, BC 사이는 `no-cross-bc-domain-import` 규칙(`../../harness/rules/no_cross_bc_domain_import.py`, `src/<bc>/domain/*.py`가 다른 BC의 `domain/`을 직접 import하면 실패)이 각각 검사한다.
+**How the core principles are upheld:**
+- **Invariants are validated immediately upon entering a domain method**: withdrawing from a suspended account (`WithdrawRequiresActiveAccountError`), insufficient balance (`InsufficientBalanceError`), and a negative/zero amount (`InvalidAmountError`) are all validated before the state changes, throwing an exception immediately on failure.
+- **Created via a factory classmethod**: `Account.create()` is the sole creation path, and it records an `AccountCreated` event at the moment of creation. `Account.__init__` is the low-level constructor (used by the Repository when restoring a DB row).
+- **Other Aggregates are referenced only by ID**: whether it's another Aggregate in the same BC (`Payment` in `src/payment/domain/payment.py` and `Refund` in `refund.py`), or an Aggregate in a different BC (e.g. `card` referencing `payment`'s Aggregate), they reference each other only by an ID such as `payment_id: str`, never by object reference — the root [tactical-ddd.md](../../../../docs/architecture/tactical-ddd.md) principle "other Aggregates are referenced only by ID (object references are forbidden)." Within the same BC, this is checked by the harness's `no-cross-aggregate-reference` rule (targeting `src/payment/domain/{payment.py,refund.py}`, see the "Domain Service" section of [layer-architecture.md](layer-architecture.md)); across BCs, it's checked by the `no-cross-bc-domain-import` rule (`../../harness/rules/no_cross_bc_domain_import.py`, which fails if `src/<bc>/domain/*.py` directly imports another BC's `domain/`).
 
 ---
 
-## Entity (하위 개체) — `Transaction`
+## Entity (child object) — `Transaction`
 
-`src/account/domain/transaction.py`의 `Transaction`은 `Account` Aggregate에 속한 하위 개체다. `frozen=True` dataclass로 구현되어 있지만, `transaction_id`라는 고유 식별자를 가지므로 Value Object가 아니라 Entity다 — 생성 후 값이 바뀌지 않는다는 점에서 "불변 Entity"에 가깝다(입출금 기록은 생성된 이후 절대 수정되지 않는 사실이므로 이 모델링이 적절하다).
+`Transaction` in `src/account/domain/transaction.py` is a child object belonging to the `Account` Aggregate. It's implemented as a `frozen=True` dataclass, but since it has a unique identifier, `transaction_id`, it's an Entity rather than a Value Object — it's closer to an "immutable Entity" in that its value never changes after creation (this modeling is appropriate since a deposit/withdrawal record is a fact that is never modified once created).
 
 ```python
 # src/account/domain/transaction.py
@@ -87,13 +87,13 @@ class Transaction:
                     amount=amount, created_at=datetime.utcnow())
 ```
 
-`Account`가 `pull_pending_transactions()`로 새로 생성된 `Transaction`을 꺼내 Repository에 전달한다 — Entity는 Aggregate Root를 통해서만 저장/조회된다는 원칙을 지킨다.
+`Account` pulls out newly created `Transaction`s via `pull_pending_transactions()` and hands them to the Repository — upholding the principle that an Entity is saved/looked up only through its Aggregate Root.
 
 ---
 
 ## Value Object — `Money`
 
-`src/account/domain/money.py`의 `Money`는 식별자가 없고, `amount`와 `currency`의 조합으로만 동등성이 결정되는 불변 객체다.
+`Money` in `src/account/domain/money.py` has no identifier, and is an immutable object whose equality is determined only by the combination of `amount` and `currency`.
 
 ```python
 # src/account/domain/money.py
@@ -114,15 +114,15 @@ class Money:
         return self.amount == 0
 ```
 
-`@dataclass(frozen=True)`는 Python에서 불변 Value Object를 표현하는 관용적인 방법이다 — 필드 재할당이 `FrozenInstanceError`를 일으키므로 생성 후 상태 변경이 구조적으로 불가능하다. `add()`/`subtract()`는 기존 인스턴스를 변경하지 않고 새 `Money`를 반환한다. `__post_init__`에서 불변식(금액은 음수 불가)을 생성 시점에 검증한다 — Value Object의 불변식은 생성자에서 한 번만 검증하면 이후 변경 경로가 없으므로 영구히 유지된다.
+`@dataclass(frozen=True)` is the idiomatic way to express an immutable Value Object in Python — reassigning a field raises `FrozenInstanceError`, so a state change after creation is structurally impossible. `add()`/`subtract()` don't mutate the existing instance; they return a new `Money`. `__post_init__` validates the invariant (the amount can't be negative) at creation time — a Value Object's invariant only needs to be validated once, in the constructor, since there is no path to change it afterward, so it holds permanently.
 
-**Value Object 사용 기준**: 속성만으로 의미를 표현할 수 있고 식별자가 불필요한 경우. `Money`(금액+통화), 향후 추가될 `Address`, `PhoneNumber` 등이 후보다.
+**Criteria for using a Value Object**: when meaning can be expressed by attributes alone and an identifier is unnecessary. `Money` (amount + currency), and future additions such as `Address`, `PhoneNumber`, are candidates.
 
 ---
 
 ## Domain Event — `events.py`
 
-`src/account/domain/events.py`의 모든 이벤트가 `@dataclass(frozen=True)` + 과거형 이름(`AccountCreated`, `MoneyDeposited`, `AccountSuspended` 등) 규칙을 따른다.
+Every event in `src/account/domain/events.py` follows the `@dataclass(frozen=True)` + past-tense naming convention (`AccountCreated`, `MoneyDeposited`, `AccountSuspended`, etc.).
 
 ```python
 @dataclass(frozen=True)
@@ -135,7 +135,7 @@ class MoneyDeposited:
     created_at: datetime
 ```
 
-Domain Event는 `Union` 타입으로 묶여 `pull_events()`의 반환 타입을 구성한다.
+Domain Events are grouped into a `Union` type that forms `pull_events()`'s return type.
 
 ```python
 # account.py
@@ -144,35 +144,35 @@ AccountDomainEvent = Union[
 ]
 ```
 
-→ 수집·저장·발행 흐름 상세는 [domain-events.md](domain-events.md) 참조.
+→ See [domain-events.md](domain-events.md) for details of the collection/storage/publishing flow.
 
 ---
 
-## Aggregate 경계 결정 기준 — `Account`와 `Transaction`을 하나로 묶은 이유
+## Aggregate boundary criteria — why `Account` and `Transaction` are grouped as one
 
-- **함께 생성되고 생명주기를 공유한다**: `Transaction`은 `Account.deposit()`/`withdraw()` 호출 없이는 존재할 수 없다.
-- **불변식이 서로 얽혀 있다**: 출금 가능 여부(`balance.is_less_than()`)는 `Account`의 현재 잔액을 봐야 판단할 수 있고, 그 판단과 `Transaction` 생성이 원자적으로 일어나야 한다.
-- **참조 빈도**: `Transaction` 목록은 항상 특정 `Account` 문맥에서만 조회된다(`find_transactions(account_id, ...)`) — 독립적으로 조회되는 별도 Aggregate로 분리할 이유가 없다.
+- **They're created together and share a lifecycle**: `Transaction` cannot exist without a call to `Account.deposit()`/`withdraw()`.
+- **Their invariants are entangled**: whether a withdrawal is allowed (`balance.is_less_than()`) can only be decided by looking at `Account`'s current balance, and that decision must happen atomically with creating the `Transaction`.
+- **Reference frequency**: a `Transaction` list is always looked up only within the context of a specific `Account` (`find_transactions(account_id, ...)`) — there's no reason to split it into a separately queried Aggregate.
 
-반대로 `Account`와 `owner`(계좌 소유자)를 같은 Aggregate로 묶지 않은 이유는, 소유자 정보 변경이 계좌의 잔액/상태 불변식에 영향을 주지 않기 때문이다 — `owner_id`라는 ID 참조만 갖는다.
+Conversely, the reason `Account` and its `owner` (the account holder) aren't grouped into the same Aggregate is that a change to the owner's information doesn't affect the account's balance/status invariants — it holds only an ID reference, `owner_id`.
 
 ---
 
-## 설계 원칙 요약
+## Design principles summary
 
-| 원칙 | 이 저장소에서의 적용 |
+| Principle | Application in this repository |
 |---|---|
-| 비즈니스 규칙은 Aggregate에 | `Account.deposit/withdraw/suspend/reactivate/close`에 캡슐화 |
-| 트랜잭션 경계 = Aggregate 경계 | 한 번의 `save()` 호출이 `Account` + 하위 `Transaction`을 함께 커밋 |
-| 에러 메시지는 타입화 | `domain/errors.py`의 예외 클래스 (자유 문자열 대신 클래스로 구분) — [error-handling.md](error-handling.md) |
-| Domain은 프레임워크 무의존 | `fastapi`/`sqlalchemy`/`aioboto3` import 없음 |
-| 변경 가능한 상태 → 일반 클래스, 불변 값 → `frozen dataclass` | `Account` vs `Transaction`/`Money`/이벤트들 |
+| Business rules live in the Aggregate | Encapsulated in `Account.deposit/withdraw/suspend/reactivate/close` |
+| Transaction boundary = Aggregate boundary | A single `save()` call commits `Account` + its child `Transaction`s together |
+| Error messages are typed | Exception classes in `domain/errors.py` (distinguished by class rather than a free-form string) — [error-handling.md](error-handling.md) |
+| Domain is framework-agnostic | No `fastapi`/`sqlalchemy`/`aioboto3` imports |
+| Mutable state → plain class, immutable value → `frozen dataclass` | `Account` vs. `Transaction`/`Money`/events |
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [layer-architecture.md](layer-architecture.md) — 레이어 역할, 의존 방향
-- [repository-pattern.md](repository-pattern.md) — Aggregate 단위 Repository
-- [domain-events.md](domain-events.md) — Domain Event 발행·수신, Outbox
-- [aggregate-id.md](aggregate-id.md) — ID 생성 규칙
+- [layer-architecture.md](layer-architecture.md) — layer responsibilities, dependency direction
+- [repository-pattern.md](repository-pattern.md) — the per-Aggregate Repository
+- [domain-events.md](domain-events.md) — Domain Event publishing/receiving, the Outbox
+- [aggregate-id.md](aggregate-id.md) — the ID generation rule

@@ -10,9 +10,11 @@ PAGE_SIZE = 200
 
 
 def previous_month_period(today: date) -> tuple[str, datetime, datetime]:
-    """`today`가 속한 달의 바로 전 달을 "지난 한 달"로 정의한다 — 매월 1일 새벽에 도는
-    배치가 "직전에 끝난 달"을 집계 대상으로 삼는 흔한 관례다. 반환값은
-    (기간 라벨 "YYYY-MM", since(그 달 1일 00:00, 포함), until(이번 달 1일 00:00, 미포함))이다.
+    """Defines "the past month" as the month right before the one `today` falls in — a
+    common convention where a batch running in the early morning of the 1st of each month
+    aggregates "the month that just ended." The return value is (a period label "YYYY-MM",
+    since (that month's 1st at 00:00, inclusive), until (this month's 1st at 00:00,
+    exclusive)).
     """
     first_of_this_month = today.replace(day=1)
     last_day_of_prev_month = first_of_this_month.toordinal() - 1
@@ -24,16 +26,17 @@ def previous_month_period(today: date) -> tuple[str, datetime, datetime]:
 
 
 class SendMonthlyCardStatementHandler:
-    """매월 카드 사용내역 발송 배치의 Command Service. Task Queue(card.statement.send)가
-    한 달에 한 번 트리거하는 시스템 주도 유스케이스다 — ApplyDailyInterestHandler와 동일한
-    이유로 사용자 Command dataclass가 없다.
+    """The Command Service for the monthly card-statement delivery batch. This is a
+    system-driven use case triggered once a month by the Task Queue
+    (card.statement.send) — there is no user Command dataclass, for the same reason as
+    ApplyDailyInterestHandler.
 
-    ACTIVE 상태의 모든 카드를 페이지 단위로 순회하며, 이번 달 아직 발송하지 않은 카드에
-    대해서만 PaymentAdapter로 지난 한 달 결제 건수·합계를 조회하고, AccountAdapter로
-    수신자 이메일을 조회한 뒤 Card.send_statement()를 호출한다. 실제 이메일 발송은 이
-    Handler가 하지 않는다 — send_statement()가 남긴 CardStatementSent Domain Event가
-    Outbox → SQS를 거쳐 비동기로 발송된다(domain-events.md와 동일한 흐름, Card BC에
-    처음 도입).
+    Iterates every ACTIVE card page by page, and only for a card not yet sent this month,
+    looks up last month's payment count/total via PaymentAdapter, looks up the recipient
+    email via AccountAdapter, then calls Card.send_statement(). This Handler doesn't
+    actually send the email — the CardStatementSent Domain Event that send_statement()
+    leaves is sent asynchronously through Outbox → SQS (the same flow as
+    domain-events.md, introduced here for the first time in the Card BC).
     """
 
     def __init__(self, repo: CardRepository, account_adapter: AccountAdapter, payment_adapter: PaymentAdapter) -> None:
@@ -58,8 +61,9 @@ class SendMonthlyCardStatementHandler:
 
                 account_view = await self._account_adapter.find_account(card.account_id, card.owner_id)
                 if account_view is None:
-                    # 연결 계좌를 찾을 수 없는 이상 상태 — 이번 실행에서는 건너뛰고 상태를
-                    # 바꾸지 않는다(다음 Task 재전달 또는 다음 달 배치에서 다시 시도된다).
+                    # An abnormal state where the linked account can't be found — this run
+                    # skips it without changing state (retried on the next Task redelivery
+                    # or next month's batch).
                     continue
 
                 summary = await self._payment_adapter.summarize_payments(card.card_id, since, until)

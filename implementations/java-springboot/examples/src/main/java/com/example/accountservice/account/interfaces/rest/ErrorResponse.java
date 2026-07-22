@@ -3,8 +3,8 @@ package com.example.accountservice.account.interfaces.rest;
 import org.springframework.http.HttpStatus;
 
 /**
- * 표준 에러 응답 형식 — root의 error-handling.md가 요구하는 4필드 ({@code statusCode}/{@code code}/{@code
- * message}/{@code error})를 모두 포함한다.
+ * The standard error response format — includes all 4 fields ({@code statusCode}/{@code
+ * code}/{@code message}/{@code error}) required by the root's error-handling.md.
  */
 public record ErrorResponse(int statusCode, String code, String message, String error) {
 

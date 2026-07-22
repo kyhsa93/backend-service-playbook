@@ -1,15 +1,15 @@
-# Secret 관리 (Spring Boot / AWS Secrets Manager)
+# Secret Management (Spring Boot / AWS Secrets Manager)
 
-> 프레임워크 무관 원칙은 루트 [secret-manager.md](../../../../docs/architecture/secret-manager.md) 참고. [config.md](config.md)의 "민감값 — 환경 변수 vs Secrets Manager" 원칙의 구현 상세다.
+> For the framework-agnostic principles, see the root [secret-manager.md](../../../../docs/architecture/secret-manager.md). This is the implementation detail of the "sensitive values — environment variables vs. Secrets Manager" principle in [config.md](config.md).
 
-## 현재 상태 — `SesConfig`는 여전히 환경 변수만 사용
+## Current state — `SesConfig` still uses only environment variables
 
-`common/service/SecretService`(인터페이스) + `common/infrastructure/SecretServiceImpl`(AWS Secrets Manager 구현체 + TTL 캐시)이 구현되어 있다 — 아래 "`SecretService` — Technical Service로 추상화" 절이 실제 코드다. `common/config/SecretsEnvironmentPostProcessor`도 기동 초기에 Secrets Manager 값을 `Environment`에 주입한다(아래 참고).
+`common/service/SecretService` (interface) + `common/infrastructure/SecretServiceImpl` (an AWS Secrets Manager implementation + TTL cache) are implemented — the "`SecretService` — abstracted as a Technical Service" section below shows the actual code. `common/config/SecretsEnvironmentPostProcessor` also injects Secrets Manager values into the `Environment` early at startup (see below).
 
-다만 `account/infrastructure/notification/SesConfig.java`는 `SecretService`를 거치지 않고 여전히 `AwsProperties`(환경 변수 기반, [config.md](config.md) 참고)로만 AWS 자격증명을 받는다:
+However, `account/infrastructure/notification/SesConfig.java` still receives AWS credentials only from `AwsProperties` (environment-variable-based, see [config.md](config.md)), without going through `SecretService`:
 
 ```java
-// SesConfig.java — 실제 코드
+// SesConfig.java — actual code
 @Bean
 public SesClient sesClient() {
     SesClientBuilder builder = SesClient.builder()
@@ -20,23 +20,23 @@ public SesClient sesClient() {
 }
 ```
 
-SES 자격증명 자체는 IAM 정책으로 다루는 것이 일반적이라(SES는 "시크릿"이라기보다 리전/엔드포인트 설정에 가깝다) 이 저장소는 `SesConfig`를 `SecretService` 경유로 바꾸지 않았다 — `SecretService`는 현재 `SecretsEnvironmentPostProcessor`가 JWT secret을 조회하는 데만 쓰인다(아래 참고). 여러 값을 하나의 시크릿으로 묶어 관리하고 싶다면(예: DB 접속 정보 전체) 아래 "JSON 형태의 시크릿 사용" 패턴을 그대로 확장한다.
+Since SES credentials are typically handled via IAM policy (SES is closer to a region/endpoint setting than a "secret"), this repository hasn't switched `SesConfig` to go through `SecretService` — `SecretService` is currently used only by `SecretsEnvironmentPostProcessor` to look up the JWT secret (see below). If you want to manage several values bundled as one secret (e.g. all DB connection info), extend the "using a JSON-shaped secret" pattern below.
 
 ---
 
-## `SecretService` — Technical Service로 추상화
+## `SecretService` — abstracted as a Technical Service
 
-`account/application/service/NotificationService`(인터페이스) + `account/infrastructure/notification/NotificationServiceImpl`(구현체)가 보여주는 Technical Service 패턴을 Secret 조회에도 동일하게 적용했다.
+The Technical Service pattern shown by `account/application/service/NotificationService` (interface) + `account/infrastructure/notification/NotificationServiceImpl` (implementation) is applied identically to secret lookup.
 
 ```java
-// common/service/SecretService.java — 실제 코드
+// common/service/SecretService.java — actual code
 public interface SecretService {
     String getSecret(String secretId);
 }
 ```
 
 ```java
-// common/infrastructure/SecretServiceImpl.java — 실제 코드, AWS Secrets Manager 구현체 + TTL 캐시
+// common/infrastructure/SecretServiceImpl.java — actual code, AWS Secrets Manager implementation + TTL cache
 @Component
 public class SecretServiceImpl implements SecretService {
 
@@ -67,18 +67,19 @@ public class SecretServiceImpl implements SecretService {
 }
 ```
 
-- **`ConcurrentHashMap`으로 TTL 캐시**: Spring이 이 빈을 싱글턴으로 관리하므로 여러 요청 스레드가 동시에 `getSecret()`을 호출할 수 있다 — `HashMap`이 아니라 `ConcurrentHashMap`을 써야 스레드 안전하다. Caffeine(`com.github.ben-manes.caffeine:caffeine`) 같은 전용 캐시 라이브러리로 교체하면 만료 정책(size-based eviction 등)을 더 정교하게 제어할 수 있다.
-- **`AwsProperties`를 그대로 재사용**: `region`/`endpointUrl` 조회를 개별 `@Value`가 아니라 [config.md](config.md)가 정의하는 `AwsProperties`(`@ConfigurationProperties`) 빈을 생성자로 주입받아 처리한다 — `SesConfig`가 쓰는 "endpoint-url 있으면 LocalStack, 없으면 실제 AWS" 패턴과 동일하다([local-dev.md](local-dev.md) 참고).
-- **현재 호출자는 하나뿐**: `SecretService`를 실제로 호출하는 곳은 아래 `SecretsEnvironmentPostProcessor`뿐이다 — Application/Infrastructure 코드에서 직접 `secretService.getSecret(...)`을 호출하는 지점은 아직 없다. 새로운 민감값이 필요해지면 이 인터페이스를 그대로 재사용한다.
+- **A TTL cache via `ConcurrentHashMap`**: since Spring manages this bean as a singleton, multiple request threads can call `getSecret()` concurrently — a `ConcurrentHashMap` rather than a plain `HashMap` is needed for thread safety. Switching to a dedicated cache library like Caffeine (`com.github.ben-manes.caffeine:caffeine`) would allow finer control over the expiration policy (size-based eviction, etc.).
+- **Reuses `AwsProperties` as-is**: rather than individual `@Value`s, `region`/`endpointUrl` lookups are handled by injecting the `AwsProperties` bean (`@ConfigurationProperties`) defined in [config.md](config.md) via the constructor — the same "LocalStack if endpoint-url is present, real AWS if not" pattern that `SesConfig` uses (see [local-dev.md](local-dev.md)).
+- **Currently only one caller**: the only place that actually calls `SecretService` is `SecretsEnvironmentPostProcessor` below — there's no place in Application/Infrastructure code yet that calls `secretService.getSecret(...)` directly. When a new sensitive value is needed, this same interface is reused.
 
 ---
 
-## JSON 형태의 시크릿 사용
+## Using a JSON-shaped secret
 
-여러 값을 하나의 시크릿에 JSON으로 저장하고 키별로 접근한다 — 논리적으로 묶이는 값(DB 접속 정보 전체 등)은 API 호출 횟수를 줄이기 위해 하나의 시크릿에 모은다.
+Several values are stored as JSON in a single secret and accessed by key — logically grouped values (e.g. all DB connection info) are consolidated into one secret to reduce the number of API calls.
 
 ```java
-// 가상의 예시 — 이 저장소가 실제로 갖는 시크릿은 아래 "@ConfigurationProperties와의 연결" 절의 app/jwt 하나뿐이다
+// A hypothetical example — the only secret this repository actually has is the single app/jwt one from
+// "Connecting with @ConfigurationProperties" below
 // secretId: "account-service/database"
 // value: {"host":"db.example.com","port":"5432","username":"admin","password":"s3cret"}
 
@@ -89,16 +90,16 @@ String password = dbSecret.get("password").asText();
 
 ---
 
-## `@ConfigurationProperties`와의 연결 — 기동 시 한 번만 조회
+## Connecting with `@ConfigurationProperties` — looked up only once at startup
 
-[config.md](config.md)가 설명하는 `@ConfigurationProperties` + `@Validated` 체계에 Secrets Manager 조회 값을 통합하기 위해, Spring의 `EnvironmentPostProcessor`를 사용해 `ApplicationContext` 준비 이전에 Secrets Manager 값을 `Environment`에 주입한다. 이 저장소가 실제로 관리하는 시크릿은 JWT 서명 키(`app/jwt`) 하나뿐이다 — DB 접속 정보는 Secrets Manager로 옮기지 않았다(Postgres는 `SPRING_DATASOURCE_*` 환경 변수로만 구성됨, [local-dev.md](local-dev.md) 참고).
+To integrate the Secrets Manager lookup value into the `@ConfigurationProperties` + `@Validated` system described by [config.md](config.md), Spring's `EnvironmentPostProcessor` is used to inject Secrets Manager values into the `Environment` before `ApplicationContext` is prepared. The only secret this repository actually manages is the JWT signing key (`app/jwt`) — DB connection info hasn't been moved to Secrets Manager (Postgres is configured only via `SPRING_DATASOURCE_*` environment variables, see [local-dev.md](local-dev.md)).
 
 ```java
-// common/config/SecretsEnvironmentPostProcessor.java — 실제 코드
+// common/config/SecretsEnvironmentPostProcessor.java — actual code
 public class SecretsEnvironmentPostProcessor implements EnvironmentPostProcessor {
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        if (!environment.acceptsProfiles(Profiles.of("prod"))) return;   // 로컬/테스트는 스킵
+        if (!environment.acceptsProfiles(Profiles.of("prod"))) return;   // skip for local/test
 
         String region = environment.getProperty("aws.region", "us-east-1");
         String endpointUrl = environment.getProperty("aws.endpoint-url", "");
@@ -125,49 +126,49 @@ public class SecretsEnvironmentPostProcessor implements EnvironmentPostProcessor
 ```
 
 ```
-# META-INF/spring.factories — 실제 코드, 등록
+# META-INF/spring.factories — actual code, registration
 org.springframework.boot.env.EnvironmentPostProcessor=com.example.accountservice.common.config.SecretsEnvironmentPostProcessor
 ```
 
-`EnvironmentPostProcessor`는 `ApplicationContext`가 완전히 준비되기 전, 가장 이른 시점에 실행되므로 이후 `SecurityConfig`의 `@Value("${jwt.secret}")` 바인딩([authentication.md](authentication.md) 참고)이 이 값을 그대로 사용한다 — **운영 프로필에서만 실행**하도록 분기해 로컬/테스트 기동 속도에 영향을 주지 않는다. 조회 실패 시 `IllegalStateException`을 던져 애플리케이션 기동 자체를 중단시킨다 — JWT secret 없이는 서비스가 뜨지 않는 것이 올바른 fail-fast다.
+`EnvironmentPostProcessor` runs at the earliest possible point, before `ApplicationContext` is fully prepared, so `SecurityConfig`'s `@Value("${jwt.secret}")` binding (see [authentication.md](authentication.md)) uses this value as-is afterward — it's branched to **run only in the production profile**, so it never affects local/test startup speed. On lookup failure it throws `IllegalStateException`, aborting application startup entirely — refusing to start without a JWT secret is the correct fail-fast behavior.
 
-**언어 간 차이 — 게이팅 메커니즘 자체가 다르다**: 이 저장소는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다 — `logback-spring.xml`([observability.md](observability.md) 참고)도 같은 `prod`/`!prod` 프로필로 통일되어 있다. kotlin-springboot도 동일한 메커니즘(`Profiles.of("prod")`)을 쓴다. nestjs(`NODE_ENV !== 'production'`), go(`APP_ENV != "production"`), fastapi(`APP_ENV == "production"`)는 환경 변수 값으로 게이팅하며, 그중 fastapi는 나머지 둘과 극성이 반대다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+**A cross-language difference — the gating mechanism itself differs**: this repository gates via a Spring **profile** (`Profiles.of("prod")`), not an environment variable — `logback-spring.xml` (see [observability.md](observability.md)) is also unified under the same `prod`/`!prod` profiles. kotlin-springboot uses the same mechanism (`Profiles.of("prod")`). nestjs (`NODE_ENV !== 'production'`), go (`APP_ENV != "production"`), and fastapi (`APP_ENV == "production"`) gate via an environment-variable value, and of these, fastapi has the opposite polarity from the other two. Never assume the name and polarity map directly across other languages' documentation.
 
-DB 접속 정보(`spring.datasource.username`/`password`)를 Secrets Manager로 옮기고 싶다면, 이 클래스의 패턴을 그대로 확장해 `secretId`만 `account-service/database`로 바꾸고 `props`에 `spring.datasource.*` 키를 추가하면 된다 — 현재는 도입되지 않았다.
+If you want to move DB connection info (`spring.datasource.username`/`password`) to Secrets Manager, extend this class's pattern directly — just change `secretId` to `account-service/database` and add `spring.datasource.*` keys to `props`. This is not currently adopted.
 
 ---
 
-## 로컬 개발 — LocalStack
+## Local development — LocalStack
 
 ```bash
-# examples/localstack/init-secrets.sh — 실제 코드
+# examples/localstack/init-secrets.sh — actual code
 awslocal secretsmanager create-secret \
   --name app/jwt \
   --secret-string '{"secret":"local-dev-secret-local-dev-secret"}'
 ```
 
 ```yaml
-# docker-compose.yml — 실제 코드
+# docker-compose.yml — actual code
 localstack:
   environment:
     SERVICES: ses,secretsmanager
 ```
 
-`docker-compose.yml`의 `SERVICES`에 `secretsmanager`가 포함되어 있고, `init-secrets.sh`가 LocalStack 컨테이너 기동 시 `app/jwt` 시크릿을 자동 생성한다 — 로컬에서도 운영과 동일한 Secrets Manager 경로를 그대로 탄다(단, `SPRING_PROFILES_ACTIVE=prod`일 때만 `SecretsEnvironmentPostProcessor`가 실제로 조회한다).
+`docker-compose.yml`'s `SERVICES` includes `secretsmanager`, and `init-secrets.sh` automatically creates the `app/jwt` secret when the LocalStack container starts — locally, the exact same Secrets Manager path as production is exercised (though `SecretsEnvironmentPostProcessor` only actually performs the lookup when `SPRING_PROFILES_ACTIVE=prod`).
 
 ---
 
-## 원칙
+## Principles
 
-- **민감값은 환경 변수 기본값(`test`/`test`)에 영구히 의존하지 않는다**: 운영 환경은 Secrets Manager(`app/jwt`)에서 조회한다.
-- **TTL 캐시 필수**: Secrets Manager는 호출당 과금되므로 매 요청 조회를 피한다 — `SecretServiceImpl`이 이를 구현한다.
-- **SecretService 인터페이스로 추상화**: `NotificationService`와 동일한 Technical Service 패턴을 따른다.
-- **논리적으로 묶이는 값은 하나의 시크릿에 JSON으로 저장**한다.
-- **`EnvironmentPostProcessor`로 기동 초기에 주입**: `@ConfigurationProperties`/`@Value` 바인딩 이전에 값이 준비되어야 한다 — `SecretsEnvironmentPostProcessor`가 이를 담당한다.
+- **Never permanently rely on an environment-variable default (`test`/`test`) for a sensitive value**: a production environment looks it up from Secrets Manager (`app/jwt`).
+- **A TTL cache is required**: since Secrets Manager is billed per call, avoid looking it up on every request — `SecretServiceImpl` implements this.
+- **Abstract it behind a `SecretService` interface**: follows the same Technical Service pattern as `NotificationService`.
+- **Store logically grouped values as JSON in a single secret.**
+- **Inject early at startup via an `EnvironmentPostProcessor`**: the value must be ready before `@ConfigurationProperties`/`@Value` binding occurs — `SecretsEnvironmentPostProcessor` handles this.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 vs Secrets Manager 사용 기준, `@ConfigurationProperties`
-- [local-dev.md](local-dev.md) — LocalStack 기반 로컬 개발 환경
+- [config.md](config.md) — criteria for choosing environment variables vs. Secrets Manager, `@ConfigurationProperties`
+- [local-dev.md](local-dev.md) — the LocalStack-based local development environment

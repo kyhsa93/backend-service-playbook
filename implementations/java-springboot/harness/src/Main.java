@@ -1,12 +1,13 @@
 package harness;
 
-// Spring Boot Harness — Java 프로젝트 구조·어노테이션 규칙 검사
-// Usage: java -jar build/harness.jar <projectRoot>  (또는 harness.sh 래퍼 사용)
+// Spring Boot Harness — checks Java project structure/annotation rules
+// Usage: java -jar build/harness.jar <projectRoot>  (or use the harness.sh wrapper)
 //
-// 각 규칙은 rules/ 아래 별도 클래스에 구현되어 있고, 각각 RuleResult를 반환한다 —
-// 이 파일은 규칙 목록을 정의하고 결과를 집계·출력하는 CLI 진입점 역할만 한다.
-// 규칙별 회귀 테스트는 test/RuleTest.java + test/testdata/<rule>/ fixture로 검증한다
-// (README.md 참고).
+// Each rule is implemented in its own class under rules/, and each returns a RuleResult —
+// this file only defines the rule list and serves as the CLI entry point that
+// aggregates and prints the results.
+// Per-rule regression tests are verified via test/RuleTest.java + test/testdata/<rule>/
+// fixtures (see README.md).
 
 import harness.rules.AggregateIdFormat;
 import harness.rules.AggregateNoPublicSetters;

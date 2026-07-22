@@ -10,9 +10,10 @@ class CancelCardsByAccountCommand:
 
 
 class CancelCardsByAccountHandler:
-    """Account BC의 account.closed.v1 Integration Event에 대한 반응 유스케이스.
+    """The reaction use case for the Account BC's account.closed.v1 Integration Event.
 
-    아직 해지되지 않은 카드(ACTIVE·SUSPENDED)만 해지하므로 재수신에 멱등하다.
+    Only cancels cards that aren't already cancelled (ACTIVE·SUSPENDED), so it's idempotent
+    on redelivery.
     """
 
     def __init__(self, repo: CardRepository) -> None:

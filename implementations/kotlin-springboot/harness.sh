@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kotlin Spring Boot Harness 실행 래퍼
+# Kotlin Spring Boot Harness execution wrapper
 #
 # Usage: ./implementations/kotlin-springboot/harness.sh [projectRoot]
 

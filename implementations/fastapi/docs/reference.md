@@ -1,80 +1,80 @@
-# 실전 구현 템플릿
+# Practical Implementation Template
 
-전체 도메인 하나(Order)를 본 아키텍처로 구현한 예시다. 새 도메인을 추가할 때 이 템플릿을 복사하여 시작한다.
+An example of one full domain (Order) implemented with this architecture. Copy this template as a starting point when adding a new domain.
 
-> 이 문서는 **목표 상태(target state)** 를 보여준다. Repository 메서드 네이밍(`find<Noun>s`/`save<Noun>`/`delete<Noun>`)은 `examples/src/account/`·`card/`·`payment/`가 이미 이 목표와 동일하게 반영되어 있다 — 새 도메인을 작성할 때는 이 문서와 `examples/`를 함께 참고한다. 에러 코드/Outbox/인증도 이미 `examples/`에 반영되어 있다.
+> This document shows the **target state**. The Repository method naming (`find<Noun>s`/`save<Noun>`/`delete<Noun>`) is already reflected identically to this target in `examples/src/account/`·`card/`·`payment/` — when writing a new domain, refer to this document together with `examples/`. Error codes/Outbox/authentication are also already reflected in `examples/`.
 
 ---
 
-## 디렉토리 구조
+## Directory structure
 
 ```
 src/
   config/
-    database_config.py             ← DB 설정 (pydantic-settings)
-    jwt_config.py                  ← JWT 설정 (pydantic-settings)
-    validator.py                   ← 기동 시 fail-fast 검증
+    database_config.py             ← DB configuration (pydantic-settings)
+    jwt_config.py                  ← JWT configuration (pydantic-settings)
+    validator.py                   ← fail-fast validation at startup
   common/
-    generate_id.py                 ← uuid.uuid4().hex 기반 ID 생성 유틸
-    error_response.py               ← statusCode/code/message/error 표준 응답 빌더
-    correlation.py                  ← contextvars 기반 Correlation ID
+    generate_id.py                 ← an ID-generation util based on uuid.uuid4().hex
+    error_response.py               ← the standard statusCode/code/message/error response builder
+    correlation.py                  ← a contextvars-based Correlation ID
   auth/
     application/
       service/
-        auth_service.py             ← AuthService(ABC) — 토큰 발급/검증 인터페이스
+        auth_service.py             ← AuthService(ABC) — the token issuance/verification interface
     infrastructure/
-      jwt_auth_service.py           ← JwtAuthService(AuthService) — python-jose 구현체
+      jwt_auth_service.py           ← JwtAuthService(AuthService) — the python-jose implementation
     interface/
       rest/
-        dependencies.py             ← get_current_user() — Depends로 라우터에서 공유
+        dependencies.py             ← get_current_user() — shared across routers via Depends
   order/
     domain/
-      order.py                     ← Aggregate Root
-      order_item.py                ← Value Object
-      order_status.py              ← 도메인 enum
-      events.py                    ← Domain Event 모음
-      errors.py                    ← 도메인 예외 계층
-      error_codes.py                ← 에러 코드 enum (예외와 1:1)
+      order.py                     ← the Aggregate Root
+      order_item.py                ← a Value Object
+      order_status.py              ← a domain enum
+      events.py                    ← a collection of Domain Events
+      errors.py                    ← the domain exception hierarchy
+      error_codes.py                ← the error-code enum (1:1 with the exceptions)
       repository.py                ← OrderRepository(ABC), PaymentRepository(ABC)
     application/
       adapter/
-        payment_adapter.py          ← 외부 도메인 호출 인터페이스 (ABC)
+        payment_adapter.py          ← the interface for calling an external domain (ABC)
       service/
-        crypto_service.py           ← 기술 인프라 인터페이스 (ABC)
+        crypto_service.py           ← a technical-infrastructure interface (ABC)
       command/
         create_order_handler.py     ← CreateOrderCommand + CreateOrderHandler
         cancel_order_handler.py     ← CancelOrderCommand + CancelOrderHandler
         delete_order_handler.py     ← DeleteOrderCommand + DeleteOrderHandler
       query/
-        result.py                   ← GetOrderResult, GetOrdersResult 등
+        result.py                   ← GetOrderResult, GetOrdersResult, etc.
         get_order_handler.py        ← GetOrderQuery + GetOrderHandler
         get_orders_handler.py       ← GetOrdersQuery + GetOrdersHandler
     infrastructure/
       persistence/
         order_repository.py         ← Base, OrderModel, OrderItemModel, SqlAlchemyOrderRepository
-        outbox_model.py             ← OutboxModel — Domain Event 적재 테이블
+        outbox_model.py             ← OutboxModel — the table Domain Events are loaded into
       payment_adapter_impl.py       ← InProcessPaymentAdapter(PaymentAdapter)
       crypto_service_impl.py        ← AesCryptoService(CryptoService)
       scheduling/
-        order_cleanup_scheduler.py  ← APScheduler — Cron(선택, 만료 주문 정리 등이 필요할 때)
+        order_cleanup_scheduler.py  ← APScheduler — Cron (optional, for when cleaning up expired orders, etc. is needed)
     interface/
       rest/
-        order_router.py             ← APIRouter, Depends 조립, Handler 호출
-        schemas.py                  ← Pydantic 요청/응답 모델
-  database.py                       ← 엔진/세션 팩토리, get_session() 의존성
-main.py                              ← FastAPI 앱 생성, lifespan, 라우터/예외 핸들러 등록
+        order_router.py             ← APIRouter, Depends assembly, calls the Handler
+        schemas.py                  ← Pydantic request/response models
+  database.py                       ← the engine/session factory, the get_session() dependency
+main.py                              ← creates the FastAPI app, lifespan, registers routers/exception handlers
 ```
 
 ---
 
-## Domain 레이어
+## The Domain layer
 
-### Aggregate Root
+### The Aggregate Root
 
-Aggregate Root는 상태가 변하고 불변식을 스스로 지켜야 하므로 `@dataclass`가 아닌 일반 클래스로 작성한다 — [tactical-ddd.md](architecture/tactical-ddd.md) 참조.
+Since the Aggregate Root's state changes and it must guard its own invariants, it's written as a plain class, not a `@dataclass` — see [tactical-ddd.md](architecture/tactical-ddd.md).
 
 ```python
-# domain/order.py — 프레임워크 무의존
+# domain/order.py — framework-agnostic
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -115,7 +115,7 @@ class Order:
     def create(cls, user_id: str, items: list[OrderItem]) -> Order:
         now = datetime.now(timezone.utc)
         order = cls(
-            order_id=generate_id(),   # 하이픈 제거 32자리 hex — aggregate-id.md
+            order_id=generate_id(),   # 32-character hex, hyphens removed — aggregate-id.md
             user_id=user_id,
             items=items,
             status=OrderStatus.PENDING,
@@ -145,10 +145,10 @@ class Order:
         return events
 ```
 
-### Value Object
+### A Value Object
 
 ```python
-# domain/order_item.py — 불변 객체
+# domain/order_item.py — an immutable object
 from dataclasses import dataclass
 
 from .errors import InvalidPriceError, InvalidQuantityError
@@ -168,9 +168,9 @@ class OrderItem:
             raise InvalidQuantityError()
 ```
 
-`frozen=True` dataclass가 자동 생성하는 `__eq__`가 속성 기반 동등성 비교를 대신하므로 별도 `equals()` 메서드를 만들지 않는다.
+The `__eq__` that a `frozen=True` dataclass auto-generates handles attribute-based equality comparison, so a separate `equals()` method is never created.
 
-### 도메인 enum
+### A domain enum
 
 ```python
 # domain/order_status.py
@@ -183,7 +183,7 @@ class OrderStatus(str, Enum):
     CANCELLED = "cancelled"
 ```
 
-### Domain Event
+### Domain Events
 
 ```python
 # domain/events.py
@@ -206,7 +206,7 @@ class OrderCancelled:
     cancelled_at: datetime
 ```
 
-### 도메인 예외 + 에러 코드
+### Domain exceptions + error codes
 
 ```python
 # domain/error_codes.py
@@ -236,7 +236,7 @@ class OrderNotFoundError(OrderError):
     code = OrderErrorCode.ORDER_NOT_FOUND
 
     def __init__(self, order_id: str) -> None:
-        super().__init__(f"주문을 찾을 수 없습니다: {order_id}")
+        super().__init__(f"Order not found: {order_id}")
         self.order_id = order_id
 
 
@@ -244,48 +244,48 @@ class OrderAlreadyCancelledError(OrderError):
     code = OrderErrorCode.ORDER_ALREADY_CANCELLED
 
     def __init__(self) -> None:
-        super().__init__("이미 취소된 주문입니다.")
+        super().__init__("The order is already cancelled.")
 
 
 class OrderPaidCannotBeCancelledError(OrderError):
     code = OrderErrorCode.ORDER_PAID_CANNOT_BE_CANCELLED
 
     def __init__(self) -> None:
-        super().__init__("결제 완료된 주문은 취소할 수 없습니다.")
+        super().__init__("A paid order cannot be cancelled.")
 
 
 class OrderMustHaveAtLeastOneItemError(OrderError):
     code = OrderErrorCode.ORDER_MUST_HAVE_AT_LEAST_ONE_ITEM
 
     def __init__(self) -> None:
-        super().__init__("주문 항목은 최소 1개 이상이어야 합니다.")
+        super().__init__("An order must have at least one item.")
 
 
 class InvalidPriceError(OrderError):
     code = OrderErrorCode.INVALID_PRICE
 
     def __init__(self) -> None:
-        super().__init__("상품 가격은 0보다 커야 합니다.")
+        super().__init__("The item price must be greater than 0.")
 
 
 class InvalidQuantityError(OrderError):
     code = OrderErrorCode.INVALID_QUANTITY
 
     def __init__(self) -> None:
-        super().__init__("수량은 0보다 커야 합니다.")
+        super().__init__("The quantity must be greater than 0.")
 
 
 class PaymentMethodNotFoundError(OrderError):
     code = OrderErrorCode.PAYMENT_METHOD_NOT_FOUND
 
     def __init__(self, order_id: str) -> None:
-        super().__init__(f"결제 정보를 찾을 수 없습니다: {order_id}")
+        super().__init__(f"Payment info not found: {order_id}")
 ```
 
-### Repository 인터페이스
+### The Repository interface
 
 ```python
-# domain/repository.py — ABC
+# domain/repository.py — the ABC
 from abc import ABC, abstractmethod
 
 from .order import Order
@@ -317,13 +317,13 @@ class PaymentRepository(ABC):
     async def delete_payment_methods(self, order_id: str) -> None: ...
 ```
 
-조회 메서드를 `find_orders` 하나로 통일하고 단건 조회는 `take=1` 뒤 인덱싱으로 꺼낸다 — [repository-pattern.md](architecture/repository-pattern.md)의 "root 컨벤션에 맞춘 형태" 참조.
+The lookup method is unified into a single `find_orders`, with a single-item lookup obtained via `take=1` followed by indexing — see "the form matching the root convention" in [repository-pattern.md](architecture/repository-pattern.md).
 
 ---
 
-## Application 레이어
+## The Application layer
 
-### Command Handler
+### A Command Handler
 
 ```python
 # application/command/create_order_handler.py
@@ -346,7 +346,7 @@ class CreateOrderHandler:
 
     async def execute(self, cmd: CreateOrderCommand) -> Order:
         order = Order.create(user_id=cmd.user_id, items=[OrderItem(**item) for item in cmd.items])
-        await self._repo.save_order(order)   # Outbox 적재까지 save_order() 내부에서 처리
+        await self._repo.save_order(order)   # even loading into the Outbox is handled inside save_order()
         return order
 ```
 
@@ -371,18 +371,18 @@ class CancelOrderHandler:
         self._payment_repo = payment_repo
 
     async def execute(self, cmd: CancelOrderCommand) -> None:
-        # 주문 조회 — find_orders(take=1) + 인덱싱 패턴
+        # Look up the order — the find_orders(take=1) + indexing pattern
         orders, _ = await self._repo.find_orders(page=0, take=1, order_id=cmd.order_id)
         order = orders[0] if orders else None
         if order is None:
             raise OrderNotFoundError(cmd.order_id)
 
-        # 비즈니스 규칙은 Aggregate 내부에서 검증
+        # Business rules are validated inside the Aggregate
         order.cancel(cmd.reason)
 
-        # 여러 Repository에 걸친 쓰기 — 같은 AsyncSession(같은 Depends(get_session))으로 묶인다
+        # Writes spanning multiple Repositories — bundled into the same AsyncSession (the same Depends(get_session))
         await self._payment_repo.delete_payment_methods(order.order_id)
-        await self._repo.save_order(order)   # Aggregate 상태 + pull_events()를 Outbox에 함께 저장
+        await self._repo.save_order(order)   # saves the Aggregate state + pull_events() into the Outbox together
 ```
 
 ```python
@@ -409,9 +409,9 @@ class DeleteOrderHandler:
         await self._repo.delete_order(cmd.order_id)
 ```
 
-**흐름:** Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출 → Repository로 저장. Handler 자신은 비즈니스 규칙을 갖지 않고 Aggregate에 위임한다 — [layer-architecture.md](architecture/layer-architecture.md) 참조.
+**Flow:** look up the Aggregate from the Repository → call the Aggregate's domain method → save via the Repository. The Handler itself has no business rules and delegates to the Aggregate — see [layer-architecture.md](architecture/layer-architecture.md).
 
-### Query Handler + Result
+### A Query Handler + Result
 
 ```python
 # application/query/result.py
@@ -512,9 +512,9 @@ class GetOrdersHandler:
         )
 ```
 
-QueryHandler는 도메인 Aggregate를 직접 반환하지 않고 Result dataclass로 변환한다 — [api-response.md](architecture/api-response.md) 참조.
+A QueryHandler never returns the domain Aggregate directly — it converts it into a Result dataclass — see [api-response.md](architecture/api-response.md).
 
-### Adapter 인터페이스 (크로스 도메인)
+### An Adapter interface (cross-domain)
 
 ```python
 # application/adapter/payment_adapter.py
@@ -533,9 +533,9 @@ class PaymentAdapter(ABC):
     async def find_user(self, user_id: str) -> UserSummary | None: ...
 ```
 
-호출하는 쪽(Order)이 필요로 하는 형태로만 메서드를 정의한다 — 대상 도메인(User)의 전체 API를 노출하지 않는다. 상세: [cross-domain.md](architecture/cross-domain.md).
+Its methods are defined only in the shape the calling side (Order) needs — the target domain's (User's) full API is never exposed. Details: [cross-domain.md](architecture/cross-domain.md).
 
-### Technical Service 인터페이스
+### A Technical Service interface
 
 ```python
 # application/service/crypto_service.py
@@ -552,9 +552,9 @@ class CryptoService(ABC):
 
 ---
 
-## Infrastructure 레이어
+## The Infrastructure layer
 
-### Repository 구현체
+### The Repository implementation
 
 ```python
 # infrastructure/persistence/order_repository.py
@@ -579,7 +579,7 @@ class Base(DeclarativeBase):
 class OrderModel(Base):
     __tablename__ = "orders"
 
-    id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)   # 하이픈 제거 32자리 hex — aggregate-id.md
+    id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)   # 32-character hex, hyphens removed — aggregate-id.md
     user_id: Mapped[str]
     status: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -618,7 +618,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
         stmt = select(OrderModel).where(OrderModel.deleted_at.is_(None))
         count_stmt = select(func.count()).select_from(OrderModel).where(OrderModel.deleted_at.is_(None))
 
-        # 동적 필터 — 값이 있을 때만 적용, count에도 동일하게 적용
+        # A dynamic filter — applied only when a value is present, applied identically to count
         if order_id:
             stmt = stmt.where(OrderModel.id == order_id)
             count_stmt = count_stmt.where(OrderModel.id == order_id)
@@ -634,7 +634,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
         rows = (await self._session.execute(stmt)).scalars().all()
         count = (await self._session.execute(count_stmt)).scalar_one()
 
-        # DB 모델 → 도메인 Aggregate 변환
+        # Convert the DB model → the domain Aggregate
         return [self._to_domain(row) for row in rows], count
 
     async def save_order(self, order: Order) -> None:
@@ -654,7 +654,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
                 )
             )
 
-        # Domain Event → Outbox — 같은 세션(같은 트랜잭션)에 함께 적재
+        # Domain Event → Outbox — loaded together into the same session (the same transaction)
         for event in order.pull_events():
             self._session.add(
                 OutboxModel(
@@ -668,7 +668,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
         await self._session.flush()
 
     async def delete_order(self, order_id: str) -> None:
-        # cascade soft delete — 하위 Entity 먼저
+        # cascade soft delete — child Entities first
         row = await self._session.get(OrderModel, order_id)
         if row is not None:
             now = datetime.now(timezone.utc)
@@ -684,7 +684,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
         )
 ```
 
-### Adapter 구현체
+### The Adapter implementation
 
 ```python
 # infrastructure/payment_adapter_impl.py
@@ -702,9 +702,9 @@ class InProcessPaymentAdapter(PaymentAdapter):
         return UserSummary(user_id=result.user_id, is_active=result.is_active)
 ```
 
-같은 프로세스(모놀리스) 안에서는 대상 도메인의 Handler를 직접 호출하는 in-process 구현으로 시작한다. 서비스가 분리되면 같은 ABC를 구현하는 `HttpPaymentAdapter`(내부 HTTP 클라이언트)로 교체한다 — 호출하는 쪽(Order)의 코드는 바뀌지 않는다. 상세: [cross-domain.md](architecture/cross-domain.md).
+Within the same process (a monolith), start with an in-process implementation that directly calls the target domain's Handler. Once the service is split out, swap it for an `HttpPaymentAdapter` (an internal HTTP client) implementing the same ABC — the calling side's (Order's) code doesn't change. Details: [cross-domain.md](architecture/cross-domain.md).
 
-### Technical Service 구현체
+### The Technical Service implementation
 
 ```python
 # infrastructure/crypto_service_impl.py
@@ -727,7 +727,7 @@ class AesCryptoService(CryptoService):
         return self._fernet.decrypt(cipher_text.encode()).decode()
 ```
 
-### Scheduler (선택 — Cron이 필요할 때)
+### The Scheduler (optional — for when Cron is needed)
 
 ```python
 # infrastructure/scheduling/order_cleanup_scheduler.py
@@ -745,22 +745,22 @@ def start_order_cleanup_scheduler(session_factory) -> AsyncIOScheduler:
     async def _run() -> None:
         try:
             async with session_factory() as session:
-                # 만료 주문 정리 — 비즈니스 로직은 Handler에 위임하거나 여기서 직접 최소한만 수행
+                # Clean up expired orders — delegate the business logic to a Handler, or do only the bare minimum here directly
                 ...
         except Exception:
-            logger.exception("order_cleanup_scheduler_failed")   # 예외를 삼키지 않고 명시적으로 로깅
+            logger.exception("order_cleanup_scheduler_failed")   # log explicitly rather than swallowing the exception
 
     scheduler.start()
     return scheduler
 ```
 
-Scheduler는 비즈니스 로직을 직접 실행하지 않고 트리거 역할만 한다 — 상세: [scheduling.md](architecture/scheduling.md).
+The Scheduler never executes business logic directly — it only serves as a trigger. Details: [scheduling.md](architecture/scheduling.md).
 
 ---
 
-## Interface 레이어
+## The Interface layer
 
-### Pydantic 스키마
+### The Pydantic schema
 
 ```python
 # interface/rest/schemas.py
@@ -778,12 +778,12 @@ class OrderItemRequest(BaseModel):
 
 
 class CreateOrderRequest(BaseModel):
-    items: list[OrderItemRequest] = Field(..., min_length=1, description="주문 항목 목록")
+    items: list[OrderItemRequest] = Field(..., min_length=1, description="The list of order items")
 
 
 class CancelOrderRequest(BaseModel):
-    reason: str = Field(..., min_length=1, description="취소 사유")
-    refund_amount: int | None = Field(None, ge=0, description="환불 금액")
+    reason: str = Field(..., min_length=1, description="The cancellation reason")
+    refund_amount: int | None = Field(None, ge=0, description="The refund amount")
 
 
 class OrderItemResponse(BaseModel):
@@ -818,11 +818,11 @@ class OrderSummaryResponse(BaseModel):
 
 
 class GetOrdersResponse(BaseModel):
-    orders: list[OrderSummaryResponse]   # 도메인 객체명 복수형 — result/data 금지
+    orders: list[OrderSummaryResponse]   # the plural of the domain object name — result/data is forbidden
     count: int
 ```
 
-### Router
+### The Router
 
 ```python
 # interface/rest/order_router.py
@@ -925,16 +925,16 @@ async def get_orders(
     )
 ```
 
-라우터 레벨의 `dependencies=[Depends(get_current_user)]`가 모든 라우트에 인증을 일괄 적용한다 — 개별 라우트마다 반복 선언하지 않는다. 상세: [authentication.md](architecture/authentication.md).
+The router-level `dependencies=[Depends(get_current_user)]` applies authentication to every route in one shot — never redeclared on each individual route. Details: [authentication.md](architecture/authentication.md).
 
 ---
 
-## 배선 (Depends 팩토리 = NestJS의 `{ provide, useClass }`)
+## Wiring (a `Depends` factory = NestJS's `{ provide, useClass }`)
 
-FastAPI에는 전용 DI 컨테이너가 없으므로, ABC ↔ 구현체 바인딩은 라우터 파일의 팩토리 함수(`_repo`, `_payment_adapter` 등) 자체가 담당한다 — 상세: [module-pattern.md](architecture/module-pattern.md).
+Since FastAPI has no dedicated DI container, the ABC ↔ implementation binding is handled by the factory functions themselves in the router file (`_repo`, `_payment_adapter`, etc.) — details: [module-pattern.md](architecture/module-pattern.md).
 
 ```python
-# interface/rest/order_router.py — Adapter/Technical Service까지 배선하는 경우
+# interface/rest/order_router.py — when wiring even an Adapter/Technical Service
 def _payment_adapter(session: AsyncSession = Depends(get_session)) -> PaymentAdapter:
     return InProcessPaymentAdapter(get_user_handler=...)
 
@@ -943,7 +943,7 @@ def _crypto_service() -> CryptoService:
     return AesCryptoService(key=os.environ["CRYPTO_KEY"].encode())
 ```
 
-### main.py — 라우터 조합 + 예외 핸들러 등록
+### main.py — composing routers + registering exception handlers
 
 ```python
 # main.py
@@ -968,9 +968,9 @@ app_state = {"is_shutting_down": False}
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    validate_env()   # fail-fast — 필수 환경 변수 누락 시 여기서 프로세스 종료
+    validate_env()   # fail-fast — the process exits right here if a required environment variable is missing
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)   # 로컬/테스트 전용 — 운영은 Alembic
+        await conn.run_sync(Base.metadata.create_all)   # local/test only — production uses Alembic
     logger.info("app_started")
 
     yield
@@ -998,7 +998,7 @@ async def health_ready() -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "ready"})
 
 
-# 구체 타입(OrderNotFoundError)을 상위 타입(OrderError)보다 먼저 등록해 404가 400보다 우선 매칭되도록 한다
+# Register the concrete type (OrderNotFoundError) before its supertype (OrderError) so 404 matches before 400
 @app.exception_handler(OrderNotFoundError)
 async def order_not_found_handler(request: Request, exc: OrderNotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
@@ -1017,11 +1017,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 ```
 
-두 번째 도메인이 추가되면 `app.include_router(user_router)` 한 줄을 더하는 것으로 끝난다 — NestJS의 `AppModule.imports`에 대응하는 지점이지만 전용 클래스가 없다. 상세: [bootstrap.md](architecture/bootstrap.md).
+Once a second domain is added, it's as simple as adding one more line, `app.include_router(user_router)` — the point corresponding to NestJS's `AppModule.imports`, except there's no dedicated class. Details: [bootstrap.md](architecture/bootstrap.md).
 
 ---
 
-## 공용 유틸
+## Shared utilities
 
 ```python
 # src/common/generate_id.py
@@ -1029,7 +1029,7 @@ import uuid
 
 
 def generate_id() -> str:
-    return uuid.uuid4().hex   # 하이픈 제거 32자리 hex — aggregate-id.md
+    return uuid.uuid4().hex   # 32-character hex, hyphens removed — aggregate-id.md
 ```
 
 ```python
@@ -1055,7 +1055,7 @@ def build_error_response(status_code: int, code: str, message: str) -> dict:
 
 ---
 
-## 에러 코드 · 예외 전체 목록
+## The full list of error codes and exceptions
 
 ```python
 # src/order/domain/error_codes.py
@@ -1067,7 +1067,5 @@ class OrderErrorCode(str, Enum):
     INVALID_PRICE = "INVALID_PRICE"
     INVALID_QUANTITY = "INVALID_QUANTITY"
     PAYMENT_METHOD_NOT_FOUND = "PAYMENT_METHOD_NOT_FOUND"
-    VALIDATION_FAILED = "VALIDATION_FAILED"   # Pydantic 검증 실패 전용, 고정값
+    VALIDATION_FAILED = "VALIDATION_FAILED"   # reserved exclusively for Pydantic validation failures, a fixed value
 ```
-
-`OrderError` 하위 클래스 전체 목록은 위 "도메인 예외 + 에러 코드" 절 참조 — 메시지(`str(exc)`)와 코드(`exc.code`)가 항상 1:1로 존재해야 한다.

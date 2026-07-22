@@ -25,7 +25,7 @@ public class GetCardService {
                                 () ->
                                         new CardException(
                                                 CardException.ErrorCode.CARD_NOT_FOUND,
-                                                "카드를 찾을 수 없습니다."));
+                                                "Card not found."));
         return new GetCardResult(
                 card.getCardId(),
                 card.getAccountId(),

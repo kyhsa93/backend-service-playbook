@@ -1,22 +1,22 @@
 # Graceful Shutdown
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md)
+> Framework-agnostic principles: [../../../../docs/architecture/graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md)
 
-## 현재 구현
+## Current implementation
 
-`main.py`의 `lifespan` 종료 블록이 채워졌다: SIGTERM 수신 시 `app_state["is_shutting_down"]`을 리소스 정리보다 먼저 `True`로 전환해 `/health/ready`가 즉시 503을 반환하도록 하고, 그 뒤 `engine.dispose()`로 SQLAlchemy 커넥션 풀을 정리한다. `/health/live`, `/health/ready` 엔드포인트도 함께 추가되었다 — 아래 문서 내용 그대로 실제 코드다.
+The shutdown block of `main.py`'s `lifespan` is filled in: upon receiving SIGTERM, `app_state["is_shutting_down"]` is flipped to `True` before any resource cleanup, so `/health/ready` immediately returns 503, and only then is the SQLAlchemy connection pool cleaned up via `engine.dispose()`. The `/health/live` and `/health/ready` endpoints have also been added — the content below is exactly the actual code.
 
 ---
 
-## `lifespan` — 기동과 종료
+## `lifespan` — startup and shutdown
 
-`lifespan`은 스키마를 만들지 않는다 — 스키마는 Alembic 마이그레이션으로 관리한다(persistence.md 참조). 기동 블록은 프로덕션에서만 Secrets Manager에서 JWT secret을 조회해 주입한다(secret-manager.md 참조). `validate_env()`는 `lifespan`보다 앞선 시점, 즉 `main.py` 최상단의 모듈 임포트 시점(`FastAPI(...)` 인스턴스가 만들어지기도 전)에 호출된다 — [config.md](config.md) 참조.
+`lifespan` does not create the schema — the schema is managed via Alembic migrations (see persistence.md). The startup block only fetches and injects the JWT secret from Secrets Manager in production (see secret-manager.md). `validate_env()` is invoked earlier than `lifespan`, at the module-import point at the very top of `main.py` (before the `FastAPI(...)` instance is even created) — see [config.md](config.md).
 
 ```python
-# main.py — 실제 코드. validate_env()는 lifespan보다 훨씬 앞선 모듈 임포트 시점에 호출된다
+# main.py — actual code. validate_env() is called at module-import time, well before lifespan
 from src.config.validator import validate_env
 
-validate_env()  # 실패 시 여기서 프로세스가 종료된다 — 이후 코드는 실행되지 않음
+validate_env()  # on failure, the process exits right here — no code after this runs
 
 from fastapi import FastAPI, Request  # noqa: E402
 ...
@@ -27,42 +27,42 @@ app_state = {"is_shutting_down": False}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # --- 기동 (validate_env()는 이미 위에서 모듈 임포트 시점에 실행되었다) ---
+    # --- startup (validate_env() has already run above, at module-import time) ---
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
     logger.info("app_started")
 
-    yield  # --- 이 사이에 요청을 처리한다 ---
+    yield  # --- requests are handled in between ---
 
-    # --- 종료 (SIGTERM 수신 → uvicorn이 lifespan의 종료 블록을 실행) ---
-    app_state["is_shutting_down"] = True  # readiness를 즉시 503으로 전환
+    # --- shutdown (SIGTERM received → uvicorn runs lifespan's shutdown block) ---
+    app_state["is_shutting_down"] = True  # flips readiness to 503 immediately
     logger.info("shutdown_initiated")
 
     try:
-        await engine.dispose()  # DB 커넥션 풀 정리
+        await engine.dispose()  # clean up the DB connection pool
     except Exception:
-        logger.exception("shutdown_cleanup_failed")  # 정리 실패해도 예외를 다시 던지지 않는다
+        logger.exception("shutdown_cleanup_failed")  # don't re-raise even if cleanup fails
 
     logger.info("app_stopped")
 
 
-# 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
-# Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
+# The schema is applied via `alembic upgrade head` in the deployment pipeline — this code
+# does not call Base.metadata.create_all here (see docs/architecture/persistence.md).
 app = FastAPI(title="Account Service", lifespan=lifespan)
 ```
 
-**순서가 중요한 이유:** `is_shutting_down = True`를 리소스 정리보다 먼저 설정해야, 그 사이에 들어오는 새 요청을 readiness 프로브가 차단할 수 있다. 리소스 정리(`engine.dispose()`)는 진행 중인 요청이 끝난 뒤 안전하게 실행되도록 uvicorn이 마지막에 호출한다.
+**Why the order matters:** setting `is_shutting_down = True` before resource cleanup lets the readiness probe block new requests that come in during that window. Resource cleanup (`engine.dispose()`) is called last by uvicorn, after in-flight requests have safely finished.
 
 ---
 
-## Liveness / Readiness 엔드포인트
+## Liveness / Readiness endpoints
 
 ```python
-# main.py — 실제 코드
+# main.py — actual code
 @app.get("/health/live")
 async def health_live() -> dict:
-    return {"status": "ok"}  # 항상 200 — 종료 중에도 프로세스는 살아있다
+    return {"status": "ok"}  # always 200 — the process is alive even while shutting down
 
 
 @app.get("/health/ready")
@@ -72,34 +72,34 @@ async def health_ready() -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "ready"})
 ```
 
-| 프로브 | 목적 | 종료 중 응답 |
+| Probe | Purpose | Response while shutting down |
 |--------|------|------------|
-| `GET /health/live` | 프로세스 생존 확인 | **200** (항상) |
-| `GET /health/ready` | 트래픽 수신 가능 여부 | **503** (종료 중) |
+| `GET /health/live` | Confirms the process is alive | **200** (always) |
+| `GET /health/ready` | Whether it can receive traffic | **503** (while shutting down) |
 
-**흔한 실수**: liveness가 종료 중에 503을 반환하면 오케스트레이터가 종료 진행 중인 컨테이너를 강제 재시작한다. liveness는 항상 200을 반환해야 한다.
+**Common mistake**: if liveness returns 503 while shutting down, the orchestrator force-restarts a container that is already in the middle of shutting down. Liveness must always return 200.
 
 ---
 
-## uvicorn과 SIGTERM
+## uvicorn and SIGTERM
 
-`uvicorn`은 SIGTERM을 수신하면 기본적으로 (1) 새 연결 수락 중단 (2) 진행 중인 요청 완료 대기 (3) `lifespan`의 종료 블록 실행 순서로 graceful shutdown을 수행한다. 이 흐름이 실제로 동작하려면 컨테이너의 `CMD`가 `uvicorn`을 PID 1로 직접 실행해야 한다.
+Upon receiving SIGTERM, `uvicorn` performs a graceful shutdown by default in this order: (1) stop accepting new connections (2) wait for in-flight requests to finish (3) run `lifespan`'s shutdown block. For this flow to actually work, the container's `CMD` must run `uvicorn` directly as PID 1.
 
 ```dockerfile
-# 올바른 방식 — uvicorn이 PID 1이 되어 SIGTERM을 즉시 수신
+# Correct approach — uvicorn becomes PID 1 and receives SIGTERM immediately
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-→ Dockerfile 전체 구성은 [container.md](container.md) 참조.
+→ See [container.md](container.md) for the full Dockerfile setup.
 
 ---
 
 ## terminationGracePeriodSeconds
 
-오케스트레이터가 SIGTERM 이후 SIGKILL을 보내기까지 대기하는 시간을 서비스의 p99 요청 처리 시간보다 여유 있게 설정한다. 이 저장소의 계좌 입출금 유스케이스는 짧은 트랜잭션이므로 기본 30초로 충분하다.
+Set the time the orchestrator waits between SIGTERM and SIGKILL comfortably above the service's p99 request-handling time. Since this repository's account deposit/withdrawal use case is a short transaction, the default 30 seconds is sufficient.
 
 ```yaml
-# Kubernetes 예시
+# Kubernetes example
 spec:
   terminationGracePeriodSeconds: 30
   containers:
@@ -111,18 +111,18 @@ spec:
 
 ---
 
-## 원칙
+## Principles
 
-- **`lifespan`은 기동과 종료를 모두 담당한다**: `yield` 이전은 기동, 이후는 종료.
-- **readiness 전환이 리소스 정리보다 먼저**: `is_shutting_down` 플래그를 정리 코드보다 앞서 설정한다.
-- **liveness는 항상 200**: 종료 중에도 프로세스가 살아있는 한 200을 반환한다.
-- **정리 코드는 예외를 삼킨다**: `engine.dispose()` 실패가 다른 정리 단계를 막지 않도록 try-except로 감싼다.
-- **CMD는 exec form**: uvicorn이 PID 1로 SIGTERM을 직접 수신해야 이 모든 흐름이 동작한다.
+- **`lifespan` handles both startup and shutdown**: before `yield` is startup, after it is shutdown.
+- **The readiness transition happens before resource cleanup**: set the `is_shutting_down` flag before the cleanup code.
+- **Liveness is always 200**: it returns 200 as long as the process is alive, even while shutting down.
+- **Cleanup code swallows exceptions**: wrap it in try-except so an `engine.dispose()` failure doesn't block other cleanup steps.
+- **CMD uses exec form**: uvicorn must directly receive SIGTERM as PID 1 for this entire flow to work.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [container.md](container.md) — Dockerfile CMD, 헬스체크 엔드포인트 노출
-- [config.md](config.md) — `validate_env()` fail-fast와 기동 순서
-- [observability.md](observability.md) — 기동/종료 로그
+- [container.md](container.md) — Dockerfile CMD, exposing health-check endpoints
+- [config.md](config.md) — `validate_env()` fail-fast and startup order
+- [observability.md](observability.md) — startup/shutdown logs

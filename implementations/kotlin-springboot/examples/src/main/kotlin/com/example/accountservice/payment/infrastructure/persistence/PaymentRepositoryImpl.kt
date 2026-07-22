@@ -11,8 +11,9 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * Payment 쓰기 모델([PaymentRepository])과 읽기 모델([PaymentQuery])을 함께 구현하는 구현체
- * (account/infrastructure/persistence/AccountRepositoryImpl과 동일한 이중 인터페이스 구조).
+ * The implementation that implements both the Payment write model ([PaymentRepository]) and read
+ * model ([PaymentQuery]) together (the same dual-interface structure as
+ * account/infrastructure/persistence/AccountRepositoryImpl).
  */
 @Repository
 class PaymentRepositoryImpl(
@@ -48,12 +49,14 @@ class PaymentRepositoryImpl(
                 ?.let { PaymentMapper.updateEntity(it, payment) }
                 ?: PaymentMapper.toNewEntity(payment)
         jpaRepository.save(entity)
-        // Aggregate 상태(payment 행)와 Outbox 행을 같은 트랜잭션에 커밋한다 — dual-write 문제 회피.
+        // Commits the Aggregate state (the payment row) and the Outbox row in the same transaction —
+        // avoiding the dual-write problem.
         outboxWriter.saveAll(payment.pullDomainEvents())
     }
 
-    // PaymentQuery(읽기 전용 포트)는 findPayments를 PaymentRepository와 정확히 같은 시그니처로
-    // 선언하므로(cqrs-pattern.md), 위의 findPayments override가 두 인터페이스를 동시에 만족시킨다.
+    // PaymentQuery (the read-only port) declares findPayments with exactly the same signature as
+    // PaymentRepository (cqrs-pattern.md), so the findPayments override above satisfies both
+    // interfaces at once.
 
     private fun buildJpql(
         query: PaymentFindQuery,

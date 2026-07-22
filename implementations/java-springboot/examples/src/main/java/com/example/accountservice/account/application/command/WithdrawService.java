@@ -27,7 +27,7 @@ public class WithdrawService {
                                 () ->
                                         new AccountException(
                                                 AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
-                                                "계좌를 찾을 수 없습니다."));
+                                                "Account not found."));
         Transaction transaction = account.withdraw(command.amount());
         accountRepository.saveAccount(account);
         return new TransactionResult(

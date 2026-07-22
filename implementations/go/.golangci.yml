@@ -4,8 +4,9 @@ run:
   timeout: 5m
 
 linters:
-  # 기본 활성화 linter(errcheck, govet, ineffassign, staticcheck, unused)에
-  # 명백히 유용한 항목만 추가한다. exhaustive/strict 규칙은 넣지 않는다.
+  # Adds only clearly useful linters on top of the default-enabled set
+  # (errcheck, govet, ineffassign, staticcheck, unused). Exhaustive/strict
+  # rule sets are not included.
   default: standard
   enable:
     - unconvert

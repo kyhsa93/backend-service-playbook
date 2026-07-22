@@ -1,6 +1,6 @@
 package http
 
-// error 필드가 없고 errorCode라는 다른 이름을 쓰는 위반 사례.
+// Missing the error field and using a differently named errorCode field instead — a violation case.
 type ErrorResponse struct {
 	StatusCode int    `json:"statusCode"`
 	ErrorCode  string `json:"errorCode"`

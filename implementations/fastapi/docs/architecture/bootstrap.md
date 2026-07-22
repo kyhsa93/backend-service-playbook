@@ -1,9 +1,9 @@
-# 앱 부트스트랩
+# App Bootstrap
 
-이 저장소 FastAPI 구현의 앱 부트스트랩은 NestJS의 `main.ts` + `NestFactory.create()` 같은 전용 부트스트랩 함수가 없다 — 모듈 최상위에서 `FastAPI(...)` 인스턴스를 만들고 그 아래에 라우터/예외 핸들러를 등록하는 것으로 끝난다. 실제 `examples/main.py` 전체다.
+This repository's FastAPI implementation has no dedicated bootstrap function like NestJS's `main.ts` + `NestFactory.create()` — it's just constructing the `FastAPI(...)` instance at the module's top level and registering routers/exception handlers underneath it. This is the entirety of the actual `examples/main.py`.
 
 ```python
-# main.py — 실제 코드
+# main.py — actual code
 import logging
 import os
 import time
@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from src.config.validator import validate_env
 
-validate_env()  # 실패 시 여기서 프로세스가 종료된다 — 이후 코드는 실행되지 않음
+validate_env()  # on failure, the process exits right here — no code after this runs
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
@@ -30,16 +30,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 프로덕션에서만 Secrets Manager를 호출한다 — 그 외(로컬/테스트 기본값)는
-    # 네트워크 호출 없이 환경 변수(JWT_SECRET)만 사용한다.
+    # Secrets Manager is only called in production — elsewhere (local/test defaults),
+    # only the environment variable (JWT_SECRET) is used, with no network call.
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
     yield
 
 
-# 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
-# Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
+# The schema is applied via `alembic upgrade head` in the deployment pipeline — this code
+# does not call Base.metadata.create_all here (see docs/architecture/persistence.md).
 app = FastAPI(title="Account Service", lifespan=lifespan)
 
 app.include_router(auth_router)
@@ -79,30 +79,30 @@ async def account_error_handler(request: Request, exc: AccountError) -> JSONResp
     return JSONResponse(status_code=400, content={"message": str(exc)})
 ```
 
-이 코드가 짧은 전용 부트스트랩 함수 없이 모듈 최상위 코드만으로 끝난다는 점이 NestJS와의 핵심 차이다 — DI 컨테이너를 초기화하는 단계 자체가 없다(`NestFactory.create(AppModule)`에 대응하는 코드가 없다). `FastAPI()` 생성자 호출이 곧 앱 인스턴스이고, 이후 등록은 전부 그 인스턴스에 메서드/데코레이터를 호출하는 것뿐이다. `validate_env()`가 `FastAPI` import보다도 앞서 호출된다는 점도 특징이다 — fail-fast가 앱 프레임워크 자체보다 먼저 실행되어야 하기 때문이다([config.md](config.md), [graceful-shutdown.md](graceful-shutdown.md) 참조).
+The key difference from NestJS is that this code ends with just module-top-level code, with no short, dedicated bootstrap function — there is no step that initializes a DI container at all (no code corresponding to `NestFactory.create(AppModule)`). Calling the `FastAPI()` constructor produces the app instance itself, and everything after that is just calling methods/decorators on that instance. Another notable point is that `validate_env()` is called even before the `FastAPI` import — because fail-fast must run before the app framework itself (see [config.md](config.md), [graceful-shutdown.md](graceful-shutdown.md)).
 
-## 구성 요소별 역할
+## Role of each component
 
-| 코드 | 역할 |
+| Code | Role |
 |------|------|
-| `validate_env()` (모듈 최상단) | fail-fast: 필수 환경 변수(`DatabaseConfig`) 검증, 실패 시 `sys.exit(1)`. 상세: [config.md](config.md) |
-| `configure_logging()` | 구조화 JSON 로깅 설정. 상세: [observability.md](observability.md) |
-| `FastAPI(title=..., lifespan=lifespan)` | 앱 인스턴스 생성. `title`은 자동 생성 OpenAPI 문서의 제목이 된다 |
-| `lifespan` (`@asynccontextmanager`) | 기동/종료 훅 — `yield` 이전은 기동, 이후는 종료. 현재는 프로덕션에서 Secrets Manager로 JWT secret을 조회하는 것만 하고, 종료 블록은 비어 있다. 상세: [graceful-shutdown.md](graceful-shutdown.md) |
-| `app.include_router(auth_router)`, `app.include_router(account_router)` | `APIRouter` 등록 — Bounded Context/공유 모듈 하나당 라우터 하나. 상세: [module-pattern.md](module-pattern.md) |
-| `correlation_id_middleware` (`@app.middleware("http")`) | 모든 요청에 Correlation ID 주입 + 요청 로깅. 상세: [cross-cutting-concerns.md](cross-cutting-concerns.md) |
-| `@app.exception_handler(ExcType)` | 도메인 예외 → HTTP 응답 변환. `AccountNotFoundError`(구체 타입)를 `AccountError`(상위 타입)보다 먼저 등록해 404가 400보다 우선 매칭되도록 한다. 상세: [error-handling.md](error-handling.md) |
+| `validate_env()` (top of the module) | fail-fast: validates required environment variables (`DatabaseConfig`), calls `sys.exit(1)` on failure. Details: [config.md](config.md) |
+| `configure_logging()` | Configures structured JSON logging. Details: [observability.md](observability.md) |
+| `FastAPI(title=..., lifespan=lifespan)` | Creates the app instance. `title` becomes the title of the auto-generated OpenAPI docs |
+| `lifespan` (`@asynccontextmanager`) | Startup/shutdown hook — before `yield` is startup, after it is shutdown. Currently it only fetches the JWT secret from Secrets Manager in production, and the shutdown block is empty. Details: [graceful-shutdown.md](graceful-shutdown.md) |
+| `app.include_router(auth_router)`, `app.include_router(account_router)` | Registers an `APIRouter` — one router per Bounded Context/shared module. Details: [module-pattern.md](module-pattern.md) |
+| `correlation_id_middleware` (`@app.middleware("http")`) | Injects a Correlation ID into every request + request logging. Details: [cross-cutting-concerns.md](cross-cutting-concerns.md) |
+| `@app.exception_handler(ExcType)` | Converts a domain exception → HTTP response. `AccountNotFoundError` (the concrete type) is registered before `AccountError` (its supertype) so 404 matches before 400. Details: [error-handling.md](error-handling.md) |
 
-## 등록 순서가 중요한 이유
+## Why registration order matters
 
-FastAPI는 예외 타입에 대해 **가장 구체적으로 일치하는 핸들러**를 먼저 찾는다(MRO 기준이지 등록 순서 기준이 아니다). 그래도 이 저장소에서는 `AccountNotFoundError`를 `AccountError` 바로 다음에 나란히 등록해 두 예외의 관계가 읽는 사람에게 명확히 드러나도록 한다 — 순서 자체가 계층 구조의 문서 역할을 한다.
+For an exception type, FastAPI looks up **the most specific matching handler first** (based on MRO, not registration order). Even so, this repository registers `AccountNotFoundError` right after `AccountError` so the relationship between the two exceptions is clear to the reader — the order itself documents the hierarchy.
 
-## 아직 없는 것 — CORS
+## Not yet present — CORS
 
-`main.py`는 이미 `correlation_id_middleware`(`@app.middleware("http")`)를 갖추고 있지만, `CORSMiddleware`는 아직 없다. 프론트엔드가 다른 origin에서 호출해야 한다면 다음을 추가한다.
+`main.py` already has `correlation_id_middleware` (`@app.middleware("http")`), but no `CORSMiddleware` yet. If a frontend needs to call it from a different origin, add the following.
 
 ```python
-# main.py — CORS가 필요해지면 추가 (현재 examples/에는 없음)
+# main.py — add this once CORS is needed (not present in examples/ currently)
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
@@ -114,25 +114,25 @@ app.add_middleware(
 )
 ```
 
-Correlation ID·요청 로깅 미들웨어는 [cross-cutting-concerns.md](cross-cutting-concerns.md)에서 다룬다. Rate limiting 미들웨어는 [rate-limiting.md](rate-limiting.md) 참조.
+The Correlation ID/request-logging middleware is covered in [cross-cutting-concerns.md](cross-cutting-concerns.md). See [rate-limiting.md](rate-limiting.md) for the rate-limiting middleware.
 
-## FastAPI의 내장 이점 — Swagger를 직접 설정할 필요가 없다
+## A built-in advantage of FastAPI — no need to set up Swagger by hand
 
-NestJS는 API 문서를 노출하려면 `main.ts`에서 `DocumentBuilder`/`SwaggerModule.setup()`을 명시적으로 조립해야 한다([nestjs bootstrap.md](../../../nestjs/docs/architecture/bootstrap.md) 참조). FastAPI는 `FastAPI(title=...)`만 생성해도 Pydantic 모델과 라우트 시그니처로부터 OpenAPI 스키마를 자동 생성하고, 별도 설정 없이 다음 두 경로가 즉시 열린다.
+NestJS requires explicitly assembling `DocumentBuilder`/`SwaggerModule.setup()` in `main.ts` to expose API docs (see [nestjs bootstrap.md](../../../nestjs/docs/architecture/bootstrap.md)). FastAPI only needs `FastAPI(title=...)` to be constructed, and it auto-generates the OpenAPI schema from the Pydantic models and route signatures, immediately opening the following two paths with no extra configuration.
 
-| 경로 | 내용 |
+| Path | Content |
 |------|------|
 | `/docs` | Swagger UI |
 | `/redoc` | ReDoc |
-| `/openapi.json` | 원본 OpenAPI 스키마 |
+| `/openapi.json` | The raw OpenAPI schema |
 
-이 저장소는 `title="Account Service"` 외에 `version`, `description`을 커스터마이징하지 않는다. JWT 인증(`src/auth/interface/rest/dependencies.py`의 `HTTPBearer` 기반 `get_current_user` — [authentication.md](authentication.md) 참조)은 구현되어 있고, FastAPI가 라우트 함수의 `Depends(HTTPBearer())` 시그니처만 보고 Swagger UI에 "Authorize" 버튼을 자동으로 추가한다 — NestJS처럼 `@ApiBearerAuth('token')`을 각 컨트롤러에 붙이거나 `DocumentBuilder.addBearerAuth()`를 호출할 필요가 없다.
+This repository doesn't customize `version` or `description` beyond `title="Account Service"`. JWT authentication (`get_current_user` based on `HTTPBearer` in `src/auth/interface/rest/dependencies.py` — see [authentication.md](authentication.md)) is implemented, and FastAPI automatically adds an "Authorize" button to Swagger UI just by seeing the `Depends(HTTPBearer())` signature on a route function — there's no need, as in NestJS, to attach `@ApiBearerAuth('token')` to every controller or call `DocumentBuilder.addBearerAuth()`.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [graceful-shutdown.md](graceful-shutdown.md) — `lifespan`의 종료 블록, 헬스체크 엔드포인트
-- [error-handling.md](error-handling.md) — `@app.exception_handler` 등록 순서와 표준 에러 응답
-- [module-pattern.md](module-pattern.md) — `APIRouter` 등록, `Depends` 기반 DI
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — 미들웨어 파이프라인
+- [graceful-shutdown.md](graceful-shutdown.md) — `lifespan`'s shutdown block, health-check endpoints
+- [error-handling.md](error-handling.md) — `@app.exception_handler` registration order and the standard error response
+- [module-pattern.md](module-pattern.md) — `APIRouter` registration, `Depends`-based DI
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — the middleware pipeline

@@ -1,10 +1,10 @@
-# Repository 패턴 (Go)
+# Repository Pattern (Go)
 
-원칙은 루트 [repository-pattern.md](../../../../docs/architecture/repository-pattern.md)를 따른다: Aggregate Root 단위로 1개 인터페이스 + 1개 구현체, 인터페이스는 domain 레이어, 구현체는 infrastructure 레이어. TypeScript의 `abstract class`를 DI 토큰으로 쓰는 자리에, Go는 **domain 패키지의 `interface` 타입**을 그대로 쓴다 — 별도 토큰 개념이 없다. `guide.md`에 있던 요지를 이 문서로 옮기고 실제 코드 기준으로 확장했다.
+The principle follows the root [repository-pattern.md](../../../../docs/architecture/repository-pattern.md): one interface + one implementation per Aggregate Root, with the interface in the domain layer and the implementation in the infrastructure layer. Where TypeScript uses an `abstract class` as the DI token, Go uses the **`interface` type in the domain package** directly — there is no separate token concept. The gist that used to live in `guide.md` has moved into this document and been expanded against the actual code.
 
 ---
 
-## 인터페이스 위치 — `internal/domain/account/repository.go`
+## Interface location — `internal/domain/account/repository.go`
 
 ```go
 package account
@@ -28,15 +28,15 @@ type Repository interface {
 
 ---
 
-## 구현체 위치 — `internal/infrastructure/persistence/account_repository.go`
+## Implementation location — `internal/infrastructure/persistence/account_repository.go`
 
 ```go
 type AccountRepository struct {
 	db *sql.DB
 }
 
-// 컴파일 타임 interface 충족 검증 — TypeScript/Java의 `implements` 키워드가
-// 컴파일러 수준에서 자동으로 하는 일을 Go는 이 한 줄로 명시적으로 얻는다.
+// Compile-time interface-satisfaction check — this one line gives Go, explicitly,
+// what TypeScript/Java's `implements` keyword gets automatically at the compiler level.
 var _ account.Repository = (*AccountRepository)(nil)
 
 func NewAccountRepository(db *sql.DB) *AccountRepository {
@@ -44,18 +44,18 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 }
 ```
 
-`var _ account.Repository = (*AccountRepository)(nil)`을 지워도 프로그램은 똑같이 동작하지만, `AccountRepository`가 인터페이스를 실수로 만족하지 못하게 되는 리팩토링(메서드 시그니처 변경 등)을 그 자리에서 컴파일 에러로 잡아준다 — 런타임까지 갈 필요가 없다.
+Removing `var _ account.Repository = (*AccountRepository)(nil)` doesn't change the program's behavior, but it catches a refactor that accidentally breaks `AccountRepository`'s interface satisfaction (e.g. a method signature change) right there as a compile error — there's no need to wait until runtime.
 
 ---
 
-## "DI 바인딩" 대신 — 인터페이스 타입으로 주입받기
+## Instead of "DI binding" — injected as the interface type
 
-root는 "Application Service는 abstract class 타입으로 Repository를 주입받는다"고 한다. Go에서는 생성자 함수의 파라미터 타입을 인터페이스로 선언하는 것으로 동일한 효과를 낸다 — 별도의 "바인딩" 등록 단계가 없다.
+The root document says "the Application Service is injected with the Repository as the abstract class type." In Go, the same effect is achieved by declaring the constructor function's parameter type as the interface — there is no separate "binding registration" step.
 
 ```go
 // internal/application/command/deposit_handler.go
 type DepositHandler struct {
-	repo account.Repository  // 구체 타입이 아니라 인터페이스 타입
+	repo account.Repository  // an interface type, not a concrete type
 }
 
 func NewDepositHandler(repo account.Repository) *DepositHandler {
@@ -63,21 +63,21 @@ func NewDepositHandler(repo account.Repository) *DepositHandler {
 }
 ```
 
-`main.go`에서 `persistence.NewAccountRepository(db, outboxWriter)`(구체 타입 `*persistence.AccountRepository`)를 넘기면, Go 컴파일러가 구조적 타이핑으로 `account.Repository` 인터페이스 만족 여부를 그 호출 지점에서 검사한다. NestJS의 `@Inject(OrderRepository)` 토큰 등록, providers 배열 같은 개념 자체가 필요 없다.
+When `main.go` passes `persistence.NewAccountRepository(db, outboxWriter)` (the concrete type `*persistence.AccountRepository`), the Go compiler checks whether it satisfies the `account.Repository` interface structurally, right at that call site. NestJS concepts like `@Inject(OrderRepository)` token registration or a providers array aren't needed at all.
 
 ---
 
-## 메서드 네이밍 — root 규칙과의 대응
+## Method naming — mapping to the root rules
 
-root는 `find<Noun>s`(항상 목록 반환, 단건도 `take:1`로 흉내낸다) / `save<Noun>` / `delete<Noun>` 세 패턴만 쓰라고 한다. 이 저장소의 `account`/`card`/`payment` Repository는 그 규칙을 그대로 따른다 — Command 전용 메서드는 반드시 `Save<Noun>`(`SaveAccount`/`SaveCard`/`SavePayment`/`SaveRefund`)으로 짓는다. 바로 `Save`(Noun 없이)로 두면 어떤 Aggregate를 저장하는지 메서드 이름만으로 알 수 없고, 같은 패키지에 여러 Repository가 생겼을 때(예: Payment BC의 `Repository`/`RefundRepository`) 이름이 충돌한다:
+The root document says to use only three patterns: `find<Noun>s` (always returns a list; a single item is mimicked with `take:1`) / `save<Noun>` / `delete<Noun>`. This repository's `account`/`card`/`payment` Repositories follow that rule exactly — a Command-only method must always be named `Save<Noun>` (`SaveAccount`/`SaveCard`/`SavePayment`/`SaveRefund`). Naming it plain `Save` (without a Noun) makes it impossible to tell which Aggregate is being saved from the method name alone, and it collides once multiple Repositories exist in the same package (e.g. the Payment BC's `Repository`/`RefundRepository`):
 
-| root 규칙 | 이 저장소의 실제 메서드 | 대응 |
+| Root rule | This repository's actual method | Mapping |
 |---|---|---|
-| `find<Noun>s`(단건도 목록으로) | `FindAccounts(ctx, FindQuery)` / `FindCards(ctx, FindQuery)` / `FindPayments(ctx, FindQuery)` | 동일 — 조회는 도메인당 이 메서드 하나뿐이다. `FindQuery.Take`/필터 필드로 목록/단건을 모두 표현하며, 단건 전용 메서드(예 — `FindByID`)는 별도로 두지 않는다 |
-| `delete<Noun>` | 없음 | `Account`는 `Close()`로 상태만 바꾸고 실제로 행을 지우지 않는다 — 계좌 도메인 특성상 "삭제" 유스케이스 자체가 없다 |
-| `save<Noun>` | `SaveAccount` / `SaveCard` / `SavePayment` / `SaveRefund` | 동일 — upsert(`ON CONFLICT ... DO UPDATE`)로 생성/수정을 겸한다 |
+| `find<Noun>s` (single item as a list too) | `FindAccounts(ctx, FindQuery)` / `FindCards(ctx, FindQuery)` / `FindPayments(ctx, FindQuery)` | Identical — there's exactly one query method per domain. `FindQuery.Take`/filter fields express both list and single-item lookups, and no separate single-item-only method (e.g. `FindByID`) exists |
+| `delete<Noun>` | none | `Account` only changes state via `Close()` and never actually deletes a row — given the nature of the account domain, there's no "delete" use case at all |
+| `save<Noun>` | `SaveAccount` / `SaveCard` / `SavePayment` / `SaveRefund` | Identical — upsert (`ON CONFLICT ... DO UPDATE`) covers both create and update |
 
-**단건 조회는 별도 메서드가 아니라 `FindAccounts`를 `Take: 1`로 호출해 재사용한다.** java/kotlin-springboot의 `findAccounts(...).stream().findFirst().orElseThrow(...)`와 동일한 역할을 하는 헬퍼가 `internal/domain/account/repository.go`의 `FindOne(ctx, q, accountID, ownerID)`다 — `FindAccounts`를 `FindQuery{AccountID: accountID, OwnerID: ownerID, Take: 1}`로 호출하고, 결과가 없으면 `ErrNotFound`를 반환한다. Go에는 Stream이 없으므로 이 반복 패턴(첫 결과 꺼내기 + 없으면 에러)을 자유 함수로 추출해 각 호출부(Command/Query Handler, `acl/account_adapter.go`)가 중복 없이 재사용한다:
+**A single-item lookup isn't a separate method — it's reused by calling `FindAccounts` with `Take: 1`.** The helper playing the same role as java/kotlin-springboot's `findAccounts(...).stream().findFirst().orElseThrow(...)` is `FindOne(ctx, q, accountID, ownerID)` in `internal/domain/account/repository.go` — it calls `FindAccounts` with `FindQuery{AccountID: accountID, OwnerID: ownerID, Take: 1}` and returns `ErrNotFound` if there's no result. Since Go has no Stream, this repeated pattern (pull out the first result, error if there is none) is extracted into a free function so every call site (Command/Query Handlers, `acl/account_adapter.go`) reuses it without duplication:
 
 ```go
 // internal/application/command/deposit_handler.go
@@ -87,15 +87,15 @@ if err != nil {
 }
 ```
 
-`Repository`에 update 메서드가 별도로 없는 것은 root 원칙과 일치한다 — 상태 변경은 항상 Aggregate 메서드(`Deposit`, `Suspend` 등) 호출 후 `Save()`로 반영한다.
+The absence of a separate update method on `Repository` matches the root principle — state changes are always applied by calling an Aggregate method (`Deposit`, `Suspend`, etc.) and then `Save()`.
 
-이 메서드 네이밍 규칙은 `implementations/go/harness/repository_naming.go`가 자동으로 검사한다(`repository-naming` 규칙) — `domain/` 레이어 Repository·Query interface에 `FindByID`류(`FindBy*`), 바레 `FindAll`/`Save`/`Delete`, 별도 `Count*`·`Update*` 메서드가 있으면 FAIL로 잡아낸다. 새 도메인을 손으로 추가하며 이 컨벤션을 어겨도 `harness.sh`가 조용히 통과시키지 않는다.
+This method-naming rule is automatically checked by `implementations/go/harness/repository_naming.go` (the `repository-naming` rule) — it flags FAIL if a `domain/`-layer Repository/Query interface has a `FindByID`-style method (`FindBy*`), a bare `FindAll`/`Save`/`Delete`, or a separate `Count*`/`Update*` method. Even if this convention is violated while adding a new domain by hand, `harness.sh` won't silently let it pass.
 
 ---
 
-## 동적 필터 — `FindAccounts`의 조건부 WHERE
+## Dynamic filters — conditional WHERE in `FindAccounts`
 
-root의 "값이 있을 때만 조건 추가" 패턴을 Go는 슬라이스 append로 구현한다(`account_repository.go`):
+The root document's "add a condition only when the value is present" pattern is implemented in Go via slice appends (`account_repository.go`):
 
 ```go
 func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
@@ -124,24 +124,24 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuer
 	}
 
 	whereClause := strings.Join(where, " AND ")
-	// ... whereClause를 fmt.Sprintf로 SQL에 삽입, args는 QueryContext의 가변 인자로 전달
+	// ... whereClause is inserted into the SQL via fmt.Sprintf, args is passed as QueryContext's variadic arguments
 }
 ```
 
-주의할 점: `$N` 플레이스홀더 번호(`i`)는 조건이 추가될 때마다 증가시켜야 하고, `WHERE` 절 문자열 자체는 `fmt.Sprintf`로 조립하되 **값은 절대 문자열에 직접 삽입하지 않는다** — 항상 `args`를 통해 파라미터 바인딩한다. 컬럼명/절 구조를 조합하는 것과 사용자 입력값을 바인딩하는 것을 혼동하면 SQL 인젝션으로 이어진다.
+Points to watch: the `$N` placeholder number (`i`) must be incremented every time a condition is added, and while the `WHERE` clause string itself is assembled with `fmt.Sprintf`, **values are never inserted directly into the string** — they are always parameter-bound through `args`. Conflating "composing column names/clause structure" with "binding user input values" leads directly to SQL injection.
 
 ---
 
-## Soft Delete — 조회 시 필터링
+## Soft delete — filtering on lookup
 
-`internal/infrastructure/persistence/account_repository.go`의 모든 조회 쿼리는 `deleted_at IS NULL`을 기본 조건에 포함한다(`FindAccounts`의 `where` 슬라이스 초기값). 상세 스키마와 삭제 흐름은 [persistence.md](persistence.md) 참고 — 다만 이 예제는 Account를 물리적으로 삭제하는 유스케이스가 없어(계좌는 `Close()`로 상태 전환만 함) `deleted_at` 컬럼이 있어도 실제로 채워지는 경로는 아직 없다.
+Every query in `internal/infrastructure/persistence/account_repository.go` includes `deleted_at IS NULL` as a base condition (the initial value of `FindAccounts`'s `where` slice). See [persistence.md](persistence.md) for the detailed schema and deletion flow — though in this example there's no use case that physically deletes an Account (an account only transitions state via `Close()`), so even though the `deleted_at` column exists, there's currently no path that actually populates it.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계와 Repository의 관계
-- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, 인터페이스 위치
-- [persistence.md](persistence.md) — 트랜잭션, Soft Delete, 마이그레이션
-- [domain-events.md](domain-events.md) — Repository의 `Save<Noun>`이 이벤트를 Outbox에 같은 트랜잭션으로 저장하는 지점
-- [aggregate-id.md](aggregate-id.md) — Repository가 ID를 새로 발급하지 않는 원칙
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root design and its relationship to the Repository
+- [layer-architecture.md](layer-architecture.md) — layer dependency direction, interface location
+- [persistence.md](persistence.md) — transactions, soft delete, migrations
+- [domain-events.md](domain-events.md) — where the Repository's `Save<Noun>` saves events into the Outbox within the same transaction
+- [aggregate-id.md](aggregate-id.md) — the principle that the Repository never issues a new ID

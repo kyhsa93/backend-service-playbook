@@ -4,10 +4,12 @@ from .refund import Refund
 
 
 class RefundQuery(ABC):
-    """읽기 전용 인터페이스 — Query Handler 전용(card 도메인의 CardQuery와 동일한 이유).
+    """A read-only interface — for the Query Handler only (the same reason as the card
+    domain's CardQuery).
 
-    Refund는 owner_id를 갖지 않는다(paymentId로만 원 결제를 참조한다) — 소유권 검증은
-    Query Handler가 PaymentQuery로 원 결제를 먼저 조회해 확인한다.
+    Refund has no owner_id (it references the original payment only via paymentId) —
+    ownership verification is done by the Query Handler first looking up the original
+    payment via PaymentQuery.
     """
 
     @abstractmethod

@@ -5,9 +5,10 @@ import com.example.accountservice.account.domain.Account;
 import java.util.Optional;
 
 /**
- * Query Service 전용 읽기 인터페이스. 쓰기용 {@code AccountRepository}(domain)와 분리된 좁은 계약이다.
- * 이 Javadoc은 일부러 쓰기용 인터페이스 이름을 문서화 목적으로 언급한다 — 실제 코드(주석 제외)에는
- * Repository 참조가 없으므로 규칙을 통과해야 한다.
+ * A read-only interface dedicated to the Query Service. A narrow contract separated from
+ * the write-side {@code AccountRepository} (domain). This Javadoc deliberately mentions
+ * the write-side interface's name for documentation purposes — since the actual code
+ * (excluding comments) has no Repository reference, the rule must still pass.
  */
 public interface AccountQuery {
     Optional<Account> findByAccountIdAndOwnerId(String accountId, String ownerId);

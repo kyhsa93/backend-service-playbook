@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Spring Boot Harness — Java 프로젝트 구조·어노테이션 규칙 검사
+# Spring Boot Harness — checks Java project structure/annotation rules
 # Usage: ./harness.sh <projectRoot>
 #
-# 사전 조건: JDK 17+ (javac/java). PATH에 없으면 JAVA_HOME/bin을 사용한다.
+# Prerequisite: JDK 17+ (javac/java). Uses JAVA_HOME/bin if not on PATH.
 #
-# src/ 아래 소스가 바뀌지 않았으면 이전에 컴파일한 build/classes를 그대로 재사용한다.
+# If the source under src/ hasn't changed, it reuses the previously compiled build/classes as-is.
 
 set -uo pipefail
 

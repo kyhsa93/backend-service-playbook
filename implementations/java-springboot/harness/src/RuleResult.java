@@ -3,7 +3,7 @@ package harness;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 규칙 하나가 반환하는 결과 — 섹션 헤더 + 그 아래 출력할 Finding 목록. */
+/** The result returned by a single rule — a section header plus the list of Findings to print under it. */
 public final class RuleResult {
     public final String section;
     public final List<Finding> findings = new ArrayList<>();

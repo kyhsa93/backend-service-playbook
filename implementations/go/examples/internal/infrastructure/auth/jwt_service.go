@@ -23,7 +23,7 @@ func NewJWTService(secret string, ttl time.Duration) *JWTService {
 	return &JWTService{secret: []byte(secret), ttl: ttl}
 }
 
-// Sign은 최소한의 정보(userId)만 담은 JWT를 발급한다.
+// Sign issues a JWT carrying only the minimal information (userId).
 func (s *JWTService) Sign(userID string) (string, error) {
 	claims := Claims{
 		UserID: userID,
@@ -36,7 +36,7 @@ func (s *JWTService) Sign(userID string) (string, error) {
 	return token.SignedString(s.secret)
 }
 
-// Verify는 토큰을 검증하고 userId를 반환한다. 서명/만료 검증 실패 시 ErrInvalidToken.
+// Verify validates the token and returns the userId. Returns ErrInvalidToken if signature/expiry validation fails.
 func (s *JWTService) Verify(tokenString string) (string, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {

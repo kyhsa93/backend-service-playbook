@@ -1,33 +1,39 @@
-// 새 도메인 스캐폴딩 생성기 — docs/reference.md의 "실전 구현 템플릿"(Order 예시)을
-// 실제 코드로 만든 뒤, 도메인 이름만 파라미터로 뽑아 재사용 가능하게 일반화한 것이다.
-// Aggregate(단일 Status 필드) + CQRS Command/Query Handler + 도메인 이벤트 1종 +
-// Repository(도메인 인터페이스 + infrastructure 구현체) + HTTP Handler + DTO까지
-// 한 번에 생성한다.
+// New-domain scaffolding generator — turns the "Practical Implementation
+// Template" (the Order example) from docs/reference.md into real code, then
+// generalizes it into a reusable form by parameterizing only the domain name.
+// Generates in one pass: an Aggregate (a single Status field) + CQRS
+// Command/Query Handlers + one domain event + a Repository (domain interface +
+// infrastructure implementation) + an HTTP Handler + a DTO.
 //
-// 이 디렉토리는 examples/harness와 마찬가지로 독립된 Go module이다 — 반드시 이 디렉토리
-// 안에서 실행한다(implementations/go/에는 이들을 묶는 go.mod/go.work가 없다).
+// Like examples/harness, this directory is an independent Go module — it must
+// be run from inside this directory (implementations/go/ has no go.mod/go.work
+// tying them together).
 //
-// 사용법 (scripts/create-domain/ 안에서):
+// Usage (from inside scripts/create-domain/):
 //
 //	go run . <PascalCaseDomainName> [--out <targetRoot>] [--wire]
 //
-// 예:
+// Examples:
 //
 //	go run . Coupon
-//	  -> examples/internal/... 아래에 생성(스크립트 기본 대상), main.go/router.go는 안 건드림
+//	  -> generates under examples/internal/... (the script's default target); doesn't touch main.go/router.go
 //	go run . Coupon --out /tmp/scratch-app --wire
-//	  -> 지정한 루트 아래 생성 + cmd/server/main.go, internal/interface/http/router.go에
-//	     저장소/핸들러/라우트까지 자동 삽입
+//	  -> generates under the given root and auto-inserts the repository/handler/
+//	     route into cmd/server/main.go and internal/interface/http/router.go
 //
-// --wire를 주지 않으면 main.go/router.go는 건드리지 않고, 붙여넣을 내용을 콘솔에
-// 안내만 한다 — 기존 프로젝트의 중앙 조립 파일을 스크립트가 임의로 고치는 걸 원치 않을
-// 수 있어 기본값은 안전한 쪽(수동 적용)으로 둔다(nestjs의 create-domain.js와 동일한 기본값 철학).
+// Without --wire, main.go/router.go are left untouched and the content to paste
+// in is only printed to the console — the default is the safe path (manual
+// application), since a script arbitrarily editing a project's central
+// assembly files may not be wanted (same default philosophy as nestjs's
+// create-domain.js).
 //
-// Go는 도메인마다 전용 Relay/Consumer를 두지 않는다 — main.go가 조립하는 단일 공유
-// map[string]outbox.Handler를 outbox.Poller(발행)/outbox.Consumer(수신·실행)가 함께
-// 쓰므로, main.go의 이 handlers map에 새 도메인 항목을 추가하는 것이 이 생성기의 핵심
-// wiring 대상이다(자세한 설계는 wiring.go 주석 참고). Command Handler는 이 map을
-// 전혀 참조하지 않는다 — 저장 후 곧바로 반환한다(동기 드레인 금지, domain-events.md).
+// Go doesn't have a dedicated Relay/Consumer per domain — outbox.Poller
+// (publishing) and outbox.Consumer (receiving/executing) share the single
+// map[string]outbox.Handler that main.go assembles, so adding a new domain
+// entry to that handlers map in main.go is this generator's core wiring target
+// (see wiring.go's comments for the detailed design). The Command Handler never
+// references this map at all — it returns immediately after saving (synchronous
+// draining is prohibited, see domain-events.md).
 package main
 
 import (
@@ -42,22 +48,24 @@ import (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "사용법 (scripts/create-domain/ 안에서): go run . <PascalCaseDomainName> [--out <targetRoot>] [--wire]")
+	fmt.Fprintln(os.Stderr, "Usage (from inside scripts/create-domain/): go run . <PascalCaseDomainName> [--out <targetRoot>] [--wire]")
 }
 
-// defaultTargetRoot는 이 스크립트 파일 자신의 위치를 기준으로 ../../examples를 가리킨다 —
-// go run으로 실행해도 runtime.Caller(0)은 컴파일 시점의 소스 경로를 그대로 반환한다.
+// defaultTargetRoot points to ../../examples relative to this script file's own
+// location — runtime.Caller(0) still returns the compile-time source path even
+// when run via go run.
 func defaultTargetRoot() string {
 	_, thisFile, _, _ := runtime.Caller(0)
 	scriptDir := filepath.Dir(thisFile)
 	return filepath.Join(scriptDir, "..", "..", "examples")
 }
 
-// readModulePath는 targetRoot/go.mod의 첫 "module " 줄에서 import 경로 prefix를 읽는다.
+// readModulePath reads the import path prefix from the first "module " line in
+// targetRoot/go.mod.
 func readModulePath(targetRoot string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(targetRoot, "go.mod"))
 	if err != nil {
-		return "", fmt.Errorf("go.mod 읽기 실패: %w", err)
+		return "", fmt.Errorf("failed to read go.mod: %w", err)
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -65,13 +73,14 @@ func readModulePath(targetRoot string) (string, error) {
 			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
 		}
 	}
-	return "", fmt.Errorf("go.mod에서 module 선언을 찾지 못함")
+	return "", fmt.Errorf("no module declaration found in go.mod")
 }
 
 var migrationFileRe = regexp.MustCompile(`^(\d+)_`)
 
-// nextMigrationSeq는 targetRoot/migrations/ 안의 0001_xxx.sql 같은 파일명에서
-// 가장 큰 번호 + 1을 반환한다. migrations/ 디렉토리가 없으면 1을 반환한다.
+// nextMigrationSeq returns the highest number + 1 found among filenames like
+// 0001_xxx.sql under targetRoot/migrations/. Returns 1 if the migrations/
+// directory doesn't exist.
 func nextMigrationSeq(targetRoot string) int {
 	entries, err := os.ReadDir(filepath.Join(targetRoot, "migrations"))
 	if err != nil {
@@ -97,19 +106,20 @@ func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-// gofmtFiles는 생성/수정한 .go 파일들에 gofmt -w를 돌려 임포트 정렬·포맷을 맞춘다.
-// gofmt 바이너리가 없으면 조용히 건너뛴다(빌드/vet/harness 결과에는 영향 없음 — 포맷
-// 문제는 golangci-lint의 gofmt formatter가 별도로 잡아준다).
+// gofmtFiles runs gofmt -w on the generated/modified .go files to fix import
+// ordering and formatting. Silently skipped if the gofmt binary isn't found
+// (doesn't affect build/vet/harness results — formatting issues are caught
+// separately by golangci-lint's gofmt formatter).
 func gofmtFiles(paths []string) {
 	gofmtBin, err := exec.LookPath("gofmt")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "경고: gofmt를 찾지 못해 포맷팅을 건너뜁니다: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warning: gofmt not found, skipping formatting: %v\n", err)
 		return
 	}
 	for _, p := range paths {
 		cmd := exec.Command(gofmtBin, "-w", p)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, "경고: gofmt -w %s 실패: %v\n%s\n", p, err, out)
+			fmt.Fprintf(os.Stderr, "warning: gofmt -w %s failed: %v\n%s\n", p, err, out)
 		}
 	}
 }
@@ -136,7 +146,7 @@ func main() {
 		case "--wire":
 			shouldWire = true
 		default:
-			fmt.Fprintf(os.Stderr, "알 수 없는 인자: %s\n", args[i])
+			fmt.Fprintf(os.Stderr, "unknown argument: %s\n", args[i])
 			usage()
 			os.Exit(1)
 		}
@@ -144,7 +154,7 @@ func main() {
 
 	absTargetRoot, err := filepath.Abs(targetRoot)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "대상 경로 처리 실패: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to resolve target path: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -162,7 +172,7 @@ func main() {
 	for relPath, content := range files {
 		fullPath := filepath.Join(absTargetRoot, relPath)
 		if err := writeFile(fullPath, content); err != nil {
-			fmt.Fprintf(os.Stderr, "파일 쓰기 실패(%s): %v\n", relPath, err)
+			fmt.Fprintf(os.Stderr, "failed to write file (%s): %v\n", relPath, err)
 			os.Exit(1)
 		}
 		if strings.HasSuffix(fullPath, ".go") {
@@ -170,23 +180,23 @@ func main() {
 		}
 	}
 
-	fmt.Printf("%s 도메인 생성 완료: %s 아래 (%d개 파일)\n", n.Domain, absTargetRoot, len(files))
-	fmt.Printf("REST 경로: /%s (POST 생성, GET/{id} 조회, POST /{id}/cancel 취소)\n", n.DomainsLower)
+	fmt.Printf("%s domain generated: under %s (%d file(s))\n", n.Domain, absTargetRoot, len(files))
+	fmt.Printf("REST paths: /%s (POST create, GET/{id} fetch, POST /{id}/cancel cancel)\n", n.DomainsLower)
 	fmt.Println()
-	fmt.Println("참고: 나이브 복수형 규칙(+s / +es / y→ies)을 썼습니다 — 불규칙 복수형 도메인이면")
-	fmt.Printf("  %s(테이블/경로명) 등을 수동으로 다듬어야 할 수 있습니다.\n", n.DomainsLower)
+	fmt.Println("Note: a naive pluralization rule (+s / +es / y→ies) was used — for domains with")
+	fmt.Printf("  irregular plurals, you may need to manually adjust %s (table/path names) etc.\n", n.DomainsLower)
 
 	if shouldWire {
 		result, err := WireMainAndRouter(absTargetRoot, n)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "wiring 실패: %v\n", err)
+			fmt.Fprintf(os.Stderr, "wiring failed: %v\n", err)
 			os.Exit(1)
 		}
 		switch {
 		case result.AlreadyWired:
-			fmt.Println("이미 main.go에 등록돼 있어 wiring을 건너뜁니다.")
+			fmt.Println("Already registered in main.go — skipping wiring.")
 		default:
-			fmt.Printf("저장소·핸들러·라우트 등록 완료 — 수정된 파일 %d개:\n", len(result.ChangedFiles))
+			fmt.Printf("Repository/handler/route registration complete — %d file(s) modified:\n", len(result.ChangedFiles))
 			for _, f := range result.ChangedFiles {
 				fmt.Printf("  %s\n", f)
 			}
@@ -198,5 +208,5 @@ func main() {
 
 	gofmtFiles(writtenGoFiles)
 
-	fmt.Println("다음: go build ./..., go vet ./... 로 컴파일을 확인하고, bash harness.sh <projectRoot>로 검증하세요.")
+	fmt.Println("Next: verify the build with go build ./..., go vet ./..., then check compliance with bash harness.sh <projectRoot>.")
 }

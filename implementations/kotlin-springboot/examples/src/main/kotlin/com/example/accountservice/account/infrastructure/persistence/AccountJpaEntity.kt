@@ -14,11 +14,13 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
- * account/domain/Account.kt의 JPA 매핑 전용 대응물.
- * Domain Aggregate(Account)는 이 클래스를 전혀 알지 못한다 — 변환은 AccountMapper가 전담한다(layer-architecture.md 참고).
+ * The JPA-mapping counterpart of account/domain/Account.kt.
+ * The domain Aggregate (Account) has no awareness of this class whatsoever — conversion is handled
+ * exclusively by AccountMapper (see layer-architecture.md).
  *
- * 프로퍼티를 `var` + 기본값으로 선언해 Hibernate가 요구하는 기본 생성자를 kotlin-jpa 플러그인이 생성하게 하고,
- * 갱신 시 AccountMapper가 기존 행(PK 보존)의 가변 필드를 그대로 덮어쓸 수 있게 한다.
+ * Properties are declared as `var` with default values so the kotlin-jpa plugin can generate the no-arg
+ * constructor Hibernate requires, and so AccountMapper can overwrite the mutable fields of an existing
+ * row (PK preserved) in place on update.
  */
 @Entity
 @Table(name = "accounts")

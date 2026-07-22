@@ -6,7 +6,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.web.filter.OncePerRequestFilter
 
-// @Component 없음 — Spring이 이 클래스를 빈으로 등록하지 않으므로 필터 체인에 절대 들어가지 않는다.
+// No @Component — Spring never registers this class as a bean, so it never enters the filter chain.
 class RateLimitingFilter(
     private val rateLimiterRegistry: RateLimiterRegistry,
 ) : OncePerRequestFilter() {

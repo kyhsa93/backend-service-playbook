@@ -22,7 +22,8 @@ class IssueCardHandler:
         self._account_adapter = account_adapter
 
     async def execute(self, cmd: IssueCardCommand) -> Card:
-        # 동기 Adapter(ACL)로 연결 계좌를 조회 — 응답(발급 가부)에 필요하므로 동기 호출.
+        # Looks up the linked account via the synchronous Adapter (ACL) — a synchronous call since the
+        # response (whether issuance is allowed) needs it.
         account = await self._account_adapter.find_account(cmd.account_id, cmd.requester_id)
         if account is None:
             raise LinkedAccountNotFoundError()

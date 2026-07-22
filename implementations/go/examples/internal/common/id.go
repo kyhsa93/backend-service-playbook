@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// NewID는 UUID v4에서 하이픈을 제거한 32자리 hex 문자열을 반환한다.
+// NewID returns a 32-character hex string, a UUID v4 with hyphens removed.
 func NewID() string {
 	return strings.ReplaceAll(uuid.NewString(), "-", "")
 }

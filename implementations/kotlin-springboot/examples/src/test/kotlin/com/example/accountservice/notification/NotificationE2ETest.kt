@@ -38,15 +38,16 @@ import java.net.http.HttpResponse
 import java.time.Duration
 
 /**
- * Account 도메인 커맨드(개설/입금/출금/정지/재개/종료) 각각이 Outbox 경로를 통해 SES로 알림
- * 이메일을 발송하는지 검증한다.
+ * Verifies that each Account-domain command (open/deposit/withdraw/suspend/reactivate/close) sends
+ * a notification email via SES through the Outbox path.
  *
- * [com.example.accountservice.account.interfaces.rest.AccountControllerE2ETest]가 이미 계좌
- * 개설/입금 알림을 커버하지만, 이 클래스는 6개 커맨드 전체를 대상으로 알림 발송을 전담 검증한다 —
- * `outbox/` 도입(OutboxWriter가 Aggregate 저장과 같은 트랜잭션에 이벤트를 커밋하고, OutboxPoller가
- * 독립적으로 이를 SQS로 발행하고 OutboxConsumer가 수신해 `application/event/`의 `*EventHandler`를
- * 호출하는 비동기 경로)에 대한 회귀 테스트이기도 하다 — 알림은 HTTP 응답이 돌아온 뒤 최대 몇 초
- * 뒤에 발송되므로 [awaitEmailSent]로 폴링한다.
+ * [com.example.accountservice.account.interfaces.rest.AccountControllerE2ETest] already covers the
+ * account-opening/deposit notifications, but this class is dedicated to verifying notification
+ * sending across all 6 commands — it also serves as a regression test for the `outbox/` mechanism
+ * (the asynchronous path where OutboxWriter commits the event in the same transaction as the
+ * Aggregate save, OutboxPoller independently publishes it to SQS, and OutboxConsumer receives it and
+ * calls the corresponding `*EventHandler` in `application/event/`) — since a notification is sent up
+ * to a few seconds after the HTTP response comes back, we poll with [awaitEmailSent].
  */
 @Testcontainers
 @SpringBootTest(
@@ -82,14 +83,15 @@ class NotificationE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
-            // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
-            // rate limiting 자체가 아니라 알림 발송 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+            // The test calls the write API more times in a short span than the default
+            // limit-for-period (10), so for tests only we loosen it generously so we're verifying
+            // the notification-sending logic rather than rate limiting itself.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
-        // 컨테이너는 이미 떠 있는 상태이므로(정적 @Container 필드), Spring 컨텍스트가 SqsProperties를
-        // 바인딩하기 전에 큐를 직접 만들어 그 URL을 반환한다 — DLQ/RedrivePolicy는 여기서는
-        // 생략한다(테스트 목적상 재시도 관찰이 필요 없다).
+        // Since the container is already up (a static @Container field), we create the queue
+        // directly and return its URL before the Spring context binds SqsProperties — DLQ/
+        // RedrivePolicy are omitted here (retry observation isn't needed for testing purposes).
         private fun createDomainEventQueue(): String {
             val sqsClient =
                 SqsClient
@@ -104,9 +106,9 @@ class NotificationE2ETest {
             return queueUrl
         }
 
-        // SqsProperties.taskQueueUrl도 @NotBlank(config.md fail-fast)이므로, Task Queue 경로를
-        // 실제로 쓰지 않는 이 테스트도 컨텍스트 기동을 위해 FIFO 큐를 만들어 둔다(TaskQueueE2ETest와
-        // 동일한 방식).
+        // Since SqsProperties.taskQueueUrl is also @NotBlank (config.md fail-fast), this test — which
+        // doesn't actually use the Task Queue path — also creates a FIFO queue just to boot the
+        // context (the same approach as TaskQueueE2ETest).
         private fun createTaskQueue(): String {
             val sqsClient =
                 SqsClient
@@ -132,8 +134,8 @@ class NotificationE2ETest {
         @BeforeAll
         @JvmStatic
         fun verifySesSender() {
-            // LocalStack의 SES 에뮬레이터도 실제 SES처럼 발신자 신원 검증을 강제하므로,
-            // 테스트에서 이메일을 보내기 전에 발신 주소를 미리 인증해 둔다.
+            // LocalStack's SES emulator enforces sender-identity verification just like real SES,
+            // so we verify the sender address up front before the test sends any email.
             val sesClient =
                 SesClient
                     .builder()
@@ -204,11 +206,13 @@ class NotificationE2ETest {
     }
 
     /**
-     * DB에 저장된 발송 기록과 LocalStack SES에 실제로 도착한 메시지를 모두 검증한다.
+     * Verifies both the send record saved in the DB and the message that actually arrived at
+     * LocalStack SES.
      *
-     * Outbox → SQS(OutboxPoller, 최대 1초 주기) → OutboxConsumer → EventHandler 경로를 거쳐 비동기로
-     * 처리되므로, HTTP 응답이 돌아온 시점에는 아직 이메일이 발송되지 않았을 수 있다 — 이 저장소가
-     * 실측한 LocalStack+SQS 지연(2~4초)보다 넉넉한 타임아웃으로 폴링한다.
+     * Processing goes through the Outbox → SQS (OutboxPoller, at most a 1-second cycle) →
+     * OutboxConsumer → EventHandler path asynchronously, so the email may not have been sent yet by
+     * the time the HTTP response comes back — poll with a timeout more generous than the
+     * LocalStack+SQS latency (2-4 seconds) actually measured in this repository.
      */
     private fun awaitEmailSent(
         accountId: String,
@@ -220,14 +224,14 @@ class NotificationE2ETest {
                 sentEmailJpaRepository
                     .findByAccountId(accountId)
                     .firstOrNull { it.eventType == eventType }
-                    ?: throw AssertionError("$eventType 발송 기록이 저장되지 않았습니다: accountId=$accountId")
+                    ?: throw AssertionError("The $eventType send record was not saved: accountId=$accountId")
             assertThat(sentEmail.recipient).isEqualTo(recipient)
             assertThat(sentEmail.sesMessageId).isNotBlank()
 
             val messages = fetchSesMessages()
             val matched =
                 messages.firstOrNull { it["Id"] == sentEmail.sesMessageId }
-                    ?: throw AssertionError("localstack SES에서 sesMessageId=${sentEmail.sesMessageId} 메시지를 찾을 수 없습니다.")
+                    ?: throw AssertionError("Could not find message sesMessageId=${sentEmail.sesMessageId} in localstack SES.")
 
             @Suppress("UNCHECKED_CAST")
             val destination = matched["Destination"] as Map<String, Any>
@@ -239,7 +243,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    fun `계좌를 개설하면 AccountCreated 알림 이메일이 발송된다`() {
+    fun `opening an account sends an AccountCreated notification email`() {
         val email = "notification-created@example.com"
         val accountId = createAccount("notification-owner-1", email)
 
@@ -247,7 +251,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    fun `입금하면 MoneyDeposited 알림 이메일이 발송된다`() {
+    fun `depositing sends a MoneyDeposited notification email`() {
         val email = "notification-deposit@example.com"
         val ownerId = "notification-owner-2"
         val accountId = createAccount(ownerId, email)
@@ -259,7 +263,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    fun `출금하면 MoneyWithdrawn 알림 이메일이 발송된다`() {
+    fun `withdrawing sends a MoneyWithdrawn notification email`() {
         val email = "notification-withdraw@example.com"
         val ownerId = "notification-owner-3"
         val accountId = createAccount(ownerId, email)
@@ -272,7 +276,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    fun `계좌를 정지하면 AccountSuspended 알림 이메일이 발송된다`() {
+    fun `suspending an account sends an AccountSuspended notification email`() {
         val email = "notification-suspend@example.com"
         val ownerId = "notification-owner-4"
         val accountId = createAccount(ownerId, email)
@@ -284,7 +288,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    fun `정지된 계좌를 재개하면 AccountReactivated 알림 이메일이 발송된다`() {
+    fun `reactivating a suspended account sends an AccountReactivated notification email`() {
         val email = "notification-reactivate@example.com"
         val ownerId = "notification-owner-5"
         val accountId = createAccount(ownerId, email)
@@ -297,7 +301,7 @@ class NotificationE2ETest {
     }
 
     @Test
-    fun `잔액이 0인 계좌를 종료하면 AccountClosed 알림 이메일이 발송된다`() {
+    fun `closing an account with a 0 balance sends an AccountClosed notification email`() {
         val email = "notification-close@example.com"
         val ownerId = "notification-owner-6"
         val accountId = createAccount(ownerId, email)

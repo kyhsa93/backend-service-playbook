@@ -17,11 +17,12 @@ class Transaction:
     type: TransactionType
     amount: Money
     created_at: datetime
-    # 외부 BC(Payment)의 Integration Event 반응으로 발생한 거래를 다른 BC의 Aggregate
-    # ID(payment_id/refund_id)로 상관관계 지을 수 있게 하는 선택 필드다. 사용자가 직접
-    # 요청한 입금/출금에는 없다(None) — Payment 반응 커맨드에서만 채워지며, at-least-once
-    # 재수신 시 이 값(+type)으로 중복 처리를 막는 Level 2 Ledger 키로 쓰인다
-    # (domain-events.md의 "이벤트 핸들러 멱등성" 참고).
+    # An optional field that lets a transaction arising from a reaction to an external BC's
+    # (Payment's) Integration Event be correlated with the other BC's Aggregate ID
+    # (payment_id/refund_id). It's absent (None) for a deposit/withdrawal the user requested
+    # directly — it's only filled in by a Payment-reaction command, and on an at-least-once
+    # redelivery this value (+type) is used as the Level 2 Ledger key that prevents
+    # duplicate processing (see "Event Handler Idempotency" in domain-events.md).
     reference_id: str | None = None
 
     @classmethod

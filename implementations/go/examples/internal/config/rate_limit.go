@@ -5,12 +5,14 @@ import (
 	"strconv"
 )
 
-// RateLimitConfig는 전역 토큰 버킷 rate limiter의 임계값이다.
-// 운영값은 환경 변수로 조정하고(설정되지 않으면 기본값을 쓴다), e2e 테스트처럼 같은 프로세스에서
-// 짧은 시간에 수십 개 요청을 보내는 상황에서는 넉넉한 값으로 override한다.
+// RateLimitConfig holds the thresholds for the global token-bucket rate
+// limiter. Production values are tuned via environment variables (defaults
+// are used if unset), and situations like e2e tests, which send dozens of
+// requests in a short time within the same process, override them with
+// generous values.
 type RateLimitConfig struct {
-	RequestsPerSecond float64 // 초당 평균 허용 요청 수
-	Burst             int     // 순간적으로 허용하는 burst 크기
+	RequestsPerSecond float64 // average requests allowed per second
+	Burst             int     // burst size allowed momentarily
 }
 
 func LoadRateLimitConfig() RateLimitConfig {

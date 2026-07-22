@@ -9,9 +9,10 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// RateLimiterRegistry/@RateLimiter/RateLimiter 타입 전부를 잡기 위해 뒤쪽 단어 경계(\b)는 요구하지
-// 않는다 — "RateLimiterRegistry"처럼 "RateLimiter" 바로 뒤에 다른 단어 문자가 이어지는 식별자가
-// 실제 코드의 지배적인 형태라 \bRateLimiter\b(양쪽 경계)로는 아무것도 못 잡는다(실제로 겪은 버그).
+// Doesn't require a trailing word boundary(\b) in order to catch RateLimiterRegistry/@RateLimiter/
+// RateLimiter types alike — identifiers where another word character immediately follows
+// "RateLimiter", like "RateLimiterRegistry", are the dominant form in the actual code, so
+// \bRateLimiter\b(boundary on both sides) would catch nothing(a bug actually hit in practice).
 private val RATE_LIMITER_REFERENCE = Regex("""\bRateLimiter""")
 private val CLASS_NAME = Regex("""class\s+(\w+)""")
 private val ACQUIRE_CALL = Regex("""\.acquirePermission\(|\.tryAcquirePermission\(""")
@@ -19,12 +20,14 @@ private val SPRING_BEAN_ANNOTATION = Regex("""@(Component|Service|Configuration|
 private val EXPLICIT_FILTER_REGISTRATION = Regex("""FilterRegistrationBean|addFilterBefore|addFilterAfter|addFilter\b""")
 
 /**
- * [S5] rate-limit-wired — Resilience4j `RateLimiter`를 참조하는 `OncePerRequestFilter`(또는
- * Servlet `Filter`) 클래스가 실제로 Spring 컨테이너/필터 체인에 등록되어 있는지 확인한다
- * (rate-limiting.md). `@Component` 등 빈 등록 애노테이션도 없고 `WebConfig.kt`/`SecurityConfig.kt`
- * 류의 `FilterRegistrationBean`/`addFilterBefore` 명시 등록도 없다면, 클래스는 컴파일은 되지만 어떤
- * 요청도 실제로 거치지 않는 죽은 코드다. 또한 RateLimiter를 참조만 하고 `acquirePermission()` 같은
- * 실제 제한 로직 호출이 없는 경우(정의만 되어 있고 실질적으로 아무것도 안 거르는 스텁)도 잡는다.
+ * [S5] rate-limit-wired — checks whether an `OncePerRequestFilter`(or Servlet `Filter`) class that
+ * references the Resilience4j `RateLimiter` is actually registered with the Spring container/filter
+ * chain(rate-limiting.md). If it has no bean-registration annotation like `@Component`, and no
+ * explicit `FilterRegistrationBean`/`addFilterBefore` registration in something like
+ * `WebConfig.kt`/`SecurityConfig.kt`, the class compiles but is dead code that no request ever
+ * actually passes through. This also catches the case where RateLimiter is only referenced with no
+ * actual limiting-logic call like `acquirePermission()`(a stub that's only defined and doesn't
+ * substantively filter anything).
  */
 fun checkRateLimitWired(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -34,7 +37,7 @@ fun checkRateLimitWired(rootPath: String): RuleResult {
 
     val usesRateLimiter = contents.values.any { RATE_LIMITER_REFERENCE.containsMatchIn(it) }
     if (!usesRateLimiter) {
-        result.add(skipFinding("RateLimiter(Resilience4j) 사용 없음"))
+        result.add(skipFinding("no use of RateLimiter(Resilience4j)"))
         return result
     }
 
@@ -45,7 +48,7 @@ fun checkRateLimitWired(rootPath: String): RuleResult {
         }
 
     if (filterFiles.isEmpty()) {
-        result.add(skipFinding("RateLimiter를 사용하는 Filter 클래스 없음 (애노테이션 기반 적용 등 다른 방식일 수 있음)"))
+        result.add(skipFinding("no Filter class uses RateLimiter (may be applied a different way, e.g. annotation-based)"))
         return result
     }
 
@@ -58,8 +61,8 @@ fun checkRateLimitWired(rootPath: String): RuleResult {
             result.add(
                 failFinding(
                     rel,
-                    "$className 이 RateLimiter를 참조하지만 acquirePermission() 등 실제 제한 로직 호출이 없음 — " +
-                        "정의만 되어 있고 실질적으로 요청을 제한하지 않는 스텁으로 의심됨 (rate-limiting.md)",
+                    "$className references RateLimiter but has no actual limiting-logic call like acquirePermission() — " +
+                        "suspected to be a stub that's only defined and doesn't substantively limit requests (rate-limiting.md)",
                 ),
             )
             continue
@@ -72,13 +75,14 @@ fun checkRateLimitWired(rootPath: String): RuleResult {
             }
 
         if (selfRegistered || explicitlyRegistered) {
-            result.add(passFinding("$rel ($className, 요청 파이프라인에 등록됨)"))
+            result.add(passFinding("$rel ($className, registered in the request pipeline)"))
         } else {
             result.add(
                 failFinding(
                     rel,
-                    "$className 이 RateLimiter로 요청을 제한하는 로직을 갖고 있지만 @Component 등 빈 등록 애노테이션도, " +
-                        "FilterRegistrationBean/addFilterBefore 명시 등록도 없어 실제 필터 체인에 적용되지 않는 죽은 코드로 의심됨 (rate-limiting.md)",
+                    "$className has logic that limits requests via RateLimiter, but has neither a bean-registration " +
+                        "annotation like @Component nor an explicit FilterRegistrationBean/addFilterBefore registration — " +
+                        "suspected to be dead code not actually applied to the filter chain (rate-limiting.md)",
                 ),
             )
         }

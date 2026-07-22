@@ -32,15 +32,17 @@ class Card:
         self.brand = brand
         self.status = status
         self.created_at = created_at
-        # 매월 카드 사용내역 발송 배치의 Level 1 멱등성 마커("YYYY-MM") —
-        # Account.last_interest_paid_at과 동일한 설계(domain-events.md "이벤트 핸들러 멱등성").
+        # The Level 1 idempotency marker for the monthly card-statement delivery batch
+        # ("YYYY-MM") — the same design as Account.last_interest_paid_at (see "Event Handler
+        # Idempotency" in domain-events.md).
         self.last_statement_sent_month = last_statement_sent_month
         self._events: list[CardDomainEvent] = []
 
     @classmethod
     def issue(cls, account_id: str, owner_id: str, brand: str) -> Card:
-        # 연결 계좌의 활성 여부는 Card Aggregate가 알 수 없다 — 발급 가능 여부(계좌 상태)는
-        # Application 레이어가 AccountAdapter(ACL)로 동기 조회해 판단한 뒤 이 팩토리를 호출한다.
+        # The Card Aggregate cannot know whether the linked account is active — whether
+        # issuance is allowed (account status) is decided by the Application layer via a
+        # synchronous lookup through AccountAdapter (ACL), before it calls this factory.
         return cls(
             card_id=generate_id(),
             account_id=account_id,
@@ -63,12 +65,14 @@ class Card:
         self.status = CardStatus.CANCELLED
 
     def send_statement(self, period: str, payment_count: int, total_amount: int, email: str) -> None:
-        """매월 카드 사용내역 발송 배치(Task Queue → card.statement.send)가 시스템 주도로
-        호출하는 Aggregate 메서드다. 결제 건수·합계 계산은 이미 Application 레이어가
-        PaymentAdapter(ACL)로 동기 조회해 끝낸 뒤 호출된다 — Card 자신은 Payment BC를 모른다.
+        """An Aggregate method invoked system-driven by the monthly card-statement delivery
+        batch (Task Queue → card.statement.send). It's called after the Application layer
+        has already finished computing the payment count/total via a synchronous lookup
+        through PaymentAdapter (ACL) — Card itself doesn't know the Payment BC.
 
-        멱등성은 `last_statement_sent_month`(이번 달 이미 발송했는가) 하나로 보장한다
-        (Level 1) — 이미 이번 달 처리됐다면 완전한 no-op이다.
+        Idempotency is guaranteed by a single field, `last_statement_sent_month` (has it
+        already been sent this month) (Level 1) — a complete no-op if already processed
+        this month.
         """
         if self.last_statement_sent_month == period:
             return

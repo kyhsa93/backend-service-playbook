@@ -9,20 +9,23 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// import com.example.accountservice.<다른 BC>.domain.<Name> — "domain" 세그먼트가 리터럴로
-// 뒤따르는 import만 잡는다. common.generateId처럼 domain/이 아닌 공용 유틸 import는 애초에
-// ".domain." 세그먼트가 없어 매치되지 않으므로 오탐 위험이 없다(실제 코드로 확인함).
+// import com.example.accountservice.<another BC>.domain.<Name> — only catches imports literally
+// followed by a "domain" segment. An import of a shared, non-domain/ utility like common.generateId
+// has no ".domain." segment to begin with, so it can't match — no false-positive risk(confirmed
+// against the actual code).
 private val DOMAIN_IMPORT =
     Regex("""^import\s+com\.example\.accountservice\.(\w+)\.domain\.(\w+)\b""", RegexOption.MULTILINE)
 
 /**
- * no-cross-bc-domain-import — `<bc>/domain/` 안의 Kotlin 파일은 다른 BC의 domain/ 패키지를 직접
- * import할 수 없다 — root tactical-ddd.md "다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)"는
- * 같은 BC 안(no-cross-aggregate-reference, payment/domain의 Payment↔Refund)뿐 아니라 서로
- * 다른 BC 사이에도 적용된다. domain-layer-isolation(R1)은 domain/이 application/·infrastructure/·
- * interfaces/(상위 레이어)를 참조하지 못하게 막을 뿐 형제 BC의 domain/끼리의 직접 참조는 막지
- * 않으므로, 이 규칙이 그 빈틈을 닫는다. 크로스 BC 조회가 필요하면 Domain Service가 여러 Aggregate를
- * 함수 파라미터로 받는 방식(domain-service.md `RefundEligibilityService`)이나 ID 참조만 써야 한다.
+ * no-cross-bc-domain-import — a Kotlin file inside `<bc>/domain/` may not directly import another
+ * BC's domain/ package — the root tactical-ddd.md principle "other Aggregates may only be referenced
+ * by ID(no object references)" applies not only within the same BC(no-cross-aggregate-reference, the
+ * Payment↔Refund case in payment/domain) but also between different BCs.
+ * domain-layer-isolation(R1) only blocks domain/ from referencing application/·infrastructure/·
+ * interfaces/(higher layers) — it doesn't block sibling BCs' domain/ from directly referencing each
+ * other, so this rule closes that gap. Where a cross-BC lookup is needed, only a Domain Service
+ * receiving multiple Aggregates as function parameters(domain-service.md
+ * `RefundEligibilityService`) or an ID reference may be used.
  */
 fun checkNoCrossBcDomainImport(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -45,14 +48,14 @@ fun checkNoCrossBcDomainImport(rootPath: String): RuleResult {
                 result.add(
                     failFinding(
                         rel,
-                        "다른 BC($importedBc)의 domain/$importedType 를 직접 import 금지 — 다른 Aggregate는 ID 참조(<noun>Id: String)만 허용, 여러 Aggregate가 필요하면 Domain Service가 함수 파라미터로 받아야 함 (tactical-ddd.md)",
+                        "may not directly import domain/$importedType from another BC($importedBc) — other Aggregates may only be referenced by ID(<noun>Id: String); if multiple Aggregates are needed, a Domain Service must receive them as function parameters (tactical-ddd.md)",
                     ),
                 )
             }
         }
-        if (!fileHasFailure) result.add(passFinding("$rel (크로스 BC domain 미참조)"))
+        if (!fileHasFailure) result.add(passFinding("$rel (no cross-BC domain reference)"))
     }
 
-    if (!found) result.add(skipFinding("domain/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no domain/ Kotlin files"))
     return result
 }

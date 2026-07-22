@@ -3,10 +3,10 @@ package com.example.accountservice.payment.domain
 import java.time.LocalDateTime
 
 /**
- * Payment Aggregate가 발행하는 Domain Event 공통 계층 — account/domain/DomainEvent.kt의
- * `sealed interface` 패턴(#241)을 Payment에도 그대로 적용한다. Account가 `MutableList<Any>`로
- * 되돌아가지 않도록, Payment의 `pullDomainEvents()`도 `List<Any>`가 아니라 `List<PaymentDomainEvent>`를
- * 반환한다.
+ * The common Domain Event layer published by the Payment Aggregate — applies the same
+ * `sealed interface` pattern (#241) from account/domain/DomainEvent.kt to Payment as well. To keep
+ * this from regressing into `MutableList<Any>` the way Account's did, Payment's
+ * `pullDomainEvents()` also returns `List<PaymentDomainEvent>` rather than `List<Any>`.
  */
 sealed interface PaymentDomainEvent {
     val paymentId: String

@@ -12,10 +12,10 @@ import static harness.JavaFiles.readText;
 import static harness.JavaFiles.relTo;
 
 /**
- * [19] domain/ 레이어에서 로깅 금지 — {@code org.slf4j.*}, Lombok {@code @Slf4j}, 직접
- * {@code LoggerFactory.getLogger(...)} 호출 어느 것도 domain/ 안에서 쓸 수 없다
- * (observability.md — "Domain 레이어에서 로깅 금지: Account가 이 원칙을 준수한다 — 신규
- * 도메인 메서드 추가 시에도 유지한다").
+ * [19] Logging is forbidden in the domain/ layer — neither {@code org.slf4j.*}, Lombok
+ * {@code @Slf4j}, nor a direct {@code LoggerFactory.getLogger(...)} call may be used
+ * inside domain/ (observability.md — "logging is forbidden in the Domain layer: Account
+ * follows this principle — keep it that way when adding new domain methods too").
  */
 public final class NoLoggingInDomain {
     private NoLoggingInDomain() {
@@ -36,13 +36,13 @@ public final class NoLoggingInDomain {
 
             if (LOGGING_USAGE.matcher(content).find()) {
                 result.add(Finding.fail(rel,
-                    "domain/ 클래스에서 로깅 사용 금지 — slf4j/@Slf4j/LoggerFactory 어느 것도 쓸 수 없음(observability.md)"));
+                    "Logging is forbidden in a domain/ class — neither slf4j/@Slf4j nor LoggerFactory may be used (observability.md)"));
             } else {
-                result.add(Finding.pass(rel + " (로깅 미사용 확인)"));
+                result.add(Finding.pass(rel + " (confirmed no logging usage)"));
             }
         }
 
-        if (!found) result.add(Finding.skip("domain/ Java 파일 없음"));
+        if (!found) result.add(Finding.skip("No Java files under domain/"));
         return result;
     }
 }

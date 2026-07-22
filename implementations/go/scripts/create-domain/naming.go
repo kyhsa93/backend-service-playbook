@@ -5,19 +5,20 @@ import (
 	"strings"
 )
 
-// Names는 입력받은 도메인 이름(PascalCase, 예: "Coupon", "LoyaltyCategory")에서
-// 파생한 여러 케이스 형태를 담는다. Go 컨벤션(directory-structure.md)은 NestJS와
-// 다르다 — 패키지명은 소문자 단일 단어(언더스코어 없음), 파일명은 snake_case다.
+// Names holds several case forms derived from the input domain name
+// (PascalCase, e.g. "Coupon", "LoyaltyCategory"). Go's convention
+// (directory-structure.md) differs from NestJS's — package names are a single
+// lowercase word (no underscores), and file names are snake_case.
 type Names struct {
-	Domain       string // PascalCase 단수, 예: "LoyaltyCategory"
-	DomainLower  string // 소문자 이어붙임 단수(패키지명/REST 경로 단수 명사), 예: "loyaltycategory"
-	DomainCamel  string // camelCase 단수(로컬 변수명), 예: "loyaltyCategory"
-	DomainSnake  string // snake_case 단수(파일명 컴포넌트), 예: "loyalty_category"
-	DomainScream string // SCREAMING_SNAKE_CASE(에러 코드용), 예: "LOYALTY_CATEGORY"
-	Domains      string // PascalCase 복수, 예: "LoyaltyCategories"
-	DomainsLower string // 소문자 이어붙임 복수(REST 경로 복수 명사 / 테이블명), 예: "loyaltycategories"
-	Recv         string // 도메인 메서드 리시버 한 글자, 예: "l"
-	ModulePath   string // 대상 앱의 go.mod module 경로, 예: "github.com/example/account-service"
+	Domain       string // PascalCase singular, e.g. "LoyaltyCategory"
+	DomainLower  string // lowercase concatenated singular (package name / singular REST path noun), e.g. "loyaltycategory"
+	DomainCamel  string // camelCase singular (local variable name), e.g. "loyaltyCategory"
+	DomainSnake  string // snake_case singular (file name component), e.g. "loyalty_category"
+	DomainScream string // SCREAMING_SNAKE_CASE (for error codes), e.g. "LOYALTY_CATEGORY"
+	Domains      string // PascalCase plural, e.g. "LoyaltyCategories"
+	DomainsLower string // lowercase concatenated plural (plural REST path noun / table name), e.g. "loyaltycategories"
+	Recv         string // one-letter receiver for domain methods, e.g. "l"
+	ModulePath   string // target app's go.mod module path, e.g. "github.com/example/account-service"
 }
 
 var (
@@ -27,7 +28,7 @@ var (
 	reConsonantY    = regexp.MustCompile(`[^aeiouAEIOU]y$`)
 )
 
-// toSnakeCase는 PascalCase/camelCase 문자열을 snake_case로 바꾼다.
+// toSnakeCase converts a PascalCase/camelCase string to snake_case.
 // "LoyaltyCategory" -> "loyalty_category", "Coupon" -> "coupon".
 func toSnakeCase(s string) string {
 	s = boundaryAcronym.ReplaceAllString(s, "${1}_${2}")
@@ -35,10 +36,11 @@ func toSnakeCase(s string) string {
 	return strings.ToLower(s)
 }
 
-// naivePluralize는 아주 단순한 규칙 기반 복수형이다(+s / +es / y→ies) — nestjs
-// create-domain.js의 naivePluralize와 동일한 규칙을 그대로 옮긴 것이다. 불규칙
-// 복수형(예: Category -> Categories는 이 규칙으로 맞게 처리되지만, 예외적인
-// 단어는 생성 후 수동으로 다듬어야 한다).
+// naivePluralize is a very simple rule-based pluralizer (+s / +es / y→ies) —
+// carried over directly from nestjs create-domain.js's naivePluralize with the
+// same rules. Irregular plurals (e.g. Category -> Categories is handled
+// correctly by this rule, but exceptional words) need manual touch-up after
+// generation.
 func naivePluralize(s string) string {
 	switch {
 	case reSXZChSh.MatchString(s):
@@ -64,9 +66,9 @@ func lowerFirst(s string) string {
 	return strings.ToLower(s[:1]) + s[1:]
 }
 
-// BuildNames는 원본 도메인 이름(이미 PascalCase 단어 결합 형태여야 한다 — 예:
-// "LoyaltyCategory")과 대상 앱의 go.mod module 경로로부터 생성에 필요한 모든
-// 케이스 변형을 계산한다.
+// BuildNames computes all the case variants needed for generation from the raw
+// domain name (must already be in combined-PascalCase-word form, e.g.
+// "LoyaltyCategory") and the target app's go.mod module path.
 func BuildNames(raw, modulePath string) Names {
 	domain := capitalizeFirst(raw)
 	domains := naivePluralize(domain)

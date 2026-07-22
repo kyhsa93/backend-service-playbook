@@ -1,147 +1,138 @@
-# Spring Boot 구현 가이드
+# Spring Boot Implementation Guide
 
-DDD 기반 Java Spring Boot 서버 프로젝트의 설계/구현 가이드이다.
-`<domain>/{domain,application,infrastructure,interfaces}/` 4레이어 구조를 따른다.
+This is the design/implementation guide for a DDD-based Java Spring Boot server project.
+It follows the 4-layer structure `<domain>/{domain,application,infrastructure,interfaces}/`.
 
-> **설계 원칙 (프레임워크 무관)** 은 루트의 [CLAUDE.md](../../CLAUDE.md) 및 `../../docs/architecture/`를 참조한다.
-> 이 문서는 Java Spring Boot 구현 상세에 집중한다. Kotlin Spring Boot와 Spring 프레임워크 메커니즘 자체는 상당 부분 겹치지만, 각 문서는 Java 관용(record, Lombok `@RequiredArgsConstructor`, `interfaces`(복수형) 패키지 등)으로 다시 쓰여 있다 — Kotlin 문서를 그대로 옮긴 것이 아니다.
+> **Design principles (framework-agnostic)** are covered in the root [CLAUDE.md](../../CLAUDE.md) and `../../docs/architecture/`.
+> This document focuses on Java Spring Boot implementation details. While Kotlin Spring Boot and the Spring framework mechanics themselves overlap significantly, each document is rewritten in Java idiom (records, Lombok `@RequiredArgsConstructor`, the plural `interfaces` package, etc.) — it is not a direct port of the Kotlin document.
 
-## 작업 시 참조할 문서
+## Documents to reference while working
 
-### 레이어 · 구조
+### Layers / structure
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| 프로젝트 구조, 패키지 레이아웃, Account/notification 모듈 실제 구조 | `docs/architecture/directory-structure.md` |
-| 레이어 역할, Domain / Application / Infrastructure / Interfaces, Domain/JPA 매핑 분리 | `docs/architecture/layer-architecture.md` |
-| Aggregate, Entity, Value Object, `record`, 정적 팩토리 메서드 | `docs/architecture/tactical-ddd.md` |
-| Repository 인터페이스·구현, 메서드 네이밍(`find<Noun>s`/`save<Noun>`/`delete<Noun>`) | `docs/architecture/repository-pattern.md` |
-| Aggregate ID 생성 규칙 (32자리 hex, 하이픈 제거) | `docs/architecture/aggregate-id.md` |
+| Project structure, package layout, actual structure of the Account/notification modules | `docs/architecture/directory-structure.md` |
+| Layer responsibilities, Domain / Application / Infrastructure / Interfaces, separation of Domain/JPA mapping | `docs/architecture/layer-architecture.md` |
+| Aggregate, Entity, Value Object, `record`, static factory methods | `docs/architecture/tactical-ddd.md` |
+| Repository interface/implementation, method naming (`find<Noun>s`/`save<Noun>`/`delete<Noun>`) | `docs/architecture/repository-pattern.md` |
+| Aggregate ID generation rules (32-character hex, hyphens removed) | `docs/architecture/aggregate-id.md` |
 
-### 데이터 / 트랜잭션
+### Data / transactions
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| `@Transactional`, 트랜잭션 전파, `REQUIRES_NEW`, Soft Delete, 마이그레이션(Flyway) | `docs/architecture/persistence.md` |
-| Domain Event, Outbox 패턴, `OutboxWriter`/`OutboxPoller`/`OutboxConsumer` | `docs/architecture/domain-events.md` |
-| Command/Query Service 분리, Handler 기반 CQRS 전환 기준, 읽기 전용 Query 인터페이스 | `docs/architecture/cqrs-pattern.md` |
-| Domain Service, 여러 Aggregate 조율(`RefundEligibilityService`), Technical Service와의 차이 | `docs/architecture/domain-service.md` |
+| `@Transactional`, transaction propagation, `REQUIRES_NEW`, soft delete, migrations (Flyway) | `docs/architecture/persistence.md` |
+| Domain Events, the Outbox pattern, `OutboxWriter`/`OutboxPoller`/`OutboxConsumer` | `docs/architecture/domain-events.md` |
+| Command/Query Service separation, criteria for switching to Handler-based CQRS, read-only Query interfaces | `docs/architecture/cqrs-pattern.md` |
+| Domain Service, coordinating multiple Aggregates (`RefundEligibilityService`), difference from Technical Service | `docs/architecture/domain-service.md` |
 
 ### API / Interface
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| REST 엔드포인트, `@RestController`, Interface DTO(`record`) | `docs/architecture/layer-architecture.md` |
-| API 응답 형식, 페이지네이션, `page`/`take` | `docs/architecture/api-response.md` |
-| 인증, JWT, Bearer 토큰, Spring Security `SecurityFilterChain` | `docs/architecture/authentication.md` |
-| `Filter`/`HandlerInterceptor`, Correlation ID, MDC | `docs/architecture/cross-cutting-concerns.md` |
-| 에러 처리, `AccountException`, `@ExceptionHandler`, 에러 응답 4필드 형식 | `docs/architecture/error-handling.md` |
+| REST endpoints, `@RestController`, Interface DTOs (`record`) | `docs/architecture/layer-architecture.md` |
+| API response format, pagination, `page`/`take` | `docs/architecture/api-response.md` |
+| Authentication, JWT, Bearer tokens, Spring Security `SecurityFilterChain` | `docs/architecture/authentication.md` |
+| `Filter`/`HandlerInterceptor`, correlation ID, MDC | `docs/architecture/cross-cutting-concerns.md` |
+| Error handling, `AccountException`, `@ExceptionHandler`, the 4-field error response format | `docs/architecture/error-handling.md` |
 
-### 운영 / 인프라
+### Operations / infrastructure
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| 환경 설정, `@ConfigurationProperties`, Fail-fast 검증 | `docs/architecture/config.md` |
-| Secret 관리, AWS Secrets Manager, TTL 캐시 | `docs/architecture/secret-manager.md` |
-| Dockerfile, 멀티스테이지 빌드, Layered JAR, JRE 베이스 이미지 | `docs/architecture/container.md` |
-| Graceful Shutdown, `server.shutdown: graceful`, Actuator 프로브 | `docs/architecture/graceful-shutdown.md` |
-| 로컬 개발 환경, docker-compose, LocalStack(SES) | `docs/architecture/local-dev.md` |
-| 구조화 로깅, MDC, Correlation ID, Logback JSON 인코더 | `docs/architecture/observability.md` |
-| 파일 업로드/다운로드, Presigned URL, AWS SDK v2 | `docs/architecture/file-storage.md` |
+| Environment configuration, `@ConfigurationProperties`, fail-fast validation | `docs/architecture/config.md` |
+| Secret management, AWS Secrets Manager, TTL cache | `docs/architecture/secret-manager.md` |
+| Dockerfile, multi-stage builds, layered JAR, JRE base image | `docs/architecture/container.md` |
+| Graceful shutdown, `server.shutdown: graceful`, Actuator probes | `docs/architecture/graceful-shutdown.md` |
+| Local development environment, docker-compose, LocalStack (SES) | `docs/architecture/local-dev.md` |
+| Structured logging, MDC, correlation ID, Logback JSON encoder | `docs/architecture/observability.md` |
+| File upload/download, presigned URLs, AWS SDK v2 | `docs/architecture/file-storage.md` |
 
-### 비동기 / 스케줄링
+### Async / scheduling
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| `@Scheduled`, `@EnableScheduling`, Outbox Relay/Consumer, 다중 인스턴스 안전성 | `docs/architecture/scheduling.md` |
+| `@Scheduled`, `@EnableScheduling`, Outbox Relay/Consumer, multi-instance safety | `docs/architecture/scheduling.md` |
 
-### 품질 / 검증
+### Quality / verification
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| Testing, Domain/Application/E2E 3계층, Mockito, Testcontainers | `docs/architecture/testing.md` |
-| harness 실행, 검사 규칙 목록 | `harness/README.md` |
-| harness 설계 원칙(비즈니스 도메인 지식이 아닌 아키텍처 규칙만 평가) | `../../docs/harness.md` (루트 공용 문서) |
+| Testing, the three Domain/Application/E2E layers, Mockito, Testcontainers | `docs/architecture/testing.md` |
+| Running the harness, list of check rules | `harness/README.md` |
+| Harness design principles (evaluates architectural rules only, not business-domain knowledge) | `../../docs/harness.md` (root shared document) |
 
-### 보너스 문서 — root에 대응 문서 없음 (NestJS 대비 6종)
+### Bonus documents — no counterpart in root (6 extra compared to NestJS)
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Document to read |
 |---------------|----------|
-| `AccountServiceApplication`, `SpringApplication.run()` 부트스트랩 순서, `application.yml` 로딩 순서, springdoc/CORS/Actuator 도입 | `docs/architecture/bootstrap.md` |
-| 도메인 간 호출, Adapter 패턴 구현 예시(`application/adapter/`, `infrastructure/`), ACL | `docs/architecture/cross-domain.md` |
-| 핵심 설계 원칙 13개 요약(TL;DR), 알려진 gap 인덱스 | `docs/architecture/design-principles.md` |
-| `@Component`/`@Service`/`@Repository`/`@Configuration` 스테레오타입, 생성자 주입, `@Bean` 메서드, 순환 의존과 `@Lazy` | `docs/architecture/module-pattern.md` |
-| Rate Limiting, Resilience4j `RateLimiter`, `Filter` 기반 구현 | `docs/architecture/rate-limiting.md` |
-| 공유 코드 배치(`common/`, `config/`, `database/`, `outbox/`, `auth/`), 도메인 무관 유틸 | `docs/architecture/shared-modules.md` |
+| `AccountServiceApplication`, `SpringApplication.run()` bootstrap order, `application.yml` loading order, introducing springdoc/CORS/Actuator | `docs/architecture/bootstrap.md` |
+| Inter-domain calls, Adapter pattern implementation examples (`application/adapter/`, `infrastructure/`), ACL | `docs/architecture/cross-domain.md` |
+| Summary (TL;DR) of the 13 core design principles, index of known gaps | `docs/architecture/design-principles.md` |
+| `@Component`/`@Service`/`@Repository`/`@Configuration` stereotypes, constructor injection, `@Bean` methods, circular dependencies and `@Lazy` | `docs/architecture/module-pattern.md` |
+| Rate limiting, Resilience4j `RateLimiter`, `Filter`-based implementation | `docs/architecture/rate-limiting.md` |
+| Placement of shared code (`common/`, `config/`, `database/`, `outbox/`, `auth/`), domain-agnostic utilities | `docs/architecture/shared-modules.md` |
 
-## 구현 검증
+## Verifying the implementation
 
 ```bash
 ./harness.sh <projectRoot>
 ```
 
-FAIL 항목의 규칙 이름과 메시지에 관련 문서 링크가 포함된다. 해당 문서를 열어 수정한다.
+Each FAIL item's rule name and message include a link to the related document. Open that document to fix the issue.
 
-## 코드 포맷/린트 (Spotless)
+## Code formatting/linting (Spotless)
 
-harness는 아키텍처 규칙(파일 배치, 레이어링)만 검사하고 포맷·불필요한 import 같은 일반적인 코드 품질은
-검사하지 않는다. `examples/build.gradle`에 [Spotless](https://github.com/diffplug/spotless) +
-`googleJavaFormat`(AOSP 스타일, 4-space indent)을 적용해 이 gap을 메운다.
+The harness only checks architectural rules (file placement, layering); it does not check general code quality such as formatting or unnecessary imports. `examples/build.gradle` fills this gap by applying [Spotless](https://github.com/diffplug/spotless) with
+`googleJavaFormat` (AOSP style, 4-space indent).
 
 ```bash
 cd examples
-./gradlew spotlessCheck   # 포맷 위반 검사만 (수정 없음). CI가 이 태스크를 실행한다.
-./gradlew spotlessApply   # 위반 자동 수정
+./gradlew spotlessCheck   # check formatting violations only (no fixes). CI runs this task.
+./gradlew spotlessApply   # auto-fix violations
 ```
 
-`./gradlew build`(`check` 태스크 경유)에도 `spotlessCheck`가 포함되어 있어, 포맷이 깨지면 빌드가 실패한다.
-새 코드를 추가한 뒤에는 커밋 전에 `spotlessApply`를 한 번 돌리는 것을 권장한다.
+`./gradlew build` (via the `check` task) also includes `spotlessCheck`, so the build fails if formatting is broken.
+After adding new code, it's recommended to run `spotlessApply` once before committing.
 
-## 스캐폴딩 — 새 도메인 생성기
+## Scaffolding — new domain generator
 
-`docs/reference.md`가 정의하는 "실전 구현 템플릿"을 Card(2번째 도메인, domain/JPA 분리 구조)와
-Account(Repository/Outbox 패턴)의 실제 코드를 조합해 실제 코드로 만든 뒤, 도메인 이름만
-파라미터화해 재사용 가능하게 일반화한 스크립트다. 단일 status 필드(PENDING/ACTIVE/CANCELLED) +
-`create()`/`activate()`/`cancel(reason)` Aggregate + Command/Query "Service"(CQRS, `@Service`
-plain 클래스 — CommandBus/Handler 아님) + 도메인 이벤트 1종 + `OutboxEventHandler` 구현체 +
-Repository + JPA Entity/Mapper + REST Controller/DTO + Flyway 마이그레이션까지 한 번에
-생성한다.
+This is a script that builds the "practical implementation template" defined by `docs/reference.md` into real code by combining the actual code of Card (2nd domain, domain/JPA separated structure) and
+Account (Repository/Outbox pattern), then generalizes it into a reusable form by parameterizing only the domain name. In one run it generates a single `status` field (PENDING/ACTIVE/CANCELLED) +
+a `create()`/`activate()`/`cancel(reason)` Aggregate + Command/Query "Service" (CQRS, plain `@Service`
+classes — not CommandBus/Handler) + one domain event + an `OutboxEventHandler` implementation +
+Repository + JPA Entity/Mapper + REST Controller/DTO + Flyway migration.
 
-Java/Gradle 툴체인을 새로 빌드하지 않도록 Python 스크립트로 작성했다(Java 컴파일 없이 즉시 실행).
+It's written as a Python script so it doesn't need to build the Java/Gradle toolchain (runs instantly without Java compilation).
 
 ```bash
-# 기본: ../examples/src/main/java/com/example/accountservice/<domain>/ 아래 생성
+# Default: generates under ../examples/src/main/java/com/example/accountservice/<domain>/
 python3 scripts/create_domain.py Coupon
 
-# 다른 프로젝트(스크래치 카피 등)에 생성하려면 --out으로 프로젝트 루트를 지정
+# To generate into a different project (e.g. a scratch copy), specify the project root with --out
 python3 scripts/create_domain.py LoyaltyCategory --out /path/to/scratch-project
 ```
 
-**모듈 등록 단계가 없다** — nestjs(`@Module({ providers: [...] })`)나 Go와 달리, Spring은
-`@Service`/`@Component`/`@Repository`/`@RestController`가 붙은 클래스를 classpath 전체에서
-자동으로 수집한다(component scanning). 새 도메인의 `OutboxEventHandler` 구현체도 공유
-`OutboxConsumer`(`outbox/OutboxConsumer.java`)가 생성자 주입 `List<OutboxEventHandler>`로 자동
-수집하므로, 손으로 고칠 central wiring 파일이 없다(`AccountServiceApplication.java`에도 도메인
-bean을 나열하는 곳이 없음을 직접 확인함).
+**There is no module-registration step** — unlike nestjs (`@Module({ providers: [...] })`) or Go, Spring
+automatically collects classes annotated with `@Service`/`@Component`/`@Repository`/`@RestController` across the whole classpath (component scanning). The new domain's `OutboxEventHandler` implementation is
+also automatically collected by the shared `OutboxConsumer` (`outbox/OutboxConsumer.java`) via constructor-injected `List<OutboxEventHandler>`, so there is no central wiring file to edit by hand (confirmed directly that `AccountServiceApplication.java` has no place listing domain
+beans either).
 
-생성 직후 확인 순서:
+Verification steps right after generation:
 
 ```bash
 cd <projectRoot>
-./gradlew spotlessApply   # 템플릿 포맷을 googleJavaFormat 기준으로 맞춤
-./gradlew build           # 컴파일 + 기존 테스트(Testcontainers e2e 포함) 회귀 확인
+./gradlew spotlessApply   # align the generated template's formatting with googleJavaFormat
+./gradlew build           # compile + confirm no regressions in existing tests (including Testcontainers e2e)
 bash harness.sh <projectRoot>
 ```
 
-Account/Card와 무관한 새 도메인(Coupon, LoyaltyCategory 등 다단어/불규칙 복수형 포함)으로 실제
-생성해 harness FAIL 0건을 확인했다. 나이브 복수형 규칙(+s/+es/y→ies)을 쓰므로, 불규칙 복수형
-도메인(예: person → people)이면 `find<Domains>`/`<domains>`/REST 경로 등 생성된 이름을 수동으로
-다듬어야 할 수 있다 — 실행 결과 출력이 이를 안내한다. 생성되는 것은 구조적 스켈레톤(빈 CRUD형
-시작점)이라, 실제 비즈니스 규칙·에러 메시지·필드는 생성 후 직접 채워 넣는다.
+Generating a real domain unrelated to Account/Card (including multi-word/irregular-plural domains such as Coupon, LoyaltyCategory) confirms 0 harness FAILs. Because the generator uses naive pluralization rules (+s/+es/y→ies), for domains with irregular plurals (e.g. person → people) you may need to manually adjust generated names such as `find<Domains>`/`<domains>`/REST paths — the script's output guides you through this. What's generated is a structural skeleton (an empty CRUD-style starting point); fill in the actual business rules, error messages, and fields yourself after generation.
 
-## 예시 코드 (Account 도메인 전체)
+## Example code (full Account domain)
 
-`examples/` 디렉토리에 Account 도메인 전체 구현 예시(계좌 개설/입출금/정지/재개/종료 + SES 알림)가 있다.
-새 도메인 작업 시 이를 템플릿으로 사용한다 (도메인명만 변경).
+The `examples/` directory contains a full example implementation of the Account domain (account opening/deposit-withdrawal/suspend/resume/close + SES notifications).
+Use this as a template when working on a new domain (just change the domain name).
 
-**`examples/`에 구현된 패턴**: Aggregate ID 하이픈 제거, JWT 인증(Spring Security), Flyway 마이그레이션, 3계층 테스트(Domain/Application/E2E), 구조화 로깅·Correlation ID, Dockerfile(멀티스테이지), Secrets Manager 연동, Domain/JPA 레이어 분리(`AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable` + `AccountMapper`/`TransactionMapper`), soft delete 배선(`Account.delete()` + `AccountRepository.delete()` + `DeleteAccountService`), 에러 응답 4필드 구조, Query Service의 Repository 직접 사용(`GetAccountService`), Graceful Shutdown/Actuator 프로브(`server.shutdown: graceful` + liveness/readiness), jwt.secret의 `@ConfigurationProperties` fail-fast 검증(`JwtProperties`), Rate Limiting(Resilience4j `RateLimiter`, `RateLimitFilter` + `@RateLimiter` 애노테이션 이중 방어), Dockerfile `HEALTHCHECK` 지시문, Repository 메서드 네이밍(`findAccounts`/`saveAccount`로 통일, 단건 조회는 `take:1` + 첫 결과 추출), Outbox 기반 이벤트 발행(`outbox/` 패키지)은 각 문서(`aggregate-id.md`, `authentication.md`, `persistence.md`, `testing.md`, `observability.md`, `container.md`, `secret-manager.md`, `layer-architecture.md`, `repository-pattern.md`, `error-handling.md`, `cqrs-pattern.md`, `graceful-shutdown.md`, `config.md`, `rate-limiting.md`, `domain-events.md`)가 정의하는 패턴대로 실제 코드에 반영되어 있다. 새 코드를 작성할 때는 `examples/`의 현재 패턴이 아니라 각 문서가 정의하는 올바른 패턴을 따른다.
+**Patterns implemented in `examples/`**: Aggregate ID with hyphens removed, JWT authentication (Spring Security), Flyway migrations, three-tier testing (Domain/Application/E2E), structured logging/correlation ID, Dockerfile (multi-stage), Secrets Manager integration, Domain/JPA layer separation (`AccountJpaEntity`/`TransactionJpaEntity`/`MoneyEmbeddable` + `AccountMapper`/`TransactionMapper`), soft-delete wiring (`Account.delete()` + `AccountRepository.delete()` + `DeleteAccountService`), the 4-field error response structure, direct Repository use in the Query Service (`GetAccountService`), graceful shutdown/Actuator probes (`server.shutdown: graceful` + liveness/readiness), fail-fast `@ConfigurationProperties` validation of `jwt.secret` (`JwtProperties`), rate limiting (dual defense via Resilience4j `RateLimiter`, the `RateLimitFilter`, and the `@RateLimiter` annotation), the Dockerfile `HEALTHCHECK` directive, Repository method naming (unified to `findAccounts`/`saveAccount`, with single-record lookups done via `take:1` plus extracting the first result), and Outbox-based event publishing (the `outbox/` package) — all of these are reflected in the actual code following the patterns defined by their respective documents (`aggregate-id.md`, `authentication.md`, `persistence.md`, `testing.md`, `observability.md`, `container.md`, `secret-manager.md`, `layer-architecture.md`, `repository-pattern.md`, `error-handling.md`, `cqrs-pattern.md`, `graceful-shutdown.md`, `config.md`, `rate-limiting.md`, `domain-events.md`). When writing new code, follow the correct pattern defined by each document rather than the current pattern in `examples/`.

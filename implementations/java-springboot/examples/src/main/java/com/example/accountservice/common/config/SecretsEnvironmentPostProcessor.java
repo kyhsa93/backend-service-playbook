@@ -13,9 +13,10 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
 
 /**
- * ApplicationContext가 준비되기 전, 가장 이른 시점에 Secrets Manager 값을 Environment에 주입한다 —
- * 이후 @Value/@ConfigurationProperties 바인딩이 이 값을 그대로 사용한다. prod 프로필에서만 동작해 로컬/테스트 기동 속도와 네트워크 의존성에
- * 영향을 주지 않는다.
+ * Injects Secrets Manager values into the Environment at the earliest possible point, before the
+ * ApplicationContext is prepared — subsequent @Value/@ConfigurationProperties bindings use this
+ * value as-is. It only runs in the prod profile, so it does not affect local/test startup speed or
+ * add a network dependency there.
  */
 public class SecretsEnvironmentPostProcessor implements EnvironmentPostProcessor {
 

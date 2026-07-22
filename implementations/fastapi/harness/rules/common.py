@@ -1,8 +1,8 @@
-"""규칙 모듈 전체가 공유하는 타입/헬퍼.
+"""Types/helpers shared across all rule modules.
 
-각 규칙 모듈은 `check(root: str, py_files: list[str]) -> RuleResult` 시그니처를
-갖는다. `py_files`는 harness.py가 한 번만 계산해 모든 규칙에 전달한다(원본
-harness.py가 전역에서 한 번 `collect_py_files()`를 호출하던 것과 동일).
+Every rule module has the signature `check(root: str, py_files: list[str]) -> RuleResult`.
+`py_files` is computed once by harness.py and passed to every rule (the same as the
+original harness.py calling `collect_py_files()` once, globally).
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ SKIP_DIRS = {
     ".venv",
     "venv",
     "node_modules",
-    # Alembic이 관리하는 디렉토리 — revision 파일명은 Alembic의 hex revision ID
-    # 접두어 관례(예: 110ed0152981_create_initial_tables.py)를 따르므로 이
-    # 저장소의 snake_case 파일명 규칙 대상이 아니다.
+    # A directory Alembic manages — a revision file name follows Alembic's hex-revision-ID
+    # prefix convention (e.g. 110ed0152981_create_initial_tables.py), so it isn't subject
+    # to this repository's snake_case file-naming rule.
     "migrations",
 }
 SKIP_FILES = {"__init__.py", "conftest.py"}
@@ -88,11 +88,11 @@ def is_shared_dir(name: str) -> bool:
 
 
 def is_technical_service_dir(name: str) -> bool:
-    """CQRS(Command/Query) 분리가 필요 없는 Technical Service 모듈.
+    """A Technical Service module that doesn't need CQRS (Command/Query) separation.
 
-    domain/application/infrastructure/interface 4레이어는 갖추지만(예: auth의
-    domain/token.py, application/service/auth_service.py), 도메인 커맨드·쿼리가
-    아니라 단일 기술 서비스(토큰 발급/검증 등)만 제공하므로 application/{command,query}/
-    존재를 요구하지 않는다.
+    It has all 4 layers — domain/application/infrastructure/interface (e.g. auth's
+    domain/token.py, application/service/auth_service.py) — but since it provides only a
+    single technical service (token issuance/verification, etc.), not a domain
+    command/query, it isn't required to have application/{command,query}/.
     """
     return name in {"auth"}

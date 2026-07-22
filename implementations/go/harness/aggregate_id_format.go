@@ -7,27 +7,35 @@ import (
 	"strings"
 )
 
-// checkAggregateIDFormat — aggregate-id-format: docs/architecture/aggregate-id.md는
-// Aggregate ID를 "UUID v4에서 하이픈을 제거한 32자리 hex 문자열"로 못박는다 — 하이픈이
-// 있는 원본 UUID 문자열(`550e8400-e29b-41d4-a716-446655440000`)을 그대로 쓰는 것은
-// 잘못된 방식이라고 문서가 명시적으로 예시까지 든다. 이 저장소의 실제 ID 발급
-// 유틸(`internal/common/id.go`의 `common.NewID()`)이 실제로 하이픈을 제거하고 있는지
-// 검사한다 — 단일 파일 검사이며, 이 저장소가 자체 개발한 새 도메인의 Aggregate 생성자가
-// common.NewID()를 호출하는지는 다른 규칙(repository-naming 등과 마찬가지로 이 저장소는
-// "Aggregate ID는 어디서든 이 한 유틸을 거친다"는 전제를 architecture 문서로만 강제하고
-// 기계적으로는 강제하지 않는다 — 새 유틸을 여러 개 만들면 이 규칙은 처음 찾은 것만 본다)는
-// 다루지 않는다.
+// checkAggregateIDFormat — aggregate-id-format: docs/architecture/aggregate-id.md
+// mandates that an Aggregate ID be "a 32-character hex string with the hyphens
+// stripped from a UUID v4" — the document explicitly gives an example showing
+// that using the raw hyphenated UUID string
+// (`550e8400-e29b-41d4-a716-446655440000`) as-is is wrong. This checks whether
+// this repository's actual ID-issuing utility (`common.NewID()` in
+// `internal/common/id.go`) actually strips the hyphens — it is a single-file
+// check, and does not cover whether a new domain's Aggregate constructor
+// (developed independently by this repository) calls common.NewID() (as with
+// other rules such as repository-naming, this repository enforces the premise
+// that "an Aggregate ID always goes through this one utility, no matter
+// where" only through the architecture documents, not mechanically — if
+// multiple new utilities were created, this rule only looks at the first one
+// it finds).
 //
-// NewID를 찾으면, 함수 본문이:
-//   - 하이픈 제거 신호(strings.ReplaceAll(..., "-", ...) 류)가 있으면 PASS.
-//   - uuid 패키지를 호출하면서 하이픈 제거 신호가 전혀 없으면(즉 uuid.NewString()/
-//     uuid.New().String()을 가공 없이 그대로 반환) FAIL — 하이픈 있는 UUID를 그대로
-//     내보낸다.
-//   - uuid 패키지도 안 쓰고 하이픈 제거 신호도 없으면(예: crypto/rand + hex.EncodeToString
-//     처럼 애초에 하이픈이 생길 수 없는 다른 생성 방식) PASS — hex.EncodeToString이
-//     하이픈을 만들 수 없다는 것 자체가 안전 신호다.
-//   - 그 외(무엇을 하는지 텍스트 검색으로 판단 불가)는 FAIL로 처리해 놓친 위반을
-//     통과시키지 않는다(보수적 기본값).
+// Once NewID is found, its function body is judged as follows:
+//   - PASS if there is a hyphen-stripping signal (things like
+//     strings.ReplaceAll(..., "-", ...)).
+//   - FAIL if it calls the uuid package with no hyphen-stripping signal at all
+//     (i.e. it returns uuid.NewString()/uuid.New().String() unprocessed) —
+//     it emits the hyphenated UUID as-is.
+//   - PASS if it neither uses the uuid package nor has a hyphen-stripping
+//     signal (e.g. a different generation approach such as crypto/rand +
+//     hex.EncodeToString, which cannot produce hyphens in the first place) —
+//     the fact that hex.EncodeToString cannot produce hyphens is itself the
+//     safety signal.
+//   - Otherwise (what it does cannot be determined by text search alone),
+//     treat it as FAIL so that a missed violation is never let through
+//     (a conservative default).
 var (
 	newIDFuncDecl  = regexp.MustCompile(`func\s+NewID\s*\([^)]*\)\s*string\s*\{`)
 	uuidCallSignal = regexp.MustCompile(`\buuid\.\w+\(`)
@@ -60,24 +68,24 @@ func checkAggregateIDFormat(root string) RuleResult {
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 		return result
 	}
 	if candidate == "" {
-		result.Findings = append(result.Findings, skipFinding("func NewID() string 를 찾을 수 없음(internal/common/id.go 예상 위치) — docs/architecture/aggregate-id.md"))
+		result.Findings = append(result.Findings, skipFinding("could not find func NewID() string (expected location internal/common/id.go) — docs/architecture/aggregate-id.md"))
 		return result
 	}
 
 	content, readErr := os.ReadFile(candidate)
 	if readErr != nil {
-		result.Findings = append(result.Findings, failFinding(candidate, "파일 읽기 실패: "+readErr.Error()))
+		result.Findings = append(result.Findings, failFinding(candidate, "file read failed: "+readErr.Error()))
 		return result
 	}
 	src := stripGoComments(string(content))
 	rel, _ := filepath.Rel(root, candidate)
 
 	loc := newIDFuncDecl.FindStringIndex(src)
-	braceIdx := loc[1] - 1 // newIDFuncDecl 자체가 마지막에 '{'로 끝나므로 그 위치
+	braceIdx := loc[1] - 1 // newIDFuncDecl itself ends with '{', so this is its position
 	body := extractBalancedBlock(src, braceIdx, '{', '}')
 
 	usesUUID := uuidCallSignal.MatchString(body)
@@ -86,17 +94,17 @@ func checkAggregateIDFormat(root string) RuleResult {
 
 	switch {
 	case stripsHyphen:
-		result.Findings = append(result.Findings, passFinding(rel+" (NewID — 하이픈 제거 확인)"))
+		result.Findings = append(result.Findings, passFinding(rel+" (NewID — hyphen stripping confirmed)"))
 	case usesUUID:
 		result.Findings = append(result.Findings, failFinding(rel,
-			"NewID()가 uuid 패키지를 호출하지만 하이픈을 제거하는 코드(strings.ReplaceAll 등)가 없음 — "+
-				"UUID v4에서 하이픈을 제거한 32자리 hex 문자열을 반환해야 한다(docs/architecture/aggregate-id.md)"))
+			"NewID() calls the uuid package but has no hyphen-stripping code (e.g. strings.ReplaceAll) — "+
+				"it must return a 32-character hex string with the hyphens stripped from a UUID v4 (docs/architecture/aggregate-id.md)"))
 	case usesHexEncode:
-		result.Findings = append(result.Findings, passFinding(rel+" (NewID — hex.EncodeToString 기반, 하이픈 생성 불가)"))
+		result.Findings = append(result.Findings, passFinding(rel+" (NewID — based on hex.EncodeToString, cannot produce hyphens)"))
 	default:
 		result.Findings = append(result.Findings, failFinding(rel,
-			"NewID() 구현에서 하이픈 제거 여부를 확인할 수 없음 — "+
-				"UUID v4에서 하이픈을 제거한 32자리 hex 문자열을 반환해야 한다(docs/architecture/aggregate-id.md)"))
+			"cannot determine whether NewID() strips hyphens — "+
+				"it must return a 32-character hex string with the hyphens stripped from a UUID v4 (docs/architecture/aggregate-id.md)"))
 	}
 
 	return result

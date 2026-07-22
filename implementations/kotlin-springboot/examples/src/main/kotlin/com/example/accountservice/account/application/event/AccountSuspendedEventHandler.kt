@@ -8,16 +8,19 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * AccountSuspendedEvent가 Outbox를 통해 전달되면 계좌 정지 알림 이메일을 발송하고,
- * 외부 BC(Card 등)에 알리는 Integration Event(account.suspended.v1)를 Outbox에 적재한다.
+ * Sends an account-suspension notification email when AccountSuspendedEvent is delivered via the Outbox,
+ * and writes an Integration Event (account.suspended.v1) notifying external BCs (Card, etc.) into the
+ * Outbox.
  *
- * application/event/의 EventHandler는 [OutboxWriter]를 직접 사용할 수 있는 유일한 예외로,
- * 여기서 내부 Domain Event를 외부 BC용 Integration Event로 변환한다(Aggregate가 Integration
- * Event를 직접 만들지 않는다 — 변환 지점은 항상 EventHandler다).
- * 이 핸들러 자체가 [com.example.accountservice.outbox.OutboxConsumer]가 SQS에서 AccountSuspendedEvent를
- * 수신했을 때 호출되는 콜백이다 — 여기서 적재한 Integration Event는 같은 호출 안에서 즉시 처리되지
- * 않고, 다음 [com.example.accountservice.outbox.OutboxPoller] tick(최대 1초 후)에 SQS로 발행되어
- * 별도로 소비된다(비동기 전환으로 "같은 트랜잭션 안 즉시 재드레인"은 더 이상 성립하지 않는다).
+ * The EventHandler in application/event/ is the one exception allowed to use [OutboxWriter] directly, and
+ * this is where the internal Domain Event is converted into an Integration Event for external BCs (an
+ * Aggregate never builds an Integration Event directly — the conversion point is always the
+ * EventHandler). This handler itself is the callback that
+ * [com.example.accountservice.outbox.OutboxConsumer] invokes when it receives AccountSuspendedEvent from
+ * SQS — the Integration Event written here is not processed immediately within the same call; it is
+ * published to SQS at the next [com.example.accountservice.outbox.OutboxPoller] tick (at most 1 second
+ * later) and consumed separately (with the async transition, "immediate re-drain within the same
+ * transaction" no longer holds).
  */
 @Component
 class AccountSuspendedEventHandler(
@@ -30,32 +33,33 @@ class AccountSuspendedEventHandler(
         event: AccountSuspendedEvent,
         eventId: String,
     ) {
-        // 외부 BC(Card 등)에 알리는 Integration Event를 Outbox에 적재한다.
+        // Writes an Integration Event notifying external BCs (Card, etc.) into the Outbox.
         outboxWriter.saveAll(
             listOf(AccountSuspendedIntegrationEventV1(event.accountId, event.suspendedAt.toString())),
         )
 
-        // 알림은 best-effort다. 실패해도 이 핸들러를 던지게 두지 않는다 — 던지면 이 Outbox 행
-        // (AccountSuspendedEvent) 자체가 처리 실패로 남아 다음 호출에서 재드레인되고, 그 과정에서
-        // 위에서 이미 적재한 Integration Event가 중복 적재된다(수신 측이 멱등이라 무해하지만
-        // 불필요한 증폭이다). 알림 자체의 재시도는 별도 outbox 행(sent_email 파이프라인)의 몫이다.
-        // eventId는 이 Outbox 행의 eventId다 — NotificationService가 이를 키로 Level 2(Ledger)
-        // 중복 발송 방지를 적용한다.
+        // The notification is best-effort. This handler is not allowed to throw on failure — if it did,
+        // this Outbox row (AccountSuspendedEvent) itself would remain marked as failed and get
+        // re-drained on the next call, and in that process the Integration Event already written above
+        // would be written again (harmless since the receiving side is idempotent, but an unnecessary
+        // amplification). Retrying the notification itself is the responsibility of a separate outbox
+        // row (the sent_email pipeline). eventId is the eventId of this Outbox row — NotificationService
+        // uses it as the key to apply Level 2 (Ledger) duplicate-send prevention.
         try {
             notificationService.sendEmail(
                 accountId = event.accountId,
                 eventType = "AccountSuspended",
                 sourceEventId = eventId,
                 recipient = event.email,
-                subject = "[Account] 계좌가 정지되었습니다",
-                body = "계좌(${event.accountId})가 정지되었습니다.",
+                subject = "[Account] Your account has been suspended",
+                body = "Account (${event.accountId}) has been suspended.",
             )
         } catch (e: Exception) {
             logger
                 .atError()
                 .addKeyValue("account_id", event.accountId)
                 .setCause(e)
-                .log("정지 알림 발송 실패")
+                .log("Failed to send suspension notification")
         }
     }
 }

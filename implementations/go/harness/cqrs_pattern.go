@@ -7,24 +7,26 @@ import (
 	"strings"
 )
 
-// nestjs harness의 cqrs-pattern evaluator(harness/evaluators/rules/cqrs-pattern.evaluator.ts —
-// application/query/ 파일이 "Repository" 문자열을 포함하면 FAIL)를 Go로 이식한 것이다.
-// Query Handler는 쓰기 전용 Repository 인터페이스가 아니라 읽기 전용 Query
-// 인터페이스에만 의존해야 한다(cqrs-pattern.md, #166) — 이 규칙이 없으면 Query
-// Handler가 account.Repository를 직접 참조해도(=Save에 접근 가능한 상위
-// 인터페이스에 우연히 의존해도) 다른 어떤 규칙도 이를 잡아내지 못한다.
+// This is a Go port of the nestjs harness's cqrs-pattern evaluator
+// (harness/evaluators/rules/cqrs-pattern.evaluator.ts — FAILs if an
+// application/query/ file contains the string "Repository"). A Query Handler
+// must depend only on a read-only Query interface, never a write-capable
+// Repository interface (cqrs-pattern.md, #166) — without this rule, no other
+// rule would catch it if a Query Handler directly referenced
+// account.Repository (i.e. happened to depend on a higher interface that has
+// access to Save).
 //
-// "Repository" 식별자를 단어 경계(\b)로 매칭한다 — 변수명 "repo"나 Query
-// 인터페이스 자체의 이름에는 반응하지 않고, `account.Repository` 같은 실제
-// 타입 참조만 잡아낸다.
+// Matches the identifier "Repository" on a word boundary (\b) — it does not
+// react to a variable name like "repo" or the Query interface's own name, and
+// only catches an actual type reference such as `account.Repository`.
 var writeRepositoryRef = regexp.MustCompile(`\bRepository\b`)
 
-// checkCQRSPattern — [9] Query 계층에서 쓰기 전용 Repository 타입 참조 금지 (cqrs-pattern.md)
+// checkCQRSPattern — [9] forbids referencing a write-capable Repository type from the Query layer (cqrs-pattern.md)
 func checkCQRSPattern(root string) RuleResult {
 	result := RuleResult{Section: "cqrs-pattern"}
 	internal := filepath.Join(root, "internal")
 	if _, err := os.Stat(internal); os.IsNotExist(err) {
-		result.Findings = append(result.Findings, skipFinding("internal/ 디렉토리 없음 — 검사 생략"))
+		result.Findings = append(result.Findings, skipFinding("internal/ directory not found — check skipped"))
 		return result
 	}
 
@@ -34,11 +36,11 @@ func checkCQRSPattern(root string) RuleResult {
 	if _, err := os.Stat(commandDir); err == nil {
 		result.Findings = append(result.Findings, passFinding("internal/application/command/"))
 	} else {
-		result.Findings = append(result.Findings, failFinding("internal/application/command/", "디렉토리 없음"))
+		result.Findings = append(result.Findings, failFinding("internal/application/command/", "directory not found"))
 	}
 
 	if _, err := os.Stat(queryDir); os.IsNotExist(err) {
-		result.Findings = append(result.Findings, failFinding("internal/application/query/", "디렉토리 없음"))
+		result.Findings = append(result.Findings, failFinding("internal/application/query/", "directory not found"))
 		return result
 	}
 	result.Findings = append(result.Findings, passFinding("internal/application/query/"))
@@ -55,16 +57,16 @@ func checkCQRSPattern(root string) RuleResult {
 		found = true
 		rel, _ := filepath.Rel(root, path)
 		if writeRepositoryRef.MatchString(string(content)) {
-			result.Findings = append(result.Findings, failFinding(rel, "Query 계층에서 쓰기 전용 Repository 타입 참조가 감지됨 — Query Handler는 읽기 전용 Query 인터페이스에만 의존해야 함(cqrs-pattern.md)"))
+			result.Findings = append(result.Findings, failFinding(rel, "detected a reference to a write-capable Repository type in the Query layer — a Query Handler must depend only on a read-only Query interface (cqrs-pattern.md)"))
 		} else {
 			result.Findings = append(result.Findings, passFinding(rel))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(queryDir, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(queryDir, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("application/query/ 안에 .go 파일 없음"))
+		result.Findings = append(result.Findings, skipFinding("no .go files in application/query/"))
 	}
 	return result
 }

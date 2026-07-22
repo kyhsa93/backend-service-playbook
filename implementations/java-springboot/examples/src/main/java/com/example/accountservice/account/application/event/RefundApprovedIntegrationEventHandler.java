@@ -11,7 +11,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** 외부 BC(Payment)가 발행한 {@code refund.approved.v1} Integration Event 수신부 — 환불 크레딧(deposit)을 실행한다. */
+/**
+ * The receiver for the {@code refund.approved.v1} Integration Event published by the external BC
+ * (Payment) — it performs the refund credit (deposit).
+ */
 @Component
 @RequiredArgsConstructor
 public class RefundApprovedIntegrationEventHandler implements OutboxEventHandler {
@@ -32,7 +35,7 @@ public class RefundApprovedIntegrationEventHandler implements OutboxEventHandler
         PaymentIntegrationEventPayload event =
                 objectMapper.readValue(payload, PaymentIntegrationEventPayload.class);
         log.info(
-                "refund.approved.v1 수신",
+                "refund.approved.v1 received",
                 kv("refund_id", event.refundId()),
                 kv("account_id", event.accountId()));
         depositByPaymentService.deposit(

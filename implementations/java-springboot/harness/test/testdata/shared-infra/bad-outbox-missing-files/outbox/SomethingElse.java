@@ -1,3 +1,3 @@
-// 의도적으로 OutboxWriter.java/OutboxPoller.java/OutboxConsumer.java를 두지 않는 fixture
+// A fixture that deliberately omits OutboxWriter.java/OutboxPoller.java/OutboxConsumer.java
 class SomethingElse {
 }

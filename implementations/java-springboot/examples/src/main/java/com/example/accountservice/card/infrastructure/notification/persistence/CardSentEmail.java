@@ -10,9 +10,11 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * account/infrastructure/notification/persistence/SentEmail과 동일한 구조의 발송 이력 — Card BC가 자신의
- * NotificationService 구현체를 따로 갖는 것과 마찬가지로(domain-service.md "배치 원칙"), 발송 이력 테이블도 Account BC의
- * sent_email을 공유하지 않고 Card BC 소유로 별도로 둔다.
+ * A send-history record with the same structure as
+ * account/infrastructure/notification/persistence/SentEmail — just as the Card BC has its own
+ * separate NotificationService implementation (domain-service.md "placement principle"), the
+ * send-history table is also kept separately, owned by the Card BC, rather than sharing the Account
+ * BC's sent_email table.
  */
 @Entity
 @Table(name = "card_sent_email")

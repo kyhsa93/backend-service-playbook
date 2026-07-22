@@ -30,13 +30,16 @@ func NewTransferHandler(repo account.Repository, tx TransactionManager) *Transfe
 	return &TransferHandler{repo: repo, tx: tx}
 }
 
-// Handle은 출금 계좌 → 입금 계좌로 amount를 옮긴다. 입금 계좌는 소유자 필터 없이
-// 조회한다 — 타인 계좌로 송금하는 것이 이 기능의 목적이라, 존재+활성 여부만 확인하면
-// 된다(소유권 확인은 출금 계좌에만 적용).
+// Handle moves amount from the source account to the target account. The
+// target account is looked up without an owner filter — since transferring
+// to someone else's account is the point of this feature, only its
+// existence and active status need to be checked (ownership verification
+// applies only to the source account).
 //
-// 출금+입금 두 Account 인스턴스 저장은 tx.RunInTx로 하나의 물리 트랜잭션에 묶인다 —
-// 그렇지 않으면 "출금은 반영됐는데 입금은 유실됨" 실패 모드가 생긴다(TransactionManager,
-// database.Manager 참고).
+// Saving both the source and target Account instances is wrapped into a
+// single physical transaction via tx.RunInTx — otherwise a failure mode
+// arises where "the withdrawal was applied but the deposit was lost" (see
+// TransactionManager, database.Manager).
 func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*TransferResult, error) {
 	source, err := account.FindOne(ctx, h.repo, cmd.SourceAccountID, cmd.RequesterID)
 	if err != nil {
@@ -52,11 +55,13 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*Tra
 		return nil, decision.Err
 	}
 
-	// transferID는 이 송금 전용의 새 영속 Aggregate를 두지 않고, 두 Transaction 행을
-	// 상관관계 짓는 referenceID로만 쓴다 — (reference_id, type) 조합이 이미 유니크하므로
-	// source(WITHDRAWAL)/target(DEPOSIT) 두 행이 같은 transferID를 공유해도 충돌하지
-	// 않는다. 접미사 없이 32자리 원본 그대로 쓴다 — transactions.reference_id가
-	// VARCHAR(36)이므로 접미사를 붙이면 그 한도를 넘길 수 있다.
+	// transferID does not introduce a new persistent Aggregate dedicated to
+	// this transfer — it is used only as the referenceID correlating the two
+	// Transaction rows. Since the (reference_id, type) combination is already
+	// unique, the source (WITHDRAWAL) and target (DEPOSIT) rows can share the
+	// same transferID without colliding. It is used as the raw 32-character
+	// value with no suffix — since transactions.reference_id is VARCHAR(36),
+	// appending a suffix could exceed that limit.
 	transferID := common.NewID()
 	sourceTx, err := source.Withdraw(cmd.Amount, transferID)
 	if err != nil {

@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Account Aggregate Root — 순수 도메인 객체. 어떤 프레임워크/ORM에도 의존하지 않는다. 영속성 매핑은
- * infrastructure/persistence/AccountJpaEntity + AccountMapper가 전담한다.
+ * Account Aggregate Root — a pure domain object. It does not depend on any framework/ORM.
+ * Persistence mapping is handled entirely by infrastructure/persistence/AccountJpaEntity +
+ * AccountMapper.
  */
 public class Account {
 
@@ -21,7 +22,8 @@ public class Account {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime deletedAt;
-    // 오늘 이미 이자를 지급받았는지 판단하는 Level 1(본질적 멱등) 필드 — payInterest() 참고.
+    // Level 1 (intrinsic idempotency) field used to determine whether interest has already been
+    // paid today — see payInterest().
     private LocalDate lastInterestPaidAt;
 
     private final List<Object> domainEvents = new ArrayList<>();
@@ -30,8 +32,9 @@ public class Account {
     private Account() {}
 
     /**
-     * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Account를 복원할 때 사용한다. create()와 달리 도메인 이벤트를 생성하지 않는다 — 이미
-     * 과거에 커밋된 상태를 그대로 재구성하는 것뿐이다.
+     * Used by the Repository implementation to restore an Account from persisted data (a JPA
+     * entity, etc). Unlike create(), it does not generate domain events — it merely reconstructs a
+     * state that was already committed in the past.
      */
     public static Account reconstitute(
             String accountId,
@@ -76,19 +79,20 @@ public class Account {
     }
 
     /**
-     * {@code referenceId}는 Payment BC의 Integration Event 반응(DepositByPaymentService)에서만 채워진다 — 사용자가
-     * 직접 요청한 입금은 {@link #deposit(long)}(referenceId 없음)을 쓴다. Level 2 Ledger 멱등성 판단은 이 값 + type 조합으로
-     * 이루어진다({@link AccountRepository#hasTransactionWithReference} 참고).
+     * {@code referenceId} is only populated from the Payment BC's Integration Event reaction
+     * (DepositByPaymentService) — a user-initiated deposit uses {@link #deposit(long)} (no
+     * referenceId). Level 2 Ledger idempotency is determined by the combination of this value and
+     * the type (see {@link AccountRepository#hasTransactionWithReference}).
      */
     public Transaction deposit(long amount, String referenceId) {
         if (this.status != AccountStatus.ACTIVE) {
             throw new AccountException(
                     AccountException.ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT,
-                    "활성 상태의 계좌만 입금할 수 있습니다.");
+                    "Only an active account can receive deposits.");
         }
         if (amount <= 0) {
             throw new AccountException(
-                    AccountException.ErrorCode.INVALID_AMOUNT, "금액은 0보다 커야 합니다.");
+                    AccountException.ErrorCode.INVALID_AMOUNT, "Amount must be greater than 0.");
         }
         Money money = new Money(amount, this.balance.currency());
         this.balance = this.balance.add(money);
@@ -112,23 +116,24 @@ public class Account {
     }
 
     /**
-     * {@code referenceId}는 Payment BC의 Integration Event 반응(WithdrawByPaymentService)에서만 채워진다 —
-     * 사용자가 직접 요청한 출금은 {@link #withdraw(long)}(referenceId 없음)을 쓴다.
+     * {@code referenceId} is only populated from the Payment BC's Integration Event reaction
+     * (WithdrawByPaymentService) — a user-initiated withdrawal uses {@link #withdraw(long)} (no
+     * referenceId).
      */
     public Transaction withdraw(long amount, String referenceId) {
         if (this.status != AccountStatus.ACTIVE) {
             throw new AccountException(
                     AccountException.ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT,
-                    "활성 상태의 계좌만 출금할 수 있습니다.");
+                    "Only an active account can make withdrawals.");
         }
         if (amount <= 0) {
             throw new AccountException(
-                    AccountException.ErrorCode.INVALID_AMOUNT, "금액은 0보다 커야 합니다.");
+                    AccountException.ErrorCode.INVALID_AMOUNT, "Amount must be greater than 0.");
         }
         Money money = new Money(amount, this.balance.currency());
         if (this.balance.isLessThan(money)) {
             throw new AccountException(
-                    AccountException.ErrorCode.INSUFFICIENT_BALANCE, "잔액이 부족합니다.");
+                    AccountException.ErrorCode.INSUFFICIENT_BALANCE, "Insufficient balance.");
         }
         this.balance = this.balance.subtract(money);
         this.updatedAt = LocalDateTime.now();
@@ -146,20 +151,27 @@ public class Account {
         return transaction;
     }
 
-    // 고정 일 이자율 0.01%(=1/10000) — 정수 나눗셈으로 floor(balance * 0.0001)과 동일한 결과를 부동소수점
-    // 오차 없이 계산한다. 향후 계좌 등급별로 이율이 달라질 필요가 생기면 외부 설정으로 옮기는 것을 검토한다.
+    // Fixed daily interest rate of 0.01% (=1/10000) — computed with integer division so the result
+    // is identical to floor(balance * 0.0001) with no floating-point error. If the rate ever needs
+    // to vary by account tier, consider moving it to external configuration.
     private static final long DAILY_INTEREST_RATE_DENOMINATOR = 10_000;
 
     /**
-     * 활성 계좌에 일 단위 고정 이자(잔액 × 0.01%, 원 미만 절사)를 지급한다. 매일 1회 배치가 호출하는 시스템 주도 동작이라 사용자 Command 표면 없이
-     * Aggregate 메서드로 직접 모델링한다 — 정기 이자 지급은 "요청"이 아니라 계좌 스스로의 정기 행동이다.
+     * Pays fixed daily interest (balance x 0.01%, truncated below the smallest currency unit) to an
+     * active account. This is a system-driven action invoked once daily by a batch job, so it is
+     * modeled directly as an Aggregate method with no user-facing Command surface — scheduled
+     * interest payment is not a "request," it is the account's own periodic behavior.
      *
-     * <p>{@code lastInterestPaidAt}로 "오늘 이미 이자를 지급했는지"를 판단하는 Level 1(본질적 멱등) 설계다(domain-events.md
-     * 멱등성 3단계, scheduling.md 참고) — 같은 날 배치가 at-least-once로 재실행돼도 이 필드가 오늘 날짜 이상이면 그냥 아무 일도 하지 않는다.
-     * 이자가 0으로 계산되는 계좌(잔액이 너무 작음)는 Transaction을 만들지 않고 lastInterestPaidAt도 갱신하지 않는다 — 재실행해도 항상 같은(0)
-     * 결과이므로 별도 장치 없이도 여전히 멱등하다.
+     * <p>{@code lastInterestPaidAt} implements a Level 1 (intrinsic idempotency) design for
+     * deciding "has interest already been paid today" (see the 3 levels of idempotency in
+     * domain-events.md, and scheduling.md) — if the batch job re-runs at-least-once on the same
+     * day, this field being today's date or later means it simply does nothing. An account whose
+     * computed interest is 0 (balance too small) does not create a Transaction and does not update
+     * lastInterestPaidAt either — since re-running always produces the same (0) result, it remains
+     * idempotent without any extra guard.
      *
-     * @return 이자가 지급되었으면 그 거래, 이미 오늘 지급했거나 이자가 0이면 empty
+     * @return the transaction if interest was paid, or empty if it was already paid today or the
+     *     interest amount is 0
      */
     public Optional<Transaction> payInterest(LocalDate today) {
         if (this.status != AccountStatus.ACTIVE) {
@@ -186,7 +198,7 @@ public class Account {
         if (this.status != AccountStatus.ACTIVE) {
             throw new AccountException(
                     AccountException.ErrorCode.SUSPEND_REQUIRES_ACTIVE_ACCOUNT,
-                    "활성 상태의 계좌만 정지할 수 있습니다.");
+                    "Only an active account can be suspended.");
         }
         this.status = AccountStatus.SUSPENDED;
         this.updatedAt = LocalDateTime.now();
@@ -198,7 +210,7 @@ public class Account {
         if (this.status != AccountStatus.SUSPENDED) {
             throw new AccountException(
                     AccountException.ErrorCode.REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT,
-                    "정지 상태의 계좌만 재개할 수 있습니다.");
+                    "Only a suspended account can be reactivated.");
         }
         this.status = AccountStatus.ACTIVE;
         this.updatedAt = LocalDateTime.now();
@@ -209,12 +221,13 @@ public class Account {
     public void close() {
         if (this.status == AccountStatus.CLOSED) {
             throw new AccountException(
-                    AccountException.ErrorCode.ACCOUNT_ALREADY_CLOSED, "이미 종료된 계좌입니다.");
+                    AccountException.ErrorCode.ACCOUNT_ALREADY_CLOSED,
+                    "The account is already closed.");
         }
         if (!this.balance.isZero()) {
             throw new AccountException(
                     AccountException.ErrorCode.ACCOUNT_BALANCE_NOT_ZERO,
-                    "잔액이 0이 아닌 계좌는 종료할 수 없습니다.");
+                    "An account with a non-zero balance cannot be closed.");
         }
         this.status = AccountStatus.CLOSED;
         this.updatedAt = LocalDateTime.now();
@@ -222,18 +235,20 @@ public class Account {
     }
 
     /**
-     * 계좌 레코드를 soft delete한다 — deletedAt에 타임스탬프를 기록한다. "종료"(close, 비즈니스 상태 전이)와 "삭제"(delete, 데이터
-     * 생명주기 관리)는 서로 다른 개념이다. 종료된(CLOSED) 계좌만 삭제할 수 있다.
+     * Soft-deletes the account record — records a timestamp in deletedAt. "Closing" (close, a
+     * business state transition) and "deleting" (delete, data lifecycle management) are distinct
+     * concepts. Only a closed (CLOSED) account can be deleted.
      */
     public void delete() {
         if (this.status != AccountStatus.CLOSED) {
             throw new AccountException(
                     AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE,
-                    "종료된 계좌만 삭제할 수 있습니다.");
+                    "Only a closed account can be deleted.");
         }
         if (this.deletedAt != null) {
             throw new AccountException(
-                    AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED, "이미 삭제된 계좌입니다.");
+                    AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED,
+                    "The account is already deleted.");
         }
         this.deletedAt = LocalDateTime.now();
     }

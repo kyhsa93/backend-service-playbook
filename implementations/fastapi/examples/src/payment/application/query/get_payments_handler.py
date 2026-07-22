@@ -6,8 +6,9 @@ from .result import GetPaymentResult, GetPaymentsResult
 
 @dataclass
 class GetPaymentsQuery:
-    # 인증된 요청자 본인의 결제 내역만 조회한다 — 클라이언트가 넘긴 ownerId를 신뢰하지
-    # 않는다(이 저장소의 어떤 엔드포인트도 클라이언트가 지정한 소유자 id를 받지 않는다).
+    # Looks up only the authenticated requester's own payment history — a client-supplied
+    # ownerId is never trusted (no endpoint in this repository accepts a client-specified
+    # owner id).
     requester_id: str
     page: int = 0
     take: int = 20

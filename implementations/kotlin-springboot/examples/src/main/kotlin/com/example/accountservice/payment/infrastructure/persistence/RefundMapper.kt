@@ -3,8 +3,8 @@ package com.example.accountservice.payment.infrastructure.persistence
 import com.example.accountservice.payment.domain.Refund
 
 /**
- * Refund(순수 도메인) ↔ RefundJpaEntity(JPA 매핑) 변환 전담 오브젝트.
- * RefundRepositoryImpl 내부에서만 사용된다.
+ * The object dedicated to converting between Refund (pure domain) and RefundJpaEntity (JPA mapping).
+ * Used only inside RefundRepositoryImpl.
  */
 internal object RefundMapper {
     fun toDomain(entity: RefundJpaEntity): Refund =
@@ -18,7 +18,7 @@ internal object RefundMapper {
             createdAt = entity.createdAt,
         )
 
-    /** 신규 Refund를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
+    /** Creates a new entity (no PK, an insert target) for a new Refund. */
     fun toNewEntity(refund: Refund): RefundJpaEntity =
         RefundJpaEntity(
             id = null,
@@ -31,7 +31,7 @@ internal object RefundMapper {
             createdAt = refund.createdAt,
         )
 
-    /** 기존 엔티티(PK 보존)에 도메인 Refund의 최신 상태를 반영한다 — update 대상(approve/reject/complete). */
+    /** Reflects the domain Refund's latest state onto the existing entity (preserving the PK) — an update target (approve/reject/complete). */
     fun updateEntity(
         entity: RefundJpaEntity,
         refund: Refund,

@@ -56,8 +56,9 @@ func TestCheckRepositoryNaming(t *testing.T) {
 	})
 
 	t.Run("good-infra-ignored", func(t *testing.T) {
-		// infrastructure/persistence/의 구현체는 FindByID/Save 같은 이름이어도 이
-		// 규칙의 대상이 아니다 — Repository/Query interface 선언만 검사한다.
+		// Implementations under infrastructure/persistence/ are out of scope for
+		// this rule even if they use names like FindByID/Save — only Repository/Query
+		// interface declarations are checked.
 		result := checkRepositoryNaming("testdata/repository-naming/good-infra-ignored")
 		if got := countKind(result, Fail); got != 0 {
 			t.Fatalf("want 0 failures, got %d: %+v", got, result.Findings)

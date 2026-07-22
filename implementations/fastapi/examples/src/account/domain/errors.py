@@ -17,74 +17,74 @@ class InvalidAmountError(AccountError):
     code = AccountErrorCode.INVALID_AMOUNT
 
     def __init__(self) -> None:
-        super().__init__("금액은 0보다 커야 합니다.")
+        super().__init__("The amount must be greater than 0.")
 
 
 class InvalidMoneyAmountError(AccountError):
     code = AccountErrorCode.INVALID_MONEY_AMOUNT
 
     def __init__(self) -> None:
-        super().__init__("금액은 0 이상이어야 합니다.")
+        super().__init__("The amount must be at least 0.")
 
 
 class CurrencyMismatchError(AccountError):
     code = AccountErrorCode.CURRENCY_MISMATCH
 
     def __init__(self) -> None:
-        super().__init__("통화가 일치하지 않습니다.")
+        super().__init__("The currencies do not match.")
 
 
 class DepositRequiresActiveAccountError(AccountError):
     code = AccountErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT
 
     def __init__(self) -> None:
-        super().__init__("활성 상태의 계좌만 입금할 수 있습니다.")
+        super().__init__("Only an active account can receive a deposit.")
 
 
 class WithdrawRequiresActiveAccountError(AccountError):
     code = AccountErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT
 
     def __init__(self) -> None:
-        super().__init__("활성 상태의 계좌만 출금할 수 있습니다.")
+        super().__init__("Only an active account can make a withdrawal.")
 
 
 class InsufficientBalanceError(AccountError):
     code = AccountErrorCode.INSUFFICIENT_BALANCE
 
     def __init__(self) -> None:
-        super().__init__("잔액이 부족합니다.")
+        super().__init__("Insufficient balance.")
 
 
 class SuspendRequiresActiveAccountError(AccountError):
     code = AccountErrorCode.SUSPEND_REQUIRES_ACTIVE_ACCOUNT
 
     def __init__(self) -> None:
-        super().__init__("활성 상태의 계좌만 정지할 수 있습니다.")
+        super().__init__("Only an active account can be suspended.")
 
 
 class ReactivateRequiresSuspendedAccountError(AccountError):
     code = AccountErrorCode.REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT
 
     def __init__(self) -> None:
-        super().__init__("정지 상태의 계좌만 재개할 수 있습니다.")
+        super().__init__("Only a suspended account can be reactivated.")
 
 
 class AccountAlreadyClosedError(AccountError):
     code = AccountErrorCode.ACCOUNT_ALREADY_CLOSED
 
     def __init__(self) -> None:
-        super().__init__("이미 종료된 계좌입니다.")
+        super().__init__("The account is already closed.")
 
 
 class AccountBalanceNotZeroError(AccountError):
     code = AccountErrorCode.ACCOUNT_BALANCE_NOT_ZERO
 
     def __init__(self) -> None:
-        super().__init__("잔액이 0이 아닌 계좌는 종료할 수 없습니다.")
+        super().__init__("An account with a non-zero balance cannot be closed.")
 
 
 class TransferSameAccountError(AccountError):
     code = AccountErrorCode.TRANSFER_SAME_ACCOUNT
 
     def __init__(self) -> None:
-        super().__init__("출금 계좌와 입금 계좌가 동일할 수 없습니다.")
+        super().__init__("The withdrawal account and deposit account cannot be the same.")

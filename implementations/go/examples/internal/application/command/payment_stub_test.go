@@ -7,9 +7,10 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// stubPaymentStore는 payment.Repository/Query와 payment.RefundRepository/Query를 모두
-// 만족하는 최소 mock이다(infrastructure/persistence/payment_repository.go가 한 struct로
-// 네 인터페이스를 모두 만족하는 것과 동일한 구조를 테스트에서도 재사용한다).
+// stubPaymentStore is a minimal mock satisfying both payment.Repository/Query
+// and payment.RefundRepository/Query (the test reuses the same structure as
+// infrastructure/persistence/payment_repository.go, which satisfies all four
+// interfaces with a single struct).
 type stubPaymentStore struct {
 	findPaymentsFn func(ctx context.Context, q payment.FindQuery) ([]*payment.Payment, int, error)
 	saveFn         func(ctx context.Context, p *payment.Payment) error
@@ -45,7 +46,7 @@ func (s *stubPaymentStore) SaveRefund(ctx context.Context, r *payment.Refund) er
 	return s.saveRefundFn(ctx, r)
 }
 
-// stubPaymentCardAdapter는 command.PaymentCardAdapter 포트를 함수 필드로 대체하는 mock이다.
+// stubPaymentCardAdapter is a mock that substitutes the command.PaymentCardAdapter port with function fields.
 type stubPaymentCardAdapter struct {
 	findCardFn func(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error)
 }
@@ -54,7 +55,7 @@ func (s *stubPaymentCardAdapter) FindCard(ctx context.Context, cardID, ownerID s
 	return s.findCardFn(ctx, cardID, ownerID)
 }
 
-// stubPaymentAccountAdapter는 command.PaymentAccountAdapter 포트를 함수 필드로 대체하는 mock이다.
+// stubPaymentAccountAdapter is a mock that substitutes the command.PaymentAccountAdapter port with function fields.
 type stubPaymentAccountAdapter struct {
 	findAccountFn func(ctx context.Context, accountID, ownerID string) (*command.PaymentAccountView, error)
 }

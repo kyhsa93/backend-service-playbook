@@ -5,8 +5,9 @@ import (
 	"encoding/hex"
 )
 
-// NewID는 crypto/rand로 뽑은 16바이트를 32자리 hex로 인코딩한다 — uuid 패키지 없이도
-// 하이픈이 생길 수 없는 대안 구현.
+// NewID encodes 16 random bytes from crypto/rand as a 32-character hex string —
+// an alternative implementation that can't produce hyphens, without using the
+// uuid package.
 func NewID() string {
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)

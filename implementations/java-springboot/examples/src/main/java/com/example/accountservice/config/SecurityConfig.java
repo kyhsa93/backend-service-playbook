@@ -29,12 +29,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         auth ->
                                 auth
-                                        // /error: 인증 없이 호출 가능한 엔드포인트(예: /auth/sign-up)에서 Bean
-                                        // Validation이
-                                        // 실패하면 서블릿 컨테이너가 /error로 재디스패치한다. Spring Boot는 기본적으로 이
-                                        // 재디스패치에도 Security 필터 체인을 다시 적용하므로, /error를 permitAll에 포함하지
-                                        // 않으면 원래 401이 아니어야 할 응답(예: 400 VALIDATION_FAILED)이 401로
-                                        // 뒤바뀐다.
+                                        // /error: when Bean Validation fails on an endpoint that's
+                                        // callable without authentication (e.g. /auth/sign-up),
+                                        // the servlet container re-dispatches to /error. Spring
+                                        // Boot re-applies the Security filter chain to this
+                                        // re-dispatch by default, so unless /error is included in
+                                        // permitAll, a response that should not have been 401
+                                        // (e.g. 400 VALIDATION_FAILED) gets turned into a 401.
                                         .requestMatchers(
                                                 "/health/**",
                                                 "/actuator/health/**",

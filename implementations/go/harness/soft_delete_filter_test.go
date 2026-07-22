@@ -21,8 +21,9 @@ func TestCheckSoftDeleteFilter(t *testing.T) {
 	})
 
 	t.Run("no-deleted-at-column-skip", func(t *testing.T) {
-		// cards 테이블은 애초에 deleted_at 컬럼이 없으므로 규칙 전체가 skip으로 빠진다
-		// (softDeleteTables가 비어 있음 — tablesWithDeletedAt 기준).
+		// The cards table has no deleted_at column to begin with, so the whole
+		// rule falls through to skip (softDeleteTables is empty, based on
+		// tablesWithDeletedAt).
 		result := checkSoftDeleteFilter("testdata/soft-delete-filter/no-deleted-at-column")
 		if got := countKind(result, Fail); got != 0 {
 			t.Fatalf("want 0 failures, got %d: %+v", got, result.Findings)

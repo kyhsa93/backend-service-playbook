@@ -34,12 +34,12 @@ func TestPayment_Complete(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "PENDING_결제를_완료하면_성공",
+			name:    "completing_a_PENDING_payment_succeeds",
 			setup:   func() *payment.Payment { return payment.New("card-1", "account-1", "owner-1", 1000) },
 			wantErr: nil,
 		},
 		{
-			name: "이미_완료된_결제를_다시_완료하면_에러",
+			name: "completing_an_already_completed_payment_errors",
 			setup: func() *payment.Payment {
 				p := payment.New("card-1", "account-1", "owner-1", 1000)
 				_ = p.Complete()
@@ -90,12 +90,12 @@ func TestPayment_Fail(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "PENDING_결제를_실패처리하면_성공",
+			name:    "failing_a_PENDING_payment_succeeds",
 			setup:   func() *payment.Payment { return payment.New("card-1", "account-1", "owner-1", 1000) },
 			wantErr: nil,
 		},
 		{
-			name: "완료된_결제를_실패처리하면_에러",
+			name: "failing_a_completed_payment_errors",
 			setup: func() *payment.Payment {
 				p := payment.New("card-1", "account-1", "owner-1", 1000)
 				_ = p.Complete()
@@ -126,12 +126,12 @@ func TestPayment_Cancel(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "PENDING_결제를_취소하면_에러",
+			name:    "cancelling_a_PENDING_payment_errors",
 			setup:   func() *payment.Payment { return payment.New("card-1", "account-1", "owner-1", 1000) },
 			wantErr: payment.ErrCancelRequiresCompletedPayment,
 		},
 		{
-			name: "완료된_결제를_취소하면_성공",
+			name: "cancelling_a_completed_payment_succeeds",
 			setup: func() *payment.Payment {
 				p := payment.New("card-1", "account-1", "owner-1", 1000)
 				_ = p.Complete()

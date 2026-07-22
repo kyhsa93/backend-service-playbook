@@ -1,13 +1,13 @@
-# 파일 스토리지 (Go) — Presigned URL 패턴
+# File Storage (Go) — the Presigned URL Pattern
 
-원칙은 루트 [file-storage.md](../../../../docs/architecture/file-storage.md)를 따른다: 서버가 파일 바이너리를 직접 처리하지 않고, Presigned URL을 발급해 클라이언트가 스토리지(S3 등)와 직접 통신하도록 한다. **이 저장소의 Account 도메인 예제에는 파일 첨부 유스케이스가 없어 이 패턴이 구현되어 있지 않다.** 이 문서는 Go의 AWS SDK v2로 이 패턴을 어떻게 구현하는지 목표 형태로 제시하며, 이미 이 저장소에 구현된 SES 클라이언트 관용구를 그대로 재사용한다.
+The principle follows the root [file-storage.md](../../../../docs/architecture/file-storage.md): the server never handles file binaries directly — it issues a presigned URL and has the client communicate directly with storage (S3, etc.). **This repository's Account domain example has no file-attachment use case, so this pattern isn't implemented.** This document presents, as a target shape, how to implement this pattern with Go's AWS SDK v2, reusing the SES client idiom already implemented in this repository.
 
 ---
 
-## StorageService — Technical Service 인터페이스
+## StorageService — a Technical Service interface
 
 ```go
-// internal/application/command/storage_service.go — 목표 형태
+// internal/application/command/storage_service.go — target shape
 package command
 
 import "context"
@@ -20,10 +20,10 @@ type StorageService interface {
 
 ---
 
-## Infrastructure 구현체 — S3 Presigned URL
+## Infrastructure implementation — S3 presigned URL
 
 ```go
-// internal/infrastructure/storage/service.go — 목표 형태
+// internal/infrastructure/storage/service.go — target shape
 package storage
 
 import (
@@ -73,8 +73,8 @@ func (s *Service) GenerateDownloadURL(ctx context.Context, key string) (string, 
 	return req.URL, nil
 }
 
-// NewS3Client는 ses_client.go와 동일한 관용구를 따른다: 명시적 정적 자격증명 +
-// AWS_ENDPOINT_URL 분기. S3는 LocalStack에서 path-style 접근이 필요하다.
+// NewS3Client follows the same idiom as ses_client.go: explicit static credentials +
+// an AWS_ENDPOINT_URL branch. S3 needs path-style access under LocalStack.
 func NewS3Client() *s3.Client {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -93,7 +93,7 @@ func NewS3Client() *s3.Client {
 		Region:       region,
 		Credentials:  credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
 		BaseEndpoint: endpointOrNil(),
-		UsePathStyle: os.Getenv("AWS_ENDPOINT_URL") != "", // LocalStack은 path-style 필요, 실 S3는 virtual-hosted-style
+		UsePathStyle: os.Getenv("AWS_ENDPOINT_URL") != "", // LocalStack needs path-style, real S3 uses virtual-hosted-style
 	})
 }
 
@@ -105,32 +105,32 @@ func endpointOrNil() *string {
 }
 ```
 
-`s3.NewPresignClient`가 반환하는 URL은 서명된 쿼리 파라미터를 포함한 완전한 URL이다 — 서버는 이 URL 문자열만 클라이언트에 반환하고, 실제 파일 바이너리는 절대 거치지 않는다.
+The URL returned by `s3.NewPresignClient` is a complete URL that includes the signed query parameters — the server only returns this URL string to the client, and the actual file binary is never touched by it.
 
 ---
 
-## 메타데이터만 저장하는 Entity
+## An Entity that stores only metadata
 
-파일을 소유하는 Aggregate/Entity는 파일 키와 확장자만 컬럼으로 갖는다. Account 도메인에 첨부파일이 생긴다면:
+The Aggregate/Entity that owns the file has only the file key and extension as columns. If the Account domain gains attachments:
 
 ```go
-// internal/domain/account/attachment.go — 목표 형태 (Account Aggregate 하위 Entity)
+// internal/domain/account/attachment.go — target shape (a child Entity of the Account Aggregate)
 type Attachment struct {
-	FileKey   string // common.NewID() — aggregate-id.md의 하이픈 제거 32자리 hex 규칙 적용
+	FileKey   string // common.NewID() — applies the 32-character hyphen-removed hex rule from aggregate-id.md
 	AccountID string
 	Extension string
 	CreatedAt time.Time
 }
 ```
 
-파일명, 크기 등이 필요하면 컬럼을 추가한다 — 파일 자체는 절대 DB나 서버 메모리를 거치지 않는다.
+If the filename, size, etc. are needed, add columns for them — the file itself never passes through the DB or the server's memory.
 
 ---
 
-## Application Handler에서 사용
+## Usage in an Application Handler
 
 ```go
-// internal/application/command/create_attachment_handler.go — 목표 형태
+// internal/application/command/create_attachment_handler.go — target shape
 type CreateAttachmentHandler struct {
 	repo    account.Repository
 	storage StorageService
@@ -157,9 +157,9 @@ func (h *CreateAttachmentHandler) Handle(ctx context.Context, cmd CreateAttachme
 
 ---
 
-## 로컬 개발 — LocalStack
+## Local development — LocalStack
 
-[local-dev.md](local-dev.md)의 `docker-compose.yml`에 `s3`를 추가한다(현재는 `ses`만 있음):
+Add `s3` to the `docker-compose.yml` from [local-dev.md](local-dev.md) (currently only `ses` is present):
 
 ```yaml
 localstack:
@@ -170,16 +170,16 @@ localstack:
 
 ```sh
 #!/bin/sh
-# localstack/init-s3.sh — init-ses.sh와 같은 방식
+# localstack/init-s3.sh — the same approach as init-ses.sh
 set -e
 awslocal s3 mb s3://account-attachments
 ```
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [local-dev.md](local-dev.md) — LocalStack 서비스 추가 방법(SES에서 이미 실증됨)
-- [aggregate-id.md](aggregate-id.md) — `fileKey` 생성 시 ID 형식 규칙
-- [secret-manager.md](secret-manager.md) — 동일한 AWS SDK 클라이언트 생성 관용구
-- [persistence.md](persistence.md) — Attachment 메타데이터 테이블의 공통 컬럼 규칙
+- [local-dev.md](local-dev.md) — how to add a LocalStack service (already demonstrated with SES)
+- [aggregate-id.md](aggregate-id.md) — the ID format rule when generating `fileKey`
+- [secret-manager.md](secret-manager.md) — the same AWS SDK client-creation idiom
+- [persistence.md](persistence.md) — common column rules for the Attachment metadata table

@@ -7,4 +7,4 @@ class AuthService(ABC):
 
     @abstractmethod
     def verify_token(self, token: str) -> str:
-        """검증 성공 시 user_id를 반환하고, 실패 시 InvalidTokenError를 raise한다."""
+        """Returns user_id on successful verification, and raises InvalidTokenError on failure."""

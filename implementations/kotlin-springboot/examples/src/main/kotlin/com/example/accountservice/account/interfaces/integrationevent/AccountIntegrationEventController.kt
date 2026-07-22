@@ -8,13 +8,15 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * 외부 BC(Payment)가 발행한 Integration Event를 수신하는 Interface 입력 어댑터.
+ * The Interface input adapter that receives Integration Events published by an external BC (Payment).
  *
+ * Same location and role as
  * [com.example.accountservice.card.interfaces.integrationevent.CardIntegrationEventController]
- * (Account 이벤트 구독)와 동일한 위치·역할이다 — Account가 Payment를 Adapter로 조회하지 않는
- * 것처럼, Payment도 Account를 직접 참조하지 않는다. 자기 도메인의 유스케이스(Command Service)만
- * 호출하고, 예외는 그대로 던져 [com.example.accountservice.outbox.OutboxConsumer]가 재시도(메시지를
- * 삭제하지 않아 SQS visibility timeout 이후 재전달)를 담당하게 한다.
+ * (which subscribes to Account events) — just as Account never queries Payment via an Adapter, Payment
+ * never references Account directly either. It only calls its own domain's use case (a Command Service),
+ * and lets exceptions propagate as-is so that
+ * [com.example.accountservice.outbox.OutboxConsumer] handles the retry (not deleting the message, so it
+ * is redelivered after the SQS visibility timeout).
  */
 @Component
 class AccountIntegrationEventController(
@@ -32,7 +34,7 @@ class AccountIntegrationEventController(
             .atInfo()
             .addKeyValue("payment_id", paymentId)
             .addKeyValue("account_id", accountId)
-            .log("payment.completed.v1 수신")
+            .log("Received payment.completed.v1")
         withdrawByPaymentService.withdraw(
             WithdrawByPaymentCommand(accountId = accountId, amount = amount, referenceId = paymentId),
         )
@@ -47,7 +49,7 @@ class AccountIntegrationEventController(
             .atInfo()
             .addKeyValue("payment_id", paymentId)
             .addKeyValue("account_id", accountId)
-            .log("payment.cancelled.v1 수신")
+            .log("Received payment.cancelled.v1")
         depositByPaymentService.deposit(
             DepositByPaymentCommand(accountId = accountId, amount = amount, referenceId = paymentId),
         )
@@ -62,7 +64,7 @@ class AccountIntegrationEventController(
             .atInfo()
             .addKeyValue("refund_id", refundId)
             .addKeyValue("account_id", accountId)
-            .log("refund.approved.v1 수신")
+            .log("Received refund.approved.v1")
         depositByPaymentService.deposit(
             DepositByPaymentCommand(accountId = accountId, amount = amount, referenceId = refundId),
         )

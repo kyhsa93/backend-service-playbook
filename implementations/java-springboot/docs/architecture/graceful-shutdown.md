@@ -1,49 +1,49 @@
 # Graceful Shutdown (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md) 참고.
+> For the framework-agnostic principles, see the root [graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md).
 
-## 현재 구현
+## Current implementation
 
-`build.gradle`에 `spring-boot-starter-actuator` 의존성이 있고, `application.yml`에 `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase`와 `management.health.livenessState`/`readinessState`(probes) 설정이 모두 반영되어 있다 — 아래 문서 내용 그대로 실제 코드다.
+`build.gradle` has the `spring-boot-starter-actuator` dependency, and `application.yml` has both `server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase` and the `management.health.livenessState`/`readinessState` (probes) settings fully in place — everything below is exactly the actual code.
 
 ---
 
-## `server.shutdown: graceful` — Spring Boot 내장 기능
+## `server.shutdown: graceful` — a built-in Spring Boot feature
 
-Spring Boot 2.3+는 별도 라이브러리 없이 설정 한 줄로 graceful shutdown을 지원한다.
+Spring Boot 2.3+ supports graceful shutdown with a single line of configuration, no separate library needed.
 
 ```yaml
-# application.yml — 추가 필요
+# application.yml — would need to be added
 server:
   shutdown: graceful
 
 spring:
   lifecycle:
-    timeout-per-shutdown-phase: 30s   # root의 terminationGracePeriodSeconds에 대응
+    timeout-per-shutdown-phase: 30s   # corresponds to the root's terminationGracePeriodSeconds
 ```
 
-SIGTERM 수신 시 Spring이 자동으로 수행하는 순서:
+The sequence Spring automatically performs on receiving SIGTERM:
 
 ```
-1. 내장 서버(Tomcat)가 새 요청 수신을 중단
-2. 진행 중인 요청 처리 완료까지 대기 (최대 timeout-per-shutdown-phase)
-3. ApplicationContext 종료 — @PreDestroy, DisposableBean 콜백 실행
-4. 프로세스 종료
+1. The embedded server (Tomcat) stops accepting new requests
+2. Waits for in-flight requests to finish processing (up to timeout-per-shutdown-phase)
+3. ApplicationContext shuts down — @PreDestroy and DisposableBean callbacks run
+4. Process exits
 ```
 
-root가 강조하는 "readiness 전환이 HTTP 서버 종료보다 먼저"라는 순서를 이 내장 메커니즘이 프레임워크 차원에서 보장한다 — 별도의 `isShuttingDown` 플래그를 직접 구현할 필요가 없다.
+This built-in mechanism guarantees, at the framework level, the ordering the root emphasizes — that "the readiness transition happens before the HTTP server shuts down" — with no need to implement a separate `isShuttingDown` flag by hand.
 
 ---
 
-## Liveness / Readiness 프로브 — Actuator
+## Liveness / Readiness probes — Actuator
 
 ```groovy
-// build.gradle — 추가 필요
+// build.gradle — would need to be added
 implementation 'org.springframework.boot:spring-boot-starter-actuator'
 ```
 
 ```yaml
-# application.yml — 추가
+# application.yml — to add
 management:
   endpoint:
     health:
@@ -57,16 +57,16 @@ management:
 ```
 
 ```
-GET /actuator/health/liveness   → 200: 프로세스 생존 (종료 중에도 200 — 재시작 방지)
-GET /actuator/health/readiness  → 200: 트래픽 수신 가능 / 503: 종료 중
+GET /actuator/health/liveness   → 200: process alive (still 200 even while shutting down — prevents an unwanted restart)
+GET /actuator/health/readiness  → 200: ready to accept traffic / 503: shutting down
 ```
 
-Spring의 `AvailabilityChangeEvent`가 SIGTERM 수신과 `readinessState`를 자동으로 연동한다 — `graceful` shutdown이 시작되면 Spring이 `ReadinessState.REFUSING_TRAFFIC`로 전환해 `/actuator/health/readiness`가 즉시 503을 반환하고, `LivenessState`는 프로세스가 실제로 죽기 전까지 `CORRECT`(200)를 유지한다. root가 강조하는 "Liveness는 종료 중에도 항상 200" 원칙이 Actuator 기본 동작으로 이미 충족된다 — 애플리케이션 코드에서 두 상태를 직접 토글할 필요가 없다.
+Spring's `AvailabilityChangeEvent` automatically links SIGTERM receipt with `readinessState` — once `graceful` shutdown begins, Spring switches to `ReadinessState.REFUSING_TRAFFIC`, so `/actuator/health/readiness` immediately returns 503, while `LivenessState` stays at `CORRECT` (200) until the process actually dies. The root's principle that "Liveness always stays 200 even while shutting down" is already satisfied by Actuator's default behavior — there's no need for application code to toggle the two states directly.
 
 ```yaml
-# Kubernetes 예시
+# Kubernetes example
 spec:
-  terminationGracePeriodSeconds: 40   # spring.lifecycle.timeout-per-shutdown-phase(30s)보다 여유 있게
+  terminationGracePeriodSeconds: 40   # give it more margin than spring.lifecycle.timeout-per-shutdown-phase (30s)
   containers:
     - livenessProbe:
         httpGet: { path: /actuator/health/liveness, port: 8080 }
@@ -76,38 +76,38 @@ spec:
 
 ---
 
-## 컨테이너에서 직접 프로세스 실행 — 이미 [container.md](container.md)에서 다룸
+## Running the process directly in the container — already covered in [container.md](container.md)
 
-`ENTRYPOINT ["java", "-jar", "app.jar"]`(exec form)로 JVM이 PID 1이 되어야 SIGTERM을 즉시 수신한다 — `./gradlew bootRun` 같은 래퍼로 감싸면 Gradle 프로세스가 중간에 끼어 신호 전달이 지연되거나 유실된다. 상세는 [container.md](container.md) 참고.
+`ENTRYPOINT ["java", "-jar", "app.jar"]` (exec form) is required for the JVM to become PID 1 and receive SIGTERM immediately — wrapping it in something like `./gradlew bootRun` inserts the Gradle process in between, delaying or losing signal delivery. See [container.md](container.md) for details.
 
 ---
 
-## 리소스 정리 순서 — HikariCP 커넥션 풀
+## Resource cleanup order — the HikariCP connection pool
 
-Spring Boot의 graceful shutdown 순서(HTTP 서버 종료 → `ApplicationContext` 종료)는 DataSource(HikariCP) 종료가 자연스럽게 마지막에 일어나도록 보장한다 — `DataSource` 빈은 Spring이 관리하는 다른 빈이므로, `ApplicationContext`가 완전히 종료되기 전까지는 진행 중인 요청이 DB 커넥션을 계속 사용할 수 있다. 별도의 수동 정리 순서 제어가 필요 없다.
+Spring Boot's graceful-shutdown order (HTTP server shutdown → `ApplicationContext` shutdown) naturally guarantees that DataSource (HikariCP) shutdown happens last — since the `DataSource` bean is just another Spring-managed bean, in-flight requests can keep using DB connections until `ApplicationContext` fully shuts down. No manual control over the cleanup order is needed.
 
-`@PreDestroy`로 커스텀 정리 로직을 추가할 경우, 예외를 던지지 않도록 주의한다 — 정리 단계에서 예외가 발생하면 다른 `@PreDestroy` 콜백의 실행이 건너뛰어질 수 있다.
+If custom cleanup logic is added via `@PreDestroy`, take care not to let it throw — an exception during cleanup can cause other `@PreDestroy` callbacks to be skipped.
 
 ```java
-// 커스텀 리소스가 있는 경우 (제안)
+// If there's a custom resource (proposal)
 @PreDestroy
 public void cleanup() {
     try {
         customResource.close();
     } catch (Exception e) {
-        log.error("리소스 정리 실패", e);   // 예외를 던지지 않고 로깅만
+        log.error("Resource cleanup failed", e);   // log only, never throw
     }
 }
 ```
 
 ---
 
-## 실제 커스텀 리소스 — `OutboxConsumer`의 `SmartLifecycle`
+## A real custom resource — `OutboxConsumer`'s `SmartLifecycle`
 
-이 저장소에는 위 제안이 실제로 필요한 커스텀 리소스가 있다: SQS를 long polling으로 수신 대기하는 전용 백그라운드 스레드(`OutboxConsumer`, [domain-events.md](domain-events.md) 참고). `@PreDestroy` 대신 `SmartLifecycle`을 썼다 — `@PreDestroy`는 종료 훅만 제공하지만, `SmartLifecycle`은 **시작 훅(`start()`)도 함께 제공**해서 `ApplicationContext` refresh 완료 시점에 자동으로 백그라운드 루프를 기동시킬 수 있다(별도의 `@PostConstruct`/`ApplicationListener` 조합이 필요 없다).
+This repository has a real custom resource where the proposal above is genuinely needed: a dedicated background thread that waits on SQS via long polling (`OutboxConsumer`, see [domain-events.md](domain-events.md)). `SmartLifecycle` is used instead of `@PreDestroy` — `@PreDestroy` only provides a shutdown hook, but `SmartLifecycle` **also provides a startup hook (`start()`)**, letting the background loop be started automatically the moment `ApplicationContext` refresh completes (no separate `@PostConstruct`/`ApplicationListener` combination is needed).
 
 ```java
-// outbox/OutboxConsumer.java — 실제 코드(발췌)
+// outbox/OutboxConsumer.java — actual code (excerpt)
 @Component
 public class OutboxConsumer implements SmartLifecycle {
     private volatile boolean running = false;
@@ -116,11 +116,11 @@ public class OutboxConsumer implements SmartLifecycle {
     @Override
     public void start() {
         running = true;
-        executor.submit(this::pollLoop);   // 즉시 반환 — 부트스트랩을 막지 않는다
+        executor.submit(this::pollLoop);   // returns immediately — doesn't block bootstrap
     }
 
     @Override
-    public void stop() {                   // graceful shutdown 시 자동 호출
+    public void stop() {                   // called automatically during graceful shutdown
         running = false;
         executor.shutdown();
         try {
@@ -138,21 +138,21 @@ public class OutboxConsumer implements SmartLifecycle {
 }
 ```
 
-`stop()`이 예외를 던지지 않고(`InterruptedException`을 잡아 스레드 인터럽트 플래그만 복구) `awaitTermination(...)`으로 진행 중인 `ReceiveMessage` 호출(최대 `waitTimeSeconds`)이 끝날 때까지 기다리는 것도 위 "`@PreDestroy`에서 예외를 던지지 않는다" 원칙과 동일한 이유다 — `SmartLifecycle.stop()`도 정리 단계에서 예외를 던지면 다른 빈의 종료 콜백 실행에 영향을 줄 수 있다.
+That `stop()` never throws (catching `InterruptedException` and only restoring the thread's interrupt flag) and waits, via `awaitTermination(...)`, for any in-flight `ReceiveMessage` call (up to `waitTimeSeconds`) to finish is for the same reason as the "never throw from `@PreDestroy`" principle above — an exception thrown from `SmartLifecycle.stop()` during cleanup can likewise affect other beans' shutdown callbacks.
 
 ---
 
-## 원칙
+## Principles
 
-- **`server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase` 필수 설정**: 설정되어 있다.
-- **Actuator의 liveness/readiness 프로브 활성화**: `management.health.livenessState/readinessState.enabled: true`.
-- **오케스트레이터의 `terminationGracePeriodSeconds`는 `timeout-per-shutdown-phase`보다 여유 있게** 설정한다.
-- **exec form ENTRYPOINT**: `["java", "..."]` — [container.md](container.md) 참고.
-- **`@PreDestroy`에서 예외를 던지지 않는다**: try-catch로 감싸고 로그만 남긴다.
+- **`server.shutdown: graceful` + `spring.lifecycle.timeout-per-shutdown-phase` must be configured**: this is done.
+- **Enable Actuator's liveness/readiness probes**: `management.health.livenessState/readinessState.enabled: true`.
+- **Set the orchestrator's `terminationGracePeriodSeconds` with more margin than `timeout-per-shutdown-phase`.**
+- **Use exec-form ENTRYPOINT**: `["java", "..."]` — see [container.md](container.md).
+- **Never throw from `@PreDestroy`**: wrap in try-catch and only log.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [container.md](container.md) — Dockerfile ENTRYPOINT, Actuator 헬스체크
-- [observability.md](observability.md) — 종료 관련 로깅
+- [container.md](container.md) — Dockerfile ENTRYPOINT, Actuator health checks
+- [observability.md](observability.md) — shutdown-related logging

@@ -9,23 +9,26 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// throw 직후 바로 문자열 리터럴 인자를 받는 제네릭 예외 생성만 잡는다 — throw SomeException(cause)처럼
-// 원인 예외를 감싸는 rethrow, 또는 커스텀 sealed 하위 클래스(AccountNotFoundException 등)의 이름이
-// 우연히 "Exception"으로 끝나는 경우는 매치되지 않는다(\b 경계 + 정확한 클래스명만 나열).
+// Only catches construction of a generic exception that takes a string-literal argument right after
+// throw — a rethrow wrapping a cause exception like throw SomeException(cause), or a custom sealed
+// subclass(e.g. AccountNotFoundException) whose name happens to end in "Exception", won't match(a \b
+// boundary plus listing only the exact class names).
 private val GENERIC_EXCEPTION_WITH_LITERAL =
     Regex("""\bthrow\s+(RuntimeException|IllegalStateException|IllegalArgumentException|Exception|Error)\s*\(\s*["']""")
 
 /**
- * [S4] typed-errors-only — root 절대 규칙("에러는 enum으로 타입화 — free-form 문자열 금지",
- * AGENTS.md/error-handling.md)의 domain/application 범위 검사. 이 저장소의 관용구는 `sealed class
- * *Exception` 계층(AccountException, CardException 등)이므로, domain/application에서
- * `RuntimeException("...")`/`IllegalStateException("...")` 같은 제네릭 예외를 문자열 리터럴과 함께
- * 직접 던지면 실패 — 대신 sealed 계층의 구체적인 하위 타입을 throw해야 한다.
+ * [S4] typed-errors-only — the domain/application-scoped check for the root's absolute rule("type
+ * errors as enums — no free-form strings allowed", AGENTS.md/error-handling.md). This repository's
+ * idiom is a `sealed class *Exception` hierarchy(AccountException, CardException, etc.), so directly
+ * throwing a generic exception with a string literal, like `RuntimeException("...")`/
+ * `IllegalStateException("...")`, in domain/application fails — a concrete subtype of the sealed
+ * hierarchy must be thrown instead.
  *
- * outbox/(공유 인프라, infrastructure 성격)의 메시지 파싱 실패 같은 "비즈니스 규칙 위반이 아닌 기술적
- * 오류"는 root error-handling.md가 domain/application에만 강제하는 이 규칙의 대상이 아니다 — 실제로
- * outbox/OutboxConsumer.kt가 IllegalStateException을 쓰지만 domain/, application/ 밖이라 대상에서
- * 제외된다(의도된 스코프, 실제 코드로 확인).
+ * A "technical error that isn't a business-rule violation," such as a message-parsing failure in
+ * outbox/(shared infrastructure, infrastructure in nature), is not targeted by this rule, which the
+ * root error-handling.md enforces only for domain/application — indeed outbox/OutboxConsumer.kt uses
+ * IllegalStateException, but since it's outside domain/, application/ it's excluded from scope(the
+ * intended scope, confirmed against the actual code).
  */
 fun checkTypedErrorsOnly(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -42,15 +45,15 @@ fun checkTypedErrorsOnly(rootPath: String): RuleResult {
             result.add(
                 failFinding(
                     rel,
-                    "domain/, application/ 에서 '${violation.groupValues[1]}(\"...\")' 같은 free-form 문자열 예외 금지 — " +
-                        "sealed class 예외 계층의 enum(code) 매핑 하위 타입만 throw 해야 함 (error-handling.md)",
+                    "a free-form string exception like '${violation.groupValues[1]}(\"...\")' is forbidden in domain/, application/ — " +
+                        "only enum(code)-mapped subtypes of the sealed class exception hierarchy may be thrown (error-handling.md)",
                 ),
             )
         } else {
-            result.add(passFinding("$rel (타입화된 예외만 사용)"))
+            result.add(passFinding("$rel (uses only typed exceptions)"))
         }
     }
 
-    if (!found) result.add(skipFinding("domain/, application/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no domain/, application/ Kotlin files"))
     return result
 }

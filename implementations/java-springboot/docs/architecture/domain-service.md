@@ -1,38 +1,38 @@
-# Domain Service / Technical Service 패턴 (Spring Boot)
+# Domain Service / Technical Service Pattern (Spring Boot)
 
-> Domain Service가 필요한 경우, Domain Service vs Application Service vs Technical Service 구분, Domain Service를 잘못 쓰는 패턴은 루트 [domain-service.md](../../../../docs/architecture/domain-service.md)를 참고한다. 이 문서는 이 저장소가 실제로 갖고 있는 Java 구현을 다룬다.
+> For when a Domain Service is needed, the distinction between Domain Service vs. Application Service vs. Technical Service, and patterns that misuse a Domain Service, see the root [domain-service.md](../../../../docs/architecture/domain-service.md). This document covers the actual Java implementation this repository has.
 
-## 이 저장소의 현재 상태
+## Current state of this repository
 
-`examples/`에는 두 종류의 예시가 있다.
+`examples/` has two kinds of examples.
 
-- **Technical Service**: `account/application/service/NotificationService.java`(인터페이스) + `account/infrastructure/notification/NotificationServiceImpl.java`(구현체, SES). 기술 인프라(이메일 발송)를 추상화하지만, 여러 Aggregate를 조율하는 도메인 판단 로직은 아니다.
-- **Domain Service (진짜 cross-Aggregate 조율)**: `payment/domain/RefundEligibilityService.java`. `Payment`/`Refund` 두 Aggregate를 함께 로드해야만 내릴 수 있는 판단("원 결제가 COMPLETED 상태여야 하고, 환불 금액이 결제 금액을 넘을 수 없다")을 조율한다 — 루트 문서가 정의하는 "여러 Aggregate를 읽어서 판단해야 하는 로직"의 실제 동작하는 예시다.
+- **Technical Service**: `account/application/service/NotificationService.java` (interface) + `account/infrastructure/notification/NotificationServiceImpl.java` (implementation, SES). This abstracts technical infrastructure (sending email), but is not domain judgment logic that coordinates multiple Aggregates.
+- **Domain Service (genuine cross-Aggregate coordination)**: `payment/domain/RefundEligibilityService.java`. It coordinates a judgment ("the original payment must be in COMPLETED status, and the refund amount cannot exceed the payment amount") that can only be made by loading both the `Payment` and `Refund` Aggregates together — a real, working example of the "logic that must read multiple Aggregates to reach a judgment" the root document defines.
 
-Account/Card 두 BC는 각자 단일 Aggregate만 가지므로 이 패턴 자체를 보여줄 수 없었다 — Payment BC(Payment/Refund 두 Aggregate)가 추가되며 이 gap이 닫혔다.
+Since the Account and Card BCs each have only a single Aggregate, this pattern couldn't be demonstrated there — the Payment BC (with its two Aggregates, Payment/Refund) is what actually shows it working.
 
 ---
 
-## RefundEligibilityService — cross-Aggregate 조율 예시
+## RefundEligibilityService — an example of cross-Aggregate coordination
 
-`Payment` Aggregate는 자신에 대한 환불 시도를 모른다(환불은 `Refund`라는 별도 Aggregate로만 존재한다). `Refund` Aggregate는 원 결제의 금액·상태를 모른다(`paymentId`로 참조만 한다). 이 판단을 내리려면 두 Aggregate를 모두 로드해 같은 자리에서 비교해야 하므로, 어느 한쪽 Aggregate의 메서드로는 넣을 수 없다(넣는다면 다른 쪽 Aggregate 전체를 파라미터로 받아야 해 경계가 무너진다).
+The `Payment` Aggregate knows nothing about refund attempts against it (a refund only exists as the separate `Refund` Aggregate). The `Refund` Aggregate knows nothing about the original payment's amount/status (it only references it by `paymentId`). Making this judgment requires loading both Aggregates and comparing them in the same place, so it cannot be placed as a method on either Aggregate alone (doing so would require that Aggregate to take the entire other Aggregate as a parameter, breaking the boundary).
 
-### Step 1 — `domain/`에 프레임워크 애노테이션 없는 순수 클래스로 정의
+### Step 1 — define it in `domain/` as a pure class with no framework annotations
 
 ```java
-// payment/domain/RefundEligibilityService.java — 실제 코드
+// payment/domain/RefundEligibilityService.java — actual code
 public class RefundEligibilityService {
 
     public RefundDecision evaluate(Payment payment, Refund refund) {
         if (payment.getStatus() != PaymentStatus.COMPLETED) {
             return RefundDecision.rejected(
                     PaymentException.ErrorCode.REFUND_REQUIRES_COMPLETED_PAYMENT,
-                    "완료된 결제에 대해서만 환불을 요청할 수 있습니다.");
+                    "A refund can only be requested for a completed payment.");
         }
         if (refund.getAmount() > payment.getAmount()) {
             return RefundDecision.rejected(
                     PaymentException.ErrorCode.REFUND_AMOUNT_EXCEEDS_PAYMENT,
-                    "환불 금액은 결제 금액을 초과할 수 없습니다.");
+                    "The refund amount cannot exceed the payment amount.");
         }
         return RefundDecision.approve();
     }
@@ -40,7 +40,7 @@ public class RefundEligibilityService {
 ```
 
 ```java
-// payment/domain/RefundDecision.java — 판단 결과. 거부돼도 예외가 아니라 값으로 반환한다.
+// payment/domain/RefundDecision.java — the judgment result. Even if rejected, this is returned as a value, not thrown as an exception.
 public record RefundDecision(boolean approved, PaymentException.ErrorCode code, String reason) {
     public static RefundDecision approve() { return new RefundDecision(true, null, null); }
     public static RefundDecision rejected(PaymentException.ErrorCode code, String reason) {
@@ -49,24 +49,24 @@ public record RefundDecision(boolean approved, PaymentException.ErrorCode code, 
 }
 ```
 
-`@Service`/`@Component` 등 어떤 스테레오타입 애노테이션도 없다 — Spring 빈으로 등록하지 않는다.
+There is no stereotype annotation of any kind (`@Service`/`@Component`) — it is never registered as a Spring bean.
 
-### Step 2 — Application Service가 두 Repository를 로드해 위임
+### Step 2 — the Application Service loads both Repositories and delegates
 
 ```java
-// payment/application/command/RequestRefundService.java — 실제 코드(일부)
+// payment/application/command/RequestRefundService.java — actual code (excerpt)
 @Service
 @RequiredArgsConstructor
 public class RequestRefundService {
 
-    // 상태 없는 순수 판단 로직이라 Spring DI 대신 직접 인스턴스화한다 — 매 요청 재사용에 문제가 없다.
+    // Stateless pure judgment logic, so it's instantiated directly rather than via Spring DI — reusing it across requests is safe.
     private final RefundEligibilityService refundEligibilityService = new RefundEligibilityService();
 
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
 
     public GetRefundResult request(RequestRefundCommand command) {
-        Payment payment = /* paymentRepository.findPayments(...)로 소유권 검증 후 로드 */;
+        Payment payment = /* loaded via paymentRepository.findPayments(...) after verifying ownership */;
         Refund refund = Refund.create(payment.getPaymentId(), command.amount(), command.reason());
 
         RefundDecision decision = refundEligibilityService.evaluate(payment, refund);
@@ -76,43 +76,43 @@ public class RequestRefundService {
             refund.reject(decision.reason());
         }
 
-        refundRepository.saveRefund(refund);   // @Transactional — Refund 저장 + Outbox 적재, 한 트랜잭션(persistence.md 참고)
-        return GetRefundResult.from(refund);   // 저장 후 곧바로 반환 — 드레인은 OutboxPoller/OutboxConsumer가 비동기로 담당(domain-events.md 참고)
+        refundRepository.saveRefund(refund);   // @Transactional — Refund save + Outbox write, one transaction (see persistence.md)
+        return GetRefundResult.from(refund);   // returned right after saving — draining is handled asynchronously by OutboxPoller/OutboxConsumer (see domain-events.md)
     }
 }
 ```
 
-- `RefundEligibilityService`는 필드로 두되 `@RequiredArgsConstructor`(Lombok 생성자 주입) 대상이 아니라 `new`로 직접 초기화한다 — 다른 필드(`PaymentRepository` 등, Spring이 주입하는 협력자)와 대비된다.
-- 환불 거부(`decision.approved() == false`)는 예외가 아니라 유효한 도메인 결론이다 — `RequestRefundService.request()`는 이 경우에도 throw하지 않고 `REJECTED` 상태로 저장한 `Refund`를 그대로 반환한다. `PaymentController`는 이를 에러가 아닌 `201 Created` + `status: "REJECTED"`로 응답한다(Payment BC가 결정한 설계, `interfaces/rest/PaymentController.java` 참고).
+- `RefundEligibilityService` is kept as a field, but it's initialized directly with `new` rather than being a target of `@RequiredArgsConstructor` (Lombok constructor injection) — in contrast to the other fields (`PaymentRepository`, etc., collaborators Spring injects).
+- A refund rejection (`decision.approved() == false`) is a valid domain conclusion, not an exception — `RequestRefundService.request()` doesn't throw in this case either, and simply returns the `Refund` saved in `REJECTED` status. `PaymentController` responds to this not as an error but as `201 Created` + `status: "REJECTED"` (a design decision made by Payment BC — see `interfaces/rest/PaymentController.java`).
 
-### RefundDecision과 PaymentException.ErrorCode — 판단 결과에도 에러 코드 부여
+### RefundDecision and PaymentException.ErrorCode — assigning error codes even to judgment results
 
-이 저장소의 [error-handling.md](error-handling.md)는 "가드 조건 1개 = `ErrorCode` 1개"를 요구한다. 환불 거부는 예외로 throw되지 않지만, 어떤 규칙이 거부를 만들었는지 추적할 수 있도록 `RefundDecision`이 `PaymentException.ErrorCode`를 데이터로 들고 있다(`REFUND_REQUIRES_COMPLETED_PAYMENT`/`REFUND_AMOUNT_EXCEEDS_PAYMENT`) — nestjs 레퍼런스 구현체가 메시지 문자열만 반환하는 것보다 한 단계 더 타입화한 지점이다.
+This repository's [error-handling.md](error-handling.md) requires "1 guard condition = 1 `ErrorCode`." A refund rejection is not thrown as an exception, but so that the exact rule that produced the rejection can be traced, `RefundDecision` carries a `PaymentException.ErrorCode` as data (`REFUND_REQUIRES_COMPLETED_PAYMENT`/`REFUND_AMOUNT_EXCEEDS_PAYMENT`) — one step more typed than the nestjs reference implementation, which returns only a message string.
 
-### 관련 코드
+### Related code
 
 - `payment/domain/Payment.java`, `Refund.java`, `RefundEligibilityService.java`, `RefundDecision.java`, `PaymentException.java`
-- `payment/application/command/RequestRefundService.java` — Domain Service 호출 지점
-- `payment/domain/RefundEligibilityServiceTest.java` — Spring 컨텍스트 없이 `new`로 직접 인스턴스화해 판단 로직만 검증하는 단위 테스트
-- `payment/interfaces/rest/PaymentControllerE2ETest.java` — 환불 승인/거부 두 경로 모두 실제 HTTP API로 검증
+- `payment/application/command/RequestRefundService.java` — the call site of the Domain Service
+- `payment/domain/RefundEligibilityServiceTest.java` — a unit test that instantiates it directly with `new`, without a Spring context, verifying only the judgment logic
+- `payment/interfaces/rest/PaymentControllerE2ETest.java` — verifies both the refund-approval and refund-rejection paths via the actual HTTP API
 
 ---
 
 ## Technical Service — NotificationService
 
-Technical Service 배치 원칙(도메인 내부가 기본값, YAGNI)과 `NotificationService`/`NotificationServiceImpl` 코드는 [file-storage.md](file-storage.md)/[secret-manager.md](secret-manager.md)/[directory-structure.md](directory-structure.md)가 이미 반복 인용하므로 여기서는 중복하지 않는다.
+The Technical Service placement principle (domain-internal by default, per YAGNI) and the `NotificationService`/`NotificationServiceImpl` code are already covered repeatedly by [file-storage.md](file-storage.md)/[secret-manager.md](secret-manager.md)/[directory-structure.md](directory-structure.md), so they aren't duplicated here.
 
 ---
 
-## harness 검증
+## Harness verification
 
-`harness/src/rules/NoCrossAggregateReference.java`(rule: `no-cross-aggregate-reference`)가 `payment/domain/Payment.java`는 `Refund` 타입을, `payment/domain/Refund.java`는 `Payment` 타입을 필드/파라미터로 직접 참조하지 않는지 확인한다 — 두 Aggregate는 `paymentId` 같은 ID 문자열로만 서로를 참조해야 하고(위 `RefundEligibilityService` 설명 참고), 조율 로직은 Domain Service 자리로만 가야 한다. 현재 이 저장소에서 한 BC 안에 Aggregate가 둘 이상인 유일한 실제 사례(Payment BC)에 한정한 규칙이다.
+`harness/src/rules/NoCrossAggregateReference.java` (rule: `no-cross-aggregate-reference`) checks that `payment/domain/Payment.java` never references the `Refund` type directly as a field/parameter, and that `payment/domain/Refund.java` never references `Payment` directly — the two Aggregates must only reference each other via an ID string like `paymentId` (see the `RefundEligibilityService` explanation above), and coordination logic must only ever go in a Domain Service. This rule is currently scoped to the one real case in this repository where a single BC has more than one Aggregate (the Payment BC).
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [domain-service.md (root)](../../../../docs/architecture/domain-service.md) — 프레임워크 무관 원칙
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 설계
-- [cross-domain.md](cross-domain.md) — Adapter 패턴(Technical Service·Domain Service와의 차이)
-- [error-handling.md](error-handling.md) — `ErrorCode` 1:1 매핑 원칙
+- [domain-service.md (root)](../../../../docs/architecture/domain-service.md) — the framework-agnostic principles
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate design
+- [cross-domain.md](cross-domain.md) — the Adapter pattern (its difference from Technical Service/Domain Service)
+- [error-handling.md](error-handling.md) — the 1:1 `ErrorCode` mapping principle

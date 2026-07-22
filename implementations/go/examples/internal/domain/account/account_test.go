@@ -40,7 +40,7 @@ func TestAccount_Deposit(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "정지된_계좌에_입금하면_에러",
+			name: "deposit_to_suspended_account_errors",
 			setup: func() *account.Account {
 				a := account.New("owner-1", "a@example.com", "KRW")
 				_ = a.Suspend()
@@ -50,13 +50,13 @@ func TestAccount_Deposit(t *testing.T) {
 			wantErr: account.ErrDepositRequiresActiveAccount,
 		},
 		{
-			name:    "0원_이하_입금은_에러",
+			name:    "deposit_zero_or_less_errors",
 			setup:   func() *account.Account { return account.New("owner-1", "a@example.com", "KRW") },
 			amount:  0,
 			wantErr: account.ErrInvalidAmount,
 		},
 		{
-			name:    "활성_계좌에_양수_금액_입금은_성공",
+			name:    "deposit_positive_amount_to_active_account_succeeds",
 			setup:   func() *account.Account { return account.New("owner-1", "a@example.com", "KRW") },
 			amount:  1000,
 			wantErr: nil,
@@ -106,7 +106,7 @@ func TestAccount_Withdraw(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "정지된_계좌에서_출금하면_에러",
+			name: "withdraw_from_suspended_account_errors",
 			setup: func() *account.Account {
 				a := account.New("owner-1", "a@example.com", "KRW")
 				_ = a.Suspend()
@@ -116,13 +116,13 @@ func TestAccount_Withdraw(t *testing.T) {
 			wantErr: account.ErrWithdrawRequiresActiveAccount,
 		},
 		{
-			name:    "잔액보다_큰_금액을_출금하면_에러",
+			name:    "withdraw_more_than_balance_errors",
 			setup:   func() *account.Account { return account.New("owner-1", "a@example.com", "KRW") },
 			amount:  1000,
 			wantErr: account.ErrInsufficientBalance,
 		},
 		{
-			name: "0원_이하_출금은_에러",
+			name: "withdraw_zero_or_less_errors",
 			setup: func() *account.Account {
 				a := account.New("owner-1", "a@example.com", "KRW")
 				_, _ = a.Deposit(5000, "")
@@ -203,7 +203,7 @@ func TestAccount_Close(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "잔액이_0이_아니면_에러",
+			name: "nonzero_balance_errors",
 			setup: func() *account.Account {
 				a := account.New("owner-1", "a@example.com", "KRW")
 				_, _ = a.Deposit(1000, "")
@@ -212,7 +212,7 @@ func TestAccount_Close(t *testing.T) {
 			wantErr: account.ErrBalanceNotZero,
 		},
 		{
-			name:    "잔액이_0이면_성공",
+			name:    "zero_balance_succeeds",
 			setup:   func() *account.Account { return account.New("owner-1", "a@example.com", "KRW") },
 			wantErr: nil,
 		},
@@ -228,7 +228,7 @@ func TestAccount_Close(t *testing.T) {
 		})
 	}
 
-	t.Run("이미_종료된_계좌를_다시_종료하면_에러", func(t *testing.T) {
+	t.Run("closing_an_already_closed_account_errors", func(t *testing.T) {
 		a := account.New("owner-1", "a@example.com", "KRW")
 		_ = a.Close()
 		if err := a.Close(); !errors.Is(err, account.ErrAlreadyClosed) {
@@ -240,7 +240,7 @@ func TestAccount_Close(t *testing.T) {
 func TestAccount_ApplyInterest(t *testing.T) {
 	today := time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC)
 
-	t.Run("정지된_계좌는_에러", func(t *testing.T) {
+	t.Run("suspended_account_errors", func(t *testing.T) {
 		a := account.New("owner-1", "a@example.com", "KRW")
 		_ = a.Suspend()
 
@@ -253,7 +253,7 @@ func TestAccount_ApplyInterest(t *testing.T) {
 		}
 	})
 
-	t.Run("잔액이_충분하면_이자가_지급되고_잔액에_반영된다", func(t *testing.T) {
+	t.Run("sufficient_balance_pays_interest_and_reflects_it_in_the_balance", func(t *testing.T) {
 		a := account.New("owner-1", "a@example.com", "KRW")
 		_, _ = a.Deposit(1_000_000, "")
 		a.ClearEvents()
@@ -287,7 +287,7 @@ func TestAccount_ApplyInterest(t *testing.T) {
 		}
 	})
 
-	t.Run("계산된_이자가_0이면_스킵되고_상태가_바뀌지_않는다", func(t *testing.T) {
+	t.Run("zero_computed_interest_is_skipped_and_state_is_unchanged", func(t *testing.T) {
 		a := account.New("owner-1", "a@example.com", "KRW")
 		_, _ = a.Deposit(10, "") // floor(10 * 0.0001) = 0
 		a.ClearEvents()
@@ -313,7 +313,7 @@ func TestAccount_ApplyInterest(t *testing.T) {
 		}
 	})
 
-	t.Run("같은_날짜에_재실행하면_멱등하게_스킵된다", func(t *testing.T) {
+	t.Run("rerunning_on_the_same_date_is_skipped_idempotently", func(t *testing.T) {
 		a := account.New("owner-1", "a@example.com", "KRW")
 		_, _ = a.Deposit(1_000_000, "")
 
@@ -324,7 +324,7 @@ func TestAccount_ApplyInterest(t *testing.T) {
 		balanceAfterFirst := a.Balance.Amount
 		a.ClearEvents()
 
-		// at-least-once 재수신을 흉내낸 두 번째 호출 — 같은 날짜라 no-op이어야 한다.
+		// Second call simulating an at-least-once redelivery — should be a no-op since it's the same date.
 		_, applied2, err := a.ApplyInterest(0.0001, today)
 		if err != nil {
 			t.Fatalf("second ApplyInterest() unexpected error: %v", err)
@@ -340,7 +340,7 @@ func TestAccount_ApplyInterest(t *testing.T) {
 		}
 	})
 
-	t.Run("다음_날짜에는_다시_지급된다", func(t *testing.T) {
+	t.Run("pays_again_on_the_next_date", func(t *testing.T) {
 		a := account.New("owner-1", "a@example.com", "KRW")
 		_, _ = a.Deposit(1_000_000, "")
 

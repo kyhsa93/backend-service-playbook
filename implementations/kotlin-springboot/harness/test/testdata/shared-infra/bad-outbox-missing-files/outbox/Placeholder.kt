@@ -1,3 +1,4 @@
-// 의도적으로 OutboxWriter.kt/OutboxPoller.kt/OutboxConsumer.kt를 두지 않는 fixture — shared-infra
-// 규칙이 outbox/ 디렉토리 존재만으로 통과시키지 않고 실제 파일 존재를 확인하는지 검증한다.
+// A fixture that intentionally does not have OutboxWriter.kt/OutboxPoller.kt/OutboxConsumer.kt —
+// verifies that the shared-infra rule checks for the actual files' existence rather than passing on
+// the mere existence of the outbox/ directory.
 class SomethingElse

@@ -3,9 +3,10 @@ from decimal import Decimal
 
 
 class InterestConfig:
-    """정기 이자 지급 배치(scheduling.md)가 쓰는 일일 이자율. 시크릿이 아니라 튜닝 가능한
-    운영 파라미터라 `rate_limit_config.py`와 동일하게 fail-fast 필수 검증 대상(config/validator.py)
-    에는 넣지 않는다 — 기본값(0.01%)만으로도 항상 기동 가능하다.
+    """The daily interest rate used by the regular interest-payment batch (scheduling.md).
+    Since it's not a secret but a tunable operational parameter, it isn't added to the
+    fail-fast required-validation set (config/validator.py), the same as
+    `rate_limit_config.py` — the app can always start up with just the default (0.01%).
     """
 
     def __init__(self) -> None:

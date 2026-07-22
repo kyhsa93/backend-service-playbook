@@ -1,15 +1,15 @@
-# Observability (Go) — 구조화 로깅, Correlation ID
+# Observability (Go) — Structured Logging, Correlation ID
 
-원칙은 루트 [observability.md](../../../../docs/architecture/observability.md)를 따른다: JSON 구조화 로그, snake_case 필드명, 레이어별 로깅 기준(Domain은 로깅하지 않음), Correlation ID를 모든 로그에 포함. Go 1.21+ 표준 라이브러리 `log/slog`가 구조화 로깅을 기본 제공하므로 별도 로깅 프레임워크(Winston, Pino 상당)가 필요 없다.
+The principle follows the root [observability.md](../../../../docs/architecture/observability.md): JSON structured logs, snake_case field names, layer-based logging criteria (Domain never logs), and every log includes the correlation ID. Since the Go 1.21+ standard library's `log/slog` provides structured logging out of the box, no separate logging framework (the equivalent of Winston or Pino) is needed.
 
-`main.go`와 `notification/service.go`가 `log/slog` 기반 구조화 로깅을 쓴다.
+`main.go` and `notification/service.go` use `log/slog`-based structured logging.
 
 ---
 
-## `log/slog` — 실제 구현
+## `log/slog` — actual implementation
 
 ```go
-// internal/infrastructure/notification/service.go — 실제 코드
+// internal/infrastructure/notification/service.go — actual code
 import "log/slog"
 
 func (s *Service) send(ctx context.Context, eventType string, content emailContent) error {
@@ -31,9 +31,10 @@ func (s *Service) send(ctx context.Context, eventType string, content emailConte
 	return nil
 }
 
-// Notify는 발송 실패를 로그가 아니라 에러로 반환한다 — 호출부인 outbox/consumer.go의
-// handleMessage가 이 에러를 받아 slog.ErrorContext로 로그를 남기고, 해당 SQS 메시지를
-// 삭제하지 않아 visibility timeout 이후 재전달되게 한다(domain-events.md 참고).
+// Notify returns a sending failure as an error rather than a log — the caller,
+// handleMessage in outbox/consumer.go, receives this error, logs it via
+// slog.ErrorContext, and doesn't delete the SQS message, so it gets redelivered
+// after the visibility timeout (see domain-events.md).
 func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 	eventType, content, ok := describe(event)
 	if !ok {
@@ -47,58 +48,58 @@ func (s *Service) Notify(ctx context.Context, event account.DomainEvent) error {
 ```
 
 ```go
-// internal/infrastructure/outbox/consumer.go — 실제 코드, Notify()가 반환한 에러를 여기서 로깅
-slog.ErrorContext(ctx, "이벤트 처리 실패", "event_type", eventType, "error", err)
+// internal/infrastructure/outbox/consumer.go — actual code, logs the error Notify() returned
+slog.ErrorContext(ctx, "event processing failed", "event_type", eventType, "error", err)
 ```
 
-`slog.InfoContext`/`slog.ErrorContext`는 `ctx`를 받는다 — 아래 Correlation ID 전파와 자연스럽게 연결된다. 필드는 key-value 쌍으로 넘기며, `slog`가 기본 `TextHandler` 또는 `JSONHandler`로 렌더링한다. 운영 환경에서는 `JSONHandler`를 쓴다:
+`slog.InfoContext`/`slog.ErrorContext` take a `ctx` — this connects naturally to the correlation ID propagation below. Fields are passed as key-value pairs, rendered by `slog` through either the default `TextHandler` or `JSONHandler`. Production uses `JSONHandler`:
 
 ```go
-// cmd/server/main.go — 실제 코드, 기동 초기에 한 번 설정
+// cmd/server/main.go — actual code, set up once early during startup
 slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 ```
 
-출력 예시(JSON, snake_case 필드):
+Example output (JSON, snake_case fields):
 
 ```json
 {"time":"2026-07-06T10:00:00Z","level":"INFO","msg":"notification email sent","event_type":"MoneyDeposited","recipient":"a@example.com","ses_message_id":"010001..."}
 ```
 
-`slog`의 키를 root 규칙대로 snake_case로 직접 쓰면(`"event_type"`, `"ses_message_id"`) 별도 변환 없이 규칙을 지킨다 — Go는 camelCase가 기본 관용이지만, **로그 필드 키는 문자열 리터럴이라 관용을 벗어나 snake_case로 명시적으로 골라 쓸 수 있다.**
+Writing `slog`'s keys directly in snake_case as the root rule requires (`"event_type"`, `"ses_message_id"`) satisfies the rule with no separate conversion needed — Go's default convention is camelCase, but **since a log field key is just a string literal, it can be explicitly chosen in snake_case, breaking from convention.**
 
 ---
 
-## 로그 레벨 매핑
+## Log level mapping
 
-| root 레벨 | `log/slog` 대응 |
+| Root level | `log/slog` equivalent |
 |---|---|
 | `error` | `slog.LevelError` / `slog.ErrorContext` |
 | `warn` | `slog.LevelWarn` / `slog.WarnContext` |
-| `log`(주요 비즈니스 이벤트) | `slog.LevelInfo` / `slog.InfoContext` |
+| `log` (key business events) | `slog.LevelInfo` / `slog.InfoContext` |
 | `debug` | `slog.LevelDebug` / `slog.DebugContext` |
-| `verbose` | 별도 레벨 없음 — `slog.LevelDebug`에 통합하거나 커스텀 레벨 상수 정의(`const LevelVerbose = slog.Level(-8)`) |
+| `verbose` | no separate level — either folded into `slog.LevelDebug`, or a custom level constant is defined (`const LevelVerbose = slog.Level(-8)`) |
 
-프로덕션에서는 `HandlerOptions{Level: slog.LevelInfo}`로 Debug 이하를 걸러낸다. 환경별 레벨은 [config.md](config.md)의 설정 구조체에서 관리한다.
+In production, `HandlerOptions{Level: slog.LevelInfo}` filters out Debug and below. Per-environment levels are managed in the config struct from [config.md](config.md).
 
 ---
 
-## 레이어별 로깅 기준
+## Logging criteria by layer
 
-| 레이어 | 로깅 대상 | 이 저장소의 현재 상태 |
+| Layer | What gets logged | This repository's current state |
 |---|---|---|
-| `internal/domain/account/` | **로깅하지 않음** | 실제로 로깅 코드 없음 — 원칙 준수. `import "log"`가 없다 |
-| `internal/application/command,query/` | 비즈니스 이벤트, 외부 호출 결과 | 현재 로깅 없음 — Handler에 `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)` 같은 로그를 추가할 여지 있음 |
-| `internal/infrastructure/` | 외부 연동 실패/재시도 | `notification/service.go`(발송 성공 로그), `outbox/poller.go`/`outbox/consumer.go`(발행·처리 실패 로그) 모두 `slog` 사용 |
-| `internal/interface/http/` | 요청 에러 | `writeAccountError`가 500 에러 시 서버 측 로그도 남긴다(아래 참고) |
+| `internal/domain/account/` | **Nothing is logged** | Actually contains no logging code — the principle is upheld. There's no `import "log"` |
+| `internal/application/command,query/` | Business events, results of external calls | Currently no logging — there's room to add logs like `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)` in a Handler |
+| `internal/infrastructure/` | External integration failures/retries | `notification/service.go` (a success log for sending) and `outbox/poller.go`/`outbox/consumer.go` (failure logs for publishing/processing) all use `slog` |
+| `internal/interface/http/` | Request errors | `writeAccountError` also leaves a server-side log on a 500 error (see below) |
 
-`internal/domain/`의 로깅 금지는 `implementations/go/harness/no_logging_in_domain.go`(`no-logging-in-domain` 규칙)가 자동으로 검사한다 — `log`, `log/slog`, 대표적인 서드파티 로거(logrus/zap/zerolog) 중 하나라도 `internal/domain/**/*.go`가 import하면 FAIL로 잡아낸다.
+The prohibition on logging in `internal/domain/` is automatically checked by `implementations/go/harness/no_logging_in_domain.go` (the `no-logging-in-domain` rule) — it flags FAIL if `internal/domain/**/*.go` imports `log`, `log/slog`, or any of the common third-party loggers (logrus/zap/zerolog).
 
-에러를 확인만 하고 로깅도 반환도 하지 않는 완전히 빈 `if err != nil { }` 블록("조용히 삼키기")은 `implementations/go/harness/no_silent_catch.go`(`no-silent-catch` 규칙)가 잡아낸다 — errcheck(golangci-lint 기본 세트)는 에러를 아예 확인하지 않는 경우만 잡고, 확인은 했지만 빈 블록으로 버리는 이 패턴은 잡지 못하므로 그 갭을 메운다.
+An entirely empty `if err != nil { }` block that checks an error but neither logs nor returns it ("silently swallowing it") is caught by `implementations/go/harness/no_silent_catch.go` (the `no-silent-catch` rule) — errcheck (part of golangci-lint's default set) only catches the case where an error is never checked at all, so this rule fills the gap for the pattern where it's checked but discarded in an empty block.
 
-`account_handler.go`의 `writeAccountError`는 500 에러를 클라이언트에 반환할 때 서버 측 로그도 남긴다:
+`writeAccountError` in `account_handler.go` also leaves a server-side log when returning a 500 error to the client:
 
 ```go
-// internal/interface/http/account_handler.go — 실제 코드
+// internal/interface/http/account_handler.go — actual code
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, account.ErrNotFound):
@@ -113,12 +114,12 @@ func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 
 ---
 
-## Correlation ID — `context.Context`로 전파
+## Correlation ID — propagated via `context.Context`
 
-root는 AsyncLocalStorage(Node)/ThreadLocal(Java) 상당의 컨텍스트-로컬 저장소로 전파하라고 한다. Go의 답은 그 자체가 목적인 표준 메커니즘, `context.Context` 값 전파다 — 별도 라이브러리가 필요 없다. 아래는 실제 코드다.
+The root document says to propagate it via context-local storage equivalent to AsyncLocalStorage (Node)/ThreadLocal (Java). Go's answer is the standard mechanism built exactly for this purpose — `context.Context` value propagation — with no separate library needed. Below is the actual code.
 
 ```go
-// internal/interface/http/middleware/correlation_id_middleware.go — 실제 코드 (cross-cutting-concerns.md와 공유)
+// internal/interface/http/middleware/correlation_id_middleware.go — actual code (shared with cross-cutting-concerns.md)
 func CorrelationID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		correlationID := r.Header.Get("X-Correlation-Id")
@@ -136,14 +137,14 @@ func CorrelationIDFromContext(ctx context.Context) string {
 }
 ```
 
-context 값을 담는 키는 `internal/interface/http/middleware`가 아니라 `internal/common`(프레임워크 무의존, 어느 레이어에서도 참조 가능한 패키지)의 `WithCorrelationID`/`CorrelationIDFromContext`에 있다 — 아래 커스텀 `slog.Handler`도 같은 패키지의 함수로 값을 읽기 때문이다.
+The key that holds the context value lives not in `internal/interface/http/middleware` but in `internal/common` (a framework-agnostic package any layer can reference) as `WithCorrelationID`/`CorrelationIDFromContext` — because the custom `slog.Handler` below also reads the value through functions in that same package.
 
-## `slog.Handler`를 감싸 모든 로그에 자동으로 필드 추가
+## Wrapping `slog.Handler` to auto-add fields to every log
 
-각 로그 호출부에서 매번 `"correlation_id", CorrelationIDFromContext(ctx)`를 넘기지 않도록, `slog.Handler`를 감싸서 `ctx`에 correlation ID가 있으면 **모든 로그 레코드에 자동으로 필드를 추가**하는 커스텀 핸들러를 둔다:
+To avoid passing `"correlation_id", CorrelationIDFromContext(ctx)` at every single log call site, a custom handler wraps `slog.Handler` so that, whenever the `ctx` carries a correlation ID, it **automatically adds the field to every log record**:
 
 ```go
-// internal/infrastructure/logging/correlation.go — 실제 코드
+// internal/infrastructure/logging/correlation.go — actual code
 package logging
 
 type CorrelationHandler struct {
@@ -170,26 +171,26 @@ func (h *CorrelationHandler) WithGroup(name string) slog.Handler {
 }
 ```
 
-`main.go`의 로거 초기화에서 `JSONHandler`를 이 핸들러로 감싼다:
+In `main.go`'s logger initialization, the `JSONHandler` is wrapped with this handler:
 
 ```go
-// cmd/server/main.go — 실제 코드
+// cmd/server/main.go — actual code
 jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 slog.SetDefault(slog.New(logging.NewCorrelationHandler(jsonHandler)))
 ```
 
-이후 `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)`처럼 `correlation_id`를 직접 넘기지 않아도, `ctx`에 값이 있으면 `CorrelationHandler.Handle`이 자동으로 필드를 추가한다. `WithAttrs`/`WithGroup`을 감싸는 이유는, 그렇지 않으면 `slog.Logger.With(...)`/`WithGroup(...)`으로 만든 하위 로거가 correlation_id 자동 주입을 잃어버리기 때문이다.
+From then on, even without passing `correlation_id` explicitly as in `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)`, `CorrelationHandler.Handle` automatically adds the field whenever `ctx` carries a value. `WithAttrs`/`WithGroup` are wrapped too — otherwise, a sub-logger created via `slog.Logger.With(...)`/`WithGroup(...)` would lose automatic correlation_id injection.
 
 ---
 
-## 메트릭 · 트레이싱
+## Metrics and tracing
 
-root와 동일하게 이 문서도 특정 스택을 강제하지 않는다. Go 생태계에서는 `prometheus/client_golang`(메트릭)과 `go.opentelemetry.io/otel`(트레이싱)이 사실상 표준이다 — `go.mod`를 보면 이미 `go.opentelemetry.io/otel` 계열 패키지가 testcontainers-go의 간접 의존성으로 들어와 있지만, 애플리케이션 코드 자체는 아직 계측하지 않는다.
+Just like the root document, this document doesn't mandate a specific stack either. In the Go ecosystem, `prometheus/client_golang` (metrics) and `go.opentelemetry.io/otel` (tracing) are the de facto standard — looking at `go.mod`, packages from the `go.opentelemetry.io/otel` family are already present as an indirect dependency of testcontainers-go, but the application code itself isn't instrumented yet.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [layer-architecture.md](layer-architecture.md) — 레이어별 책임 분리(로깅 위치의 근거)
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — Correlation ID 미들웨어의 위치
-- [error-handling.md](error-handling.md) — 에러를 로그로 남기는 시점과 HTTP 응답의 관계
+- [layer-architecture.md](layer-architecture.md) — separation of responsibility by layer (the basis for logging placement)
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — where the correlation-ID middleware sits
+- [error-handling.md](error-handling.md) — the relationship between when an error is logged and the HTTP response

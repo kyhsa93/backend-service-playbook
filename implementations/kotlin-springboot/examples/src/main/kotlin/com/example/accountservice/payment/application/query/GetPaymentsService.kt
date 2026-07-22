@@ -5,8 +5,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * `GET /payments`는 인증된 요청자 ID를 암묵적으로 쓴다 — 이 저장소의 어떤 엔드포인트도 클라이언트가
- * 넘긴 ownerId를 신뢰하지 않는다(`?ownerId=` 쿼리 파라미터 없음).
+ * `GET /payments` implicitly uses the authenticated requester ID — no endpoint in this repository
+ * trusts a client-supplied ownerId (there is no `?ownerId=` query parameter).
  */
 @Service
 @Transactional(readOnly = true)

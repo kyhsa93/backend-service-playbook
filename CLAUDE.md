@@ -1,95 +1,95 @@
 # Backend Service Playbook
 
-DDD 기반 백엔드 서비스의 **프레임워크 무관** 설계·구현 원칙을 담은 가이드이다.
-특정 언어나 프레임워크에 의존하지 않는다. 코드 예시는 TypeScript를 사용하지만 패턴 자체는 어떤 언어에서도 동일하게 적용된다.
+A guide to **framework-agnostic** design/implementation principles for DDD-based backend services.
+It doesn't depend on any specific language or framework. The code examples use TypeScript, but the patterns themselves apply the same way in any language.
 
-각 언어/프레임워크별 구현 상세는 `implementations/<lang>/` 참조.
+See `implementations/<lang>/` for the implementation detail of each language/framework.
 
-## 작업 시 참조할 문서
+## Docs to consult when working
 
-### 설계 / 프로세스
+### Design / process
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| 개발 프로세스, 에이전트 역할, 설계 산출물, Vertical Slicing | `docs/development-process.md` |
-| 작업 완료 후 자기 검토, 체크리스트 | `docs/checklist.md` |
-| harness 설계 원칙, evaluator가 검사해도 되는 것/안 되는 것 | `docs/harness.md` |
-| AI 에이전트 아키텍처 준수도 벤치마크, harness를 채점기로 재사용 | `docs/benchmark.md` |
-| 문서가 실제 코드 상태와 다른지(stale docs) 자동 점검 | `docs/docs-drift-check.md` |
-| 디렉토리 구조, 파일 네이밍, 레이어별 파일 배치 | `docs/architecture/directory-structure.md` |
+| Development process, agent roles, design deliverables, Vertical Slicing | `docs/development-process.md` |
+| Self-review after finishing a task, the checklist | `docs/checklist.md` |
+| The harness's design principles, what an evaluator may/may not check | `docs/harness.md` |
+| The AI-agent architecture-compliance benchmark, reusing the harness as a scorer | `docs/benchmark.md` |
+| Automatically checking whether a doc no longer matches the real code (stale docs) | `docs/docs-drift-check.md` |
+| Directory structure, file naming, per-layer file placement | `docs/architecture/directory-structure.md` |
 
-### 전략적 설계
+### Strategic design
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| 전략적 설계, Subdomain, Bounded Context, Context Map, 유비쿼터스 언어 | `docs/architecture/strategic-ddd.md` |
-| BC 간 통신 패턴 선택, 동기 vs 비동기, ACL | `docs/architecture/cross-domain-communication.md` |
+| Strategic design, Subdomain, Bounded Context, Context Map, the Ubiquitous Language | `docs/architecture/strategic-ddd.md` |
+| Choosing a communication pattern between BCs, sync vs. async, ACL | `docs/architecture/cross-domain-communication.md` |
 
-### 전술적 설계
+### Tactical design
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| Aggregate, Entity, Value Object, Domain Event, 경계 기준 | `docs/architecture/tactical-ddd.md` |
-| Aggregate ID 생성, UUID, Domain 레이어 ID 할당 | `docs/architecture/aggregate-id.md` |
-| 레이어 역할, Domain / Application / Interface / Infrastructure | `docs/architecture/layer-architecture.md` |
-| Repository 인터페이스·구현, abstract class | `docs/architecture/repository-pattern.md` |
-| 트랜잭션 전파(Unit of Work), Entity 공통 컬럼, Soft Delete, 마이그레이션 | `docs/architecture/persistence.md` |
-| Domain Service, 여러 Aggregate 조율, 도메인 판단 로직 | `docs/architecture/domain-service.md` |
-| Technical Service, 기술 인프라 서비스 추상화, 암복호화·외부 API 클라이언트 분리 | `docs/architecture/domain-service.md` |
-| Domain Event, Outbox 패턴, Integration Event, 멱등성 | `docs/architecture/domain-events.md` |
-| CQRS, Command/Query 분리, Handler 패턴 | `docs/architecture/cqrs-pattern.md` |
+| Aggregate, Entity, Value Object, Domain Event, boundary criteria | `docs/architecture/tactical-ddd.md` |
+| Aggregate ID generation, UUID, ID assignment in the Domain layer | `docs/architecture/aggregate-id.md` |
+| Layer roles, Domain / Application / Interface / Infrastructure | `docs/architecture/layer-architecture.md` |
+| The Repository interface/implementation, abstract classes | `docs/architecture/repository-pattern.md` |
+| Transaction propagation (Unit of Work), common Entity columns, soft delete, migrations | `docs/architecture/persistence.md` |
+| Domain Service, coordinating multiple Aggregates, domain judgment logic | `docs/architecture/domain-service.md` |
+| Technical Service, abstracting a technical-infrastructure service, separating encryption/an external API client | `docs/architecture/domain-service.md` |
+| Domain Event, the Outbox pattern, Integration Event, idempotency | `docs/architecture/domain-events.md` |
+| CQRS, Command/Query separation, the Handler pattern | `docs/architecture/cqrs-pattern.md` |
 
-### 품질 / 인터페이스
+### Quality / interface
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| 에러 처리 원칙, 에러 메시지 타입화, 에러 응답 형식 | `docs/architecture/error-handling.md` |
-| API 응답 구조, 페이지네이션, 목록/단건 응답 형식 | `docs/architecture/api-response.md` |
-| 테스트 전략, Domain 단위 테스트, Application mock 테스트, E2E | `docs/architecture/testing.md` |
-| 커밋 메시지, 브랜치 네이밍, REST API 설계, Rate Limiting, 메서드 네이밍 원칙 | `docs/conventions.md` |
+| Error-handling principles, typing error messages, the error-response format | `docs/architecture/error-handling.md` |
+| API response structure, pagination, list/single-record response format | `docs/architecture/api-response.md` |
+| Testing strategy, Domain unit tests, Application mock tests, E2E | `docs/architecture/testing.md` |
+| Commit messages, branch naming, REST API design, rate limiting, method-naming principles | `docs/conventions.md` |
 
-### 인증 / 횡단 관심사
+### Authentication / cross-cutting concerns
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| JWT 인증, Bearer 토큰, 토큰 발급/검증 흐름 | `docs/architecture/authentication.md` |
-| 요청 파이프라인, Correlation ID, 횡단 관심사 처리 위치 | `docs/architecture/cross-cutting-concerns.md` |
+| JWT authentication, Bearer tokens, the token issue/verify flow | `docs/architecture/authentication.md` |
+| The request pipeline, Correlation ID, where cross-cutting concerns are handled | `docs/architecture/cross-cutting-concerns.md` |
 
-### 비동기 / 스케줄링
+### Async / scheduling
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| 스케줄링, Cron, Task Queue, 배치 작업, 다중 인스턴스 안전성 | `docs/architecture/scheduling.md` |
-| Task Outbox 패턴, dual-write 차단, Task 멱등성 | `docs/architecture/scheduling.md` |
+| Scheduling, Cron, Task Queue, batch jobs, safety with multiple instances | `docs/architecture/scheduling.md` |
+| The Task Outbox pattern, blocking dual-write, Task idempotency | `docs/architecture/scheduling.md` |
 
-### 운영 / 인프라
+### Operations / infrastructure
 
-| 작업 / 키워드 | 읽을 문서 |
+| Task / keyword | Doc to read |
 |---|---|
-| 로깅 레벨 정책, 구조화 로그, Correlation ID, 메트릭/트레이싱 | `docs/architecture/observability.md` |
-| Graceful Shutdown, SIGTERM, Liveness/Readiness 프로브 | `docs/architecture/graceful-shutdown.md` |
-| Dockerfile, 멀티스테이지 빌드, 컨테이너 이미지 원칙 | `docs/architecture/container.md` |
-| 환경 변수 검증, Fail-fast, 설정 분리, Secrets Manager 사용 기준 | `docs/architecture/config.md` |
-| Secret 관리, Secrets Manager 조회/캐싱, TTL 캐시 | `docs/architecture/secret-manager.md` |
-| 로컬 개발 환경, docker-compose, LocalStack | `docs/architecture/local-dev.md` |
-| 파일 업로드/다운로드, Presigned URL, 스토리지 연동 | `docs/architecture/file-storage.md` |
+| Log-level policy, structured logs, Correlation ID, metrics/tracing | `docs/architecture/observability.md` |
+| Graceful shutdown, SIGTERM, liveness/readiness probes | `docs/architecture/graceful-shutdown.md` |
+| Dockerfile, multi-stage builds, container-image principles | `docs/architecture/container.md` |
+| Env-var validation, fail-fast, splitting config, when to use Secrets Manager | `docs/architecture/config.md` |
+| Secret management, looking up/caching from Secrets Manager, a TTL cache | `docs/architecture/secret-manager.md` |
+| Local dev environment, docker-compose, LocalStack | `docs/architecture/local-dev.md` |
+| File upload/download, presigned URLs, storage integration | `docs/architecture/file-storage.md` |
 
-### 구현체
+### Implementations
 
-| 프레임워크 | 문서 위치 |
+| Framework | Doc location |
 |---|---|
-| NestJS (TypeScript) | `implementations/nestjs/` — `CLAUDE.md` 참조 |
+| NestJS (TypeScript) | `implementations/nestjs/` — see `CLAUDE.md` |
 | Go | `implementations/go/docs/` |
 | Spring Boot (Java) | `implementations/java-springboot/docs/` |
 | Kotlin Spring Boot | `implementations/kotlin-springboot/docs/` |
 | FastAPI (Python) | `implementations/fastapi/docs/` |
 
-## 구현 검증
+## Verifying an implementation
 
-각 구현체 디렉토리의 `harness.sh`로 구조·배치 규칙 위반 여부를 확인한다.
+Use each implementation directory's `harness.sh` to check for structure/placement rule violations.
 
 ```bash
 bash implementations/<lang>/harness.sh <projectRoot>
 ```
 
-체크리스트 기반 자기 검토는 `docs/checklist.md` 참조. harness 자체의 설계 원칙(비즈니스 도메인 지식이 아니라 아키텍처 규칙 준수만 평가)은 `docs/harness.md` 참조.
+See `docs/checklist.md` for the checklist-based self-review. See `docs/harness.md` for the harness's own design principles (it only evaluates compliance with architectural rules, not business-domain knowledge).

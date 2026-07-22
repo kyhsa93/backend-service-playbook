@@ -1,10 +1,10 @@
 #!/bin/sh
 set -e
 
-# OutboxPoller가 발행하고 OutboxConsumer가 수신하는 공유 Domain/Integration Event 큐.
-# DLQ를 먼저 만들고, 메인 큐에 RedrivePolicy로 연결한다 — maxReceiveCount(3)를 넘겨
-# 재시도해도 실패하는 메시지(독성 페이로드/버그)는 DLQ로 격리된다
-# (docs/architecture/scheduling.md의 DLQ 컨벤션).
+# Shared Domain/Integration Event queue published by OutboxPoller and consumed by OutboxConsumer.
+# Create the DLQ first, then attach it to the main queue via RedrivePolicy — messages that
+# still fail after exceeding maxReceiveCount(3) retries (poison payload/bug) are isolated
+# to the DLQ (DLQ convention in docs/architecture/scheduling.md).
 awslocal sqs create-queue --queue-name domain-events-dlq
 
 DLQ_ARN=$(awslocal sqs get-queue-attributes \
@@ -15,11 +15,12 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes \
 awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 
-# TaskOutboxPoller가 발행하고 TaskQueueConsumer가 수신하는 Task Queue(scheduling.md). Domain
-# Event 큐와 의도적으로 분리한 별도 큐다 — Task는 "명령: X를 수행하라"이고 날짜/월 기반
-# deduplicationId로 다중 인스턴스 중복 적재를 막아야 하므로 FIFO 큐가 필요하다(표준 큐는
-# MessageDeduplicationId를 지원하지 않는다). FIFO 큐의 DLQ도 FIFO여야 하고 이름이 ".fifo"로
-# 끝나야 한다(AWS 제약).
+# Task Queue published by TaskOutboxPoller and consumed by TaskQueueConsumer (scheduling.md).
+# Deliberately kept as a separate queue from the Domain Event queue — a Task is a
+# "command: perform X," and a FIFO queue is required to prevent duplicate enqueuing across
+# multiple instances via a date/month-based deduplicationId (standard queues don't support
+# MessageDeduplicationId). A FIFO queue's DLQ must also be FIFO and its name must end in
+# ".fifo" (AWS constraint).
 awslocal sqs create-queue --queue-name task-queue-dlq.fifo \
   --attributes '{"FifoQueue":"true"}'
 

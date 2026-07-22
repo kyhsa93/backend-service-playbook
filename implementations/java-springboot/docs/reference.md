@@ -1,36 +1,36 @@
-# 실전 구현 템플릿 (Java Spring Boot)
+# Practical Implementation Template (Java Spring Boot)
 
-`Account` 도메인 전체를 본 아키텍처의 **올바른 목표 상태**로 구현한 템플릿이다. 새 도메인을 추가할 때 이 템플릿을 복사해서 시작한다.
+A template implementing the entire `Account` domain as this architecture's **correct target state**. Start by copying this template when adding a new domain.
 
-> **`examples/`와의 차이를 분명히 한다.** 이 문서는 `docs/architecture/`가 정의하는 정석 패턴을 보여준다. `examples/`(현재 코드)는 [java-springboot/CLAUDE.md](../CLAUDE.md)가 명시하는 "알려진 gap"(ID 하이픈 포함, Outbox 없이 동기 이벤트 발행, Query Service의 Repository 직접 사용, 에러 응답 2필드, 인증 없음, 마이그레이션 도구 부재 등)을 아직 갖고 있다. 아래 템플릿은 그 gap을 모두 교정한 형태다 — 다만 **Domain 레이어가 JPA 애노테이션을 직접 갖는 것**만은 `examples/`와 동일하게 유지한다. 이는 [layer-architecture.md](architecture/layer-architecture.md)가 "이 저장소의 알려진 아키텍처적 긴장(known tension)"으로 명시적으로 인정하고, 현재 규모(필드 8개, 메서드 6개)에서는 즉각적인 분리를 강제하지 않는다고 밝힌 트레이드오프이기 때문이다 — 여기서 이를 감추지 않고 그대로 보여준다.
+> **Making the difference from `examples/` explicit.** This document shows the canonical pattern defined by `docs/architecture/`. `examples/` (the current code) still has the "known gaps" spelled out in [java-springboot/CLAUDE.md](../CLAUDE.md) (IDs including hyphens, synchronous event publishing without an Outbox, the Query Service directly using the Repository, a 2-field error response, no authentication, no migration tool, etc). The template below corrects all of those gaps — except that **the Domain layer directly carrying JPA annotations** is kept the same as `examples/`. That's because [layer-architecture.md](architecture/layer-architecture.md) explicitly acknowledges this as "a known architectural tension in this repository" and states that at the current scale (8 fields, 6 methods) it does not force an immediate separation — a tradeoff shown here as-is, not hidden.
 
 ---
 
-## 디렉토리 구조
+## Directory structure
 
 ```
 com.example.accountservice/
   AccountServiceApplication.java       ← @SpringBootApplication, @EnableConfigurationProperties, @EnableScheduling
 
-  common/                              ← 도메인 무관 공유 코드 (shared-modules.md 참고)
-    IdGenerator.java                   ← 순수 유틸, 프레임워크 무의존 — aggregate-id.md
+  common/                              ← domain-agnostic shared code (see shared-modules.md)
+    IdGenerator.java                   ← a pure utility, no framework dependency — aggregate-id.md
     web/
       GlobalExceptionHandler.java      ← @RestControllerAdvice — error-handling.md
       CorrelationIdFilter.java         ← Filter + MDC — cross-cutting-concerns.md
 
-  config/                              ← @ConfigurationProperties record 전용 — config.md
+  config/                              ← dedicated to @ConfigurationProperties records — config.md
     JwtProperties.java
 
   account/
-    domain/                            ← 프레임워크 무의존이 원칙 (JPA 겸용은 알려진 gap, 위 안내 참고)
-      Account.java                     ← Aggregate Root — @Entity 겸용
-      Transaction.java                 ← 하위 Entity — @Entity 겸용
-      Money.java                       ← Value Object — @Embeddable record
-      AccountStatus.java               ← 상태 enum
-      TransactionType.java             ← 거래 유형 enum
-      AccountFindQuery.java            ← 동적 조회 조건 record
-      AccountException.java            ← 도메인 예외 + 중첩 ErrorCode enum
-      AccountRepository.java           ← Repository 인터페이스 (plain interface)
+    domain/                            ← in principle, no framework dependency (also carrying JPA is a known gap, see the note above)
+      Account.java                     ← Aggregate Root — also an @Entity
+      Transaction.java                 ← child Entity — also an @Entity
+      Money.java                       ← Value Object — an @Embeddable record
+      AccountStatus.java               ← status enum
+      TransactionType.java             ← transaction type enum
+      AccountFindQuery.java            ← a record for dynamic query conditions
+      AccountException.java            ← the domain exception + a nested ErrorCode enum
+      AccountRepository.java           ← the Repository interface (a plain interface)
       AccountCreatedEvent.java         ← Domain Event (record)
       MoneyDepositedEvent.java
       MoneyWithdrawnEvent.java
@@ -49,13 +49,13 @@ com.example.accountservice/
         CreateAccountResult.java       ← record
         TransactionResult.java
       query/
-        AccountQuery.java              ← Query 인터페이스 (plain interface — Repository와 별개)
+        AccountQuery.java              ← the Query interface (a plain interface — separate from the Repository)
         GetAccountService.java         ← @Service @Transactional(readOnly = true)
         GetTransactionsService.java
         GetAccountResult.java          ← record
         GetTransactionsResult.java
       event/
-        AccountCreatedEventHandler.java     ← OutboxEventHandler 구현체 (이벤트 타입별로 하나씩)
+        AccountCreatedEventHandler.java     ← an OutboxEventHandler implementation (one per event type)
         MoneyDepositedEventHandler.java
         MoneyWithdrawnEventHandler.java
         AccountSuspendedEventHandler.java
@@ -64,33 +64,33 @@ com.example.accountservice/
 
     infrastructure/
       persistence/
-        AccountJpaRepository.java      ← JpaRepository<Account, Long> 확장
+        AccountJpaRepository.java      ← extends JpaRepository<Account, Long>
         TransactionJpaRepository.java
-        AccountRepositoryImpl.java     ← @Repository @Transactional — AccountRepository 구현체 (Outbox 저장 포함)
-        AccountQueryImpl.java          ← @Repository — AccountQuery 구현체 (projection 쿼리)
+        AccountRepositoryImpl.java     ← @Repository @Transactional — the AccountRepository implementation (includes the Outbox save)
+        AccountQueryImpl.java          ← @Repository — the AccountQuery implementation (a projection query)
 
-  outbox/                              ← 도메인 무관 공유 인프라(shared-modules.md) — Account 전용 아님
-    OutboxEvent.java                   ← @Entity — Outbox 테이블
+  outbox/                              ← domain-agnostic shared infrastructure (shared-modules.md) — not Account-specific
+    OutboxEvent.java                   ← @Entity — the Outbox table
     OutboxEventJpaRepository.java
-    OutboxEventHandler.java            ← 이벤트 타입별 Handler가 구현하는 인터페이스
-    OutboxWriter.java                  ← Repository.save() 트랜잭션 안에서 이벤트를 Outbox 행으로 적재
-    OutboxPoller.java                  ← @Scheduled(fixedDelay=1000) — Outbox 테이블을 폴링해 SQS로 발행(domain-events.md 참고)
-    OutboxConsumer.java                ← SmartLifecycle — SQS 수신 후 OutboxEventHandler로 라우팅(domain-events.md 참고)
+    OutboxEventHandler.java            ← the interface each event type's Handler implements
+    OutboxWriter.java                  ← loads an event as an Outbox row inside the Repository.save() transaction
+    OutboxPoller.java                  ← @Scheduled(fixedDelay=1000) — polls the Outbox table and publishes to SQS (see domain-events.md)
+    OutboxConsumer.java                ← SmartLifecycle — receives from SQS and routes to an OutboxEventHandler (see domain-events.md)
 
     interfaces/
       rest/
         AccountController.java         ← @RestController
-        CreateAccountRequest.java      ← record — Interface DTO
+        CreateAccountRequest.java      ← record — an Interface DTO
         DepositRequest.java
         WithdrawRequest.java
-        ErrorResponse.java             ← record — 4필드
+        ErrorResponse.java             ← record — 4 fields
 ```
 
-테스트는 `src/test/java/com/example/accountservice/`에 동일한 패키지를 미러링한다(Gradle 표준 소스셋). 상세 배치와 예시는 [testing.md](architecture/testing.md) 참고.
+Tests mirror the same package under `src/test/java/com/example/accountservice/` (the standard Gradle source set). See [testing.md](architecture/testing.md) for detailed placement and examples.
 
 ---
 
-## Domain 레이어
+## Domain layer
 
 ### Aggregate Root
 
@@ -111,10 +111,10 @@ public class Account {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;                       // JPA 대리키 — 도메인 식별자 아님, 외부에 노출 금지
+    private Long id;                       // the JPA surrogate key — not the domain identifier, never exposed externally
 
     @Column(nullable = false, unique = true)
-    private String accountId;              // 도메인 식별자 — 32자리 hex, 하이픈 없음
+    private String accountId;              // the domain identifier — 32-character hex, no hyphens
 
     @Column(nullable = false)
     private String ownerId;
@@ -144,11 +144,11 @@ public class Account {
     @Transient
     private final List<Transaction> pendingTransactions = new ArrayList<>();
 
-    protected Account() {}   // JPA가 요구하는 기본 생성자 — protected로 외부 직접 생성 차단
+    protected Account() {}   // the no-arg constructor JPA requires — protected blocks direct external construction
 
     public static Account create(String ownerId, String email, String currency) {
         Account account = new Account();
-        account.accountId = IdGenerator.generate();   // 32자리 hex, 하이픈 없음 — aggregate-id.md
+        account.accountId = IdGenerator.generate();   // 32-character hex, no hyphens — see aggregate-id.md
         account.ownerId = ownerId;
         account.email = email;
         account.balance = new Money(0, currency);
@@ -161,10 +161,10 @@ public class Account {
 
     public Transaction deposit(long amount) {
         if (this.status != AccountStatus.ACTIVE) {
-            throw new AccountException(AccountException.ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT, "활성 상태의 계좌만 입금할 수 있습니다.");
+            throw new AccountException(AccountException.ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT, "Only an active account can receive deposits.");
         }
         if (amount <= 0) {
-            throw new AccountException(AccountException.ErrorCode.INVALID_AMOUNT, "금액은 0보다 커야 합니다.");
+            throw new AccountException(AccountException.ErrorCode.INVALID_AMOUNT, "Amount must be greater than 0.");
         }
         Money money = new Money(amount, this.balance.currency());
         this.balance = this.balance.add(money);
@@ -178,11 +178,11 @@ public class Account {
 
     public Transaction withdraw(long amount) {
         if (this.status != AccountStatus.ACTIVE) {
-            throw new AccountException(AccountException.ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT, "활성 상태의 계좌만 출금할 수 있습니다.");
+            throw new AccountException(AccountException.ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT, "Only an active account can make withdrawals.");
         }
         Money money = new Money(amount, this.balance.currency());
         if (this.balance.isLessThan(money)) {
-            throw new AccountException(AccountException.ErrorCode.INSUFFICIENT_BALANCE, "잔액이 부족합니다.");
+            throw new AccountException(AccountException.ErrorCode.INSUFFICIENT_BALANCE, "Insufficient balance.");
         }
         this.balance = this.balance.subtract(money);
         this.updatedAt = LocalDateTime.now();
@@ -193,23 +193,23 @@ public class Account {
         return transaction;
     }
 
-    // 계좌 "종료"(상태 전이) — 삭제(delete)와는 별개 개념, persistence.md 참고
+    // Account "closing" (a state transition) — a concept distinct from deletion (delete), see persistence.md
     public void close() {
         if (this.status == AccountStatus.CLOSED) {
-            throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_CLOSED, "이미 종료된 계좌입니다.");
+            throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_CLOSED, "The account is already closed.");
         }
         if (!this.balance.isZero()) {
-            throw new AccountException(AccountException.ErrorCode.ACCOUNT_BALANCE_NOT_ZERO, "잔액이 0이 아닌 계좌는 종료할 수 없습니다.");
+            throw new AccountException(AccountException.ErrorCode.ACCOUNT_BALANCE_NOT_ZERO, "An account with a non-zero balance cannot be closed.");
         }
         this.status = AccountStatus.CLOSED;
         this.updatedAt = LocalDateTime.now();
         this.domainEvents.add(new AccountClosedEvent(this.accountId, this.email, this.updatedAt));
     }
 
-    // 삭제 — 종료된 계좌만 soft delete 가능 (repository-pattern.md/persistence.md의 gap을 교정한 형태)
+    // Deletion — only a closed account can be soft-deleted (a corrected form of the repository-pattern.md/persistence.md gap)
     public void delete() {
         if (this.status != AccountStatus.CLOSED) {
-            throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "종료된 계좌만 삭제할 수 있습니다.");
+            throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "Only a closed account can be deleted.");
         }
         this.deletedAt = LocalDateTime.now();
     }
@@ -237,7 +237,7 @@ public class Account {
 }
 ```
 
-### 하위 Entity
+### Child Entity
 
 ```java
 // account/domain/Transaction.java
@@ -257,10 +257,10 @@ public class Transaction {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String transactionId;          // 도메인 식별자 — 동등성 기준
+    private String transactionId;          // the domain identifier — the basis for equality
 
     @Column(nullable = false)
-    private String accountId;              // 소속 Aggregate Root의 ID (참조)
+    private String accountId;              // the ID of the owning Aggregate Root (a reference)
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -274,7 +274,7 @@ public class Transaction {
 
     protected Transaction() {}
 
-    // package-private static — Account를 거치지 않은 직접 생성을 컴파일 타임에 차단
+    // package-private static — blocks direct construction that bypasses Account, at compile time
     static Transaction create(String accountId, TransactionType type, Money amount) {
         Transaction transaction = new Transaction();
         transaction.transactionId = IdGenerator.generate();
@@ -303,9 +303,9 @@ import jakarta.persistence.Embeddable;
 @Embeddable
 public record Money(long amount, String currency) {
 
-    public Money {   // compact canonical constructor — 생성 시 항상 검증
+    public Money {   // compact canonical constructor — always validates on construction
         if (amount < 0) {
-            throw new AccountException(AccountException.ErrorCode.INVALID_MONEY_AMOUNT, "금액은 0 이상이어야 합니다.");
+            throw new AccountException(AccountException.ErrorCode.INVALID_MONEY_AMOUNT, "Amount must be 0 or greater.");
         }
     }
 
@@ -330,13 +330,13 @@ public record Money(long amount, String currency) {
 
     private void assertSameCurrency(Money other) {
         if (!this.currency.equals(other.currency)) {
-            throw new AccountException(AccountException.ErrorCode.CURRENCY_MISMATCH, "통화가 일치하지 않습니다.");
+            throw new AccountException(AccountException.ErrorCode.CURRENCY_MISMATCH, "Currency mismatch.");
         }
     }
 }
 ```
 
-### 상태 enum
+### Status enum
 
 ```java
 // account/domain/AccountStatus.java
@@ -371,7 +371,7 @@ public record MoneyDepositedEvent(
         Money amount, Money balanceAfter, LocalDateTime occurredAt) {}
 ```
 
-### Repository 인터페이스 — plain `interface`, domain/에 위치
+### Repository interface — a plain `interface`, located in domain/
 
 ```java
 // account/domain/AccountRepository.java
@@ -385,22 +385,22 @@ public interface AccountRepository {
     List<Account> findAll(AccountFindQuery query);
     long countAll(AccountFindQuery query);
     void save(Account account);
-    void delete(String accountId);          // soft delete — repository-pattern.md의 gap을 교정
+    void delete(String accountId);          // a soft delete — corrects the repository-pattern.md gap
     List<Transaction> findTransactions(String accountId, int page, int take);
     long countTransactions(String accountId);
 }
 
-// account/domain/AccountFindQuery.java — 동적 조회 조건
+// account/domain/AccountFindQuery.java — dynamic query conditions
 public record AccountFindQuery(int page, int take, String accountId, String ownerId, List<String> status) {}
 ```
 
-Java `interface`는 그 자체로 런타임에 유효한 DI 타입이므로, TypeScript의 `abstract class` 우회가 필요 없다. Spring이 이 인터페이스 타입 주입 지점에 classpath상 유일한 구현체(`AccountRepositoryImpl`, `@Repository`)를 자동 바인딩한다.
+A Java `interface` is itself a valid DI type at runtime, so there's no need for the `abstract class` workaround TypeScript needs. Spring automatically binds the sole implementation on the classpath (`AccountRepositoryImpl`, `@Repository`) to every injection point of this interface type.
 
 ---
 
-## Application 레이어
+## Application layer
 
-### Command Service — 정적 팩토리 위임, 비즈니스 로직 직접 수행 금지
+### Command Service — delegates to static factories, never performs business logic itself
 
 ```java
 // application/command/CreateAccountService.java
@@ -418,11 +418,11 @@ public class CreateAccountService {
     private final AccountRepository accountRepository;
 
     public CreateAccountResult create(CreateAccountCommand command) {
-        // 비즈니스 로직은 Aggregate에 위임 — Service는 조율만 한다
+        // Business logic is delegated to the Aggregate — the Service only coordinates
         Account account = Account.create(command.ownerId(), command.email(), command.currency());
-        // Repository.saveAccount() 내부(@Transactional)에서 Account + Outbox를 같은 트랜잭션으로 저장 (domain-events.md)
+        // Inside Repository.saveAccount() (@Transactional), Account + Outbox are saved in the same transaction (see domain-events.md)
         accountRepository.saveAccount(account);
-        // 저장이 끝나면 곧바로 반환한다 — Outbox 드레인은 별도 프로세스(OutboxPoller/OutboxConsumer)가 담당한다
+        // Returns right after saving — Outbox draining is handled by a separate process (OutboxPoller/OutboxConsumer)
         return new CreateAccountResult(account.getAccountId(), account.getOwnerId(), account.getBalance().amount(), account.getBalance().currency());
     }
 }
@@ -438,7 +438,7 @@ public class DepositService {
         Account account = accountRepository
                 .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
                 .accounts().stream().findFirst()
-                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "Account not found."));
 
         var transaction = account.deposit(command.amount());
         accountRepository.saveAccount(account);
@@ -448,9 +448,9 @@ public class DepositService {
 }
 ```
 
-**Command Service가 `ApplicationEventPublisher.publishEvent()`를 호출하지 않는다** — `examples/`가 이미 이 패턴을 실제로 구현하고 있다([domain-events.md](architecture/domain-events.md)). 이벤트는 `Repository.saveAccount()` 내부에서 Outbox로 저장되고(아래 Infrastructure 절 참고), Command Service는 저장 직후 곧바로 반환한다 — Outbox 드레인은 `OutboxRelay`가 아니라 완전히 별도 프로세스인 `OutboxPoller`(`@Scheduled` 폴링)/`OutboxConsumer`(SQS 수신)가 나중에(최대 1초 뒤) 담당한다.
+**The Command Service does not call `ApplicationEventPublisher.publishEvent()`** — `examples/` already implements this pattern for real ([domain-events.md](architecture/domain-events.md)). The event is saved to the Outbox inside `Repository.saveAccount()` (see the Infrastructure section below), and the Command Service returns right after saving — Outbox draining is handled later (up to 1 second later), not by an `OutboxRelay` but by two entirely separate processes: `OutboxPoller` (`@Scheduled` polling) / `OutboxConsumer` (SQS receiving).
 
-### Query 인터페이스 — Repository와 별개 (cqrs-pattern.md gap 교정)
+### Query interface — separate from the Repository (corrects the cqrs-pattern.md gap)
 
 ```java
 // application/query/AccountQuery.java
@@ -466,7 +466,7 @@ public interface AccountQuery {
 }
 ```
 
-### Query Service — `AccountQuery`만 사용, 쓰기용 `AccountRepository`를 참조하지 않는다
+### Query Service — uses only `AccountQuery`, never references the write-side `AccountRepository`
 
 ```java
 // application/query/GetAccountService.java
@@ -482,16 +482,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class GetAccountService {
 
-    private final AccountQuery accountQuery;   // ← Repository가 아니라 Query 인터페이스
+    private final AccountQuery accountQuery;   // ← the Query interface, not the Repository
 
     public GetAccountResult getAccount(String accountId, String requesterId) {
         return accountQuery.getAccount(accountId, requesterId)
-                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "Account not found."));
     }
 }
 ```
 
-`@Transactional(readOnly = true)`는 Hibernate가 dirty checking/flush를 생략해 읽기 오버헤드를 줄인다.
+`@Transactional(readOnly = true)` lets Hibernate skip dirty checking/flush, reducing read overhead.
 
 ### Command / Result — `record`
 
@@ -519,9 +519,9 @@ public record GetTransactionsResult(List<TransactionSummary> transactions, long 
 }
 ```
 
-### Domain Event Handler — Outbox 경유 (in-process 이벤트 버스 아님)
+### Domain Event Handler — via the Outbox (not an in-process event bus)
 
-Repository의 저장 트랜잭션 안에서 `OutboxWriter`가 도메인 이벤트를 `outbox` 테이블에 함께 적재한다. Command Service는 저장이 끝나면 곧바로 반환하고, 드레인은 완전히 별도의 프로세스가 담당한다 — `OutboxPoller`(`@Scheduled(fixedDelay=1000)`)가 미처리 이벤트를 SQS로 발행하고, `OutboxConsumer`(SmartLifecycle 백그라운드 스레드)가 SQS를 수신해 이벤트 타입별 Handler를 호출한다. 상세는 domain-events.md 참고.
+Inside the Repository's save transaction, `OutboxWriter` loads the domain event into the `outbox` table as well. The Command Service returns right after saving, and draining is handled by an entirely separate process — `OutboxPoller` (`@Scheduled(fixedDelay=1000)`) publishes unprocessed events to SQS, and `OutboxConsumer` (a SmartLifecycle background thread) receives from SQS and calls the Handler for each event type. See domain-events.md for details.
 
 ```java
 // application/event/AccountCreatedEventHandler.java
@@ -550,19 +550,19 @@ public class AccountCreatedEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         AccountCreatedEvent event = objectMapper.readValue(payload, AccountCreatedEvent.class);
         notificationService.sendEmail(event.accountId(), "AccountCreated", event.email(),
-                "[Account] 계좌가 개설되었습니다",
-                "계좌(" + event.accountId() + ")가 개설되었습니다. 통화: " + event.currency());
+                "[Account] Your account has been opened",
+                "Account (" + event.accountId() + ") has been opened. Currency: " + event.currency());
     }
 }
 ```
 
-발행 실패 시 로그를 남기고 재시도를 위해 `processed`를 갱신하지 않는 책임은 개별 Handler가 아니라 `outbox/OutboxPoller`가 진다. 수신 후 Handler 처리 실패 시 SQS 메시지를 삭제하지 않고 재시도(at-least-once)에 맡기는 책임은 `outbox/OutboxConsumer`가 진다 — 두 경우 모두 모든 Handler에 동일한 try-catch를 반복하지 않기 위함이다.
+The responsibility for logging on a publish failure and leaving `processed` unupdated for retry belongs to `outbox/OutboxPoller`, not to individual Handlers. The responsibility for leaving an SQS message undeleted for retry (at-least-once) when a Handler fails after receiving belongs to `outbox/OutboxConsumer` — in both cases, so the same try-catch doesn't need to be repeated in every Handler.
 
 ---
 
-## Infrastructure 레이어
+## Infrastructure layer
 
-### Query 구현체 — Aggregate 전체 로딩 없이 projection
+### Query implementation — projection without loading the whole Aggregate
 
 ```java
 // infrastructure/persistence/AccountQueryImpl.java
@@ -599,9 +599,9 @@ public class AccountQueryImpl implements AccountQuery {
 }
 ```
 
-Query 경로는 `Account` Aggregate 전체(연관된 `Money` 임베더블 포함)를 로딩하지 않고, 응답 스키마에 맞춘 컬럼만 조회한다 — [cqrs-pattern.md](architecture/cqrs-pattern.md) "왜 이렇게 분리하는가" 참고.
+The Query path does not load the whole `Account` Aggregate (including the associated `Money` embeddable) — it only queries the columns matching the response schema. See "Why separate it this way" in [cqrs-pattern.md](architecture/cqrs-pattern.md).
 
-### Repository 구현체 — Aggregate + 하위 Entity + Outbox를 한 트랜잭션으로
+### Repository implementation — the Aggregate + child Entity + Outbox in one transaction
 
 ```java
 // infrastructure/persistence/AccountRepositoryImpl.java
@@ -645,7 +645,7 @@ public class AccountRepositoryImpl implements AccountRepository {
     }
 
     @Override
-    @Transactional   // Account 저장 + 하위 Entity 저장 + Outbox 저장이 하나의 물리 트랜잭션
+    @Transactional   // Saving Account + saving the child Entity + saving the Outbox are one physical transaction
     public void save(Account account) {
         jpaRepository.save(account);
 
@@ -654,7 +654,7 @@ public class AccountRepositoryImpl implements AccountRepository {
             transactionJpaRepository.saveAll(pending);
         }
 
-        // Domain Event를 Outbox 테이블에 함께 저장 — Command Service는 더 이상 publishEvent()를 호출하지 않는다
+        // Save the Domain Event into the Outbox table as well — the Command Service no longer calls publishEvent()
         List<Object> events = account.pullDomainEvents();
         if (!events.isEmpty()) {
             List<OutboxEvent> outboxEvents = events.stream()
@@ -668,7 +668,7 @@ public class AccountRepositoryImpl implements AccountRepository {
     @Transactional
     public void delete(String accountId) {
         jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(account -> {
-            account.delete();          // 도메인 메서드로 불변식 검증 후 deletedAt 설정
+            account.delete();          // validates invariants via a domain method, then sets deletedAt
             jpaRepository.save(account);
         });
     }
@@ -687,14 +687,14 @@ public class AccountRepositoryImpl implements AccountRepository {
 ```
 
 ```java
-// infrastructure/persistence/AccountJpaRepository.java — Spring Data가 구현을 자동 생성
+// infrastructure/persistence/AccountJpaRepository.java — Spring Data auto-generates the implementation
 public interface AccountJpaRepository extends JpaRepository<Account, Long> {
     Optional<Account> findByAccountIdAndOwnerIdAndDeletedAtIsNull(String accountId, String ownerId);
     Optional<Account> findByAccountIdAndDeletedAtIsNull(String accountId);
 }
 ```
 
-### Outbox — Aggregate 저장과 원자적으로 묶이는 이벤트 저장소
+### Outbox — an event store bound atomically to the Aggregate save
 
 ```java
 // infrastructure/outbox/OutboxEvent.java
@@ -740,7 +740,7 @@ public class OutboxEvent {
             event.createdAt = LocalDateTime.now();
             return event;
         } catch (Exception e) {
-            throw new IllegalStateException("이벤트 직렬화 실패", e);
+            throw new IllegalStateException("Failed to serialize event", e);
         }
     }
 
@@ -749,7 +749,7 @@ public class OutboxEvent {
 ```
 
 ```java
-// outbox/OutboxPoller.java — 실제 코드(일부). @Scheduled 폴링 후 SQS로 발행
+// outbox/OutboxPoller.java — actual code (excerpt). Publishes to SQS after @Scheduled polling
 package com.example.accountservice.outbox;
 
 import lombok.RequiredArgsConstructor;
@@ -767,33 +767,33 @@ public class OutboxPoller {
     private final OutboxEventJpaRepository outboxJpaRepository;
     private final SqsClient sqsClient;
 
-    @Scheduled(fixedDelay = 1000)   // 이전 폴링 종료 후 1초 뒤 재실행
-    @Transactional   // payload가 @Lob 컬럼이라 조회와 반복이 같은 트랜잭션 안에서 이루어져야 한다(domain-events.md 참고)
+    @Scheduled(fixedDelay = 1000)   // re-runs 1 second after the previous poll finishes
+    @Transactional   // payload is an @Lob column, so the query and iteration must happen inside the same transaction (see domain-events.md)
     public void poll() {
         var pending = outboxJpaRepository.findByProcessedFalseOrderByCreatedAtAsc();
         for (OutboxEvent event : pending) {
             try {
-                sqsClient.sendMessage(/* eventType을 MessageAttribute로, payload를 body로 발행 */);
+                sqsClient.sendMessage(/* publishes eventType as a MessageAttribute, payload as the body */);
                 event.markProcessed();
                 outboxJpaRepository.save(event);
             } catch (Exception e) {
-                log.error("SQS 발행 실패: eventId={}", event.getEventId(), e);
-                // processed가 갱신되지 않으므로 다음 폴링에서 재시도된다
+                log.error("Failed to publish to SQS: eventId={}", event.getEventId(), e);
+                // processed is left unupdated, so it's retried on the next poll
             }
         }
     }
 }
 ```
 
-`OutboxConsumer`(`SmartLifecycle`, 전용 백그라운드 스레드)가 이 SQS 큐를 long polling으로 수신해 `eventType`으로 `OutboxEventHandler` 구현체를 찾아 호출한다 — Command Service는 이 둘 중 어느 것도 참조하지 않는다. 상세는 [domain-events.md](architecture/domain-events.md) 참고.
+`OutboxConsumer` (`SmartLifecycle`, a dedicated background thread) receives from this SQS queue via long polling and finds/calls the `OutboxEventHandler` implementation by `eventType` — the Command Service references neither of these two. See [domain-events.md](architecture/domain-events.md) for details.
 
-`@EnableScheduling`이 `AccountServiceApplication`에 선언되어 있어야 `OutboxPoller.poll()`의 `@Scheduled` 메서드가 동작한다([scheduling.md](architecture/scheduling.md) 참고).
+`@EnableScheduling` must be declared on `AccountServiceApplication` for `OutboxPoller.poll()`'s `@Scheduled` method to run (see [scheduling.md](architecture/scheduling.md)).
 
 ---
 
-## Interfaces 레이어
+## Interfaces layer
 
-### Controller — 인증된 사용자 정보는 `Authentication`에서 추출
+### Controller — extracts the authenticated user's info from `Authentication`
 
 ```java
 // interfaces/rest/AccountController.java
@@ -863,9 +863,9 @@ public class AccountController {
 }
 ```
 
-`examples/`의 현재 코드는 `@RequestHeader("X-User-Id")`로 인증되지 않은 값을 그대로 신뢰한다(알려진 gap, [authentication.md](architecture/authentication.md) 참고) — 이 템플릿은 Spring Security `SecurityFilterChain`이 이미 검증한 `Authentication`에서 `userId`(subject)를 꺼내는 목표 상태를 보여준다. `AccountException`에 대한 `@ExceptionHandler`는 도메인이 하나뿐일 때는 Controller 내부에 둘 수도 있지만, 아래처럼 전역 `@RestControllerAdvice`로 옮기면 두 번째 도메인이 추가되어도 중복 정의가 필요 없다.
+The current code in `examples/` trusts an unauthenticated value as-is via `@RequestHeader("X-User-Id")` (a known gap, see [authentication.md](architecture/authentication.md)) — this template shows the target state, extracting `userId` (the subject) from the `Authentication` that Spring Security's `SecurityFilterChain` has already verified. An `@ExceptionHandler` for `AccountException` can also be placed inside the Controller while there's only one domain, but moving it to a global `@RestControllerAdvice` as below means no duplicate definition is needed once a second domain is added.
 
-### 전역 예외 처리 — `@RestControllerAdvice`, 4필드 응답
+### Global exception handling — `@RestControllerAdvice`, a 4-field response
 
 ```java
 // common/web/GlobalExceptionHandler.java
@@ -894,7 +894,7 @@ public class GlobalExceptionHandler {
         HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
                 ? HttpStatus.NOT_FOUND
                 : HttpStatus.BAD_REQUEST;
-        log.warn("계좌 요청 실패: code={}, message={}", e.code(), e.getMessage());
+        log.warn("Account request failed: code={}, message={}", e.code(), e.getMessage());
         return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
     }
 
@@ -909,7 +909,7 @@ public class GlobalExceptionHandler {
 }
 ```
 
-### 에러 응답 — 4필드
+### Error response — 4 fields
 
 ```java
 // interfaces/rest/ErrorResponse.java
@@ -924,9 +924,9 @@ public record ErrorResponse(int statusCode, String code, String message, String 
 }
 ```
 
-`examples/`의 현재 `ErrorResponse`는 `code`/`message` 2필드뿐이다(알려진 gap, [error-handling.md](architecture/error-handling.md) 참고) — 이 템플릿은 `statusCode`/`error`까지 포함한 4필드 형식을 따른다.
+`examples/`'s current `ErrorResponse` has only the 2 fields `code`/`message` (a known gap, see [error-handling.md](architecture/error-handling.md)) — this template follows the 4-field format, including `statusCode`/`error` as well.
 
-### Interface DTO — Application 객체를 그대로 옮겨 담는 thin wrapper
+### Interface DTO — a thin wrapper that copies the Application object as-is
 
 ```java
 // interfaces/rest/CreateAccountRequest.java
@@ -944,11 +944,11 @@ public record DepositRequest(long amount) {}
 public record WithdrawRequest(long amount) {}
 ```
 
-Controller 메서드 한 줄이 매핑 지점이다: `new CreateAccountCommand(authentication.getName(), request.email(), request.currency())`. 별도 매핑 라이브러리(MapStruct 등)는 필드 수가 많아지기 전까지 불필요하다([layer-architecture.md](architecture/layer-architecture.md) "Interface DTO" 절 참고).
+A single line in the Controller method is the mapping point: `new CreateAccountCommand(authentication.getName(), request.email(), request.currency())`. A separate mapping library (MapStruct, etc) is unnecessary until the field count grows large (see the "Interface DTO" section in [layer-architecture.md](architecture/layer-architecture.md)).
 
 ---
 
-## 예외 / ErrorCode
+## Exception / ErrorCode
 
 ```java
 // account/domain/AccountException.java
@@ -982,7 +982,7 @@ public class AccountException extends RuntimeException {
 
 ---
 
-## 설정 / 부트스트랩
+## Configuration / Bootstrap
 
 ```java
 // AccountServiceApplication.java
@@ -995,7 +995,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableConfigurationProperties({JwtProperties.class})
-@EnableScheduling   // OutboxPoller 등 @Scheduled 활성화 — scheduling.md
+@EnableScheduling   // enables @Scheduled for OutboxPoller, etc — see scheduling.md
 public class AccountServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(AccountServiceApplication.class, args);
@@ -1004,7 +1004,7 @@ public class AccountServiceApplication {
 ```
 
 ```java
-// config/JwtProperties.java — 기동 시 fail-fast 검증, config.md 참고
+// config/JwtProperties.java — fail-fast validation at startup, see config.md
 package com.example.accountservice.config;
 
 import jakarta.validation.constraints.NotBlank;
@@ -1017,7 +1017,7 @@ public record JwtProperties(@NotBlank String secret, long expirationSeconds) {}
 ```
 
 ```java
-// common/config/SecurityConfig.java — authentication.md 참고
+// common/config/SecurityConfig.java — see authentication.md
 package com.example.accountservice.common.config;
 
 import org.springframework.context.annotation.Bean;
@@ -1047,4 +1047,4 @@ public class SecurityConfig {
 }
 ```
 
-각 설정의 상세 근거(왜 `@ConfigurationProperties`+`@Validated`인지, 왜 `authorizeHttpRequests`를 전역에 적용하는지 등)는 [config.md](architecture/config.md), [authentication.md](architecture/authentication.md)를 참고한다 — 이 절은 조립된 최종 형태만 보여준다.
+For the detailed rationale behind each setting (why `@ConfigurationProperties`+`@Validated`, why `authorizeHttpRequests` is applied globally, etc), see [config.md](architecture/config.md) and [authentication.md](architecture/authentication.md) — this section only shows the final assembled form.

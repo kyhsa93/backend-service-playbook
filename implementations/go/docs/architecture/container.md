@@ -1,21 +1,21 @@
-# 컨테이너 이미지 (Go)
+# Container Image (Go)
 
-원칙은 루트 [container.md](../../../../docs/architecture/container.md)를 따른다: 멀티스테이지 빌드, `.dockerignore`, exec form CMD, 이미지에 환경 변수 미포함, 헬스체크 엔드포인트. Go는 **정적 링크된 단일 바이너리로 컴파일**되므로 다른 언어 구현체보다 이 원칙들을 훨씬 단순하게 만족시킬 수 있다.
-
----
-
-## Go의 이점 — 런타임 없는 단일 정적 바이너리
-
-Node.js(런타임 + `node_modules`)나 JVM(런타임 + JAR) 구현체와 달리, Go는 `go build`로 만든 바이너리 하나에 모든 의존성이 정적으로 링크된다. 프로덕션 이미지에는 **런타임도, 패키지 매니저도, 소스 코드도 필요 없다** — 컴파일된 바이너리 하나만 있으면 실행된다. 이 덕분에 프로덕션 스테이지의 base 이미지로 `scratch`(완전히 빈 이미지) 또는 `distroless`를 선택할 수 있어, 다른 언어 대비 이미지 크기와 공격 표면이 극단적으로 작아진다.
-
-```
-Node.js 프로덕션 이미지  : node:20-alpine (~50MB) + node_modules + dist/
-Go 프로덕션 이미지       : scratch (~0MB) + 단일 바이너리 (~10-20MB)
-```
+The principle follows the root [container.md](../../../../docs/architecture/container.md): multi-stage build, `.dockerignore`, exec-form CMD, no environment variables baked into the image, healthcheck endpoints. Since Go **compiles to a single statically linked binary**, these principles can be satisfied far more simply than in other language implementations.
 
 ---
 
-## 멀티스테이지 빌드
+## Go's advantage — a single static binary with no runtime
+
+Unlike Node.js (runtime + `node_modules`) or JVM (runtime + JAR) implementations, Go statically links every dependency into one binary produced by `go build`. The production image needs **no runtime, no package manager, and no source code** — a single compiled binary is enough to run it. This lets the production stage's base image be `scratch` (a completely empty image) or `distroless`, making the image size and attack surface dramatically smaller than in other languages.
+
+```
+Node.js production image  : node:20-alpine (~50MB) + node_modules + dist/
+Go production image       : scratch (~0MB) + a single binary (~10-20MB)
+```
+
+---
+
+## Multi-stage build
 
 ```dockerfile
 # ---- Stage 1: Build ----
@@ -29,11 +29,11 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 
-# CGO_ENABLED=0 — libc에 동적 링크하지 않는 완전한 정적 바이너리를 만든다.
-# scratch/distroless에는 libc가 없으므로 필수.
+# CGO_ENABLED=0 — produces a fully static binary that doesn't dynamically link against libc.
+# Required since scratch/distroless has no libc.
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
 
-# HEALTHCHECK 전용 정적 바이너리 — distroless에는 curl/wget이 없어 직접 컴파일해 포함한다.
+# a dedicated static binary just for HEALTHCHECK — distroless has no curl/wget, so it's compiled and included directly.
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/healthcheck ./cmd/healthcheck
 
 # ---- Stage 2: Production ----
@@ -52,20 +52,20 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/bin/server"]
 ```
 
-| 스테이지 | 내용 | 최종 이미지 포함 |
+| Stage | Contents | Included in final image |
 |---------|------|---------------|
-| Build | Go SDK, 소스 코드, 컴파일 캐시 | ✗ |
-| Production | 컴파일된 단일 바이너리만 | ✓ |
+| Build | Go SDK, source code, compilation cache | No |
+| Production | Only the compiled single binary | Yes |
 
-**base 이미지 선택 기준:**
+**Base image selection criteria:**
 
-| base 이미지 | 특징 | 선택 기준 |
+| Base image | Characteristics | Selection criteria |
 |------------|------|----------|
-| `scratch` | 완전히 빈 이미지. libc, 셸, CA 인증서 없음 | 최소 이미지가 최우선이고 외부 HTTPS 호출이 없는 경우 |
-| `gcr.io/distroless/static` | CA 인증서, 타임존 데이터 포함. 셸 없음 | **권장 기본값** — SES/S3 등 AWS SDK로 HTTPS 호출하는 이 저장소 예제에 적합 |
-| `alpine` | 셸(`sh`), 패키지 매니저 포함 | 컨테이너 내부에서 디버깅(`docker exec`)이 자주 필요한 경우 |
+| `scratch` | A completely empty image. No libc, shell, or CA certificates | When a minimal image is the top priority and there are no outbound HTTPS calls |
+| `gcr.io/distroless/static` | Includes CA certificates and timezone data. No shell | **Recommended default** — fits this repository's example, which makes HTTPS calls via the AWS SDK (SES/S3, etc.) |
+| `alpine` | Includes a shell (`sh`) and a package manager | When debugging inside the container (`docker exec`) is frequently needed |
 
-이 저장소의 `internal/infrastructure/notification`이 AWS SES에 HTTPS로 접속하므로, CA 인증서가 기본 포함된 `distroless/static`이 `scratch`보다 적합하다 — `scratch`를 쓰려면 빌드 스테이지에서 `/etc/ssl/certs/ca-certificates.crt`를 직접 복사해야 한다.
+Since this repository's `internal/infrastructure/notification` connects to AWS SES over HTTPS, `distroless/static` — which includes CA certificates by default — fits better than `scratch`. To use `scratch`, `/etc/ssl/certs/ca-certificates.crt` would need to be copied in explicitly from the build stage.
 
 ---
 
@@ -81,71 +81,71 @@ localstack/
 *.md
 ```
 
-Go 빌드는 `go.mod`에 선언된 의존성만 다운로드하므로 Node의 `node_modules`에 해당하는 제외 대상이 없다. 대신 테스트 파일(`*_test.go`, `test/`)과 로컬 개발 전용 파일을 제외해 빌드 컨텍스트를 가볍게 유지한다.
+Since a Go build only downloads dependencies declared in `go.mod`, there's no counterpart to exclude for Node's `node_modules`. Instead, test files (`*_test.go`, `test/`) and local-development-only files are excluded to keep the build context light.
 
 ---
 
-## ENTRYPOINT — exec form으로 직접 실행
+## ENTRYPOINT — run directly with exec form
 
 ```dockerfile
-# 올바른 방식 — 바이너리를 PID 1로 직접 실행
+# correct — run the binary directly as PID 1
 ENTRYPOINT ["/bin/server"]
 
-# 잘못된 방식 — 쉘 스크립트로 감싸면 SIGTERM이 스크립트에서 멈출 수 있음
+# incorrect — wrapping it in a shell script can leave SIGTERM stuck in the script
 ENTRYPOINT ["sh", "-c", "/bin/server"]
 ```
 
-Go 바이너리는 이미 단일 프로세스이므로 npm/yarn 같은 래퍼 문제 자체가 발생하지 않는다. 다만 `sh -c`로 감싸면 셸이 PID 1이 되어 동일한 문제가 재현되므로 `ENTRYPOINT`는 항상 exec form 배열로 작성한다. 애플리케이션이 `signal.NotifyContext`로 SIGTERM을 처리하는 방법은 [graceful-shutdown.md](graceful-shutdown.md) 참조.
+A Go binary is already a single process, so the wrapper problem that affects npm/yarn simply doesn't arise. Still, wrapping it with `sh -c` makes the shell PID 1 and reproduces the same problem, so `ENTRYPOINT` should always be written as an exec-form array. See [graceful-shutdown.md](graceful-shutdown.md) for how the application handles SIGTERM via `signal.NotifyContext`.
 
 ---
 
-## 환경 변수는 이미지에 포함하지 않는다
+## Environment variables are never baked into the image
 
 ```dockerfile
-# 금지
+# forbidden
 ENV DATABASE_URL=postgres://prod-user:prod-pass@...
 ```
 
-컨테이너 실행 시 주입한다.
+They are injected at container runtime.
 
 ```bash
 docker run --env-file .env.docker myapp
 ```
 
-Kubernetes/ECS 환경에서는 Secret/Parameter Store에서 주입한다. Go 쪽 설정 검증(fail-fast)은 [config.md](config.md) 참조.
+In Kubernetes/ECS environments, they're injected from a Secret/Parameter Store. See [config.md](config.md) for Go-side configuration validation (fail-fast).
 
 ---
 
-## 헬스체크 엔드포인트
+## Healthcheck endpoints
 
 ```
-GET /health/live   → 200: 프로세스 생존 확인
-GET /health/ready  → 200: 트래픽 수신 가능 / 503: 종료 중
+GET /health/live   → 200: confirms the process is alive
+GET /health/ready  → 200: ready to receive traffic / 503: shutting down
 ```
 
-`net/http`로 직접 구현한다 — 별도 프레임워크 불필요:
+Implemented directly with `net/http` — no separate framework needed:
 
 ```go
 mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK) // 항상 200
+	w.WriteHeader(http.StatusOK) // always 200
 })
 ```
 
-readiness 상태 토글과 SIGTERM 연동 상세는 [graceful-shutdown.md](graceful-shutdown.md) 참조.
+See [graceful-shutdown.md](graceful-shutdown.md) for details on toggling readiness state and its integration with SIGTERM.
 
 ---
 
-## Dockerfile HEALTHCHECK — 전용 정적 바이너리
+## Dockerfile HEALTHCHECK — a dedicated static binary
 
-`gcr.io/distroless/static-debian12`는 셸도 `curl`/`wget`도 없어 다른 언어 구현체처럼 `HEALTHCHECK CMD curl -f ...` 형태를 그대로 쓸 수 없다. 검토한 대안은 세 가지다.
+`gcr.io/distroless/static-debian12` has neither a shell nor `curl`/`wget`, so a `HEALTHCHECK CMD curl -f ...`-style command, as used in other language implementations, can't be used as-is. Three alternatives were considered.
 
-1. **빌드 스테이지에서 전용 헬스체크 바이너리를 컴파일해 최종 이미지에 포함** — 채택
-2. base 이미지를 `distroless/static-debian12:debug`(busybox 셸 포함) 또는 `alpine`으로 교체해 `wget` 사용
-3. HEALTHCHECK 자체를 도입하지 않고 오케스트레이터(K8s liveness/readiness probe)에 위임
+1. **Compile a dedicated healthcheck binary in the build stage and include it in the final image** — adopted
+2. Switch the base image to `distroless/static-debian12:debug` (includes a busybox shell) or `alpine` to use `wget`
+3. Skip introducing HEALTHCHECK altogether and defer to the orchestrator (K8s liveness/readiness probes)
 
-**1번을 채택한 이유**: Go 구현체가 이 저장소에서 유일하게 `scratch`/`distroless` 같은 런타임-없는 최소 base 이미지를 쓸 수 있는 이유는 정적 바이너리이기 때문이다(위 "Go의 이점" 절 참조). `:debug`나 `alpine`으로 바꾸면(2번) 이 이점을 스스로 포기하고 공격 표면을 넓히는 셈이라 Go 구현체의 방향성과 맞지 않는다. 3번(오케스트레이터 위임)도 유효한 선택지이고 실제로 `java-springboot`가 이 입장이지만, `docker run`으로 단독 실행하거나 docker-compose로 로컬 통합 테스트를 돌릴 때(→ [local-dev.md](local-dev.md))는 오케스트레이터가 없어 컨테이너 상태를 볼 방법이 없다. Go는 헬스체크 바이너리 하나를 추가로 컴파일하는 비용이 거의 0(추가 의존성 없음, 빌드 시간 수백 ms, 최종 이미지에 수 MB 추가)이라 1번이 다른 두 대안보다 확실히 우월하다.
+**Why option 1 was chosen**: the reason the Go implementation is the only one in this repository that can use a runtime-free minimal base image like `scratch`/`distroless` is precisely because it's a static binary (see the "Go's advantage" section above). Switching to `:debug` or `alpine` (option 2) would mean giving up that advantage voluntarily and widening the attack surface, which doesn't fit the direction of the Go implementation. Option 3 (deferring to the orchestrator) is also a valid choice, and `java-springboot` actually takes that stance — but when running standalone via `docker run`, or running local integration tests with docker-compose (see [local-dev.md](local-dev.md)), there's no orchestrator, leaving no way to observe container state. Since compiling one extra healthcheck binary costs Go almost nothing (no extra dependency, hundreds of ms of build time, a few extra MB in the final image), option 1 is clearly superior to the other two alternatives.
 
-`cmd/healthcheck/main.go`는 프레임워크나 외부 의존성 없이 표준 라이브러리 `net/http`만으로 작성한다:
+`cmd/healthcheck/main.go` is written using only the standard library's `net/http`, with no framework or external dependency:
 
 ```go
 func main() {
@@ -163,26 +163,26 @@ func main() {
 }
 ```
 
-`CMD` 문자열을 셸이 파싱해야 하는 shell form(`HEALTHCHECK CMD curl -f ...`)은 애초에 distroless에서 실행 불가능하므로 반드시 exec form(`["/bin/healthcheck"]`) 배열로 작성한다.
+Shell form (`HEALTHCHECK CMD curl -f ...`), where the shell has to parse the `CMD` string, simply can't run under distroless at all, so it must always be written as an exec-form array (`["/bin/healthcheck"]`).
 
 ---
 
-## 원칙
+## Principles
 
-- **정적 바이너리 + `scratch`/`distroless`**: `CGO_ENABLED=0`으로 완전한 정적 링크를 만들고, 런타임이 필요 없는 최소 base 이미지를 사용한다.
-- **멀티스테이지 빌드 필수**: Go SDK와 소스 코드는 프로덕션 이미지에 포함하지 않는다.
-- **non-root 사용자로 실행**: `USER nonroot:nonroot` — `distroless/static`이 기본 제공하는 사용자를 그대로 쓴다.
-- **ENTRYPOINT는 exec form**: 셸 래퍼 없이 바이너리를 직접 PID 1로 실행한다.
-- **환경 변수는 이미지 외부에서 주입**한다.
-- **헬스체크 엔드포인트 필수**: liveness + readiness를 `net/http`로 직접 구현한다.
-- **Dockerfile HEALTHCHECK는 전용 정적 바이너리로 구현**: distroless에는 curl/wget이 없으므로 `cmd/healthcheck`를 빌드해 포함하고 exec form으로 실행한다.
+- **Static binary + `scratch`/`distroless`**: produce a fully statically linked binary with `CGO_ENABLED=0`, and use a minimal base image that needs no runtime.
+- **Multi-stage build is mandatory**: the Go SDK and source code are never included in the production image.
+- **Run as a non-root user**: `USER nonroot:nonroot` — use the user `distroless/static` provides by default.
+- **ENTRYPOINT is exec form**: run the binary directly as PID 1 with no shell wrapper.
+- **Environment variables are injected from outside the image.**
+- **Healthcheck endpoints are mandatory**: implement liveness + readiness directly with `net/http`.
+- **Dockerfile HEALTHCHECK is implemented as a dedicated static binary**: since distroless has no curl/wget, build `cmd/healthcheck` and include it, running it in exec form.
 
-멀티스테이지 빌드(FROM 2개 이상)·HEALTHCHECK 존재·USER 존재(non-root 실행)·`.dockerignore` 존재+`.git`/`.env` 제외 여부는 `implementations/go/harness/dockerfile_conventions.go`(`dockerfile-conventions` 규칙)가 `examples/Dockerfile`과 `examples/.dockerignore`를 직접 읽어 자동으로 검사한다 — 다른 규칙과 달리 Go 소스 트리를 재귀 탐색하지 않고 이 두 파일만 대상으로 한다.
+Whether there's a multi-stage build (2 or more `FROM`s), a HEALTHCHECK, a `USER` (non-root execution), and a `.dockerignore` that excludes `.git`/`.env` is automatically checked by `implementations/go/harness/dockerfile_conventions.go` (the `dockerfile-conventions` rule), which reads `examples/Dockerfile` and `examples/.dockerignore` directly — unlike other rules, it doesn't recursively scan the Go source tree, targeting only these two files.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [graceful-shutdown.md](graceful-shutdown.md) — SIGTERM 처리, 헬스체크 상태 토글
-- [config.md](config.md) — 환경 변수 검증
-- [local-dev.md](local-dev.md) — 로컬 개발용 docker-compose 구성 (프로덕션 이미지와는 별개)
+- [graceful-shutdown.md](graceful-shutdown.md) — SIGTERM handling, toggling healthcheck state
+- [config.md](config.md) — environment variable validation
+- [local-dev.md](local-dev.md) — docker-compose setup for local development (separate from the production image)

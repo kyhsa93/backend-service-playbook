@@ -34,9 +34,10 @@ func TestWithdrawByPaymentHandler_Handle_SkipsIfAccountMissing(t *testing.T) {
 		hasTransactionWithReferenceFn: func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error) {
 			return false, nil
 		},
-		// 실제 FindAccounts는 존재하지 않는 accountID를 조회해도 에러 없이 빈 결과를
-		// 반환한다(SQL이 0행을 돌려줄 뿐이다) — account.ErrNotFound는 FindOne 헬퍼가
-		// 그 빈 결과를 감싸 던지는 것이지 Repository/Query 레벨의 에러가 아니다.
+		// The real FindAccounts returns an empty result with no error even when
+		// queried with a nonexistent accountID (SQL simply returns 0 rows) —
+		// account.ErrNotFound is thrown by the FindOne helper wrapping that
+		// empty result; it is not a Repository/Query-level error.
 		findByIDFn: func(ctx context.Context, accountID, ownerID string) (*account.Account, error) {
 			return nil, nil
 		},
@@ -87,7 +88,7 @@ func TestWithdrawByPaymentHandler_Handle_WithdrawsAndSaves(t *testing.T) {
 }
 
 func TestWithdrawByPaymentHandler_Handle_PropagatesDomainError(t *testing.T) {
-	a := account.New("owner-1", "a@example.com", "KRW") // 잔액 0
+	a := account.New("owner-1", "a@example.com", "KRW") // balance 0
 	repo := &stubRepository{
 		hasTransactionWithReferenceFn: func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error) {
 			return false, nil

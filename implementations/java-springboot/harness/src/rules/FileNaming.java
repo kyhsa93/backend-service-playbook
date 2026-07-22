@@ -11,7 +11,7 @@ import static harness.JavaFiles.collectJavaFiles;
 import static harness.JavaFiles.nameWithoutExtension;
 import static harness.JavaFiles.relTo;
 
-/** [1] 파일명 PascalCase 검사 */
+/** [1] Checks that file names are PascalCase */
 public final class FileNaming {
     private FileNaming() {
     }
@@ -23,7 +23,7 @@ public final class FileNaming {
         RuleResult result = new RuleResult("file-naming");
         List<File> files = collectJavaFiles(root);
         if (files.isEmpty()) {
-            result.add(Finding.skip("Java 파일 없음"));
+            result.add(Finding.skip("No Java files"));
             return result;
         }
         for (File f : files) {
@@ -31,7 +31,7 @@ public final class FileNaming {
             if (PASCAL_CASE.matcher(nameWithoutExtension(f)).matches()) {
                 result.add(Finding.pass(rel));
             } else {
-                result.add(Finding.fail(rel, "클래스명은 PascalCase 여야 함"));
+                result.add(Finding.fail(rel, "Class name must be PascalCase"));
             }
         }
         return result;

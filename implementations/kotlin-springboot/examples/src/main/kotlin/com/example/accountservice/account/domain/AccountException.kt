@@ -9,30 +9,33 @@ class AccountNotFoundException(
     accountId: String,
 ) : AccountException("account not found: $accountId", AccountErrorCode.ACCOUNT_NOT_FOUND)
 
-class InvalidAmountException : AccountException("금액은 0보다 커야 합니다.", AccountErrorCode.INVALID_AMOUNT)
+class InvalidAmountException : AccountException("The amount must be greater than 0.", AccountErrorCode.INVALID_AMOUNT)
 
-class InvalidMoneyAmountException : AccountException("금액은 0 이상이어야 합니다.", AccountErrorCode.INVALID_MONEY_AMOUNT)
+class InvalidMoneyAmountException : AccountException("The amount must be 0 or greater.", AccountErrorCode.INVALID_MONEY_AMOUNT)
 
-class CurrencyMismatchException : AccountException("통화가 일치하지 않습니다.", AccountErrorCode.CURRENCY_MISMATCH)
+class CurrencyMismatchException : AccountException("The currencies do not match.", AccountErrorCode.CURRENCY_MISMATCH)
 
 class DepositRequiresActiveAccountException :
-    AccountException("활성 상태의 계좌만 입금할 수 있습니다.", AccountErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT)
+    AccountException("Only an active account can receive a deposit.", AccountErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT)
 
 class WithdrawRequiresActiveAccountException :
-    AccountException("활성 상태의 계좌만 출금할 수 있습니다.", AccountErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT)
+    AccountException("Only an active account can make a withdrawal.", AccountErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT)
 
-class InsufficientBalanceException : AccountException("잔액이 부족합니다.", AccountErrorCode.INSUFFICIENT_BALANCE)
+class InsufficientBalanceException : AccountException("Insufficient balance.", AccountErrorCode.INSUFFICIENT_BALANCE)
 
 class SuspendRequiresActiveAccountException :
-    AccountException("활성 상태의 계좌만 정지할 수 있습니다.", AccountErrorCode.SUSPEND_REQUIRES_ACTIVE_ACCOUNT)
+    AccountException("Only an active account can be suspended.", AccountErrorCode.SUSPEND_REQUIRES_ACTIVE_ACCOUNT)
 
 class ReactivateRequiresSuspendedAccountException :
-    AccountException("정지 상태의 계좌만 재개할 수 있습니다.", AccountErrorCode.REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT)
+    AccountException("Only a suspended account can be reactivated.", AccountErrorCode.REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT)
 
-class AccountAlreadyClosedException : AccountException("이미 종료된 계좌입니다.", AccountErrorCode.ACCOUNT_ALREADY_CLOSED)
+class AccountAlreadyClosedException : AccountException("This account is already closed.", AccountErrorCode.ACCOUNT_ALREADY_CLOSED)
 
-class AccountBalanceNotZeroException : AccountException("잔액이 0이 아닌 계좌는 종료할 수 없습니다.", AccountErrorCode.ACCOUNT_BALANCE_NOT_ZERO)
+class AccountBalanceNotZeroException :
+    AccountException("An account with a non-zero balance cannot be closed.", AccountErrorCode.ACCOUNT_BALANCE_NOT_ZERO)
 
-class DeleteRequiresClosedAccountException : AccountException("종료 상태의 계좌만 삭제할 수 있습니다.", AccountErrorCode.DELETE_REQUIRES_CLOSED_ACCOUNT)
+class DeleteRequiresClosedAccountException :
+    AccountException("Only a closed account can be deleted.", AccountErrorCode.DELETE_REQUIRES_CLOSED_ACCOUNT)
 
-class TransferSameAccountException : AccountException("출금 계좌와 입금 계좌가 동일할 수 없습니다.", AccountErrorCode.TRANSFER_SAME_ACCOUNT)
+class TransferSameAccountException :
+    AccountException("The withdrawal account and deposit account cannot be the same.", AccountErrorCode.TRANSFER_SAME_ACCOUNT)

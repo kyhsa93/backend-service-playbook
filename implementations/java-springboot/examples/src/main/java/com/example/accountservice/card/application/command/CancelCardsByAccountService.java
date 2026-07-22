@@ -9,8 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * Account BC의 {@code account.closed.v1} Integration Event에 대한 반응 유스케이스. 아직 해지되지 않은
- * 카드(ACTIVE·SUSPENDED)만 해지하므로 재수신에 멱등하다.
+ * Reaction use case for the Account BC's {@code account.closed.v1} Integration Event. Only cancels
+ * cards that are not already cancelled (ACTIVE·SUSPENDED), making it idempotent against redelivery.
  */
 @Service
 @RequiredArgsConstructor

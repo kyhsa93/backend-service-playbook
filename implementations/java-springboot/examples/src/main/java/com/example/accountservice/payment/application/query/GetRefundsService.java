@@ -9,9 +9,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Refund 테이블 자체는 ownerId를 갖지 않는다(Refund는 paymentId로만 원 결제를 참조한다) — 소유권 검증은 {@link PaymentQuery}로 원
- * 결제를 먼저 조회해 확인한다. account의 {@code GetTransactionsService}가 계좌 소유권을 먼저 확인한 뒤 거래 내역을 조회하는 것과 동일한
- * 패턴이다.
+ * The Refund table itself has no ownerId (Refund references the original payment only via
+ * paymentId) — ownership verification is done by first querying the original payment through {@link
+ * PaymentQuery}. This is the same pattern as account's {@code GetTransactionsService}, which
+ * confirms account ownership before querying transaction history.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,7 +32,7 @@ public class GetRefundsService {
                         () ->
                                 new PaymentException(
                                         PaymentException.ErrorCode.PAYMENT_NOT_FOUND,
-                                        "결제를 찾을 수 없습니다."));
+                                        "Payment not found."));
 
         RefundsWithCount result =
                 refundQuery.findRefunds(new RefundFindQuery(page, take, null, paymentId));

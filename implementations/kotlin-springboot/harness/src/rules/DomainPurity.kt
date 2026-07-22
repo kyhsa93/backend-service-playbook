@@ -5,12 +5,13 @@ import java.io.File
 
 private val FORBIDDEN_ANNOTATIONS = Regex("@Service|@Component|@Repository|@Controller|@RestController")
 
-// domain/ 은 어떤 프레임워크/ORM에도 의존하지 않는다. JPA 애노테이션(@Entity/@Embeddable 등)은
-// jakarta.persistence import 없이는 쓸 수 없으므로, 이 import를 회귀 신호로 삼는다.
-// (애노테이션 문자열만 매칭하면 doc 주석의 언급까지 오탐할 수 있어 import를 기준으로 검사한다.)
+// domain/ must not depend on any framework/ORM. JPA annotations(@Entity/@Embeddable, etc.) can't be
+// used without importing jakarta.persistence, so this import is used as the detection signal.
+// (Matching just the annotation string could falsely flag a mention inside a doc comment, so the
+// check is based on the import instead.)
 private val FORBIDDEN_PERSISTENCE_IMPORT = Regex("""import\s+jakarta\.persistence""")
 
-/** [4] domain/ 순수성 — Spring/JPA 등 프레임워크 의존 금지 */
+/** [4] domain/ purity — no dependency on frameworks like Spring/JPA */
 fun checkDomainPurity(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("domain-purity")
@@ -22,13 +23,13 @@ fun checkDomainPurity(rootPath: String): RuleResult {
         val content = f.readText()
         when {
             FORBIDDEN_ANNOTATIONS.containsMatchIn(content) ->
-                result.add(failFinding(rel, "domain/ 클래스에 Spring 어노테이션 사용 금지"))
+                result.add(failFinding(rel, "Spring annotations may not be used on a domain/ class"))
             FORBIDDEN_PERSISTENCE_IMPORT.containsMatchIn(content) ->
-                result.add(failFinding(rel, "domain/ 클래스에 JPA(jakarta.persistence) 의존 금지 — infrastructure/persistence의 JpaEntity+Mapper로 분리"))
+                result.add(failFinding(rel, "a domain/ class may not depend on JPA(jakarta.persistence) — separate it into a JpaEntity+Mapper under infrastructure/persistence"))
             else ->
-                result.add(passFinding("$rel (domain 순수성)"))
+                result.add(passFinding("$rel (domain purity)"))
         }
     }
-    if (!found) result.add(skipFinding("domain/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no domain/ Kotlin files"))
     return result
 }

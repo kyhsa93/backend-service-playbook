@@ -5,7 +5,7 @@ import java.io.File
 
 private val SEALED_EXCEPTION = Regex("(?m)^\\s*(public |internal |private )?sealed class.*(Exception|Error)")
 
-/** [6] sealed class 에러 — domain/ 에 위치 */
+/** [6] sealed class errors — must be located in domain/ */
 fun checkSealedException(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("sealed-exception")
@@ -18,9 +18,9 @@ fun checkSealedException(rootPath: String): RuleResult {
         if (f.pathContains("/domain/")) {
             result.add(passFinding("$rel (sealed exception)"))
         } else {
-            result.add(failFinding(rel, "sealed 예외 계층은 domain/ 안에 있어야 함"))
+            result.add(failFinding(rel, "a sealed exception hierarchy must be inside domain/"))
         }
     }
-    if (!found) result.add(skipFinding("sealed 예외 없음"))
+    if (!found) result.add(skipFinding("no sealed exceptions"))
     return result
 }

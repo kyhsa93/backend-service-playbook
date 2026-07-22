@@ -1,29 +1,29 @@
-# Aggregate ID 생성 — Kotlin Spring Boot
+# Aggregate ID Generation — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root aggregate-id.md](../../../../docs/architecture/aggregate-id.md) 참조.
+> For the framework-agnostic principles, see [root aggregate-id.md](../../../../docs/architecture/aggregate-id.md).
 
-### 원칙 요약
+### Principle summary
 
-- **ID 생성 위치**: Domain 레이어, Aggregate의 `companion object` 팩토리 함수 내부
-- **생성 주체**: 서버. 클라이언트가 보낸 ID를 신뢰하지 않는다
-- **타입**: `String`
-- **형식**: UUID v4에서 **하이픈을 제거한 32자리 hex 문자열**
+- **Where the ID is generated**: inside the Domain layer, in the Aggregate's `companion object` factory function
+- **Who generates it**: the server. Never trust an ID sent by the client
+- **Type**: `String`
+- **Format**: a UUID v4 with **hyphens removed, as a 32-character hex string**
 
 ```kotlin
-'550e8400e29b41d4a716446655440000'      // 올바른 방식 — 32자리, 하이픈 없음
-'550e8400-e29b-41d4-a716-446655440000'  // 잘못된 방식 — 하이픈 포함
-1, 2, 3                                  // 잘못된 방식 — auto-increment 숫자
+'550e8400e29b41d4a716446655440000'      // correct — 32 characters, no hyphens
+'550e8400-e29b-41d4-a716-446655440000'  // incorrect — contains hyphens
+1, 2, 3                                  // incorrect — auto-increment number
 ```
 
 ---
 
 ## `generateId()`
 
-`Account.create()`, `Transaction.create()`, `notification/.../SentEmail.create()`가 발급하는 ID 전부 아래 `generateId()`(하이픈 제거 32자리 hex)를 사용한다.
+Every ID issued by `Account.create()`, `Transaction.create()`, and `notification/.../SentEmail.create()` uses the `generateId()` below (32-character hex, hyphens removed).
 
 ---
 
-## ID 생성 유틸 — 올바른 구현
+## ID generation util — correct implementation
 
 ```kotlin
 // common/GenerateId.kt
@@ -34,11 +34,11 @@ import java.util.UUID
 fun generateId(): String = UUID.randomUUID().toString().replace("-", "")
 ```
 
-Kotlin에서는 최상위 함수(top-level function)로 선언할 수 있어 별도 유틸 클래스가 필요 없다. `object GenerateId { ... }` 싱글턴으로 감쌀 필요도 없다 — 파일 하나가 곧 모듈이다.
+In Kotlin this can be declared as a top-level function, so no separate utility class is needed. There's no need to wrap it in an `object GenerateId { ... }` singleton either — a single file is already a module.
 
 ---
 
-## Aggregate에서 사용 — 올바른 패턴
+## Using it in an Aggregate — correct pattern
 
 ```kotlin
 package com.example.accountservice.account.domain
@@ -65,7 +65,7 @@ class Account protected constructor() {
     companion object {
         fun create(ownerId: String, currency: String, email: String): Account =
             Account().apply {
-                this.accountId = generateId()   // 하이픈 제거된 32자리 hex
+                this.accountId = generateId()   // 32-character hex, hyphens removed
                 this.ownerId = ownerId
                 this.email = email
                 this.balance = Money(0, currency)
@@ -78,38 +78,38 @@ class Account protected constructor() {
 }
 ```
 
-**신규 생성과 DB 복원의 구분**은 JPA Entity 특유의 두 단계 생성자 패턴으로 자연스럽게 해결된다:
+**Distinguishing new creation from DB restoration** is naturally solved by the two-stage constructor pattern typical of JPA Entities:
 
-- **신규 생성**: `Account.create(...)` — `companion object` 팩토리가 `generateId()`로 새 ID를 할당
-- **DB 복원**: JPA(Hibernate)가 `protected constructor()`로 프록시를 만든 뒤 리플렉션으로 `@Id` 필드를 채운다. 애플리케이션 코드가 관여하지 않는다
+- **New creation**: `Account.create(...)` — the `companion object` factory assigns a new ID via `generateId()`
+- **DB restoration**: JPA (Hibernate) creates a proxy via `protected constructor()`, then fills the `@Id` field via reflection. Application code is not involved
 
-`id: Long?`(JPA surrogate key, `@GeneratedValue`)와 `accountId: String`(도메인 식별자)를 분리한 것도 root 원칙과 일치한다: **DB가 생성하는 auto-increment 값은 오직 JPA 내부 식별자로만 쓰고, 도메인/외부에 노출하는 식별자는 항상 애플리케이션이 생성한 `accountId`를 사용한다.** `AccountController`, `AccountRepository`, 모든 Command/Result는 `accountId`만 참조하며 `id: Long`은 어디에도 노출되지 않는다.
+Separating `id: Long?` (JPA surrogate key, `@GeneratedValue`) from `accountId: String` (domain identifier) also aligns with the root principle: **the DB-generated auto-increment value is used only as an internal JPA identifier, and the identifier exposed to the domain/outside world is always the application-generated `accountId`.** `AccountController`, `AccountRepository`, and every Command/Result reference only `accountId`; `id: Long` is never exposed anywhere.
 
 ---
 
-## Repository 구현체에서 ID 처리
+## Handling IDs in the Repository implementation
 
-Repository는 Aggregate가 이미 가진 `accountId`를 그대로 영속화한다. DB에서 도메인 ID를 새로 발급하지 않는다.
+The Repository persists the `accountId` the Aggregate already has, as-is. It never issues a new domain ID from the DB.
 
 ```kotlin
 // infrastructure/persistence/AccountRepositoryImpl.kt
 override fun save(account: Account) {
-    jpaRepository.save(account)   // account.accountId는 그대로 유지된 채 저장됨
+    jpaRepository.save(account)   // saved with account.accountId kept unchanged
 }
 ```
 
 ---
 
-## 하위 Entity ID
+## Child Entity IDs
 
-Aggregate 내부의 하위 Entity(`Transaction`)도 동일하게 `generateId()` 기반 32자리 hex 문자열을 사용한다.
+Child Entities inside an Aggregate (`Transaction`) also use the same `generateId()`-based 32-character hex string.
 
 ```kotlin
 // domain/Transaction.kt
 companion object {
     fun create(accountId: String, type: TransactionType, amount: Money): Transaction =
         Transaction().apply {
-            this.transactionId = generateId()   // Account와 동일한 ID 생성 규칙
+            this.transactionId = generateId()   // same ID generation rule as Account
             this.accountId = accountId
             this.type = type
             this.amount = amount
@@ -120,8 +120,8 @@ companion object {
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 팩토리 함수 패턴
-- [repository-pattern.md](repository-pattern.md) — Repository에서 Aggregate 저장
-- harness `aggregate-id-format` 규칙(`../../harness/README.md`) — `GenerateId.kt`가 하이픈 제거 없이 `UUID.randomUUID().toString()`을 그대로 반환하지 않는지 기계 검증
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate factory function pattern
+- [repository-pattern.md](repository-pattern.md) — saving Aggregates in the Repository
+- harness `aggregate-id-format` rule (`../../harness/README.md`) — mechanically verifies that `GenerateId.kt` doesn't return `UUID.randomUUID().toString()` as-is without removing hyphens

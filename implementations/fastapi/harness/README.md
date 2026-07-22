@@ -1,16 +1,16 @@
-# Harness — FastAPI 프로젝트 구조·네이밍 규칙 검사
+# Harness — FastAPI project structure/naming rule checks
 
-`docs/`(공통) + `docs/architecture/*.md`(FastAPI 구현)의 가이드 규칙 중 **기계 검증 가능한 항목**을 외부 FastAPI 프로젝트에 적용하는 정적 분석 도구. 설계 원칙은 루트 [`../../../docs/harness.md`](../../../docs/harness.md)를 따른다 — 아키텍처 규칙 준수만 평가하고, `examples/`의 Account 도메인 같은 특정 업무 도메인 지식을 전제로 삼지 않는다.
+A static-analysis tool that applies the **mechanically checkable items** among the guide's rules from `docs/` (shared) + `docs/architecture/*.md` (the FastAPI implementation) to an external FastAPI project. It follows the design principles in the root [`../../../docs/harness.md`](../../../docs/harness.md) — it only evaluates architectural-rule compliance, and never presumes knowledge of a specific business domain such as the Account domain in `examples/`.
 
-## 구조
+## Structure
 
 ```
 harness/
-  harness.py                     CLI 엔트리 — 규칙 목록 정의 + 결과 집계/출력
+  harness.py                     CLI entry — defines the rule list + aggregates/prints results
   rules/
     __init__.py
-    common.py                    공통 타입(Finding, RuleResult)과 헬퍼(collect_py_files, read, rel, norm, ...)
-    file_naming.py                규칙별 구현 모듈 (규칙 하나당 파일 하나)
+    common.py                    shared types (Finding, RuleResult) and helpers (collect_py_files, read, rel, norm, ...)
+    file_naming.py                a module per rule (one file per rule)
     repository_abc.py
     repository_impl.py
     repository_naming.py
@@ -24,74 +24,74 @@ harness/
     outbox_no_sync_drain.py
     cqrs_pattern.py
   tests/
-    test_rules.py                pytest — 아래 fixtures/를 파라미터화해서 순회
-    fixtures/<rule>/good/         해당 규칙을 통과해야 하는 최소 fixture
-    fixtures/<rule>/bad-*/        해당 규칙을 위반해 실패해야 하는 fixture
+    test_rules.py                pytest — parameterizes and iterates over the fixtures/ below
+    fixtures/<rule>/good/         the minimal fixture that must pass that rule
+    fixtures/<rule>/bad-*/        a fixture that must fail by violating that rule
 ```
 
-각 규칙 모듈은 `check(root: str, py_files: list[str]) -> RuleResult` 시그니처를 가지며, `harness.py`의 `RULES` 목록에 등록된 순서대로 실행·출력된다. `py_files`는 `harness.py`가 한 번만 계산해 모든 규칙에 전달한다.
+Every rule module has the signature `check(root: str, py_files: list[str]) -> RuleResult`, and they're run/printed in the order registered in `harness.py`'s `RULES` list. `py_files` is computed once by `harness.py` and passed to every rule.
 
-## 사용
+## Usage
 
 ```bash
-# 저장소 루트에서
+# From the repository root
 bash implementations/fastapi/harness.sh <projectRoot>
 
-# 또는 harness/ 디렉토리에서 직접
+# Or directly from the harness/ directory
 cd implementations/fastapi/harness
 python3 harness.py <projectRoot>
 ```
 
-## 규칙 목록
+## Rule list
 
-| 이름 | 모듈 | 역할 |
+| Name | Module | Role |
 |------|------|------|
-| `file-naming` | `rules/file_naming.py` | 파일명이 `snake_case.py`인지 |
-| `repository-abc` | `rules/repository_abc.py` | ABC Repository(`ABC`/`abstractmethod` + `Repository`) → `domain/` |
-| `repository-impl` | `rules/repository_impl.py` | Repository 구현체(`class XRepository`) → `infrastructure/` |
-| `repository-naming` | `rules/repository_naming.py` | `domain/`의 `*Repository`/`*Query` ABC 추상 메서드명이 `find_by_*`/`find_all`/`count*`/bare `save`/bare `delete`/`update_*` 안티패턴이면 실패 — `find_<noun>s`/`save_<noun>`/`delete_<noun>`만 허용, 별도 `update_*` 메서드 금지(repository-pattern.md) |
-| `handler-placement` | `rules/handler_placement.py` | `*_handler.py` → `application/command/` 또는 `application/query/` |
-| `domain-purity` | `rules/domain_purity.py` | `domain/`에서 `fastapi`/`sqlalchemy`/`aioboto3`/`logging`/`structlog` import 금지 |
-| `directory-structure` | `rules/directory_structure.py` | `src/<domain>/{domain,application,interface,infrastructure}` + `application/{command,query}` 존재 |
-| `shared-infra` | `rules/shared_infra.py` | `OutboxWriter` 참조 시 `src/outbox/`에 `outbox_writer.py`/`outbox_poller.py`/`outbox_consumer.py` 존재 확인, `TaskOutboxWriter` 참조(또는 `*task_queue*` 이름의 오배치 파일) 시 `src/task_queue/`에 `task_outbox_writer.py`/`task_outbox_poller.py`/`task_consumer.py` 배치 확인 |
+| `file-naming` | `rules/file_naming.py` | Whether the file name is `snake_case.py` |
+| `repository-abc` | `rules/repository_abc.py` | An ABC Repository (`ABC`/`abstractmethod` + `Repository`) → `domain/` |
+| `repository-impl` | `rules/repository_impl.py` | A Repository implementation (`class XRepository`) → `infrastructure/` |
+| `repository-naming` | `rules/repository_naming.py` | Fails if a `*Repository`/`*Query` ABC's abstract method name in `domain/` matches the `find_by_*`/`find_all`/`count*`/bare `save`/bare `delete`/`update_*` anti-pattern — only `find_<noun>s`/`save_<noun>`/`delete_<noun>` are allowed, a separate `update_*` method is forbidden (repository-pattern.md) |
+| `handler-placement` | `rules/handler_placement.py` | `*_handler.py` → `application/command/` or `application/query/` |
+| `domain-purity` | `rules/domain_purity.py` | Importing `fastapi`/`sqlalchemy`/`aioboto3`/`logging`/`structlog` in `domain/` is forbidden |
+| `directory-structure` | `rules/directory_structure.py` | `src/<domain>/{domain,application,interface,infrastructure}` + `application/{command,query}` exist |
+| `shared-infra` | `rules/shared_infra.py` | If `OutboxWriter` is referenced, confirms `outbox_writer.py`/`outbox_poller.py`/`outbox_consumer.py` exist in `src/outbox/`; if `TaskOutboxWriter` is referenced (or a misplaced file named `*task_queue*` exists), confirms `task_outbox_writer.py`/`task_outbox_poller.py`/`task_consumer.py` are placed in `src/task_queue/` |
 | `event-placement` | `rules/event_placement.py` | `*_event_handler.py` → `application/event/`, `*_integration_event.py` → `application/integration-event/` |
-| `layer-dependency` | `rules/layer_dependency.py` | AST 기반 — `application/`이 `infrastructure/`를 직접 import하면 실패(의존성 역전) |
-| `no-notification-dependency-in-command` | `rules/no_notification_dependency_in_command.py` | Command Handler가 `NotificationService`(ABC 포함)를 직접 의존하면 실패 — Outbox 경유해야 함 |
-| `outbox-no-sync-drain` | `rules/outbox_no_sync_drain.py` | Command Handler가 `OutboxRelay`/`OutboxPoller`/`OutboxConsumer`를 직접 참조하거나 `process_pending()`/`run_forever()`류를 호출하면 실패 — 저장 후 곧바로 반환해야 하며 Outbox → SQS 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(domain-events.md, 동기 드레인 금지) |
-| `cqrs-pattern` | `rules/cqrs_pattern.py` | `application/query/` 하위 파일이 쓰기용 Repository(`Repository` 문자열)를 참조하면 실패 — Query는 읽기 전용 Query 인터페이스에만 의존해야 함(cqrs-pattern.md) |
-| `domain-layer-isolation` | `rules/domain_layer_isolation.py` | AST 기반, 경로 세그먼트 검사 — `domain/`이 (같은 도메인이든 다른 도메인이든) `application/`·`infrastructure/`·`interface/`를 import하면 실패. `domain-purity`의 프레임워크 이름 블록리스트보다 넓은 구조적 버전(layer-architecture.md) |
-| `aggregate-no-public-setters` | `rules/aggregate_no_public_setters.py` | `domain/` 클래스에 public `@x.setter` 프로퍼티가 있으면 실패 — 상태 변경은 이름이 있는 도메인 메서드(`deposit()`, `suspend()` 등)로만 해야 함(tactical-ddd.md) |
-| `no-cross-aggregate-reference` | `rules/no_cross_aggregate_reference.py` | `src/payment/domain/{payment.py,refund.py}` 전용 — `Payment`가 `Refund` 클래스를(또는 그 반대를) 필드/생성자 타입으로 직접 참조하면 실패, ID 참조(`payment_id: str`)만 허용(domain-service.md) |
-| `no-direct-env-access-outside-config` | `rules/no_direct_env_access.py` | `domain/`·`application/`에서 `os.environ`/`os.getenv` 직접 호출 시 실패 — `config/`의 `BaseSettings`로 캡슐화해야 함(config.md) |
-| `no-cross-bc-repository-in-application` | `rules/no_cross_domain_repository_import.py` | AST 기반 — `application/`이 다른 도메인의 `domain/repository.py`류 Repository/Query ABC를 직접 import하면 실패, `application/adapter/`의 Adapter를 거쳐야 함(cross-domain.md) |
-| `scheduler-in-infrastructure-only` | `rules/scheduler_in_infrastructure_only.py` | `domain/`·`application/`에 APScheduler/Celery/`asyncio.create_task` 기반 스케줄링이 있으면 실패 — Scheduler는 `infrastructure/`에만 위치(scheduling.md). `src/outbox/`는 이미 infrastructure에 준하는 위치로 대상 밖 |
-| `no-silent-except` | `rules/no_silent_except.py` | AST 기반 — `application/`·`infrastructure/`의 `except ...: pass`(본문이 정확히 `pass` 하나)가 있으면 실패, 로깅 후 전파해야 함(observability.md) |
-| `dockerfile-conventions` | `rules/dockerfile_conventions.py` | `py_files`가 아니라 `<root>/Dockerfile`·`<root>/.dockerignore`를 직접 읽어 검사 — 멀티스테이지(`FROM` 2개 이상), `HEALTHCHECK` 존재, `.dockerignore` 존재+합리적 제외 패턴(container.md) |
-| `aggregate-id-format` | `rules/aggregate_id_format.py` | `src/common/generate_id.py` 단일 파일 검사 — `uuid.uuid4().hex`(하이픈 없는 32자리)를 사용하는지, `str(uuid.uuid4())`(하이픈 포함 36자리) 안티패턴이 없는지(aggregate-id.md) |
-| `error-response-schema` | `rules/error_response_schema.py` | `@app.exception_handler(...)`로 등록된 핸들러가 만드는 응답 바디(`JSONResponse(content=...)`)의 필드 집합이 `statusCode`/`code`/`message`/`error` 4개와 정확히 일치하는지 — dict 리터럴이든 빌더 함수(Pydantic 모델 `.model_dump()`) 경유든 재귀적으로 추적(error-handling.md) |
-| `soft-delete-filter` | `rules/soft_delete_filter.py` | `infrastructure/persistence/`의 SQLAlchemy 모델 중 `updated_at`(상태 변경 가능)이 있는데 `deleted_at`이 없으면 실패, `deleted_at`이 있으면 그 모델을 조회하는 `find_*` 메서드가 `<Model>.deleted_at.is_(None)` 필터를 포함하는지 검사(persistence.md) |
-| `typed-errors-only` | `rules/typed_errors_only.py` | `domain/`·`application/`에서 `raise Exception("...")`/`raise ValueError("...")` 등 내장 제네릭 예외에 문자열 메시지를 실어 던지면 실패 — `domain/errors.py`의 타입화된 예외 클래스를 raise해야 함(AGENTS.md, error-handling.md) |
-| `rate-limit-wired` | `rules/rate_limit_wired.py` | `Limiter`가 정의만 되고 `main.py`에 배선(`app.state.limiter`/`RateLimitExceeded` 핸들러/`SlowAPIMiddleware`)되지 않았거나, 어떤 라우트에도 `@limiter.limit(...)`이 적용되지 않아 죽은 코드로 남아있으면 실패(rate-limiting.md) |
-| `no-generic-response-keys` | `rules/no_generic_response_keys.py` | `interface/rest/`의 Pydantic `BaseModel` 목록 응답 스키마 중 `list[...]` 필드명이 `result`/`data`/`items` 같은 범용 키면 실패 — 도메인 객체명 복수형(`transactions`, `accounts`)이어야 함(api-response.md) |
-| `query-handler-no-raw-aggregate` | `rules/query_handler_no_raw_aggregate.py` | `application/query/`의 `*Handler.execute()` 반환 타입 주석이 `domain/`에서 import한 타입(Aggregate 등)이면 실패 — 전용 Result 타입(`application/query/result.py`)으로 변환해 반환해야 함(api-response.md "Result 객체"). 특정 도메인 이름을 하드코딩하지 않고 "domain/에서 import됐는지"로 구조적으로 판별 |
-| `no-cross-bc-domain-import` | `rules/no_cross_bc_domain_import.py` | `src/<bc>/domain/*.py`가 다른 BC의 `domain/` 패키지를 직접 import하면 실패 — 다른 Aggregate는 ID 참조만 허용, 객체 참조 금지(tactical-ddd.md). `domain-layer-isolation`(레이어 간)과 `no-cross-aggregate-reference`(payment 내부 Aggregate 간) 사이에 남아있던 BC 간 domain↔domain 공백을 닫음 |
-| `no-orm-autosync-in-prod-config` | `rules/no_orm_autosync_in_prod_config.py` | 테스트 전용 파일(`collect_py_files`가 이미 제외)이 아닌 곳에서 `<expr>.metadata.create_all` 호출이 발견되면 실패 — 프로덕션 스키마 변경은 Alembic 마이그레이션으로만 관리해야 함(persistence.md), `create_all`은 테스트 fixture 전용 |
+| `layer-dependency` | `rules/layer_dependency.py` | AST-based — fails if `application/` directly imports `infrastructure/` (dependency inversion) |
+| `no-notification-dependency-in-command` | `rules/no_notification_dependency_in_command.py` | Fails if a Command Handler directly depends on `NotificationService` (including its ABC) — it must go through the Outbox |
+| `outbox-no-sync-drain` | `rules/outbox_no_sync_drain.py` | Fails if a Command Handler directly references `OutboxRelay`/`OutboxPoller`/`OutboxConsumer` or calls something like `process_pending()`/`run_forever()` — it must return immediately after saving, and publishing/receiving Outbox → SQS is the sole responsibility of the independently, periodically running Poller/Consumer (domain-events.md, synchronous draining is forbidden) |
+| `cqrs-pattern` | `rules/cqrs_pattern.py` | Fails if a file under `application/query/` references a write-capable Repository (the string `Repository`) — a Query must depend only on a read-only Query interface (cqrs-pattern.md) |
+| `domain-layer-isolation` | `rules/domain_layer_isolation.py` | AST-based, a path-segment check — fails if `domain/` (of the same domain or another) imports `application/`·`infrastructure/`·`interface/`. A broader, structural version of `domain-purity`'s framework-name blocklist (layer-architecture.md) |
+| `aggregate-no-public-setters` | `rules/aggregate_no_public_setters.py` | Fails if a `domain/` class has a public `@x.setter` property — a state change must happen only through a named domain method (`deposit()`, `suspend()`, etc.) (tactical-ddd.md) |
+| `no-cross-aggregate-reference` | `rules/no_cross_aggregate_reference.py` | Dedicated to `src/payment/domain/{payment.py,refund.py}` — fails if `Payment` directly references the `Refund` class (or vice versa) as a field/constructor type; only an ID reference (`payment_id: str`) is allowed (domain-service.md) |
+| `no-direct-env-access-outside-config` | `rules/no_direct_env_access.py` | Fails if `domain/`·`application/` calls `os.environ`/`os.getenv` directly — it must be encapsulated in a `BaseSettings` in `config/` (config.md) |
+| `no-cross-bc-repository-in-application` | `rules/no_cross_domain_repository_import.py` | AST-based — fails if `application/` directly imports another domain's Repository/Query ABC such as `domain/repository.py`; it must go through an Adapter in `application/adapter/` (cross-domain.md) |
+| `scheduler-in-infrastructure-only` | `rules/scheduler_in_infrastructure_only.py` | Fails if `domain/`·`application/` has APScheduler/Celery/`asyncio.create_task`-based scheduling — the Scheduler must be located only in `infrastructure/` (scheduling.md). `src/outbox/` is already treated as equivalent to infrastructure and is out of scope |
+| `no-silent-except` | `rules/no_silent_except.py` | AST-based — fails if `application/`·`infrastructure/` has an `except ...: pass` (a body that's exactly a single `pass`); it must be logged and propagated (observability.md) |
+| `dockerfile-conventions` | `rules/dockerfile_conventions.py` | Reads `<root>/Dockerfile`·`<root>/.dockerignore` directly, rather than `py_files` — checks for a multi-stage build (2+ `FROM`s), a `HEALTHCHECK`, and `.dockerignore` existing + a reasonable exclusion pattern (container.md) |
+| `aggregate-id-format` | `rules/aggregate_id_format.py` | Checks the single file `src/common/generate_id.py` — whether it uses `uuid.uuid4().hex` (32-character hex, no hyphens), and whether the `str(uuid.uuid4())` (36-character, hyphens included) anti-pattern is absent (aggregate-id.md) |
+| `error-response-schema` | `rules/error_response_schema.py` | Whether the field set of the response body (`JSONResponse(content=...)`) built by a handler registered via `@app.exception_handler(...)` exactly matches the 4 fields `statusCode`/`code`/`message`/`error` — traced recursively whether it's a dict literal or via a builder function (a Pydantic model's `.model_dump()`) (error-handling.md) |
+| `soft-delete-filter` | `rules/soft_delete_filter.py` | Fails if a SQLAlchemy model in `infrastructure/persistence/` has `updated_at` (mutable state) but no `deleted_at`; if it has `deleted_at`, checks whether a `find_*` method looking it up includes a `<Model>.deleted_at.is_(None)` filter (persistence.md) |
+| `typed-errors-only` | `rules/typed_errors_only.py` | Fails if `domain/`·`application/` throws a built-in generic exception with a string message, such as `raise Exception("...")`/`raise ValueError("...")` — a typed exception class from `domain/errors.py` must be raised (AGENTS.md, error-handling.md) |
+| `rate-limit-wired` | `rules/rate_limit_wired.py` | Fails if a `Limiter` is only defined and not wired up in `main.py` (`app.state.limiter`/a `RateLimitExceeded` handler/`SlowAPIMiddleware`), or if `@limiter.limit(...)` is applied to no route, leaving it as dead code (rate-limiting.md) |
+| `no-generic-response-keys` | `rules/no_generic_response_keys.py` | Fails if a `list[...]` field name in a Pydantic `BaseModel` list-response schema in `interface/rest/` is a generic key such as `result`/`data`/`items` — it must be the plural of the domain object name (`transactions`, `accounts`) (api-response.md) |
+| `query-handler-no-raw-aggregate` | `rules/query_handler_no_raw_aggregate.py` | Fails if a `*Handler.execute()` return-type annotation under `application/query/` is a type imported from `domain/` (an Aggregate, etc.) — it must be converted into a dedicated Result type (`application/query/result.py`) before returning (api-response.md "The Result object"). Determines this structurally by "was it imported from domain/", without hardcoding a specific domain name |
+| `no-cross-bc-domain-import` | `rules/no_cross_bc_domain_import.py` | Fails if `src/<bc>/domain/*.py` directly imports another BC's `domain/` package — another Aggregate may only be referenced by ID, an object reference is forbidden (tactical-ddd.md). Closes the remaining BC-to-BC domain↔domain gap between `domain-layer-isolation` (across layers) and `no-cross-aggregate-reference` (across Aggregates within payment) |
+| `no-orm-autosync-in-prod-config` | `rules/no_orm_autosync_in_prod_config.py` | Fails if an `<expr>.metadata.create_all` call is found somewhere that isn't a test-only file (already excluded by `collect_py_files`) — a production schema change must be managed only via an Alembic migration (persistence.md); `create_all` is for test fixtures only |
 
-## 검토했으나 채택하지 않은 규칙
+## Rules considered but not adopted
 
-- **`interface-no-infrastructure`**(`interface/rest/` 라우터가 `infrastructure/`를 직접 import하면 실패): 이 저장소에서는 FastAPI에 DI 컨테이너가 없어 `interface/rest/*.py`의 `Depends` 팩토리 함수 자체가 "바인딩 지점"이다([module-pattern.md](../docs/architecture/module-pattern.md) "② `Depends` 팩토리 함수", [layer-architecture.md](../docs/architecture/layer-architecture.md) "Infrastructure 레이어" 참고) — 라우터가 `SqlAlchemyAccountRepository` 같은 구현체를 직접 import해 `Depends(_repo)` 팩토리를 구성하는 것이 문서가 명시하는 정상 패턴이다. 이 규칙을 그대로 적용하면 이 저장소의 모든 라우터가 실패해, 문서가 실제로 예시 코드로 보여주는 패턴과 정면으로 모순된다. 다른 언어(DI 컨테이너가 있는 NestJS/Spring 계열)에서는 유효할 수 있는 규칙이지만 FastAPI에는 적용하지 않는다.
+- **`interface-no-infrastructure`** (fails if an `interface/rest/` router directly imports `infrastructure/`): in this repository, since FastAPI has no DI container, the `Depends` factory function itself in `interface/rest/*.py` is the "binding point" (see "② The `Depends` factory function" in [module-pattern.md](../docs/architecture/module-pattern.md), "The Infrastructure layer" in [layer-architecture.md](../docs/architecture/layer-architecture.md)) — a router directly importing an implementation such as `SqlAlchemyAccountRepository` to build a `Depends(_repo)` factory is the normal pattern the documents specify. Applying this rule as-is would fail every router in this repository, directly contradicting the pattern the documents actually show as example code. This rule may be valid in another language (a NestJS/Spring-family framework with a DI container), but it isn't applied to FastAPI.
 
-## 회귀 테스트
+## Regression tests
 
 ```bash
 cd implementations/fastapi/harness
 python3 -m pytest tests/
 ```
 
-각 규칙은 최소 `tests/fixtures/<rule>/good/`(통과해야 함)와 `tests/fixtures/<rule>/bad-*/`(실패해야 함) fixture로 검증된다.
+Every rule is verified with at least a `tests/fixtures/<rule>/good/` (must pass) and a `tests/fixtures/<rule>/bad-*/` (must fail) fixture.
 
-새 규칙을 추가하거나 기존 규칙을 수정할 때는:
-1. `rules/<rule>.py`에 로직 구현(또는 수정) — `check(root, py_files) -> RuleResult` 시그니처
-2. `tests/fixtures/<rule>/good/`, `tests/fixtures/<rule>/bad-*/` fixture 작성
-3. `tests/test_rules.py`의 파라미터화 목록에 fixture 추가(신규 규칙인 경우 `harness.py`의 `RULES`에도 등록)
+When adding a new rule or modifying an existing one:
+1. Implement (or modify) the logic in `rules/<rule>.py` — the `check(root, py_files) -> RuleResult` signature
+2. Write the `tests/fixtures/<rule>/good/`, `tests/fixtures/<rule>/bad-*/` fixtures
+3. Add the fixture to `tests/test_rules.py`'s parameterization list (for a new rule, also register it in `harness.py`'s `RULES`)
 4. `python3 -m pytest tests/`

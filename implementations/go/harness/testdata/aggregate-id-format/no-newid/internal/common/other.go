@@ -1,4 +1,4 @@
 package common
 
-// 이 fixture에는 NewID()가 아예 없다 — Skip 케이스 검증용.
+// This fixture has no NewID() at all — used to verify the Skip case.
 func Noop() {}

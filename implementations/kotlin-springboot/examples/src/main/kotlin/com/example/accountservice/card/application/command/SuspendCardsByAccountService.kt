@@ -6,12 +6,13 @@ import com.example.accountservice.card.domain.CardStatus
 import org.springframework.stereotype.Service
 
 /**
- * Account BC의 `account.suspended.v1` Integration Event에 대한 반응 유스케이스.
+ * The reaction use case for the Account BC's `account.suspended.v1` Integration Event.
  *
- * at-least-once 전달을 전제로 멱등하게 구현한다 — ACTIVE 카드만 골라 정지하므로 같은 이벤트가
- * 재수신되어도(이미 정지된 카드) 아무 일도 하지 않는다. 이 Service 자신은 트랜잭션 경계를 갖지
- * 않는다 — outbox 드레인 루프를 감싼 상위 트랜잭션 안에서 호출된다(domain-events.md,
- * persistence.md의 트랜잭션 경계 규칙 참조).
+ * Implemented idempotently on the assumption of at-least-once delivery — since only ACTIVE cards are
+ * selected for suspension, redelivery of the same event (against an already-suspended card) does
+ * nothing. This Service itself has no transaction boundary — it is called from within a higher-level
+ * transaction that wraps the outbox drain loop (see domain-events.md and persistence.md's transaction
+ * boundary rules).
  */
 @Service
 class SuspendCardsByAccountService(

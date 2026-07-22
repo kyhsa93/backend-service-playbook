@@ -26,6 +26,6 @@ class CancelPaymentHandler:
 
         payment.cancel(cmd.reason)
         await self._repo.save_payment(payment)
-        # PaymentCancelled → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다
-        # — OutboxPoller/OutboxConsumer가 비동기로 처리한다(domain-events.md).
+        # PaymentCancelled → the Account BC subscribes to payment.cancelled.v1 and executes
+        # the compensating credit — handled asynchronously by OutboxPoller/OutboxConsumer (domain-events.md).
         return payment

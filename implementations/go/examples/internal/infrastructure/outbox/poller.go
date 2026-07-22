@@ -12,18 +12,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-// Poller는 outbox 테이블의 processed=false 행을 읽어 SQS로 발행한다("DB에 쌓인
-// 이벤트를 큐로 실어 나른다"). 어떤 Handler도 직접 호출하지 않는다 — 그건
-// Consumer의 몫이다.
+// Poller reads processed=false rows from the outbox table and publishes
+// them to SQS ("carries events piled up in the DB over to the queue"). It
+// never calls any Handler directly — that's the Consumer's job.
 //
-// Command Handler는 이 struct를 전혀 참조하지 않는다. Run이 main()의 goroutine으로
-// 독립적으로 주기 실행되는 것 자체가 "저장 직후 같은 프로세스 안에서 동기 드레인"을
-// 제거하는 핵심이다 — Command가 저장을 커밋하고 응답을 반환한 뒤에도, 이벤트가
-// 언제 큐로 나가는지는 다음 tick(최대 1초 뒤)까지 알 수 없다.
+// No Command Handler ever references this struct. The very fact that Run
+// runs independently and periodically as a goroutine in main() is what
+// eliminates "synchronous drain within the same process right after save"
+// — even after a Command has committed its save and returned a response,
+// there's no way to know when the event actually goes out to the queue
+// until the next tick (up to 1 second later).
 //
-// processed=true는 이제 "핸들러가 처리를 끝냈다"가 아니라 "SQS로 전달을 끝냈다"는
-// 뜻이다 — 이후의 재시도/at-least-once 보장은 outbox 테이블이 아니라 SQS의
-// visibility timeout + DLQ가 담당한다(docs/architecture/domain-events.md 참고).
+// processed=true no longer means "the handler finished processing" — it
+// means "delivery to SQS finished." From here on, retry/at-least-once
+// guarantees are handled not by the outbox table but by SQS's visibility
+// timeout + DLQ (see docs/architecture/domain-events.md).
 type Poller struct {
 	db       *sql.DB
 	sqs      *sqs.Client
@@ -40,8 +43,9 @@ type outboxRow struct {
 	payload   []byte
 }
 
-// Run은 1초 간격(nestjs의 @Interval(1000)과 동일)으로 drainOnce를 반복 실행하다가
-// ctx가 취소되면(main()의 signal.NotifyContext) 멈춘다.
+// Run repeatedly runs drainOnce every 1 second (same as nestjs's
+// @Interval(1000)) and stops when ctx is cancelled (main()'s
+// signal.NotifyContext).
 func (p *Poller) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -51,18 +55,20 @@ func (p *Poller) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := p.drainOnce(ctx); err != nil {
-				slog.ErrorContext(ctx, "outbox 폴링 실패", "error", err)
+				slog.ErrorContext(ctx, "outbox polling failed", "error", err)
 			}
 		}
 	}
 }
 
-// drainOnce는 한 tick만큼만 처리한다 — 이 패스에서 발행한 이벤트의 핸들러가 새
-// outbox 행을 적재하더라도(예: AccountSuspended 핸들러가 account.suspended.v1을
-// 적재) 그 행은 다음 tick의 Poller가 자연스럽게 집어간다. 무한 재귀적으로
-// "진전이 있는 한" 반복하지 않는다 — 그 처리는 이제 Consumer(핸들러 실행)와
-// Poller(발행) 사이의 시간 간극으로 자연히 이뤄지며, 옛 Relay.ProcessPending의
-// 다중 패스 루프는 더 이상 필요하지 않다.
+// drainOnce processes only one tick's worth — even if the handler for an
+// event published in this pass loads a new outbox row (e.g. the
+// AccountSuspended handler loading account.suspended.v1), that row is
+// naturally picked up by the Poller on the next tick. It does not loop
+// infinitely/recursively "as long as there's progress" — that handling now
+// happens naturally through the time gap between the Consumer (running
+// handlers) and the Poller (publishing), so the old
+// Relay.ProcessPending's multi-pass loop is no longer needed.
 func (p *Poller) drainOnce(ctx context.Context) error {
 	rows, err := p.fetchPending(ctx)
 	if err != nil {
@@ -70,12 +76,12 @@ func (p *Poller) drainOnce(ctx context.Context) error {
 	}
 	for _, row := range rows {
 		if err := p.publish(ctx, row); err != nil {
-			slog.ErrorContext(ctx, "SQS 발행 실패",
+			slog.ErrorContext(ctx, "SQS publish failed",
 				"event_type", row.eventType,
 				"event_id", row.eventID,
 				"error", err,
 			)
-			// 발행 실패 행은 processed=false로 남겨 다음 tick에서 재시도한다.
+			// A row that failed to publish is left as processed=false so it's retried on the next tick.
 		}
 	}
 	return nil

@@ -1,18 +1,18 @@
-# Aggregate ID 생성 (Go)
+# Aggregate ID Generation (Go)
 
-원칙은 루트 [aggregate-id.md](../../../../docs/architecture/aggregate-id.md)를 그대로 따른다. ID는 **Domain 레이어(Aggregate 생성자)** 에서 서버가 생성하며, 형식은 **UUID v4에서 하이픈을 제거한 32자리 hex 문자열**이다.
+The principle follows the root [aggregate-id.md](../../../../docs/architecture/aggregate-id.md) as-is. The ID is generated server-side in the **Domain layer (Aggregate constructor)**, and the format is a **32-character hex string, a UUID v4 with hyphens removed**.
 
 ```go
-"550e8400e29b41d4a716446655440000"   // 올바른 방식 — 32자리, 하이픈 없음
-"550e8400-e29b-41d4-a716-446655440000"  // 잘못된 방식 — 하이픈 포함
-1, 2, 3                                  // 잘못된 방식 — auto-increment 숫자
+"550e8400e29b41d4a716446655440000"   // correct — 32 characters, no hyphens
+"550e8400-e29b-41d4-a716-446655440000"  // incorrect — contains hyphens
+1, 2, 3                                  // incorrect — auto-increment number
 ```
 
 ---
 
-## ID 생성 유틸
+## ID generation utility
 
-Go 표준 라이브러리에는 UUID 생성기가 없으므로 `github.com/google/uuid` 같은 최소 의존성을 사용한다. 하이픈 제거는 `strings.ReplaceAll`로 직접 처리한다.
+The Go standard library has no UUID generator, so a minimal dependency such as `github.com/google/uuid` is used. Hyphen removal is handled directly with `strings.ReplaceAll`.
 
 ```go
 // internal/common/id.go
@@ -24,7 +24,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// NewID는 UUID v4에서 하이픈을 제거한 32자리 hex 문자열을 반환한다.
+// NewID returns a 32-character hex string, a UUID v4 with hyphens removed.
 func NewID() string {
 	return strings.ReplaceAll(uuid.NewString(), "-", "")
 }
@@ -34,21 +34,21 @@ func NewID() string {
 
 ## `common.NewID()`
 
-`internal/domain/account/account.go`의 `New()`, `internal/domain/account/transaction.go`의 `newTransaction()`, 그리고 `internal/infrastructure/outbox/writer.go`/`internal/infrastructure/notification/service.go`가 발급하는 outbox/sent_email ID까지 전부 `common.NewID()`(하이픈 제거 32자리 hex)를 사용한다.
+`common.NewID()` (32-character hex with hyphens removed) is used everywhere: `New()` in `internal/domain/account/account.go`, `newTransaction()` in `internal/domain/account/transaction.go`, and the outbox/sent_email IDs issued by `internal/infrastructure/outbox/writer.go`/`internal/infrastructure/notification/service.go`.
 
-컬럼 타입(`VARCHAR(36)`)은 32자리든 36자리(하이픈 포함)든 모두 담을 수 있으므로 이 변경에 마이그레이션은 필요 없었다.
+The column type (`VARCHAR(36)`) can hold either 32 or 36 characters (with hyphens), so no migration was needed for this.
 
 ---
 
-## Aggregate 생성자에서 사용
+## Usage in the Aggregate constructor
 
-신규 생성과 DB 복원을 별도 함수로 분리하는 것이 Go 컨벤션이다 — 이 저장소는 생성자 `New(...)`와 복원용 `Reconstitute(...)`를 분리해서 이 원칙을 구현하고 있다.
+Separating new-creation from DB restoration into distinct functions is a Go convention — this repository implements that principle by splitting the constructor `New(...)` from the restoration function `Reconstitute(...)`.
 
 ```go
 // internal/domain/account/account.go
 func New(ownerID, email, currency string) *Account {
 	return &Account{
-		AccountID: common.NewID(), // 신규 생성 — ID를 새로 발급
+		AccountID: common.NewID(), // new creation — issues a new ID
 		OwnerID:   ownerID,
 		// ...
 	}
@@ -56,21 +56,21 @@ func New(ownerID, email, currency string) *Account {
 
 func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt time.Time) *Account {
 	return &Account{
-		AccountID: accountID, // DB 복원 — 기존 ID를 그대로 사용
+		AccountID: accountID, // DB restoration — reuses the existing ID as-is
 		OwnerID:   ownerID,
 		// ...
 	}
 }
 ```
 
-- **신규 생성**: `New()`가 ID를 새로 발급한다. 클라이언트가 제공한 ID를 받지 않는다 — `New()`의 파라미터 목록에 ID가 없다는 점 자체가 이 규칙을 코드로 강제한다.
-- **DB 복원**: `internal/infrastructure/persistence/account_repository.go`의 `FindAccounts`가 DB row에서 읽은 `id` 컬럼 값을 `Reconstitute()`에 전달한다. Repository는 ID를 새로 발급하지 않는다.
+- **New creation**: `New()` issues a new ID. It never accepts a client-supplied ID — the fact that ID isn't in `New()`'s parameter list is itself what enforces this rule in code.
+- **DB restoration**: `FindAccounts` in `internal/infrastructure/persistence/account_repository.go` passes the `id` column value read from the DB row into `Reconstitute()`. The Repository never issues a new ID.
 
 ---
 
-## Repository 구현체에서 ID 처리
+## ID handling in the Repository implementation
 
-Repository는 Aggregate가 이미 가진 ID를 그대로 저장한다. `internal/infrastructure/persistence/account_repository.go`의 `Save()`:
+The Repository saves the ID the Aggregate already has, as-is. `Save()` in `internal/infrastructure/persistence/account_repository.go`:
 
 ```go
 _, err = tx.ExecContext(ctx,
@@ -81,27 +81,22 @@ _, err = tx.ExecContext(ctx,
 )
 ```
 
-`a.AccountID`는 이미 Domain 레이어에서 확정된 값이다 — DB의 `SERIAL`/`AUTO_INCREMENT`나 `RETURNING id` 같은 메커니즘으로 새로 발급하지 않는다.
+`a.AccountID` is already a value finalized in the Domain layer — it is never freshly issued by a DB mechanism such as `SERIAL`/`AUTO_INCREMENT` or `RETURNING id`.
 
 ---
 
-## 하위 Entity ID
+## Child Entity IDs
 
-`Transaction`(Entity)도 Aggregate Root와 동일하게 문자열 ID를 사용한다(`internal/domain/account/transaction.go`의 `newTransaction()`). 하위 Entity를 생성하는 시점 역시 Domain 레이어이며, Repository나 DB가 개입하지 않는다.
+`Transaction` (an Entity) uses a string ID just like the Aggregate Root (`newTransaction()` in `internal/domain/account/transaction.go`). Child Entities are also created in the Domain layer, and the Repository or DB is never involved.
 
 ---
 
-## 하이픈 제거는 harness가 자동 검사한다
+## The harness automatically checks hyphen removal
 
-`common.NewID()`가 UUID v4를 하이픈 제거 없이 그대로 반환하는 회귀는
-`implementations/go/harness/aggregate_id_format.go`(`aggregate-id-format` 규칙)가 자동으로
-검사한다 — `internal/common/id.go`의 `NewID()` 구현이 `strings.ReplaceAll(..., "-", "")` 류의
-하이픈 제거 코드를 갖는지(또는 `hex.EncodeToString`처럼 애초에 하이픈이 생기지 않는 방식인지)
-텍스트 검색으로 확인하고, `uuid.New().String()`/`uuid.NewString()`을 가공 없이 그대로
-반환하면 FAIL로 잡아낸다.
+A regression where `common.NewID()` returns a UUID v4 as-is without removing hyphens is automatically caught by `implementations/go/harness/aggregate_id_format.go` (the `aggregate-id-format` rule) — it text-searches the `NewID()` implementation in `internal/common/id.go` to confirm it contains hyphen-removal code such as `strings.ReplaceAll(..., "-", "")` (or a method that never produces hyphens in the first place, such as `hex.EncodeToString`), and flags it as FAIL if it returns `uuid.New().String()`/`uuid.NewString()` unprocessed.
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 생성자 패턴, `New`/`Reconstitute` 분리
-- [repository-pattern.md](repository-pattern.md) — Repository의 저장/복원 책임
-- [persistence.md](persistence.md) — ID 컬럼 타입(`VARCHAR(36)`)과 스키마
+- [tactical-ddd.md](tactical-ddd.md) — the Aggregate constructor pattern, separating `New`/`Reconstitute`
+- [repository-pattern.md](repository-pattern.md) — the Repository's save/restore responsibilities
+- [persistence.md](persistence.md) — the ID column type (`VARCHAR(36)`) and schema

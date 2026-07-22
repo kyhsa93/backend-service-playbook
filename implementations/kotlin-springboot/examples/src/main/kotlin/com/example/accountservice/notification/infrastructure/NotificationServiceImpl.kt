@@ -29,16 +29,17 @@ class NotificationServiceImpl(
         subject: String,
         body: String,
     ) {
-        // Level 2(Ledger) 멱등성 — 이 Outbox 이벤트가 이미 이메일 발송으로 이어졌다면 재발송하지
-        // 않는다. Relay가 at-least-once로 재시도하는 동안 SES 호출은 성공했지만 processed=true
-        // 커밋 전에 프로세스가 죽는 경우, 다음 재시도에서 이 체크가 중복 발송을 막는다.
+        // Level 2 (Ledger) idempotency — if this Outbox event has already resulted in an email being
+        // sent, don't resend it. If the SES call succeeds while the relay retries at-least-once, but the
+        // process dies before the processed=true commit, this check prevents a duplicate send on the
+        // next retry.
         if (sentEmailJpaRepository.existsBySourceEventId(sourceEventId)) {
             logger
                 .atInfo()
                 .addKeyValue("account_id", accountId)
                 .addKeyValue("event_type", eventType)
                 .addKeyValue("source_event_id", sourceEventId)
-                .log("이미 발송된 이벤트 — 중복 발송 스킵")
+                .log("Event already sent — skipping duplicate send")
             return
         }
 
@@ -88,6 +89,6 @@ class NotificationServiceImpl(
             .addKeyValue("event_type", eventType)
             .addKeyValue("recipient", recipient)
             .addKeyValue("ses_message_id", result.messageId())
-            .log("이메일 발송됨")
+            .log("Email sent")
     }
 }

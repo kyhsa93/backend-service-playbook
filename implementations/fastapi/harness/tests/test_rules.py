@@ -1,7 +1,7 @@
-"""규칙별 회귀 테스트 — tests/fixtures/<rule>/good|bad-*/ 를 대상으로 실행한다.
+"""Per-rule regression tests — run against tests/fixtures/<rule>/good|bad-*/.
 
-harness/ 디렉토리를 sys.path에 넣어 `import rules`가 되게 한 뒤, 각 규칙 모듈의
-`check(root, py_files)`를 fixture 루트에 대해 직접 호출한다.
+Adds the harness/ directory to sys.path so `import rules` works, then calls each rule
+module's `check(root, py_files)` directly against the fixture root.
 """
 
 from __future__ import annotations

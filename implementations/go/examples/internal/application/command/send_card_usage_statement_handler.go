@@ -8,24 +8,26 @@ import (
 	"github.com/example/account-service/internal/domain/card"
 )
 
-// SendCardUsageStatementCommand는 StatementTaskController(interface/task/)가 Task
-// Queue 메시지 페이로드를 역직렬화해 만드는 입력이다. Period는 "2006-01" 형식이며,
-// StatementScheduler.EnqueueMonthlyStatement가 enqueue 시점 기준 "지난달"을 그대로
-// 페이로드에 실어 보낸다.
+// SendCardUsageStatementCommand is the input StatementTaskController
+// (interface/task/) builds by deserializing the Task Queue message payload.
+// Period is in "2006-01" format, and StatementScheduler.EnqueueMonthlyStatement
+// sends "last month" as of enqueue time as-is in the payload.
 type SendCardUsageStatementCommand struct {
 	Period string
 }
 
-// cardStatementBatchSize — apply_daily_interest_handler.go의 interestBatchSize와
-// 동일한 이유로 500을 쓴다.
+// cardStatementBatchSize uses 500 for the same reason as interestBatchSize in
+// apply_daily_interest_handler.go.
 const cardStatementBatchSize = 500
 
-// SendCardUsageStatementHandler는 Task Queue가 구동하는 시스템 기동 유스케이스다.
-// ACTIVE 카드 전체를 순회하며 (1) 연결 계좌 조회 → (2) 기간별 결제 요약 → (3) 이메일
-// 발송 → (4) Card.MarkStatementSent로 멱등성 마커 저장을 수행한다. 발송(외부 SES 호출)
-// 은 Card 상태에 없는 부작용이므로, 반드시 발송 성공 이후에만 마커를 저장한다 —
-// 그래야 발송 실패로 이 Handler가 에러를 반환해 Task가 재시도될 때 실제로 다시
-// 발송을 시도한다(at-least-once, scheduling.md).
+// SendCardUsageStatementHandler is a system-triggered use case driven by the
+// Task Queue. It iterates over all ACTIVE cards performing (1) linked
+// account lookup -> (2) payment summary for the period -> (3) email
+// delivery -> (4) saving an idempotency marker via Card.MarkStatementSent.
+// Delivery (an external SES call) is a side effect not reflected in Card's
+// state, so the marker must be saved only after delivery succeeds — that way,
+// if delivery fails and this Handler returns an error, the Task is retried
+// and delivery is actually attempted again (at-least-once, scheduling.md).
 type SendCardUsageStatementHandler struct {
 	repo     card.Repository
 	accounts AccountAdapter
@@ -39,9 +41,10 @@ func NewSendCardUsageStatementHandler(
 	return &SendCardUsageStatementHandler{repo: repo, accounts: accounts, payments: payments, notifier: notifier}
 }
 
-// Handle은 저장 후 곧바로 반환한다(동기 드레인 금지, domain-events.md) — Card는
-// 이 유스케이스에서 Domain Event를 발생시키지 않으므로(MarkStatementSent는 순수
-// 상태 마커 갱신) Outbox 경로와는 무관하다.
+// Handle saves and returns immediately (no synchronous draining,
+// domain-events.md) — Card does not raise a Domain Event in this use case
+// (MarkStatementSent is a pure state-marker update), so it is unrelated to
+// the Outbox path.
 func (h *SendCardUsageStatementHandler) Handle(ctx context.Context, cmd SendCardUsageStatementCommand) error {
 	from, to, err := periodRange(cmd.Period)
 	if err != nil {
@@ -60,7 +63,7 @@ func (h *SendCardUsageStatementHandler) Handle(ctx context.Context, cmd SendCard
 
 		for _, c := range cards {
 			if c.LastStatementSentMonth == cmd.Period {
-				continue // 이번 기간은 이미 발송함(Level 1 멱등) — 스킵.
+				continue // Already sent for this period (Level 1 idempotent) — skip.
 			}
 
 			view, err := h.accounts.FindAccount(ctx, c.AccountID, c.OwnerID)
@@ -68,7 +71,7 @@ func (h *SendCardUsageStatementHandler) Handle(ctx context.Context, cmd SendCard
 				return fmt.Errorf("send card usage statement: %w", err)
 			}
 			if view == nil {
-				continue // 연결 계좌가 사라짐 — 통지할 대상이 없으므로 조용히 무시한다.
+				continue // The linked account is gone — there is no one to notify, so silently ignore.
 			}
 
 			summary, err := h.payments.SummarizeCardPayments(ctx, c.CardID, from, to)
@@ -97,8 +100,9 @@ func (h *SendCardUsageStatementHandler) Handle(ctx context.Context, cmd SendCard
 	return nil
 }
 
-// periodRange는 "2006-01" 형식의 period를 [from, to) 반구간으로 변환한다 —
-// from은 그 달의 1일 00:00 UTC, to는 다음 달 1일 00:00 UTC다.
+// periodRange converts a period in "2006-01" format into a half-open
+// interval [from, to) — from is 00:00 UTC on the 1st of that month, and to
+// is 00:00 UTC on the 1st of the next month.
 func periodRange(period string) (time.Time, time.Time, error) {
 	from, err := time.Parse("2006-01", period)
 	if err != nil {

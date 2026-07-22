@@ -20,7 +20,7 @@ fun checkEventPlacement(rootPath: String): RuleResult {
                 if (f.pathContains("/application/event/")) {
                     result.add(passFinding("$rel (EventHandler)"))
                 } else {
-                    result.add(failFinding(rel, "EventHandler는 application/event/ 패키지 안에 있어야 함"))
+                    result.add(failFinding(rel, "an EventHandler must be inside the application/event/ package"))
                 }
             }
             name.endsWith("IntegrationEvent") -> {
@@ -29,15 +29,15 @@ fun checkEventPlacement(rootPath: String): RuleResult {
                 if (f.pathContains("/application/integration-event/")) {
                     result.add(passFinding("$rel (IntegrationEvent)"))
                 } else {
-                    result.add(failFinding(rel, "IntegrationEvent는 application/integration-event/ 패키지 안에 있어야 함"))
+                    result.add(failFinding(rel, "an IntegrationEvent must be inside the application/integration-event/ package"))
                 }
             }
         }
     }
 
-    // 파일명 접미사(EventHandler/IntegrationEvent)와 무관하게, Spring의
-    // ApplicationEventPublisher 기반 동기 인프로세스 이벤트 처리를 나타내는 @EventListener
-    // 애노테이션이 있으면 이벤트 핸들링 코드로 간주한다.
+    // Regardless of the file-name suffix(EventHandler/IntegrationEvent), an @EventListener annotation
+    // — which signals Spring's ApplicationEventPublisher-based synchronous in-process event handling —
+    // is treated as event-handling code.
     for (f in collectKtFiles(root)) {
         if (f.path in reported) continue
         val content = f.readText()
@@ -47,10 +47,10 @@ fun checkEventPlacement(rootPath: String): RuleResult {
         if (f.pathContains("/application/event/")) {
             result.add(passFinding("$rel (@EventListener)"))
         } else {
-            result.add(failFinding(rel, "@EventListener 사용 클래스는 application/event/ 패키지 안에 있어야 함"))
+            result.add(failFinding(rel, "a class using @EventListener must be inside the application/event/ package"))
         }
     }
 
-    if (!found) result.add(skipFinding("이벤트 핸들러 없음"))
+    if (!found) result.add(skipFinding("no event handlers"))
     return result
 }

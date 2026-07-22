@@ -15,15 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class TaskConsumer:
-    """Task 큐를 long polling으로 수신 대기하다가 메시지를 받으면 `taskType`
-    (MessageAttributes)으로 `build_task_handlers()`가 조립한 dict에서 TaskController
-    메서드를 찾아 호출한다 — Domain Event의 `OutboxConsumer`(src/outbox/outbox_consumer.py)와
-    완전히 동일한 구조다.
+    """Waits to receive from the Task queue via long polling, and once a message is
+    received, looks up the TaskController method in the dict `build_task_handlers()`
+    assembled by `taskType` (MessageAttributes) and calls it — exactly the same structure
+    as the Domain Event's `OutboxConsumer` (src/outbox/outbox_consumer.py).
 
-    TaskController가 예외를 그대로 전파하므로(scheduling.md), 여기서 해야 할 일도
-    OutboxConsumer와 동일하다: 성공 → `delete_message`(ack), 실패(또는 등록된 핸들러 없음)
-    → 삭제하지 않는다. FIFO 큐의 visibility timeout이 지나면 자동 재전달되고,
-    `maxReceiveCount`를 넘기면 DLQ로 격리된다(scheduling.md "DLQ 모니터링").
+    Since a TaskController lets exceptions propagate as-is (scheduling.md), what needs to
+    happen here is the same as OutboxConsumer: success → `delete_message` (ack), failure
+    (or no registered handler) → not deleted. Once the FIFO queue's visibility timeout
+    passes, it's automatically redelivered, and once `maxReceiveCount` is exceeded, it's
+    isolated into the DLQ (see "DLQ monitoring" in scheduling.md).
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -43,8 +44,8 @@ class TaskConsumer:
                     )
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # noqa: BLE001 - 수신 루프는 예외로 죽으면 안 된다
-                    logger.exception("Task SQS 수신 실패")
+                except Exception:  # noqa: BLE001 - the receive loop must never die from an exception
+                    logger.exception("Failed to receive Task from SQS")
                     await asyncio.sleep(1)
                     continue
 
@@ -55,18 +56,18 @@ class TaskConsumer:
         task_type = message.get("MessageAttributes", {}).get("taskType", {}).get("StringValue")
         try:
             if not task_type:
-                raise ValueError("taskType 메시지 속성이 없습니다.")
+                raise ValueError("The taskType message attribute is missing.")
 
             payload = json.loads(message.get("Body", "{}"))
             async with self._session_factory() as session:
                 handler = build_task_handlers(session).get(task_type)
                 if handler is None:
-                    raise ValueError(f"등록된 Task 핸들러 없음: {task_type}")
+                    raise ValueError(f"No registered Task handler: {task_type}")
                 await handler(payload)
                 await session.commit()
 
             await sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - 삭제하지 않아야 visibility timeout 이후 재시도된다
-            logger.exception("Task 처리 실패: task_type=%s", task_type)
+        except Exception:  # noqa: BLE001 - it must not be deleted, so it's retried after the visibility timeout
+            logger.exception("Failed to process Task: task_type=%s", task_type)

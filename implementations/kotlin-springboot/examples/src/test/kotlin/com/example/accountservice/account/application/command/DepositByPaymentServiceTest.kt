@@ -11,16 +11,17 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * Payment BC의 payment.cancelled.v1(결제취소 보상 크레딧)/refund.approved.v1(환불 승인 크레딧)
- * 공통 반응 유스케이스. 멱등성 체크가 WithdrawByPaymentServiceTest와 대칭이다 — 같은 referenceId
- * (paymentId)라도 type이 DEPOSIT이면 WITHDRAWAL과 별개로 판정되어야 보상 크레딧이 스킵되지 않는다.
+ * The shared reaction use case for the Payment BC's payment.cancelled.v1 (payment-cancellation
+ * compensating credit) / refund.approved.v1 (refund-approval credit) events. The idempotency check is
+ * symmetric with WithdrawByPaymentServiceTest — even with the same referenceId (paymentId), if the type
+ * is DEPOSIT it must be judged separately from WITHDRAWAL so the compensating credit isn't skipped.
  */
 class DepositByPaymentServiceTest {
     private val accountRepository = mockk<AccountRepository>(relaxed = true)
     private val service = DepositByPaymentService(accountRepository)
 
     @Test
-    fun `아직 처리되지 않은 referenceId면 입금하고 저장한다`() {
+    fun `deposits and saves when the referenceId has not yet been processed`() {
         val account = Account.create("owner-1", "KRW", "owner-1@example.com")
         every { accountRepository.hasTransactionWithReference("payment-1", TransactionType.DEPOSIT) } returns false
         every {
@@ -34,10 +35,10 @@ class DepositByPaymentServiceTest {
     }
 
     @Test
-    fun `같은 referenceId라도 WITHDRAWAL로 이미 처리된 것은 DEPOSIT 처리를 막지 않는다`() {
-        // referenceId="payment-1"의 WITHDRAWAL(결제완료 차감)은 이미 있지만, 그 취소로 인한
-        // DEPOSIT(보상 크레딧)은 별도 type이므로 처리되어야 한다 — (referenceId, type) 조합
-        // 스코핑이 핵심이다.
+    fun `even with the same referenceId, an entry already processed as WITHDRAWAL does not block DEPOSIT processing`() {
+        // A WITHDRAWAL (payment-completion deduction) already exists for referenceId="payment-1", but
+        // the DEPOSIT (compensating credit) from its cancellation is a separate type and must still be
+        // processed — the (referenceId, type) combination scoping is the crux of this test.
         val account = Account.create("owner-1", "KRW", "owner-1@example.com")
         every { accountRepository.hasTransactionWithReference("payment-1", TransactionType.DEPOSIT) } returns false
         every {
@@ -50,7 +51,7 @@ class DepositByPaymentServiceTest {
     }
 
     @Test
-    fun `같은 referenceId+DEPOSIT이 이미 처리됐으면 조용히 무시한다(멱등)`() {
+    fun `silently ignores it when the same referenceId+DEPOSIT has already been processed (idempotent)`() {
         every { accountRepository.hasTransactionWithReference("refund-1", TransactionType.DEPOSIT) } returns true
 
         service.deposit(DepositByPaymentCommand(accountId = "account-1", amount = 500, referenceId = "refund-1"))

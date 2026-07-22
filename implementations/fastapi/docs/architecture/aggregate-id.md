@@ -1,36 +1,36 @@
-# Aggregate ID 생성
+# Aggregate ID Generation
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/aggregate-id.md](../../../../docs/architecture/aggregate-id.md)
+> Framework-agnostic principles: [../../../../docs/architecture/aggregate-id.md](../../../../docs/architecture/aggregate-id.md)
 
-### 원칙
+### Principles
 
-- **ID 생성 위치**: Domain 레이어 (Aggregate의 팩토리 classmethod, `Account.create()` 등)
-- **생성 주체**: 서버. 클라이언트가 제공한 ID를 신뢰하지 않는다.
-- **타입**: `str`
-- **형식**: UUID v4에서 하이픈을 제거한 32자리 hex 문자열
+- **Where IDs are generated**: the Domain layer (an Aggregate's factory classmethod, e.g. `Account.create()`)
+- **Who generates them**: the server. A client-supplied ID is never trusted.
+- **Type**: `str`
+- **Format**: a 32-character hex string, a UUID v4 with the hyphens removed
 
 ```python
-"550e8400e29b41d4a716446655440000"    # 올바른 방식 — 32자리, 하이픈 없음
-"550e8400-e29b-41d4-a716-446655440000"  # 잘못된 방식 — 하이픈 포함
-1, 2, 3                                  # 잘못된 방식 — auto-increment 숫자
+"550e8400e29b41d4a716446655440000"    # correct — 32 characters, no hyphens
+"550e8400-e29b-41d4-a716-446655440000"  # incorrect — contains hyphens
+1, 2, 3                                  # incorrect — auto-increment numbers
 ```
 
-**auto-increment 숫자 ID를 사용하지 않는 이유:**
-- DB 레코드 수·생성 순서가 외부에 노출된다 (보안)
-- 여러 서비스·샤드 간 ID 충돌 가능성이 있다
-- ID가 DB insert 시점까지 결정되지 않아 Domain 레이어에서 미리 생성할 수 없다
+**Why auto-increment numeric IDs are not used:**
+- The number of DB records and the creation order would be exposed externally (security)
+- ID collisions become possible across multiple services/shards
+- The ID isn't determined until the DB insert, so it can't be generated ahead of time in the Domain layer
 
 ---
 
 ### `generate_id()`
 
-`src/account/domain/account.py`의 `Account.create()`, `src/account/domain/transaction.py`의 `Transaction.create()`, `notification_service.py`가 발급하는 sent_email ID 전부 아래 `generate_id()`(하이픈 제거 32자리 hex, `uuid.uuid4().hex`)를 사용한다. `outbox_writer.py`는 `uuid.uuid4().hex`를 직접 사용해 동일한 형식을 유지한다.
+`Account.create()` in `src/account/domain/account.py`, `Transaction.create()` in `src/account/domain/transaction.py`, and every sent_email ID issued by `notification_service.py` all use `generate_id()` below (32-character hex with hyphens removed, `uuid.uuid4().hex`). `outbox_writer.py` uses `uuid.uuid4().hex` directly to keep the same format.
 
 ---
 
-### ID 생성 유틸
+### ID generation utility
 
-프로젝트 공통 유틸로 뽑아 모든 도메인이 재사용한다.
+Extracted as a project-wide common utility that every domain reuses.
 
 ```python
 # src/common/generate_id.py
@@ -43,7 +43,7 @@ def generate_id() -> str:
 
 ---
 
-### Aggregate에서 사용
+### Usage in the Aggregate
 
 ```python
 # src/account/domain/account.py
@@ -60,7 +60,7 @@ class Account:
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
         now = datetime.utcnow()
         account = cls(
-            account_id=generate_id(),          # 올바른 방식 — 하이픈 없는 32자리 hex
+            account_id=generate_id(),          # correct — 32-character hex, no hyphens
             owner_id=owner_id,
             email=email,
             balance=Money(0, currency),
@@ -72,16 +72,16 @@ class Account:
         return account
 ```
 
-같은 방식을 `Transaction.create()`(`src/account/domain/transaction.py`)의 `transaction_id`에도 적용한다.
+The same approach applies to `transaction_id` in `Transaction.create()` (`src/account/domain/transaction.py`).
 
-- **신규 생성**: 팩토리 classmethod(`Account.create`, `Transaction.create`) 내부에서 `generate_id()`로 자동 할당한다.
-- **DB 복원**: `SqlAlchemyAccountRepository._to_domain()`(`src/account/infrastructure/persistence/account_repository.py`)이 저장된 `account_id`를 그대로 `Account.__init__`에 전달한다 — 새 ID를 만들지 않는다.
+- **New creation**: automatically assigned via `generate_id()` inside the factory classmethod (`Account.create`, `Transaction.create`).
+- **Restoring from the DB**: `SqlAlchemyAccountRepository._to_domain()` (`src/account/infrastructure/persistence/account_repository.py`) passes the stored `account_id` straight into `Account.__init__` — it never creates a new ID.
 
 ---
 
-### Repository 구현체에서 ID 처리
+### ID handling in the Repository implementation
 
-Repository는 Aggregate가 이미 가진 ID를 그대로 사용한다. DB에서 새 ID를 발급하지 않는다.
+The Repository uses the ID the Aggregate already has, as-is. The DB never issues a new ID.
 
 ```python
 # src/account/infrastructure/persistence/account_repository.py
@@ -92,7 +92,7 @@ async def save(self, account: Account) -> None:
         existing.status = account.status.value
     else:
         self._session.add(AccountModel(
-            id=account.account_id,   # Aggregate가 이미 가진 ID를 그대로 사용
+            id=account.account_id,   # uses the ID the Aggregate already has, as-is
             owner_id=account.owner_id,
             ...
         ))
@@ -100,9 +100,9 @@ async def save(self, account: Account) -> None:
 
 ---
 
-### 컬럼 타입 — DB에서도 고정 길이로 정의
+### Column type — declared with a fixed length in the DB too
 
-32자리 고정 길이 문자열이므로 가변 길이 `VARCHAR`보다 `CHAR(32)`로 선언하는 것이 정확하다. 현재 `AccountModel.id`는 `Mapped[str]`(기본 `VARCHAR`)로 선언돼 있으며, 하이픈 제거 규칙을 적용한 뒤에는 다음과 같이 고정 길이를 명시할 수 있다.
+Since it's a fixed 32-character string, declaring it as `CHAR(32)` is more accurate than a variable-length `VARCHAR`. `AccountModel.id` is currently declared as `Mapped[str]` (defaulting to `VARCHAR`); once the hyphen-removal rule is applied, the fixed length can be made explicit as follows.
 
 ```python
 from sqlalchemy.orm import Mapped, mapped_column
@@ -113,17 +113,17 @@ id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)
 
 ---
 
-### 하위 Entity/객체 ID
+### Child Entity/object IDs
 
-Aggregate 내부의 `Transaction`(하위 Entity 성격)도 동일하게 `generate_id()` 기반 32자리 hex 문자열을 사용한다. Value Object(`Money`)는 식별자를 가지지 않으므로 ID 규칙과 무관하다.
-
----
-
-### 관련 문서
-
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate/Entity/Value Object 구분
-- [repository-pattern.md](repository-pattern.md) — Repository에서 Aggregate 저장
+`Transaction` inside the Aggregate (which is a child Entity) likewise uses a `generate_id()`-based 32-character hex string. A Value Object (`Money`) has no identity, so the ID rule doesn't apply to it.
 
 ---
 
-harness `aggregate-id-format` 규칙(`../../harness/rules/aggregate_id_format.py`)이 `src/common/generate_id.py`가 `uuid.uuid4().hex`를 쓰는지, `str(uuid.uuid4())`(하이픈 포함) 안티패턴이 없는지 기계 검증한다.
+### Related documents
+
+- [tactical-ddd.md](tactical-ddd.md) — distinguishing Aggregate/Entity/Value Object
+- [repository-pattern.md](repository-pattern.md) — saving an Aggregate in the Repository
+
+---
+
+The harness's `aggregate-id-format` rule (`../../harness/rules/aggregate_id_format.py`) mechanically verifies that `src/common/generate_id.py` uses `uuid.uuid4().hex` and does not contain the `str(uuid.uuid4())` (hyphen-included) anti-pattern.

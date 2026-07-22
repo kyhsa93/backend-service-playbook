@@ -1,69 +1,69 @@
-# 인증 패턴
+# Authentication Pattern
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/authentication.md](../../../../docs/architecture/authentication.md)
+> Framework-agnostic principles: [../../../../docs/architecture/authentication.md](../../../../docs/architecture/authentication.md)
 
-## 현재 구현 — JWT Bearer 인증 + 비밀번호 기반 자격 증명 검증이 적용되어 있다
+## Current implementation — JWT Bearer authentication + password-based credential verification are in place
 
-`src/account/interface/rest/account_router.py`의 라우터는 `APIRouter(..., dependencies=[Depends(get_current_user)])`로 선언되어 있어, `/accounts` 하위 모든 엔드포인트가 JWT 검증을 거친다. 각 라우트 함수도 `current_user: CurrentUser = Depends(get_current_user)`를 파라미터로 받아 검증된 `user_id`를 Command/Query에 실어 전달한다.
+The router in `src/account/interface/rest/account_router.py` is declared with `APIRouter(..., dependencies=[Depends(get_current_user)])`, so every endpoint under `/accounts` goes through JWT verification. Each route function also takes `current_user: CurrentUser = Depends(get_current_user)` as a parameter, carrying the verified `user_id` through to the Command/Query.
 
-`POST /auth/sign-in`도 실제 비밀번호 검증을 거친다. `Credential` Aggregate(bcrypt 해시)와 `PasswordHasher` Technical Service를 통해 저장된 해시와 비교한 뒤에만 토큰을 발급한다.
+`POST /auth/sign-in` also goes through actual password verification. It issues a token only after comparing it against the stored hash via the `Credential` Aggregate (a bcrypt hash) and the `PasswordHasher` Technical Service.
 
-아래는 이 인증 흐름의 상세와, 실제 구현체(`src/auth/`)가 따르는 레이어 배치 원칙이다.
-
----
-
-## 인증 흐름
-
-```
-[가입]
-클라이언트 → POST /auth/sign-up { user_id, password }
-           → SignUpHandler: user_id 중복 확인 → PasswordHasher로 비밀번호 해싱 → Credential 저장
-           → 클라이언트: 201
-
-[토큰 발급]
-클라이언트 → POST /auth/sign-in { user_id, password }
-           → SignInHandler: CredentialRepository로 저장된 해시 조회 → PasswordHasher.verify()로 비밀번호 검증
-           → 검증 성공 시 AuthService.issue_token()으로 Access Token 발급
-           → 클라이언트: { "access_token": "..." }
-
-[인증 요청]
-클라이언트 → Authorization: Bearer <access_token> 헤더 포함
-          → Interface 레이어 (FastAPI Depends 의존성): 토큰 추출 → 검증
-          → request.state 또는 Depends 반환값으로 사용자 정보 전달 → 라우터 함수로 전달
-```
-
-**user_id 미존재와 비밀번호 불일치는 동일한 에러(`INVALID_CREDENTIALS`, 401)로 응답한다** — 둘을 구분해서 응답하면 공격자가 존재하는 아이디를 추측할 수 있다(user enumeration).
+Below are the details of this authentication flow, and the layer-placement principles the actual implementation (`src/auth/`) follows.
 
 ---
 
-## 레이어 배치 원칙
-
-**인증은 Interface 레이어에서만 처리한다.** Domain 레이어와 Application 레이어(Handler)는 인증 컨텍스트에 의존하지 않는다.
+## Authentication flow
 
 ```
-Interface 레이어 (interface/rest/):  Depends()로 토큰 추출 → 검증 → owner_id 확보
-Application 레이어 (application/command|query/): Command/Query에 owner_id 등 필요한 값만 포함
-Domain 레이어 (domain/): 인증 개념 없음. requester_id는 이미 검증된 값으로 전달받음
+[Sign-up]
+Client → POST /auth/sign-up { user_id, password }
+           → SignUpHandler: checks for a duplicate user_id → hashes the password via PasswordHasher → saves the Credential
+           → Client: 201
+
+[Token issuance]
+Client → POST /auth/sign-in { user_id, password }
+           → SignInHandler: looks up the stored hash via CredentialRepository → verifies the password via PasswordHasher.verify()
+           → on successful verification, issues an Access Token via AuthService.issue_token()
+           → Client: { "access_token": "..." }
+
+[Authenticated request]
+Client → includes an Authorization: Bearer <access_token> header
+          → Interface layer (a FastAPI Depends dependency): extracts the token → verifies it
+          → passes user info via request.state or the Depends return value → passed to the router function
 ```
 
-잘못된 패턴 — Handler(Application 레이어)에서 토큰 직접 검증:
+**A missing user_id and a password mismatch respond with the same error (`INVALID_CREDENTIALS`, 401)** — responding differently for each would let an attacker guess which usernames exist (user enumeration).
+
+---
+
+## Layer-placement principles
+
+**Authentication is handled only in the Interface layer.** The Domain layer and the Application layer (Handlers) never depend on the authentication context.
+
+```
+Interface layer (interface/rest/):  Depends() extracts the token → verifies it → obtains owner_id
+Application layer (application/command|query/): the Command/Query includes only the values it needs, such as owner_id
+Domain layer (domain/): has no concept of authentication. requester_id is passed in as an already-verified value
+```
+
+An incorrect pattern — verifying the token directly in a Handler (the Application layer):
 
 ```python
-# 금지 — Handler에서 토큰을 직접 디코딩
+# forbidden — decoding the token directly inside a Handler
 class DepositHandler:
     async def execute(self, token: str, cmd: DepositCommand) -> Transaction:
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])  # ← Interface 레이어 역할
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])  # ← this is the Interface layer's job
         ...
 ```
 
-올바른 패턴 — `Depends()`가 토큰을 검증하고 `owner_id`만 라우터에 전달, 라우터가 Command에 실어 Handler로 넘긴다:
+The correct pattern — `Depends()` verifies the token and passes only `owner_id` to the router, and the router carries it into the Command handed to the Handler:
 
 ```python
 @router.post("/{account_id}/deposit", ...)
 async def deposit(
     account_id: str,
     body: DepositRequest,
-    current_user: CurrentUser = Depends(get_current_user),   # 검증 완료된 사용자만 도달
+    current_user: CurrentUser = Depends(get_current_user),   # only a verified user reaches here
     repo: SqlAlchemyAccountRepository = Depends(_repo),
 ) -> TransactionResponse:
     transaction = await DepositHandler(repo).execute(
@@ -74,19 +74,19 @@ async def deposit(
 
 ---
 
-## JWT Bearer 토큰 패턴 — `python-jose` 기반 구현
+## The JWT Bearer token pattern — a `python-jose`-based implementation
 
-### 의존성
+### Dependencies
 
 ```
 python-jose[cryptography]
 bcrypt
 ```
 
-### 토큰 payload 모델과 발급
+### The token payload model and issuance
 
 ```python
-# src/auth/domain/token.py — JWT payload 모델 (최소한의 정보만 포함)
+# src/auth/domain/token.py — the JWT payload model (contains only the minimal information)
 from pydantic import BaseModel
 
 
@@ -96,7 +96,7 @@ class TokenPayload(BaseModel):
 ```
 
 ```python
-# src/auth/application/service/auth_service.py — 인터페이스 (Technical Service)
+# src/auth/application/service/auth_service.py — the interface (Technical Service)
 from abc import ABC, abstractmethod
 
 
@@ -107,11 +107,11 @@ class AuthService(ABC):
 
     @abstractmethod
     def verify_token(self, token: str) -> str:
-        """검증 성공 시 user_id를 반환하고, 실패 시 InvalidTokenError를 raise한다."""
+        """Returns user_id on successful verification, and raises InvalidTokenError on failure."""
 ```
 
 ```python
-# src/auth/infrastructure/jwt_auth_service.py — 실제 코드
+# src/auth/infrastructure/jwt_auth_service.py — actual code
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -123,10 +123,10 @@ from ..domain.errors import InvalidTokenError
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 
-# 프로덕션에서는 main.py의 lifespan 기동 시 Secrets Manager에서 조회한 값으로
-# set_jwt_secret()이 이 값을 채운다. 그 전까지는 환경 변수를 쓴다 — validate_env()가
-# 프로덕션이 아닌 환경에서 JWT_SECRET 누락을 이미 fail-fast로 막았으므로 조용한
-# 기본값("dev-secret")을 두지 않는다.
+# In production, set_jwt_secret() fills in this value from what's looked up in Secrets
+# Manager at main.py's lifespan startup. Until then, the environment variable is used —
+# since validate_env() already blocks a missing JWT_SECRET via fail-fast in non-production
+# environments, no silent default ("dev-secret") is kept here.
 _jwt_secret: str = os.getenv("JWT_SECRET", "")
 
 
@@ -152,21 +152,21 @@ class JwtAuthService(AuthService):
         return payload["user_id"]
 ```
 
-**`JWT_SECRET`은 이미 fail-fast 검증된다.** [config.md](config.md)의 `validate_env()`가 `JwtConfig()`를 인스턴스화하고, `APP_ENV != "production"`인데 `secret`이 비어 있으면 `sys.exit(1)`로 즉시 종료한다. 프로덕션에서는 `main.py`의 `lifespan`이 Secrets Manager(`app/jwt`)에서 조회해 `set_jwt_secret()`으로 채우므로([secret-manager.md](secret-manager.md) 참고) `JWT_SECRET` 환경 변수가 없어도 된다 — 그래서 `validate_env()`는 프로덕션에서 이 검증을 건너뛴다.
+**`JWT_SECRET` is already validated via fail-fast.** `validate_env()` from [config.md](config.md) instantiates `JwtConfig()`, and if `APP_ENV != "production"` while `secret` is empty, it terminates immediately via `sys.exit(1)`. In production, `main.py`'s `lifespan` looks it up from Secrets Manager (`app/jwt`) and fills it in via `set_jwt_secret()` (see [secret-manager.md](secret-manager.md)), so the `JWT_SECRET` environment variable can be absent — which is why `validate_env()` skips this validation in production.
 
 ---
 
-## Credential — 비밀번호 검증
+## Credential — password verification
 
-`AuthService`(JWT 발급/검증)는 "이미 인증된 사용자"를 전제로 토큰만 다룬다. "이 user_id와 비밀번호가 실제로 일치하는가"를 판단하는 것은 별도 관심사이므로, `Credential` Aggregate + `CredentialRepository` + `PasswordHasher` Technical Service로 분리했다.
+`AuthService` (JWT issuance/verification) only deals with tokens, assuming "an already-authenticated user." Deciding "does this user_id and password actually match" is a separate concern, so it's split out into the `Credential` Aggregate + `CredentialRepository` + the `PasswordHasher` Technical Service.
 
 ```python
-# src/auth/domain/credential.py — Credential Aggregate
+# src/auth/domain/credential.py — the Credential Aggregate
 class Credential:
     def __init__(self, credential_id: str, user_id: str, password_hash: str, created_at: datetime) -> None:
         self.credential_id = credential_id
         self.user_id = user_id
-        self.password_hash = password_hash  # 평문 비밀번호는 domain/application 어디에도 보관하지 않는다
+        self.password_hash = password_hash  # a plaintext password is never stored anywhere in domain/application
         self.created_at = created_at
 
     @classmethod
@@ -176,10 +176,10 @@ class Credential:
 ```
 
 ```python
-# src/auth/domain/repository.py — Repository ABC
-# 조회는 account/card 도메인과 동일하게 단일 find_credentials(...)로 통일한다
-# (repository-pattern.md) — user_id 유일성 검사(sign-up)와 단건 조회(sign-in) 모두
-# take=1 + user_id 필터로 표현한다.
+# src/auth/domain/repository.py — the Repository ABC
+# The lookup is unified into a single find_credentials(...), the same as the account/card
+# domains (repository-pattern.md) — both the user_id uniqueness check (sign-up) and the
+# single-item lookup (sign-in) are expressed with a take=1 + user_id filter.
 class CredentialRepository(ABC):
     @abstractmethod
     async def find_credentials(
@@ -191,7 +191,7 @@ class CredentialRepository(ABC):
 ```
 
 ```python
-# src/auth/application/service/password_hasher.py — Technical Service ABC
+# src/auth/application/service/password_hasher.py — the Technical Service ABC
 class PasswordHasher(ABC):
     @abstractmethod
     async def hash(self, plain_password: str) -> str: ...
@@ -201,10 +201,11 @@ class PasswordHasher(ABC):
 ```
 
 ```python
-# src/auth/infrastructure/security/bcrypt_password_hasher.py — 구현체
+# src/auth/infrastructure/security/bcrypt_password_hasher.py — the implementation
 class BcryptPasswordHasher(PasswordHasher):
-    # bcrypt.hashpw/checkpw는 동기·CPU-bound(salt round 12 기준 수백ms)라 이벤트 루프를 막지
-    # 않도록 asyncio.to_thread로 워커 스레드에서 실행한다.
+    # bcrypt.hashpw/checkpw are synchronous and CPU-bound (hundreds of ms at 12 salt
+    # rounds), so they are run in a worker thread via asyncio.to_thread so they don't
+    # block the event loop.
     async def hash(self, plain_password: str) -> str:
         return await asyncio.to_thread(self._hash_sync, plain_password)
 
@@ -212,11 +213,11 @@ class BcryptPasswordHasher(PasswordHasher):
         return await asyncio.to_thread(self._verify_sync, plain_password, password_hash)
 ```
 
-비밀번호 해싱은 이메일 발송(`NotificationService`)과 동일한 Technical Service 패턴이다 — `application/service/`에 ABC, `infrastructure/<concern>/`에 구현체를 두어 Domain/Application이 `bcrypt` 같은 구체 라이브러리에 의존하지 않게 한다. `AuthService`(토큰 발급/검증)는 동기 메서드이지만, `PasswordHasher`는 CPU-bound 작업을 스레드로 위임해야 하므로 async로 선언했다.
+Password hashing follows the same Technical Service pattern as sending email (`NotificationService`) — the ABC lives in `application/service/` and the implementation in `infrastructure/<concern>/`, so Domain/Application never depend on a concrete library such as `bcrypt`. `AuthService` (token issuance/verification) has synchronous methods, but `PasswordHasher` was declared async since it must delegate a CPU-bound task to a thread.
 
 ### SignUpHandler / SignInHandler
 
-`application/command/`에 위치하는 일반 Handler다(다른 도메인과 동일하게 별도 Command Bus 없이 라우터가 직접 생성해서 호출한다).
+Plain Handlers that live in `application/command/` (the same as other domains, the router constructs and calls them directly, with no separate Command Bus).
 
 ```python
 # src/auth/application/command/sign_up_handler.py
@@ -246,7 +247,7 @@ class SignInHandler:
     async def execute(self, cmd: SignInCommand) -> str:
         credentials, _ = await self._repo.find_credentials(page=0, take=1, user_id=cmd.user_id)
         credential = credentials[0] if credentials else None
-        # user_id 미존재/비밀번호 불일치를 동일한 에러로 응답 — user enumeration 방지
+        # Responds with the same error whether the user_id doesn't exist or the password doesn't match — prevents user enumeration
         if credential is None:
             raise InvalidCredentialsError()
 
@@ -257,41 +258,41 @@ class SignInHandler:
         return self._auth_service.issue_token(credential.user_id)
 ```
 
-`InvalidCredentialsError`는 `main.py`의 `@app.exception_handler`에서 401로, `UserIdAlreadyExistsError`는 400으로 매핑된다(둘 다 `AuthErrorCode`를 `code` 필드에 담아 4필드 에러 응답 형식을 따른다 — [error-handling.md](error-handling.md) 참고).
+`InvalidCredentialsError` is mapped to 401 in `main.py`'s `@app.exception_handler`, and `UserIdAlreadyExistsError` to 400 (both carry `AuthErrorCode` in their `code` field, following the 4-field error-response shape — see [error-handling.md](error-handling.md)).
 
-### 디렉토리 구조
+### Directory structure
 
 ```
 src/auth/
   domain/
-    credential.py              ← Credential Aggregate
+    credential.py              ← the Credential Aggregate
     repository.py              ← CredentialRepository(ABC)
-    token.py                   ← JWT payload 모델
+    token.py                   ← the JWT payload model
     errors.py                  ← InvalidTokenError, InvalidCredentialsError, UserIdAlreadyExistsError
     error_codes.py             ← AuthErrorCode
   application/
     command/
-      sign_up_handler.py       ← user_id 중복 확인 → 해싱 → 저장
-      sign_in_handler.py       ← 해시 조회 → 검증 → 토큰 발급
+      sign_up_handler.py       ← checks for a duplicate user_id → hashes → saves
+      sign_in_handler.py       ← looks up the hash → verifies → issues the token
     service/
-      auth_service.py          ← AuthService(ABC) — 토큰 발급/검증
-      password_hasher.py       ← PasswordHasher(ABC) — 비밀번호 해싱/검증 (Technical Service)
+      auth_service.py          ← AuthService(ABC) — token issuance/verification
+      password_hasher.py       ← PasswordHasher(ABC) — password hashing/verification (Technical Service)
   infrastructure/
-    jwt_auth_service.py        ← AuthService 구현체 (python-jose)
+    jwt_auth_service.py        ← the AuthService implementation (python-jose)
     security/
-      bcrypt_password_hasher.py ← PasswordHasher 구현체 (bcrypt)
+      bcrypt_password_hasher.py ← the PasswordHasher implementation (bcrypt)
     persistence/
-      credential_repository.py ← CredentialRepository 구현체 (SQLAlchemy)
+      credential_repository.py ← the CredentialRepository implementation (SQLAlchemy)
   interface/
     rest/
       auth_router.py           ← POST /auth/sign-up, POST /auth/sign-in
-      dependencies.py          ← get_current_user (JWT 검증 Depends)
+      dependencies.py          ← get_current_user (the JWT-verification Depends)
       schemas.py                ← SignUpRequest, SignInRequest, SignInResponse
 ```
 
 ---
 
-### FastAPI `Depends` 기반 인증 의존성
+### The FastAPI `Depends`-based authentication dependency
 
 ```python
 # src/auth/interface/rest/dependencies.py
@@ -318,19 +319,19 @@ def get_current_user(
     return CurrentUser(user_id=user_id)
 ```
 
-`fastapi.security.HTTPBearer`가 `Authorization: Bearer <token>` 헤더 파싱과 "헤더 자체가 없음" 케이스(401)를 대신 처리해준다. `get_current_user`는 그 위에서 서명·만료만 검증한다.
+`fastapi.security.HTTPBearer` handles parsing the `Authorization: Bearer <token>` header and the "header itself is missing" case (401) on our behalf. `get_current_user` only verifies the signature/expiration on top of that.
 
-### 라우터에 적용
+### Applied to the router
 
 ```python
-# src/account/interface/rest/account_router.py — 실제 코드
+# src/account/interface/rest/account_router.py — actual code
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 
 @router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
 async def deposit(
     account_id: str,
     body: DepositRequest,
-    current_user: CurrentUser = Depends(get_current_user),   # 검증 완료된 사용자만 도달
+    current_user: CurrentUser = Depends(get_current_user),   # only a verified user reaches here
     repo: SqlAlchemyAccountRepository = Depends(_repo),
 ) -> TransactionResponse:
     transaction = await DepositHandler(repo).execute(
@@ -339,38 +340,38 @@ async def deposit(
     ...
 ```
 
-`APIRouter(dependencies=[Depends(get_current_user)])`로 라우터 단위에 걸면 개별 엔드포인트마다 반복 선언할 필요가 없다.
+Hanging it at the router level (a unit roughly equivalent to a class) via `APIRouter(dependencies=[Depends(get_current_user)])` avoids having to redeclare it on every individual endpoint.
 
 ```python
 router = APIRouter(prefix="/accounts", tags=["Account"], dependencies=[Depends(get_current_user)])
 ```
 
-**라우터(클래스에 준하는 단위) 레벨에 거는 이유:** 엔드포인트별로 개별 적용하면 새 엔드포인트 추가 시 인증 적용을 누락할 위험이 있다. `POST /auth/sign-in`, `GET /health/*`처럼 인증이 불필요한 엔드포인트만 별도 라우터로 분리해 `dependencies`를 걸지 않는다.
+**Why it's hung at the router (class-equivalent unit) level:** applying it per endpoint risks forgetting to apply authentication when a new endpoint is added. Only endpoints that don't need authentication, such as `POST /auth/sign-in`, `GET /health/*`, are split into a separate router with no `dependencies` attached.
 
 ---
 
-## 토큰 payload 설계
+## Token payload design
 
-JWT payload에는 **최소한의 정보**만 담는다.
+The JWT payload carries only **the minimal information**.
 
 ```python
-# 올바른 방식 — user_id만 포함
+# correct approach — includes only user_id
 {"user_id": "owner-1", "exp": 1234571490}
 
-# 잘못된 방식 — 민감 정보 또는 자주 변하는 정보 포함
+# incorrect approach — includes sensitive info or frequently-changing info
 {"user_id": "...", "email": "...", "role": "...", "permissions": [...]}
 ```
 
-**이유:**
-- JWT payload는 서명만 되고 암호화되지 않는다 (base64 디코딩으로 누구나 읽을 수 있다).
-- 역할/권한은 발급 후 변경될 수 있다. 토큰에 담으면 변경이 즉시 반영되지 않는다.
-- 추가 사용자 정보가 필요하면 요청 처리 시점에 DB에서 조회한다.
+**Reasons:**
+- A JWT payload is only signed, not encrypted (anyone can read it via base64 decoding).
+- A role/permission can change after issuance. Putting it in the token means the change isn't reflected immediately.
+- If additional user info is needed, it's looked up from the DB at request-processing time.
 
 ---
 
-## 테스트에서의 인증 우회
+## Bypassing authentication in tests
 
-Account/Card/Notification E2E 테스트(`tests/test_account_e2e.py` 등)는 `JwtAuthService().issue_token(user_id)`로 토큰을 직접 발급해 `Authorization` 헤더에 실어 보낸다 — `POST /auth/sign-up`/`POST /auth/sign-in`을 거치지 않고도 임의의 `user_id`로 서명된 유효한 토큰을 만들 수 있다(비밀번호 검증은 sign-in 엔드포인트에만 있고, JWT 서명/검증 자체는 `user_id`만 있으면 되기 때문). 이 도메인들의 관심사는 "인증된 사용자로서의 계좌/카드 동작"이지 "로그인 절차 자체"가 아니므로, sign-up/sign-in 실호출 없이 테스트 사용자를 준비하는 편이 더 빠르고 단순하다.
+The Account/Card/Notification E2E tests (`tests/test_account_e2e.py`, etc.) issue a token directly with `JwtAuthService().issue_token(user_id)` and carry it in the `Authorization` header — a valid token signed with an arbitrary `user_id` can be created without going through `POST /auth/sign-up`/`POST /auth/sign-in` (password verification exists only at the sign-in endpoint, and JWT signing/verification itself only needs a `user_id`). Since these domains' concern is "account/card behavior as an authenticated user," not "the login procedure itself," preparing a test user without making real sign-up/sign-in calls is faster and simpler.
 
 ```python
 def auth_headers(user_id: str) -> dict:
@@ -378,14 +379,14 @@ def auth_headers(user_id: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 ```
 
-`POST /auth/sign-up`/`POST /auth/sign-in` 자체의 동작(가입 성공, 비밀번호 불일치, 존재하지 않는 아이디, 아이디 중복, 비밀번호 검증 실패)은 별도의 `tests/test_auth_e2e.py`가 실제 HTTP 요청으로 검증한다 — 이 테스트만 sign-up/sign-in을 실제로 호출한다.
+The behavior of `POST /auth/sign-up`/`POST /auth/sign-in` itself (successful sign-up, password mismatch, a nonexistent username, a duplicate username, a password-verification failure) is verified by an actual HTTP request in a separate `tests/test_auth_e2e.py` — only this test actually calls sign-up/sign-in.
 
-→ 상세 테스트 전략은 [testing.md](testing.md) 참조.
+→ See [testing.md](testing.md) for the detailed testing strategy.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — 요청 파이프라인에서 인증 위치
-- [layer-architecture.md](layer-architecture.md) — Interface 레이어 역할
-- [config.md](config.md) — 환경 변수 관리, `JWT_SECRET` fail-fast 검증
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — where authentication sits in the request pipeline
+- [layer-architecture.md](layer-architecture.md) — the Interface layer's role
+- [config.md](config.md) — environment-variable management, `JWT_SECRET` fail-fast validation

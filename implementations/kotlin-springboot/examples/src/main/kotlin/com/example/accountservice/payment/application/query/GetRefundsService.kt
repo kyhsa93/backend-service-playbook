@@ -7,9 +7,9 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * Refund 테이블은 ownerId를 갖지 않으므로, Payment를 `paymentId` + `ownerId`로 먼저 조회해 소유권을
- * 확인한 뒤에만 그 결제에 대한 환불 내역을 조회한다(account의 `getTransactions`가 계좌 소유권을
- * 먼저 확인하는 것과 동일한 패턴).
+ * The Refund table does not have an ownerId, so it queries Payment by `paymentId` + `ownerId` first to
+ * verify ownership, and only then queries that payment's refund history (the same pattern as
+ * account's `getTransactions` verifying account ownership first).
  */
 @Service
 @Transactional(readOnly = true)

@@ -1,30 +1,30 @@
-# 공유 코드 구조 (Go)
+# Shared Code Structure (Go)
 
-Go 전용 문서 — root에는 대응 문서가 없다. NestJS는 `src/common/`, `src/database/`, `src/outbox/`, `src/auth/`를 `@Global` 모듈로 선언해 여러 도메인 모듈에 주입한다. Go에는 "전역 모듈"이라는 개념이 없다 — **공유 코드는 그냥 `internal/` 아래의 평범한 패키지이고, "공유"는 `main.go`가 같은 인스턴스를 여러 도메인의 생성자에 전달하는 것으로 이루어진다.**
-
----
-
-## 현재 상태 — `common/`/`config/`/`infrastructure/auth/`/`infrastructure/outbox/` 모두 존재
-
-`internal/` 트리를 확인하면(directory-structure.md 참고), Account/Card/Payment/Credential 네 도메인이 함께 쓰는 공유 패키지가 이미 여러 개 있다:
-
-- **`internal/common/`**(`id.go`) — `common.NewID()`(UUID v4 하이픈 제거) 유틸([aggregate-id.md](aggregate-id.md) 참고).
-- **`internal/config/`**(`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`) — 관심사별 설정 로딩/검증([config.md](config.md) 참고).
-- **`internal/infrastructure/outbox/`**(`Writer`/`Poller`/`Consumer`) — 알림 발송이 유실되면 안 되는 부가효과여서 dual-write 대신 Outbox 패턴이 필요해졌다([domain-events.md](domain-events.md) 참고).
-- **`internal/infrastructure/auth/`**(`bcrypt_password_hasher.go`/`jwt_service.go`), **`internal/infrastructure/secret/`**(`service.go`) — 인증/Secrets Manager Technical Service 구현체([authentication.md](authentication.md), [secret-manager.md](secret-manager.md) 참고).
-
-이 문서는 그 배치를 도메인이 더 늘어났을 때 어디로 나뉘는지 정리한다.
+Go-specific document — there's no corresponding document at the root. NestJS declares `src/common/`, `src/database/`, `src/outbox/`, `src/auth/` as `@Global` modules and injects them into multiple domain modules. Go has no concept of a "global module" — **shared code is just an ordinary package under `internal/`, and "sharing" happens by `main.go` passing the same instance into multiple domains' constructors.**
 
 ---
 
-## 실제 구조
+## Current state — `common/`/`config/`/`infrastructure/auth/`/`infrastructure/outbox/` all exist
+
+Looking at the `internal/` tree (see directory-structure.md), there are already several shared packages used together by the Account/Card/Payment/Credential domains:
+
+- **`internal/common/`** (`id.go`) — the `common.NewID()` (UUID v4 with hyphens removed) utility (see [aggregate-id.md](aggregate-id.md)).
+- **`internal/config/`** (`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`) — config loading/validation split by concern (see [config.md](config.md)).
+- **`internal/infrastructure/outbox/`** (`Writer`/`Poller`/`Consumer`) — the Outbox pattern is needed instead of dual-write because sending a notification is a side effect that must not be lost (see [domain-events.md](domain-events.md)).
+- **`internal/infrastructure/auth/`** (`bcrypt_password_hasher.go`/`jwt_service.go`), **`internal/infrastructure/secret/`** (`service.go`) — authentication / Secrets Manager Technical Service implementations (see [authentication.md](authentication.md), [secret-manager.md](secret-manager.md)).
+
+This document lays out where this placement gets subdivided as more domains are added.
+
+---
+
+## Actual structure
 
 ```
 internal/
-  common/                          # 프레임워크 무의존 순수 유틸 — 어떤 도메인도 소유하지 않는다
+  common/                          # framework-agnostic pure utilities — owned by no domain
     id.go                          # common.NewID() — aggregate-id.md
 
-  config/                          # 관심사별 설정 로딩/검증 — config.md
+  config/                          # config loading/validation split by concern — config.md
     database.go
     jwt.go
     rate_limit.go
@@ -32,83 +32,83 @@ internal/
 
   infrastructure/
     persistence/
-      account_repository.go        # Account 전용
-      card_repository.go           # Card 전용
-      credential_repository.go     # Credential 전용
-    auth/                          # 인증 Technical Service 구현체 — authentication.md
+      account_repository.go        # Account-only
+      card_repository.go           # Card-only
+      credential_repository.go     # Credential-only
+    auth/                          # authentication Technical Service implementation — authentication.md
       bcrypt_password_hasher.go
       jwt_service.go
-    secret/                        # Secrets Manager 접근 구현체 — secret-manager.md
+    secret/                        # Secrets Manager access implementation — secret-manager.md
       service.go
     notification/
-      service.go                   # Account 전용 알림 구현체
-    outbox/                        # OutboxWriter/Poller/Consumer(domain-events.md), 도메인이 늘어나도 공유
-      writer.go                    # Repository.Save 트랜잭션 안에서 이벤트를 outbox 행으로 적재
-      poller.go                    # 독립 tick으로 outbox 테이블을 읽어 SQS로 발행
-      consumer.go                  # SQS long polling → 핸들러 라우팅
+      service.go                   # Account-only notification implementation
+    outbox/                        # OutboxWriter/Poller/Consumer (domain-events.md), shared as more domains are added
+      writer.go                    # loads events as outbox rows within the Repository.Save transaction
+      poller.go                    # reads the outbox table on an independent tick and publishes to SQS
+      consumer.go                  # SQS long polling → handler routing
       publisher.go
       sqs_client.go
 
   interface/
     http/
-      middleware/                  # 모든 도메인의 라우터가 공유하는 미들웨어 — cross-cutting-concerns.md
+      middleware/                  # middleware shared by every domain's router — cross-cutting-concerns.md
         correlation_id_middleware.go
         auth_middleware.go
         rate_limit_middleware.go
-      health_handler.go            # 도메인에 속하지 않는 liveness/readiness — graceful-shutdown.md
+      health_handler.go            # liveness/readiness, which belongs to no domain — graceful-shutdown.md
 
   domain/
     account/                       # Account Bounded Context
     card/                          # Card Bounded Context
-    payment/                       # Payment/Refund Bounded Context — EvaluateRefundEligibility(도메인 서비스, 여러 Aggregate 조율)
-    credential/                    # 인증/가입 Aggregate
+    payment/                       # Payment/Refund Bounded Context — EvaluateRefundEligibility (a domain service coordinating multiple Aggregates)
+    credential/                    # authentication/signup Aggregate
 
   application/
-    command/                       # 세 도메인의 핸들러를 평평한 구조로 함께 담는다 (도메인이 더 늘면 command/<domain>/ 검토)
+    command/                       # holds the three domains' handlers together in a flat structure (consider command/<domain>/ if more domains are added)
     query/
 ```
 
-- **`internal/common/`** — 어떤 도메인도 참조할 수 있는 프레임워크 무의존 순수 함수(ID 생성 등). Domain 레이어에서 import해도 원칙 2(프레임워크 무의존)를 어기지 않는다 — `common` 패키지 자체가 표준 라이브러리 수준의 순수 함수만 담기 때문이다.
-- **`internal/interface/http/middleware/`** — 이미 [cross-cutting-concerns.md](cross-cutting-concerns.md)가 위치를 정해 둔 HTTP 전용 공유 코드. 도메인마다 반복 구현하지 않고 하나의 체인을 모든 라우터에 적용한다.
-- **`internal/infrastructure/outbox/`** — Account/Card/Payment 세 도메인의 Repository가 같은 `outbox.Writer` 인스턴스를, `main.go`가 조립하는 단일 `outbox.Poller`/`outbox.Consumer`가 같은 공유 `map[string]outbox.Handler`를 공유한다([domain-events.md](domain-events.md) 참고).
-- **`internal/infrastructure/database/`** — 여러 Repository 저장을 하나의 DB 트랜잭션으로 묶는 `WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`. 계좌 간 송금(Transfer)이 출금 계좌+입금 계좌 저장을 하나의 트랜잭션으로 묶는 실사용처다([persistence.md](persistence.md) 참고).
-- **도메인 전용 코드는 공유 패키지로 옮기지 않는다** — `account_repository.go`처럼 특정 도메인만 쓰는 구현체는 그 도메인의 `infrastructure/<concern>/` 하위에 그대로 둔다. "공유"는 두 도메인 이상이 실제로 같은 코드를 필요로 할 때만 성립한다(YAGNI).
+- **`internal/common/`** — framework-agnostic pure functions (ID generation, etc.) that any domain can reference. Importing it from the Domain layer doesn't violate Principle 2 (framework-agnosticism) — the `common` package itself contains only functions as pure as the standard library.
+- **`internal/interface/http/middleware/`** — HTTP-only shared code whose location is already fixed by [cross-cutting-concerns.md](cross-cutting-concerns.md). One chain is applied to every router instead of being reimplemented per domain.
+- **`internal/infrastructure/outbox/`** — the Repositories of the three domains Account/Card/Payment share the same `outbox.Writer` instance, and the single `outbox.Poller`/`outbox.Consumer` that `main.go` assembles share the same shared `map[string]outbox.Handler` (see [domain-events.md](domain-events.md)).
+- **`internal/infrastructure/database/`** — `WithTx`/`TxFromContext`/`QuerierFrom`/`Manager` bundle multiple Repository saves into a single DB transaction. Transferring money between accounts (Transfer), which bundles the withdrawal-account save and deposit-account save into one transaction, is the real use case for this (see [persistence.md](persistence.md)).
+- **Domain-only code is never moved into a shared package** — an implementation used by only one domain, like `account_repository.go`, stays under that domain's `infrastructure/<concern>/`. "Sharing" only applies once two or more domains actually need the same code (YAGNI).
 
 ---
 
-## "공유"는 선언이 아니라 같은 인스턴스를 전달하는 것
+## "Sharing" is passing the same instance, not a declaration
 
-NestJS는 `DatabaseModule`을 `@Global()`로 선언하면 모든 모듈이 별도 `imports` 없이 `DataSource`를 주입받을 수 있다. Go는 그런 전역 스코프 선언이 없다 — 공유는 순전히 **`main.go`가 같은 값을 여러 생성자에 인자로 넘기는 것**으로 이루어진다.
+In NestJS, declaring `DatabaseModule` as `@Global()` lets every module have `DataSource` injected without a separate `imports` entry. Go has no such global-scope declaration — sharing happens purely by **`main.go` passing the same value as an argument to multiple constructors**.
 
 ```go
-// main.go — db 커넥션 풀 하나를 두 도메인의 Infrastructure에 공유
+// main.go — sharing one db connection pool across two domains' Infrastructure
 db, err := sql.Open("postgres", cfg.URL)
 // ...
 
-accountRepo := persistence.NewAccountRepository(db)  // Account가 db를 공유
-userRepo := userpersistence.NewRepository(db)        // User도 같은 db를 공유
+accountRepo := persistence.NewAccountRepository(db)  // Account shares db
+userRepo := userpersistence.NewRepository(db)        // User shares the same db
 
 logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-loggingMW := middleware.RequestLogging(logger)       // 미들웨어도 한 번만 만들어 여러 라우터에 재사용
+loggingMW := middleware.RequestLogging(logger)       // middleware is also created once and reused across routers
 ```
 
-"전역"이라는 특별한 스코프는 없다 — `db`, `logger` 같은 변수가 `main()` 함수 스코프에 있고, 그 값을 필요로 하는 모든 생성자에 인자로 넘겼을 뿐이다. NestJS의 `@Global` 데코레이터가 하던 일을 Go에서는 "그 변수를 아는 함수에게 인자로 넘긴다"는 지극히 평범한 방식으로 대신한다. 상세는 [module-pattern.md](module-pattern.md)와 [bootstrap.md](bootstrap.md) 참고.
+There is no special "global" scope — variables like `db` and `logger` simply live in the scope of the `main()` function, and their values are passed as arguments to every constructor that needs them. What NestJS's `@Global` decorator did is replaced in Go by the utterly ordinary approach of "pass that variable as an argument to the functions that know about it." See [module-pattern.md](module-pattern.md) and [bootstrap.md](bootstrap.md) for details.
 
 ---
 
-## 원칙
+## Principles
 
-- **공유 패키지는 실제로 두 도메인(또는 두 Aggregate 인스턴스) 이상이 필요로 할 때만 만든다** — 미리 빈 공유 패키지를 만들어두지 않는다. `internal/common/`/`internal/config/`는 Account/Card/Credential이 실제로 공유하는 코드를 담고, `internal/infrastructure/database/`(공유 트랜잭션 헬퍼)는 계좌 간 송금이 그 시나리오의 실사용처다.
-- **`internal/common/`은 프레임워크 무의존 순수 함수만** 담는다 — DB, HTTP 등 특정 기술에 의존하는 코드를 넣지 않는다(그런 코드는 `internal/infrastructure/<concern>/`로 간다).
-- **HTTP 전용 공유 코드는 `internal/interface/http/middleware/`**에 모은다 — 도메인별 Handler에 중복 구현하지 않는다.
-- **공유는 선언이 아니라 배선**이다 — `main.go`에서 같은 인스턴스를 여러 생성자에 전달하는 것이 "전역 모듈"을 대신한다.
+- **Create a shared package only when two or more domains (or two or more Aggregate instances) actually need it** — don't create an empty shared package ahead of time. `internal/common/`/`internal/config/` hold code Account/Card/Credential actually share, and `internal/infrastructure/database/` (the shared transaction helper) has cross-account Transfer as its real use case for that scenario.
+- **`internal/common/` holds only framework-agnostic pure functions** — never put code that depends on a specific technology like DB or HTTP here (that code goes to `internal/infrastructure/<concern>/`).
+- **HTTP-only shared code is gathered in `internal/interface/http/middleware/`** — it is never duplicated across per-domain Handlers.
+- **Sharing is wiring, not a declaration** — passing the same instance to multiple constructors in `main.go` is what replaces a "global module."
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [directory-structure.md](directory-structure.md) — 공용 인프라 디렉토리 현황과 각각 실사용처가 생긴 시점
-- [aggregate-id.md](aggregate-id.md) — `internal/common/id.go` 실제 코드
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — `internal/interface/http/middleware/` 공유 미들웨어
-- [module-pattern.md](module-pattern.md) — 패키지 경계와 배선 메커니즘 전반
-- [bootstrap.md](bootstrap.md) — `main.go`가 공유 인스턴스를 만들고 전달하는 실제 순서
+- [directory-structure.md](directory-structure.md) — the current state of shared infrastructure directories and when each one gained a real use case
+- [aggregate-id.md](aggregate-id.md) — the actual code in `internal/common/id.go`
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — the shared middleware in `internal/interface/http/middleware/`
+- [module-pattern.md](module-pattern.md) — package boundaries and the wiring mechanism overall
+- [bootstrap.md](bootstrap.md) — the actual order in which `main.go` creates and passes shared instances

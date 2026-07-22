@@ -9,7 +9,7 @@ import (
 
 var snakeCase = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*\.go$`)
 
-// checkFileNaming — [1] 파일명 snake_case 검사
+// checkFileNaming — [1] checks that file names are snake_case
 func checkFileNaming(root string) RuleResult {
 	result := RuleResult{Section: "file-naming"}
 	found := false
@@ -29,14 +29,14 @@ func checkFileNaming(root string) RuleResult {
 		if snakeCase.MatchString(name) {
 			result.Findings = append(result.Findings, passFinding(rel))
 		} else {
-			result.Findings = append(result.Findings, failFinding(rel, "파일명은 snake_case.go 여야 함"))
+			result.Findings = append(result.Findings, failFinding(rel, "file name must be snake_case.go"))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("Go 파일 없음"))
+		result.Findings = append(result.Findings, skipFinding("no Go files"))
 	}
 	return result
 }

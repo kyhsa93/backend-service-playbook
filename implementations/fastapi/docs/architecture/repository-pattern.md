@@ -1,18 +1,18 @@
-# Repository 패턴
+# Repository Pattern
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/repository-pattern.md](../../../../docs/architecture/repository-pattern.md)
+> Framework-agnostic principles: [../../../../docs/architecture/repository-pattern.md](../../../../docs/architecture/repository-pattern.md)
 
-## Aggregate Root 단위 Repository
+## One Repository per Aggregate Root
 
-Account Aggregate에 대해 구현체는 하나(`SqlAlchemyAccountRepository`)뿐이지만, 인터페이스(ABC)는 쓰기 모델 `AccountRepository`와 읽기 전용 `AccountQuery` 두 개로 나뉜다 — CommandHandler는 `AccountRepository`, QueryHandler는 `AccountQuery`에 의존한다. 자세한 배경은 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+There is only one implementation for the Account Aggregate (`SqlAlchemyAccountRepository`), but the interface (ABC) is split into two: the write model `AccountRepository` and the read-only `AccountQuery` — a CommandHandler depends on `AccountRepository`, a QueryHandler on `AccountQuery`. See [cqrs-pattern.md](cqrs-pattern.md) for the detailed background.
 
 ```
 src/account/
   domain/
-    repository.py             ← AccountQuery(ABC, 읽기 전용) + AccountRepository(ABC, AccountQuery 상속 + 쓰기) — 인터페이스
+    repository.py             ← AccountQuery(ABC, read-only) + AccountRepository(ABC, extends AccountQuery + write) — interfaces
   infrastructure/
     persistence/
-      account_repository.py   ← SqlAlchemyAccountRepository(AccountRepository) — 구현체, AccountQuery도 함께 만족
+      account_repository.py   ← SqlAlchemyAccountRepository(AccountRepository) — implementation, also satisfies AccountQuery
 ```
 
 ```python
@@ -24,7 +24,7 @@ from .transaction import Transaction
 
 
 class AccountQuery(ABC):
-    """읽기 전용 인터페이스 — Query Handler 전용."""
+    """Read-only interface — for the Query Handler only."""
 
     @abstractmethod
     async def find_accounts(
@@ -37,16 +37,16 @@ class AccountQuery(ABC):
 
 
 class AccountRepository(AccountQuery, ABC):
-    """쓰기 모델 — AccountQuery를 상속해 조회 메서드를 재사용한다."""
+    """Write model — extends AccountQuery to reuse the lookup methods."""
 
     @abstractmethod
     async def save_account(self, account: Account) -> None: ...
 ```
 
-조회 메서드는 `find_accounts` 하나로 통일되어 있다 — 단건 조회는 필터(`account_id`+`owner_id`)와 `take=1`로 호출한 뒤 결과 목록의 첫 항목을 꺼내는 패턴을 쓴다:
+Lookups are unified under a single `find_accounts` method — a single-item lookup is done by calling it with filters (`account_id`+`owner_id`) and `take=1`, then pulling the first item out of the result list:
 
 ```python
-# application/command/deposit_handler.py — 단건 조회 패턴
+# application/command/deposit_handler.py — single-item lookup pattern
 async def execute(self, cmd: DepositCommand) -> Transaction:
     accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
     account = accounts[0] if accounts else None
@@ -55,15 +55,15 @@ async def execute(self, cmd: DepositCommand) -> Transaction:
     ...
 ```
 
-`deposit_handler.py`/`withdraw_handler.py`/`suspend_account_handler.py`/`reactivate_account_handler.py`/`close_account_handler.py`/`get_account_handler.py`/`get_transactions_handler.py` 등 계좌 단건을 조회하는 모든 호출부가 이 패턴을 따른다. java/kotlin-springboot의 `findAccounts` 패턴과 형태가 같다.
+Every call site that looks up a single account — `deposit_handler.py`/`withdraw_handler.py`/`suspend_account_handler.py`/`reactivate_account_handler.py`/`close_account_handler.py`/`get_account_handler.py`/`get_transactions_handler.py`, etc. — follows this pattern. It has the same shape as java/kotlin-springboot's `findAccounts` pattern.
 
-CommandHandler는 `AccountRepository` 타입(ABC), QueryHandler는 `AccountQuery` 타입(ABC)으로 주입받는다 — 어느 쪽도 `SqlAlchemyAccountRepository`를 직접 import하지 않는다. DI 바인딩은 FastAPI `Depends` 팩토리가 담당한다: [layer-architecture.md](layer-architecture.md), [cqrs-pattern.md](cqrs-pattern.md) 참조.
+A CommandHandler is injected with the `AccountRepository` type (ABC), a QueryHandler with the `AccountQuery` type (ABC) — neither imports `SqlAlchemyAccountRepository` directly. The DI binding is handled by a FastAPI `Depends` factory: see [layer-architecture.md](layer-architecture.md), [cqrs-pattern.md](cqrs-pattern.md).
 
-`Transaction`(하위 Entity)은 별도 Repository를 갖지 않는다 — `AccountRepository.find_transactions()`를 통해 Account Aggregate 경계 안에서 조회된다. 이는 root의 "Aggregate 내부 하위 Entity는 Aggregate Root의 Repository를 통해 함께 저장/조회한다" 원칙을 정확히 따른다.
+`Transaction` (a child Entity) has no Repository of its own — it is looked up within the Account Aggregate's boundary via `AccountRepository.find_transactions()`. This precisely follows the root principle that "a child Entity inside an Aggregate is saved/looked up together, only through the Aggregate Root's Repository."
 
 ---
 
-## Repository 구현체 — `infrastructure/persistence/account_repository.py`
+## Repository implementation — `infrastructure/persistence/account_repository.py`
 
 ```python
 class SqlAlchemyAccountRepository(AccountRepository):
@@ -85,11 +85,11 @@ class SqlAlchemyAccountRepository(AccountRepository):
         await self._session.flush()
 ```
 
-`save_account()`가 신규/기존을 판별해 upsert처럼 동작하는 것은 root의 "Repository에 별도 update 메서드를 두지 않는다 — `save<Noun>` 하나로 저장" 원칙과 정확히 일치한다. `pull_pending_transactions()`로 Aggregate가 만든 하위 Entity(`Transaction`)를 함께 저장하는 것도 Aggregate 경계를 지킨 cascade 저장이다.
+That `save_account()` behaves like an upsert by distinguishing new vs. existing precisely matches the root principle "don't add a separate update method to the Repository — save with a single `save<Noun>`." Saving the child Entities (`Transaction`) the Aggregate created together via `pull_pending_transactions()` is also a cascade save that respects the Aggregate boundary.
 
 ---
 
-## 동적 필터 패턴
+## Dynamic filter pattern
 
 ```python
 # infrastructure/persistence/account_repository.py
@@ -109,26 +109,26 @@ async def find_accounts(self, page: int, take: int, account_id=None, owner_id=No
     ...
 ```
 
-각 조건이 값이 있을 때만 적용되고(`if account_id:`), `count_stmt`도 같은 조건을 병행 적용해 정확한 전체 건수를 계산한다 — [api-response.md](api-response.md)가 요구하는 "count는 필터 적용 후 전체 건수" 원칙과 일치한다.
+Each condition is applied only when a value is present (`if account_id:`), and `count_stmt` applies the same conditions in parallel to compute an accurate total count — this matches the principle required by [api-response.md](api-response.md), "count is the total after filters are applied."
 
 ---
 
-## 원칙
+## Principles
 
-- **1 Aggregate Root = 1 구현체, 쓰기/읽기 ABC는 분리 가능**: `SqlAlchemyAccountRepository` 구현체 하나가 쓰기용 `AccountRepository`와 읽기 전용 `AccountQuery` 두 인터페이스를 함께 만족한다 — [cqrs-pattern.md](cqrs-pattern.md) 참조.
-- **인터페이스는 domain/, 구현체는 infrastructure/**.
-- **저장은 `save<Noun>` 하나만 사용, 별도 update 메서드 없음**: root의 `save<Noun>` 네이밍을 그대로 따른다 — `save_account`/`save_card`/`save_payment`/`save_refund`. 신규/기존 판별은 메서드 내부에서 upsert로 처리한다.
-- **조회 메서드는 `find<Noun>s` 하나로 통일**: `AccountQuery.find_accounts()` 하나로 목록/단건 조회를 모두 처리한다 — 단건 조회는 `account_id`+`owner_id` 필터와 `take=1`로 호출한 뒤 첫 항목을 꺼낸다. `find_by_*`/`find_all`/`count*`/bare `save`/bare `delete`/`update_*` 같은 안티패턴은 harness의 `repository-naming` 규칙이 잡아낸다.
-- **별도 `update_*` 메서드를 두지 않는다**: 상태 변경은 `find_<noun>s`로 Aggregate를 로드해 도메인 메서드로 변경한 뒤 `save_<noun>`으로 통째로 다시 저장하는 것으로 표현한다 — 부분 업데이트용 메서드(`update_status` 등)를 Repository ABC에 별도로 추가하지 않는다.
-- **동적 필터는 값이 있을 때만 적용**.
-- **삭제는 soft delete**: [persistence.md](persistence.md) 참조.
+- **1 Aggregate Root = 1 implementation; write/read ABCs may be split**: a single `SqlAlchemyAccountRepository` implementation satisfies both the write interface `AccountRepository` and the read-only interface `AccountQuery` — see [cqrs-pattern.md](cqrs-pattern.md).
+- **The interface lives in domain/, the implementation in infrastructure/**.
+- **Saving uses only a single `save<Noun>`, with no separate update method**: follows the root's `save<Noun>` naming as-is — `save_account`/`save_card`/`save_payment`/`save_refund`. Distinguishing new vs. existing is handled as an upsert inside the method.
+- **Lookup methods are unified under a single `find<Noun>s`**: a single `AccountQuery.find_accounts()` handles both list and single-item lookups — a single-item lookup is done by calling it with the `account_id`+`owner_id` filters and `take=1`, then pulling out the first item. Anti-patterns such as `find_by_*`/`find_all`/`count*`/bare `save`/bare `delete`/`update_*` are caught by the harness's `repository-naming` rule.
+- **No separate `update_*` methods are added**: a state change is expressed by loading the Aggregate with `find_<noun>s`, mutating it via a domain method, then saving it whole again with `save_<noun>` — a method for partial updates (e.g. `update_status`) is never added separately to the Repository ABC.
+- **Dynamic filters are applied only when a value is present**.
+- **Deletion is a soft delete**: see [persistence.md](persistence.md).
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root 설계 상세
-- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, DI 바인딩
-- [domain-events.md](domain-events.md) — Repository에서 Domain Event → Outbox 저장
-- [persistence.md](persistence.md) — 트랜잭션, Soft Delete, 마이그레이션
-- [api-response.md](api-response.md) — 목록 조회 응답과 count
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate Root design details
+- [layer-architecture.md](layer-architecture.md) — layer dependency direction, DI binding
+- [domain-events.md](domain-events.md) — saving Domain Events → Outbox in the Repository
+- [persistence.md](persistence.md) — transactions, soft delete, migrations
+- [api-response.md](api-response.md) — list-query responses and count

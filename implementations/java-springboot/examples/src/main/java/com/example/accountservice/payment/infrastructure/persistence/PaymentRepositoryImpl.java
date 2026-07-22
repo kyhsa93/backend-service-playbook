@@ -18,9 +18,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Payment의 쓰기용 {@link PaymentRepository}와 읽기용 {@link PaymentQuery}를 한 클래스에서 구현한다
- * (account/infrastructure/persistence/AccountRepositoryImpl과 동일한 구조). 각 Application 레이어는 자신에게 필요한
- * 좁은 인터페이스(Repository 또는 Query)만 주입받는다.
+ * Implements both the write-side {@link PaymentRepository} and the read-side {@link PaymentQuery}
+ * for Payment in a single class (the same structure as
+ * account/infrastructure/persistence/AccountRepositoryImpl). Each Application layer only injects
+ * the narrow interface it needs (Repository or Query).
  */
 @Repository
 @RequiredArgsConstructor
@@ -58,7 +59,8 @@ public class PaymentRepositoryImpl implements PaymentRepository, PaymentQuery {
                         .map(existing -> PaymentMapper.updateEntity(existing, payment))
                         .orElseGet(() -> PaymentMapper.toNewEntity(payment));
         jpaRepository.save(entity);
-        // Aggregate 저장과 같은 물리 트랜잭션 안에서 Outbox에 이벤트를 기록한다(domain-events.md 참고).
+        // Records the event to the Outbox within the same physical transaction as saving the
+        // Aggregate (see domain-events.md).
         outboxWriter.saveAll(payment.pullDomainEvents());
     }
 

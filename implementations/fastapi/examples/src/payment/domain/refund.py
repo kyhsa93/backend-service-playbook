@@ -13,9 +13,10 @@ from .refund_status import RefundStatus
 
 
 class Refund:
-    """Refund Aggregate. 원 결제(Payment)의 상태·금액에 대한 판단은 Refund 자신이 할 수
-    없다 — RefundEligibilityService(Domain Service)가 Payment+Refund 두 Aggregate를
-    함께 로드해 조율한 결과(RefundDecision)를 받아 approve()/reject()를 호출한다.
+    """The Refund Aggregate. Refund itself cannot decide on the original payment's (Payment's)
+    status/amount — RefundEligibilityService (a Domain Service) loads both the Payment and
+    Refund Aggregates together, and approve()/reject() are called with the coordinated result
+    (a RefundDecision).
     """
 
     def __init__(
@@ -49,13 +50,14 @@ class Refund:
         )
 
     def approve(self, account_id: str, owner_id: str) -> None:
-        # account_id/owner_id는 RefundEligibilityService의 판단 결과가 아니라, 판단 이후
-        # 외부 BC에 전파할 Integration Event를 조립하기 위해 Application 레이어가 원 결제
-        # (Payment)에서 읽어 넘기는 참조 데이터일 뿐이다(Refund 자신의 필드로 승격하지 않는다).
+        # account_id/owner_id are not part of RefundEligibilityService's decision — they are
+        # just reference data the Application layer reads from the original payment (Payment)
+        # after the decision, to assemble the Integration Event propagated to external BCs
+        # (they are not promoted to a field of Refund itself).
         if self.status != RefundStatus.REQUESTED:
             raise RefundApproveRequiresRequestedRefundError()
         self.status = RefundStatus.APPROVED
-        self.decision_note = "환불이 승인되었습니다."
+        self.decision_note = "The refund has been approved."
         self._events.append(
             RefundApproved(
                 refund_id=self.refund_id,
@@ -74,11 +76,12 @@ class Refund:
         self.decision_note = reason
 
     def complete(self) -> None:
-        # 현재는 refund.approved.v1을 Account가 구독해 크레딧을 실행하는 것으로 환불
-        # 처리가 끝나고, 그 크레딧 성공을 Payment BC로 다시 알려주는 콜백 경로는 없다
-        # (REST 표면에 없음). Payment 도메인의 완결된 상태 모델을 위해 메서드는
-        # 남겨두되(Domain 단위 테스트로 검증), 현재 어떤 Command도 이를 호출하지
-        # 않는다 — Payment.fail()과 같은 이유로 미연결 상태다.
+        # Currently, refund processing ends with Account subscribing to refund.approved.v1
+        # and executing the credit — there is no callback path that reports that credit's
+        # success back to the Payment BC (not exposed on the REST surface). The method is
+        # kept for a complete Payment-domain state model (verified by a Domain unit test),
+        # but no Command currently calls it — left unwired for the same reason as
+        # Payment.fail().
         if self.status != RefundStatus.APPROVED:
             raise RefundCompleteRequiresApprovedRefundError()
         self.status = RefundStatus.COMPLETED

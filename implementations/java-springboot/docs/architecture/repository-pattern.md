@@ -1,13 +1,13 @@
-# Repository 패턴 (Spring Boot / Spring Data JPA)
+# Repository Pattern (Spring Boot / Spring Data JPA)
 
-> 프레임워크 무관 원칙은 루트 [repository-pattern.md](../../../../docs/architecture/repository-pattern.md) 참고.
+> For the framework-agnostic principles, see the root [repository-pattern.md](../../../../docs/architecture/repository-pattern.md).
 
-## 인터페이스(domain) + 구현체(infrastructure) 분리
+## Interface (domain) + implementation (infrastructure) separation
 
-TypeScript의 `abstract class` 대신 Java `interface`를 DI 토큰으로 사용한다 — Java/Spring은 인터페이스 자체가 런타임에 유효한 DI 타입이므로 별도의 우회가 필요 없다.
+Instead of TypeScript's `abstract class`, a Java `interface` is used as the DI token — in Java/Spring, an interface itself is a valid DI type at runtime, so no separate workaround is needed.
 
 ```java
-// account/domain/AccountRepository.java — 실제 코드, Spring 완전 무의존
+// account/domain/AccountRepository.java — actual code, entirely Spring-independent
 package com.example.accountservice.account.domain;
 
 public interface AccountRepository {
@@ -19,7 +19,7 @@ public interface AccountRepository {
 ```
 
 ```java
-// account/infrastructure/persistence/AccountRepositoryImpl.java — 실제 코드 (일부)
+// account/infrastructure/persistence/AccountRepositoryImpl.java — actual code (excerpt)
 @Repository
 @RequiredArgsConstructor
 public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
@@ -41,104 +41,104 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
         applyParams(countQuery, query);
         long count = countQuery.getSingleResult();
 
-        return new AccountsWithCount(accounts, count);   // AccountJpaEntity -> 순수 도메인 Account
+        return new AccountsWithCount(accounts, count);   // AccountJpaEntity -> pure domain Account
     }
 }
 ```
 
-Application Service는 `AccountRepository` 인터페이스 타입으로 주입받고, Spring이 클래스패스의 유일한 구현체(`AccountRepositoryImpl`, `@Repository`)를 자동 바인딩한다. 구현체가 여러 개 필요해지면 `@Qualifier`로 명시한다.
+An Application Service injects the `AccountRepository` interface type, and Spring auto-binds the single implementation on the classpath (`AccountRepositoryImpl`, `@Repository`). If multiple implementations become necessary, disambiguate with `@Qualifier`.
 
 ---
 
-## 2단 Repository — 도메인 Repository와 Spring Data JPA Repository
+## Two-tier Repository — the domain Repository and the Spring Data JPA Repository
 
-이 저장소는 Repository를 2개 층으로 나눈다:
+This repository splits Repository into two tiers:
 
 ```java
-// infrastructure/persistence/AccountJpaRepository.java — Spring Data가 구현을 자동 생성
+// infrastructure/persistence/AccountJpaRepository.java — Spring Data auto-generates the implementation
 public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, Long> {
-    Optional<AccountJpaEntity> findByAccountId(String accountId);              // saveAccount()의 update-or-insert 조회용
-    Optional<AccountJpaEntity> findByAccountIdAndDeletedAtIsNull(String accountId);  // delete()의 soft-delete 대상 조회용
+    Optional<AccountJpaEntity> findByAccountId(String accountId);              // for the update-or-insert lookup in saveAccount()
+    Optional<AccountJpaEntity> findByAccountIdAndDeletedAtIsNull(String accountId);  // for looking up the soft-delete target in delete()
 }
 ```
 
-`AccountJpaEntity`는 `Account`(domain)의 JPA 매핑 전용 대응물이다 — `Account`가 프레임워크 무의존을 유지하는 방법은 [layer-architecture.md](layer-architecture.md) 참고.
+`AccountJpaEntity` is the JPA-mapping-only counterpart of `Account` (domain) — see [layer-architecture.md](layer-architecture.md) for how `Account` stays framework-independent.
 
 | | `AccountRepository` (domain) | `AccountJpaRepository` (infrastructure) |
 |---|---|---|
-| 역할 | 도메인이 필요로 하는 조회/저장 계약 | Spring Data JPA의 CRUD + 파생 쿼리 |
-| 구현 방식 | `AccountRepositoryImpl`이 수동 구현 | Spring Data가 메서드 이름을 파싱해 자동 구현 |
-| 사용처 | Application Service가 주입받음 | `AccountRepositoryImpl` 내부에서만 사용 |
+| Role | The lookup/save contract the domain needs | Spring Data JPA's CRUD + derived queries |
+| Implementation approach | Manually implemented by `AccountRepositoryImpl` | Auto-implemented by Spring Data parsing the method name |
+| Used by | Injected by an Application Service | Used only inside `AccountRepositoryImpl` |
 
-**`AccountRepositoryImpl`이 이 둘을 조합하는 이유**: `findAccounts(AccountFindQuery)`처럼 필터 조건이 동적으로 조합되는 조회는 Spring Data의 파생 쿼리 메서드 이름만으로 표현하기 어렵다 — `EntityManager`로 JPQL을 직접 조립한다(아래 "동적 필터" 참고). 반면 `findByAccountId`처럼 고정된 조건은 Spring Data 파생 쿼리로 충분하므로 `AccountJpaRepository`에 위임한다. 두 접근을 같은 클래스(`AccountRepositoryImpl`) 안에서 상황에 맞게 섞어 쓴다.
+**Why `AccountRepositoryImpl` combines both**: a lookup with dynamically combined filter conditions, like `findAccounts(AccountFindQuery)`, is hard to express with Spring Data's derived query method names alone — so it assembles JPQL directly via `EntityManager` (see "Dynamic filter pattern" below). Conversely, a fixed condition like `findByAccountId` is well served by a Spring Data derived query, so it's delegated to `AccountJpaRepository`. Both approaches are mixed as appropriate within the same class (`AccountRepositoryImpl`).
 
 ---
 
-## Repository 메서드 네이밍
+## Repository method naming
 
-루트 규칙: 조회는 항상 `find<Noun>s`(복수형) 하나로 통일하고, 단건 조회는 `take: 1` + 첫 번째 결과 추출 패턴을 사용한다. 저장은 `save<Noun>`, 삭제는 `delete<Noun>`.
+Root rule: reads are always unified under a single `find<Noun>s` (plural), and single-record lookups use the `take: 1` + extract-the-first-result pattern. Saves are `save<Noun>`, deletes are `delete<Noun>`.
 
-`AccountRepository`는 이 규칙을 그대로 따른다:
+`AccountRepository` follows this rule exactly:
 
 ```java
 public interface AccountRepository {
     AccountsWithCount findAccounts(AccountFindQuery query);
     void saveAccount(Account account);
-    void deleteAccount(String accountId);   // soft delete — 실제 구현됨
+    void deleteAccount(String accountId);   // soft delete — genuinely implemented
     TransactionsWithCount findTransactions(String accountId, int page, int take);
 }
 ```
 
-`AccountsWithCount`/`TransactionsWithCount`는 목록과 총 개수를 함께 담는 `record`다 — root 문서의 `{ orders: Order[]; count: number }` 패턴을 Java 타입으로 옮긴 것이다:
+`AccountsWithCount`/`TransactionsWithCount` are `record`s carrying both the list and the total count together — the Java-typed version of the root document's `{ orders: Order[]; count: number }` pattern:
 
 ```java
-// account/domain/AccountsWithCount.java, account/domain/TransactionsWithCount.java — 실제 코드
+// account/domain/AccountsWithCount.java, account/domain/TransactionsWithCount.java — actual code
 public record AccountsWithCount(List<Account> accounts, long count) {}
 public record TransactionsWithCount(List<Transaction> transactions, long count) {}
 ```
 
-**단건 조회는 별도 메서드가 아니라 `findAccounts`를 `take: 1`로 호출해 재사용한다** — root의 "조회 경로를 하나로 통일" 원칙에 따라, `findByAccountIdAndOwnerId` 같은 Spring Data 파생 쿼리 스타일의 전용 단건 조회 메서드는 두지 않는다. Application Service가 호출 지점에서 `take: 1`로 조회한 뒤 첫 번째 결과를 직접 꺼낸다:
+**A single-record lookup isn't a separate method — it reuses `findAccounts` called with `take: 1`** — following the root's "unify into a single lookup path" principle, no dedicated single-record-lookup method in the style of a Spring Data derived query (like `findByAccountIdAndOwnerId`) is provided. The Application Service calls it with `take: 1` at the call site and extracts the first result itself:
 
 ```java
-// application/command/DepositService.java — 실제 코드
+// application/command/DepositService.java — actual code
 Account account = accountRepository
         .findAccounts(new AccountFindQuery(0, 1, command.accountId(), command.requesterId(), null))
         .accounts().stream().findFirst()
-        .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "계좌를 찾을 수 없습니다."));
+        .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "Account not found."));
 ```
 
-이 패턴은 쓰기 쪽 `SuspendAccountService`/`WithdrawService`/`DepositService`/`DeleteAccountService`/`CloseAccountService`/`ReactivateAccountService`와, 읽기 쪽 `GetAccountService`/`GetTransactionsService`(`AccountQuery` 경유), Card BC의 `AccountAdapterImpl`(ACL)까지 동일하게 적용된다 — Repository/Query 인터페이스에 단건 전용 메서드를 별도로 두지 않는다.
+This pattern applies uniformly across the write side (`SuspendAccountService`/`WithdrawService`/`DepositService`/`DeleteAccountService`/`CloseAccountService`/`ReactivateAccountService`), the read side (`GetAccountService`/`GetTransactionsService`, via `AccountQuery`), and even Card BC's `AccountAdapterImpl` (ACL) — no dedicated single-record method is ever added to a Repository/Query interface.
 
-`Transaction`(하위 Entity) 목록 조회도 동일한 이유로 `findTransactions`/`countTransactions` 두 메서드였던 것을 `findTransactions` 하나로 병합해 `TransactionsWithCount`를 반환한다.
+For the same reason, `Transaction` (child entity) list lookups, which used to be two separate methods (`findTransactions`/`countTransactions`), are merged into a single `findTransactions` returning `TransactionsWithCount`.
 
-**harness 검증**: `harness/src/rules/RepositoryNaming.java`(rule: `repository-naming`)가 `domain/`·`application/query/` 하위 `*Repository`/`*Query` 인터페이스의 메서드 이름을 블록리스트로 검사한다 — `findByXxx`류 Spring Data 파생 쿼리 스타일, bare `findAll`, `count`로 시작하는 메서드, bare `save`/`delete`(대상 명사 없는 형태), `update`로 시작하는 메서드(루트 원칙 "Repository에 수정(update) 메서드 금지 — 조회 후 Aggregate의 도메인 메서드로 수정, save<Noun>으로 저장")를 잡아낸다. `infrastructure/`의 구현체·내부 Spring Data JPA 파생 쿼리 메서드(`AccountJpaRepository.findByAccountId` 등)는 검사 대상이 아니다 — 구현 세부사항이라 정당하게 파생 쿼리 스타일을 쓸 수 있다.
+**Harness verification**: `harness/src/rules/RepositoryNaming.java` (rule: `repository-naming`) checks the method names of `*Repository`/`*Query` interfaces under `domain/`·`application/query/` against a blocklist — catching Spring-Data-derived-query-style names like `findByXxx`, a bare `findAll`, methods starting with `count`, a bare `save`/`delete` (with no target noun), and methods starting with `update` (the root principle that "Repository must never have an update method — look up first, then modify via the Aggregate's domain method, then save via `save<Noun>`"). Implementations in `infrastructure/` and internal Spring Data JPA derived query methods (`AccountJpaRepository.findByAccountId`, etc.) are not checked — these are implementation details where derived-query style is legitimately allowed.
 
-**`delete<Noun>` 메서드 — soft delete로 실제 구현됨**: 계좌 "종료"(`Account.close()` — `status = CLOSED`)와 "삭제"(`Account.delete()` — `deletedAt` 설정)는 서로 다른 개념이다. `delete()`는 종료(CLOSED)된 계좌에만 허용되며, 도메인 메서드 `Account.delete()`가 이 불변식을 검증한다:
+**The `delete<Noun>` method — genuinely implemented as soft delete**: an account being "closed" (`Account.close()` — `status = CLOSED`) and being "deleted" (`Account.delete()` — sets `deletedAt`) are distinct concepts. `delete()` is only allowed on a closed (CLOSED) account, and the domain method `Account.delete()` validates this invariant:
 
 ```java
-// AccountRepositoryImpl — 실제 코드
+// AccountRepositoryImpl — actual code
 @Override
 @Transactional
 public void deleteAccount(String accountId) {
     jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId).ifPresent(entity -> {
         Account account = AccountMapper.toDomain(entity);
-        account.delete();                          // 도메인 메서드로 불변식(CLOSED만 삭제 가능) 검증 후 deletedAt 설정
+        account.delete();                          // validates the invariant (only CLOSED can be deleted) via the domain method, then sets deletedAt
         AccountMapper.updateEntity(entity, account);
         jpaRepository.save(entity);
     });
 }
 ```
 
-애플리케이션 레이어의 `application/command/DeleteAccountService`가 소유권(`accountId`+`ownerId`)을 먼저 확인한 뒤 이 메서드를 호출한다. soft delete 자체의 상세(계좌 종료 `close()`와 삭제 `delete()`의 의미 차이, `deletedAt` 실제 배선)는 [persistence.md](persistence.md)에서 다룬다.
+`application/command/DeleteAccountService` at the Application layer first verifies ownership (`accountId`+`ownerId`) before calling this method. The details of soft delete itself (the semantic difference between closing an account with `close()` and deleting it with `delete()`, and the actual `deletedAt` wiring) are covered in [persistence.md](persistence.md).
 
 ---
 
-## 공통 컬럼 — `createdAt`/`updatedAt`/`deletedAt`
+## Common columns — `createdAt`/`updatedAt`/`deletedAt`
 
-`Account`는 이 세 컬럼을 모두 갖지만 공통 베이스 클래스로 추출되어 있지 않다 — `Account`와 `Transaction`이 각자 필드를 반복 선언한다. JPA는 `@MappedSuperclass` + `@EntityListeners(AuditingEntityListener.class)`로 이를 추출할 수 있다:
+`Account` has all three columns, but they aren't extracted into a common base class — `Account` and `Transaction` each declare their own fields redundantly. JPA can extract this via `@MappedSuperclass` + `@EntityListeners(AuditingEntityListener.class)`:
 
 ```java
-// infrastructure/persistence/BaseAuditable.java — 제안, 도입 시 참고
+// infrastructure/persistence/BaseAuditable.java — proposal, for reference if introduced
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
 public abstract class BaseAuditable {
@@ -155,14 +155,14 @@ public abstract class BaseAuditable {
 }
 ```
 
-`@EnableJpaAuditing`을 `@SpringBootApplication` 클래스에 추가하면 `createdAt`/`updatedAt`이 자동 설정된다. 이 저장소는 현재 `Account.create()`/도메인 메서드 내부에서 `LocalDateTime.now()`를 수동으로 설정하는 방식을 쓴다 — Auditing으로 전환하면 JPA 엔티티(`AccountJpaEntity`/`TransactionJpaEntity`, infrastructure)가 타임스탬프 관리를 넘겨받을 수 있다. `Account`/`Transaction`(domain)은 이미 순수 도메인이라 `@MappedSuperclass`를 infrastructure에 두는 선택이 [layer-architecture.md](layer-architecture.md)의 원칙과 충돌하지 않는다 — 다만 도메인 메서드가 `updatedAt`을 직접 설정하는 현재 방식과의 이중 관리를 피하려면 어느 한쪽으로 통일해야 한다.
+Adding `@EnableJpaAuditing` to the `@SpringBootApplication` class would auto-set `createdAt`/`updatedAt`. This repository currently sets `LocalDateTime.now()` manually inside `Account.create()`/domain methods — switching to Auditing would let the JPA entities (`AccountJpaEntity`/`TransactionJpaEntity`, infrastructure) take over timestamp management. Since `Account`/`Transaction` (domain) are already pure domain, placing `@MappedSuperclass` in infrastructure doesn't conflict with the principle in [layer-architecture.md](layer-architecture.md) — however, to avoid double-managing `updatedAt` alongside the current approach where a domain method sets it directly, one approach or the other should be chosen consistently.
 
 ---
 
-## 동적 필터 패턴 — `EntityManager` + JPQL 조립
+## Dynamic filter pattern — assembling JPQL via `EntityManager`
 
 ```java
-// AccountRepositoryImpl.buildJpql() — 실제 코드
+// AccountRepositoryImpl.buildJpql() — actual code
 private String buildJpql(AccountFindQuery query, boolean count) {
     StringBuilder sb = new StringBuilder(count
             ? "SELECT COUNT(a) FROM AccountJpaEntity a WHERE a.deletedAt IS NULL"
@@ -175,13 +175,13 @@ private String buildJpql(AccountFindQuery query, boolean count) {
 }
 ```
 
-값이 있을 때만 조건을 추가하는 방식으로 root의 "동적 필터" 원칙을 구현한다. 입력은 `account/domain/AccountFindQuery.java`(record)로 타입화되어 있다:
+This implements the root's "dynamic filter" principle by adding a condition only when a value is present. The input is typed via `account/domain/AccountFindQuery.java` (a record):
 
 ```java
 public record AccountFindQuery(int page, int take, String accountId, String ownerId, List<String> status) {}
 ```
 
-**대안 — Spring Data JPA Specification**: 조건이 더 늘어나면 문자열 JPQL 조립 대신 `Specification<Account>`(JPA Criteria API 래퍼)를 쓰는 것이 타입 안전성과 가독성 면에서 낫다:
+**An alternative — Spring Data JPA Specification**: if the number of conditions grows further, using `Specification<Account>` (a wrapper around the JPA Criteria API) instead of assembling a string JPQL is better for type safety and readability:
 
 ```java
 public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, Long>, JpaSpecificationExecutor<AccountJpaEntity> {}
@@ -191,17 +191,17 @@ public class AccountSpecifications {
         return (root, query, cb) -> ownerId == null ? null : cb.equal(root.get("ownerId"), ownerId);
     }
 }
-// 호출: jpaRepository.findAll(where(hasOwnerId(id)).and(hasStatus(status)), pageable)
+// call site: jpaRepository.findAll(where(hasOwnerId(id)).and(hasStatus(status)), pageable)
 ```
 
-현재 규모(필터 3개)에서는 문자열 조립도 충분히 관리 가능한 수준이라 이 저장소는 `EntityManager` 방식을 유지하고 있다.
+At the current scale (3 filters), string assembly is still manageable enough that this repository keeps the `EntityManager` approach.
 
 ---
 
-## Repository의 Cascade 저장 — `saveAccount()`가 하위 Entity까지 함께 처리
+## Cascading saves in the Repository — `saveAccount()` handles child entities together
 
 ```java
-// AccountRepositoryImpl.saveAccount() — 실제 코드
+// AccountRepositoryImpl.saveAccount() — actual code
 @Override
 @Transactional
 public void saveAccount(Account account) {
@@ -209,20 +209,20 @@ public void saveAccount(Account account) {
             .map(existing -> AccountMapper.updateEntity(existing, account))
             .orElseGet(() -> AccountMapper.toNewEntity(account));
     jpaRepository.save(entity);
-    List<Transaction> pending = account.pullPendingTransactions();   // Aggregate가 보류 중인 하위 Entity 반환
+    List<Transaction> pending = account.pullPendingTransactions();   // the Aggregate returns its pending child entities
     if (!pending.isEmpty()) {
         transactionJpaRepository.saveAll(pending.stream().map(TransactionMapper::toNewEntity).toList());
     }
 }
 ```
 
-`Account.deposit()`/`withdraw()`가 생성한 `Transaction`은 `pendingTransactions`에 임시로 쌓이고, `saveAccount()` 호출 한 번에 `Account`와 `Transaction` 모두가 저장된다 — Application Service는 `Transaction`을 별도로 저장하지 않는다. Aggregate 단위로 저장 책임이 캡슐화된 root 원칙의 실현이다.
+A `Transaction` created by `Account.deposit()`/`withdraw()` is temporarily accumulated in `pendingTransactions`, and a single call to `saveAccount()` saves both `Account` and `Transaction` together — the Application Service never saves `Transaction` separately. This realizes the root principle that save responsibility is encapsulated at the Aggregate level.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [layer-architecture.md](layer-architecture.md) — Repository 인터페이스 배치, 레이어 의존 방향
-- [persistence.md](persistence.md) — 트랜잭션 전파, soft delete 배선, 마이그레이션
-- [cqrs-pattern.md](cqrs-pattern.md) — `AccountQuery` 도입
-- [domain-events.md](domain-events.md) — Repository에서 Outbox를 함께 저장하는 올바른 패턴
+- [layer-architecture.md](layer-architecture.md) — Repository interface placement, layer dependency direction
+- [persistence.md](persistence.md) — transaction propagation, soft-delete wiring, migrations
+- [cqrs-pattern.md](cqrs-pattern.md) — introducing `AccountQuery`
+- [domain-events.md](domain-events.md) — the correct pattern of saving the Outbox together in the Repository

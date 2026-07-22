@@ -12,8 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 외부 BC(Account)가 발행한 {@code account.closed.v1} Integration Event 수신부. {@code OutboxConsumer}가
- * SQS에서 수신한 메시지를 {@code eventType()} 값으로 자동 라우팅한다.
+ * Receiver for the {@code account.closed.v1} Integration Event published by an external BC
+ * (Account). {@code OutboxConsumer} automatically routes messages received from SQS based on the
+ * {@code eventType()} value.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,7 +35,7 @@ public class AccountClosedIntegrationEventHandler implements OutboxEventHandler 
     public void handle(String payload) throws Exception {
         AccountIntegrationEventPayload event =
                 objectMapper.readValue(payload, AccountIntegrationEventPayload.class);
-        log.info("account.closed.v1 수신", kv("account_id", event.accountId()));
+        log.info("account.closed.v1 received", kv("account_id", event.accountId()));
         cancelCardsByAccountService.cancel(new CancelCardsByAccountCommand(event.accountId()));
     }
 }

@@ -2,8 +2,9 @@ from abc import ABC, abstractmethod
 
 
 class PasswordHasher(ABC):
-    """비밀번호 해싱/검증 Technical Service — Domain/Application이 bcrypt 같은 구체 라이브러리에
-    의존하지 않도록 abstraction만 노출한다(account 도메인의 NotificationService와 동일한 패턴).
+    """A Technical Service for password hashing/verification — exposes only an abstraction
+    so Domain/Application never depend on a concrete library such as bcrypt (the same
+    pattern as the account domain's NotificationService).
     """
 
     @abstractmethod

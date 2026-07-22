@@ -22,18 +22,22 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageResponse;
 
 /**
- * Task Queue(SQS FIFO)를 long polling으로 수신 대기하다가 메시지를 받으면 {@code taskType} (MessageAttributes)으로
- * 주입받은 {@link TaskHandler} 목록(각 도메인의 Task Controller)에서 핸들러를 찾아 호출한다 — {@code
- * outbox/OutboxConsumer}와 동일한 구조를 Task Queue에 대해 반복한다. Domain/ Integration Event(사실 — "X가 일어났다")와
- * Task(명령 — "X를 수행하라")는 개념적으로 다르므로 별도의 Consumer/큐로 분리한다(scheduling.md, domain-events.md).
+ * Waits on the Task Queue (SQS FIFO) via long polling, and when a message arrives, looks up the
+ * handler by {@code taskType} (MessageAttributes) among the injected {@link TaskHandler} list (each
+ * domain's Task Controller) and invokes it — this repeats the same structure as {@code
+ * outbox/OutboxConsumer}, but for the Task Queue. A Domain/Integration Event (a fact — "X
+ * happened") and a Task (a command — "do X") are conceptually different, so they are kept on
+ * separate Consumers/queues (see scheduling.md, domain-events.md).
  *
- * <p>핸들러 성공 → 메시지 삭제(ack). 핸들러 실패(또는 등록된 핸들러가 없음) → 삭제하지 않는다 — SQS의 visibility timeout이 지나면 자동
- * 재전달된다(at-least-once). 각 Task Controller/Command Service의 멱등성이 이 재전달을 전제한다(scheduling.md의 멱등성
- * 3단계).
+ * <p>Handler succeeds → delete the message (ack). Handler fails (or no handler is registered) → do
+ * not delete — once SQS's visibility timeout elapses, it's automatically redelivered
+ * (at-least-once). Each Task Controller/Command Service's idempotency assumes this redelivery (see
+ * the 3 levels of idempotency in scheduling.md).
  *
- * <p>백그라운드 루프 설계는 {@code outbox/OutboxConsumer}와 동일한 이유다 — long polling(최대 waitTimeSeconds)을 반복하는
- * 블로킹 루프를 {@code @Scheduled} 스레드 풀에 물려두면 다른 스케줄 작업의 실행을 지연시킬 위험이 있어, 전용 단일 스레드 {@link
- * ExecutorService} + {@link SmartLifecycle}로 시작/종료를 관리한다.
+ * <p>The background loop design has the same rationale as {@code outbox/OutboxConsumer} — hanging a
+ * blocking loop that repeats long polling (up to waitTimeSeconds) on the {@code @Scheduled} thread
+ * pool risks delaying other scheduled tasks, so start/stop is managed via a dedicated single-thread
+ * {@link ExecutorService} + {@link SmartLifecycle}.
  */
 @Component
 public class TaskConsumer implements SmartLifecycle {
@@ -100,7 +104,7 @@ public class TaskConsumer implements SmartLifecycle {
                 }
             } catch (Exception e) {
                 if (running) {
-                    log.error("Task Queue 수신 실패", e);
+                    log.error("Failed to receive from Task Queue", e);
                     sleepBeforeRetry();
                 }
             }
@@ -112,11 +116,11 @@ public class TaskConsumer implements SmartLifecycle {
         String taskType = attribute != null ? attribute.stringValue() : null;
         try {
             if (taskType == null) {
-                throw new IllegalStateException("taskType 메시지 속성이 없습니다.");
+                throw new IllegalStateException("Missing taskType message attribute.");
             }
             TaskHandler handler = handlers.get(taskType);
             if (handler == null) {
-                throw new IllegalStateException("등록된 Task Handler가 없습니다: " + taskType);
+                throw new IllegalStateException("No Task Handler registered for: " + taskType);
             }
             handler.handle(message.body());
             sqsClient.deleteMessage(
@@ -125,8 +129,8 @@ public class TaskConsumer implements SmartLifecycle {
                             .receiptHandle(message.receiptHandle())
                             .build());
         } catch (Exception e) {
-            log.error("Task 처리 실패", kv("task_type", taskType), e);
-            // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
+            log.error("Failed to process task", kv("task_type", taskType), e);
+            // Do not delete — it will be received again and retried after the visibility timeout.
         }
     }
 

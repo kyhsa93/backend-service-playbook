@@ -1,7 +1,7 @@
 package main
 
-// countKind는 테스트에서 RuleResult가 특정 Kind(Pass/Fail/Skip)의 항목을
-// 몇 개 갖는지 셀 때 쓰는 작은 도우미다.
+// countKind is a small test helper for counting how many entries in a
+// RuleResult have a given Kind (Pass/Fail/Skip).
 func countKind(result RuleResult, kind Kind) int {
 	n := 0
 	for _, f := range result.Findings {

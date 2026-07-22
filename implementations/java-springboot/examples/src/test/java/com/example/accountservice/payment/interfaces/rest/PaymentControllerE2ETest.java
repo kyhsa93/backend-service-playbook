@@ -28,14 +28,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Payment BC의 E2E 테스트. Card+Account 두 BC를 동기 Adapter(ACL)로 조율하는 결제 생성과, Payment↔Account 양방향
- * Integration Event(payment.completed.v1 → 차감, payment.cancelled.v1/refund.approved.v1 → 보상 크레딧),
- * 그리고 RefundEligibilityService(Domain Service, Payment+Refund 두 Aggregate를 조율하는 순수 판단 로직)를 실제 HTTP
- * API + Postgres로 검증한다.
+ * E2E test for the Payment BC. Verifies, through the real HTTP API + Postgres: payment creation,
+ * which coordinates the Card and Account BCs through a synchronous Adapter (ACL); the bidirectional
+ * Payment↔Account Integration Events (payment.completed.v1 → debit, payment.cancelled.v1/
+ * refund.approved.v1 → compensating credit); and RefundEligibilityService (a Domain Service — pure
+ * judgment logic coordinating the Payment and Refund Aggregates).
  *
- * <p>{@code CreatePaymentService}/{@code CancelPaymentService}/{@code RequestRefundService}가 저장한
- * Outbox 행은 {@code OutboxPoller}(1초 주기)가 SQS로 발행하고 {@code OutboxConsumer}(long polling)가 수신해야 반대편
- * BC(Account)에 반영된다 — 비동기이므로 {@code CardControllerE2ETest}와 동일하게 폴링-타임아웃으로 검증한다.
+ * <p>The Outbox rows written by {@code CreatePaymentService}/{@code CancelPaymentService}/{@code
+ * RequestRefundService} are only reflected on the other side's BC (Account) once {@code
+ * OutboxPoller} (1-second cycle) publishes them to SQS and {@code OutboxConsumer} (long polling)
+ * receives them — since this is asynchronous, we verify with a polling timeout, the same as {@code
+ * CardControllerE2ETest}.
  */
 @Testcontainers
 @SuppressWarnings("unchecked")
@@ -53,8 +56,8 @@ class PaymentControllerE2ETest {
             new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                     .withServices(LocalStackContainer.Service.SQS);
 
-    // CardControllerE2ETest와 동일한 이유로 캐시한다 — @DynamicPropertySource의 Supplier는
-    // 여러 번 호출될 수 있다.
+    // Cached for the same reason as CardControllerE2ETest — the @DynamicPropertySource supplier
+    // can be invoked multiple times.
     private static String domainEventQueueUrl;
 
     private static synchronized String domainEventQueueUrl() {
@@ -159,8 +162,8 @@ class PaymentControllerE2ETest {
         return ((Number) balance.get("amount")).longValue();
     }
 
-    // CardControllerE2ETest의 waitForCardStatus와 동일한 이유(Outbox → SQS → OutboxConsumer 비동기
-    // 처리)로 카드 상태를 폴링한다.
+    // We poll the card status for the same reason as waitForCardStatus in CardControllerE2ETest
+    // (asynchronous processing through Outbox → SQS → OutboxConsumer).
     private void waitForCardStatus(String cardId, String expected, String ownerId) {
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(200))
@@ -170,8 +173,9 @@ class PaymentControllerE2ETest {
                                         .isEqualTo(expected));
     }
 
-    // payment.completed.v1/payment.cancelled.v1/refund.approved.v1을 Account BC가 구독해 잔액을
-    // 변경하는 반응도 Outbox → SQS(OutboxPoller/OutboxConsumer)를 거치는 비동기 흐름이므로 폴링한다.
+    // The Account BC's reaction that subscribes to payment.completed.v1/payment.cancelled.v1/
+    // refund.approved.v1 and changes the balance is also an asynchronous flow through Outbox →
+    // SQS (OutboxPoller/OutboxConsumer), so we poll.
     private long waitForBalance(String accountId, long expected, String ownerId) {
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(200))
@@ -190,8 +194,9 @@ class PaymentControllerE2ETest {
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
         Map<String, Object> card = issueCard(OWNER_ID, accountId);
-        // 카드 전용 정지 엔드포인트는 없다 — 계좌를 정지시켜 연결 카드가 account.suspended.v1에
-        // 반응해 SUSPENDED로 전환되게 한다(Outbox → SQS를 거치는 비동기 흐름이므로 폴링한다).
+        // There is no card-specific suspend endpoint — suspend the account instead, so the linked
+        // card reacts to account.suspended.v1 and transitions to SUSPENDED (poll since it's an
+        // asynchronous flow through Outbox → SQS).
         ResponseEntity<Map> suspendResponse =
                 post("/accounts/" + accountId + "/suspend", OWNER_ID, Map.of());
         assertThat(suspendResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
@@ -255,8 +260,8 @@ class PaymentControllerE2ETest {
         assertThat(((Number) body.get("amount")).longValue()).isEqualTo(10000);
         assertThat(body.get("status")).isEqualTo("COMPLETED");
 
-        // payment.completed.v1을 Account BC가 구독해 차감한다 — Outbox → SQS를 거치는 비동기
-        // 흐름이므로 폴링한다.
+        // The Account BC subscribes to payment.completed.v1 and debits the balance — poll since
+        // it's an asynchronous flow through Outbox → SQS.
         waitForBalance(accountId, 40000);
     }
 
@@ -274,7 +279,7 @@ class PaymentControllerE2ETest {
                 post(
                         "/payments/" + payment.get("paymentId") + "/cancel",
                         OWNER_ID,
-                        Map.of("reason", "고객 요청"));
+                        Map.of("reason", "customer request"));
 
         assertThat(cancelResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
         waitForBalance(accountId, 50000);
@@ -285,7 +290,7 @@ class PaymentControllerE2ETest {
     @Test
     void 존재하지_않는_결제를_취소하면_404를_반환한다() {
         ResponseEntity<Map> response =
-                post("/payments/non-existent/cancel", OWNER_ID, Map.of("reason", "사유"));
+                post("/payments/non-existent/cancel", OWNER_ID, Map.of("reason", "reason"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody().get("code")).isEqualTo("PAYMENT_NOT_FOUND");
@@ -302,13 +307,13 @@ class PaymentControllerE2ETest {
         post(
                 "/payments/" + payment.get("paymentId") + "/cancel",
                 OWNER_ID,
-                Map.of("reason", "고객 요청"));
+                Map.of("reason", "customer request"));
 
         ResponseEntity<Map> response =
                 post(
                         "/payments/" + payment.get("paymentId") + "/cancel",
                         OWNER_ID,
-                        Map.of("reason", "고객 요청"));
+                        Map.of("reason", "customer request"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().get("code"))
@@ -329,12 +334,13 @@ class PaymentControllerE2ETest {
                 post(
                         "/payments/" + payment.get("paymentId") + "/refunds",
                         OWNER_ID,
-                        Map.of("amount", 20000, "reason", "상품 불량"));
+                        Map.of("amount", 20000, "reason", "defective product"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().get("status")).isEqualTo("REJECTED");
-        assertThat(response.getBody().get("decisionNote")).isEqualTo("환불 금액은 결제 금액을 초과할 수 없습니다.");
-        // 거부된 환불은 Domain Event를 발행하지 않으므로 잔액이 바뀌지 않아야 한다.
+        assertThat(response.getBody().get("decisionNote"))
+                .isEqualTo("The refund amount cannot exceed the payment amount.");
+        // A rejected refund does not publish a Domain Event, so the balance must not change.
         waitForBalance(accountId, 40000);
     }
 
@@ -349,19 +355,19 @@ class PaymentControllerE2ETest {
         post(
                 "/payments/" + payment.get("paymentId") + "/cancel",
                 OWNER_ID,
-                Map.of("reason", "고객 요청"));
+                Map.of("reason", "customer request"));
         waitForBalance(accountId, 50000);
 
         ResponseEntity<Map> response =
                 post(
                         "/payments/" + payment.get("paymentId") + "/refunds",
                         OWNER_ID,
-                        Map.of("amount", 5000, "reason", "상품 불량"));
+                        Map.of("amount", 5000, "reason", "defective product"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().get("status")).isEqualTo("REJECTED");
         assertThat(response.getBody().get("decisionNote"))
-                .isEqualTo("완료된 결제에 대해서만 환불을 요청할 수 있습니다.");
+                .isEqualTo("A refund can only be requested for a completed payment.");
     }
 
     @Test
@@ -378,7 +384,7 @@ class PaymentControllerE2ETest {
                 post(
                         "/payments/" + payment.get("paymentId") + "/refunds",
                         OWNER_ID,
-                        Map.of("amount", 4000, "reason", "부분 환불"));
+                        Map.of("amount", 4000, "reason", "partial refund"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().get("status")).isEqualTo("APPROVED");
@@ -397,7 +403,7 @@ class PaymentControllerE2ETest {
                 post(
                         "/payments/non-existent/refunds",
                         OWNER_ID,
-                        Map.of("amount", 1000, "reason", "사유"));
+                        Map.of("amount", 1000, "reason", "reason"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody().get("code")).isEqualTo("PAYMENT_NOT_FOUND");

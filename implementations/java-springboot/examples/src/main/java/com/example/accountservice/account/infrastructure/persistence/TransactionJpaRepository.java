@@ -11,7 +11,11 @@ public interface TransactionJpaRepository extends JpaRepository<TransactionJpaEn
 
     long countByAccountId(String accountId);
 
-    // Level 2 Ledger 멱등성 체크(AccountRepository.hasTransactionWithReference) — referenceId만으로는
-    // 결제완료(WITHDRAWAL)와 그 보상 크레딧(DEPOSIT)이 같은 paymentId를 공유해 서로를 "이미 처리됨"으로 잘못 판정하므로 type도 함께 확인한다.
+    // The Level 2 Ledger idempotency check (AccountRepository.hasTransactionWithReference) —
+    // referenceId
+    // alone is insufficient because the payment-completed transaction (WITHDRAWAL) and its
+    // compensating
+    // credit (DEPOSIT) share the same paymentId and would incorrectly judge each other as "already
+    // processed," so type is checked together with it.
     boolean existsByReferenceIdAndType(String referenceId, TransactionType type);
 }

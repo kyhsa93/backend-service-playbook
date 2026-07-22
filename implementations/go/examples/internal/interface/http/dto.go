@@ -98,8 +98,9 @@ type CardResponse struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// ErrorResponse는 root docs/architecture/error-handling.md가 요구하는 표준 에러 응답
-// JSON 스키마다: statusCode/code/message/error 네 필드를 항상 포함한다.
+// ErrorResponse is the standard error response JSON schema required by root
+// docs/architecture/error-handling.md: it always includes the four fields
+// statusCode/code/message/error.
 type ErrorResponse struct {
 	StatusCode int    `json:"statusCode"`
 	Code       string `json:"code"`

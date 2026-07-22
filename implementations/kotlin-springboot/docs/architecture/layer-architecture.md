@@ -1,8 +1,8 @@
-# 레이어 아키텍처 — Kotlin Spring Boot
+# Layer Architecture — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root layer-architecture.md](../../../../docs/architecture/layer-architecture.md) 참조.
+> For the framework-agnostic principles, see [root layer-architecture.md](../../../../docs/architecture/layer-architecture.md).
 
-## 의존 방향
+## Dependency direction
 
 ```
 interfaces/rest (@RestController)  →  application/{command,query} (@Service)  →  domain (Account, AccountRepository interface)
@@ -10,14 +10,14 @@ interfaces/rest (@RestController)  →  application/{command,query} (@Service)  
                                                                         infrastructure/persistence (@Repository, AccountRepositoryImpl)
 ```
 
-`account/domain/`은 Spring 어노테이션도 JPA(`jakarta.persistence`) 애노테이션도 없는 순수 Kotlin으로 작성되고(JPA 매핑은 `infrastructure/persistence/`의 `AccountJpaEntity`/`MoneyEmbeddable` + Mapper가 전담, [directory-structure.md](directory-structure.md) 참고), `infrastructure/persistence/AccountRepositoryImpl`이 `domain/AccountRepository` 인터페이스를 구현해 의존성을 역전시킨다. harness의 `domain-purity`(도메인에 `@Service`/`@Component`/`@Repository`/`@Controller` 및 `jakarta.persistence` import 금지), `service-annotation`(`@Service`는 application/ 안에만), `repository-annotation`(`@Repository`는 infrastructure/ 안에만) 검사가 이 의존 방향을 실제로 강제한다. `domain-layer-isolation` 규칙은 애노테이션 블록리스트보다 넓은 경로 기반 검사로 같은 원칙을 한 번 더 강제한다 — `domain/` 파일이 (자신이 속한 도메인이든 형제 도메인이든) `application/`·`infrastructure/`·`interfaces/` 패키지를 import 자체를 못 하게 막는다. `interface-no-infrastructure` 규칙은 반대쪽 끝(`interfaces/`)에서 `infrastructure/`를 건너뛰고 직접 import하는 것을 막는다 — `interfaces/`는 `application/`만 의존해야 한다.
+`account/domain/` is written as plain Kotlin with no Spring annotations and no JPA (`jakarta.persistence`) annotations either (JPA mapping is entirely handled by `AccountJpaEntity`/`MoneyEmbeddable` + the Mapper in `infrastructure/persistence/`, see [directory-structure.md](directory-structure.md)), and `infrastructure/persistence/AccountRepositoryImpl` implements the `domain/AccountRepository` interface to invert the dependency. The harness's `domain-purity` (forbids `@Service`/`@Component`/`@Repository`/`@Controller` and `jakarta.persistence` imports in domain), `service-annotation` (`@Service` only inside application/), and `repository-annotation` (`@Repository` only inside infrastructure/) checks actually enforce this dependency direction. The `domain-layer-isolation` rule enforces the same principle once more, via a broader path-based check than the annotation blocklist — it blocks a `domain/` file from importing `application/`·`infrastructure/`·`interfaces/` packages at all (whether from its own domain or a sibling domain). The `interface-no-infrastructure` rule blocks the opposite end (`interfaces/`) from skipping past `application/` and importing `infrastructure/` directly — `interfaces/` must depend only on `application/`.
 
 ---
 
-## Domain 레이어
+## The Domain layer
 
 ```kotlin
-// domain/AccountRepository.kt — 실제 코드. Spring 무의존 순수 interface
+// domain/AccountRepository.kt — actual code. a plain interface, no Spring dependency
 interface AccountRepository {
     fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
     fun saveAccount(account: Account)
@@ -26,65 +26,65 @@ interface AccountRepository {
 }
 ```
 
-root는 Repository 인터페이스를 TypeScript `abstract class`로 표현하지만(NestJS DI가 인터페이스를 런타임 토큰으로 쓸 수 없어서), **Kotlin/Spring은 `interface` 자체가 DI 토큰**이 된다 — Spring이 클래스패스에서 `AccountRepository`를 구현하는 유일한 `@Repository` Bean(`AccountRepositoryImpl`)을 찾아 자동 바인딩한다. 별도의 `abstract class` 우회가 필요 없다.
+The root expresses the Repository interface as a TypeScript `abstract class` (because NestJS DI can't use an interface as a runtime token), but **in Kotlin/Spring, the `interface` itself is the DI token** — Spring finds the sole `@Repository` Bean implementing `AccountRepository` on the classpath (`AccountRepositoryImpl`) and auto-binds it. No separate `abstract class` workaround is needed.
 
-Kotlin의 **null-safety**가 이 레이어에서 하는 역할이 root의 TypeScript 버전과 다르다: 전용 단건 조회 메서드를 두지 않고, `findAccounts(...)`가 반환한 `Pair`의 `List<Account>`에 `firstOrNull()`을 호출해 "찾지 못함"을 타입 시스템에 새긴다(repository-pattern.md 참고). 호출자는 `?:` 엘비스 연산자나 스마트 캐스트 없이는 컴파일이 안 되므로, null 체크를 빠뜨리는 것 자체가 불가능하다.
+Kotlin's **null-safety** plays a different role in this layer than the root's TypeScript version: rather than having a dedicated single-item lookup method, "not found" is engraved into the type system by calling `firstOrNull()` on the `List<Account>` inside the `Pair` that `findAccounts(...)` returns (see repository-pattern.md). The caller can't compile without either the `?:` Elvis operator or a smart cast, so forgetting a null check is simply not possible.
 
 ```kotlin
-// application/command/DepositService.kt — 실제 코드
+// application/command/DepositService.kt — actual code
 val (accounts, _) = accountRepository.findAccounts(
     AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
 )
 val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
-// 이 라인 이후 account는 스마트 캐스트로 Account (non-null) 타입 — Optional.get()이나
-// null 체크 없이 바로 account.email 등에 접근해도 컴파일러가 non-null임을 보장한다
+// After this line, account is smart-cast to the Account (non-null) type — the compiler guarantees
+// non-null even when accessing account.email etc directly, with no Optional.get() or null check
 ```
 
-Java/TypeScript였다면 `Optional<Account>`(Java) 또는 `Account | undefined`(TS) + 명시적 언래핑이 필요했던 지점이, Kotlin에서는 `?:` 한 줄과 스마트 캐스트로 끝난다 — **null-safety는 여기서 "도메인 불변식을 어기는 코드를 컴파일 단계에서 막는" 도구로 작동한다.** "계좌를 찾은 이후의 코드에서는 반드시 계좌가 존재한다"는 도메인 규칙이 타입으로 강제된다.
+What would require `Optional<Account>` (Java) or `Account | undefined` (TS) + explicit unwrapping in Java/TypeScript ends in a single `?:` line and a smart cast in Kotlin — **null-safety works here as a tool that "blocks code violating a domain invariant at the compile stage."** The domain rule "an account must exist in any code that runs after the account is found" is enforced through the type system.
 
 ---
 
-## Application 레이어 — Command/Query Service
+## The Application layer — Command/Query Service
 
 ```kotlin
-// application/command/CreateAccountService.kt — 실제 코드
+// application/command/CreateAccountService.kt — actual code
 @Service
 class CreateAccountService(
     private val accountRepository: AccountRepository,
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.saveAccount(account)      // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        accountRepository.saveAccount(account)      // @Transactional — saving the Account + writing the Outbox, one transaction
         return CreateAccountResult(/* ... */)
-        // 여기서 끝난다 — Outbox 드레인(OutboxPoller/OutboxConsumer)은 별도 컴포넌트가 독립적으로
-        // 수행한다. domain-events.md 참고
+        // Ends here — draining the Outbox (OutboxPoller/OutboxConsumer) is handled independently
+        // by a separate component. See domain-events.md
     }
 }
 ```
 
-- **생성자 주입 — `@Autowired` 불필요**: 주 생성자(primary constructor)의 파라미터가 그대로 DI 대상이다. Spring 4.3+는 생성자가 하나뿐이면 `@Autowired` 애노테이션조차 생략 가능하다.
-- **`open` 필요성**: Kotlin 클래스는 기본 `final`이다. Spring AOP(`@Transactional` 프록시)는 클래스 상속 기반 프록시(CGLIB)를 만들어야 하므로, `@Service`/`@Repository` 클래스는 `open`이어야 한다. 이 저장소는 `build.gradle.kts`에 `kotlin("plugin.spring")`을 적용해 `@Component` 계열 애노테이션이 붙은 클래스를 컴파일러가 자동으로 `open` 처리한다 — 소스에 `open` 키워드를 직접 쓸 필요가 없다.
-- **비즈니스 로직은 Aggregate에 위임**: `CreateAccountService`는 `Account.create()`를 호출할 뿐, 잔액 계산이나 상태 전이 규칙을 직접 구현하지 않는다.
+- **Constructor injection — no `@Autowired` needed**: the primary constructor's parameters are the DI target as-is. Spring 4.3+ lets you omit even the `@Autowired` annotation as long as there's only one constructor.
+- **Why `open` is needed**: a Kotlin class is `final` by default. Spring AOP (the `@Transactional` proxy) needs to create a class-inheritance-based proxy (CGLIB), so `@Service`/`@Repository` classes need to be `open`. This repository applies `kotlin("plugin.spring")` in `build.gradle.kts`, which makes the compiler automatically treat any class annotated with a `@Component`-family annotation as `open` — there's no need to write the `open` keyword in the source yourself.
+- **Business logic is delegated to the Aggregate**: `CreateAccountService` just calls `Account.create()` — it never implements balance calculation or state-transition rules directly.
 
-Query Service는 `@Transactional(readOnly = true)`로 구분한다 — Hibernate가 dirty checking과 flush를 생략해 읽기 성능을 최적화한다.
+A Query Service is distinguished by `@Transactional(readOnly = true)` — Hibernate skips dirty checking and flushing, optimizing read performance.
 
 ```kotlin
-// application/query/GetAccountService.kt — 실제 코드
+// application/query/GetAccountService.kt — actual code
 @Service
 @Transactional(readOnly = true)
 class GetAccountService(private val accountQuery: AccountQuery) { /* ... */ }
 ```
 
-Query Service는 쓰기 모델 `AccountRepository`가 아니라 읽기 전용 `AccountQuery`를 주입받는다 — 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+A Query Service injects the read-only `AccountQuery`, not the write model `AccountRepository` — see [cqrs-pattern.md](cqrs-pattern.md) for details.
 
-Command/Query 세분화 상세는 [cqrs-pattern.md](cqrs-pattern.md) 참조.
+See [cqrs-pattern.md](cqrs-pattern.md) for details on Command/Query granularity.
 
 ---
 
-## Infrastructure 레이어
+## The Infrastructure layer
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드 (일부)
+// infrastructure/persistence/AccountRepositoryImpl.kt — actual code (partial)
 @Repository
 class AccountRepositoryImpl(
     private val jpaRepository: AccountJpaRepository,
@@ -100,21 +100,21 @@ class AccountRepositoryImpl(
         if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending)
     }
 
-    // AccountQuery(읽기 전용 포트)는 findAccounts/findTransactions를 AccountRepository와 정확히
-    // 같은 시그니처로 선언하므로, 위의 findAccounts override가 두 인터페이스를 동시에 만족시킨다.
+    // AccountQuery (the read-only port) declares findAccounts/findTransactions with exactly the same
+    // signature as AccountRepository, so the findAccounts override above satisfies both interfaces at once.
 }
 ```
 
-`AccountRepositoryImpl`이 `AccountRepository`를 구현하고, Spring이 `interface → 구현체` 바인딩을 자동으로 수행한다(클래스패스에 구현체가 하나뿐이므로 `@Qualifier` 불필요). `EntityManager`(JPQL 동적 쿼리 조립), `AccountJpaRepository`(Spring Data 기본 CRUD)를 둘 다 사용하는 것도 이 레이어에서만 허용된다 — Domain/Application은 JPA API를 전혀 알지 못한다.
+`AccountRepositoryImpl` implements `AccountRepository`, and Spring automatically performs the `interface → implementation` binding (no `@Qualifier` needed since there's only one implementation on the classpath). Using both `EntityManager` (assembling dynamic JPQL queries) and `AccountJpaRepository` (Spring Data's basic CRUD) is also only permitted in this layer — the Domain/Application layers don't know the JPA API exists at all.
 
-트랜잭션 전파는 root의 수동 `AsyncLocalStorage`/`ThreadLocal` 패턴 대신 Spring 선언적 `@Transactional`로 대체한다 — 상세는 [persistence.md](persistence.md) 참조.
+Transaction propagation is replaced with Spring's declarative `@Transactional`, instead of the root's manual `AsyncLocalStorage`/`ThreadLocal` pattern — see [persistence.md](persistence.md) for details.
 
 ---
 
-## Interfaces 레이어
+## The Interfaces layer
 
 ```kotlin
-// interfaces/rest/AccountController.kt — 실제 코드 (일부)
+// interfaces/rest/AccountController.kt — actual code (partial)
 @RestController
 @RequestMapping("/accounts")
 class AccountController(
@@ -132,25 +132,25 @@ class AccountController(
 }
 ```
 
-root의 "Interface DTO = Application 객체의 thin wrapper"(TypeScript `extends`) 원칙은 Kotlin에서 **`data class` 생성자 호출**로 표현된다 — 상속으로 감싸는 대신 Request DTO의 필드를 그대로 Command의 생성자 인자로 매핑한다. `CreateAccountRequest`(interfaces/rest)와 `CreateAccountCommand`(application/command)는 별개의 `data class`이며, Controller 메서드 한 줄이 매핑 지점이다 — Kotlin의 named argument 덕분에 필드가 늘어나도 순서 실수 없이 매핑할 수 있다.
+The root's principle that "the Interface DTO is a thin wrapper over the Application object" (TypeScript `extends`) is expressed in Kotlin as **a `data class` constructor call** — instead of wrapping via inheritance, the Request DTO's fields are mapped directly into the Command's constructor arguments. `CreateAccountRequest` (interfaces/rest) and `CreateAccountCommand` (application/command) are separate `data class`es, and a single line in the Controller method is the mapping point — thanks to Kotlin's named arguments, mapping stays free of ordering mistakes even as fields grow.
 
-에러 변환(`@ExceptionHandler`)이 이 레이어의 책임이라는 점은 root와 동일 — 상세는 [error-handling.md](error-handling.md).
+Error conversion (`@ExceptionHandler`) being this layer's responsibility is the same as the root — see [error-handling.md](error-handling.md) for details.
 
 ---
 
-## 원칙 요약
+## Principle summary
 
-| 원칙 | Kotlin/Spring에서의 표현 |
+| Principle | Expression in Kotlin/Spring |
 |---|---|
-| 상위 레이어만 하위 레이어에 의존 | 패키지 구조 + harness 검사(`domain-purity` 등)로 강제 |
-| Domain은 프레임워크 무의존 | Spring 어노테이션 금지 (JPA는 예외적 허용, [directory-structure.md](directory-structure.md) 참고) |
-| Repository는 인터페이스/구현 분리 | `interface`(domain) + Spring이 자동 바인딩하는 구현체(infrastructure) |
-| "찾지 못함"의 표현 | `Optional<T>` 대신 `T?` + `?:` — 컴파일러가 null 체크 누락을 막는다 |
-| DI | 생성자 주입, `@Autowired` 불필요 |
+| Only upper layers depend on lower layers | enforced via package structure + harness checks (`domain-purity`, etc) |
+| Domain has no framework dependency | Spring annotations forbidden (JPA is an exception, see [directory-structure.md](directory-structure.md)) |
+| Repository is split into interface/implementation | `interface` (domain) + an implementation (infrastructure) that Spring auto-binds |
+| Expressing "not found" | `T?` + `?:` instead of `Optional<T>` — the compiler blocks a missed null check |
+| DI | constructor injection, no `@Autowired` needed |
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate, Entity, Value Object 상세
-- [repository-pattern.md](repository-pattern.md) — Repository 패턴 상세
-- [cqrs-pattern.md](cqrs-pattern.md) — Command/Query Service 분리
-- [domain-events.md](domain-events.md) — Domain Event, Outbox 패턴
+- [tactical-ddd.md](tactical-ddd.md) — Aggregate, Entity, Value Object details
+- [repository-pattern.md](repository-pattern.md) — Repository pattern details
+- [cqrs-pattern.md](cqrs-pattern.md) — Command/Query Service separation
+- [domain-events.md](domain-events.md) — Domain Event, the Outbox pattern

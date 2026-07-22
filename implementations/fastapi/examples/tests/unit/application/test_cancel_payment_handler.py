@@ -27,7 +27,7 @@ async def test_execute_완료된_결제는_취소되고_저장된다(repo) -> No
     handler = CancelPaymentHandler(repo)
 
     result = await handler.execute(
-        CancelPaymentCommand(requester_id="owner-1", payment_id=payment.payment_id, reason="고객 요청")
+        CancelPaymentCommand(requester_id="owner-1", payment_id=payment.payment_id, reason="customer request")
     )
 
     assert result.status == PaymentStatus.CANCELLED
@@ -41,7 +41,7 @@ async def test_execute_결제가_없으면_PaymentNotFoundError(repo) -> None:
 
     with pytest.raises(PaymentNotFoundError):
         await handler.execute(
-            CancelPaymentCommand(requester_id="owner-1", payment_id="non-existent", reason="고객 요청")
+            CancelPaymentCommand(requester_id="owner-1", payment_id="non-existent", reason="customer request")
         )
 
     repo.save_payment.assert_not_awaited()
@@ -55,7 +55,7 @@ async def test_execute_대기중인_결제는_취소할_수_없다(repo) -> None
 
     with pytest.raises(PaymentCancelRequiresCompletedPaymentError):
         await handler.execute(
-            CancelPaymentCommand(requester_id="owner-1", payment_id=payment.payment_id, reason="고객 요청")
+            CancelPaymentCommand(requester_id="owner-1", payment_id=payment.payment_id, reason="customer request")
         )
 
     repo.save_payment.assert_not_awaited()

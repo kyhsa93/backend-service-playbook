@@ -7,9 +7,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Aggregate가 수집한 도메인 이벤트를 Outbox 테이블에 저장한다. {@link
- * com.example.accountservice.account.infrastructure.persistence.AccountRepositoryImpl#save}가
- * Aggregate 저장과 같은 물리 트랜잭션 안에서 호출해, 이벤트 발행이 Aggregate 상태 변경과 원자적으로 커밋되도록 한다.
+ * Saves domain events collected by an Aggregate into the Outbox table. {@link
+ * com.example.accountservice.account.infrastructure.persistence.AccountRepositoryImpl#save} calls
+ * this inside the same physical transaction as the Aggregate save, so that event publication
+ * commits atomically together with the Aggregate's state change.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,16 +28,18 @@ public class OutboxWriter {
     }
 
     /**
-     * 명시적 eventType으로 이벤트 한 건을 Outbox에 적재한다. 외부 BC에 공개하는 Integration Event는 클래스명 대신 버전이 명시된 공개
-     * 계약명(예: {@code account.suspended.v1})을 eventType으로 써야 하므로, 도메인 이벤트용 {@link #saveAll(List)}과 달리
-     * 타입을 직접 받는다. Domain Event를 수신한 application/event 핸들러가 Integration Event로 변환할 때 호출한다.
+     * Loads a single event into the Outbox with an explicit eventType. An Integration Event exposed
+     * to an external BC must use a versioned public contract name (e.g. {@code
+     * account.suspended.v1}) instead of the class name as its eventType, so unlike {@link
+     * #saveAll(List)} for domain events, this takes the type directly. Called by an
+     * application/event handler when it converts a received Domain Event into an Integration Event.
      */
     public void save(String eventType, Object payload) {
         try {
             outboxJpaRepository.save(
                     OutboxEvent.create(eventType, objectMapper.writeValueAsString(payload)));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("이벤트 직렬화 실패: " + eventType, e);
+            throw new IllegalStateException("Failed to serialize event: " + eventType, e);
         }
     }
 
@@ -45,7 +48,8 @@ public class OutboxWriter {
             return OutboxEvent.create(
                     event.getClass().getSimpleName(), objectMapper.writeValueAsString(event));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("이벤트 직렬화 실패: " + event.getClass().getSimpleName(), e);
+            throw new IllegalStateException(
+                    "Failed to serialize event: " + event.getClass().getSimpleName(), e);
         }
     }
 }

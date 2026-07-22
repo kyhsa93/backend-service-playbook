@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# FastAPI Harness 실행 래퍼
+# A wrapper for running the FastAPI Harness
 #
 # Usage: ./implementations/fastapi/harness.sh [projectRoot]
 #
-# 사전 조건: Python 3.10+
+# Prerequisite: Python 3.10+
 
 set -uo pipefail
 

@@ -8,17 +8,19 @@ import com.example.accountservice.payment.application.adapter.CardView
 import org.springframework.stereotype.Component
 
 /**
- * [CardAdapter]의 구현체(ACL). Card BC가 공개한 읽기 포트([CardQuery])를 주입받아 호출하고,
- * Card BC의 모델([com.example.accountservice.card.domain.Card]·[CardStatus])을 Payment BC가 쓰는
- * 최소 형태([CardView])로 번역한다. Card의 쓰기 Repository/도메인 메서드는 참조하지 않는다.
+ * The implementation of [CardAdapter] (ACL). Injects and calls the read port ([CardQuery]) exposed by
+ * Card BC, and translates Card BC's model ([com.example.accountservice.card.domain.Card]·[CardStatus])
+ * into the minimal shape Payment BC uses ([CardView]). It does not reference Card's write
+ * Repository/domain methods.
  *
- * Card의 "카드 없음" 신호는 `CardQuery.findCards`가 빈 목록을 반환하는 것이며(단건 조회도
- * `take = 1` + `firstOrNull()`로 처리한다), 이를 그대로 Payment 도메인이 이해하는 `null`로
- * 전파한다 — Card의 예외 타입(CardNotFoundException 등)이 Payment 레이어로 누수되지 않는다.
+ * Card's "no card" signal is `CardQuery.findCards` returning an empty list (a single-record lookup is
+ * also handled via `take = 1` + `firstOrNull()`), and this is propagated as-is into the `null` that the
+ * Payment domain understands — Card's exception types (CardNotFoundException, etc.) do not leak into
+ * the Payment layer.
  *
- * 클래스명에 `Payment` 접두어를 붙인 이유는
- * [com.example.accountservice.payment.infrastructure.PaymentAccountAdapterImpl] 문서 참고 —
- * 현재는 이 이름과 충돌하는 다른 `CardAdapterImpl`이 없지만, 같은 접두어 컨벤션을 일관되게 적용한다.
+ * See the [com.example.accountservice.payment.infrastructure.PaymentAccountAdapterImpl] doc comment
+ * for why the class name carries the `Payment` prefix — there is currently no other `CardAdapterImpl`
+ * that would collide with this name, but the same prefix convention is applied consistently anyway.
  */
 @Component
 class PaymentCardAdapterImpl(

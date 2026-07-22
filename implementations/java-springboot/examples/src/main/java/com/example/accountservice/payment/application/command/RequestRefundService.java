@@ -16,8 +16,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class RequestRefundService {
 
-    // RefundEligibilityService는 프레임워크 애노테이션이 없는 순수 Domain Service다.
-    // Spring 빈으로 등록하지 않고 직접 인스턴스화해 쓴다(상태 없는 순수 판단 로직이라 매 요청 재사용에 문제가 없다).
+    // RefundEligibilityService is a pure Domain Service with no framework annotations.
+    // It is instantiated directly instead of being registered as a Spring bean (it's stateless
+    // pure judgment logic, so reusing it per request is not a problem).
     private final RefundEligibilityService refundEligibilityService =
             new RefundEligibilityService();
 
@@ -37,26 +38,32 @@ public class RequestRefundService {
                                 () ->
                                         new PaymentException(
                                                 PaymentException.ErrorCode.PAYMENT_NOT_FOUND,
-                                                "결제를 찾을 수 없습니다."));
+                                                "Payment not found."));
 
         Refund refund = Refund.create(payment.getPaymentId(), command.amount(), command.reason());
 
-        // 어느 한 Aggregate만으로는 내릴 수 없는 판단(원 결제 상태 + 환불 금액 비교)을 Payment+Refund
-        // 두 Aggregate를 함께 로드한 이 Application 레이어가 RefundEligibilityService(Domain
-        // Service)에 위임해 조율한다.
+        // A judgment that no single Aggregate alone can make (comparing the original payment's
+        // state + the refund amount) is delegated to RefundEligibilityService (a Domain Service)
+        // by this Application layer, which has loaded both the Payment and Refund Aggregates
+        // together to coordinate it.
         RefundDecision decision = refundEligibilityService.evaluate(payment, refund);
         if (decision.approved()) {
             refund.approve(payment.getAccountId(), payment.getOwnerId());
         } else {
-            // 환불 거부는 도메인 관점에서 유효한 상태 전이다(입력이 잘못된 것이 아니라 두 Aggregate를
-            // 조율해 내린 결론) — 따라서 이 메서드는 throw하지 않고 REJECTED로 저장한 Refund를 그대로
-            // 반환한다. Interface 레이어가 이를 에러가 아닌 201 + status:REJECTED로 응답한다.
-            refund.reject(decision.reason() != null ? decision.reason() : "환불 요청이 거부되었습니다.");
+            // Rejecting a refund is a valid state transition from a domain perspective (it is not
+            // an invalid input, but a conclusion reached by coordinating the two Aggregates) —
+            // so this method does not throw; it returns the Refund saved as REJECTED as-is. The
+            // Interface layer responds with 201 + status:REJECTED rather than an error.
+            refund.reject(
+                    decision.reason() != null
+                            ? decision.reason()
+                            : "The refund request was rejected.");
         }
 
         refundRepository.saveRefund(refund);
-        // RefundApprovedEvent → refund.approved.v1을 Account BC가 구독해 환불 크레딧을 실행한다
-        // (OutboxPoller/OutboxConsumer가 비동기로 처리). 거부된 경우에는 Domain Event가 없다.
+        // The Account BC subscribes to RefundApprovedEvent -> refund.approved.v1 and runs the
+        // refund credit (the OutboxPoller/OutboxConsumer processes it asynchronously). There is no
+        // Domain Event when the refund is rejected.
         return GetRefundResult.from(refund);
     }
 }

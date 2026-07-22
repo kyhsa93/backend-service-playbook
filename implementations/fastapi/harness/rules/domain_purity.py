@@ -1,9 +1,10 @@
-"""[5] domain/ 순수성 — FastAPI/SQLAlchemy/aioboto3/로깅 라이브러리 import 금지
+"""[5] domain/ purity — importing FastAPI/SQLAlchemy/aioboto3/a logging library is forbidden
 
-로깅 금지는 observability.md의 "Domain 레이어에서 로깅하지 않는다" 원칙을 반영한다 — Domain은
-어떤 로거도 import하지 않아야 순수성이 유지된다(`src/account/domain/account.py`가 실제
-예시). stdlib `logging`과 이 저장소가 대안으로 언급하는 `structlog` 둘 다 블록리스트에
-포함한다.
+The logging prohibition reflects observability.md's "no logging in the Domain layer"
+principle — Domain must import no logger at all for its purity to be preserved
+(`src/account/domain/account.py` is the actual example). Both the stdlib `logging` and
+`structlog` (which this repository mentions as an alternative) are included in the
+blocklist.
 """
 
 from __future__ import annotations
@@ -31,9 +32,9 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         src = read(f)
         r = rel(root, f)
         if FORBIDDEN.search(src):
-            result.add(failed(r, "domain/ 모듈에 fastapi/sqlalchemy/aioboto3/logging/structlog import 금지"))
+            result.add(failed(r, "A domain/ module must not import fastapi/sqlalchemy/aioboto3/logging/structlog"))
         else:
-            result.add(passed(f"{r} (domain 순수성)"))
+            result.add(passed(f"{r} (domain purity)"))
     if not found:
-        result.add(skipped("domain/ Python 파일 없음"))
+        result.add(skipped("No Python file in domain/"))
     return result

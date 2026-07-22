@@ -9,9 +9,10 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// interfaces/rest/, application/query/, application/command/ 가 실제로 HTTP 응답으로 직렬화되는
-// DTO(Request 제외 — Result/Response류)가 위치하는 곳이다(api-response.md, layer-architecture.md).
-// domain/, infrastructure/는 클라이언트에 직접 노출되는 응답 스키마가 아니므로 대상에서 뺀다.
+// interfaces/rest/, application/query/, application/command/ are where DTOs actually serialized as
+// HTTP responses live(excluding Requests — the Result/Response kind)(api-response.md,
+// layer-architecture.md). domain/, infrastructure/ aren't response schemas exposed directly to
+// clients, so they're excluded from scope.
 private fun inResponseScope(f: File): Boolean =
     f.pathContains("/interfaces/") || f.pathContains("/application/query/") || f.pathContains("/application/command/")
 
@@ -32,18 +33,19 @@ private fun extractBalancedParens(code: String, openParenIndex: Int): String? {
     return null
 }
 
-// 목록 응답의 배열을 담는 프로퍼티(List<...> 타입)만 대상 — 단건 응답 안의 우연한 동명 필드(예:
-// 별도 의미의 단순 값 필드)까지 넓게 잡으면 오탐이 되므로, root가 실제로 금지하는 "목록 응답의
-// 범용 키" 의미로 좁힌다.
+// Only targets a property holding a list-response array(a List<...> type) — broadly catching a
+// coincidentally same-named field inside a single-record response(e.g. an unrelated simple value
+// field) would be a false positive, so this is narrowed to the "generic key in a list response"
+// meaning that the root actually forbids.
 private val FORBIDDEN_LIST_PROPERTY = Regex("""\bval\s+(result|data|items)\s*:\s*List<""")
 
-private const val DOC_REF = "루트 api-response.md — 목록 조회 응답의 키 이름은 도메인 객체 복수형이어야 하고 result/data/items 같은 범용 키는 금지"
+private const val DOC_REF = "root api-response.md — a list-response key name must be the domain object's plural form; generic keys like result/data/items are forbidden"
 
 /**
- * no-generic-response-keys — 목록 조회 응답 data class(Result/Response DTO, interfaces/,
- * application/query/, application/command/)가 List<...> 프로퍼티를 result/data/items 같은
- * 범용 키로 노출하면 실패한다 — 도메인 객체 복수형(transactions, payments 등)을 써야 한다
- * (api-response.md).
+ * no-generic-response-keys — fails if a list-response data class(a Result/Response DTO in
+ * interfaces/, application/query/, application/command/) exposes a List<...> property under a generic
+ * key like result/data/items — it must use the domain object's plural form(transactions, payments,
+ * etc.)(api-response.md).
  */
 fun checkNoGenericResponseKeys(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -65,7 +67,7 @@ fun checkNoGenericResponseKeys(rootPath: String): RuleResult {
                 result.add(
                     failFinding(
                         "$rel ($className)",
-                        "List<...> 프로퍼티에 범용 키(${violations.joinToString()}) 사용 금지 — 도메인 객체 복수형으로 이름을 지어야 함 ($DOC_REF)",
+                        "using a generic key(${violations.joinToString()}) for a List<...> property is forbidden — it must be named after the domain object's plural form ($DOC_REF)",
                     ),
                 )
             } else {
@@ -74,6 +76,6 @@ fun checkNoGenericResponseKeys(rootPath: String): RuleResult {
         }
     }
 
-    if (!found) result.add(skipFinding("interfaces/, application/query/, application/command/ 안의 data class 없음"))
+    if (!found) result.add(skipFinding("no data class inside interfaces/, application/query/, application/command/"))
     return result
 }

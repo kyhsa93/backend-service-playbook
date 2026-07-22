@@ -29,13 +29,14 @@ import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 import java.time.Duration
 
 /**
- * Payment BC E2E 테스트 — REST 엔드포인트와 함께 Payment/Refund → Account 크로스 도메인 흐름
- * (동기 Adapter + 비동기 Integration Event)을 실제로 검증한다.
+ * Payment BC E2E tests — verifies the REST endpoints together with the actual Payment/Refund →
+ * Account cross-domain flow (synchronous Adapter + asynchronous Integration Event).
  *
- * `CreatePaymentService`/`CancelPaymentService`/`RequestRefundService`는 저장 후 곧바로 반환한다 —
- * Outbox → SQS(OutboxPoller) → OutboxConsumer 경로를 거쳐 Account BC의 반응
- * (WithdrawByPaymentService/DepositByPaymentService)이 비동기로 처리되므로, HTTP 응답이 돌아온
- * 시점에는 아직 계좌 잔액 반영이 끝나 있지 않을 수 있다 — [awaitBalance]로 폴링해서 확인한다.
+ * `CreatePaymentService`/`CancelPaymentService`/`RequestRefundService` return immediately after
+ * saving — the Account BC's reaction (WithdrawByPaymentService/DepositByPaymentService) is processed
+ * asynchronously via the Outbox → SQS (OutboxPoller) → OutboxConsumer path, so the account balance
+ * update may not be finished yet by the time the HTTP response comes back — verify by polling with
+ * [awaitBalance].
  */
 @Testcontainers
 @SpringBootTest(
@@ -85,9 +86,9 @@ class PaymentControllerE2ETest {
             return queueUrl
         }
 
-        // SqsProperties.taskQueueUrl도 @NotBlank(config.md fail-fast)이므로, Task Queue 경로를
-        // 실제로 쓰지 않는 이 테스트도 컨텍스트 기동을 위해 FIFO 큐를 만들어 둔다(TaskQueueE2ETest와
-        // 동일한 방식).
+        // Since SqsProperties.taskQueueUrl is also @NotBlank (config.md fail-fast), this test — which
+        // doesn't actually use the Task Queue path — also creates a FIFO queue just to boot the
+        // context (the same approach as TaskQueueE2ETest).
         private fun createTaskQueue(): String {
             val sqsClient =
                 SqsClient
@@ -190,10 +191,11 @@ class PaymentControllerE2ETest {
     }
 
     /**
-     * payment.completed.v1/payment.cancelled.v1/refund.approved.v1 Integration Event가 Outbox →
-     * SQS → OutboxConsumer → WithdrawByPaymentService/DepositByPaymentService 경로를 거쳐 계좌
-     * 잔액에 반영되기까지 최대 몇 초가 걸린다 — 이 저장소가 실측한 LocalStack+SQS 지연(2~4초)보다
-     * 넉넉한 타임아웃으로 폴링한다.
+     * It takes up to a few seconds for the payment.completed.v1/payment.cancelled.v1/
+     * refund.approved.v1 Integration Event to be reflected in the account balance via the Outbox →
+     * SQS → OutboxConsumer → WithdrawByPaymentService/DepositByPaymentService path — poll with a
+     * timeout more generous than the LocalStack+SQS latency (2-4 seconds) actually measured in this
+     * repository.
      */
     private fun awaitBalance(
         ownerId: String,
@@ -205,7 +207,7 @@ class PaymentControllerE2ETest {
         }
     }
 
-    /** 계좌 개설 + 충전 + 카드 발급까지 끝낸 (accountId, cardId) 조합을 만든다. */
+    /** Creates an (accountId, cardId) pair with account opening + deposit + card issuance already done. */
     private fun setUpFundedCard(
         ownerId: String,
         initialBalance: Long = 10_000,
@@ -218,13 +220,14 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `비활성 카드로 결제하면 400을 반환하고 잔액은 차감되지 않는다`() {
+    fun `returns 400 and does not deduct the balance when paying with an inactive card`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
-        // Card BC는 카드를 직접 정지하는 REST 엔드포인트가 없다 — 계좌를 정지하면 account.suspended.v1을
-        // Card BC가 구독해 연결된 카드를 정지시키는 기존 Integration Event 경로(CardControllerE2ETest와
-        // 동일)로 카드를 비활성화한다. 이 경로가 비동기이므로, 결제를 시도하기 전에 카드가 실제로
-        // SUSPENDED로 전환될 때까지 기다린다 — 그렇지 않으면 이 테스트가 타이밍에 따라 간헐적으로
-        // 실패(카드가 아직 ACTIVE라 결제가 성공)할 수 있다.
+        // The Card BC has no REST endpoint to directly suspend a card — the card is deactivated via
+        // the existing Integration Event path (same as CardControllerE2ETest) where suspending the
+        // account publishes account.suspended.v1, which the Card BC subscribes to and suspends the
+        // linked card. Since this path is asynchronous, we wait until the card has actually
+        // transitioned to SUSPENDED before attempting the payment — otherwise this test could fail
+        // intermittently depending on timing (payment would succeed because the card is still ACTIVE).
         val suspendResponse = post("/accounts/$accountId/suspend", OWNER_ID, emptyMap())
         assertThat(suspendResponse.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
         await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
@@ -237,7 +240,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `계좌 잔액이 부족하면 400을 반환하고 잔액은 차감되지 않는다`() {
+    fun `returns 400 and does not deduct the balance when the account balance is insufficient`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID, initialBalance = 500)
 
         val response = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000))
@@ -247,14 +250,14 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `존재하지 않는 카드로 결제하면 404를 반환한다`() {
+    fun `returns 404 when paying with a nonexistent card`() {
         val response = post("/payments", OWNER_ID, mapOf("cardId" to "non-existent", "amount" to 1000))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `다른 소유자의 카드로 결제하면 404를 반환한다`() {
+    fun `returns 404 when paying with another owner's card`() {
         val (_, cardId) = setUpFundedCard(OWNER_ID)
 
         val response = post("/payments", OTHER_OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000))
@@ -263,7 +266,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `정상 결제하면 201과 COMPLETED 상태를 반환하고 계좌 잔액이 비동기로 차감된다`() {
+    fun `a normal payment returns 201 and the COMPLETED status, and the account balance is deducted asynchronously`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
 
         val response = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000))
@@ -277,13 +280,13 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `결제취소하면 204를 반환하고 보상 크레딧으로 잔액이 복구된다`() {
+    fun `cancelling a payment returns 204 and the balance is restored via a compensating credit`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
         awaitBalance(OWNER_ID, accountId, 9000)
 
         val cancelResponse =
-            post("/payments/${payment["paymentId"]}/cancel", OWNER_ID, mapOf("reason" to "고객 요청"))
+            post("/payments/${payment["paymentId"]}/cancel", OWNER_ID, mapOf("reason" to "Customer request"))
 
         assertThat(cancelResponse.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
         awaitBalance(OWNER_ID, accountId, 10_000)
@@ -293,48 +296,48 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `완료되지 않은(취소된) 결제에 환불을 요청하면 201이지만 REJECTED로 응답하고 잔액은 그대로다`() {
+    fun `requesting a refund for a cancelled (non-completed) payment returns 201 with status REJECTED, balance unchanged`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
-        post("/payments/${payment["paymentId"]}/cancel", OWNER_ID, mapOf("reason" to "고객 요청"))
+        post("/payments/${payment["paymentId"]}/cancel", OWNER_ID, mapOf("reason" to "Customer request"))
         awaitBalance(OWNER_ID, accountId, 10_000)
 
         val refundResponse =
-            post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 500, "reason" to "단순 변심"))
+            post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 500, "reason" to "Simple change of mind"))
 
         assertThat(refundResponse.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(refundResponse.body!!["status"]).isEqualTo("REJECTED")
-        assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+        assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("A refund can only be requested for a completed payment.")
         assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(10_000)
     }
 
     @Test
-    fun `환불 금액이 결제 금액을 초과하면 201이지만 REJECTED로 응답하고 잔액은 그대로다`() {
+    fun `requesting a refund amount that exceeds the payment amount returns 201 but with status REJECTED, and the balance is unchanged`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
         awaitBalance(OWNER_ID, accountId, 9000)
 
         val refundResponse =
-            post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 1500, "reason" to "단순 변심"))
+            post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 1500, "reason" to "Simple change of mind"))
 
         assertThat(refundResponse.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(refundResponse.body!!["status"]).isEqualTo("REJECTED")
-        assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("환불 금액은 결제 금액을 초과할 수 없습니다.")
+        assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("The refund amount cannot exceed the payment amount.")
         assertThat(balanceOf(OWNER_ID, accountId)).isEqualTo(9000)
     }
 
     @Test
-    fun `완료된 결제에 대해 유효한 환불을 요청하면 201과 APPROVED를 반환하고 크레딧이 비동기로 반영된다`() {
+    fun `requesting a valid refund for a completed payment returns 201 and APPROVED, and the credit is reflected asynchronously`() {
         val (accountId, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
         awaitBalance(OWNER_ID, accountId, 9000)
 
         val refundResponse =
-            post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 500, "reason" to "단순 변심"))
+            post("/payments/${payment["paymentId"]}/refunds", OWNER_ID, mapOf("amount" to 500, "reason" to "Simple change of mind"))
 
         assertThat(refundResponse.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(refundResponse.body!!["status"]).isEqualTo("APPROVED")
-        assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("환불이 승인되었습니다.")
+        assertThat(refundResponse.body!!["decisionNote"]).isEqualTo("The refund was approved.")
         awaitBalance(OWNER_ID, accountId, 9500)
 
         val refunds = get("/payments/${payment["paymentId"]}/refunds", OWNER_ID)
@@ -343,11 +346,11 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `결제 목록 조회는 인증된 요청자의 결제만 반환한다`() {
-        // OWNER_ID/OTHER_OWNER_ID는 이 테스트 클래스의 모든 테스트가 같은 Testcontainers DB·Spring
-        // 컨텍스트를 공유하며 누적해서 쓴다(각 테스트 사이에 DB를 리셋하지 않는다) — 그래서 개수(count)를
-        // 절대값으로 검증하려면 이 테스트만의 전용 소유자 ID가 필요하다(다른 테스트가 만든 결제와
-        // 섞이지 않도록).
+    fun `listing payments returns only the authenticated requester's payments`() {
+        // OWNER_ID/OTHER_OWNER_ID are shared and accumulated across all tests in this test class,
+        // since they all share the same Testcontainers DB/Spring context (the DB is not reset between
+        // tests) — so verifying the count as an absolute value requires an owner ID dedicated to this
+        // test only (so it doesn't get mixed with payments created by other tests).
         val listOwnerId = "payment-owner-list-1"
         val otherOwnerId = "payment-owner-list-2"
         val (_, cardId) = setUpFundedCard(listOwnerId)
@@ -361,7 +364,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    fun `다른 소유자가 결제를 조회하면 404를 반환한다`() {
+    fun `returns 404 when a different owner looks up a payment`() {
         val (_, cardId) = setUpFundedCard(OWNER_ID)
         val payment = post("/payments", OWNER_ID, mapOf("cardId" to cardId, "amount" to 1000)).body!!
 

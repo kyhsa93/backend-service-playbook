@@ -12,9 +12,10 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * payment/domain/Payment.java의 JPA 매핑 전용 대응물. Domain Aggregate(Payment)는 이 클래스를 전혀 알지 못한다 — 변환은
- * PaymentMapper가 전담한다(card/infrastructure/persistence/CardJpaEntity와 동일한 domain/JPA 분리 구조,
- * layer-architecture.md 참고).
+ * The JPA mapping counterpart dedicated to payment/domain/Payment.java. The Domain Aggregate
+ * (Payment) is entirely unaware of this class — the conversion is handled exclusively by
+ * PaymentMapper (the same domain/JPA separation structure as
+ * card/infrastructure/persistence/CardJpaEntity, see layer-architecture.md).
  */
 @Entity
 @Table(name = "payment")
@@ -67,7 +68,10 @@ public class PaymentJpaEntity {
         this.createdAt = createdAt;
     }
 
-    /** 기존 row(id 보존)에 도메인 Payment의 최신 상태를 반영한다 — status 전이 저장에 사용. */
+    /**
+     * Applies the domain Payment's latest state to an existing row (preserving id) — used to save a
+     * status transition.
+     */
     void applyMutableState(PaymentStatus status) {
         this.status = status;
     }

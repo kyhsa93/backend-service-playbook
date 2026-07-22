@@ -12,9 +12,9 @@ import jakarta.persistence.Table
 import java.time.LocalDateTime
 
 /**
- * payment/domain/Payment.kt의 JPA 매핑 전용 대응물.
- * Domain Aggregate(Payment)는 이 클래스를 전혀 알지 못한다 — 변환은 PaymentMapper가 전담한다
- * (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조).
+ * The JPA-mapping-only counterpart of payment/domain/Payment.kt.
+ * The Domain Aggregate (Payment) knows nothing about this class at all — the conversion is handled
+ * exclusively by PaymentMapper (the same structure as account/infrastructure/persistence/AccountJpaEntity).
  */
 @Entity
 @Table(name = "payments")

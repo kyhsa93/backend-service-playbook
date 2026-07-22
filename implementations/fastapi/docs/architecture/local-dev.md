@@ -1,24 +1,24 @@
-# 로컬 개발 환경
+# Local Development Environment
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/local-dev.md](../../../../docs/architecture/local-dev.md)
+> Framework-agnostic principles: [../../../../docs/architecture/local-dev.md](../../../../docs/architecture/local-dev.md)
 
-이 항목은 root 문서 기준에 맞게 구현되어 있다 — `examples/docker-compose.yml`, `examples/localstack/init-ses.sh`, `examples/localstack/init-secrets.sh`, `examples/localstack/init-sqs.sh`가 실제 root 원칙(Docker Compose 인프라 + LocalStack + 앱 컨테이너 프로필)을 따른다.
+This is implemented to match the root document's criteria — `examples/docker-compose.yml`, `examples/localstack/init-ses.sh`, `examples/localstack/init-secrets.sh`, and `examples/localstack/init-sqs.sh` follow the actual root principles (Docker Compose infrastructure + LocalStack + an app container profile).
 
-## 현재 구성
+## Current setup
 
 ```
 implementations/fastapi/examples/
   docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager, SQS) + app(profiles: [app])
-  .env.example                ← 커밋되는 템플릿 — 이를 복사해 .env.development를 만든다
-  .gitignore                  ← .env* 패턴으로 로컬 전용 값을 커밋에서 제외
+  .env.example                ← the committed template — copy this to create .env.development
+  .gitignore                  ← excludes local-only values from commits via the .env* pattern
   localstack/
-    init-ses.sh               ← SES 발신자 이메일 검증 스크립트
-    init-secrets.sh            ← Secrets Manager에 app/jwt 시크릿 생성
-    init-sqs.sh                ← OutboxPoller/OutboxConsumer가 쓰는 domain-events 큐 + DLQ 생성
+    init-ses.sh               ← script that verifies the SES sender email
+    init-secrets.sh            ← creates the app/jwt secret in Secrets Manager
+    init-sqs.sh                ← creates the domain-events queue + DLQ used by OutboxPoller/OutboxConsumer
 ```
 
 ```yaml
-# docker-compose.yml — 실제 코드
+# docker-compose.yml — actual code
 services:
   database:
     image: postgres:16-alpine
@@ -53,7 +53,7 @@ services:
     env_file:
       - .env.development
     environment:
-      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      # Inside the container network, connect via the service name instead of localhost.
       DATABASE_URL: postgresql+asyncpg://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
@@ -88,7 +88,7 @@ awslocal secretsmanager create-secret \
 ```
 
 ```bash
-# localstack/init-sqs.sh — DLQ 우선 생성 후 RedrivePolicy로 메인 큐에 연결
+# localstack/init-sqs.sh — creates the DLQ first, then links it to the main queue via RedrivePolicy
 #!/bin/sh
 set -e
 
@@ -103,19 +103,19 @@ awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 ```
 
-DLQ + `maxReceiveCount=3`은 [scheduling.md — DLQ 모니터링](../../../../docs/architecture/scheduling.md#dlq-모니터링)이 요구하는 컨벤션을 그대로 따른다 — nestjs 구현의 `localstack/init-sqs.sh`와 큐 이름·RedrivePolicy가 동일하다(언어 간 일관성).
+The DLQ + `maxReceiveCount=3` follow exactly the convention required by [scheduling.md — DLQ monitoring](../../../../docs/architecture/scheduling.md#monitoring-the-dlq) — the queue names and RedrivePolicy match the nestjs implementation's `localstack/init-sqs.sh` (cross-language consistency).
 
-**이미 root 원칙을 정확히 지키고 있는 부분:**
-- 모든 인프라 서비스에 `healthcheck`가 설정되어 있다 (`pg_isready`, `awslocal ses list-identities`).
-- LocalStack 이미지 버전이 `3.0`으로 고정되어 있다 (`latest` 사용 안 함).
-- 초기화 스크립트(`init-ses.sh`, `init-secrets.sh`, `init-sqs.sh`)가 저장소에 커밋되어 모든 개발자가 동일한 환경을 재현할 수 있다.
-- SES 발신자 이메일 검증을 초기화 스크립트에서 미리 처리한다 — LocalStack의 SES 에뮬레이터도 실제 SES처럼 미검증 발신자를 거부하기 때문이다 (`test_notification_e2e.py`의 주석 참조).
-- `app` 서비스가 `profiles: [app]`로 분리되어 있어, 기본 `docker compose up`은 인프라만 기동하고 앱은 호스트에서 직접 실행하는 워크플로우를 그대로 유지하면서도, 필요하면 앱까지 컨테이너로 기동할 수 있다.
-- `app` 서비스는 `container.md`의 Dockerfile을 `build: .`로 참조하고, 컨테이너 네트워크 안에서는 `localhost` 대신 서비스명(`database`, `localstack`)으로 접속하도록 환경 변수를 오버라이드한다.
-- `.gitignore`에 `.env.development`, `.env.docker`가 포함되어 있어 로컬 전용 값이 커밋되지 않는다.
+**Parts that already precisely follow the root principles:**
+- Every infrastructure service has a `healthcheck` configured (`pg_isready`, `awslocal ses list-identities`).
+- The LocalStack image version is pinned to `3.0` (not `latest`).
+- The initialization scripts (`init-ses.sh`, `init-secrets.sh`, `init-sqs.sh`) are committed to the repository so every developer can reproduce the same environment.
+- SES sender-email verification is handled ahead of time in the initialization script — because LocalStack's SES emulator rejects an unverified sender just like real SES does (see the comment in `test_notification_e2e.py`).
+- The `app` service is separated via `profiles: [app]`, so the default `docker compose up` starts only the infrastructure, keeping the workflow of running the app directly on the host, while still allowing the app to be started as a container too when needed.
+- The `app` service references the Dockerfile from `container.md` via `build: .`, and overrides environment variables so that, inside the container network, it connects via the service name (`database`, `localstack`) instead of `localhost`.
+- `.gitignore` includes `.env.development` and `.env.docker`, so local-only values are never committed.
 
 ```
-# .gitignore — 실제 코드
+# .gitignore — actual code
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -125,14 +125,14 @@ __pycache__/
 
 ---
 
-## `.env.example` — 커밋되는 템플릿
+## `.env.example` — the committed template
 
 ```env
-# .env.example — 실제 코드
-# 로컬에서 uvicorn main:app --reload로 앱을 직접 실행할 때 사용한다.
-# 이 파일을 복사해 .env.development로 만든다 — .env.development는 커밋하지 않는다.
-# uvicorn/FastAPI는 .env 파일을 자동으로 읽지 않으므로, direnv 등으로 셸에 로드하거나
-# `export $(cat .env.development | xargs) && uvicorn main:app --reload`처럼 실행한다.
+# .env.example — actual code
+# Used when running the app directly locally with uvicorn main:app --reload.
+# Copy this file to create .env.development — .env.development is never committed.
+# uvicorn/FastAPI doesn't automatically read a .env file, so load it into the shell via
+# direnv or similar, or run it like `export $(cat .env.development | xargs) && uvicorn main:app --reload`.
 
 DATABASE_URL=postgresql+asyncpg://dev:dev@localhost:5432/app
 
@@ -147,70 +147,70 @@ JWT_SECRET=local-dev-secret
 APP_ENV=development
 ```
 
-`APP_ENV=development`(또는 미설정)에서는 `main.py`의 `lifespan`이 Secrets Manager를 호출하지 않고 `JWT_SECRET` 환경 변수를 그대로 쓴다 — `APP_ENV=production`일 때만 `localstack/init-secrets.sh`가 만든 `app/jwt` 시크릿을 조회한다([secret-manager.md](secret-manager.md) 참조).
+With `APP_ENV=development` (or unset), `main.py`'s `lifespan` doesn't call Secrets Manager and uses the `JWT_SECRET` environment variable as-is — only when `APP_ENV=production` does it look up the `app/jwt` secret created by `localstack/init-secrets.sh` (see [secret-manager.md](secret-manager.md)).
 
 ---
 
-## 실행 방법
+## How to run it
 
 ```bash
-# 1. 인프라 기동 (database + localstack만 — app 프로필은 기본 제외)
+# 1. Start infrastructure (database + localstack only — the app profile is excluded by default)
 docker compose up -d
 
-# 2. 앱 실행 (호스트에서 직접 — 개발 중 핫 리로드)
-cp .env.example .env.development   # 최초 1회
+# 2. Run the app (directly on the host — hot reload during development)
+cp .env.example .env.development   # once, the first time
 export $(cat .env.development | xargs) && uvicorn main:app --reload --port 8000
 
-# --- 또는 ---
+# --- or ---
 
-# 전체 컨테이너 기동 (앱 포함)
+# Start every container (including the app)
 docker compose --profile app up -d
 
-# 로그 확인
+# Check logs
 docker compose logs -f app
 
-# 종료
+# Shut down
 docker compose --profile app down
 
-# 종료 + 데이터 삭제
+# Shut down + delete data
 docker compose --profile app down -v
 ```
 
 ---
 
-## AWS SDK — LocalStack 연동
+## AWS SDK — LocalStack integration
 
-`SesNotificationService`(`infrastructure/notification/notification_service.py`), `AwsSecretService`(`common/aws_secret_service.py`), `OutboxPoller`/`OutboxConsumer`(`outbox/outbox_poller.py`/`outbox_consumer.py`)는 모두 `AwsConfig.client_kwargs()`(`config/aws_config.py`)를 통해 같은 환경 변수 기반 엔드포인트 분기를 공유한다.
+`SesNotificationService` (`infrastructure/notification/notification_service.py`), `AwsSecretService` (`common/aws_secret_service.py`), and `OutboxPoller`/`OutboxConsumer` (`outbox/outbox_poller.py`/`outbox_consumer.py`) all share the same environment-variable-based endpoint branching via `AwsConfig.client_kwargs()` (`config/aws_config.py`).
 
 ```python
 async with self._boto_session.client(
-    "sqs",  # 또는 "ses"/"secretsmanager" — 서비스명만 다르고 나머지는 동일하다
+    "sqs",  # or "ses"/"secretsmanager" — only the service name differs, everything else is the same
     region_name=os.getenv("AWS_REGION", "us-east-1"),
-    endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,   # 있으면 LocalStack, 없으면 실제 AWS
+    endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,   # LocalStack if set, real AWS otherwise
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
 ) as sqs_client:
     ...
 ```
 
-큐 URL은 `config/sqs_config.py`의 `SqsConfig.domain_event_queue_url`이 `SQS_DOMAIN_EVENT_QUEUE_URL` 환경 변수에서 읽는다.
+The queue URL is read by `SqsConfig.domain_event_queue_url` (`config/sqs_config.py`) from the `SQS_DOMAIN_EVENT_QUEUE_URL` environment variable.
 
-`test_notification_e2e.py`/`test_card_e2e.py`/`test_payment_e2e.py`는 `testcontainers.localstack.LocalStackContainer`로 이 흐름 전체(SES 발송·SQS 발행/수신 → LocalStack 메시지 확인)를 검증한다 — [testing.md](testing.md)의 E2E 테스트 섹션 참조.
+`test_notification_e2e.py`/`test_card_e2e.py`/`test_payment_e2e.py` verify this entire flow (SES send / SQS publish-receive → confirming the message in LocalStack) using `testcontainers.localstack.LocalStackContainer` — see the E2E testing section of [testing.md](testing.md).
 
 ---
 
-## 원칙
+## Principles
 
-- **로컬 개발 시 외부 서비스에 직접 연결하지 않는다**: DB는 Docker Compose, AWS 서비스는 LocalStack.
-- **모든 인프라 서비스에 healthcheck를 설정한다**.
-- **LocalStack 이미지 버전을 고정한다**: `3.0`으로 고정되어 있다.
-- **초기화 스크립트는 저장소에 커밋한다**: `localstack/init-*.sh`.
-- **profiles로 앱 서비스를 분리한다** — `app` 서비스는 `profiles: [app]`로 기본 기동에서 제외된다.
-- **`.env*`는 커밋하지 않는다**: `.gitignore`에 포함되어 있다.
+- **Never connect directly to an external service during local development**: the DB uses Docker Compose, AWS services use LocalStack.
+- **Configure a healthcheck for every infrastructure service**.
+- **Pin the LocalStack image version**: currently pinned to `3.0`.
+- **Commit initialization scripts to the repository**: `localstack/init-*.sh`.
+- **Separate the app service via profiles** — the `app` service is excluded from the default startup via `profiles: [app]`.
+- **Never commit `.env*`**: included in `.gitignore`.
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 검증, `.env` 파일 관리
-- [secret-manager.md](secret-manager.md) — Secrets Manager 로컬 대체 (LocalStack)
-- [container.md](container.md) — 앱 자체의 컨테이너 이미지(Dockerfile)
-- [testing.md](testing.md) — testcontainers 기반 E2E 테스트
+- [config.md](config.md) — environment-variable validation, `.env` file management
+- [secret-manager.md](secret-manager.md) — the local replacement for Secrets Manager (LocalStack)
+- [container.md](container.md) — the app's own container image (Dockerfile)
+- [testing.md](testing.md) — testcontainers-based E2E testing

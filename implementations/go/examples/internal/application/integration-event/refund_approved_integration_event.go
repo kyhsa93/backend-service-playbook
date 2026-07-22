@@ -2,8 +2,9 @@ package integrationevent
 
 import "time"
 
-// RefundApprovedV1은 Payment BC가 외부 BC에 공개하는 Integration Event다. Account가
-// 환불 크레딧(deposit)을 실행하는 데 필요한 최소 정보만 싣는다.
+// RefundApprovedV1 is the Integration Event the Payment BC exposes to
+// external BCs. It carries only the minimal information Account needs to
+// execute a refund credit (deposit).
 type RefundApprovedV1 struct {
 	RefundID   string    `json:"refundId"`
 	PaymentID  string    `json:"paymentId"`

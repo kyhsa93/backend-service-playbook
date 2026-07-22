@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentCancelledEventHandler:
-    """내부 Domain Event(PaymentCancelled)를 수신해 외부 BC용 Integration Event
-    (payment.cancelled.v1)로 변환해 Outbox에 적재한다. Account BC가 이를 구독해
-    보상 크레딧(deposit)을 실행한다 — 이미 차감된 금액을 되돌리는 보상 트랜잭션이다.
+    """Receives the internal Domain Event (PaymentCancelled), converts it into an
+    Integration Event for external BCs (payment.cancelled.v1), and loads it into the
+    Outbox. The Account BC subscribes to this and executes a compensating credit (deposit)
+    — a compensating transaction that reverses the amount already debited.
     """
 
     def __init__(self, outbox_writer: OutboxWriter) -> None:
@@ -19,7 +20,7 @@ class PaymentCancelledEventHandler:
 
     async def handle(self, payload: dict) -> None:
         logger.info(
-            "결제 취소됨: payment_id=%s account_id=%s reason=%s",
+            "Payment cancelled: payment_id=%s account_id=%s reason=%s",
             payload["payment_id"],
             payload["account_id"],
             payload["reason"],

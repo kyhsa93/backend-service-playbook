@@ -7,21 +7,24 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// DepositByPaymentCommand는 Payment BC의 payment.cancelled.v1(결제취소 보상 크레딧) 및
-// refund.approved.v1(환불 승인 크레딧) Integration Event 둘 다에 대한 반응 유스케이스의
-// 입력이다 — 두 이벤트는 "이미 차감된 금액을 되돌린다"는 동일한 동작이고 ReferenceID
-// (paymentId 또는 refundId)만 다르므로 커맨드를 하나로 재사용한다.
+// DepositByPaymentCommand is the input to the use case reacting to both of
+// the Payment BC's payment.cancelled.v1 (payment-cancellation compensating
+// credit) and refund.approved.v1 (refund-approval credit) Integration
+// Events — both events perform the same action of "reversing an amount
+// already debited," differing only in ReferenceID (paymentId or refundId),
+// so a single command is reused for both.
 type DepositByPaymentCommand struct {
 	AccountID   string
 	Amount      int64
 	ReferenceID string
 }
 
-// DepositByPaymentHandler의 멱등성은 WithdrawByPaymentHandler와 동일한 이유로 Level 2
-// Ledger를 쓴다. outbox.Poller/outbox.Consumer를 직접 참조하지 않는 이유도
-// WithdrawByPaymentHandler와 동일하다(항상 outbox.Consumer의 handlers map을 통해서만
-// 호출되고, 새로 적재된 Domain Event는 독립적으로 주기 실행되는 Poller가 다음 tick에
-// 드레인한다).
+// DepositByPaymentHandler uses a Level 2 Ledger for idempotency for the same
+// reason as WithdrawByPaymentHandler. It also does not directly reference
+// outbox.Poller/outbox.Consumer for the same reason as
+// WithdrawByPaymentHandler (it is always invoked only through
+// outbox.Consumer's handlers map, and newly persisted Domain Events are
+// drained on the next tick by the independently, periodically running Poller).
 type DepositByPaymentHandler struct {
 	repo account.Repository
 }

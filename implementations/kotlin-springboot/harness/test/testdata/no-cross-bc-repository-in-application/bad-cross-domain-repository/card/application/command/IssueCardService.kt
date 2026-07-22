@@ -3,8 +3,8 @@ package com.example.accountservice.card.application.command
 import com.example.accountservice.account.domain.AccountRepository
 import org.springframework.stereotype.Service
 
-// 위반 — 다른 도메인(account)의 domain/AccountRepository를 application/에서 직접 import.
-// Adapter(card/application/adapter/AccountAdapter + infrastructure/AccountAdapterImpl)를 거쳐야 함.
+// Violation — directly imports another domain's(account) domain/AccountRepository inside application/.
+// Must go through an Adapter(card/application/adapter/AccountAdapter + infrastructure/AccountAdapterImpl).
 @Service
 class IssueCardService(
     private val accountRepository: AccountRepository,

@@ -11,8 +11,9 @@ type CancelCardsByAccountCommand struct {
 	AccountID string
 }
 
-// CancelCardsByAccountHandler는 Account BC의 account.closed.v1 Integration Event에 대한
-// 반응 유스케이스다. 아직 해지되지 않은 카드(ACTIVE·SUSPENDED)만 해지하므로 재수신에 멱등하다.
+// CancelCardsByAccountHandler is a use case reacting to the Account BC's
+// account.closed.v1 Integration Event. It only cancels cards that are not
+// yet cancelled (ACTIVE/SUSPENDED), so it is idempotent under redelivery.
 type CancelCardsByAccountHandler struct {
 	repo card.Repository
 }

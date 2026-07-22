@@ -25,7 +25,7 @@ public class GetAccountService {
                                 () ->
                                         new AccountException(
                                                 AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
-                                                "계좌를 찾을 수 없습니다."));
+                                                "Account not found."));
         return new GetAccountResult(
                 account.getAccountId(),
                 account.getOwnerId(),

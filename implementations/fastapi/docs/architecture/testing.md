@@ -1,42 +1,42 @@
-# 테스트 전략
+# Testing Strategy
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/testing.md](../../../../docs/architecture/testing.md)
+> Framework-agnostic principles: [../../../../docs/architecture/testing.md](../../../../docs/architecture/testing.md)
 
-root는 3개 레이어(Domain 단위, Application 단위, E2E)를 요구한다.
+The root requires 3 layers (Domain unit, Application unit, E2E).
 
-| 레이어 | 검증 범위 | 의존성 전략 | 이 저장소의 현재 상태 |
+| Layer | Verification scope | Dependency strategy | Current state in this repository |
 |--------|----------|------------|----------------------|
-| Domain 단위 테스트 | Aggregate, Value Object | 프레임워크 없음 | `tests/unit/domain/` |
-| Application 단위 테스트 | Handler의 조율 로직 | Repository/Service를 mock | `tests/unit/application/` |
-| E2E 테스트 | Interface→Application→Infrastructure 전체 | 실제 DB(testcontainers) | `tests/test_account_e2e.py`, `tests/test_notification_e2e.py` |
+| Domain unit tests | Aggregate, Value Object | No framework | `tests/unit/domain/` |
+| Application unit tests | The Handler's orchestration logic | Mocks the Repository/Service | `tests/unit/application/` |
+| E2E tests | The full Interface→Application→Infrastructure path | A real DB (testcontainers) | `tests/test_account_e2e.py`, `tests/test_notification_e2e.py` |
 
-## 현재 구현 — Domain/Application 단위 테스트
+## Current implementation — Domain/Application unit tests
 
-`tests/unit/domain/test_account.py`, `tests/unit/domain/test_money.py`, `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py`가 존재하며, 아래 두 절이 보여주는 패턴(Domain은 mock 없이 직접 인스턴스화, Application은 `AsyncMock`으로 Repository/Outbox를 mock)을 그대로 따르고 있다.
+`tests/unit/domain/test_account.py`, `tests/unit/domain/test_money.py`, `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py` exist, and they follow exactly the pattern the two sections below show (Domain is instantiated directly with no mocks, Application mocks the Repository/Outbox with `AsyncMock`).
 
-`tests/conftest.py`는 테스트 실행 시 `main.py`가 임포트되는 시점에 [config.md](config.md)의 `validate_env()`를 통과시키기 위해, `DATABASE_URL`이 설정되어 있지 않으면 `os.environ.setdefault("DATABASE_URL", ...)`로 더미 값을 채워 넣는다.
+`tests/conftest.py` fills in a dummy value via `os.environ.setdefault("DATABASE_URL", ...)` if `DATABASE_URL` isn't set, so that `validate_env()` from [config.md](config.md) passes at the point `main.py` gets imported during test runs.
 
 ```python
-# tests/conftest.py — 실제 코드
+# tests/conftest.py — actual code
 import os
 
-# 테스트는 main.py import 시점에 validate_env()를 통과해야 한다 — 실제 접속 대상은
-# 각 e2e 테스트가 testcontainers로 띄운 뒤 fixture에서 dependency_overrides로 교체한다.
+# Tests must pass validate_env() at main.py import time — the actual connection target
+# is started by each e2e test via testcontainers, then swapped in via dependency_overrides in the fixture.
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/account"
 )
 ```
 
-이 `setdefault`는 fail-fast 자체를 우회하는 게 아니라, "테스트 프로세스가 뜨는 동안은 어떤 값이든 있어야 `validate_env()`가 통과한다"는 조건을 충족시키기 위한 테스트 전용 장치다 — 실제 DB 연결은 각 E2E 테스트가 `app.dependency_overrides[get_session]`로 testcontainers 세션으로 교체한다.
+This `setdefault` doesn't bypass fail-fast itself — it's a test-only device to satisfy the condition that "as long as the test process is running, some value must be present for `validate_env()` to pass" — the actual DB connection is swapped by each E2E test to a testcontainers session via `app.dependency_overrides[get_session]`.
 
 ---
 
-## Domain 단위 테스트 — 프레임워크 없이 `Account` 자체를 검증
+## Domain unit tests — verifying `Account` itself with no framework
 
-**위치**: `tests/unit/domain/test_account.py`, `tests/unit/domain/test_money.py`. 아래는 그 발췌(실제 파일은 정지/재개/종료 등 더 많은 케이스를 포함한다).
+**Location**: `tests/unit/domain/test_account.py`, `tests/unit/domain/test_money.py`. Below is an excerpt (the actual file includes more cases, such as suspend/reactivate/close).
 
 ```python
-# tests/unit/domain/test_account.py — 실제 코드(발췌)
+# tests/unit/domain/test_account.py — actual code (excerpt)
 import pytest
 
 from src.account.domain.account import Account
@@ -65,7 +65,7 @@ def test_create_계좌_생성_시_AccountCreated_이벤트가_수집된다() -> 
 
 def test_deposit_0원_이하_입금_시_InvalidAmountError를_던진다() -> None:
     account = make_active_account()
-    account.pull_events()   # 생성 이벤트 소진
+    account.pull_events()   # drain the creation event
 
     with pytest.raises(InvalidAmountError):
         account.deposit(0)
@@ -94,7 +94,7 @@ def test_withdraw_잔액_부족_시_InsufficientBalanceError를_던진다() -> N
     account = make_active_account()
 
     with pytest.raises(InsufficientBalanceError):
-        account.withdraw(1000)   # 잔액 0인 계좌에서 출금
+        account.withdraw(1000)   # withdrawing from an account with zero balance
 
 
 def test_close_잔액이_0이_아니면_종료할_수_없다() -> None:
@@ -107,21 +107,23 @@ def test_close_잔액이_0이_아니면_종료할_수_없다() -> None:
         account.close()
 ```
 
-**원칙:**
-- `Account.create()`처럼 이미 있는 팩토리를 테스트 픽스처로 재사용한다 (별도 mock/stub 불필요 — Domain 객체는 프레임워크 의존이 없으므로 그대로 인스턴스화할 수 있다).
-- 어떤 것도 mock하지 않는다 — Aggregate는 순수 객체이므로 실제 인스턴스로 직접 검증한다.
-- 에러 검증은 `pytest.raises(SpecificErrorClass)`로 예외 타입을 명시한다 (문자열 메시지 비교 금지 — [error-handling.md](error-handling.md)의 타입화 원칙과 일치).
+**Principles:**
+- An existing factory such as `Account.create()` is reused as a test fixture (no separate mock/stub needed — a Domain object has no framework dependency, so it can be instantiated directly).
+- Nothing is mocked — since an Aggregate is a pure object, it's verified directly through a real instance.
+- Error verification specifies the exception type via `pytest.raises(SpecificErrorClass)` (comparing a string message is forbidden — consistent with the typing principle in [error-handling.md](error-handling.md)).
+
+Note: the test function names above (`test_create_계좌_생성_시_AccountCreated_이벤트가_수집된다`, etc.) are the actual identifiers in the source file and are kept unchanged here for consistency with the code.
 
 ---
 
-## Application 단위 테스트 — Repository/Service를 mock
+## Application unit tests — mocking the Repository/Service
 
-**위치**: `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py`.
+**Location**: `tests/unit/application/test_create_account_handler.py`, `tests/unit/application/test_deposit_handler.py`.
 
-Handler 생성자가 ABC(`AccountRepository`) 타입만 받으므로(Outbox → SQS 발행/수신은 `OutboxPoller`/`OutboxConsumer`가 독립적으로 처리하고 Command Handler는 이를 전혀 참조하지 않는다 — domain-events.md 참고), `unittest.mock`으로 만든 mock 객체를 그대로 주입할 수 있다.
+Since the Handler's constructor only takes the ABC type (`AccountRepository`) (publishing/receiving from Outbox → SQS is handled independently by `OutboxPoller`/`OutboxConsumer`, and the Command Handler never references them at all — see domain-events.md), a mock object created with `unittest.mock` can be injected as-is.
 
 ```python
-# tests/unit/application/test_deposit_handler.py — 실제 코드(발췌)
+# tests/unit/application/test_deposit_handler.py — actual code (excerpt)
 from unittest.mock import AsyncMock
 
 import pytest
@@ -133,7 +135,7 @@ from src.account.domain.errors import AccountNotFoundError
 
 @pytest.fixture
 def repo() -> AsyncMock:
-    return AsyncMock()   # AccountRepository의 모든 async 메서드를 자동으로 mock
+    return AsyncMock()   # automatically mocks every async method of AccountRepository
 
 
 @pytest.mark.asyncio
@@ -150,7 +152,7 @@ async def test_execute_계좌가_없으면_AccountNotFoundError를_던진다(rep
 @pytest.mark.asyncio
 async def test_execute_입금_성공_시_save가_호출된다(repo) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
-    account.pull_events()   # 생성 이벤트 소진 — deposit 이벤트만 남긴다
+    account.pull_events()   # drain the creation event — leaves only the deposit event
     repo.find_accounts.return_value = ([account], 1)
     handler = DepositHandler(repo)
 
@@ -159,31 +161,31 @@ async def test_execute_입금_성공_시_save가_호출된다(repo) -> None:
     )
 
     assert transaction.type == "DEPOSIT"
-    repo.save.assert_awaited_once_with(account)   # Aggregate 저장 + Outbox 적재는 save() 안에서 한 트랜잭션으로 처리됨
+    repo.save.assert_awaited_once_with(account)   # the Aggregate save + Outbox load are handled as one transaction inside save()
 ```
 
-이 테스트는 `MoneyDeposited` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(Command Handler 단위 테스트는 조회 → 도메인 메서드 호출 → 저장까지의 조율 흐름만 본다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/money_deposited_event_handler.py`를 대상으로 별도 단위 테스트하거나, `test_notification_e2e.py`가 `OutboxPoller`/`OutboxConsumer`를 거쳐 실제 LocalStack SES로 종단 검증한다.
+This test doesn't go so far as to verify that the `MoneyDeposited` event actually results in a notification (a Command Handler's unit test only looks at the orchestration flow up through lookup → domain method call → save) — the notification-sending logic itself, per event type, is either separately unit-tested against `application/event/money_deposited_event_handler.py`, or verified end-to-end by `test_notification_e2e.py` through `OutboxPoller`/`OutboxConsumer` all the way to real LocalStack SES.
 
-**원칙:**
-- `unittest.mock.AsyncMock`(표준 라이브러리, Python 3.8+)이 `async def` 메서드를 자동으로 mock한다 — 별도 `pytest-mock` 없이도 충분하지만, fixture 조합이 많아지면 `pytest-mock`의 `mocker` fixture로 정리해도 좋다.
-- mock은 ABC(`AccountRepository`)의 메서드 시그니처를 따른다 — `AsyncMock()`은 스펙 없이 모든 속성을 mock하므로, 실수 방지를 원하면 `AsyncMock(spec=AccountRepository)`로 시그니처를 강제한다.
-- 검증 대상은 **조율 흐름**(조회 → 도메인 메서드 호출 → 저장)이지 비즈니스 규칙이 아니다 — 비즈니스 규칙은 Domain 단위 테스트에서 이미 검증했다.
+**Principles:**
+- `unittest.mock.AsyncMock` (standard library, Python 3.8+) automatically mocks `async def` methods — this is sufficient without a separate `pytest-mock`, but once fixture combinations grow, organizing them with `pytest-mock`'s `mocker` fixture can help too.
+- The mock follows the ABC's (`AccountRepository`'s) method signature — since `AsyncMock()` mocks every attribute with no spec, use `AsyncMock(spec=AccountRepository)` to enforce the signature and avoid mistakes.
+- What's being verified is the **orchestration flow** (lookup → domain method call → save), not business rules — business rules were already verified in the Domain unit tests.
 
 ---
 
-## E2E 테스트
+## E2E tests
 
-`tests/test_account_e2e.py`, `tests/test_auth_e2e.py`는 testcontainers로 실제 Postgres만 띄워 HTTP 엔드포인트 전체 경로를 검증한다. `tests/test_card_e2e.py`, `tests/test_payment_e2e.py`, `tests/test_notification_e2e.py`는 Account/Card/Payment 세 BC를 넘나드는 Integration Event나 알림 발송(SES)을 검증해야 하므로, Postgres에 더해 `LocalStackContainer`(SQS, `test_notification_e2e.py`는 SES도 함께)까지 띄우고 `OutboxPoller`/`OutboxConsumer`를 테스트 fixture가 직접 백그라운드 task로 기동한다 — `main.py`의 `lifespan`은 `httpx.ASGITransport`로 구동되는 이 테스트들에서 트리거되지 않기 때문이다.
+`tests/test_account_e2e.py`, `tests/test_auth_e2e.py` start only a real Postgres via testcontainers to verify the full HTTP endpoint path. `tests/test_card_e2e.py`, `tests/test_payment_e2e.py`, `tests/test_notification_e2e.py` need to verify an Integration Event crossing the three BCs — Account/Card/Payment — or a notification send (SES), so on top of Postgres they also start a `LocalStackContainer` (SQS, and for `test_notification_e2e.py` also SES), and the test fixture itself starts `OutboxPoller`/`OutboxConsumer` directly as background tasks — because `main.py`'s `lifespan` is never triggered in these tests, which run via `httpx.ASGITransport`.
 
 ```python
-# tests/test_card_e2e.py — 실제 코드(발췌)
+# tests/test_card_e2e.py — actual code (excerpt)
 @pytest_asyncio.fixture(scope="session")
 async def client() -> AsyncGenerator[AsyncClient, None]:
     with (
         PostgresContainer("postgres:16-alpine") as postgres,
         LocalStackContainer("localstack/localstack:3.0", region_name="us-east-1").with_services("sqs") as localstack,
     ):
-        queue_url = create_domain_event_queue(localstack)   # conftest.py — domain-events 큐 + DLQ 생성
+        queue_url = create_domain_event_queue(localstack)   # conftest.py — creates the domain-events queue + DLQ
         os.environ["SQS_DOMAIN_EVENT_QUEUE_URL"] = queue_url
         ...
         app.dependency_overrides[get_session] = override_get_session
@@ -196,10 +198,10 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
         await stop_outbox_background_tasks(outbox_tasks)
 ```
 
-Domain Event/Integration Event가 실제로 SQS를 왕복하는 진짜 비동기 파이프라인이므로, API 응답 직후 곧바로 최종 상태를 `assert`할 수 없다 — `tests/conftest.py`의 `wait_until(condition_fn, timeout=15.0, interval=0.2)` 폴링 헬퍼로 조건이 충족될 때까지 기다린다.
+Since a Domain Event/Integration Event actually round-trips through SQS as a genuinely async pipeline, the final state can't be `assert`ed right after the API response — the `wait_until(condition_fn, timeout=15.0, interval=0.2)` polling helper in `tests/conftest.py` waits until the condition is satisfied.
 
 ```python
-# tests/test_card_e2e.py — 실제 코드(발췌)
+# tests/test_card_e2e.py — actual code (excerpt)
 @pytest.mark.asyncio
 async def test_suspending_account_cascades_to_suspend_its_active_cards(client: AsyncClient) -> None:
     account = await create_account(client, OWNER_ID)
@@ -207,23 +209,23 @@ async def test_suspending_account_cascades_to_suspend_its_active_cards(client: A
 
     await client.post(f"/accounts/{account['account_id']}/suspend", headers=auth_headers(OWNER_ID))
 
-    # account.suspended.v1이 OutboxPoller → SQS → OutboxConsumer를 거쳐 비동기로 처리된다 —
-    # 응답 직후 즉시 반영되어 있지 않을 수 있으므로 폴링한다.
+    # account.suspended.v1 is processed asynchronously through OutboxPoller → SQS → OutboxConsumer —
+    # it may not be reflected immediately right after the response, so this polls.
     await wait_until(lambda: _status_is(client, OWNER_ID, card["card_id"], "SUSPENDED"))
 ```
 
-**적용된 원칙:**
-- `app.dependency_overrides[get_session]`로 실제 세션 팩토리를 testcontainers DB로 교체 — 프로덕션 코드를 수정하지 않고 의존성만 대체한다.
-- `httpx.ASGITransport`로 실제 네트워크 소켓 없이 ASGI 앱을 직접 호출 — 빠르면서도 진짜 HTTP 요청/미들웨어 경로를 통과한다.
-- 각 테스트가 독립적인 계좌를 생성해 사용하므로 테스트 간 상태 공유가 없다.
-- `test_notification_e2e.py`는 `LocalStackContainer`로 실제 SES 발송까지 확인한다 — mock이 아닌 실제 발송 프로토콜을 검증한다.
-- **진짜 비동기 이벤트 처리를 검증하는 assertion은 `wait_until()`로 폴링한다**: 즉시 `assert`하면 타이밍에 따라 flaky해지거나(가끔 실패) 항상 통과해버려(아직 처리되지 않은 상태를 우연히 맞음) 실제로는 아무것도 검증하지 못할 수 있다.
+**Principles applied:**
+- `app.dependency_overrides[get_session]` swaps the real session factory for the testcontainers DB — only the dependency is replaced, with no change to production code.
+- `httpx.ASGITransport` calls the ASGI app directly with no real network socket — fast, while still passing through the real HTTP request/middleware path.
+- Each test creates and uses its own independent account, so there's no state shared between tests.
+- `test_notification_e2e.py` uses a `LocalStackContainer` to confirm an actual SES send — verifying the real send protocol, not a mock.
+- **An assertion that verifies genuinely async event processing is polled with `wait_until()`**: asserting immediately can either become flaky depending on timing (occasionally failing) or always pass (coincidentally catching a not-yet-processed state), verifying nothing in practice.
 
-`pytest.ini`의 `asyncio_mode = auto`로 모든 `async def test_*`가 자동으로 `pytest-asyncio` 처리 대상이 된다.
+`pytest.ini`'s `asyncio_mode = auto` makes every `async def test_*` automatically subject to `pytest-asyncio` handling.
 
 ---
 
-## 테스트 파일 배치 (실제)
+## Test file placement (actual)
 
 ```
 implementations/fastapi/examples/
@@ -232,13 +234,13 @@ implementations/fastapi/examples/
       domain/
         account.py
   tests/
-    conftest.py                       ← DATABASE_URL setdefault (fail-fast 우회용, 위 절 참조)
+    conftest.py                       ← sets a DATABASE_URL default (to bypass fail-fast, see the section above)
     unit/
       domain/
-        test_account.py               ← Domain 단위 테스트
+        test_account.py               ← Domain unit tests
         test_money.py
       application/
-        test_create_account_handler.py ← Application 단위 테스트
+        test_create_account_handler.py ← Application unit tests
         test_deposit_handler.py
     test_account_e2e.py               ← E2E
     test_notification_e2e.py          ← E2E
@@ -246,30 +248,30 @@ implementations/fastapi/examples/
 
 ---
 
-## 테스트 네이밍 패턴
+## Test naming pattern
 
 ```
-test_<메서드>_<조건>_<기대_결과>
-예: test_withdraw_잔액_부족_시_InsufficientBalanceError를_던진다
+test_<method>_<condition>_<expected_result>
+e.g.: test_withdraw_잔액_부족_시_InsufficientBalanceError를_던진다
 ```
 
-기존 E2E 테스트(`test_deposit_success`, `test_deposit_account_not_found_returns_404`)의 네이밍과 일관되게, 한글 조건 설명을 붙여도 무방하다 — 이 저장소는 이미 함수명에 한글을 섞는 스타일을 쓰고 있지 않으므로 새 단위 테스트를 추가할 때는 기존 E2E 파일의 영어 스타일(`test_<행위>_<조건>_returns_<결과>`)과 맞출지, 위 예시의 한글 서술형으로 갈지 팀에서 통일한다.
+Consistent with the naming of the existing E2E tests (`test_deposit_success`, `test_deposit_account_not_found_returns_404`), it's also fine to attach a Korean condition description — this repository doesn't otherwise use a style that mixes Korean into function names, so when adding a new unit test, the team should agree on whether to match the existing E2E files' English style (`test_<action>_<condition>_returns_<result>`) or go with the Korean descriptive style shown in the example above.
 
 ---
 
-## 원칙
+## Principles
 
-- **3개 레이어를 모두 갖춘다**: Domain 단위(빠름, mock 없음), Application 단위(mock으로 조율 검증), E2E(실제 DB로 통합 검증).
-- **Domain 테스트는 mock하지 않는다**: Aggregate는 순수 객체이므로 그대로 인스턴스화한다.
-- **Application 테스트는 ABC를 mock한다**: `AsyncMock(spec=AccountRepository)`로 시그니처를 강제한다.
-- **E2E는 testcontainers로 실제 인프라를 검증한다**.
-- **에러 검증은 타입으로**: `pytest.raises(SpecificError)` — 메시지 문자열 비교 금지.
+- **Have all 3 layers**: Domain unit (fast, no mocks), Application unit (verifies orchestration with mocks), E2E (integration verification with a real DB).
+- **Domain tests never mock anything**: since an Aggregate is a pure object, it's instantiated directly.
+- **Application tests mock the ABC**: enforce the signature with `AsyncMock(spec=AccountRepository)`.
+- **E2E verifies real infrastructure with testcontainers**.
+- **Verify errors by type**: `pytest.raises(SpecificError)` — comparing a message string is forbidden.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Domain 레이어 설계 (단위 테스트 대상)
-- [layer-architecture.md](layer-architecture.md) — Application Handler (Application 단위 테스트 대상)
-- [error-handling.md](error-handling.md) — 에러 타입 검증
-- [local-dev.md](local-dev.md) — testcontainers가 사용하는 LocalStack/Postgres 이미지
+- [tactical-ddd.md](tactical-ddd.md) — Domain layer design (the target of unit tests)
+- [layer-architecture.md](layer-architecture.md) — Application Handlers (the target of Application unit tests)
+- [error-handling.md](error-handling.md) — error-type verification
+- [local-dev.md](local-dev.md) — the LocalStack/Postgres images testcontainers uses

@@ -28,7 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXCLUDE_DIR_NAMES = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist",
     "target", ".gradle", "bin", "obj", ".pytest_cache", "htmlcov",
-    ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode",
+    ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode", ".claude",
 }
 
 DOC_GLOBS = [
@@ -107,7 +107,7 @@ def iter_doc_files() -> list[Path]:
     seen: set[Path] = set()
     for pattern in DOC_GLOBS:
         for p in REPO_ROOT.glob(pattern):
-            if p.is_file() and not any(part in EXCLUDE_DIR_NAMES for part in p.parts):
+            if p.is_file() and not any(part in EXCLUDE_DIR_NAMES for part in p.relative_to(REPO_ROOT).parts):
                 seen.add(p)
     return sorted(seen)
 

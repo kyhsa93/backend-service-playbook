@@ -9,10 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Task Queue 입력 어댑터(Interface 레이어) — HTTP Controller가 HTTP 요청을 Application Service에 위임하듯, 이 Task
- * Controller는 Task Queue 메시지를 받아 {@link PayInterestService}를 호출한다 (scheduling.md "Task Controller —
- * Interface 레이어"). 조건 분기나 비즈니스 규칙 없이 위임만 하고, 예외는 그대로 던져 {@code TaskConsumer}가 재시도/DLQ를 판단하게 한다(에러를
- * 삼키지 않는다).
+ * The Task Queue input adapter (Interface layer) — just as an HTTP Controller delegates an HTTP
+ * request to an Application Service, this Task Controller receives a Task Queue message and calls
+ * {@link PayInterestService} (scheduling.md "Task Controller — the Interface layer"). It only
+ * delegates, with no conditional branching or business rules, and lets an exception propagate as-is
+ * so {@code TaskConsumer} can decide on retry/DLQ (errors are not swallowed).
  */
 @Component
 @RequiredArgsConstructor
@@ -32,8 +33,10 @@ public class PayInterestTaskController implements TaskHandler {
         payInterestService.payInterest(new PayInterestCommand(parsed.date()));
     }
 
-    // 이 Task Controller가 소유하는 로컬 payload 뷰 — infrastructure/scheduling/
-    // InterestPaymentScheduler가 만드는 JSON과 필드명이 일치해야 한다. 타입을 공유하지 않고 JSON
-    // 스키마로만 계약해 레이어 의존 방향(interfaces가 infrastructure를 참조하지 않음)을 지킨다.
+    // The local payload view owned by this Task Controller — its field names must match the JSON
+    // produced by infrastructure/scheduling/InterestPaymentScheduler. It does not share the type,
+    // contracting only through the JSON schema, to preserve the layer dependency direction
+    // (interfaces
+    // does not reference infrastructure).
     private record Payload(LocalDate date) {}
 }

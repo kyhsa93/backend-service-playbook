@@ -5,17 +5,20 @@ from .payment import Payment
 
 
 class PaymentQuery(ABC):
-    """읽기 전용 인터페이스 — Query Handler 전용. `save()` 등 쓰기 메서드를 노출하지 않는다
-    (cqrs-pattern.md 참고). `PaymentRepository`(쓰기 모델)와 계약을 공유하지만 별도 타입이며,
-    Query Handler는 반드시 이 타입으로만 의존해야 한다(account 도메인의 AccountQuery와 동일).
+    """A read-only interface — for the Query Handler only. Never exposes a write method
+    such as `save()` (see cqrs-pattern.md). Shares its contract with `PaymentRepository`
+    (the write model) but is a separate type — a Query Handler must always depend only on
+    this type (the same as the account domain's AccountQuery).
 
-    조회 메서드는 단일 `find_payments(...)`로 통일한다 — account 도메인의 AccountQuery와
-    동일하게, 단일 메서드+선택적 필터 키워드 인자로 표현한다. `take=1`로 단건 조회를 표현한다.
+    The lookup method is unified into a single `find_payments(...)` — expressed with a
+    single method + optional filter keyword arguments, the same as the account domain's
+    AccountQuery. A single-item lookup is expressed with `take=1`.
 
-    `since`/`until`은 매월 카드 사용내역 발송 배치(card.application.adapter.payment_adapter의
-    PaymentAdapter)가 "지난 한 달" 범위로 결제를 집계하기 위해 추가됐다 — 새 메서드를
-    만들지 않고 기존 find_payments()에 선택적 필터를 얹는 것으로 표현한다(반대로 새
-    `count_*` 메서드를 추가하면 repository-naming 규칙이 금지하는 패턴이 된다).
+    `since`/`until` were added so the monthly card-statement delivery batch
+    (card.application.adapter.payment_adapter's PaymentAdapter) can aggregate payments over
+    the "past month" range — expressed by adding optional filters onto the existing
+    find_payments() rather than creating a new method (conversely, adding a new `count_*`
+    method would be the pattern the repository-naming rule forbids).
     """
 
     @abstractmethod

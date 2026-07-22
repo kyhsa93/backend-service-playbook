@@ -2,7 +2,10 @@ package com.example.accountservice.payment.infrastructure.persistence;
 
 import com.example.accountservice.payment.domain.Refund;
 
-/** Refund(순수 도메인) ↔ RefundJpaEntity(JPA 매핑) 변환 전담 클래스. RefundRepositoryImpl 내부에서만 사용된다. */
+/**
+ * A class dedicated to converting between Refund (pure domain) and RefundJpaEntity (JPA mapping).
+ * Used only inside RefundRepositoryImpl.
+ */
 final class RefundMapper {
 
     private RefundMapper() {}

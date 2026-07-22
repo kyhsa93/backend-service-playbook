@@ -13,27 +13,31 @@ type FindQuery struct {
 	CardID    string
 	AccountID string
 	Status    []Status
-	// CreatedFrom/CreatedTo는 created_at 범위 필터다(둘 다 zero time.Time이면 무제한).
-	// CreatedFrom은 포함(>=), CreatedTo는 배제(<) 경계다 — 카드 월간 사용내역
-	// 집계(scheduling.md)가 "이번 기간에 포함되는 결제"를 걸러내는 데 쓴다.
+	// CreatedFrom/CreatedTo are a created_at range filter (unbounded if both
+	// are zero time.Time). CreatedFrom is an inclusive (>=) bound and
+	// CreatedTo is an exclusive (<) bound — used by the card monthly usage
+	// statement aggregation (scheduling.md) to filter "payments falling
+	// within this period."
 	CreatedFrom time.Time
 	CreatedTo   time.Time
 }
 
-// Query는 읽기 전용 조회 메서드만 노출하는 Query 전용 인터페이스다(account.Query,
-// card.Query와 동일한 CQRS 분리 관용구 — cqrs-pattern.md).
+// Query is a Query-only interface that exposes only read-only lookup
+// methods (the same CQRS separation idiom as account.Query, card.Query —
+// cqrs-pattern.md).
 type Query interface {
 	FindPayments(ctx context.Context, q FindQuery) ([]*Payment, int, error)
 }
 
-// Repository는 Query의 읽기 메서드에 쓰기 메서드(SavePayment)를 더한 Command 전용 인터페이스다.
+// Repository is a Command-only interface that adds a write method (SavePayment) on top of Query's read methods.
 type Repository interface {
 	Query
 	SavePayment(ctx context.Context, p *Payment) error
 }
 
-// FindOne은 단건 조회 호출부의 반복되는 패턴(FindPayments를 Take: 1로 호출한 뒤 첫 번째
-// 결과를 꺼내고, 없으면 ErrNotFound)을 감싼 헬퍼다(account.FindOne과 동일한 관용구).
+// FindOne is a helper that wraps the repeated single-record lookup pattern
+// (call FindPayments with Take: 1, then pull out the first result, or
+// ErrNotFound if there is none) (the same idiom as account.FindOne).
 func FindOne(ctx context.Context, q Query, paymentID, ownerID string) (*Payment, error) {
 	payments, _, err := q.FindPayments(ctx, FindQuery{PaymentID: paymentID, OwnerID: ownerID, Take: 1})
 	if err != nil {
@@ -45,8 +49,9 @@ func FindOne(ctx context.Context, q Query, paymentID, ownerID string) (*Payment,
 	return payments[0], nil
 }
 
-// RefundFindQuery — Refund는 ownerId를 갖지 않는다(PaymentID로만 원 결제를 참조한다).
-// 소유권 검증은 호출부가 먼저 Payment를 조회해 확인한다.
+// RefundFindQuery — Refund has no ownerId (it references the original
+// payment only via PaymentID). Ownership verification is done by the caller
+// first looking up the Payment.
 type RefundFindQuery struct {
 	Page      int
 	Take      int
@@ -55,12 +60,12 @@ type RefundFindQuery struct {
 	Status    []RefundStatus
 }
 
-// RefundQuery는 Refund의 읽기 전용 조회 인터페이스다.
+// RefundQuery is Refund's read-only lookup interface.
 type RefundQuery interface {
 	FindRefunds(ctx context.Context, q RefundFindQuery) ([]*Refund, int, error)
 }
 
-// RefundRepository는 RefundQuery에 쓰기 메서드(SaveRefund)를 더한 Command 전용 인터페이스다.
+// RefundRepository is a Command-only interface that adds a write method (SaveRefund) on top of RefundQuery.
 type RefundRepository interface {
 	RefundQuery
 	SaveRefund(ctx context.Context, r *Refund) error

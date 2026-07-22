@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""FastAPI Harness — CLI 진입점
+"""The FastAPI Harness — CLI entry point
 
-각 규칙은 rules/<rule>.py 모듈로 분리되어 있고, 이 파일은 규칙 목록을 정의하고
-결과를 집계·출력하는 역할만 한다. 구조/회귀 테스트는 README.md 참고.
+Each rule is split out into its own rules/<rule>.py module, and this file only defines
+the rule list and aggregates/prints the results. See README.md for structure/regression
+tests.
 Usage: python harness.py <projectRoot>
 """
 

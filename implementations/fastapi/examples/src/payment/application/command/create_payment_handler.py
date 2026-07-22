@@ -32,16 +32,18 @@ class CreatePaymentHandler:
         self._account_adapter = account_adapter
 
     async def execute(self, cmd: CreatePaymentCommand) -> Payment:
-        # 동기 Adapter(ACL)로 카드가 존재·활성 상태인지 확인 — 응답(결제 가부)에 필요하므로 동기 호출.
+        # Confirms the card exists and is active via the synchronous Adapter (ACL) — a synchronous call
+        # since the response (whether payment is allowed) needs it.
         card = await self._card_adapter.find_card(cmd.card_id, cmd.requester_id)
         if card is None:
             raise LinkedCardNotFoundError()
         if not card.active:
             raise PaymentRequiresActiveCardError()
 
-        # 동기 Adapter(ACL)로 연결 계좌가 활성이고 잔액이 충분한지 확인(읽기 전용 판단).
-        # 실제 차감은 여기서 하지 않는다 — payment.completed.v1을 Account BC가 구독해
-        # 비동기로 수행한다(root의 "동기=조회, 비동기=상태변경" 원칙).
+        # Confirms the linked account is active and has a sufficient balance via the
+        # synchronous Adapter (ACL) (a read-only decision). The actual debit isn't done
+        # here — the Account BC subscribes to payment.completed.v1 and performs it
+        # asynchronously (the root's "sync = lookup, async = state change" principle).
         account = await self._account_adapter.find_account(card.account_id, cmd.requester_id)
         if account is None:
             raise LinkedAccountNotFoundError()

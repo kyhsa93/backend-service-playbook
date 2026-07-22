@@ -26,11 +26,12 @@ public class CancelPaymentService {
                                 () ->
                                         new PaymentException(
                                                 PaymentException.ErrorCode.PAYMENT_NOT_FOUND,
-                                                "결제를 찾을 수 없습니다."));
+                                                "Payment not found."));
 
         payment.cancel(command.reason());
         paymentRepository.savePayment(payment);
-        // PaymentCancelledEvent → payment.cancelled.v1을 Account BC가 구독해 보상 크레딧을 실행한다
-        // (OutboxPoller/OutboxConsumer가 비동기로 처리 — 이 메서드는 저장 후 곧바로 반환한다).
+        // The Account BC subscribes to PaymentCancelledEvent -> payment.cancelled.v1 and runs the
+        // compensating credit (the OutboxPoller/OutboxConsumer processes it asynchronously — this
+        // method returns immediately after saving).
     }
 }

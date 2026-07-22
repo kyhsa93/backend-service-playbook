@@ -33,22 +33,25 @@ EventHandlerFn = Callable[[dict], Awaitable[None]]
 
 
 def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
-    """eventType(SQS `MessageAttributes.eventType`) → 처리 함수 dict를 조립한다.
+    """Assembles the eventType (SQS `MessageAttributes.eventType`) → processing-function
+    dict.
 
-    OutboxConsumer가 SQS에서 수신한 메시지를 이 dict로 라우팅한다. Account 자신의
-    Domain Event 핸들러뿐 아니라, Account가 발행하는 Integration Event
-    (account.suspended.v1/account.closed.v1)를 구독하는 외부 BC(Card)의 반응 핸들러,
-    Payment 자신의 Domain Event를 Integration Event로 변환하는 핸들러
-    (PaymentCompleted/PaymentCancelled/RefundApproved), 그리고 그 Integration Event
-    (payment.completed.v1/payment.cancelled.v1/refund.approved.v1)를 구독하는 Account의
-    반응 핸들러까지 Account/Card/Payment 세 BC의 이벤트 배선을 이 함수 하나가 조립한다 —
-    FastAPI에는 NestJS의 EventHandlerRegistry 같은 모듈 간 느슨한 등록 메커니즘이 없으므로,
-    이 함수가 곧 세 BC의 composition root다. OutboxConsumer가 메시지마다 이 함수를 호출해
-    조립 결과를 재사용한다.
+    OutboxConsumer routes the message it receives from SQS through this dict. This single
+    function assembles the entire event wiring for all three BCs — Account/Card/Payment —
+    covering not just Account's own Domain Event handlers, but also the external BC's
+    (Card's) reaction handlers subscribing to Account's published Integration Events
+    (account.suspended.v1/account.closed.v1), the handlers converting Payment's own Domain
+    Events into Integration Events (PaymentCompleted/PaymentCancelled/RefundApproved), and
+    Account's reaction handlers subscribing to those Integration Events
+    (payment.completed.v1/payment.cancelled.v1/refund.approved.v1) — since FastAPI has no
+    loose inter-module registration mechanism like NestJS's EventHandlerRegistry, this
+    function is the composition root for all three BCs. OutboxConsumer calls this function
+    for every message and reuses the assembly result.
 
-    세션은 호출자(OutboxConsumer)가 메시지 하나(단위 작업)당 새로 열어 넘긴다 — 이 함수
-    자체는 매 호출마다 새 Repository/Service 인스턴스를 조립할 뿐, 세션의 생명주기를
-    직접 관리하지 않는다(persistence.md의 "세션은 단위 작업당 하나" 원칙을 그대로 따른다).
+    The session is opened fresh and passed in by the caller (OutboxConsumer) per message
+    (a unit of work) — this function itself only assembles new Repository/Service instances
+    on every call, and doesn't manage the session's lifecycle directly (following exactly
+    the "one session per unit of work" principle from persistence.md).
     """
     account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
     card_repo: CardRepository = SqlAlchemyCardRepository(session)
@@ -65,13 +68,15 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
         "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
         "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
         "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
-        # 정기 이자 지급 배치(scheduling.md)가 Account.apply_interest()로 발행하는 Domain Event
-        # — 다른 Account 이벤트와 동일한 SES 알림 경로를 그대로 탄다.
+        # The Domain Event the regular interest-payment batch (scheduling.md) publishes via
+        # Account.apply_interest() — rides the exact same SES notification path as other
+        # Account events.
         "InterestPaid": InterestPaidEventHandler(notification_service).handle,
         "account.suspended.v1": card_integration_event_controller.on_account_suspended,
         "account.closed.v1": card_integration_event_controller.on_account_closed,
-        # 매월 카드 사용내역 발송 배치가 Card.send_statement()로 발행하는 Domain Event —
-        # Card BC 최초의 Domain Event다(domain-events.md와 동일한 흐름, 전용 CardNotificationService).
+        # The Domain Event the monthly card-statement delivery batch publishes via
+        # Card.send_statement() — the Card BC's first Domain Event (the same flow as
+        # domain-events.md, with its own dedicated CardNotificationService).
         "CardStatementSent": CardStatementSentEventHandler(card_notification_service).handle,
         "PaymentCompleted": PaymentCompletedEventHandler(outbox_writer).handle,
         "PaymentCancelled": PaymentCancelledEventHandler(outbox_writer).handle,

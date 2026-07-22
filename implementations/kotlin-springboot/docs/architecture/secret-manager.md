@@ -1,11 +1,11 @@
-# Secret 관리 — Kotlin Spring Boot
+# Secret Management — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root secret-manager.md](../../../../docs/architecture/secret-manager.md) 참조.
+> For the framework-agnostic principles, see [root secret-manager.md](../../../../docs/architecture/secret-manager.md).
 
-## AWS Secrets Manager + TTL 캐시
+## AWS Secrets Manager + a TTL cache
 
 ```kotlin
-// notification/infrastructure/NotificationServiceImpl.kt — 실제 코드
+// notification/infrastructure/NotificationServiceImpl.kt — actual code
 @Component
 class NotificationServiceImpl(
     private val sesClient: SesClient,
@@ -14,13 +14,13 @@ class NotificationServiceImpl(
 ) : NotificationService
 ```
 
-`SES_SENDER_EMAIL`(→ `SesProperties.senderEmail`, [config.md](config.md) 참조)은 민감값이 아니라 발신자 이메일이므로 환경 변수로 충분하다. 실제로 민감한 값은 **JWT 서명 secret**이다 — 인증은 [authentication.md](authentication.md)가 다루며, 그 secret은 아래 `SecretService`/`SecretsEnvironmentPostProcessor`를 통해 prod 프로파일에서 AWS Secrets Manager로부터 조회된다. 아래는 [config.md](config.md)의 "민감값 — 환경 변수 vs Secrets Manager" 원칙을 Kotlin/Spring으로 구현한 실제 코드다.
+`SES_SENDER_EMAIL` (→ `SesProperties.senderEmail`, see [config.md](config.md)) is the sender's email, not a sensitive value, so an environment variable is sufficient. The actually sensitive value is the **JWT signing secret** — authentication is covered in [authentication.md](authentication.md), and that secret is looked up from AWS Secrets Manager under the prod profile via the `SecretService`/`SecretsEnvironmentPostProcessor` below. What follows is the actual Kotlin/Spring code implementing [config.md](config.md)'s "Sensitive values — environment variables vs. Secrets Manager" principle.
 
 ---
 
-## SecretService — Technical Service로 추상화
+## SecretService — abstracted as a Technical Service
 
-`notification/`의 `NotificationService`/`NotificationServiceImpl` 쌍과 동일한 구조를 재사용한다.
+Reuses the same structure as `notification/`'s `NotificationService`/`NotificationServiceImpl` pair.
 
 ```kotlin
 // secret/application/service/SecretService.kt
@@ -32,7 +32,7 @@ interface SecretService {
 ```
 
 ```kotlin
-// secret/infrastructure/SecretServiceImpl.kt — AWS Secrets Manager + TTL 캐시
+// secret/infrastructure/SecretServiceImpl.kt — AWS Secrets Manager + a TTL cache
 package com.example.accountservice.secret.infrastructure
 
 import com.example.accountservice.secret.application.service.SecretService
@@ -62,12 +62,12 @@ class SecretServiceImpl(private val client: SecretsManagerClient) : SecretServic
 }
 ```
 
-`ConcurrentHashMap`을 쓰는 이유: Tomcat은 요청마다 스레드를 배정하므로 여러 스레드가 동시에 `getSecret()`을 호출할 수 있다 — `HashMap`은 스레드 세이프하지 않아 동시 갱신 시 캐시가 깨질 수 있다. `data class CacheEntry`로 값과 만료 시각을 묶어 Kotlin다운 불변 캐시 항목을 표현한다.
+Why `ConcurrentHashMap` is used: Tomcat assigns a thread per request, so multiple threads may call `getSecret()` concurrently — `HashMap` isn't thread-safe, so the cache could get corrupted on a concurrent update. `data class CacheEntry` bundles the value and expiration time together, expressing a Kotlin-native immutable cache entry.
 
-`SesClient`(→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/notification/infrastructure/SesConfig.kt))와 동일한 방식으로 `SecretsManagerClient`도 `AWS_ENDPOINT_URL`이 있으면 LocalStack, 없으면 실제 AWS로 분기하는 `@Configuration` Bean을 둔다. `AwsProperties`([config.md](config.md) 참조)를 생성자로 주입받아 개별 `@Value` 대신 타입-세이프하게 값을 얻는다.
+The same way as `SesClient` (→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/notification/infrastructure/SesConfig.kt)), `SecretsManagerClient` also has a `@Configuration` Bean that branches to LocalStack if `AWS_ENDPOINT_URL` is set, or to real AWS otherwise. It constructor-injects `AwsProperties` (see [config.md](config.md)) to get the values type-safely instead of individual `@Value`s.
 
 ```kotlin
-// secret/infrastructure/SecretManagerConfig.kt — 실제 코드
+// secret/infrastructure/SecretManagerConfig.kt — actual code
 @Configuration
 class SecretManagerConfig(private val awsProperties: AwsProperties) {
     @Bean
@@ -85,7 +85,7 @@ class SecretManagerConfig(private val awsProperties: AwsProperties) {
 }
 ```
 
-`build.gradle.kts`에 이미 포함되어 있다 (SES와 같은 SDK v2 버전):
+Already included in `build.gradle.kts` (same SDK v2 version as SES):
 
 ```kotlin
 implementation("software.amazon.awssdk:secretsmanager:2.29.52")
@@ -93,12 +93,12 @@ implementation("software.amazon.awssdk:secretsmanager:2.29.52")
 
 ---
 
-## JWT secret 주입 — `EnvironmentPostProcessor`(제안했던 `@Bean`+`@Profile` 팩토리가 아니다)
+## Injecting the JWT secret — an `EnvironmentPostProcessor` (not the `@Bean`+`@Profile` factory that was proposed)
 
-[config.md](config.md)가 정의하는 `data class JwtProperties` + `@Bean`/`@Profile` 팩토리 조합은 이 저장소가 실제로 택한 방식이 아니다. 실제 메커니즘은 `SecretsEnvironmentPostProcessor`(`secret/infrastructure/`)다 — `ApplicationContext`가 만들어지기 전, 가장 이른 시점에 `Environment`에 직접 프로퍼티를 주입한다.
+The `data class JwtProperties` + `@Bean`/`@Profile` factory combination [config.md](config.md) defines is not what this repository actually chose. The real mechanism is `SecretsEnvironmentPostProcessor` (`secret/infrastructure/`) — at the earliest possible point, before the `ApplicationContext` is even created, it injects the property directly into the `Environment`.
 
 ```kotlin
-// secret/infrastructure/SecretsEnvironmentPostProcessor.kt — 실제 코드
+// secret/infrastructure/SecretsEnvironmentPostProcessor.kt — actual code
 class SecretsEnvironmentPostProcessor : EnvironmentPostProcessor {
 
     override fun postProcessEnvironment(environment: ConfigurableEnvironment, application: SpringApplication) {
@@ -124,32 +124,32 @@ class SecretsEnvironmentPostProcessor : EnvironmentPostProcessor {
 }
 ```
 
-`prod` 프로파일에서만 동작해 로컬/테스트 기동 속도와 네트워크 의존성에 영향을 주지 않는다. `EnvironmentPostProcessor`는 `SecretService`(위 `SecretServiceImpl`)를 거치지 않고 `SecretsManagerClient`를 직접 만들어 쓴다 — 이 시점에는 아직 Spring `ApplicationContext`가 존재하지 않아 `@Component`로 등록된 `SecretServiceImpl`을 DI로 주입받을 수 없기 때문이다(`SecretService`는 Bean이 이미 뜬 이후 애플리케이션 코드에서 시크릿을 조회할 때 쓰는 별도 경로다).
+It only runs under the `prod` profile, so it doesn't affect local/test startup speed or add a network dependency there. The `EnvironmentPostProcessor` builds and uses a `SecretsManagerClient` directly, bypassing `SecretService` (`SecretServiceImpl` above) — at this point the Spring `ApplicationContext` doesn't exist yet, so `SecretServiceImpl` (registered as a `@Component`) can't be DI-injected (`SecretService` is a separate path used to look up a secret from application code once the Beans are already up).
 
-**언어 간 차이 — 게이팅 메커니즘 자체가 다르다**: 이 저장소는 환경 변수가 아니라 Spring **profile**(`Profiles.of("prod")`)로 게이팅한다 — java-springboot도 동일한 메커니즘(`Profiles.of("prod")`)을 쓴다. nestjs(`NODE_ENV !== 'production'`), go(`APP_ENV != "production"`), fastapi(`APP_ENV == "production"`)는 환경 변수 값으로 게이팅하며, 그중 fastapi는 나머지 둘과 극성이 반대다. 다른 언어 문서를 참고할 때 이름과 극성이 그대로 대응된다고 가정하지 않는다.
+**A cross-language difference — the gating mechanism itself differs**: this repository gates on the Spring **profile** (`Profiles.of("prod")`), not an environment variable — java-springboot uses the same mechanism (`Profiles.of("prod")`). nestjs (`NODE_ENV !== 'production'`), go (`APP_ENV != "production"`), and fastapi (`APP_ENV == "production"`) gate on an environment variable value, and of those, fastapi has the opposite polarity from the other two. When consulting another language's documentation, don't assume the name and polarity correspond directly.
 
-이 `EnvironmentPostProcessor`를 Spring Boot가 기동 시점에 인식하게 하려면 `META-INF/spring.factories`에 등록해야 한다:
+For Spring Boot to recognize this `EnvironmentPostProcessor` at startup, it must be registered in `META-INF/spring.factories`:
 
 ```
-# src/main/resources/META-INF/spring.factories — 실제 코드
+# src/main/resources/META-INF/spring.factories — actual code
 org.springframework.boot.env.EnvironmentPostProcessor=com.example.accountservice.secret.infrastructure.SecretsEnvironmentPostProcessor
 ```
 
-이렇게 등록된 `jwt.secret` 프로퍼티는 `application-prod.yml`이나 기본 `application.yml`의 `jwt.secret` 값보다 우선순위가 높은 프로퍼티 소스(`addFirst`)로 들어가므로, `AuthService`/`JwtAuthenticationFilter`의 `@Value("\${jwt.secret}")` 바인딩이 이후 이 값을 그대로 사용한다 — 두 클래스는 prod/로컬을 구분하는 어떤 분기도 갖지 않는다.
+The `jwt.secret` property registered this way goes into a property source with higher priority (`addFirst`) than the `jwt.secret` value in `application-prod.yml` or the default `application.yml`, so `AuthService`/`JwtAuthenticationFilter`'s `@Value("\${jwt.secret}")` binding just uses this value afterward — neither class has any branching at all to distinguish prod from local.
 
 ---
 
-## 로컬 개발 — LocalStack
+## Local development — LocalStack
 
 ```yaml
-# docker-compose.yml — 실제 코드
+# docker-compose.yml — actual code
 localstack:
   environment:
     SERVICES: ses,secretsmanager
 ```
 
 ```bash
-# localstack/init-secrets.sh — 실제 코드
+# localstack/init-secrets.sh — actual code
 #!/bin/sh
 set -e
 
@@ -160,15 +160,15 @@ awslocal secretsmanager create-secret \
 
 ---
 
-## 원칙
+## Principles
 
-- **민감값은 환경 변수에 직접 넣지 않는다**: 운영에서는 Secrets Manager, 로컬은 환경 변수/LocalStack.
-- **TTL 캐시 필수**: `ConcurrentHashMap` + 만료 시각 — API 호출 비용/rate limit 회피.
-- **`SecretService` 인터페이스로 추상화**: `NotificationService`와 동일한 Technical Service 패턴.
-- **JSON으로 묶어 저장**: 논리적으로 연관된 값(DB 접속 정보 전체 등)은 시크릿 하나에 모은다.
+- **Never put a sensitive value directly into an environment variable**: in production use Secrets Manager, locally use environment variables/LocalStack.
+- **A TTL cache is required**: `ConcurrentHashMap` + an expiration time — avoids the cost of API calls/rate limits.
+- **Abstracted via the `SecretService` interface**: the same Technical Service pattern as `NotificationService`.
+- **Stored bundled as JSON**: logically related values (an entire set of DB connection info, etc) are grouped into a single secret.
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 vs Secrets Manager 사용 기준, `@ConfigurationProperties`
-- [directory-structure.md](directory-structure.md) — Technical Service 패턴 배치
-- [local-dev.md](local-dev.md) — LocalStack 기반 로컬 개발 환경
+- [config.md](config.md) — the criteria for environment variables vs. Secrets Manager, `@ConfigurationProperties`
+- [directory-structure.md](directory-structure.md) — Technical Service pattern placement
+- [local-dev.md](local-dev.md) — the LocalStack-based local development environment

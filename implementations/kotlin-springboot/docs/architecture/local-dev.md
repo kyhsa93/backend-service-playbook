@@ -1,11 +1,11 @@
-# 로컬 개발 환경 — Kotlin Spring Boot
+# Local Development Environment — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root local-dev.md](../../../../docs/architecture/local-dev.md) 참조.
+> For the framework-agnostic principles, see [root local-dev.md](../../../../docs/architecture/local-dev.md).
 
-## 실제 구성 — `examples/docker-compose.yml`
+## Actual setup — `examples/docker-compose.yml`
 
 ```yaml
-# examples/docker-compose.yml — 실제 코드
+# examples/docker-compose.yml — actual code
 services:
   database:
     image: postgres:16-alpine
@@ -38,27 +38,27 @@ volumes:
   db-data:
 ```
 
-Postgres + LocalStack(SES/Secrets Manager/SQS) 두 인프라 서비스 모두 `healthcheck`가 설정되어 있다 — root의 "모든 인프라 서비스에 healthcheck 필수" 원칙을 그대로 따른다. `awslocal ses list-identities`처럼 실제 서비스 API를 호출하는 형태(단순 프로세스 생존 확인이 아니라)인 것도 root 권장과 일치한다.
+Both infrastructure services — Postgres + LocalStack (SES/Secrets Manager/SQS) — have a `healthcheck` configured, following the root's "every infrastructure service must have a healthcheck" principle as-is. Calling an actual service API, like `awslocal ses list-identities` (rather than just checking that the process is alive), also matches the root's recommendation.
 
 ---
 
-## LocalStack SES 초기화 — `init-ses.sh`
+## LocalStack SES initialization — `init-ses.sh`
 
 ```bash
-# examples/localstack/init-ses.sh — 실제 코드
+# examples/localstack/init-ses.sh — actual code
 #!/bin/sh
 set -e
 awslocal ses verify-email-identity --email-address no-reply@backend-service-playbook.example.com
 ```
 
-`./localstack:/etc/localstack/init/ready.d`로 마운트되어 LocalStack 기동 완료 시 자동 실행된다. SES는 **발신자 이메일 검증이 필수**라는 점이 root 문서에서 특히 강조하는 부분이다 — LocalStack의 SES 에뮬레이터도 실제 SES처럼 미검증 발신자의 발송을 거부하므로, 이 스크립트가 없으면 `NotificationServiceImpl.sendEmail()`이 로컬에서 실패한다. `AccountControllerE2ETest`의 `@BeforeAll verifySesSender()`가 테스트 환경에서 동일한 검증을 Testcontainers 방식으로 반복하는 것도 같은 이유다.
+Mounted at `./localstack:/etc/localstack/init/ready.d`, it runs automatically once LocalStack finishes booting. The root document especially emphasizes that SES **requires sender email verification** — LocalStack's SES emulator rejects sends from an unverified sender the same way real SES does, so without this script, `NotificationServiceImpl.sendEmail()` fails locally. `AccountControllerE2ETest`'s `@BeforeAll verifySesSender()` repeats the same verification in the test environment via Testcontainers, for the same reason.
 
 ---
 
-## LocalStack SQS 초기화 — `init-sqs.sh`
+## LocalStack SQS initialization — `init-sqs.sh`
 
 ```bash
-# examples/localstack/init-sqs.sh — 실제 코드
+# examples/localstack/init-sqs.sh — actual code
 #!/bin/sh
 set -e
 awslocal sqs create-queue --queue-name domain-events-dlq
@@ -72,26 +72,26 @@ awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 ```
 
-`OutboxPoller`가 발행하고 `OutboxConsumer`가 수신하는 공유 Domain/Integration Event 큐다. DLQ를
-먼저 만들고 메인 큐에 `RedrivePolicy`로 연결한다 — `maxReceiveCount(3)`를 넘겨 재시도해도 실패하는
-메시지는 DLQ로 격리된다([domain-events.md](domain-events.md), [scheduling.md](scheduling.md)의
-DLQ 컨벤션 참고).
+This is the shared Domain/Integration Event queue that `OutboxPoller` publishes to and `OutboxConsumer`
+receives from. The DLQ is created first, then connected to the main queue via `RedrivePolicy` — a
+message that still fails after retrying past `maxReceiveCount(3)` is isolated into the DLQ (see the DLQ
+convention in [domain-events.md](domain-events.md), [scheduling.md](scheduling.md)).
 
 ---
 
-## `app` 서비스와 `.env.*` 파일
+## The `app` service and `.env.*` files
 
-`docker-compose.yml`은 `database`/`localstack`뿐 아니라 `app` 서비스도 갖고 있고, `profiles: [app]`로 기본 기동에서는 제외된다 — 기본 `docker compose up -d`는 인프라(Postgres, LocalStack)만 띄우고, 앱까지 컨테이너로 실행하려면 `docker compose --profile app up -d --build`를 쓴다:
+`docker-compose.yml` has an `app` service too, not just `database`/`localstack`, but it's excluded from the default startup via `profiles: [app]` — the default `docker compose up -d` only brings up the infrastructure (Postgres, LocalStack); to run the app itself as a container too, use `docker compose --profile app up -d --build`:
 
 ```yaml
-# docker-compose.yml — 실제 코드
+# docker-compose.yml — actual code
   app:
     build: .
     ports: ['8080:8080']
     env_file:
       - .env.development
     environment:
-      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      # Inside the container network, connect via service name instead of localhost.
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
@@ -101,36 +101,36 @@ DLQ 컨벤션 참고).
     profiles: ['app']
 ```
 
-`.env.example`(커밋됨)과 `.env.development`(`.gitignore`에 포함, `.env.example`을 복사해서 만듦)도 이미 있다 — `SPRING_DATASOURCE_URL`/`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`SES_SENDER_EMAIL`/`JWT_SECRET`을 담는다. Gradle/Kotlin 빌드가 무거워(컴파일 + 데몬) 호스트에서 `./gradlew bootRun` + IDE 증분 컴파일/핫 리로드(Spring DevTools)로 개발하는 것이 기본 흐름이고, `app` 서비스는 배포 환경과 동일한 컨테이너로 검증하고 싶을 때 쓴다.
+`.env.example` (committed) and `.env.development` (in `.gitignore`, created by copying `.env.example`) also already exist — they hold `SPRING_DATASOURCE_URL`/`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`SES_SENDER_EMAIL`/`JWT_SECRET`. Since the Gradle/Kotlin build is heavy (compilation + daemon), the default workflow is to develop on the host with `./gradlew bootRun` + IDE incremental compilation/hot reload (Spring DevTools); the `app` service is used when you want to verify against the exact same container as the deployment environment.
 
 ---
 
-## 실행 방법
+## How to run it
 
 ```bash
 cd implementations/kotlin-springboot/examples
 
-# 1. 인프라 기동 (Postgres + LocalStack)
+# 1. Start infrastructure (Postgres + LocalStack)
 docker compose up -d
 
-# 2. 앱 실행 — 호스트에서 직접 (Gradle Wrapper)
+# 2. Run the app — directly on the host (Gradle Wrapper)
 ./gradlew bootRun
 
-# 로그 확인
+# Check logs
 docker compose logs -f localstack
 
-# 종료
+# Shut down
 docker compose down
 
-# 종료 + 볼륨 삭제 (DB 데이터 초기화)
+# Shut down + delete volumes (reset DB data)
 docker compose down -v
 ```
 
 ---
 
-## 앱 환경 변수 — `application.yml` + 환경 변수 오버라이드
+## App environment variables — `application.yml` + environment variable overrides
 
-현재 `examples/src/main/resources/application.yml`은 아래처럼 최소 구성이다.
+The current `examples/src/main/resources/application.yml` is minimal, as shown below.
 
 ```yaml
 spring:
@@ -142,10 +142,10 @@ spring:
     open-in-view: false
 ```
 
-`NotificationServiceImpl`/`SesConfig`는 `@Value("\${SES_SENDER_EMAIL:...}")`, `@Value("\${AWS_REGION:us-east-1}")` 같은 개별 `@Value` 주입으로 환경 변수를 읽는다. 로컬에서 `./gradlew bootRun` 실행 시 필요한 환경 변수:
+`NotificationServiceImpl`/`SesConfig` read environment variables via individual `@Value` injections like `@Value("\${SES_SENDER_EMAIL:...}")`, `@Value("\${AWS_REGION:us-east-1}")`. Environment variables needed when running `./gradlew bootRun` locally:
 
 ```bash
-# .env.development (직접 실행 시 IDE Run Configuration 또는 export로 주입)
+# .env.development (inject via an IDE Run Configuration or export when running directly)
 AWS_ENDPOINT_URL=http://localhost:4566
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=test
@@ -158,22 +158,22 @@ SPRING_DATASOURCE_USERNAME=dev
 SPRING_DATASOURCE_PASSWORD=dev
 ```
 
-Spring Boot는 `SPRING_DATASOURCE_URL` 같은 대문자 스네이크 케이스 환경 변수를 `spring.datasource.url` 프로퍼티로 **자동 relaxed binding**한다 — Node/NestJS의 `ConfigModule`처럼 별도 매핑 코드가 필요 없다. 관심사별 `@ConfigurationProperties` data class로 이 값들을 타입 세이프하게 묶는 방법은 [config.md](config.md) 참조.
+Spring Boot **automatically relaxed-binds** an uppercase-snake-case environment variable like `SPRING_DATASOURCE_URL` to the `spring.datasource.url` property — no separate mapping code is needed, unlike Node/NestJS's `ConfigModule`. See [config.md](config.md) for how to bundle these values type-safely into per-concern `@ConfigurationProperties` data classes.
 
-`AWS_ENDPOINT_URL`이 설정되어 있으면 LocalStack, 비어 있으면 실제 AWS로 분기하는 것은 `SesConfig.sesClient()`가 구현하고 있다 — [config.md](config.md), [secret-manager.md](secret-manager.md) 참조.
+Branching to LocalStack if `AWS_ENDPOINT_URL` is set, or to real AWS if it's empty, is implemented by `SesConfig.sesClient()` — see [config.md](config.md), [secret-manager.md](secret-manager.md).
 
 ---
 
-## 원칙
+## Principles
 
-- **모든 인프라 서비스에 실제 서비스 API 기반 healthcheck**: `pg_isready`, `awslocal ses list-identities`.
-- **LocalStack 초기화 스크립트는 커밋에 포함**: `localstack/init-ses.sh`/`init-secrets.sh`/`init-sqs.sh` — 모든 개발자가 같은 환경을 재현한다.
-- **LocalStack 이미지 버전 고정**: `localstack/localstack:3.0` — `latest` 태그 사용 금지.
-- **SES는 발신자 검증이 필수**: 초기화 스크립트에서 `verify-email-identity`를 반드시 실행한다.
-- **앱은 호스트에서 직접 실행이 기본**: Gradle/Kotlin 빌드 특성상 컨테이너 재빌드보다 IDE 증분 컴파일이 개발 루프에 더 적합하다.
+- **Every infrastructure service gets a healthcheck based on an actual service API**: `pg_isready`, `awslocal ses list-identities`.
+- **LocalStack initialization scripts are committed**: `localstack/init-ses.sh`/`init-secrets.sh`/`init-sqs.sh` — every developer reproduces the same environment.
+- **The LocalStack image version is pinned**: `localstack/localstack:3.0` — never use the `latest` tag.
+- **SES requires sender verification**: the initialization script must run `verify-email-identity`.
+- **Running the app directly on the host is the default**: given the nature of a Gradle/Kotlin build, IDE incremental compilation fits the development loop better than rebuilding a container.
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 바인딩, `@ConfigurationProperties`
-- [secret-manager.md](secret-manager.md) — Secrets Manager 로컬 대체
-- [container.md](container.md) — 앱 자체의 컨테이너 이미지
+- [config.md](config.md) — environment variable binding, `@ConfigurationProperties`
+- [secret-manager.md](secret-manager.md) — the local substitute for Secrets Manager
+- [container.md](container.md) — the app's own container image

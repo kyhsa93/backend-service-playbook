@@ -8,16 +8,17 @@ import com.example.accountservice.common.generateId
 import org.springframework.stereotype.Service
 
 /**
- * 계좌 간 송금(Transfer) — Command Service 자신은 트랜잭션 애노테이션을 갖지 않는다. 트랜잭션
- * 경계는 [AccountRepository.saveAccounts](Repository 레벨)에 있다(persistence.md,
- * WithdrawService/DepositService와 동일한 규칙).
+ * An inter-account funds transfer (Transfer) — the Command Service itself carries no transaction
+ * annotation. The transaction boundary lives in [AccountRepository.saveAccounts] (the Repository level)
+ * (persistence.md, the same rule as WithdrawService/DepositService).
  */
 @Service
 class TransferService(
     private val accountRepository: AccountRepository,
 ) {
-    // TransferEligibilityService는 프레임워크 어노테이션이 없는 순수 Domain Service다. Spring
-    // DI 컨테이너에 등록하지 않고 직접 인스턴스화해 쓴다(RefundEligibilityService와 동일한 이유).
+    // TransferEligibilityService is a plain Domain Service with no framework annotations. It is
+    // instantiated directly rather than registered in the Spring DI container (same reason as
+    // RefundEligibilityService).
     private val transferEligibilityService = TransferEligibilityService()
 
     fun transfer(command: TransferCommand): TransferResult {
@@ -27,8 +28,9 @@ class TransferService(
             )
         val source = sourceAccounts.firstOrNull() ?: throw AccountNotFoundException(command.sourceAccountId)
 
-        // target은 소유자 필터 없이 조회한다 — 타인 계좌로 송금하는 것이 이 기능의 목적이라,
-        // 존재+활성 여부만 확인하면 된다(소유권 확인은 source에만 적용).
+        // target is queried without an owner filter — since transferring to someone else's account is
+        // exactly the point of this feature, only existence + active status need to be checked
+        // (ownership verification applies only to source).
         val (targetAccounts, _) =
             accountRepository.findAccounts(
                 AccountFindQuery(page = 0, take = 1, accountId = command.targetAccountId),
@@ -38,17 +40,18 @@ class TransferService(
         val decision = transferEligibilityService.evaluate(source, target, command.amount)
         if (!decision.approved) throw decision.error!!
 
-        // transferId는 이 송금 전용의 새 영속 Aggregate를 두지 않고, 두 Transaction 행을
-        // 상관관계 짓는 referenceId로만 쓴다 — (reference_id, type) 조합이 이미 유니크하므로
-        // source(WITHDRAWAL)/target(DEPOSIT) 두 행이 같은 transferId를 공유해도 충돌하지
-        // 않는다. 접미사 없이 32자리 원본 그대로 쓴다 — reference_id 컬럼이 VARCHAR(36)이므로
-        // 접미사를 붙이면 그 한도를 넘길 수 있다.
+        // transferId does not introduce a new persistent Aggregate dedicated to this transfer; it is
+        // used only as the referenceId correlating the two Transaction rows — since the
+        // (reference_id, type) combination is already unique, the source (WITHDRAWAL)/target (DEPOSIT)
+        // rows sharing the same transferId does not cause a conflict. It is used as the raw
+        // 32-character value with no suffix — the reference_id column is VARCHAR(36), so adding a
+        // suffix could exceed that limit.
         val transferId = generateId()
         val sourceTransaction = source.withdraw(command.amount, transferId)
         val targetTransaction = target.deposit(command.amount, transferId)
 
-        // 두 Account 저장을 하나의 물리 트랜잭션으로 묶는다 — 그렇지 않으면 "출금은 반영됐는데
-        // 입금은 유실됨" 실패 모드가 생긴다.
+        // Bundles both Account saves into a single physical transaction — otherwise a failure mode
+        // arises where "the withdrawal is applied but the deposit is lost."
         accountRepository.saveAccounts(source, target)
 
         return TransferResult(

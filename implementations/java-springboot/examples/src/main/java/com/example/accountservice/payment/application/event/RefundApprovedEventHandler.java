@@ -13,8 +13,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Outbox에 쌓인 {@link RefundApprovedEvent}를 처리해 {@code refund.approved.v1} Integration Event로 변환해
- * 적재한다. Account BC가 이를 구독해 환불 크레딧(deposit)을 실행한다.
+ * Processes the {@link RefundApprovedEvent} accumulated in the Outbox, translates it into the
+ * {@code refund.approved.v1} Integration Event, and stores it. The Account BC subscribes to this
+ * and runs the refund credit (deposit).
  */
 @Component
 @RequiredArgsConstructor
@@ -34,7 +35,7 @@ public class RefundApprovedEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         RefundApprovedEvent event = objectMapper.readValue(payload, RefundApprovedEvent.class);
         log.info(
-                "환불 승인됨",
+                "Refund approved",
                 kv("refund_id", event.refundId()),
                 kv("payment_id", event.paymentId()),
                 kv("account_id", event.accountId()));

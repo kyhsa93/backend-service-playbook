@@ -11,7 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
 
 @SpringBootApplication
 @EnableConfigurationProperties(AwsProperties::class, SesProperties::class, JwtProperties::class, SqsProperties::class)
-@EnableScheduling // OutboxPoller의 @Scheduled(fixedDelay = 1000) 활성화
+@EnableScheduling // Enables OutboxPoller's @Scheduled(fixedDelay = 1000)
 class AccountServiceApplication
 
 fun main(args: Array<String>) {

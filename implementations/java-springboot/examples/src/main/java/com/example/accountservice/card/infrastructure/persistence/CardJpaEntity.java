@@ -12,8 +12,9 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * card/domain/Card.java의 JPA 매핑 전용 대응물. Domain Aggregate(Card)는 이 클래스를 전혀 알지 못한다 — 변환은 CardMapper가
- * 전담한다 (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조, layer-architecture.md 참고).
+ * The JPA-mapping-only counterpart to card/domain/Card.java. The Domain Aggregate (Card) has no
+ * knowledge of this class at all — conversion is handled exclusively by CardMapper (the same
+ * structure as account/infrastructure/persistence/AccountJpaEntity, see layer-architecture.md).
  */
 @Entity
 @Table(name = "card")
@@ -42,9 +43,10 @@ public class CardJpaEntity {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    // card/domain/Card.shouldSendStatement()의 "이번 달 안내를 이미 보냈는지" 판단 필드 — YearMonth를
-    // "yyyy-MM" 문자열로 저장한다(변환은 CardMapper 전담, MoneyEmbeddable과 동일하게 인프라 레이어가 JDK
-    // 값 타입 변환을 담당).
+    // The field card/domain/Card.shouldSendStatement() uses to determine "has this month's
+    // statement already been sent" — stores YearMonth as a "yyyy-MM" string (conversion is
+    // handled exclusively by CardMapper; as with MoneyEmbeddable, the infrastructure layer
+    // owns JDK value-type conversion).
     @Column(length = 7)
     private String lastStatementSentMonth;
 
@@ -69,7 +71,10 @@ public class CardJpaEntity {
         this.lastStatementSentMonth = lastStatementSentMonth;
     }
 
-    /** 기존 row(id 보존)에 도메인 Card의 최신 상태를 반영한다 — status 전이·안내 발송 기록 저장에 사용. */
+    /**
+     * Applies the domain Card's latest state onto an existing row (preserving its id) — used for
+     * status transitions and recording that a statement was sent.
+     */
     void applyMutableState(CardStatus status, String lastStatementSentMonth) {
         this.status = status;
         this.lastStatementSentMonth = lastStatementSentMonth;

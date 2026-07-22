@@ -32,23 +32,23 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * eventType(Outbox 행의 `eventType` 컬럼 = SQS `MessageAttributes.eventType`) → 핸들러 함수
- * 매핑. [OutboxConsumer]가 SQS에서 메시지를 수신했을 때 이 레지스트리로 라우팅한다 — Domain Event
- * Handler(`application/event/`)든 Integration Event Controller(`interfaces/integrationevent/`)든
- * 이 하나의 레지스트리를 거친다.
+ * Maps eventType (the Outbox row's `eventType` column = SQS `MessageAttributes.eventType`) to a handler
+ * function. [OutboxConsumer] routes to this registry whenever it receives a message from SQS — whether
+ * it's a Domain Event Handler (`application/event/`) or an Integration Event Controller
+ * (`interfaces/integrationevent/`), it goes through this single registry.
  *
- * 예전 `OutboxRelay.dispatch()`의 `when(eventType)` 하드코딩 분기를 대체한다. 차이는 라우팅
- * 테이블을 매번 `when`으로 평가하는 대신, 생성자 실행 시점(Spring이 이미 각 Handler/Controller를
- * `@Component`로 자동 수집해 주입한 뒤)에 `Map<eventType, (eventId, payload) -> Unit>` 하나로 미리
- * 구성해 둔다는 점뿐이다 — nestjs의 `EventHandlerRegistry.register()`처럼 각 도메인 모듈이
- * `onModuleInit()`에서 별도로 호출해 채우는 구조가 아니다(이 저장소는 도메인별 모듈 등록 단계가
- * 없는 단일 Spring 컨텍스트이므로 그렇게 나눌 필요가 없다 — 기존 `OutboxRelay`도 항상 계좌/결제
- * 도메인 핸들러를 전부 한 곳에서 알고 있었다).
+ * Rather than evaluating the routing table with a `when` expression on every dispatch, this registry
+ * builds the entire `Map<eventType, (eventId, payload) -> Unit>` once at construction time (after Spring
+ * has already auto-collected and injected each Handler/Controller as a `@Component`). This differs from
+ * nestjs's `EventHandlerRegistry.register()`, where each domain module populates the registry separately
+ * in its own `onModuleInit()` — this repository has no per-domain module-registration step (it's a
+ * single Spring context), so there's no need to split it that way; this one registry always knows about
+ * every Account/Payment domain handler in a single place.
  *
- * Account 7개 Domain Event Handler는 Outbox 행의 `eventId`를 그대로 전달받는다 — 이 값이
- * `NotificationService`의 Level 2(Ledger) 중복 발송 방지 키(`sourceEventId`)로 쓰인다
- * (domain-events.md). Payment/Refund Domain Event Handler와 Integration Event Controller는
- * `eventId`를 쓰지 않으므로 람다에서 무시한다.
+ * Account's 7 Domain Event Handlers receive the Outbox row's `eventId` as-is — this value is used as
+ * `NotificationService`'s Level 2 (Ledger) duplicate-send-prevention key (`sourceEventId`)
+ * (domain-events.md). The Payment/Refund Domain Event Handlers and the Integration Event Controller
+ * don't use `eventId`, so the lambda ignores it.
  */
 @Component
 class EventHandlerRegistry(
@@ -60,15 +60,17 @@ class EventHandlerRegistry(
     private val accountReactivatedEventHandler: AccountReactivatedEventHandler,
     private val accountClosedEventHandler: AccountClosedEventHandler,
     private val interestPaidEventHandler: InterestPaidEventHandler,
-    // Card BC의 Integration Event 수신부. outbox/는 어느 BC에도 속하지 않는 공유 인프라이므로
-    // 이 파일이 Card를 참조하는 것 자체는 원칙 위반이 아니다(Account가 Card를 참조하지만 않으면 된다).
+    // The receiving side for Card BC's Integration Events. Since outbox/ is shared infrastructure that
+    // doesn't belong to any BC, this file referencing Card is not itself a violation of the rule
+    // (the constraint is only that Account must not reference Card).
     private val cardIntegrationEventController: CardIntegrationEventController,
-    // Payment/Refund Domain Event → Integration Event 변환 핸들러.
+    // The handler that converts Payment/Refund Domain Events into Integration Events.
     private val paymentCompletedEventHandler: PaymentCompletedEventHandler,
     private val paymentCancelledEventHandler: PaymentCancelledEventHandler,
     private val refundApprovedEventHandler: RefundApprovedEventHandler,
-    // Payment BC의 Integration Event 수신부 — Account가 Payment의 payment.completed.v1/
-    // payment.cancelled.v1/refund.approved.v1을 구독해 실제 차감/보상 크레딧을 수행한다.
+    // The receiving side for Payment BC's Integration Events — Account subscribes to Payment's
+    // payment.completed.v1/payment.cancelled.v1/refund.approved.v1 to perform the actual
+    // debit/compensating credit.
     private val accountIntegrationEventController: AccountIntegrationEventController,
 ) {
     private val logger = LoggerFactory.getLogger(EventHandlerRegistry::class.java)
@@ -127,14 +129,15 @@ class EventHandlerRegistry(
             },
         )
 
-    /** 등록된 eventType 집합 — 진단/테스트 용도(어떤 이벤트가 라우팅 가능한지 확인). */
+    /** The set of registered eventTypes — for diagnostics/testing (checking which events can be
+     * routed). */
     fun registeredEventTypes(): Set<String> = handlers.keys
 
     /**
-     * [OutboxConsumer]가 SQS 메시지 하나를 수신할 때마다 호출한다. 등록된 핸들러가 없으면 경고만
-     * 남기고 조용히 반환한다(예외를 던지지 않는다 — 알 수 없는 이벤트 타입을 무한 재시도할 이유가
-     * 없다). 핸들러가 예외를 던지면 그대로 전파해 [OutboxConsumer]가 메시지를 삭제하지 않고
-     * SQS의 재전달(at-least-once)에 맡기게 한다.
+     * Called every time [OutboxConsumer] receives one SQS message. If no handler is registered, it just
+     * logs a warning and returns quietly (it doesn't throw — there's no reason to retry an unknown
+     * event type forever). If the handler throws, the exception propagates as-is so [OutboxConsumer]
+     * doesn't delete the message and instead leaves it to SQS's redelivery (at-least-once).
      */
     fun dispatch(
         eventType: String,
@@ -143,7 +146,7 @@ class EventHandlerRegistry(
     ) {
         val handler = handlers[eventType]
         if (handler == null) {
-            logger.warn("알 수 없는 이벤트 타입: {}", eventType)
+            logger.warn("Unknown event type: {}", eventType)
             return
         }
         handler(eventId, payload)

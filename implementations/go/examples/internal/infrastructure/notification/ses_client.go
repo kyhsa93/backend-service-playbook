@@ -7,14 +7,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ses"
 )
 
-// DefaultSenderEmail은 SES_SENDER_EMAIL 환경변수가 없을 때 사용하는 발신자 주소다.
+// DefaultSenderEmail is the sender address used when the SES_SENDER_EMAIL environment variable is not set.
 const DefaultSenderEmail = "no-reply@backend-service-playbook.example.com"
 
-// NewSESClient는 환경변수 기반으로 SES 클라이언트를 생성한다.
+// NewSESClient creates an SES client based on environment variables.
 //
-// SDK의 기본 credential chain(IMDS 등)은 자격 증명이 없는 샌드박스/CI 환경에서
-// 응답이 느리므로 사용하지 않고, 항상 명시적인 정적 자격 증명을 사용한다.
-// AWS_ENDPOINT_URL이 설정되어 있으면 LocalStack 같은 엔드포인트로 우회한다.
+// The SDK's default credential chain (IMDS, etc.) is slow to respond in
+// sandbox/CI environments that have no credentials, so it's not used —
+// explicit static credentials are always used instead. If AWS_ENDPOINT_URL
+// is set, requests are routed to that endpoint (e.g. LocalStack) instead.
 func NewSESClient() *ses.Client {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -42,7 +43,7 @@ func NewSESClient() *ses.Client {
 	return ses.New(options)
 }
 
-// SenderEmail은 SES_SENDER_EMAIL 환경변수 또는 기본 발신자 주소를 반환한다.
+// SenderEmail returns the SES_SENDER_EMAIL environment variable or the default sender address.
 func SenderEmail() string {
 	if sender := os.Getenv("SES_SENDER_EMAIL"); sender != "" {
 		return sender

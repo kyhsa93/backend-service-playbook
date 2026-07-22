@@ -1,8 +1,8 @@
 package com.example.accountservice.account.domain
 
 /**
- * 금액 Value Object — 어떤 프레임워크/ORM에도 의존하지 않는 순수 Kotlin `data class`.
- * JPA 임베더블 컬럼 매핑은 infrastructure/persistence/MoneyEmbeddable이 전담한다.
+ * Money Value Object — a pure Kotlin `data class` with no dependency on any framework/ORM.
+ * JPA embeddable column mapping is handled exclusively by infrastructure/persistence/MoneyEmbeddable.
  */
 data class Money(
     val amount: Long,

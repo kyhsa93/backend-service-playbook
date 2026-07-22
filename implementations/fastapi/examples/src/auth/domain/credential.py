@@ -6,8 +6,9 @@ from ...common.generate_id import generate_id
 
 
 class Credential:
-    """자격 증명 Aggregate — userId + 해싱된 비밀번호. 평문 비밀번호는 Domain/Application 어디에도
-    보관하지 않는다(해싱은 PasswordHasher Technical Service가 담당).
+    """The Credential Aggregate — userId + a hashed password. A plaintext password is never
+    stored anywhere in Domain/Application (hashing is handled by the PasswordHasher
+    Technical Service).
     """
 
     def __init__(self, credential_id: str, user_id: str, password_hash: str, created_at: datetime) -> None:

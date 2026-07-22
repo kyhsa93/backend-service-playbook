@@ -24,10 +24,11 @@ func TestRequestRefundHandler_Handle_PaymentNotFound(t *testing.T) {
 	}
 }
 
-// TestRequestRefundHandler_Handle_ApprovesWithinCompletedPaymentAmount는
-// RefundEligibilityService(Domain Service)가 승인 판단을 내렸을 때 이 Handler가
-// refund.Approve()를 호출하고 저장·드레인까지 이어지는지 검증한다 — Handler 자체가
-// 판단 로직을 재구현하지 않고 Domain Service에 위임하는지가 핵심이다.
+// TestRequestRefundHandler_Handle_ApprovesWithinCompletedPaymentAmount
+// verifies that when RefundEligibilityService (a Domain Service) decides to
+// approve, this Handler calls refund.Approve() and follows through to
+// saving/draining — the key point being that the Handler itself does not
+// reimplement the decision logic but delegates to the Domain Service.
 func TestRequestRefundHandler_Handle_ApprovesWithinCompletedPaymentAmount(t *testing.T) {
 	p := payment.New("card-1", "account-1", "owner-1", 1000)
 	_ = p.Complete()
@@ -54,9 +55,10 @@ func TestRequestRefundHandler_Handle_ApprovesWithinCompletedPaymentAmount(t *tes
 	}
 }
 
-// TestRequestRefundHandler_Handle_RejectsWithoutError는 환불 거부가 에러가 아니라
-// REJECTED 상태로 저장된 Refund를 정상 반환하는지 검증한다(도메인 관점에서 유효한
-// 상태 전이 — Interface 레이어가 이를 201 + status:REJECTED로 응답한다).
+// TestRequestRefundHandler_Handle_RejectsWithoutError verifies that a refund
+// rejection is not an error but returns a normally saved Refund with
+// REJECTED status (a valid state transition from the domain's perspective —
+// the Interface layer responds to this as 201 + status:REJECTED).
 func TestRequestRefundHandler_Handle_RejectsWithoutError(t *testing.T) {
 	p := payment.New("card-1", "account-1", "owner-1", 1000)
 	_ = p.Complete()
@@ -68,7 +70,7 @@ func TestRequestRefundHandler_Handle_RejectsWithoutError(t *testing.T) {
 	}
 	handler := command.NewRequestRefundHandler(store, store)
 
-	// 환불 금액(1500)이 결제 금액(1000)을 초과 — RefundEligibilityService가 거부한다.
+	// The refund amount (1500) exceeds the payment amount (1000) — RefundEligibilityService rejects it.
 	result, err := handler.Handle(context.Background(), command.RequestRefundCommand{PaymentID: p.PaymentID, Amount: 1500, Reason: "wrong item", RequesterID: "owner-1"})
 
 	if err != nil {

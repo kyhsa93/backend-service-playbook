@@ -10,16 +10,18 @@ private val GLOBAL_SOFT_DELETE_ANNOTATION = Regex("""@SQLRestriction\(|@Where\("
 private val DELETED_AT_FILTER_IN_QUERY = Regex("""(?i)deletedAt\s+is\s+null|DeletedAtIsNull\b""")
 
 /**
- * [S3] soft-delete-filter — hard delete는 금지이고, `deletedAt` soft-delete 컬럼이 있는 JPA
- * Entity라면 그 Entity를 조회하는 Repository 구현체의 find 쿼리가 `deletedAt IS NULL`(또는
- * 동급의 `findBy...DeletedAtIsNull` derived query)을 필터로 걸어야 한다(persistence.md) — 그렇지
- * 않으면 삭제된 행이 조회에 계속 노출된다. Entity 자체에 `@SQLRestriction`/`@Where`로 전역 필터가
- * 걸려 있으면 Repository 쪽 검사 없이 그것으로 충분하다.
+ * [S3] soft-delete-filter — hard delete is forbidden, and if a JPA Entity has a `deletedAt`
+ * soft-delete column, the find queries in the Repository implementation that fetches that Entity must
+ * apply `deletedAt IS NULL`(or the equivalent `findBy...DeletedAtIsNull` derived query) as a
+ * filter(persistence.md) — otherwise deleted rows keep showing up in queries. If the Entity itself has
+ * a global filter via `@SQLRestriction`/`@Where`, that alone is sufficient without checking the
+ * Repository side.
  *
- * 이 저장소는 현재 Account(및 Transaction 문서상 언급)만 soft delete 컬럼을 갖고 Card/Payment/
- * Refund/Credential은 삭제 유스케이스 자체가 없다(컬럼도 없음) — 컬럼이 없는 Entity는 hard delete를
- * 저지를 코드 경로 자체가 없으므로 대상에서 제외한다(과도한 오탐 방지, 이 저장소의 다른 규칙과
- * 동일한 "실제로 트리거되는 것만 검사" 원칙).
+ * Currently in this repository, only Account(and, per the docs, Transaction) has a soft-delete column
+ * — Card/Payment/Refund/Credential have no delete use case at all(and no column either). An Entity
+ * with no column has no code path that could commit a hard delete, so it's excluded from scope(to
+ * avoid excessive false positives, the same "only check what can actually be triggered" principle as
+ * this repository's other rules).
  */
 fun checkSoftDeleteFilter(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -36,7 +38,7 @@ fun checkSoftDeleteFilter(rootPath: String): RuleResult {
         }
 
     if (softDeleteEntities.isEmpty()) {
-        result.add(skipFinding("deletedAt 컬럼을 가진 JPA Entity 없음"))
+        result.add(skipFinding("no JPA Entity with a deletedAt column"))
         return result
     }
 
@@ -47,28 +49,28 @@ fun checkSoftDeleteFilter(rootPath: String): RuleResult {
         val rel = entityFile.relTo(root)
 
         if (GLOBAL_SOFT_DELETE_ANNOTATION.containsMatchIn(entityContent)) {
-            result.add(passFinding("$rel ($className, @SQLRestriction/@Where 전역 필터 적용됨)"))
+            result.add(passFinding("$rel ($className, @SQLRestriction/@Where global filter applied)"))
             continue
         }
 
         val referencingImpls = repositoryImplFiles.filter { it.readText().contains(className) }
 
         if (referencingImpls.isEmpty()) {
-            result.add(skipFinding("$rel ($className) — 이 Entity를 참조하는 *RepositoryImpl.kt를 찾을 수 없어 필터 위치를 확인할 수 없음"))
+            result.add(skipFinding("$rel ($className) — could not find a *RepositoryImpl.kt referencing this Entity, so the filter location cannot be confirmed"))
             continue
         }
 
         val hasFilter = referencingImpls.any { DELETED_AT_FILTER_IN_QUERY.containsMatchIn(it.readText()) }
 
         if (hasFilter) {
-            result.add(passFinding("$rel ($className, 참조하는 RepositoryImpl에서 deletedAt 필터 확인)"))
+            result.add(passFinding("$rel ($className, confirmed deletedAt filter in the referencing RepositoryImpl)"))
         } else {
             val implNames = referencingImpls.joinToString { it.relTo(root) }
             result.add(
                 failFinding(
                     rel,
-                    "$className 은 deletedAt 컬럼(soft delete)이 있지만, 이를 조회하는 $implNames 의 find 쿼리에 " +
-                        "deletedAt IS NULL(또는 findBy...DeletedAtIsNull) 필터가 없음 — 삭제된 행이 계속 조회됨 (persistence.md)",
+                    "$className has a deletedAt column(soft delete), but the find queries in $implNames that fetch it have " +
+                        "no deletedAt IS NULL(or findBy...DeletedAtIsNull) filter — deleted rows keep being returned (persistence.md)",
                 ),
             )
         }

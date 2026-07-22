@@ -1,43 +1,43 @@
-# 테스트 전략 — Kotlin Spring Boot
+# Testing Strategy — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root testing.md](../../../../docs/architecture/testing.md) 참조.
+> For the framework-agnostic principles, see [root testing.md](../../../../docs/architecture/testing.md).
 
-## 3계층(Domain/Application/E2E)
+## The 3 layers (Domain/Application/E2E)
 
-`examples/`는 root가 요구하는 3계층 테스트를 모두 갖췄다: `AccountTest.kt`(Domain 단위), `CreateAccountServiceTest.kt`/`DepositServiceTest.kt`(Application 단위, MockK), `AccountControllerE2ETest.kt`(Testcontainers 기반 E2E, Postgres + LocalStack SES). 아래에서 3계층 모두를 Kotlin 관용으로 정의하고, 실제 코드와 대조한다.
+`examples/` has all 3 layers of testing the root requires: `AccountTest.kt` (Domain unit), `CreateAccountServiceTest.kt`/`DepositServiceTest.kt` (Application unit, MockK), `AccountControllerE2ETest.kt` (Testcontainers-based E2E, Postgres + LocalStack SES). Below, all 3 layers are defined using Kotlin idioms and compared against the actual code.
 
-| 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
+| Layer | Verification scope | Dependency strategy | Current state |
 |--------|----------|------------|----------|
-| Domain 단위 테스트 | `Account` 불변식 (16개 테스트 케이스) | 프레임워크 없음 | **있음** (`AccountTest.kt`) |
-| Application 단위 테스트 | `CreateAccountService`/`DepositService` 조율 로직 | `AccountRepository`를 MockK로 mock | **있음** (`CreateAccountServiceTest.kt`, `DepositServiceTest.kt`) |
-| E2E 테스트 | Controller → Service → DB 전체 경로 | Testcontainers | 있음 (`AccountControllerE2ETest.kt`, `NotificationE2ETest.kt`) |
+| Domain unit tests | `Account` invariants (16 test cases) | no framework | **present** (`AccountTest.kt`) |
+| Application unit tests | `CreateAccountService`/`DepositService` coordination logic | `AccountRepository` mocked with MockK | **present** (`CreateAccountServiceTest.kt`, `DepositServiceTest.kt`) |
+| E2E tests | the full Controller → Service → DB path | Testcontainers | present (`AccountControllerE2ETest.kt`, `NotificationE2ETest.kt`) |
 
 ---
 
-## 테스트 프레임워크 선택 — JUnit 5 + MockK
+## Test framework choice — JUnit 5 + MockK
 
-`build.gradle.kts`에 이미 `io.mockk:mockk`가 있고, Application 단위 테스트(`CreateAccountServiceTest.kt` 등)가 이를 사용한다. E2E 테스트는 여전히 Testcontainers 실제 인스턴스만 사용한다(mock 없음). 아래는 MockK를 택한 근거다.
+`build.gradle.kts` already has `io.mockk:mockk`, and the Application unit tests (`CreateAccountServiceTest.kt`, etc) use it. The E2E tests still use only real Testcontainers instances (no mocks). Below is the rationale for choosing MockK.
 
-| | Mockito(-Kotlin) | **MockK (권장)** |
+| | Mockito(-Kotlin) | **MockK (recommended)** |
 |---|---|---|
-| final 클래스 mock | 기본 불가 — `mockito-inline` 추가 필요 (Kotlin 클래스는 기본 `final`) | 기본 지원 — 별도 설정 불필요 |
-| DSL | Java 스타일(`when(...).thenReturn(...)`) + Kotlin 래퍼(`mockito-kotlin`) 필요 | Kotlin 전용 DSL(`every { } returns`) — 애초에 Kotlin으로 설계됨 |
-| `data class` 인자 매칭 | 값 기반 matcher 별도 구성 필요한 경우 있음 | `data class` 값 동등성과 자연스럽게 맞물림 |
-| relaxed mock | 없음 | `mockk(relaxed = true)` — 사용하지 않는 메서드는 기본값 자동 반환 |
+| Mocking a final class | not possible by default — requires adding `mockito-inline` (a Kotlin class is `final` by default) | supported by default — no extra setup needed |
+| DSL | needs the Java style (`when(...).thenReturn(...)`) + a Kotlin wrapper (`mockito-kotlin`) | a Kotlin-only DSL (`every { } returns`) — designed for Kotlin from the start |
+| Matching `data class` arguments | sometimes needs a separate value-based matcher setup | naturally meshes with `data class` value equality |
+| Relaxed mocks | none | `mockk(relaxed = true)` — a method call that isn't stubbed automatically returns a default value |
 
-**MockK를 권장하는 이유**: Kotlin 클래스는 기본 `final`이라(`kotlin("plugin.spring")`이 `@Component` 계열만 자동으로 `open` 처리하고, `AccountRepository`는 `interface`라 문제없지만 구체 클래스를 mock해야 하는 경우 Mockito는 추가 설정이 필요하다) MockK가 Kotlin 프로젝트의 사실상 표준이다. 이 저장소는 Repository를 `interface`로 정의하므로 두 라이브러리 모두 동작은 하지만, `every { }`/`verify { }` DSL이 `data class` Command/Result와 자연스럽게 어우러지고 코드 전체가 Kotlin 관용으로 통일된다는 점에서 MockK를 선택한다.
+**Why MockK is recommended**: since a Kotlin class is `final` by default (`kotlin("plugin.spring")` only auto-`open`s `@Component`-family classes, and `AccountRepository` is an `interface` so there's no problem there, but Mockito needs extra setup when a concrete class must be mocked), MockK is the de facto standard for Kotlin projects. Since this repository defines its Repositories as `interface`, both libraries would technically work, but MockK is chosen because its `every { }`/`verify { }` DSL naturally meshes with `data class` Command/Result objects, and it keeps the whole codebase unified in Kotlin idiom.
 
 ```kotlin
-// build.gradle.kts — 실제 코드
+// build.gradle.kts — actual code
 testImplementation("io.mockk:mockk:1.13.13")
 ```
 
 ---
 
-## Domain 단위 테스트 — 프레임워크 없이 순수 Kotlin
+## Domain unit tests — plain Kotlin, no framework
 
 ```kotlin
-// src/test/kotlin/.../account/domain/AccountTest.kt — 실제 코드(일부 발췌, 전체 16개 테스트 케이스 중)
+// src/test/kotlin/.../account/domain/AccountTest.kt — actual code (excerpt, out of 16 total test cases)
 package com.example.accountservice.account.domain
 
 import org.assertj.core.api.Assertions.assertThat
@@ -50,7 +50,7 @@ class AccountTest {
         Account.create(ownerId = "owner-1", currency = currency, email = "owner-1@example.com")
 
     @Test
-    fun `계좌 생성 시 잔액은 0이고 ACTIVE 상태다`() {
+    fun `creating an account starts with a 0 balance and the ACTIVE status`() {
         val account = createAccount()
 
         assertThat(account.balance.amount).isEqualTo(0)
@@ -59,14 +59,14 @@ class AccountTest {
     }
 
     @Test
-    fun `계좌 ID는 하이픈 없는 32자리 hex 문자열이다`() {
+    fun `the account ID is a 32-character hex string without hyphens`() {
         val account = createAccount()
 
         assertThat(account.accountId).matches("^[0-9a-f]{32}$")
     }
 
     @Test
-    fun `정지된 계좌에 입금하면 예외를 던진다`() {
+    fun `depositing to a suspended account throws an exception`() {
         val account = createAccount()
         account.suspend()
 
@@ -74,14 +74,14 @@ class AccountTest {
     }
 
     @Test
-    fun `0 이하 금액을 입금하면 예외를 던진다`() {
+    fun `depositing an amount of 0 or less throws an exception`() {
         val account = createAccount()
 
         assertThrows<InvalidAmountException> { account.deposit(0) }
     }
 
     @Test
-    fun `잔액보다 큰 금액을 출금하면 예외를 던진다`() {
+    fun `withdrawing more than the balance throws an exception`() {
         val account = createAccount()
         account.deposit(1000)
 
@@ -89,7 +89,7 @@ class AccountTest {
     }
 
     @Test
-    fun `잔액이 0이 아닌 계좌를 종료하면 예외를 던진다`() {
+    fun `closing an account with a non-zero balance throws an exception`() {
         val account = createAccount()
         account.deposit(1000)
 
@@ -97,9 +97,9 @@ class AccountTest {
     }
 
     @Test
-    fun `입금하면 MoneyDepositedEvent가 수집된다`() {
+    fun `depositing collects a MoneyDepositedEvent`() {
         val account = createAccount()
-        account.pullDomainEvents()   // 생성 이벤트 비우기
+        account.pullDomainEvents()   // clear the creation event
 
         account.deposit(5000)
 
@@ -108,20 +108,20 @@ class AccountTest {
         assertThat((events.first() as MoneyDepositedEvent).amount.amount).isEqualTo(5000)
     }
 
-    // ... 정지/재개/종료 상태 전이, pullPendingTransactions() 등 나머지 케이스는 AccountTest.kt 전체 참고
+    // ... the remaining cases (suspend/reactivate/close state transitions, pullPendingTransactions(), etc) are in the full AccountTest.kt
 }
 ```
 
-- `Account`, `Money`, `Transaction` 어디에도 Spring 애노테이션이 없으므로 `@SpringBootTest` 없이 순수 `Account.create(...)` 호출만으로 테스트가 가능하다 — 밀리초 단위로 끝난다.
-- assertJ(`spring-boot-starter-test`에 포함) + JUnit 5 `assertThrows<T>()`(Kotlin의 reified 제네릭 확장 함수)로 예외 타입을 검증한다 — `sealed class AccountException`의 구체 하위 타입을 정확히 지정한다.
-- `Money`(Value Object)의 `data class` 동등성도 여기서 함께 검증할 수 있다: `Money(1000, "KRW") == Money(1000, "KRW")`가 `true`임을 assertJ의 `isEqualTo`로 확인 — 별도 `equals()` 구현이 없어도 통과한다.
+- Since neither `Account`, `Money`, nor `Transaction` has any Spring annotation, testing is possible with just a plain `Account.create(...)` call, with no `@SpringBootTest` — it finishes in milliseconds.
+- AssertJ (included with `spring-boot-starter-test`) + JUnit 5's `assertThrows<T>()` (a Kotlin reified-generic extension function) verify the exception type — pinpointing the exact concrete subtype of `sealed class AccountException`.
+- `Money`'s (a Value Object's) `data class` equality can also be verified here: confirming that `Money(1000, "KRW") == Money(1000, "KRW")` is `true` via AssertJ's `isEqualTo` — it passes with no separate `equals()` implementation needed.
 
 ---
 
-## Application 단위 테스트 — MockK로 Repository 대체
+## Application unit tests — replacing the Repository with MockK
 
 ```kotlin
-// src/test/kotlin/.../account/application/command/CreateAccountServiceTest.kt — 실제 코드
+// src/test/kotlin/.../account/application/command/CreateAccountServiceTest.kt — actual code
 package com.example.accountservice.account.application.command
 
 import com.example.accountservice.account.domain.AccountRepository
@@ -135,7 +135,7 @@ class CreateAccountServiceTest {
     private val service = CreateAccountService(accountRepository)
 
     @Test
-    fun `계좌 생성 시 저장되고 결과에 초기 잔액 0이 담긴다`() {
+    fun `creating an account saves it and returns a result with an initial balance of 0`() {
         val result = service.create(CreateAccountCommand("owner-1", "KRW", "owner-1@example.com"))
 
         assertThat(result.ownerId).isEqualTo("owner-1")
@@ -145,21 +145,21 @@ class CreateAccountServiceTest {
 }
 ```
 
-Command Service는 `AccountRepository.saveAccount()`를 호출한 뒤 곧바로 반환하므로, Application 단위 테스트는 "저장이 일어났는가"만 검증하면 된다 — Outbox 드레인(`OutboxPoller`/`OutboxConsumer`)은 Command Service가 참조하지 않는 별도 컴포넌트이므로 이 테스트의 mock 대상이 아니다. `OutboxPoller`/`OutboxConsumer`/`EventHandlerRegistry` 자체의 동작(SQS 발행/수신, 핸들러 라우팅)은 이 파일의 범위가 아니다 — 필요하다면 별도 단위 테스트나 `NotificationE2ETest`(LocalStack SQS/SES 종단 검증)로 다룬다.
+Since the Command Service calls `AccountRepository.saveAccount()` and returns right away, an Application unit test only needs to verify "did the save happen" — draining the Outbox (`OutboxPoller`/`OutboxConsumer`) is a separate component the Command Service never references, so it isn't something this test mocks. The behavior of `OutboxPoller`/`OutboxConsumer`/`EventHandlerRegistry` themselves (SQS publish/receive, handler routing) is outside this file's scope — if needed, it's covered by a separate unit test or by `NotificationE2ETest` (an end-to-end LocalStack SQS/SES verification).
 
-이 테스트는 `AccountCreated` 이벤트가 실제로 알림으로 이어지는지까지는 검증하지 않는다(그건 `Repository.saveAccount()` 안에서 Outbox에 적재되는 시점에 이미 끝난다) — 이벤트 타입별 알림 발송 로직 자체는 `application/event/AccountCreatedEventHandler` 등을 대상으로 별도 단위 테스트하거나, `NotificationE2ETest`가 실제 LocalStack SES로 종단 검증한다.
+This test doesn't go as far as verifying that the `AccountCreated` event actually leads to a notification (that's already finished the moment it's written to the Outbox, inside `Repository.saveAccount()`) — the per-event-type notification-sending logic itself is either unit-tested separately against `application/event/AccountCreatedEventHandler`, etc, or verified end-to-end by `NotificationE2ETest` against real LocalStack SES.
 
-- `mockk<AccountRepository>(relaxed = true)`: `relaxed = true`는 스텁하지 않은 메서드 호출에 기본값(빈 리스트, `Unit` 등)을 자동 반환한다 — `saveAccount()`처럼 반환값이 없는 메서드를 매번 `every { } returns Unit`으로 채우지 않아도 된다.
-- **Repository mock은 `interface` 타입**을 그대로 사용한다 — root의 "abstract class 타입으로 mock, 구체 클래스 mock 금지"가 Kotlin에서는 인터페이스 그대로 대응된다.
-- Application 단위 테스트는 **조율 흐름만** 검증한다 — 잔액 계산이나 상태 전이 규칙(비즈니스 로직)은 Domain 단위 테스트가 이미 검증했으므로 여기서 반복하지 않는다.
-- `DepositServiceTest.kt`도 동일한 패턴(MockK로 `AccountRepository`만 mock)을 따른다 — Command Service마다 Application 단위 테스트를 추가할 때의 템플릿으로 이 두 파일을 그대로 재사용한다.
+- `mockk<AccountRepository>(relaxed = true)`: `relaxed = true` automatically returns a default value (an empty list, `Unit`, etc) for any unstubbed method call — you don't need to fill in `every { } returns Unit` every time for a method with no return value, like `saveAccount()`.
+- **The Repository mock uses the `interface` type** as-is — the root's "mock as the abstract class type, never mock a concrete class" corresponds directly to the interface in Kotlin.
+- An Application unit test verifies **only the coordination flow** — balance calculation or state-transition rules (business logic) are already verified by the Domain unit tests, so they aren't repeated here.
+- `DepositServiceTest.kt` follows the same pattern too (mocking only `AccountRepository` with MockK) — these two files are reused as-is as the template when adding an Application unit test for each new Command Service.
 
 ---
 
-## E2E 테스트 — Testcontainers
+## E2E tests — Testcontainers
 
 ```kotlin
-// src/test/kotlin/.../AccountControllerE2ETest.kt — 실제 코드 (일부)
+// src/test/kotlin/.../AccountControllerE2ETest.kt — actual code (partial)
 @Testcontainers
 @SpringBootTest(classes = [AccountServiceApplication::class], webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AccountControllerE2ETest {
@@ -175,13 +175,13 @@ class AccountControllerE2ETest {
         @DynamicPropertySource @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
             registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.jpa.hibernate.ddl-auto") { "create-drop" }   // 테스트 전용 스키마 자동 생성
+            registry.add("spring.jpa.hibernate.ddl-auto") { "create-drop" }   // test-only automatic schema creation
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
         }
     }
 
     @Test
-    fun `생성 요청이 유효하면 201과 계좌 정보를 반환한다`() {
+    fun `a valid creation request returns 201 and the account info`() {
         val response = post("/accounts", OWNER_ID, mapOf("currency" to "KRW", "email" to "$OWNER_ID@example.com"))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         // ...
@@ -189,11 +189,11 @@ class AccountControllerE2ETest {
 }
 ```
 
-이 파일은 root의 E2E 원칙을 정확히 따른다: 실제 HTTP 요청(`TestRestTemplate`), 실제 DB(Testcontainers Postgres — in-memory가 아닌 진짜 컨테이너), 실제 SES 발송 경로(LocalStack)까지 검증한다. `@DynamicPropertySource`로 컨테이너의 런타임 포트/자격증명을 Spring 컨텍스트에 주입하는 것도 Testcontainers의 표준 관용구다. 22개 이상의 테스트 케이스가 성공/실패 경로, 권한 검증(다른 소유자 접근 시 404), 페이지네이션까지 폭넓게 다룬다 — **이 레이어는 확장만 하면 되고 재작성이 필요 없다.**
+This file follows the root's E2E principle exactly: it verifies a real HTTP request (`TestRestTemplate`), a real DB (Testcontainers Postgres — a genuine container, not in-memory), and even the real SES send path (LocalStack). Injecting the container's runtime port/credentials into the Spring context via `@DynamicPropertySource` is also Testcontainers' standard idiom. 22+ test cases broadly cover success/failure paths, authorization checks (404 when a different owner tries to access), and pagination — **this layer only needs to be extended, never rewritten.**
 
 ---
 
-## 테스트 파일 배치
+## Test file placement
 
 ```
 src/
@@ -202,38 +202,38 @@ src/
     application/command/CreateAccountService.kt
   test/kotlin/.../account/
     domain/
-      AccountTest.kt                        ← Domain 단위 테스트 (소스와 대응되는 패키지, 소스 옆은 아님 — Gradle 표준 레이아웃)
+      AccountTest.kt                        ← Domain unit test (mirrors the source's package, not placed next to the source — Gradle's standard layout)
     application/command/
-      CreateAccountServiceTest.kt            ← Application 단위 테스트
+      CreateAccountServiceTest.kt            ← Application unit test
     interfaces/rest/
-      AccountControllerE2ETest.kt            ← E2E 테스트 (실제 위치)
+      AccountControllerE2ETest.kt            ← E2E test (its actual location)
 ```
 
-Kotlin/Gradle 표준 레이아웃은 `src/main`과 `src/test`를 분리하고 그 안에서 동일한 패키지 구조를 미러링한다 — NestJS/TypeScript처럼 소스 파일 바로 옆에 `.spec.ts`를 두는 것과 달리, JVM 빌드 도구(Gradle/Maven)의 `sourceSets` 관례를 따른다. E2E 테스트도 별도 `test/` 상위 디렉토리가 아니라 같은 `src/test/kotlin` 트리 안에 있다 — Jest 기반 NestJS와 달리 JUnit 5는 소스 세트 자체로 테스트를 구분하므로 별도 디렉토리 분리가 필수는 아니다.
+The Kotlin/Gradle standard layout separates `src/main` and `src/test`, mirroring the same package structure inside each — unlike NestJS/TypeScript's convention of placing a `.spec.ts` right next to its source file, this follows the `sourceSets` convention of JVM build tools (Gradle/Maven). The E2E tests also live inside the same `src/test/kotlin` tree rather than a separate top-level `test/` directory — unlike Jest-based NestJS, JUnit 5 distinguishes tests by source set itself, so a separate directory split isn't required.
 
 ---
 
-## 테스트 네이밍 — 한글 backtick 함수명 (이미 확립된 관례)
+## Test naming — natural-language backtick function names (an already-established convention)
 
 ```kotlin
-// 실제 코드에서 이미 사용 중인 패턴
+// a pattern already in use in the actual code
 @Test
-fun `생성 요청이 유효하면 201과 계좌 정보를 반환한다`() { /* ... */ }
+fun `a valid creation request returns 201 and the account info`() { /* ... */ }
 ```
 
-Kotlin은 함수명을 백틱(`` ` ``)으로 감싸면 공백과 자연어를 그대로 사용할 수 있다 — root의 `<행위>_when_<조건>_then_<기대_결과>` 스네이크 케이스 네이밍 대신, 이 저장소는 **완전한 한글 문장**으로 테스트 의도를 표현하는 Kotlin 고유의 관용구를 이미 채택하고 있다. 새로 추가하는 Domain/Application 단위 테스트도 이 패턴을 따른다.
+Kotlin lets you use spaces and natural language directly in a function name when wrapped in backticks (`` ` ``). Instead of the root's `<action>_when_<condition>_then_<expected_result>` snake_case naming, this repository has already adopted the Kotlin-specific idiom of expressing test intent as a **complete natural-language sentence**. Newly added Domain/Application unit tests follow this same pattern.
 
 ---
 
-## 원칙 요약
+## Principle summary
 
-- **3계층 모두 구현**: Domain(프레임워크 없음) → Application(MockK로 Repository mock) → E2E(Testcontainers, 이미 있음).
-- **MockK 채택**: Kotlin final 클래스 친화적, `every`/`verify`/`slot` DSL이 Kotlin 관용과 자연스럽게 맞물림.
-- **Domain 테스트가 비즈니스 로직을 검증**하고, Application 테스트는 조율 흐름만 검증한다 — 중복 검증 금지.
-- **한글 backtick 함수명 유지**: 이미 확립된 이 저장소의 관례.
+- **All 3 layers are implemented**: Domain (no framework) → Application (Repository mocked with MockK) → E2E (Testcontainers, already present).
+- **MockK is adopted**: friendly with Kotlin final classes, and the `every`/`verify`/`slot` DSL naturally meshes with Kotlin idiom.
+- **A Domain test verifies business logic**, while an Application test verifies only the coordination flow — never verify the same thing twice.
+- **Natural-language backtick function names are kept**: an already-established convention of this repository.
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Domain 레이어 설계 (단위 테스트 대상)
-- [layer-architecture.md](layer-architecture.md) — Application Service 구조
-- [error-handling.md](error-handling.md) — E2E 테스트에서 검증할 에러 응답 형식
+- [tactical-ddd.md](tactical-ddd.md) — Domain layer design (what the unit tests target)
+- [layer-architecture.md](layer-architecture.md) — Application Service structure
+- [error-handling.md](error-handling.md) — the error response format verified in the E2E tests

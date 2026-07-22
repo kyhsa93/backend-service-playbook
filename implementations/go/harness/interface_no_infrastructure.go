@@ -7,14 +7,16 @@ import (
 )
 
 // checkInterfaceNoInfrastructure — [11] interface-no-infrastructure:
-// internal/interface/**/*.go(HTTP 핸들러/라우터)는 internal/infrastructure/를
-// 직접 import할 수 없다 — internal/application/(Command/Query 핸들러)에만
-// 의존해야 한다(layer-architecture.md의 Interface → Application → Domain 의존
-// 방향). infrastructure 구현체가 필요한 기술적 관심사(JWT 검증 등)는 사용하는
-// 곳(interface/http/middleware 등) 근처에 작은 인터페이스를 선언해 구조적
-// 타이핑으로 받는다(authentication.md가 서술하는 "인터페이스는 사용하는 레이어
-// 근처에, 구현체는 infrastructure에" 원칙과 동일 — TokenIssuer/PasswordHasher가
-// 이미 이 방식이다).
+// internal/interface/**/*.go (HTTP handlers/routers) must not directly import
+// internal/infrastructure/ — it must depend only on internal/application/
+// (Command/Query handlers), following the Interface -> Application -> Domain
+// dependency direction described in layer-architecture.md. For technical
+// concerns that need an infrastructure implementation (e.g. JWT verification),
+// declare a small interface near the consumer (interface/http/middleware/ etc.)
+// and receive it via structural typing (the same "the interface lives near
+// the layer that uses it, the implementation lives in infrastructure"
+// principle described in authentication.md — TokenIssuer/PasswordHasher
+// already follow this pattern).
 func checkInterfaceNoInfrastructure(root string) RuleResult {
 	result := RuleResult{Section: "interface-no-infrastructure"}
 	found := false
@@ -33,7 +35,7 @@ func checkInterfaceNoInfrastructure(root string) RuleResult {
 		imports, parseErr := fileImportPaths(path)
 		if parseErr != nil {
 			found = true
-			result.Findings = append(result.Findings, failFinding(rel, "Go 파일 파싱 실패: "+parseErr.Error()))
+			result.Findings = append(result.Findings, failFinding(rel, "failed to parse Go file: "+parseErr.Error()))
 			return nil
 		}
 		found = true
@@ -45,16 +47,16 @@ func checkInterfaceNoInfrastructure(root string) RuleResult {
 		}
 		if len(violated) > 0 {
 			result.Findings = append(result.Findings, failFinding(rel,
-				"interface/ 레이어가 infrastructure/를 직접 import함("+strings.Join(violated, ", ")+") — HTTP 핸들러/라우터는 application/(Command/Query 핸들러)에만 의존해야 한다(layer-architecture.md)"))
+				"the interface/ layer directly imports infrastructure/ ("+strings.Join(violated, ", ")+") — an HTTP handler/router must depend only on application/ (Command/Query handlers) (layer-architecture.md)"))
 		} else {
 			result.Findings = append(result.Findings, passFinding(rel))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("internal/interface/ 없음"))
+		result.Findings = append(result.Findings, skipFinding("internal/interface/ not found"))
 	}
 	return result
 }

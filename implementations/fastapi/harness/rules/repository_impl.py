@@ -1,4 +1,4 @@
-"""[3] Repository 구현체 — infrastructure/ 에만 위치"""
+"""[3] The Repository implementation — must be located only in infrastructure/"""
 
 from __future__ import annotations
 
@@ -21,9 +21,9 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         found = True
         r = rel(root, f)
         if "/infrastructure/" in norm(f):
-            result.add(passed(f"{r} (Repository 구현체)"))
+            result.add(passed(f"{r} (a Repository implementation)"))
         else:
-            result.add(failed(r, "Repository 구현체는 infrastructure/ 패키지 안에 있어야 함"))
+            result.add(failed(r, "The Repository implementation must be inside the infrastructure/ package"))
     if not found:
-        result.add(skipped("Repository 구현체 없음"))
+        result.add(skipped("No Repository implementation"))
     return result

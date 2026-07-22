@@ -3,7 +3,7 @@ package harness.rules
 import harness.*
 import java.io.File
 
-/** [11] 트랜잭션 경계 — Command Service에는 없고 Repository.save()에 있어야 함 */
+/** [11] Transaction boundary — must be absent from the Command Service and present on Repository.save() */
 fun checkTransactionBoundary(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("transaction-boundary")
@@ -15,9 +15,9 @@ fun checkTransactionBoundary(rootPath: String): RuleResult {
         val rel = f.relTo(root)
         val content = f.readText()
         if (content.contains("@Transactional")) {
-            result.add(failFinding(rel, "Command Service에 @Transactional이 있으면 안 됨 — 트랜잭션 경계는 Repository.save()로 이관됨(domain-events.md, persistence.md)"))
+            result.add(failFinding(rel, "a Command Service must not have @Transactional — the transaction boundary is delegated to Repository.save()(domain-events.md, persistence.md)"))
         } else {
-            result.add(passFinding("$rel (트랜잭션 경계 미보유 확인)"))
+            result.add(passFinding("$rel (confirmed no transaction boundary)"))
         }
     }
 
@@ -28,12 +28,12 @@ fun checkTransactionBoundary(rootPath: String): RuleResult {
         found = true
         val rel = f.relTo(root)
         if (content.contains("@Transactional")) {
-            result.add(passFinding("$rel (Repository.save() 트랜잭션 경계 확인)"))
+            result.add(passFinding("$rel (confirmed Repository.save() transaction boundary)"))
         } else {
-            result.add(failFinding(rel, "Outbox를 저장하는 Repository 구현체에 @Transactional이 없음 — Aggregate 저장과 Outbox 적재가 원자적이지 않을 수 있음"))
+            result.add(failFinding(rel, "the Repository implementation persisting the Outbox has no @Transactional — Aggregate persistence and Outbox writes may not be atomic"))
         }
     }
 
-    if (!found) result.add(skipFinding("Command Service/Outbox 연동 Repository 구현체 없음"))
+    if (!found) result.add(skipFinding("no Command Service/Outbox-integrated Repository implementation"))
     return result
 }

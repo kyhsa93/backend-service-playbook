@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from src.config.validator import validate_env
 
-validate_env()  # 실패 시 여기서 프로세스가 종료된다 — 이후 코드는 실행되지 않음
+validate_env()  # on failure, the process exits right here — no code after this runs
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
@@ -49,22 +49,25 @@ app_state = {"is_shutting_down": False}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # --- 기동 (validate_env()는 이미 위에서 모듈 임포트 시점에 실행되었다) ---
-    # 프로덕션에서만 Secrets Manager를 호출한다 — 그 외(로컬/테스트 기본값)는
-    # 네트워크 호출 없이 환경 변수(JWT_SECRET)만 사용한다.
+    # --- startup (validate_env() has already run above, at module-import time) ---
+    # Secrets Manager is only called in production — elsewhere (local/test defaults),
+    # only the environment variable (JWT_SECRET) is used, with no network call.
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
 
-    # OutboxPoller(Outbox → SQS 발행)와 OutboxConsumer(SQS → EventHandler 수신)를 앱
-    # 기동 시 단 한 번 백그라운드 task로 띄운다 — 요청마다 새로 만들어지지 않는다. Command
-    # Handler는 더 이상 이 둘을 호출하지 않는다(domain-events.md — 동기 드레인 금지).
+    # Starts OutboxPoller (publishing Outbox → SQS) and OutboxConsumer (receiving SQS →
+    # EventHandler) as background tasks exactly once at app startup — they are never
+    # created fresh per request. A Command Handler never calls either of these
+    # (domain-events.md — synchronous draining is forbidden).
     outbox_poller = OutboxPoller(SessionLocal)
     outbox_consumer = OutboxConsumer(SessionLocal)
-    # TaskOutboxPoller(Task Outbox → Task 큐 발행)와 TaskConsumer(Task 큐 → TaskController
-    # 수신)도 동일한 원칙으로 앱 기동 시 한 번만 띄운다(scheduling.md). Scheduler
-    # 자체(interest_scheduler/statement_scheduler)는 APScheduler가 내부적으로 자기 이벤트
-    # 루프에서 Cron tick을 돌리므로 asyncio.create_task가 아니라 scheduler.start()로 기동한다.
+    # TaskOutboxPoller (publishing Task Outbox → the Task queue) and TaskConsumer
+    # (receiving the Task queue → TaskController) are likewise started only once at app
+    # startup, following the same principle (scheduling.md). The Scheduler itself
+    # (interest_scheduler/statement_scheduler) is started via scheduler.start(), not
+    # asyncio.create_task, since APScheduler internally runs the Cron tick on its own
+    # event loop.
     task_outbox_poller = TaskOutboxPoller(SessionLocal)
     task_consumer = TaskConsumer(SessionLocal)
     background_tasks = [
@@ -77,20 +80,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     statement_scheduler = start_statement_scheduler(SessionLocal)
     logger.info("app_started")
 
-    yield  # --- 이 사이에 요청을 처리한다 ---
+    yield  # --- requests are handled in between ---
 
-    # --- 종료 (SIGTERM 수신 → uvicorn이 lifespan의 종료 블록을 실행) ---
-    app_state["is_shutting_down"] = True  # readiness를 즉시 503으로 전환
+    # --- shutdown (SIGTERM received → uvicorn runs lifespan's shutdown block) ---
+    app_state["is_shutting_down"] = True  # flips readiness to 503 immediately
     logger.info("shutdown_initiated")
 
-    # scheduler.shutdown(wait=True) — 진행 중인 job이 끝날 때까지 기다린 뒤 종료한다
-    # (graceful-shutdown.md, fastapi scheduling.md의 APScheduler 종료 관례).
+    # scheduler.shutdown(wait=True) — waits for in-progress jobs to finish before shutting
+    # down (graceful-shutdown.md, the APScheduler shutdown convention in fastapi scheduling.md).
     interest_scheduler.shutdown(wait=True)
     statement_scheduler.shutdown(wait=True)
 
-    # 백그라운드 task를 취소하고 완전히 끝날 때까지 기다린다 — dangling task를 남기지 않는다.
-    # OutboxConsumer/TaskConsumer가 대기 중이던 receive_message(최대 WaitTimeSeconds)는
-    # 즉시 중단된다.
+    # Cancels the background tasks and waits for them to fully finish — no dangling task is
+    # left behind. An in-progress receive_message (up to WaitTimeSeconds) that
+    # OutboxConsumer/TaskConsumer was waiting on is stopped immediately.
     for task in background_tasks:
         task.cancel()
     for task in background_tasks:
@@ -100,15 +103,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             pass
 
     try:
-        await engine.dispose()  # DB 커넥션 풀 정리
+        await engine.dispose()  # clean up the DB connection pool
     except Exception:
-        logger.exception("shutdown_cleanup_failed")  # 정리 실패해도 예외를 다시 던지지 않는다
+        logger.exception("shutdown_cleanup_failed")  # don't re-raise even if cleanup fails
 
     logger.info("app_stopped")
 
 
-# 스키마는 배포 파이프라인에서 `alembic upgrade head`로 적용한다 — 여기서
-# Base.metadata.create_all을 호출하지 않는다(docs/architecture/persistence.md 참고).
+# The schema is applied via `alembic upgrade head` in the deployment pipeline — this code
+# does not call Base.metadata.create_all here (see docs/architecture/persistence.md).
 app = FastAPI(title="Account Service", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -121,7 +124,7 @@ app.include_router(payment_router)
 
 @app.get("/health/live")
 async def health_live() -> dict:
-    return {"status": "ok"}  # 항상 200 — 종료 중에도 프로세스는 살아있다
+    return {"status": "ok"}  # always 200 — the process is alive even while shutting down
 
 
 @app.get("/health/ready")
@@ -154,9 +157,10 @@ async def correlation_id_middleware(request: Request, call_next):
     return response
 
 
-# Rate Limiting — Starlette는 마지막에 등록된 미들웨어가 가장 바깥쪽 레이어가 되므로,
-# Correlation ID Middleware(위 데코레이터) 이후에 등록해야 제한 초과 요청을 Correlation ID
-# 부여보다 먼저 429로 조기 차단한다(rate-limiting.md "미들웨어 체인에서의 위치" 참고).
+# Rate Limiting — since Starlette makes the last-registered middleware the outermost
+# layer, this must be registered after the Correlation ID Middleware (the decorator above)
+# so a request that exceeds the limit is blocked early with 429 before the Correlation ID
+# is even assigned (see "Position in the middleware chain" in rate-limiting.md).
 app.add_middleware(SlowAPIMiddleware)
 
 

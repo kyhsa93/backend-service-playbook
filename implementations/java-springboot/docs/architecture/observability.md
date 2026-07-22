@@ -1,42 +1,42 @@
-# Observability — 로깅, 메트릭, 트레이싱 (Spring Boot)
+# Observability — Logging, Metrics, Tracing (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [observability.md](../../../../docs/architecture/observability.md) 참고.
+> For the framework-agnostic principles, see the root [observability.md](../../../../docs/architecture/observability.md).
 
-## 구조화된 로깅 — Logback JSON 인코더 + `StructuredArguments`
+## Structured logging — the Logback JSON encoder + `StructuredArguments`
 
-이 저장소의 모든 로깅 호출은 `net.logstash.logback.argument.StructuredArguments.kv(...)`로 필드를 명시적으로 구조화한다:
+Every logging call in this repository explicitly structures its fields via `net.logstash.logback.argument.StructuredArguments.kv(...)`:
 
 ```java
-// account/infrastructure/notification/NotificationServiceImpl.java — 실제 코드
+// account/infrastructure/notification/NotificationServiceImpl.java — actual code
 private static final Logger log = LoggerFactory.getLogger(NotificationServiceImpl.class);
 // ...
-log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType),
+log.info("Email sent", kv("account_id", accountId), kv("event_type", eventType),
         kv("recipient", recipient), kv("ses_message_id", response.messageId()));
 ```
 
 ```java
-// outbox/OutboxPoller.java — 실제 코드
-log.error("SQS 발행 실패", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
+// outbox/OutboxPoller.java — actual code
+log.error("SQS publish failed", kv("event_type", event.getEventType()), kv("event_id", event.getEventId()), e);
 ```
 
 ```java
-// account/interfaces/rest/AccountController.java — 실제 코드
-log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
+// account/interfaces/rest/AccountController.java — actual code
+log.warn("Account request failed", kv("code", e.code()), kv("message", e.getMessage()));
 ```
 
-세 곳 모두 로그 메시지 문자열 자체("이메일 발송됨", "이벤트 처리 실패", "계좌 요청 실패")는 짧게 유지하고, 나머지 필드는 `kv(...)`로 JSON 출력에만 별도 필드로 추가한다 — 로그 수집기(CloudWatch, Datadog 등)가 `account_id`/`event_type`을 개별 필드로 인덱싱할 수 있다.
+In all three places, the log message string itself ("Email sent", "Event handling failed", "Account request failed") is kept short, while every other field is added as a separate field in the JSON output via `kv(...)` — a log aggregator (CloudWatch, Datadog, etc.) can then index `account_id`/`event_type` as individual fields.
 
 ---
 
-## Logback JSON 인코더 (`logback-spring.xml`)
+## The Logback JSON encoder (`logback-spring.xml`)
 
 ```groovy
-// build.gradle — 실제 코드
+// build.gradle — actual code
 implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 ```
 
 ```xml
-<!-- src/main/resources/logback-spring.xml — 실제 코드 -->
+<!-- src/main/resources/logback-spring.xml — actual code -->
 <configuration>
     <springProfile name="!prod">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -56,69 +56,69 @@ implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 </configuration>
 ```
 
-**로컬은 사람이 읽기 쉬운 평문, 운영은 JSON** — `springProfile`로 분기한다. JSON 인코더가 MDC의 `correlation_id`를 자동으로 로그 필드에 포함시킨다([cross-cutting-concerns.md](cross-cutting-concerns.md)의 `CorrelationIdFilter` 참고). 게이팅 프로필은 `prod`/`!prod`다 — [secret-manager.md](secret-manager.md)의 `SecretsEnvironmentPostProcessor`와 같은 프로필명·극성을 쓴다. 활성 프로필이 없는 로컬 실행에서도 `!prod`가 매칭되어 평문 로깅이 기본값이 된다 — `local`/`!local`처럼 어디서도 활성화하지 않는 프로필명을 쓰면 항상 JSON 인코더만 적용되는 잠재 버그가 생기므로 피한다.
+**Human-readable plain text locally, JSON in production** — branched via `springProfile`. The JSON encoder automatically includes MDC's `correlation_id` as a log field (see `CorrelationIdFilter` in [cross-cutting-concerns.md](cross-cutting-concerns.md)). The gating profiles are `prod`/`!prod` — the same profile names and polarity as `SecretsEnvironmentPostProcessor` in [secret-manager.md](secret-manager.md). Even a local run with no active profile matches `!prod`, so plain-text logging is the default — using a profile name that's never activated anywhere, like `local`/`!local`, is avoided, since it would create a latent bug where only the JSON encoder ever applies.
 
-### 필드 네이밍 — snake_case로 구조화 인자 전달
+### Field naming — passing structured arguments in snake_case
 
 ```java
-// 실제 코드에서 쓰이는 패턴
+// the pattern used in the actual code
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
-log.info("이메일 발송됨", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", response.messageId()));
+log.info("Email sent", kv("account_id", accountId), kv("event_type", eventType), kv("ses_message_id", response.messageId()));
 ```
 
-`StructuredArguments.kv(...)`는 로그 메시지 문자열에는 나타나지 않고 JSON 출력에만 별도 필드로 추가된다 — SLF4J의 `{}` 플레이스홀더와 달리 필드명을 명시적으로 통제할 수 있어 root의 "snake_case 필드명" 규칙을 강제하기 쉽다. `NotificationServiceImpl`/`OutboxPoller`/`OutboxConsumer`/`AccountController` 모두 이 방식을 쓴다 — 새로운 로깅 호출을 추가할 때도 이 패턴을 그대로 따른다.
+`StructuredArguments.kv(...)` never appears in the log message string — it's only added as a separate field in the JSON output. Unlike SLF4J's `{}` placeholders, field names can be controlled explicitly, making it easy to enforce the root's "snake_case field names" rule. `NotificationServiceImpl`/`OutboxPoller`/`OutboxConsumer`/`AccountController` all use this approach — follow this same pattern when adding new logging calls.
 
 ---
 
-## 레이어별 로깅 기준
+## Logging criteria per layer
 
-| 레이어 | 로깅 대상 | 이 저장소의 현재 상태 |
+| Layer | What to log | Current state in this repository |
 |--------|----------|------|
-| Interfaces (Controller) | 요청 에러 | 있음 — `AccountController`의 `@ExceptionHandler`가 `log.warn(...)`으로 기록한 뒤 응답 변환 |
-| Application (Service) | 비즈니스 이벤트, 외부 호출 결과 | 부분적 — `outbox.OutboxPoller`/`outbox.OutboxConsumer`만 로깅, Command Service들은 로깅 없음 |
-| Infrastructure | 외부 연동 실패/재시도 | `NotificationServiceImpl`(SES 발송 성공/실패) |
-| Domain | **로깅 금지** | 준수 — `Account`는 로거를 import하지 않는다 |
+| Interfaces (Controller) | Request errors | Present — `AccountController`'s `@ExceptionHandler` records via `log.warn(...)` before converting to a response |
+| Application (Service) | Business events, external call results | Partial — only `outbox.OutboxPoller`/`outbox.OutboxConsumer` log; the Command Services don't log |
+| Infrastructure | External integration failure/retries | `NotificationServiceImpl` (SES send success/failure) |
+| Domain | **Logging is forbidden** | Enforced — `Account` never imports a logger |
 
-**`AccountException`이 던져지는 지점에서 로깅이 이루어진다.** `@ExceptionHandler`는 예외를 잡아 `ErrorResponse`로 변환하기 전에 `warn` 레벨로 먼저 기록한다 — root 원칙("에러는 반드시 로깅한 뒤 예외를 던지거나 응답한다")을 따른다:
+**Logging happens at the point where `AccountException` is thrown.** `@ExceptionHandler` records at `warn` level before converting the exception into an `ErrorResponse` — following the root principle ("an error must always be logged before it's thrown or returned as a response"):
 
 ```java
-// AccountController.java — 실제 코드
+// AccountController.java — actual code
 @ExceptionHandler(AccountException.class)
 public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) {
     HttpStatus status = e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
             ? HttpStatus.NOT_FOUND
             : HttpStatus.BAD_REQUEST;
-    log.warn("계좌 요청 실패", kv("code", e.code()), kv("message", e.getMessage()));
+    log.warn("Account request failed", kv("code", e.code()), kv("message", e.getMessage()));
     return ResponseEntity.status(status).body(ErrorResponse.of(status, e.code().name(), e.getMessage()));
 }
 ```
 
 ---
 
-## Correlation ID — MDC 기반 전파
+## Correlation ID — MDC-based propagation
 
-Correlation ID의 주입 위치(`Filter`)와 MDC 저장 방식은 [cross-cutting-concerns.md](cross-cutting-concerns.md)에서 다뤘다. 이후 모든 로깅 호출은 MDC에서 자동으로 값을 가져오므로(JSON 인코더 설정에 `includeMdcKeyName` 지정 시), 애플리케이션 코드가 매번 `correlationId` 파라미터를 명시적으로 전달할 필요가 없다 — root의 `AsyncLocalStorage.getStore()` 패턴을 Java의 `MDC.get(...)`가 대체한다.
+The Correlation ID's injection point (`Filter`) and its MDC storage method are covered in [cross-cutting-concerns.md](cross-cutting-concerns.md). Every logging call afterward automatically picks up the value from MDC (when `includeMdcKeyName` is specified in the JSON encoder config), so application code never needs to explicitly pass a `correlationId` parameter each time — Java's `MDC.get(...)` replaces the root's `AsyncLocalStorage.getStore()` pattern.
 
 ```java
-// 명시적으로 조회해야 할 때 (드묾 — 대부분 인코더가 자동 포함)
+// When an explicit lookup is needed (rare — the encoder usually includes it automatically)
 String correlationId = MDC.get("correlation_id");
 ```
 
 ---
 
-## 메트릭 · 트레이싱 — Spring Boot Actuator + Micrometer
+## Metrics and tracing — Spring Boot Actuator + Micrometer
 
-`build.gradle`에 `spring-boot-starter-actuator`(health probe 노출용 — [graceful-shutdown.md](graceful-shutdown.md) 참고)와 Prometheus 스크레이프용 Micrometer 레지스트리가 모두 있다:
+`build.gradle` has both `spring-boot-starter-actuator` (for exposing health probes — see [graceful-shutdown.md](graceful-shutdown.md)) and a Micrometer registry for Prometheus scraping:
 
 ```groovy
-// build.gradle — 실제 코드
+// build.gradle — actual code
 implementation 'org.springframework.boot:spring-boot-starter-actuator'
 implementation 'io.micrometer:micrometer-registry-prometheus'
 ```
 
 ```yaml
-# application.yml — 실제 코드
+# application.yml — actual code
 management:
   endpoints:
     web:
@@ -129,30 +129,30 @@ management:
       application: account-service
 ```
 
-`GET /actuator/prometheus`가 Prometheus 스크레이프 엔드포인트를 노출한다. HTTP 요청 수/지연시간(`http.server.requests`), JVM 메모리, DB 커넥션 풀(HikariCP) 지표가 별도 계측 코드 없이 자동 수집된다 — Spring Boot Actuator가 root의 "메트릭 스택은 특정하지 않되 Prometheus 권장" 방향을 프레임워크 차원에서 기본 지원한다.
+`GET /actuator/prometheus` exposes the Prometheus scrape endpoint. HTTP request count/latency (`http.server.requests`), JVM memory, and DB connection pool (HikariCP) metrics are all collected automatically with no separate instrumentation code — Spring Boot Actuator supports the root's "metrics stack is unspecified, but Prometheus is recommended" direction at the framework level by default.
 
-트레이싱은 `spring-boot-starter-actuator` + Micrometer Tracing(`micrometer-tracing-bridge-otel`)으로 OpenTelemetry 연동이 가능하다 — 이 저장소는 아직 도입하지 않았다.
-
----
-
-## 원칙
-
-- **Domain 레이어에서 로깅 금지**: `Account`가 이 원칙을 준수한다 — 신규 도메인 메서드 추가 시에도 유지한다.
-- **구조화된 로그로 전환**: Logback JSON 인코더 + `StructuredArguments.kv(...)`로 snake_case 필드를 명시적으로 구성한다.
-- **에러는 반드시 로깅**: `AccountController`의 `@ExceptionHandler`가 `log.warn(...)`으로 기록한다.
-- **Correlation ID는 MDC로 전파**: `Filter`(`CorrelationIdFilter`)가 주입, JSON 인코더가 자동 포함된다.
-- **Actuator + Micrometer로 메트릭 노출**: Actuator와 Micrometer-Prometheus 레지스트리가 모두 있어 `GET /actuator/prometheus`가 별도 계측 코드 없이 HTTP/JVM/DB 지표를 노출한다 — 위 "메트릭 · 트레이싱" 절 참고.
+Tracing can be integrated with OpenTelemetry via `spring-boot-starter-actuator` + Micrometer Tracing (`micrometer-tracing-bridge-otel`) — this repository has not adopted it yet.
 
 ---
 
-## harness 검증
+## Principles
 
-`harness/src/rules/NoLoggingInDomain.java`(rule: `no-logging-in-domain`)가 `domain/`에서 `org.slf4j`/`@Slf4j`/`LoggerFactory` 사용을 찾으면 실패시킨다 — 위 "Domain 레이어에서 로깅 금지" 원칙의 자동 검증이다. `harness/src/rules/NoSilentCatch.java`(rule: `no-silent-catch`)는 `application/`·`infrastructure/`에서 완전히 빈 `catch (...) {}` 블록(로깅도 재throw도 없는 형태)을 찾으면 실패시킨다 — "에러는 반드시 로깅" 원칙이 조용히 깨지는 가장 흔한 경로를 잡는다. 둘 다 좁은 블록리스트 방식이라 정당한 예외 처리 코드를 오탐하지 않는다.
+- **Logging is forbidden in the Domain layer**: `Account` follows this principle — maintain it when adding new domain methods too.
+- **Switch to structured logs**: use the Logback JSON encoder + `StructuredArguments.kv(...)` to explicitly build snake_case fields.
+- **Errors must always be logged**: `AccountController`'s `@ExceptionHandler` records via `log.warn(...)`.
+- **Propagate the Correlation ID via MDC**: injected by a `Filter` (`CorrelationIdFilter`), automatically included by the JSON encoder.
+- **Expose metrics via Actuator + Micrometer**: both Actuator and the Micrometer-Prometheus registry are present, so `GET /actuator/prometheus` exposes HTTP/JVM/DB metrics with no separate instrumentation code — see "Metrics and tracing" above.
 
 ---
 
-### 관련 문서
+## Harness verification
 
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — Correlation ID 주입 위치 (`Filter`)
-- [layer-architecture.md](layer-architecture.md) — 레이어별 역할 분리
-- [graceful-shutdown.md](graceful-shutdown.md) — Actuator 헬스 프로브
+`harness/src/rules/NoLoggingInDomain.java` (rule: `no-logging-in-domain`) fails the build if it finds `org.slf4j`/`@Slf4j`/`LoggerFactory` usage in `domain/` — an automated check of the "logging is forbidden in the Domain layer" principle above. `harness/src/rules/NoSilentCatch.java` (rule: `no-silent-catch`) fails the build if it finds a completely empty `catch (...) {}` block (with neither logging nor a rethrow) in `application/`·`infrastructure/` — this catches the most common path by which the "errors must always be logged" principle gets silently broken. Both use a narrow blocklist approach, so they don't false-positive on legitimate exception-handling code.
+
+---
+
+### Related documents
+
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — where the Correlation ID is injected (`Filter`)
+- [layer-architecture.md](layer-architecture.md) — separation of responsibility per layer
+- [graceful-shutdown.md](graceful-shutdown.md) — Actuator health probes

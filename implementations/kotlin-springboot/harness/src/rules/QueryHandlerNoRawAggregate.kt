@@ -9,9 +9,9 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// domain/의 Aggregate/Entity 관용구(`class X private constructor()`, tactical-ddd.md,
-// aggregate-no-public-setters와 동일한 패턴) — 도메인 이름을 하드코딩하지 않고 각 BC(경로의
-// domain/ 바로 앞 세그먼트)가 실제로 갖는 Aggregate/Entity 클래스명을 구조적으로 추출한다.
+// The Aggregate/Entity idiom in domain/(`class X private constructor()`, tactical-ddd.md, the same
+// pattern as aggregate-no-public-setters) — structurally extracts the Aggregate/Entity class names
+// each BC(the segment right before domain/ in the path) actually has, without hardcoding domain names.
 private val AGGREGATE_CLASS_DECL = Regex("""\bclass\s+(\w+)\s+private\s+constructor\s*\(""")
 
 private val SERVICE_ANNOTATION = Regex("""@Service\b""")
@@ -66,21 +66,22 @@ private fun checkFile(file: File, root: File, forbiddenNames: Set<String>, resul
             result.add(
                 failFinding(
                     "$rel ($funcName)",
-                    "반환 타입($returnType)이 raw Domain Aggregate(${leaked.joinToString()})를 그대로 노출함 — 전용 Result/DTO 타입을 반환해야 함 (api-response.md)",
+                    "the return type($returnType) exposes a raw Domain Aggregate(${leaked.joinToString()}) as-is — a dedicated Result/DTO type must be returned (api-response.md)",
                 ),
             )
         }
     }
-    if (!fileHasFailure) result.add(passFinding("$rel (raw Aggregate 미반환)"))
+    if (!fileHasFailure) result.add(passFinding("$rel (does not return a raw Aggregate)"))
 }
 
 /**
- * query-handler-no-raw-aggregate — Query Service(application/query/의 `@Service` 클래스)와
- * REST Controller(`@RestController`)는 자신이 속한 BC의 raw Domain Aggregate/Entity
- * (`class X private constructor()`)를 함수 반환 타입으로 그대로 노출하면 안 된다 — 전용
- * Result/DTO data class를 반환해야 한다(api-response.md). application/query/ 안이라도 `*Query`
- * 읽기 전용 포트 인터페이스(예: AccountQuery, cqrs-pattern.md)는 Query Service 내부에서만 쓰이는
- * 경계 밖의 것이라 raw Aggregate를 반환해도 정당하므로(`@Service`가 없으므로) 대상이 아니다.
+ * query-handler-no-raw-aggregate — a Query Service(a `@Service` class under application/query/) or a
+ * REST Controller(`@RestController`) must not expose the raw Domain Aggregate/Entity of its own BC
+ * (`class X private constructor()`) as a function return type — a dedicated Result/DTO data class
+ * must be returned(api-response.md). Even inside application/query/, a `*Query` read-only port
+ * interface(e.g. AccountQuery, cqrs-pattern.md) is used only inside the Query Service and lies outside
+ * this boundary, so it may legitimately return a raw Aggregate(since it has no `@Service`) and is not
+ * targeted.
  */
 fun checkQueryHandlerNoRawAggregate(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -102,6 +103,6 @@ fun checkQueryHandlerNoRawAggregate(rootPath: String): RuleResult {
         checkFile(f, root, aggregatesByBc[bc] ?: emptySet(), result)
     }
 
-    if (!found) result.add(skipFinding("application/query/ 의 @Service Query Service, @RestController 없음"))
+    if (!found) result.add(skipFinding("no @Service Query Service under application/query/, no @RestController"))
     return result
 }

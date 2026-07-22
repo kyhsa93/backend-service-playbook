@@ -1,12 +1,14 @@
-"""[20] no-silent-except: application/·infrastructure/ 에서 예외를 조용히 삼키는 `except: pass` 금지
-(observability.md)
+"""[20] no-silent-except: silently swallowing an exception via `except: pass` is forbidden
+in application/·infrastructure/ (observability.md)
 
-observability.md "에러는 반드시 로깅 후 전파"·"삼키지 않는다" 원칙 — `except ...: pass`(핸들러
-본문이 정확히 `pass` 하나뿐)는 예외를 로깅도, 재전파도 하지 않고 조용히 버리는 대표적인
-안티패턴이다. AST 기반으로 핸들러 본문이 정확히 `[Pass]`인 경우만 잡는다 — 로깅 호출이나
-주석이 있으면(주석은 AST에 남지 않지만, `logger.exception(...)` 등 실제 문(statement)이
-하나라도 있으면) 잡히지 않는다. `domain/`은 애초에 예외 처리보다 상태 전이 검증(도메인
-에러 raise)만 하므로 대상에서 제외한다.
+observability.md's "errors must always be logged before being propagated"·"never
+swallowed" principle — `except ...: pass` (a handler body that's exactly a single `pass`)
+is a textbook anti-pattern that silently discards an exception with neither logging nor
+re-propagation. It catches, via AST, only the case where the handler body is exactly
+`[Pass]` — if there's a logging call or a comment (a comment leaves nothing in the AST, but
+if there's even one real statement such as `logger.exception(...)`), it isn't caught.
+`domain/` is excluded from the start, since it only validates state transitions (raising a
+domain error) rather than handling exceptions.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         try:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         violation_lines = [
@@ -44,12 +46,14 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    f"line {lines}: except ...: pass — 예외를 로깅 없이 조용히 삼킴. 로깅 후 전파하거나"
-                    " (재시도 대상이면) Outbox 등 별도 신뢰성 메커니즘으로 보완해야 함(observability.md)",
+                    f"line {lines}: except ...: pass — silently swallows the exception with"
+                    " no logging. It must be logged and propagated, or (if it's a retry"
+                    " target) compensated for with a separate reliability mechanism such as"
+                    " the Outbox (observability.md)",
                 )
             )
         else:
             result.add(passed(f"{r} (no-silent-except)"))
     if not found:
-        result.add(skipped("application/·infrastructure/ Python 파일 없음"))
+        result.add(skipped("No Python file in application/·infrastructure/"))
     return result

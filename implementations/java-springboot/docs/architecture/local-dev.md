@@ -1,13 +1,13 @@
-# 로컬 개발 환경 (Spring Boot)
+# Local Development Environment (Spring Boot)
 
-> 프레임워크 무관 원칙은 루트 [local-dev.md](../../../../docs/architecture/local-dev.md) 참고.
+> For the framework-agnostic principles, see the root [local-dev.md](../../../../docs/architecture/local-dev.md).
 
-## 실제 예시 — Postgres + LocalStack(SES/SQS)
+## Actual example — Postgres + LocalStack (SES/SQS)
 
-`implementations/java-springboot/examples/docker-compose.yml`은 root 원칙을 실제로 따르고 있다:
+`implementations/java-springboot/examples/docker-compose.yml` genuinely follows the root principle:
 
 ```yaml
-# examples/docker-compose.yml — 실제 코드
+# examples/docker-compose.yml — actual code
 services:
   database:
     image: postgres:16-alpine
@@ -40,28 +40,28 @@ volumes:
   db-data:
 ```
 
-- **버전 고정**: `postgres:16-alpine`, `localstack/localstack:3.0` — root의 "LocalStack 이미지 버전을 고정한다" 원칙 준수.
-- **healthcheck가 실제 서비스 API를 호출**: `pg_isready`(Postgres 연결 확인), `awslocal ses list-identities`(SES 서비스 초기화 완료 확인) — 컨테이너 프로세스가 떠 있어도 내부 서비스 준비가 끝나지 않은 상태를 정확히 감지한다.
-- **`SERVICES: ses,secretsmanager,sqs`로 필요한 서비스만 활성화**: LocalStack 기동 시간과 메모리를 절약한다. `sqs`는 `OutboxPoller`/`OutboxConsumer`가 쓰는 domain-events 큐용이다([domain-events.md](domain-events.md) 참고).
+- **Pinned versions**: `postgres:16-alpine`, `localstack/localstack:3.0` — follows the root's "pin the LocalStack image version" principle.
+- **Healthchecks call the real service API**: `pg_isready` (confirms Postgres connectivity), `awslocal ses list-identities` (confirms SES service initialization has finished) — this accurately detects the state where the container process is up but the internal service isn't ready yet.
+- **`SERVICES: ses,secretsmanager,sqs` enables only what's needed**: this saves LocalStack startup time and memory. `sqs` is for the domain-events queue used by `OutboxPoller`/`OutboxConsumer` (see [domain-events.md](domain-events.md)).
 
 ---
 
-## LocalStack 초기화 스크립트 — SES 발신자 검증 + SQS 큐 생성
+## LocalStack init scripts — SES sender verification + SQS queue creation
 
 ```bash
 #!/bin/sh
-# examples/localstack/init-ses.sh — 실제 코드
+# examples/localstack/init-ses.sh — actual code
 set -e
 awslocal ses verify-email-identity --email-address no-reply@backend-service-playbook.example.com
 ```
 
-`./localstack:/etc/localstack/init/ready.d`에 마운트되어 LocalStack 기동 완료 시 자동 실행된다. **SES를 사용하는 프로젝트는 발신자 이메일 검증이 필수다** — LocalStack의 SES 에뮬레이터도 실제 SES처럼 미검증 발신자의 발송 요청을 거부하기 때문이다. `NotificationE2ETest`가 `@BeforeAll`에서 별도로 `verifyEmailIdentity`를 한 번 더 호출하는 것은, Testcontainers가 매 테스트 실행마다 새 LocalStack 컨테이너를 띄우므로 `docker-compose.yml`의 초기화 스크립트가 적용되지 않기 때문이다(테스트는 compose 파일을 사용하지 않는다) — 로컬 개발용 compose 설정과 테스트용 Testcontainers 설정은 서로 독립적으로 각자 초기화를 챙겨야 한다.
+This is mounted at `./localstack:/etc/localstack/init/ready.d` and runs automatically once LocalStack finishes starting. **A project using SES must verify its sender email** — LocalStack's SES emulator rejects send requests from an unverified sender, just like real SES. `NotificationE2ETest` separately calls `verifyEmailIdentity` once more in `@BeforeAll` because Testcontainers spins up a fresh LocalStack container for every test run, so `docker-compose.yml`'s init script never gets applied to it (tests don't use the compose file) — the local-development compose setup and the test-time Testcontainers setup are independent of each other and each must handle its own initialization.
 
-같은 `ready.d` 디렉토리에 `init-sqs.sh`도 마운트되어, `OutboxPoller`/`OutboxConsumer`가 쓰는 `domain-events` 큐와 그 DLQ(`domain-events-dlq`)를 만든다:
+`init-sqs.sh` is also mounted in the same `ready.d` directory, creating the `domain-events` queue used by `OutboxPoller`/`OutboxConsumer` and its DLQ (`domain-events-dlq`):
 
 ```bash
 #!/bin/sh
-# examples/localstack/init-sqs.sh — 실제 코드
+# examples/localstack/init-sqs.sh — actual code
 set -e
 awslocal sqs create-queue --queue-name domain-events-dlq
 DLQ_ARN=$(awslocal sqs get-queue-attributes \
@@ -71,23 +71,23 @@ awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 ```
 
-DLQ를 먼저 만들고 메인 큐에 `RedrivePolicy`로 연결하는 순서다 — `maxReceiveCount=3`을 넘겨 재시도해도 실패하는 메시지는 DLQ로 격리된다([scheduling.md — DLQ 모니터링](scheduling.md#dlq-모니터링) 컨벤션). E2E 테스트(`CardControllerE2ETest` 등)는 Testcontainers `LocalStackContainer`를 쓰는데, 이 컨테이너는 로컬 init 스크립트를 마운트하지 않으므로 `support/SqsTestQueue.java`가 SDK 호출로 동일한 구성을 재현한다.
+The DLQ is created first, then attached to the main queue via `RedrivePolicy` — a message that still fails after exceeding `maxReceiveCount=3` retries gets isolated into the DLQ (the convention from [scheduling.md — DLQ monitoring](scheduling.md#dlq-monitoring)). E2E tests (`CardControllerE2ETest`, etc.) use a Testcontainers `LocalStackContainer`, which doesn't mount local init scripts, so `support/SqsTestQueue.java` reproduces the same configuration via SDK calls.
 
 ---
 
-## `app` 서비스와 `.env.*` 파일
+## The `app` service and `.env.*` files
 
-`docker-compose.yml`은 `database`/`localstack`뿐 아니라 `app` 서비스도 갖고 있고, `profiles: [app]`로 기본 기동에서는 제외된다 — 기본 `docker compose up -d`는 인프라(DB, LocalStack)만 띄우고, 앱까지 컨테이너로 실행하려면 `docker compose --profile app up -d --build`를 쓴다:
+`docker-compose.yml` has an `app` service in addition to `database`/`localstack`, excluded from the default startup via `profiles: [app]` — a plain `docker compose up -d` only brings up infrastructure (DB, LocalStack), and running the app itself as a container requires `docker compose --profile app up -d --build`:
 
 ```yaml
-# docker-compose.yml — 실제 코드 (일부)
+# docker-compose.yml — actual code (excerpt)
   app:
     build: .
     ports: ['8080:8080']
     env_file:
       - .env.development
     environment:
-      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      # Inside the container network, connect via service name instead of localhost.
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
     depends_on:
@@ -96,12 +96,12 @@ DLQ를 먼저 만들고 메인 큐에 `RedrivePolicy`로 연결하는 순서다 
     profiles: ['app']
 ```
 
-`environment:`가 `env_file:`보다 우선 적용되므로, 호스트 직접 실행용 `.env.development`를 그대로 재사용하면서 컨테이너 네트워크에서만 필요한 두 값(`SPRING_DATASOURCE_URL`, `AWS_ENDPOINT_URL`)만 오버라이드한다.
+Since `environment:` takes precedence over `env_file:`, the same `.env.development` used for running directly on the host is reused as-is, while overriding only the two values needed specifically inside the container network (`SPRING_DATASOURCE_URL`, `AWS_ENDPOINT_URL`).
 
-`.env.example`(커밋됨)과 `.env.development`(`.gitignore`에 포함, `.env.example`을 복사해서 만듦)도 이미 있다:
+Both `.env.example` (committed) and `.env.development` (in `.gitignore`, created by copying `.env.example`) already exist:
 
 ```env
-# .env.example — 실제 코드 (호스트에서 ./gradlew bootRun으로 앱을 직접 실행할 때 사용)
+# .env.example — actual code (used when running the app directly on the host via ./gradlew bootRun)
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/app
 SPRING_DATASOURCE_USERNAME=dev
 SPRING_DATASOURCE_PASSWORD=dev
@@ -116,14 +116,14 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 JWT_SECRET=local-dev-secret-local-dev-secret
 ```
 
-Spring Boot는 `.env` 파일을 자동으로 읽지 않으므로(Node의 `dotenv`에 대응하는 표준 메커니즘이 없다), `export $(cat .env.development | xargs) && ./gradlew bootRun`처럼 셸에 로드하거나 direnv 등을 쓴다. `application.yml`이 `${AWS_ACCESS_KEY_ID:test}` 형태로 기본값을 내장하고 있어, `.env.development` 없이도 로컬 기동은 가능하다 — `.env.development`는 그 기본값을 명시적으로 관리하고 싶을 때 쓴다.
+Since Spring Boot doesn't automatically read `.env` files (there's no standard mechanism equivalent to Node's `dotenv`), you load it into the shell yourself — e.g. `export $(cat .env.development | xargs) && ./gradlew bootRun` — or use something like direnv. Since `application.yml` embeds defaults in the form `${AWS_ACCESS_KEY_ID:test}`, local startup is possible even without `.env.development` — `.env.development` is used when you want to manage those defaults explicitly.
 
 ---
 
-## AWS SDK에서 LocalStack 연동
+## LocalStack integration from the AWS SDK
 
 ```java
-// account/infrastructure/notification/SesConfig.java — 실제 코드
+// account/infrastructure/notification/SesConfig.java — actual code
 @Bean
 public SesClient sesClient(
         @Value("${aws.region:us-east-1}") String region,
@@ -142,46 +142,46 @@ public SesClient sesClient(
 }
 ```
 
-`aws.endpoint-url`이 설정되면 LocalStack으로, 비어 있으면 실제 AWS 엔드포인트로 연결한다 — root의 "환경 변수로 엔드포인트를 분기" 원칙과 정확히 일치한다. `StaticCredentialsProvider`를 항상 명시적으로 사용하는 것도 root의 "로컬/테스트는 자격증명을 고정값으로" 권장과 일치한다 — SDK의 기본 자격증명 탐색 체인(IMDS 등)은 컨테이너/샌드박스 환경에서 실패까지 지연이 크다.
+If `aws.endpoint-url` is set, it connects to LocalStack; if blank, it connects to the real AWS endpoint — this matches the root's "branch the endpoint via an environment variable" principle exactly. Always using `StaticCredentialsProvider` explicitly also matches the root's recommendation that "local/test environments should use fixed credentials" — the SDK's default credential-resolution chain (IMDS, etc.) has significant delay before it fails in a container/sandbox environment.
 
-`outbox/SqsConfig.java`의 `sqsClient()` 빈도 동일한 구성(같은 `AwsProperties`, 같은 endpoint 분기)을 따른다 — `OutboxPoller`/`OutboxConsumer`가 이 하나의 `SqsClient`를 공유한다([domain-events.md](domain-events.md) 참고).
+`outbox/SqsConfig.java`'s `sqsClient()` bean follows the same configuration (the same `AwsProperties`, the same endpoint branch) — `OutboxPoller`/`OutboxConsumer` share this single `SqsClient` (see [domain-events.md](domain-events.md)).
 
 ---
 
-## 실행 방법
+## How to run
 
 ```bash
-# 1. 인프라 기동 (Postgres + LocalStack)
+# 1. Start infrastructure (Postgres + LocalStack)
 cd implementations/java-springboot/examples
 docker compose up -d
 
-# 2. 앱 실행 (호스트에서 직접)
+# 2. Run the app (directly on the host)
 ./gradlew bootRun
 
-# 로그 확인
+# Check logs
 docker compose logs -f localstack
 
-# 종료
+# Shut down
 docker compose down
 
-# 종료 + 데이터 삭제
+# Shut down + delete data
 docker compose down -v
 ```
 
 ---
 
-## 원칙
+## Principles
 
-- **로컬 개발 시 외부 서비스에 직접 연결하지 않는다**: DB는 Docker Compose, SES/SQS는 LocalStack.
-- **모든 인프라 서비스에 healthcheck를 설정한다**: `pg_isready`, `awslocal ses list-identities`.
-- **초기화 스크립트를 커밋에 포함한다**: `localstack/init-ses.sh`, `localstack/init-sqs.sh`.
-- **이미지 버전을 고정한다**: `postgres:16-alpine`, `localstack/localstack:3.0`.
-- **profiles로 앱 서비스를 분리한다**: `app` 서비스는 `profiles: [app]`로 기본 기동에서 제외된다.
+- **Never connect directly to external services during local development**: use Docker Compose for the DB, LocalStack for SES/SQS.
+- **Configure a healthcheck for every infrastructure service**: `pg_isready`, `awslocal ses list-identities`.
+- **Commit the init scripts**: `localstack/init-ses.sh`, `localstack/init-sqs.sh`.
+- **Pin image versions**: `postgres:16-alpine`, `localstack/localstack:3.0`.
+- **Separate the app service via profiles**: the `app` service is excluded from the default startup via `profiles: [app]`.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [config.md](config.md) — 환경 변수 검증, 관심사별 설정 파일 분리
-- [secret-manager.md](secret-manager.md) — LocalStack Secrets Manager 대체
-- [container.md](container.md) — 앱 자체의 컨테이너 이미지, `app` 서비스 추가 시 필요
+- [config.md](config.md) — environment variable validation, splitting config files by concern
+- [secret-manager.md](secret-manager.md) — the LocalStack Secrets Manager substitute
+- [container.md](container.md) — the app's own container image, needed when adding the `app` service

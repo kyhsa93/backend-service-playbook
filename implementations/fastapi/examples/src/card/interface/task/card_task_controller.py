@@ -4,13 +4,14 @@ from ...application.command.send_monthly_card_statement_handler import SendMonth
 
 
 class CardTaskController:
-    """Task Controller — Interface 레이어의 입력 어댑터(scheduling.md).
-    account/interface/task/account_task_controller.py와 동일한 원칙: 로직 없이 위임만,
-    예외는 그대로 전파(TaskConsumer가 재시도/DLQ를 결정)."""
+    """A Task Controller — an input adapter of the Interface layer (scheduling.md). The
+    same principle as account/interface/task/account_task_controller.py: only delegates,
+    with no logic, letting exceptions propagate as-is (TaskConsumer decides retry/DLQ)."""
 
     def __init__(self, handler: SendMonthlyCardStatementHandler) -> None:
         self._handler = handler
 
     async def send_monthly_statement(self, payload: dict) -> None:
-        del payload  # 이 Task는 페이로드가 없다(scheduler가 {}로 enqueue) — 그날 날짜 기준으로 지난 달을 계산한다
+        del payload  # this Task has no payload (the scheduler enqueues it with {}) — the past month
+        # is computed based on the current date
         await self._handler.execute()

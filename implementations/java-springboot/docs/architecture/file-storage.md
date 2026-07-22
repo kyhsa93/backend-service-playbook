@@ -1,17 +1,17 @@
-# 파일 스토리지 — Presigned URL 패턴 (Spring Boot / AWS SDK v2)
+# File Storage — the Presigned URL Pattern (Spring Boot / AWS SDK v2)
 
-> 프레임워크 무관 원칙은 루트 [file-storage.md](../../../../docs/architecture/file-storage.md) 참고.
+> For the framework-agnostic principles, see the root [file-storage.md](../../../../docs/architecture/file-storage.md).
 
-## 현재 상태
+## Current state
 
-`examples/`에는 파일 업로드/다운로드 기능 자체가 없다 — Account 도메인에 첨부파일 개념이 없기 때문이다. `build.gradle`에 S3 SDK 의존성도 없다(SES만 있음: `software.amazon.awssdk:ses`). 아래는 이 저장소에 파일 첨부 기능을 추가할 때 따라야 할 패턴이며, 이미 검증된 `SesConfig`/`NotificationServiceImpl`의 AWS SDK v2 사용 관례를 그대로 재사용한다.
+`examples/` has no file upload/download feature at all — the Account domain has no concept of attachments. `build.gradle` has no S3 SDK dependency either (only SES: `software.amazon.awssdk:ses`). Below is the pattern to follow if a file-attachment feature is added to this repository — it reuses the already-verified AWS SDK v2 conventions from `SesConfig`/`NotificationServiceImpl` as-is.
 
 ---
 
-## `StorageService` — Technical Service 인터페이스
+## `StorageService` — the Technical Service interface
 
 ```java
-// application/service/StorageService.java — 제안
+// application/service/StorageService.java — proposal
 package com.example.accountservice.account.application.service;
 
 public interface StorageService {
@@ -21,7 +21,7 @@ public interface StorageService {
 ```
 
 ```java
-// infrastructure/StorageServiceImpl.java — S3 구현체 (제안)
+// infrastructure/StorageServiceImpl.java — S3 implementation (proposal)
 @Component
 public class StorageServiceImpl implements StorageService {
 
@@ -68,33 +68,33 @@ public class StorageServiceImpl implements StorageService {
 }
 ```
 
-`S3Presigner`는 AWS SDK v2 전용 클라이언트로, 일반 `S3Client`와 별개로 URL 서명만을 위해 존재한다 — `SesClient`/`SesClientBuilder`(`SesConfig` 참고)와 같은 SDK v2 빌더 패턴을 그대로 따른다. `Duration.ofHours(1)`처럼 서명 유효기간을 명시적으로 제한하는 것이 중요하다 — 무기한 유효한 URL은 보안 위험이다.
+`S3Presigner` is a client dedicated to AWS SDK v2, existing separately from the regular `S3Client` purely for signing URLs — it follows the same SDK v2 builder pattern as `SesClient`/`SesClientBuilder` (see `SesConfig`). Explicitly limiting the signature's validity period, as with `Duration.ofHours(1)`, is important — a URL valid forever is a security risk.
 
 ```groovy
-// build.gradle — 추가 필요
+// build.gradle — would need to be added
 implementation 'software.amazon.awssdk:s3'
 ```
 
 ---
 
-## Entity에는 메타데이터만 저장
+## Only metadata is stored on the Entity
 
-파일을 소유하는 Entity는 파일 키와 확장자만 컬럼으로 갖는다 — 파일 바이너리 자체는 절대 DB에 저장하지 않는다.
+The Entity that owns a file only carries the file key and extension as columns — the file binary itself is never stored in the DB.
 
 ```java
-// domain에 첨부파일이 필요해지면 (제안, 현재 Account에는 해당 없음)
+// If domain needed an attachment concept (proposal, not currently applicable to Account)
 @Embeddable
 public record Attachment(String fileKey, String extension) {}
 ```
 
-`fileKey`는 [aggregate-id.md](aggregate-id.md)와 동일한 규칙(32자리 hex, 하이픈 없음)으로 생성해 스토리지 내 파일 식별자로 사용한다.
+`fileKey` is generated with the same rule as [aggregate-id.md](aggregate-id.md) (32-character hex, no hyphens) and used as the file's identifier within storage.
 
 ---
 
-## Application Service에서 사용
+## Usage from an Application Service
 
 ```java
-// application/command/CreateAttachmentService.java — 제안
+// application/command/CreateAttachmentService.java — proposal
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -103,48 +103,48 @@ public class CreateAttachmentService {
     private final AccountRepository accountRepository;
 
     public CreateAttachmentResult createAttachment(CreateAttachmentCommand command) {
-        String fileKey = IdGenerator.generate();   // aggregate-id.md의 IdGenerator 재사용
+        String fileKey = IdGenerator.generate();   // reuses the IdGenerator from aggregate-id.md
         String uploadUrl = storageService.generateUploadUrl(command.accountId() + "/" + fileKey + "." + command.extension());
-        // 메타데이터만 저장 — 파일 바이너리는 클라이언트가 uploadUrl로 직접 S3에 PUT
+        // only metadata is saved — the client PUTs the file binary directly to S3 via uploadUrl
         return new CreateAttachmentResult(fileKey, command.extension(), uploadUrl);
     }
 }
 ```
 
-서버는 파일 바이너리를 한 번도 경유하지 않는다 — 클라이언트가 `uploadUrl`로 스토리지에 직접 `PUT` 요청을 보낸다.
+The server never passes through the file binary at all — the client sends a `PUT` request directly to storage using `uploadUrl`.
 
 ---
 
-## 로컬 개발 — LocalStack S3
+## Local development — LocalStack S3
 
 ```yaml
-# docker-compose.yml — SERVICES에 s3 추가 시 (현재 SERVICES: ses만 있음)
+# docker-compose.yml — if s3 is added to SERVICES (currently only SERVICES: ses)
 localstack:
   environment:
     SERVICES: ses,s3
 ```
 
 ```bash
-# localstack/init-s3.sh — 추가 시
+# localstack/init-s3.sh — if added
 awslocal s3 mb s3://account-service-attachments
 ```
 
-**LocalStack + `S3Presigner`의 주의점**: LocalStack이 발급하는 presigned URL은 기본적으로 `path-style`(`http://localhost:4566/bucket-name/key`)이다. 실제 AWS S3는 기본이 virtual-hosted-style(`https://bucket-name.s3.amazonaws.com/key`)이므로, 로컬 개발 시 `S3Presigner` 빌더에 `.serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())`를 추가해야 LocalStack에서 URL이 올바르게 동작한다 — 운영 환경에서는 이 설정을 끄거나 조건부로 적용한다([local-dev.md](local-dev.md)의 endpoint 분기 패턴과 동일하게 프로필별로 나눈다).
+**A caveat with LocalStack + `S3Presigner`**: presigned URLs issued by LocalStack default to `path-style` (`http://localhost:4566/bucket-name/key`). Real AWS S3 defaults to virtual-hosted-style (`https://bucket-name.s3.amazonaws.com/key`), so for local development the `S3Presigner` builder needs `.serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())` added for URLs to work correctly against LocalStack — in production this setting should be turned off or applied conditionally (split by profile, the same way as the endpoint-branching pattern in [local-dev.md](local-dev.md)).
 
 ---
 
-## 원칙
+## Principles
 
-- **서버는 파일 바이너리를 처리하지 않는다**: 업로드/다운로드 모두 Presigned URL을 통해 클라이언트↔S3 직접 통신.
-- **DB에는 메타데이터만 저장한다**: `fileKey`, `extension`.
-- **`StorageService` 인터페이스로 스토리지 구현을 추상화한다**: `NotificationService`와 동일한 Technical Service 패턴.
-- **서명 유효기간을 명시적으로 제한한다**: `Duration.ofHours(1)` 등.
-- **LocalStack은 path-style 접근이 필요하다**: `S3Configuration.pathStyleAccessEnabled(true)`.
+- **The server never handles the file binary**: both upload and download go through Presigned URLs, communicating directly between client and S3.
+- **Only metadata is stored in the DB**: `fileKey`, `extension`.
+- **Abstract the storage implementation behind a `StorageService` interface**: the same Technical Service pattern as `NotificationService`.
+- **Explicitly limit the signature's validity period**: e.g. `Duration.ofHours(1)`.
+- **LocalStack requires path-style access**: `S3Configuration.pathStyleAccessEnabled(true)`.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [aggregate-id.md](aggregate-id.md) — `fileKey` 생성 규칙 재사용
-- [local-dev.md](local-dev.md) — LocalStack S3 구성
-- [persistence.md](persistence.md) — Entity 공통 컬럼 규칙
+- [aggregate-id.md](aggregate-id.md) — reusing the `fileKey` generation rule
+- [local-dev.md](local-dev.md) — LocalStack S3 configuration
+- [persistence.md](persistence.md) — common Entity column rules

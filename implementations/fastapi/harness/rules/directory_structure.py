@@ -1,4 +1,4 @@
-"""[6] 디렉토리 구조 검사 (4레이어 + CQRS)"""
+"""[6] Directory structure check (4 layers + CQRS)"""
 
 from __future__ import annotations
 
@@ -11,20 +11,21 @@ def check(root: str, py_files: list[str]) -> RuleResult:
     result = RuleResult("directory-structure")
     src_dir = os.path.join(root, "src")
     if not os.path.isdir(src_dir):
-        result.add(skipped("src/ 디렉토리 없음"))
+        result.add(skipped("No src/ directory"))
         return result
 
-    # __pycache__ 등은 os.listdir이 직접 스캔하는 이 함수만 별도로 걸러야 한다 —
-    # collect_py_files()가 쓰는 SKIP_DIRS와 달리 이 함수는 py_files를 거치지 않고
-    # src/ 바로 아래를 직접 훑어서, pytest가 만든 캐시 디렉토리를 도메인 폴더로
-    # 오인해 "레이어 디렉토리 없음"으로 잘못 잡을 수 있었다.
+    # __pycache__ etc. must be filtered separately, only for this function, which scans
+    # directly via os.listdir — unlike the SKIP_DIRS used by collect_py_files(), this
+    # function doesn't go through py_files and instead scans directly right under src/, so
+    # a cache directory created by pytest could be mistaken for a domain folder and
+    # incorrectly flagged as "missing layer directory."
     domains = [
         entry
         for entry in sorted(os.listdir(src_dir))
         if os.path.isdir(os.path.join(src_dir, entry)) and entry not in SKIP_DIRS and not is_shared_dir(entry)
     ]
     if not domains:
-        result.add(skipped("src/ 아래에 도메인 디렉토리 없음"))
+        result.add(skipped("No domain directory under src/"))
         return result
 
     for domain in domains:
@@ -35,7 +36,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             if os.path.isdir(d):
                 result.add(passed(label))
             else:
-                result.add(failed(label, "디렉토리 없음"))
+                result.add(failed(label, "Directory not found"))
         if is_technical_service_dir(domain):
             continue
         for sub in ("command", "query"):
@@ -44,5 +45,5 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             if os.path.isdir(d):
                 result.add(passed(label))
             else:
-                result.add(failed(label, "CQRS 디렉토리 없음"))
+                result.add(failed(label, "CQRS directory not found"))
     return result

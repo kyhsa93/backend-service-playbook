@@ -17,8 +17,9 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-// Service는 Secrets Manager를 조회하고 결과를 TTL 동안 메모리에 캐시한다.
-// sync.Mutex로 보호한다 — 여러 고루틴(요청 핸들러)이 동시에 같은 키를 조회할 수 있다.
+// Service queries Secrets Manager and caches the result in memory for the
+// TTL duration. It's protected by sync.Mutex — multiple goroutines (request
+// handlers) may look up the same key concurrently.
 type Service struct {
 	client *secretsmanager.Client
 	ttl    time.Duration
@@ -52,8 +53,9 @@ func (s *Service) GetSecret(ctx context.Context, secretID string) (string, error
 	return value, nil
 }
 
-// NewSecretsManagerClient는 이 저장소의 ses_client.go와 동일한 관용구를 따른다:
-// 명시적 정적 자격증명(IMDS 지연 회피) + AWS_ENDPOINT_URL로 LocalStack 분기.
+// NewSecretsManagerClient follows the same idiom as this repository's
+// ses_client.go: explicit static credentials (avoiding IMDS latency) +
+// AWS_ENDPOINT_URL branching to LocalStack.
 func NewSecretsManagerClient() *secretsmanager.Client {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {

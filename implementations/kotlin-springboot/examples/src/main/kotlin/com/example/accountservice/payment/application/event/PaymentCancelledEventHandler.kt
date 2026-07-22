@@ -7,9 +7,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * 내부 Domain Event(PaymentCancelledEvent)를 수신해 외부 BC용 Integration Event
- * (payment.cancelled.v1)로 변환해 Outbox에 적재한다. Account BC가 이를 구독해 보상 크레딧
- * (deposit)을 실행한다 — 이미 차감된 금액을 되돌리는 보상 트랜잭션이다.
+ * Receives the internal Domain Event (PaymentCancelledEvent), converts it into the Integration Event
+ * for external BCs (payment.cancelled.v1), and loads it into the Outbox. Account BC subscribes to this
+ * and executes the compensating credit (deposit) — a compensating transaction that reverses the
+ * already-deducted amount.
  */
 @Component
 class PaymentCancelledEventHandler(
@@ -23,7 +24,7 @@ class PaymentCancelledEventHandler(
             .addKeyValue("payment_id", event.paymentId)
             .addKeyValue("account_id", event.accountId)
             .addKeyValue("reason", event.reason)
-            .log("결제 취소됨")
+            .log("Payment cancelled")
 
         outboxWriter.saveAll(
             listOf(

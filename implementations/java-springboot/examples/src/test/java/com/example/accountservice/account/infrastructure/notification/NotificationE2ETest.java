@@ -63,8 +63,8 @@ class NotificationE2ETest {
             new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                     .withServices(LocalStackContainer.Service.SES, LocalStackContainer.Service.SQS);
 
-    // CardControllerE2ETest와 동일한 이유(@DynamicPropertySource Supplier가 여러 번 호출될 수 있음)로
-    // 캐시한다.
+    // Cached for the same reason as CardControllerE2ETest (the @DynamicPropertySource supplier can
+    // be invoked multiple times).
     private static String domainEventQueueUrl;
 
     private static synchronized String domainEventQueueUrl() {
@@ -90,8 +90,9 @@ class NotificationE2ETest {
         registry.add("aws.secret-access-key", () -> localstack.getSecretKey());
         registry.add("ses.sender-email", () -> SENDER_EMAIL);
         registry.add("sqs.domain-event-queue-url", NotificationE2ETest::domainEventQueueUrl);
-        // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
-        // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+        // The tests call the write API more times in a short window than the default
+        // limit-for-period (10), so we relax it generously for tests only, so that each endpoint's
+        // logic is verified rather than rate limiting itself.
         registry.add(
                 "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }
@@ -154,10 +155,12 @@ class NotificationE2ETest {
         return (List<Map<String, Object>>) body.get("messages");
     }
 
-    // AccountCreatedEventHandler/MoneyDepositedEventHandler(SES 발송)는 더 이상 계좌 생성/입금
-    // 요청과 같은 프로세스 안에서 즉시 실행되지 않는다 — OutboxPoller(1초 주기)가 이 이벤트를 SQS로
-    // 발행하고 OutboxConsumer(long polling)가 수신해야 실행된다. CardControllerE2ETest의
-    // waitForCardStatus와 동일한 이유로 즉시 조회하던 assert를 폴링으로 바꾼다.
+    // AccountCreatedEventHandler/MoneyDepositedEventHandler (SES sending) no longer run
+    // synchronously within the same process as the account-creation/deposit request —
+    // OutboxPoller (1-second cycle) has to publish the event to SQS and OutboxConsumer (long
+    // polling) has to receive it before it runs. For the same reason as waitForCardStatus in
+    // CardControllerE2ETest, the assertion that used to query immediately is changed to poll
+    // instead.
     private SentEmail waitForSentEmail(String accountId, String eventType) {
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(200))
@@ -166,7 +169,7 @@ class NotificationE2ETest {
                         Optional::isPresent);
         return sentEmailRepository
                 .findByAccountIdAndEventType(accountId, eventType)
-                .orElseThrow(() -> new AssertionError("발송 내역이 저장되지 않았습니다."));
+                .orElseThrow(() -> new AssertionError("The sent-email record was not saved."));
     }
 
     @Test
@@ -186,7 +189,9 @@ class NotificationE2ETest {
                         .filter(m -> sentEmail.getSesMessageId().equals(m.get("Id")))
                         .findFirst()
                         .orElseThrow(
-                                () -> new AssertionError("localstack SES에서 해당 메시지를 찾을 수 없습니다."));
+                                () ->
+                                        new AssertionError(
+                                                "Could not find the matching message in localstack SES."));
 
         Map<String, Object> destination = (Map<String, Object>) matched.get("Destination");
         assertThat((List<String>) destination.get("ToAddresses")).contains(RECIPIENT_EMAIL);

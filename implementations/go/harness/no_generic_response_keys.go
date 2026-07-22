@@ -6,30 +6,36 @@ import (
 	"strings"
 )
 
-// forbiddenResponseKeys — root docs/architecture/api-response.md, "목록 조회 응답 형식":
-// 목록 응답의 키 이름은 도메인 객체명 복수형(orders/accounts/payments)이어야 하고,
-// result/data/items 같은 범용 키는 금지한다.
+// forbiddenResponseKeys — from root docs/architecture/api-response.md, "list query
+// response format": the key name of a list response must be the plural of the
+// domain object name (orders/accounts/payments), and generic keys like
+// result/data/items are forbidden.
 var forbiddenResponseKeys = map[string]bool{
 	"result": true,
 	"data":   true,
 	"items":  true,
 }
 
-// checkNoGenericResponseKeys — no-generic-response-keys: internal/interface/http/**의
-// struct 선언 중 json 태그가 정확히 "result"/"data"/"items"인 필드를 찾는다. 이런
-// 범용 키는 도메인 객체명 복수형(orders/accounts/payments 등)으로 바꿔야 한다.
+// checkNoGenericResponseKeys — no-generic-response-keys: among struct declarations
+// under internal/interface/http/**, finds fields whose json tag is exactly
+// "result"/"data"/"items". These generic keys must be replaced with the plural
+// of the domain object name (orders/accounts/payments, etc.).
 //
-// error_response_schema.go와 동일하게 struct 선언 + json 태그를 구조적으로 파싱한다
-// (extractBalancedBlock으로 struct 본문을 잘라낸 뒤 jsonTagLine으로 태그를 뽑는다) —
-// 두 규칙 모두 같은 패키지의 structDecl/jsonTagLine 정규식을 재사용한다.
+// Like error_response_schema.go, this structurally parses struct declarations +
+// json tags (extractBalancedBlock cuts out the struct body, then jsonTagLine
+// extracts the tags) — both rules reuse the same package's structDecl/jsonTagLine
+// regexes.
 //
-// "items"는 root 문서의 "단건 조회 응답 형식" 예시에서 한 리소스에 딸린 하위 목록
-// (주문의 line item 등)을 가리키는 필드명으로도 등장하지만, 그 예시조차 "범용 키
-// 사용 금지" 원칙이 최상위 목록 응답에 적용됨을 보여줄 뿐 "items"라는 이름 자체를
-// 예외로 허용하지는 않는다 — 이 저장소의 실제 DTO(GetPaymentsResponse.Payments,
-// GetRefundsResponse.Refunds, GetTransactionsResponse.Transactions 등)는 모두 이미
-// 도메인 복수형을 쓰므로, "items" 같은 하위 목록이 필요해지면 그때도 도메인 명사
-// (orderItems 등)를 써야 한다 — 필드명 무관 일괄 금지가 이 규칙의 의도다.
+// "items" also appears in the root document's "single-resource query response
+// format" example as a field name for a sub-list belonging to one resource
+// (e.g. an order's line items), but even that example only shows that the
+// "no generic keys" principle applies to top-level list responses — it does
+// not carve out an exception for the name "items" itself. This repository's
+// actual DTOs (GetPaymentsResponse.Payments, GetRefundsResponse.Refunds,
+// GetTransactionsResponse.Transactions, etc.) already all use domain plurals,
+// so if a sub-list like "items" is ever needed, it too must use a domain noun
+// (e.g. orderItems) — a blanket ban regardless of field name is the intent of
+// this rule.
 func checkNoGenericResponseKeys(root string) RuleResult {
 	result := RuleResult{Section: "no-generic-response-keys"}
 	found := false
@@ -54,7 +60,7 @@ func checkNoGenericResponseKeys(root string) RuleResult {
 		matches := structDecl.FindAllStringSubmatchIndex(src, -1)
 		for _, m := range matches {
 			name := src[m[2]:m[3]]
-			bodyStart := m[1] - 1 // '{' 위치
+			bodyStart := m[1] - 1 // position of '{'
 			body := extractBalancedBlock(src, bodyStart, '{', '}')
 
 			tagMatches := jsonTagLine.FindAllStringSubmatch(body, -1)
@@ -70,16 +76,16 @@ func checkNoGenericResponseKeys(root string) RuleResult {
 			}
 			found = true
 			result.Findings = append(result.Findings, failFinding(rel+" ("+name+")",
-				"목록 응답 필드에 범용 키("+strings.Join(bad, ", ")+")를 사용함 — 도메인 객체명 복수형(orders/accounts/payments 등)을 써야 한다(docs/architecture/api-response.md)"))
+				"the list-response field uses a generic key ("+strings.Join(bad, ", ")+") — it must use the plural of the domain object name (orders/accounts/payments, etc.) (docs/architecture/api-response.md)"))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 		return result
 	}
 	if !found {
-		result.Findings = append(result.Findings, passFinding("internal/interface/**의 응답 struct에 범용 키(result/data/items) 없음"))
+		result.Findings = append(result.Findings, passFinding("no generic keys (result/data/items) in response structs under internal/interface/**"))
 	}
 	return result
 }

@@ -12,16 +12,19 @@ import com.example.accountservice.payment.domain.PaymentRequiresActiveCardExcept
 import org.springframework.stereotype.Service
 
 /**
- * 결제 처리(카드+잔액 확인) — Adapter(동기 읽기) 조합, Domain Service가 아니다.
+ * Processes a payment (card + balance verification) — a combination of Adapters (synchronous reads),
+ * not a Domain Service.
  *
- * 1. 동기 Adapter → Card BC: 카드가 ACTIVE인지, 연결된 accountId 확인(Card가 이미 Account를 조회하는
- *    것과 같은 ACL 패턴을 재사용).
- * 2. 동기 Adapter → Account BC: 잔액 ≥ 결제 금액인지 확인(읽기 전용 판단, "결제 가능 여부").
- * 3. 통과하면 Payment를 생성하고 즉시 COMPLETED로 전환, PaymentCompletedEvent(Domain Event)를
- *    발행해 Outbox에 적재한다.
+ * 1. Synchronous Adapter → Card BC: verifies the card is ACTIVE and confirms the linked accountId
+ *    (reusing the same ACL pattern that Card already uses to query Account).
+ * 2. Synchronous Adapter → Account BC: verifies balance ≥ payment amount (a read-only judgment,
+ *    "whether payment is possible").
+ * 3. If both pass, creates the Payment and immediately transitions it to COMPLETED, publishing
+ *    PaymentCompletedEvent (a Domain Event) and loading it into the Outbox.
  *
- * 실제 잔액 차감은 이 동기 호출이 아니라 `payment.completed.v1` Integration Event를 Account BC가
- * 구독해 비동기로 수행한다(cross-domain.md의 "동기=조회, 비동기 Integration Event=상태변경" 원칙).
+ * The actual balance deduction is not performed by this synchronous call — Account BC subscribes to
+ * the `payment.completed.v1` Integration Event and performs it asynchronously (the "synchronous =
+ * query, asynchronous Integration Event = state change" principle from cross-domain.md).
  */
 @Service
 class CreatePaymentService(

@@ -9,13 +9,14 @@ from .task_outbox_model import TaskOutboxModel
 
 
 class TaskOutboxWriter:
-    """Task를 `task_outbox` 테이블에 적재한다 — Scheduler(Cron)가 호출하는 유일한
-    메서드다. Scheduler는 이 메서드를 호출해 커밋하는 것 말고는 아무것도 하지 않는다
-    (scheduling.md "Scheduler 역할 분리": enqueue만, 비즈니스 로직 실행 금지).
+    """Loads a Task into the `task_outbox` table — the only method the Scheduler (Cron)
+    calls. The Scheduler does nothing beyond calling this method and committing (see
+    "Separating the Scheduler's role" in scheduling.md: enqueue only, never execute
+    business logic).
 
-    Domain Event의 `OutboxWriter`(src/outbox/outbox_writer.py)와 테이블·큐가 분리되어
-    있다는 점만 다르고 "쓰기와 같은 트랜잭션 안에서 적재 → 별도 Poller가 발행"이라는
-    구조는 동일하다.
+    Differs from the Domain Event's `OutboxWriter` (src/outbox/outbox_writer.py) only in
+    that the table and queue are separate — the structure "load within the same
+    transaction as the write → a separate Poller publishes it" is identical.
     """
 
     def __init__(self, session: AsyncSession) -> None:

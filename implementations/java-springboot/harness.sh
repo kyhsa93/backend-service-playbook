@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spring Boot Harness 실행 래퍼
+# Spring Boot Harness execution wrapper
 #
 # Usage: ./implementations/springboot/harness.sh [projectRoot]
 

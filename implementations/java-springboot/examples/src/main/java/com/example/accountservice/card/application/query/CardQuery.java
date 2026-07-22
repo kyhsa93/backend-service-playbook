@@ -4,8 +4,9 @@ import com.example.accountservice.card.domain.CardFindQuery;
 import com.example.accountservice.card.domain.CardsWithCount;
 
 /**
- * Query Service 전용 읽기 인터페이스. 쓰기용 {@code CardRepository}(domain)와 분리된 좁은 계약이다. Query Service는 이
- * 인터페이스만 의존해야 한다 — {@code saveCard} 같은 쓰기 메서드를 노출하지 않는다(cqrs-pattern.md 참고).
+ * A read-only interface dedicated to the Query Service. A narrow contract separate from the
+ * write-side {@code CardRepository} (domain). The Query Service should depend only on this
+ * interface — it does not expose write methods such as {@code saveCard} (see cqrs-pattern.md).
  */
 public interface CardQuery {
     CardsWithCount findCards(CardFindQuery query);

@@ -2,7 +2,7 @@ package com.example.accountservice.card.domain
 
 import com.example.accountservice.common.generateId
 
-// accountId는 ID 참조만 — 다른 BC(account)의 domain/ 타입을 import하지 않는다.
+// accountId is an ID reference only — does not import another BC's(account) domain/ type.
 class Card private constructor() {
     var cardId: String = ""
         private set

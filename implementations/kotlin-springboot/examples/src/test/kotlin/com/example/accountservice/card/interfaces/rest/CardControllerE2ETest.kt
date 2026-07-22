@@ -29,15 +29,18 @@ import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 import java.time.Duration
 
 /**
- * Card BC E2E 테스트 — REST 엔드포인트와 함께 두 크로스 도메인 흐름을 실제로 검증한다.
+ * Card BC E2E tests — verifies the REST endpoints together with two actual cross-domain flows.
  *
- * 1. 동기 Adapter/ACL: 카드 발급 시 AccountAdapter가 Account BC를 조회해 활성 여부를 확인한다.
- * 2. 비동기 Integration Event: Account 정지/해지가 Outbox → OutboxPoller(SQS 발행) →
- *    OutboxConsumer(SQS 수신) → CardIntegrationEventController 경로를 거쳐 연결된 카드에 반영된다
- *    (멱등성 포함). HTTP 응답이 돌아온 뒤 최대 몇 초 뒤에 반영되므로 [awaitCardStatus]로 폴링한다.
+ * 1. Synchronous Adapter/ACL: when a card is issued, AccountAdapter queries the Account BC to check
+ *    whether it's active.
+ * 2. Asynchronous Integration Event: suspending/closing an Account is reflected on the linked card
+ *    (idempotently) via the Outbox → OutboxPoller (publishes to SQS) → OutboxConsumer (receives from
+ *    SQS) → CardIntegrationEventController path. Since this is reflected up to a few seconds after
+ *    the HTTP response comes back, we poll with [awaitCardStatus].
  *
- * SES는 Card BC와 무관하므로(알림은 Account만의 Technical Service) 구성하지 않지만, SQS는 이제
- * Account/Payment/Card가 공유하는 인프라(outbox/)이므로 LocalStack에 구성해야 한다.
+ * SES is irrelevant to the Card BC (notification is an Account-only Technical Service) so it isn't
+ * configured, but SQS must be configured in LocalStack since it is now shared infrastructure
+ * (outbox/) across Account/Payment/Card.
  */
 @Testcontainers
 @SpringBootTest(
@@ -70,8 +73,9 @@ class CardControllerE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SQS).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
-            // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
-            // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+            // The test calls the write API far more times in a short span than the default
+            // limit-for-period (10), so for tests only we loosen it generously so we're verifying
+            // each endpoint's logic rather than rate limiting itself.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
@@ -89,9 +93,9 @@ class CardControllerE2ETest {
             return queueUrl
         }
 
-        // SqsProperties.taskQueueUrl도 @NotBlank(config.md fail-fast)이므로, Task Queue 경로를
-        // 실제로 쓰지 않는 이 테스트도 컨텍스트 기동을 위해 FIFO 큐를 만들어 둔다(TaskQueueE2ETest와
-        // 동일한 방식).
+        // Since SqsProperties.taskQueueUrl is also @NotBlank (config.md fail-fast), this test — which
+        // doesn't actually use the Task Queue path — also creates a FIFO queue just to boot the
+        // context (the same approach as TaskQueueE2ETest).
         private fun createTaskQueue(): String {
             val sqsClient =
                 SqsClient
@@ -179,9 +183,10 @@ class CardControllerE2ETest {
     }
 
     /**
-     * Integration Event(account.suspended.v1/account.closed.v1)가 Outbox → SQS → OutboxConsumer →
-     * CardIntegrationEventController 경로를 거쳐 카드 상태에 반영되기까지 최대 몇 초가 걸린다 —
-     * 이 저장소가 실측한 LocalStack+SQS 지연(2~4초)보다 넉넉한 타임아웃으로 폴링한다.
+     * It takes up to a few seconds for the Integration Event (account.suspended.v1/
+     * account.closed.v1) to be reflected in the card status via the Outbox → SQS → OutboxConsumer →
+     * CardIntegrationEventController path — poll with a timeout more generous than the
+     * LocalStack+SQS latency (2-4 seconds) actually measured in this repository.
      */
     private fun awaitCardStatus(
         cardId: String,
@@ -195,7 +200,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `활성 계좌로 카드를 발급하면 201과 ACTIVE 카드 정보를 반환한다`() {
+    fun `issuing a card for an active account returns 201 and the ACTIVE card info`() {
         val account = createAccount(OWNER_ID)
 
         val response = post("/cards", OWNER_ID, mapOf("accountId" to (account["accountId"] as String), "brand" to "VISA"))
@@ -210,14 +215,14 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `존재하지 않는 계좌로 발급하면 404를 반환한다`() {
+    fun `returns 404 when issuing for a nonexistent account`() {
         val response = post("/cards", OWNER_ID, mapOf("accountId" to "non-existent", "brand" to "VISA"))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `다른 소유자의 계좌로 발급하면 404를 반환한다`() {
+    fun `returns 404 when issuing for another owner's account`() {
         val account = createAccount(OWNER_ID)
 
         val response = post("/cards", OTHER_OWNER_ID, mapOf("accountId" to (account["accountId"] as String), "brand" to "VISA"))
@@ -226,7 +231,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `정지된 계좌로 발급하면 400을 반환한다`() {
+    fun `returns 400 when issuing for a suspended account`() {
         val account = createAccount(OWNER_ID)
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
 
@@ -236,7 +241,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `발급한 카드를 조회하면 200과 카드 정보를 반환한다`() {
+    fun `looking up an issued card returns 200 and the card info`() {
         val account = createAccount(OWNER_ID)
         val card = issueCard(OWNER_ID, account["accountId"] as String)
 
@@ -247,14 +252,14 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `존재하지 않는 카드를 조회하면 404를 반환한다`() {
+    fun `returns 404 when looking up a nonexistent card`() {
         val response = get("/cards/non-existent", OWNER_ID)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `다른 소유자가 카드를 조회하면 404를 반환한다`() {
+    fun `returns 404 when a different owner looks up a card`() {
         val account = createAccount(OWNER_ID)
         val card = issueCard(OWNER_ID, account["accountId"] as String)
 
@@ -264,7 +269,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `계좌를 정지하면 연결된 ACTIVE 카드가 모두 SUSPENDED로 전환된다 (Integration Event)`() {
+    fun `suspending an account transitions all linked ACTIVE cards to SUSPENDED (Integration Event)`() {
         val account = createAccount(OWNER_ID)
         val card1 = issueCard(OWNER_ID, account["accountId"] as String)
         val card2 = issueCard(OWNER_ID, account["accountId"] as String, brand = "MASTER")
@@ -277,7 +282,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `계좌를 재개해도 이미 정지된 카드는 그대로 유지된다 (카드는 재개 이벤트를 구독하지 않음)`() {
+    fun `an already-suspended card stays suspended after the account is reactivated (no subscription to that event)`() {
         val account = createAccount(OWNER_ID)
         val card = issueCard(OWNER_ID, account["accountId"] as String)
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
@@ -290,7 +295,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `계좌를 종료하면 연결된 카드가 모두 CANCELLED로 전환된다 (Integration Event)`() {
+    fun `closing an account transitions all linked cards to CANCELLED (Integration Event)`() {
         val account = createAccount(OWNER_ID)
         val card = issueCard(OWNER_ID, account["accountId"] as String)
 
@@ -301,7 +306,7 @@ class CardControllerE2ETest {
     }
 
     @Test
-    fun `정지 후 종료하면 SUSPENDED였던 카드도 CANCELLED로 전환된다 (멱등 반응)`() {
+    fun `a card that was SUSPENDED also transitions to CANCELLED when the account is closed afterward (idempotent reaction)`() {
         val account = createAccount(OWNER_ID)
         val card = issueCard(OWNER_ID, account["accountId"] as String)
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())

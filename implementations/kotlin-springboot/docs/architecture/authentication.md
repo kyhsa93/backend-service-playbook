@@ -1,13 +1,13 @@
-# 인증 패턴 — Kotlin Spring Boot
+# Authentication Pattern — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root authentication.md](../../../../docs/architecture/authentication.md) 참조.
+> For the framework-agnostic principles, see [root authentication.md](../../../../docs/architecture/authentication.md).
 
-## JWT/Bearer + Spring Security + 비밀번호 검증
+## JWT/Bearer + Spring Security + password verification
 
-`examples/.../account/interfaces/rest/AccountController.kt`의 모든 엔드포인트는 `Authentication` 파라미터에서 인증된 사용자 ID를 꺼내 쓴다 — 클라이언트가 보낸 헤더를 신뢰하지 않는다:
+Every endpoint in `examples/.../account/interfaces/rest/AccountController.kt` pulls the authenticated user ID out of the `Authentication` parameter — it never trusts a header sent by the client:
 
 ```kotlin
-// 실제 코드
+// actual code
 @PostMapping
 fun createAccount(
     authentication: Authentication,
@@ -16,76 +16,76 @@ fun createAccount(
     createAccountService.create(CreateAccountCommand(authentication.name, request.currency, request.email))
 ```
 
-`authentication.name`은 `JwtAuthenticationFilter`가 검증한 JWT의 `subject`(userId)다 — 클라이언트가 임의로 지정할 수 없다. 아래는 root 원칙에 맞는 JWT/Bearer + Spring Security 패턴이며, `auth/` 패키지(`AuthService`, `JwtAuthenticationFilter`, `SecurityConfig`, `Credential` Aggregate)로 실제 구현되어 있다.
+`authentication.name` is the JWT `subject` (userId) verified by `JwtAuthenticationFilter` — the client cannot set it arbitrarily. Below is the JWT/Bearer + Spring Security pattern aligned with the root principles, actually implemented in the `auth/` package (`AuthService`, `JwtAuthenticationFilter`, `SecurityConfig`, the `Credential` Aggregate).
 
-`build.gradle.kts`에는 이미 `spring-boot-starter-security`(BCrypt 포함)와 JWT 라이브러리(`io.jsonwebtoken:jjwt-api`/`jjwt-impl`/`jjwt-jackson`)가 포함되어 있다.
-
----
-
-## 가입 → 로그인 흐름
-
-`POST /auth/sign-in`은 `Credential` Aggregate(`credentialId`, `userId`, `passwordHash`)와 대조해 실제 비밀번호를 검증한 뒤에만 JWT를 발급한다.
-
-```
-[가입]
-클라이언트 → 서버: POST /auth/sign-up { userId, password }
-             SignUpService: 아이디 중복 확인(CredentialQuery) → PasswordHasher로 해싱 → Credential 저장(CredentialRepository)
-             서버 → 클라이언트: 201
-
-[로그인]
-클라이언트 → 서버: POST /auth/sign-in { userId, password }
-             SignInService: CredentialQuery로 저장된 해시 조회 → PasswordHasher.verify()로 비밀번호 검증
-             검증 성공 시 AuthService.sign()으로 Access Token 발급
-             서버 → 클라이언트: { accessToken }
-```
-
-**아이디 미존재와 비밀번호 불일치는 동일한 예외(`InvalidCredentialsException` → 401 `INVALID_CREDENTIALS`)로 응답한다** — 둘을 구분해서 응답하면 공격자가 존재하는 아이디를 추측할 수 있다(user enumeration).
+`build.gradle.kts` already includes `spring-boot-starter-security` (with BCrypt) and a JWT library (`io.jsonwebtoken:jjwt-api`/`jjwt-impl`/`jjwt-jackson`).
 
 ---
 
-## 디렉토리 구조
+## Sign-up → sign-in flow
+
+`POST /auth/sign-in` issues a JWT only after verifying the actual password against the `Credential` Aggregate (`credentialId`, `userId`, `passwordHash`).
+
+```
+[Sign-up]
+Client → Server: POST /auth/sign-up { userId, password }
+             SignUpService: check for duplicate user ID (CredentialQuery) → hash with PasswordHasher → save Credential (CredentialRepository)
+             Server → Client: 201
+
+[Sign-in]
+Client → Server: POST /auth/sign-in { userId, password }
+             SignInService: look up the stored hash via CredentialQuery → verify password via PasswordHasher.verify()
+             On successful verification, issue an access token via AuthService.sign()
+             Server → Client: { accessToken }
+```
+
+**A non-existent user ID and a password mismatch both respond with the same exception (`InvalidCredentialsException` → 401 `INVALID_CREDENTIALS`)** — responding differently for each would let an attacker guess which user IDs exist (user enumeration).
+
+---
+
+## Directory structure
 
 ```
 auth/
   application/
-    AuthService.kt                     ← 토큰 발급/검증 (JWT, Technical Service)
+    AuthService.kt                     ← token issuance/verification (JWT, Technical Service)
     command/
-      SignUpCommand.kt / SignUpService.kt   ← 아이디 중복 확인 → 해싱 → 저장
-      SignInCommand.kt / SignInService.kt   ← 해시 조회 → 검증 → 토큰 발급
+      SignUpCommand.kt / SignUpService.kt   ← check for duplicate user ID → hash → save
+      SignInCommand.kt / SignInService.kt   ← look up hash → verify → issue token
     query/
-      CredentialQuery.kt               ← 읽기 전용 포트 (findCredentials, repository-pattern.md의 find<Noun>s 규칙) — SignUp/SignIn 모두 사용
+      CredentialQuery.kt               ← read-only port (findCredentials, the find<Noun>s rule from repository-pattern.md) — used by both SignUp/SignIn
     service/
       PasswordHasher.kt                ← interface (Technical Service)
   domain/
     Credential.kt                      ← Aggregate (credentialId, userId, passwordHash, createdAt)
-    CredentialRepository.kt            ← 쓰기 전용 포트 (saveCredential)
-    AuthErrorCode.kt / AuthException.kt   ← sealed class 예외 계층
+    CredentialRepository.kt            ← write-only port (saveCredential)
+    AuthErrorCode.kt / AuthException.kt   ← sealed class exception hierarchy
   infrastructure/
-    BCryptPasswordHasher.kt            ← PasswordHasher 구현체 (Spring Security BCryptPasswordEncoder, strength 12)
-    CredentialRepositoryImpl.kt        ← CredentialRepository + CredentialQuery 동시 구현
+    BCryptPasswordHasher.kt            ← PasswordHasher implementation (Spring Security BCryptPasswordEncoder, strength 12)
+    CredentialRepositoryImpl.kt        ← implements both CredentialRepository and CredentialQuery
     persistence/
       CredentialJpaEntity.kt / CredentialJpaRepository.kt / CredentialMapper.kt
-    JwtAuthenticationFilter.kt         ← Bearer 토큰 추출 및 검증 Filter
-    SecurityConfig.kt                  ← 화이트리스트 경로 (`/auth/sign-in`, `/auth/sign-up`)
+    JwtAuthenticationFilter.kt         ← Filter that extracts and verifies the Bearer token
+    SecurityConfig.kt                  ← whitelisted paths (`/auth/sign-in`, `/auth/sign-up`)
   interfaces/
     rest/
       AuthController.kt                ← POST /auth/sign-up, POST /auth/sign-in
 ```
 
-**쓰기(`CredentialRepository`)와 읽기(`CredentialQuery`)를 분리한 이유** — `SignInService`는 자격증명을 저장하지 않는다(순수 조회 후 검증). `CredentialQuery`(읽기 전용 포트)만 의존하게 하면 `SignInService`가 실수로도 `saveCredential`을 호출할 수 없다 — Account/Card BC가 외부 GET 엔드포인트를 위해 `<Domain>Query`를 분리하는 것과 같은 원칙을, Auth에서는 내부 조회(중복 확인·해시 조회)에도 적용한 것이다([repository-pattern.md](repository-pattern.md), [cqrs-pattern.md](cqrs-pattern.md) 참고). `CredentialRepositoryImpl`(infrastructure) 하나가 두 인터페이스를 모두 구현해 실제 저장소는 하나다.
+**Why write (`CredentialRepository`) and read (`CredentialQuery`) are separated** — `SignInService` never saves credentials (it's a pure lookup followed by verification). Depending only on `CredentialQuery` (the read-only port) means `SignInService` can't accidentally call `saveCredential` even by mistake — this applies the same principle the Account/Card BC use when splitting off `<Domain>Query` for external GET endpoints, but here applied to internal lookups (duplicate check, hash lookup) within Auth as well (see [repository-pattern.md](repository-pattern.md), [cqrs-pattern.md](cqrs-pattern.md)). A single `CredentialRepositoryImpl` (infrastructure) implements both interfaces, so there is only one actual store.
 
-비밀번호 해싱은 이메일 발송(`NotificationService`)·Secrets Manager(`SecretService`)와 동일한 Technical Service 패턴이다 — `application/service/`에 interface, `infrastructure/`에 구현체를 두어 Domain/Application이 BCrypt 같은 구체 라이브러리에 의존하지 않게 한다([domain-service.md](../../../../docs/architecture/domain-service.md) 참고).
+Password hashing follows the same Technical Service pattern as sending email (`NotificationService`) and Secrets Manager (`SecretService`) — an interface lives in `application/service/` and the implementation in `infrastructure/`, so Domain/Application don't depend on a concrete library like BCrypt (see [domain-service.md](../../../../docs/architecture/domain-service.md)).
 
 ---
 
-## Credential — 비밀번호 검증
+## Credential — password verification
 
 ```kotlin
 // auth/domain/Credential.kt
 class Credential private constructor() {
     var credentialId: String = ""; private set
     var userId: String = ""; private set
-    var passwordHash: String = ""; private set   // 평문 비밀번호는 domain/application 어디에도 보관하지 않는다
+    var passwordHash: String = ""; private set   // the plaintext password is never stored anywhere in domain/application
     var createdAt: LocalDateTime = LocalDateTime.now(); private set
 
     companion object {
@@ -100,7 +100,7 @@ interface PasswordHasher {
     fun verify(plainPassword: String, passwordHash: String): Boolean
 }
 
-// auth/infrastructure/BCryptPasswordHasher.kt — 구현체
+// auth/infrastructure/BCryptPasswordHasher.kt — implementation
 @Component
 class BCryptPasswordHasher : PasswordHasher {
     private val encoder = BCryptPasswordEncoder(12)
@@ -114,7 +114,7 @@ class BCryptPasswordHasher : PasswordHasher {
 ## SignUpService / SignInService
 
 ```kotlin
-// auth/application/command/SignUpService.kt — 실제 코드
+// auth/application/command/SignUpService.kt — actual code
 @Service
 class SignUpService(
     private val credentialQuery: CredentialQuery,
@@ -132,7 +132,7 @@ class SignUpService(
     }
 }
 
-// auth/application/command/SignInService.kt — 실제 코드
+// auth/application/command/SignInService.kt — actual code
 @Service
 class SignInService(
     private val credentialQuery: CredentialQuery,
@@ -140,7 +140,7 @@ class SignInService(
     private val authService: AuthService,
 ) {
     fun signIn(command: SignInCommand): String {
-        // 아이디 미존재/비밀번호 불일치를 동일한 예외로 응답 — user enumeration 방지
+        // Responds with the same exception for a non-existent user ID and a password mismatch — prevents user enumeration
         val credential =
             credentialQuery
                 .findCredentials(CredentialFindQuery(page = 0, take = 1, userId = command.userId))
@@ -152,13 +152,13 @@ class SignInService(
 }
 ```
 
-`findCredentials`는 root `repository-pattern.md`의 `find<Noun>s` 통일 규칙을 따른다 — 단건 조회 전용 메서드(`findByUserId`)를 두지 않고 `CredentialFindQuery(take = 1, userId = ...)` + `.first.firstOrNull()`로 처리한다(Account/Card/Payment의 `*Query`와 동일한 패턴). harness의 `repository-naming` 규칙이 `find...By...` 형태의 재도입을 자동으로 잡아낸다.
+`findCredentials` follows the `find<Noun>s` unification rule from root `repository-pattern.md` — instead of a dedicated single-item lookup method (`findByUserId`), it's handled with `CredentialFindQuery(take = 1, userId = ...)` + `.first.firstOrNull()` (the same pattern as Account/Card/Payment's `*Query`). The harness's `repository-naming` rule automatically catches reintroduction of a `find...By...`-shaped method.
 
-`SignUpService`/`SignInService`는 둘 다 `POST` 엔드포인트의 유스케이스이므로 (cqrs-pattern.md의 Kotlin 구현 기준대로) `application/command/`에 둔다 — `SignInService`가 DB에 쓰지 않는다는 이유로 `application/query/`에 두지 않는다(그쪽은 `CredentialQuery` 포트 전용).
+Both `SignUpService`/`SignInService` are use cases for `POST` endpoints, so (per the Kotlin implementation criteria in cqrs-pattern.md) they live in `application/command/` — `SignInService` is not placed in `application/query/` just because it doesn't write to the DB (that directory is reserved for the `CredentialQuery` port).
 
 ---
 
-## JWT 발급 — AuthService
+## Issuing the JWT — AuthService
 
 ```kotlin
 // auth/application/AuthService.kt
@@ -168,7 +168,7 @@ class AuthService(jwtProperties: JwtProperties) {
 
     fun sign(userId: String): String =
         Jwts.builder()
-            .subject(userId)                                     // payload에는 userId만 담는다
+            .subject(userId)                                     // only userId goes into the payload
             .issuedAt(Date.from(Instant.now()))
             .expiration(Date.from(Instant.now().plusSeconds(3600)))
             .signWith(key)
@@ -176,13 +176,13 @@ class AuthService(jwtProperties: JwtProperties) {
 }
 ```
 
-**토큰 payload에는 최소한의 정보만 담는다.** `userId`(subject)만 넣고 `email`/`role`/`permissions`는 넣지 않는다 — JWT는 서명만 되고 암호화되지 않으므로 base64 디코딩으로 누구나 읽을 수 있고, 역할/권한은 발급 이후 변경될 수 있어 토큰에 캐시하면 즉시 반영되지 않는다. 필요한 사용자 정보는 요청 처리 시점에 DB에서 조회한다.
+**Keep only the minimum information in the token payload.** Include only `userId` (subject) — never `email`/`role`/`permissions`. A JWT is only signed, not encrypted, so anyone can read it via base64 decoding, and roles/permissions can change after issuance, so caching them in the token means changes don't take effect immediately. Look up whatever user information is needed from the DB at request-processing time.
 
 ---
 
-## JWT 검증 — Spring Security Filter
+## Verifying the JWT — Spring Security Filter
 
-`OncePerRequestFilter`를 상속해 `Authorization: Bearer <token>` 헤더를 검증하고 `SecurityContextHolder`에 인증 정보를 채운다.
+Extends `OncePerRequestFilter` to verify the `Authorization: Bearer <token>` header and populate `SecurityContextHolder` with the authentication info.
 
 ```kotlin
 // auth/infrastructure/JwtAuthenticationFilter.kt
@@ -204,23 +204,23 @@ class JwtAuthenticationFilter(@Value("\${jwt.secret}") secret: String) : OncePer
                     .parseSignedClaims(token).payload.subject
                 val authentication = UsernamePasswordAuthenticationToken(userId, null, emptyList())
                 SecurityContextHolder.getContext().authentication = authentication
-            }   // 검증 실패 시 SecurityContext를 비워둔 채 다음 필터로 — SecurityConfig가 401/403 처리
+            }   // on verification failure, leave the SecurityContext empty and continue to the next filter — SecurityConfig handles the 401/403
         }
         filterChain.doFilter(request, response)
     }
 }
 ```
 
-Kotlin의 `runCatching { }`이 `try { } catch (e: Exception) { }`를 표현식으로 축약해준다 — 검증 실패를 "인증 안 됨" 상태로 조용히 넘기는 이 패턴에 잘 맞는다.
+Kotlin's `runCatching { }` collapses `try { } catch (e: Exception) { }` into an expression — it fits well with this pattern of silently letting a verification failure fall through to "unauthenticated" state.
 
 ---
 
-## SecurityConfig — 인증 필요/불필요 엔드포인트 구분
+## SecurityConfig — distinguishing endpoints that require auth from those that don't
 
-Guard/Filter는 클래스 단위가 아니라 **경로 패턴 단위**로 적용한다(Spring Security의 관용 방식). 메서드별 애노테이션 누락 위험을 피하려면 화이트리스트 경로를 최소한으로 유지한다.
+The Guard/Filter is applied **per path pattern**, not per class (the idiomatic Spring Security approach). To avoid the risk of missing an annotation on some method, keep the whitelist of paths to a minimum.
 
 ```kotlin
-// auth/infrastructure/SecurityConfig.kt — 실제 코드
+// auth/infrastructure/SecurityConfig.kt — actual code
 @Configuration
 class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilter) {
 
@@ -233,13 +233,13 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
                 authorize("/auth/sign-in", permitAll)
                 authorize("/auth/sign-up", permitAll)
                 authorize("/actuator/health/**", permitAll)
-                // STATELESS 세션 + OncePerRequestFilter 조합에서는 요청 처리 중 발생한 예외가
-                // 컨테이너의 /error 재전달(forward)로 이어지는데, JwtAuthenticationFilter는
-                // 기본적으로 error dispatch에서 재실행되지 않아 SecurityContext가 비어 401/400
-                // 대신 403으로 응답이 뒤바뀐다 — /error도 permitAll로 열어 원래 상태 코드가 그대로
-                // 전달되게 한다.
+                // With the STATELESS session + OncePerRequestFilter combination, an exception raised
+                // while handling a request leads to a container /error forward, and
+                // JwtAuthenticationFilter is not re-run on the error dispatch by default, so the
+                // SecurityContext ends up empty and the response flips from 401/400 to 403 instead —
+                // open /error as permitAll too so the original status code is passed through unchanged.
                 authorize("/error", permitAll)
-                authorize(anyRequest, authenticated)   // 그 외 모든 도메인 API는 인증 필요
+                authorize(anyRequest, authenticated)   // every other domain API requires authentication
             }
             addFilterBefore<UsernamePasswordAuthenticationFilter>(jwtAuthenticationFilter)
         }
@@ -248,14 +248,14 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
 }
 ```
 
-`anyRequest, authenticated`를 기본값으로 두고 화이트리스트만 명시적으로 열어주는 것이 root의 "메서드 레벨 적용은 누락 위험이 있다" 경고를 Spring Security 관용구로 구현한 것이다 — 새 엔드포인트를 추가할 때 실수로 인증을 빼먹을 수 없다.
+Defaulting to `anyRequest, authenticated` and explicitly opening only the whitelist is the Spring Security idiom that implements the root's warning that "method-level application carries a risk of omission" — you can't accidentally forget authentication when adding a new endpoint.
 
 ---
 
 ## Interface — AuthController
 
 ```kotlin
-// auth/interfaces/rest/AuthController.kt — 실제 코드
+// auth/interfaces/rest/AuthController.kt — actual code
 @RestController
 @RequestMapping("/auth")
 class AuthController(
@@ -274,28 +274,28 @@ class AuthController(
 }
 ```
 
-`SignUpRequest.password`는 `@field:Size(min = 8)`로 최소 길이를 검증한다 — 위반 시 `MethodArgumentNotValidException` → `GlobalExceptionHandler`가 400 `VALIDATION_FAILED`로 변환한다([error-handling.md](error-handling.md) 참고). `AuthController`는 `SecurityConfig`의 화이트리스트(`/auth/sign-in`, `/auth/sign-up`)에 있으므로 `Authentication` 파라미터를 받지 않는다.
+`SignUpRequest.password` validates a minimum length with `@field:Size(min = 8)` — a violation raises `MethodArgumentNotValidException`, which `GlobalExceptionHandler` converts to 400 `VALIDATION_FAILED` (see [error-handling.md](error-handling.md)). `AuthController` is on `SecurityConfig`'s whitelist (`/auth/sign-in`, `/auth/sign-up`), so it doesn't take an `Authentication` parameter.
 
 ---
 
-## 에러 처리 — INVALID_CREDENTIALS / USER_ID_ALREADY_EXISTS
+## Error handling — INVALID_CREDENTIALS / USER_ID_ALREADY_EXISTS
 
 ```kotlin
 // auth/domain/AuthException.kt
 sealed class AuthException(message: String, val code: AuthErrorCode) : RuntimeException(message)
 
 class InvalidCredentialsException :
-    AuthException("아이디 또는 비밀번호가 올바르지 않습니다.", AuthErrorCode.INVALID_CREDENTIALS)
+    AuthException("The user ID or password is incorrect.", AuthErrorCode.INVALID_CREDENTIALS)
 class UserIdAlreadyExistsException :
-    AuthException("이미 사용 중인 아이디입니다.", AuthErrorCode.USER_ID_ALREADY_EXISTS)
+    AuthException("This user ID is already in use.", AuthErrorCode.USER_ID_ALREADY_EXISTS)
 ```
 
-`common/GlobalExceptionHandler.kt`가 `InvalidCredentialsException` → 401, 그 외 `AuthException`(현재는 `UserIdAlreadyExistsException`만 해당) → 400으로 변환한다 — Account/Card BC의 `<Domain>NotFoundException` → 404, 그 외 `<Domain>Exception` → 400 패턴과 동일하다.
+`common/GlobalExceptionHandler.kt` converts `InvalidCredentialsException` → 401, and every other `AuthException` (currently only `UserIdAlreadyExistsException`) → 400 — the same pattern as the Account/Card BC's `<Domain>NotFoundException` → 404, other `<Domain>Exception` → 400.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — Filter 체인에서 인증 위치
-- [error-handling.md](error-handling.md) — 인증 실패 401 응답 형식
-- [repository-pattern.md](repository-pattern.md), [cqrs-pattern.md](cqrs-pattern.md) — Repository/Query 분리 원칙
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — where authentication sits in the filter chain
+- [error-handling.md](error-handling.md) — the 401 response format for auth failures
+- [repository-pattern.md](repository-pattern.md), [cqrs-pattern.md](cqrs-pattern.md) — Repository/Query separation principles

@@ -12,8 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Outbox에 쌓인 {@link AccountClosedEvent}(내부 Domain Event)를 처리한다. 외부 BC용 Integration Event({@code
- * account.closed.v1})를 같은 Outbox 트랜잭션에 적재한다 (AccountSuspendedEventHandler와 동일한 이유·구조).
+ * Handles the {@link AccountClosedEvent} (an internal Domain Event) accumulated in the Outbox. It
+ * writes the Integration Event for external BCs ({@code account.closed.v1}) into the same Outbox
+ * transaction (same reasoning/structure as AccountSuspendedEventHandler).
  */
 @Component
 @RequiredArgsConstructor
@@ -34,21 +35,22 @@ public class AccountClosedEventHandler implements OutboxEventHandler {
     public void handle(String payload) throws Exception {
         AccountClosedEvent event = objectMapper.readValue(payload, AccountClosedEvent.class);
 
-        // 외부 BC용 Integration Event(account.closed.v1)를 Outbox에 적재한다.
+        // Write the Integration Event for external BCs (account.closed.v1) into the Outbox.
         outboxWriter.save(
                 AccountClosedIntegrationEventV1.EVENT_TYPE,
                 new AccountClosedIntegrationEventV1(event.accountId(), event.closedAt()));
 
-        // 알림은 best-effort다(정지 핸들러와 동일한 이유 — Integration Event 중복 적재 방지).
+        // The notification is best-effort (same reason as the suspend handler — avoid duplicate
+        // Integration Event writes).
         try {
             notificationService.sendEmail(
                     event.accountId(),
                     "AccountClosed",
                     event.email(),
-                    "[Account] 계좌가 종료되었습니다",
-                    "계좌(" + event.accountId() + ")가 종료되었습니다.");
+                    "[Account] Your account has been closed",
+                    "Account (" + event.accountId() + ") has been closed.");
         } catch (Exception e) {
-            log.error("종료 알림 발송 실패", e);
+            log.error("Failed to send closure notification", e);
         }
     }
 }
