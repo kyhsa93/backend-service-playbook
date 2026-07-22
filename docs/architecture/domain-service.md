@@ -234,7 +234,7 @@ export abstract class RefundReasonClassifier {
 }
 ```
 
-The implementation (`infrastructure/refund-reason-classifier-impl.ts`) calls the Claude API with a JSON-schema-constrained response and falls back to a neutral, non-blocking result (`{ category: 'other', fraudRiskScore: 0 }`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Full code: `implementations/nestjs/examples/src/payment/application/service/refund-reason-classifier.ts`, `infrastructure/refund-reason-classifier-impl.ts`.
+The implementation (`infrastructure/refund-reason-classifier-impl.ts`) calls a self-hosted, open-source LLM (Ollama, running the lightweight `qwen2.5:1.5b` model — see `docker-compose.yml`'s `ollama`/`ollama-init` services) with a JSON-schema-constrained response, and falls back to a neutral, non-blocking result (`{ category: 'other', fraudRiskScore: 0 }`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Because this interface is defined "in the shape the Domain Service needs" rather than around a specific vendor's API, swapping it for Ollama (from a cloud LLM API in an earlier iteration) required no change to the Domain Service, the Application-layer interface, or any of their tests — exactly the point of the pattern. Full code: `implementations/nestjs/examples/src/payment/application/service/refund-reason-classifier.ts`, `infrastructure/refund-reason-classifier-impl.ts`.
 
 ---
 
