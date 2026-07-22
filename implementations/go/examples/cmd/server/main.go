@@ -231,15 +231,10 @@ func main() {
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
 	passwordHasher := auth.NewBcryptPasswordHasher()
 
-	// RefundReasonClassifier (a Technical Service, domain-service.md) — the API key is resolved
-	// once here (production: Secrets Manager; otherwise: ANTHROPIC_API_KEY) exactly like
-	// jwtSecret above, then injected into the real Claude-API-backed implementation.
-	anthropicAPIKey, err := config.LoadAnthropicAPIKey(context.Background(), secretService, os.Getenv("APP_ENV"))
-	if err != nil {
-		slog.Error("failed to load anthropic api key", "error", err)
-		os.Exit(1)
-	}
-	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(anthropicAPIKey, config.RefundClassifierModel())
+	// RefundReasonClassifier (a Technical Service, domain-service.md) — talks to a self-hosted
+	// Ollama instance (docker-compose.yml's ollama/ollama-init services), so unlike jwtSecret
+	// above there's no Secrets Manager lookup needed, just a plain base URL.
+	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(config.OllamaBaseURL(), config.RefundClassifierModel())
 
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)

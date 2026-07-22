@@ -1,12 +1,9 @@
 package config
 
-import (
-	"context"
-	"fmt"
-	"os"
-)
+import "os"
 
-const defaultRefundClassifierModel = "claude-opus-4-8"
+const defaultRefundClassifierModel = "qwen2.5:1.5b"
+const defaultOllamaBaseURL = "http://localhost:11434"
 
 // RefundClassifierModel returns the model id RefundReasonClassifierImpl uses, overridable via
 // REFUND_CLASSIFIER_MODEL. All raw env var access for this feature is encapsulated here (never
@@ -18,23 +15,16 @@ func RefundClassifierModel() string {
 	return defaultRefundClassifierModel
 }
 
-// LoadAnthropicAPIKey looks up the Anthropic API key from Secrets Manager only when env is
-// "production" — every other environment (development/test) uses the ANTHROPIC_API_KEY
-// environment variable directly, with no network call. Same APP_ENV-gating convention as
-// LoadJWTSecret (jwt.go); RefundReasonClassifierImpl (infrastructure/llm) never reads
-// ANTHROPIC_API_KEY or APP_ENV itself — main.go resolves the key here once at startup and
-// injects it.
-func LoadAnthropicAPIKey(ctx context.Context, secretService SecretService, env string) (string, error) {
-	if env != "production" {
-		if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
-			return v, nil
-		}
-		return "dev-anthropic-key", nil
+// OllamaBaseURL returns the base URL RefundReasonClassifierImpl talks to, overridable via
+// OLLAMA_BASE_URL. Ollama is self-hosted (see docker-compose.yml's ollama/ollama-init
+// services) — there's no API key to guard, unlike the Claude API this replaced. The base URL
+// is a plain, non-sensitive config value, so no Secrets Manager branch is needed here (compare
+// LoadJWTSecret in jwt.go); inside Docker Compose it resolves via the service name
+// (OLLAMA_BASE_URL is set to http://ollama:11434 on the app service), and defaults to
+// localhost for running outside Compose.
+func OllamaBaseURL() string {
+	if v := os.Getenv("OLLAMA_BASE_URL"); v != "" {
+		return v
 	}
-
-	apiKey, err := secretService.GetSecret(ctx, "app/anthropic")
-	if err != nil {
-		return "", fmt.Errorf("load anthropic api key: %w", err)
-	}
-	return apiKey, nil
+	return defaultOllamaBaseURL
 }
