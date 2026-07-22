@@ -1,18 +1,21 @@
-"""[16] no-cross-aggregate-reference: 같은 BC 안에서 한 Aggregate가 다른 Aggregate를 직접 참조 금지
-(domain-service.md)
+"""[16] no-cross-aggregate-reference: within the same BC, one Aggregate must not directly
+reference another Aggregate (domain-service.md)
 
-Payment BC는 `Payment`/`Refund` 두 Aggregate를 갖는 이 저장소의 유일한 예시다
-(layer-architecture.md "Domain Service" 절 참고) — `Refund`는 원 결제를 `payment_id: str`
-참조로만 알고, `Payment`는 자신에 대한 환불 시도를 전혀 모른다. 두 Aggregate 중 하나가
-상대 Aggregate 클래스를 필드/생성자 파라미터 타입으로 직접 갖게 되면 Aggregate 경계가
-무너진다 — 여러 Aggregate를 조율하는 판단은 Domain Service(`RefundEligibilityService`)의
-몫이어야 한다.
+The Payment BC is this repository's only example with two Aggregates, `Payment`/`Refund`
+(see the "Domain Service" section of layer-architecture.md) — `Refund` knows the original
+payment only via a `payment_id: str` reference, and `Payment` knows nothing at all about a
+refund attempt against it. If either Aggregate directly holds the other Aggregate's class
+as a field/constructor-parameter type, the Aggregate boundary breaks — the decision that
+coordinates multiple Aggregates must belong to a Domain Service
+(`RefundEligibilityService`).
 
-범위를 `src/payment/domain/{payment.py,refund.py}`로 고정한 이유: 이 저장소에서 실제로 두
-Aggregate가 공존하는 유일한 BC이기 때문이다(다른 BC는 단일 Aggregate). 새 다중 Aggregate
-BC가 생기면 이 규칙의 대상 쌍을 함께 확장해야 한다 — 일반화된 "모든 도메인에서 자동으로
-Aggregate 쌍을 추론"하는 방식은 어떤 클래스가 Aggregate Root인지(Entity/Value Object와
-구분)를 AST만으로 안정적으로 판별할 수 없어 오탐 위험이 크므로 선택하지 않았다.
+Why the scope is fixed to `src/payment/domain/{payment.py,refund.py}`: because this is
+the only BC in this repository where two Aggregates actually coexist (every other BC has a
+single Aggregate). If a new multi-Aggregate BC is added, this rule's target pairs must be
+extended together — a generalized approach of "automatically inferring Aggregate pairs in
+every domain" wasn't chosen, since AST alone can't reliably determine which class is an
+Aggregate Root (as distinct from an Entity/Value Object), carrying a high false-positive
+risk.
 """
 
 from __future__ import annotations
@@ -69,21 +72,22 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         try:
             tree = ast.parse(src, filename=actual_path)
         except SyntaxError as e:
-            result.add(failed(target_rel, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(target_rel, f"Failed to parse the file: {e}"))
             continue
 
         if _referenced_types(tree, own_class, forbidden_class):
             result.add(
                 failed(
                     target_rel,
-                    f"{own_class} Aggregate가 {forbidden_class} 클래스를 필드/생성자 파라미터 타입으로 직접"
-                    f" 참조함 — {forbidden_class}는 ID(예: payment_id: str)로만 참조해야 하고, 두 Aggregate를"
-                    " 조율하는 판단은 Domain Service(RefundEligibilityService)에 위치해야 함(domain-service.md)",
+                    f"The {own_class} Aggregate directly references the {forbidden_class} class as a"
+                    f" field/constructor-parameter type — {forbidden_class} must be referenced only by"
+                    " ID (e.g. payment_id: str), and the decision that coordinates the two Aggregates must"
+                    " live in a Domain Service (RefundEligibilityService) (domain-service.md)",
                 )
             )
         else:
             result.add(passed(f"{target_rel} (no-cross-aggregate-reference)"))
 
     if not found:
-        result.add(skipped("src/payment/domain/{payment.py,refund.py} 없음"))
+        result.add(skipped("src/payment/domain/{payment.py,refund.py} not found"))
     return result

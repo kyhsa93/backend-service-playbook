@@ -1,9 +1,11 @@
-"""[12] CQRS — application/query/ 는 쓰기용 Repository를 참조하지 않아야 함 (cqrs-pattern.md)
+"""[12] CQRS — application/query/ must never reference a write-capable Repository
+(cqrs-pattern.md)
 
-QueryHandler는 읽기 전용 Query 인터페이스(예: AccountQuery)에만 의존해야 한다. 쓰기용
-Repository(예: AccountRepository, save() 포함)를 그대로 주입받으면 컴파일/타입 상으로도
-쓰기 메서드에 접근 가능해져 CQRS 분리가 무의미해진다 — nestjs harness의
-evaluators/rules/cqrs-pattern.evaluator.ts와 동일한 취지를 이식한 규칙이다.
+A QueryHandler must depend only on a read-only Query interface (e.g. AccountQuery). If a
+write-capable Repository (e.g. AccountRepository, which includes save()) is injected
+as-is, a write method becomes accessible even at the compile/type level, making the CQRS
+separation meaningless — this rule ports the same intent as the nestjs harness's
+evaluators/rules/cqrs-pattern.evaluator.ts.
 """
 
 from __future__ import annotations
@@ -25,12 +27,12 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    "application/query/ 는 쓰기용 Repository를 참조하지 않아야 함"
-                    " — 읽기 전용 Query 인터페이스에만 의존(cqrs-pattern.md)",
+                    "application/query/ must never reference a write-capable Repository"
+                    " — it must depend only on a read-only Query interface (cqrs-pattern.md)",
                 )
             )
         else:
-            result.add(passed(f"{r} (Repository 미참조 확인)"))
+            result.add(passed(f"{r} (confirmed no Repository reference)"))
     if not found:
-        result.add(skipped("application/query/ 파일 없음"))
+        result.add(skipped("No application/query/ file"))
     return result

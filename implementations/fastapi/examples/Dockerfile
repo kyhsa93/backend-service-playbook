@@ -3,7 +3,7 @@ FROM python:3.12-slim AS build
 
 WORKDIR /app
 
-# 컴파일이 필요한 의존성(asyncpg 등)의 빌드 도구만 이 스테이지에 포함한다.
+# Only this stage includes build tools for dependencies that need compilation (e.g. asyncpg).
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -15,21 +15,21 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 빌드 스테이지에서 설치된 패키지만 복사 — gcc/libpq-dev는 최종 이미지에 없다.
+# Copy only the packages installed in the build stage — gcc/libpq-dev are absent from the final image.
 COPY --from=build /install /usr/local
 
 COPY main.py ./
 COPY src ./src
 
-# 컨테이너 안에서 루트로 실행하지 않는다.
+# Never run as root inside the container.
 RUN useradd --create-home appuser
 USER appuser
 
 EXPOSE 8000
 
-# curl/wget 미설치(slim 이미지) — 별도 패키지 설치 없이 Python 표준 라이브러리로 헬스체크한다.
+# curl/wget aren't installed (slim image) — health-check using the Python standard library, no extra package.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
 
-# exec form — uvicorn이 PID 1이 되어 SIGTERM을 즉시 수신한다.
+# exec form — uvicorn becomes PID 1 and receives SIGTERM immediately.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

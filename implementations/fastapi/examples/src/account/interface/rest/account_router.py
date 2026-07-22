@@ -27,11 +27,11 @@ from .schemas import (
     WithdrawRequest,
 )
 
-# Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
-# OutboxPoller/OutboxConsumer(`src/outbox/outbox_poller.py`/`outbox_consumer.py`)만의
-# 책임이고, 그 배선(eventType → 핸들러)은 `src/outbox/event_handlers.py`의
-# `build_event_handlers()`가 담당한다 — 이 라우터는 Account 자신의 라우트에만
-# 집중한다(domain-events.md 참고).
+# Publishing/receiving Outbox → SQS is the sole responsibility of the independently,
+# periodically running OutboxPoller/OutboxConsumer
+# (`src/outbox/outbox_poller.py`/`outbox_consumer.py`), and their wiring (eventType →
+# handler) is handled by `build_event_handlers()` in `src/outbox/event_handlers.py` — this
+# router focuses only on Account's own routes (see domain-events.md).
 
 router = APIRouter(prefix="/accounts", tags=["Account"], dependencies=[Depends(get_current_user)])
 

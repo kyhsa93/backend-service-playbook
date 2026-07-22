@@ -16,24 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 class CardIntegrationEventController:
-    """외부 BC(Account)가 발행한 Integration Event를 수신하는 Interface 입력 어댑터.
+    """An Interface input adapter that receives an Integration Event published by an
+    external BC (Account).
 
-    HTTP Router와 동일한 위치(interface/)의 입력 경계다. 자기 도메인의 유스케이스(Command
-    Handler)만 호출하고, 예외는 그대로 전파해 OutboxConsumer가 메시지를 삭제하지 않고
-    재시도(→ DLQ)를 담당하게 한다.
+    An input boundary at the same location (interface/) as an HTTP Router. It only calls
+    its own domain's use case (a Command Handler), and lets exceptions propagate as-is so
+    OutboxConsumer doesn't delete the message and instead retries it (→ DLQ).
     """
 
     def __init__(self, repo: CardRepository) -> None:
         self._repo = repo
 
     async def on_account_suspended(self, payload: dict) -> None:
-        logger.info("account.suspended.v1 수신: account_id=%s", payload["account_id"])
+        logger.info("Received account.suspended.v1: account_id=%s", payload["account_id"])
         await SuspendCardsByAccountHandler(self._repo).execute(
             SuspendCardsByAccountCommand(account_id=payload["account_id"])
         )
 
     async def on_account_closed(self, payload: dict) -> None:
-        logger.info("account.closed.v1 수신: account_id=%s", payload["account_id"])
+        logger.info("Received account.closed.v1: account_id=%s", payload["account_id"])
         await CancelCardsByAccountHandler(self._repo).execute(
             CancelCardsByAccountCommand(account_id=payload["account_id"])
         )

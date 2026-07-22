@@ -8,8 +8,9 @@ _SALT_ROUNDS = 12
 
 
 class BcryptPasswordHasher(PasswordHasher):
-    """bcrypt 기반 구현체. bcrypt.hashpw/checkpw는 동기·CPU-bound(salt round 12 기준 수백ms)라
-    이벤트 루프를 직접 막지 않도록 asyncio.to_thread로 워커 스레드에서 실행한다.
+    """A bcrypt-based implementation. Since bcrypt.hashpw/checkpw are synchronous and
+    CPU-bound (hundreds of ms at 12 salt rounds), they are run in a worker thread via
+    asyncio.to_thread so they don't block the event loop directly.
     """
 
     async def hash(self, plain_password: str) -> str:

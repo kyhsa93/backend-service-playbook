@@ -9,13 +9,16 @@ from ..service.notification_service import NotificationService
 
 
 class AccountSuspendedEventHandler:
-    """내부 Domain Event(AccountSuspended)를 수신해 후속 처리를 수행하는 Application EventHandler.
+    """An Application EventHandler that receives the internal Domain Event
+    (AccountSuspended) and performs follow-up processing.
 
-    application/event/의 EventHandler는 OutboxWriter를 직접 사용할 수 있는 유일한 예외로,
-    여기서 외부 BC(Card 등)용 Integration Event(account.suspended.v1)로 변환해 같은 세션의
-    Outbox에 적재한다(Aggregate가 Integration Event를 직접 만들지 않는다 — 변환 지점은 항상
-    EventHandler다). 이 행은 다음 OutboxPoller tick(최대 1초 뒤)에 SQS로 발행되고, 그 뒤
-    OutboxConsumer가 수신해 Card BC의 반응 핸들러를 호출한다.
+    An EventHandler in application/event/ is the sole exception allowed to use OutboxWriter
+    directly — here it converts the event into an Integration Event (account.suspended.v1)
+    for external BCs (Card, etc.) and loads it into the Outbox of the same session (an
+    Aggregate never creates an Integration Event directly — the conversion point is always
+    the EventHandler). This row is published to SQS on the next OutboxPoller tick (up to 1
+    second later), after which OutboxConsumer receives it and calls the Card BC's reaction
+    handler.
     """
 
     def __init__(self, notification_service: NotificationService, outbox_writer: OutboxWriter) -> None:
@@ -38,6 +41,7 @@ class AccountSuspendedEventHandler:
             ]
         )
 
-        # 알림은 best-effort다 — NotificationService.notify()가 내부에서 모든 예외를 삼키므로
-        # 여기서 실패해도 위 Integration Event 적재나 이 핸들러 자체는 영향받지 않는다.
+        # The notification is best-effort — NotificationService.notify() swallows every
+        # exception internally, so a failure here doesn't affect the Integration Event load
+        # above or this handler itself.
         await self._notification_service.notify(event, payload["outbox_event_id"])

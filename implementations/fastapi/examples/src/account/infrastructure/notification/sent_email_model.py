@@ -14,7 +14,8 @@ class SentEmailModel(Base):
     recipient: Mapped[str]
     subject: Mapped[str]
     ses_message_id: Mapped[str]
-    # Outbox 행의 event_id — 이 이벤트가 이미 처리됐는지 판단하는 Ledger 키(domain-events.md
-    # "이벤트 핸들러 멱등성" 참고). 마이그레이션 이전에 적재된 행과의 하위 호환을 위해 nullable.
+    # The Outbox row's event_id — the Ledger key used to decide whether this event has
+    # already been processed (see "Event Handler Idempotency" in domain-events.md).
+    # Nullable for backward compatibility with rows loaded before this migration.
     outbox_event_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
     sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

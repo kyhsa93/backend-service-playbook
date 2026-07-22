@@ -1,4 +1,4 @@
-"""[2] ABC Repository — domain/ 에만 위치"""
+"""[2] The ABC Repository — must be located only in domain/"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         if "/domain/" in norm(f):
             result.add(passed(f"{r} (Repository ABC)"))
         else:
-            result.add(failed(r, "ABC Repository는 domain/ 패키지 안에 있어야 함"))
+            result.add(failed(r, "The ABC Repository must be inside the domain/ package"))
     if not found:
-        result.add(skipped("ABC Repository 정의 없음"))
+        result.add(skipped("No ABC Repository is defined"))
     return result

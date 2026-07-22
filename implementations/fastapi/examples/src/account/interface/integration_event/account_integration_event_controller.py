@@ -10,12 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class AccountIntegrationEventController:
-    """외부 BC(Payment)가 발행한 Integration Event를 수신하는 Interface 입력 어댑터.
+    """An Interface input adapter that receives an Integration Event published by an
+    external BC (Payment).
 
-    Card BC의 card_integration_event_controller.py(Account 이벤트 구독)와 동일한 위치·
-    역할이다 — Account가 Payment를 Adapter로 조회하지 않는 것처럼, Payment도 Account를
-    직접 참조하지 않는다. 자기 도메인의 유스케이스(Command Handler)만 호출하고, 예외는
-    그대로 전파해 OutboxConsumer가 메시지를 삭제하지 않고 재시도(→ DLQ)를 담당하게 한다.
+    The same location and role as the Card BC's card_integration_event_controller.py
+    (which subscribes to Account events) — just as Account never queries Payment via an
+    Adapter, Payment never references Account directly either. It only calls its own
+    domain's use case (a Command Handler), and lets exceptions propagate as-is so
+    OutboxConsumer doesn't delete the message and instead retries it (→ DLQ).
     """
 
     def __init__(self, repo: AccountRepository) -> None:
@@ -23,7 +25,7 @@ class AccountIntegrationEventController:
 
     async def on_payment_completed(self, payload: dict) -> None:
         logger.info(
-            "payment.completed.v1 수신: payment_id=%s account_id=%s", payload["payment_id"], payload["account_id"]
+            "Received payment.completed.v1: payment_id=%s account_id=%s", payload["payment_id"], payload["account_id"]
         )
         await WithdrawByPaymentHandler(self._repo).execute(
             WithdrawByPaymentCommand(
@@ -33,7 +35,7 @@ class AccountIntegrationEventController:
 
     async def on_payment_cancelled(self, payload: dict) -> None:
         logger.info(
-            "payment.cancelled.v1 수신: payment_id=%s account_id=%s", payload["payment_id"], payload["account_id"]
+            "Received payment.cancelled.v1: payment_id=%s account_id=%s", payload["payment_id"], payload["account_id"]
         )
         await DepositByPaymentHandler(self._repo).execute(
             DepositByPaymentCommand(
@@ -42,7 +44,9 @@ class AccountIntegrationEventController:
         )
 
     async def on_refund_approved(self, payload: dict) -> None:
-        logger.info("refund.approved.v1 수신: refund_id=%s account_id=%s", payload["refund_id"], payload["account_id"])
+        logger.info(
+            "Received refund.approved.v1: refund_id=%s account_id=%s", payload["refund_id"], payload["account_id"]
+        )
         await DepositByPaymentHandler(self._repo).execute(
             DepositByPaymentCommand(
                 account_id=payload["account_id"], amount=payload["amount"], reference_id=payload["refund_id"]

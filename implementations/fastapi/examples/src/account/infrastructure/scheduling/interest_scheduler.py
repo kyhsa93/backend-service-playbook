@@ -15,14 +15,16 @@ GROUP_ID = "account.interest"
 
 
 def start_interest_scheduler(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIOScheduler:
-    """정기 이자 지급 배치의 Scheduler(Infrastructure 레이어). scheduling.md "Scheduler 역할
-    분리" 원칙대로, 이 Cron 핸들러는 Task를 enqueue하는 것 말고는 아무것도 하지 않는다 —
-    실제 이자 계산·지급은 TaskConsumer가 수신해 호출하는
-    AccountTaskController.apply_daily_interest()(→ ApplyDailyInterestHandler)의 몫이다.
+    """The Scheduler (Infrastructure layer) for the regular interest-payment batch.
+    Following scheduling.md's "Separating the Scheduler's role" principle, this Cron
+    handler does nothing but enqueue a Task — the actual interest calculation/payment is
+    the job of AccountTaskController.apply_daily_interest() (→ ApplyDailyInterestHandler),
+    which TaskConsumer receives and calls.
 
-    Cron tick에는 자연스러운 DB 트랜잭션이 없으므로, `TaskOutboxWriter.enqueue()` 단일
-    row insert 자체가 원자성을 만든다(scheduling.md "Task Outbox 패턴"). 날짜 기반
-    deduplication_id로 여러 인스턴스가 같은 날 동시에 tick해도 1건만 적재되게 한다.
+    A Cron tick has no natural DB transaction, so the single row insert of
+    `TaskOutboxWriter.enqueue()` itself provides atomicity (see "The Task Outbox pattern" in
+    scheduling.md). A date-based deduplication_id ensures only 1 row gets loaded even if
+    multiple instances tick on the same day at the same time.
     """
     scheduler = AsyncIOScheduler()
 
@@ -38,9 +40,9 @@ def start_interest_scheduler(session_factory: async_sessionmaker[AsyncSession]) 
                     deduplication_id=f"{TASK_TYPE}-{today.isoformat()}",
                 )
                 await session.commit()
-        except Exception:  # noqa: BLE001 - Cron 예외는 명시적으로 로깅해야 한다(scheduling.md)
-            logger.exception("정기 이자 지급 Task enqueue 실패")
-            # 예외를 재throw하지 않는다 — 다음 tick(다음날)에서 재시도된다.
+        except Exception:  # noqa: BLE001 - a Cron exception must be logged explicitly (scheduling.md)
+            logger.exception("Failed to enqueue the regular interest-payment Task")
+            # Not re-raised — it will be retried on the next tick (the next day).
 
     scheduler.start()
     return scheduler

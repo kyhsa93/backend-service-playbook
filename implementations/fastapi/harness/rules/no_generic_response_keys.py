@@ -1,13 +1,16 @@
-"""[26] no-generic-response-keys: 목록 응답 Pydantic 모델의 리스트 필드명이 범용 키(result/data/items)면
-안 됨, 도메인 객체명 복수형이어야 함 (api-response.md)
+"""[26] no-generic-response-keys: a list-query response Pydantic model's list field name
+must never be a generic key (result/data/items) — it must be the plural of the domain
+object name (api-response.md)
 
-api-response.md "목록 조회 응답 형식"은 목록 응답의 키 이름을 **도메인 객체명 복수형**
-(`transactions`, `accounts`, `payments`)으로 못박고, `result`/`data`/`items` 같은 범용
-키는 금지한다 — 실제 예시: `GetTransactionsResponse.transactions`, `GetPaymentsResponse.payments`.
+api-response.md's "List-query response shape" pins the list-response key name down to
+**the plural of the domain object name** (`transactions`, `accounts`, `payments`), and
+forbids a generic key such as `result`/`data`/`items` — actual examples:
+`GetTransactionsResponse.transactions`, `GetPaymentsResponse.payments`.
 
-`interface/rest/`의 Pydantic `BaseModel` 서브클래스 중 `list[...]`/`List[...]` 타입
-필드만 대상으로 한다(단건 응답 필드는 이 규칙의 대상이 아니다 — 목록 응답 형식 규칙이므로).
-필드명이 정확히 `result`/`data`/`items`(대소문자 무관)면 위반이다.
+Only fields of type `list[...]`/`List[...]` on a Pydantic `BaseModel` subclass in
+`interface/rest/` are targeted (a single-item response field isn't targeted by this rule —
+since this is a list-response-shape rule). It's a violation if the field name is exactly
+`result`/`data`/`items` (case-insensitive).
 """
 
 from __future__ import annotations
@@ -56,7 +59,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
             found = True
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         checked_any = False
@@ -80,12 +83,12 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    "목록 응답 필드명이 범용 키(result/data/items)임 — 도메인 객체명 복수형을"
-                    f" 사용해야 함(api-response.md): {', '.join(violations)}",
+                    "The list-response field name is a generic key (result/data/items) — the"
+                    f" plural of the domain object name must be used (api-response.md): {', '.join(violations)}",
                 )
             )
         else:
             result.add(passed(f"{r} (no-generic-response-keys)"))
     if not found:
-        result.add(skipped("interface/rest/ 목록 응답 Pydantic 모델 없음"))
+        result.add(skipped("No list-response Pydantic model in interface/rest/"))
     return result

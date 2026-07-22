@@ -1,16 +1,18 @@
-"""[19] scheduler-in-infrastructure-only: 스케줄링/백그라운드 루프는 infrastructure/에만 배치
-(scheduling.md)
+"""[19] scheduler-in-infrastructure-only: scheduling/a background loop is placed only in
+infrastructure/ (scheduling.md)
 
-APScheduler(`AsyncIOScheduler`, `@scheduler.scheduled_job`)나 Celery(`@app.task`, `@shared_task`),
-또는 반복 실행을 의도한 `asyncio.create_task` 기반 손으로 짠 폴링 루프는 Scheduler가
-"비즈니스 로직을 직접 실행하지 않고 트리거 역할만 한다"는 scheduling.md 원칙에 따라
-`infrastructure/`(또는 이미 infrastructure에 준하는 최상위 `src/outbox/`)에만 위치해야 한다
-— `domain/`, `application/`에 스케줄링 데코레이터를 직접 걸지 않는다.
+APScheduler (`AsyncIOScheduler`, `@scheduler.scheduled_job`) or Celery (`@app.task`,
+`@shared_task`), or a hand-written polling loop based on `asyncio.create_task` intended to
+run repeatedly, must be located only in `infrastructure/` (or the top-level
+`src/outbox/`, which is already treated as equivalent to infrastructure) — following
+scheduling.md's principle that the Scheduler "only serves as a trigger, without directly
+executing business logic." A scheduling decorator is never hung directly on `domain/` or
+`application/`.
 
-`src/outbox/outbox_poller.py`의 `asyncio.create_task()` + `while True: ... await
-asyncio.sleep(1)` 루프는 이 규칙의 예외가 아니라 애초에 대상 밖이다 — `src/outbox/`는
-도메인 4레이어 밖의 공유 인프라 디렉토리로 이미 infrastructure에 준하는 위치로 취급한다
-(shared-modules.md).
+The `asyncio.create_task()` + `while True: ... await asyncio.sleep(1)` loop in
+`src/outbox/outbox_poller.py` isn't an exception to this rule — it's simply out of scope
+from the start, since `src/outbox/` is a shared-infrastructure directory outside the 4
+domain layers, already treated as equivalent to infrastructure (shared-modules.md).
 """
 
 from __future__ import annotations
@@ -43,13 +45,14 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    "domain/·application/ 에 스케줄링/백그라운드 루프(APScheduler/Celery/"
-                    "asyncio.create_task)를 직접 사용함 — Scheduler는 infrastructure/에만 위치해야"
-                    " 하며, 비즈니스 로직은 Application Handler 호출로 위임해야 함(scheduling.md)",
+                    "domain/·application/ directly uses a scheduling/background loop"
+                    " (APScheduler/Celery/asyncio.create_task) — the Scheduler must be"
+                    " located only in infrastructure/, and business logic must be delegated"
+                    " to an Application Handler call (scheduling.md)",
                 )
             )
         else:
             result.add(passed(f"{r} (scheduler-in-infrastructure-only)"))
     if not found:
-        result.add(skipped("domain/·application/ Python 파일 없음"))
+        result.add(skipped("No Python file in domain/·application/"))
     return result

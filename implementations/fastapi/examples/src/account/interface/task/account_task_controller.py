@@ -5,18 +5,20 @@ from ...application.command.apply_daily_interest_handler import ApplyDailyIntere
 
 
 class AccountTaskController:
-    """Task Controller — Interface 레이어의 입력 어댑터(scheduling.md). HTTP Router가 HTTP
-    요청을 받아 Command Handler에 위임하듯, 이 클래스는 TaskConsumer가 SQS에서 수신한
-    Task 메시지를 받아 Command Service(ApplyDailyInterestHandler)를 호출한다.
+    """A Task Controller — an input adapter of the Interface layer (scheduling.md). Just as
+    an HTTP Router receives an HTTP request and delegates to a Command Handler, this class
+    receives the Task message TaskConsumer received from SQS and calls the Command Service
+    (ApplyDailyInterestHandler).
 
-    로직 없이 위임만 한다 — 조건 분기·비즈니스 규칙을 넣지 않는다. 예외를 그대로 던진다
-    (catch하지 않는다) — TaskConsumer가 재시도/DLQ 여부를 결정해야 하므로 여기서 삼키면
-    안 된다(scheduling.md "Task Controller — Interface 레이어" 원칙).
+    Only delegates, with no logic — no conditional branching or business rules are added
+    here. Exceptions are thrown as-is (never caught) — since TaskConsumer must decide
+    retry/DLQ, they must never be swallowed here (the "Task Controller — Interface layer"
+    principle in scheduling.md).
     """
 
     def __init__(self, handler: ApplyDailyInterestHandler) -> None:
         self._handler = handler
 
     async def apply_daily_interest(self, payload: dict) -> None:
-        del payload  # 이 Task는 페이로드가 없다(scheduler가 {}로 enqueue) — 그날 날짜 기준으로 실행한다
+        del payload  # this Task has no payload (the scheduler enqueues it with {}) — it runs based on the current date
         await self._handler.execute(InterestConfig().daily_rate)

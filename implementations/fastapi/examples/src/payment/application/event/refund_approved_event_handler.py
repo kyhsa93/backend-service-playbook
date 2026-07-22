@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 class RefundApprovedEventHandler:
-    """내부 Domain Event(RefundApproved)를 수신해 외부 BC용 Integration Event
-    (refund.approved.v1)로 변환해 Outbox에 적재한다. Account BC가 이를 구독해
-    환불 크레딧(deposit)을 실행한다.
+    """Receives the internal Domain Event (RefundApproved), converts it into an
+    Integration Event for external BCs (refund.approved.v1), and loads it into the Outbox.
+    The Account BC subscribes to this and executes the refund credit (deposit).
     """
 
     def __init__(self, outbox_writer: OutboxWriter) -> None:
@@ -19,7 +19,7 @@ class RefundApprovedEventHandler:
 
     async def handle(self, payload: dict) -> None:
         logger.info(
-            "환불 승인됨: refund_id=%s payment_id=%s account_id=%s",
+            "Refund approved: refund_id=%s payment_id=%s account_id=%s",
             payload["refund_id"],
             payload["payment_id"],
             payload["account_id"],

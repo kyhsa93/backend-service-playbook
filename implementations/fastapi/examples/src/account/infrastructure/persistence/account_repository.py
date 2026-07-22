@@ -27,7 +27,7 @@ class AccountModel(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
-    # 정기 이자 지급 배치의 Level 1 멱등성 마커 — Account.apply_interest() 참고.
+    # The Level 1 idempotency marker for the regular interest-payment batch — see Account.apply_interest().
     last_interest_paid_at: Mapped[date | None] = mapped_column(nullable=True, default=None)
 
 
@@ -40,16 +40,19 @@ class TransactionModel(Base):
     amount: Mapped[int]
     currency: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    # Payment BC의 Integration Event 반응이 남긴 거래를 상관관계 짓고(payment_id/refund_id),
-    # 동일 (reference_id, type) 조합의 재처리를 막는 Level 2 Ledger 키로도 쓰인다
-    # (has_transaction_with_reference 참고). 사용자가 직접 요청한 입출금에는 없다(nullable).
+    # Correlates a transaction left by a reaction to the Payment BC's Integration Event
+    # (payment_id/refund_id), and also serves as the Level 2 Ledger key that prevents
+    # reprocessing the same (reference_id, type) combination (see
+    # has_transaction_with_reference). Absent (nullable) for a deposit/withdrawal the user
+    # requested directly.
     reference_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
 
 
 class SqlAlchemyAccountRepository(AccountRepository):
     def __init__(self, session: AsyncSession) -> None:
-        # 지연 import — outbox_model.py가 이 모듈의 Base를 import하므로, 모듈 최상단에서
-        # OutboxWriter를 import하면 순환 참조가 발생한다 (module-pattern.md "Python의 순환 참조" 참조).
+        # deferred import — since outbox_model.py imports this module's Base, importing
+        # OutboxWriter at the module's top level would create a circular import (see
+        # "Python's circular imports" in module-pattern.md).
         from ....outbox.outbox_writer import OutboxWriter
 
         self._session = session

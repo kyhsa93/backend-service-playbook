@@ -132,8 +132,8 @@ async def get_payments(
     take: int = 20,
     query: PaymentQuery = Depends(_query_repo),
 ) -> GetPaymentsResponse:
-    # 인증된 요청자 본인의 결제 내역만 조회한다 — 클라이언트가 지정한 ownerId 쿼리
-    # 파라미터는 받지 않는다(이 저장소의 어떤 엔드포인트도 그렇게 하지 않는다).
+    # Looks up only the authenticated requester's own payment history — a client-specified
+    # ownerId query parameter is never accepted (no endpoint in this repository does that).
     result = await GetPaymentsHandler(query).execute(
         GetPaymentsQuery(requester_id=current_user.user_id, page=page, take=take)
     )
@@ -164,9 +164,10 @@ async def request_refund(
     payment_repo: PaymentRepository = Depends(_repo),
     refund_repo: RefundRepository = Depends(_refund_repo),
 ) -> RefundResponse:
-    # 환불 거부는 도메인 관점에서 유효한 상태 전이다 — RequestRefundHandler는 거부 시에도
-    # 예외를 던지지 않고 REJECTED 상태의 Refund를 반환하므로, 이 엔드포인트는 승인/거부
-    # 모두 201 + status 필드로 응답한다(4xx가 아니다).
+    # A refund rejection is a valid state transition from a domain point of view —
+    # RequestRefundHandler never throws an exception even on rejection, returning a Refund
+    # with REJECTED status instead, so this endpoint responds with 201 + a status field for
+    # both approval and rejection (never a 4xx).
     refund = await RequestRefundHandler(payment_repo, refund_repo).execute(
         RequestRefundCommand(
             requester_id=current_user.user_id, payment_id=payment_id, amount=body.amount, reason=body.reason

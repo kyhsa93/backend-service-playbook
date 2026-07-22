@@ -4,14 +4,15 @@ from .card import Card
 
 
 class CardQuery(ABC):
-    """읽기 전용 인터페이스 — Query Handler 전용. `save_card()` 등 쓰기 메서드를 노출하지 않는다
-    (cqrs-pattern.md 참고). `CardRepository`(쓰기 모델)와 계약을 공유하지만 별도 타입이며,
-    Query Handler는 반드시 이 타입으로만 의존해야 한다(account 도메인의 AccountQuery와 동일).
+    """A read-only interface — for the Query Handler only. Never exposes a write method
+    such as `save_card()` (see cqrs-pattern.md). Shares its contract with `CardRepository`
+    (the write model) but is a separate type — a Query Handler must always depend only on
+    this type (the same as the account domain's AccountQuery).
 
-    조회 메서드는 단일 `find_cards(...)`로 통일한다(account 도메인의 find_accounts,
-    payment 도메인의 find_payments와 동일한 컨벤션) — 과거 find_by_id/find_by_account로
-    나뉘어 있던 것을 단일 메서드+선택적 필터 키워드 인자로 통일했다. `take=1`로 단건 조회를
-    표현한다.
+    The lookup method is unified into a single `find_cards(...)` (the same convention as the
+    account domain's find_accounts and the payment domain's find_payments) — what used to be
+    split into find_by_id/find_by_account has been unified into a single method + optional
+    filter keyword arguments. A single-item lookup is expressed with `take=1`.
     """
 
     @abstractmethod

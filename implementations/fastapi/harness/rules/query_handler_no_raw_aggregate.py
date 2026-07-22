@@ -1,18 +1,21 @@
-"""[27] query-handler-no-raw-aggregate: Query Handler의 execute()가 도메인 Aggregate를 그대로
-반환하면 안 됨, 전용 Result 타입을 반환해야 함 (api-response.md "Result 객체")
+"""[27] query-handler-no-raw-aggregate: a Query Handler's execute() must never return the
+domain Aggregate as-is — it must return a dedicated Result type (api-response.md "The
+Result object")
 
-api-response.md는 Query Handler(`GetAccountHandler` 등)가 도메인 `Account` 객체를 그대로
-반환하지 않고 `application/query/result.py`의 전용 Result dataclass로 변환해 반환해야
-한다고 못박는다 — Aggregate는 비즈니스 로직·내부 이벤트 버퍼(`_events`)를 포함해 직렬화하면
-내부 구현이 노출된다.
+api-response.md pins down that a Query Handler (`GetAccountHandler`, etc.) must not
+return the domain `Account` object as-is, and must convert it into a dedicated Result
+dataclass from `application/query/result.py` before returning — an Aggregate includes
+business logic and an internal event buffer (`_events`), so serializing it exposes
+internal implementation.
 
-특정 도메인 이름(Account/Card/Payment/Refund)을 하드코딩하지 않는다 — harness는 특정
-업무 도메인 지식을 전제로 삼지 않는다(harness.md). 대신 구조로 판별한다: `execute()`의
-반환 타입 주석에 쓰인 이름이 **`domain` 세그먼트를 포함한 모듈에서 import된 이름**이면
-"raw Aggregate 반환"으로 본다 — 이 저장소의 관례상 Result 타입은 항상 같은 패키지의
-`.result`(또는 `result`로 끝나는 상대 모듈)에서 import되고, Aggregate/Enum 등은
-`domain/` 하위 모듈에서 import되기 때문이다. `list[X]`, `X | None` 등으로 감싸도 내부
-이름을 추출해 동일하게 검사한다.
+It never hardcodes a specific domain name (Account/Card/Payment/Refund) — the harness
+never presumes specific business-domain knowledge (harness.md). Instead it determines this
+structurally: if the name used in `execute()`'s return-type annotation is **a name
+imported from a module containing the `domain` segment**, it's treated as "returning a raw
+Aggregate" — by this repository's convention, a Result type is always imported from the
+same package's `.result` (or a relative module ending in `result`), while an
+Aggregate/Enum, etc. is imported from a submodule of `domain/`. Even when wrapped in
+`list[X]`, `X | None`, etc., the inner name is extracted and checked the same way.
 """
 
 from __future__ import annotations
@@ -76,7 +79,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
             found = True
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         domain_names = _imported_from_domain(tree)
@@ -104,13 +107,13 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    "Query Handler의 execute()가 domain/ 에서 import한 타입을 그대로 반환함 —"
-                    " application/query/result.py의 전용 Result 타입으로 변환해 반환해야 함"
-                    f"(api-response.md): {'; '.join(violations)}",
+                    "The Query Handler's execute() returns a type imported from domain/ as-is —"
+                    " it must be converted into a dedicated Result type from"
+                    f" application/query/result.py before returning (api-response.md): {'; '.join(violations)}",
                 )
             )
         else:
             result.add(passed(f"{r} (query-handler-no-raw-aggregate)"))
     if not found:
-        result.add(skipped("application/query/ Handler 없음"))
+        result.add(skipped("No Handler in application/query/"))
     return result

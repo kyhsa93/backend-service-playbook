@@ -23,16 +23,19 @@ TaskHandlerFn = Callable[[dict], Awaitable[None]]
 
 
 def build_task_handlers(session: AsyncSession) -> dict[str, TaskHandlerFn]:
-    """taskType(SQS `MessageAttributes.taskType`) → 처리 함수 dict를 조립한다.
+    """Assembles the taskType (SQS `MessageAttributes.taskType`) → processing-function
+    dict.
 
-    TaskConsumer가 Task 큐에서 수신한 메시지를 이 dict로 라우팅한다. Domain Event의
-    `build_event_handlers()`(src/outbox/event_handlers.py, 1:N 팬아웃)와 달리 Task는
-    taskType당 정확히 하나의 핸들러만 가진다(domain-events.md "Task Queue vs Domain Event"
-    표의 "핸들러 수" 행) — 그래서 값 타입이 list가 아니라 단일 Callable이다.
+    TaskConsumer routes the message it receives from the Task queue through this dict.
+    Unlike the Domain Event's `build_event_handlers()` (src/outbox/event_handlers.py, a
+    1:N fan-out), a Task has exactly one handler per taskType (see the "Number of
+    handlers" row of the "Task Queue vs Domain Event" table in domain-events.md) — so the
+    value type is a single Callable, not a list.
 
-    세션은 호출자(TaskConsumer)가 메시지 하나(단위 작업)당 새로 열어 넘긴다 — 이 함수
-    자체는 매 호출마다 새 Repository/Adapter/Handler 인스턴스를 조립할 뿐, 세션의
-    생명주기를 직접 관리하지 않는다(event_handlers.py와 동일한 원칙).
+    The session is opened fresh and passed in by the caller (TaskConsumer) per message (a
+    unit of work) — this function itself only assembles new Repository/Adapter/Handler
+    instances on every call, and doesn't manage the session's lifecycle directly (the same
+    principle as event_handlers.py).
     """
     account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
     card_repo: CardRepository = SqlAlchemyCardRepository(session)

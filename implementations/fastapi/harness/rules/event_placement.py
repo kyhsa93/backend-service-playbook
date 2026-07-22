@@ -20,27 +20,29 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             if "/application/event/" in fn:
                 result.add(passed(r))
             else:
-                result.add(failed(r, "이벤트 핸들러는 application/event/ 에 있어야 함"))
+                result.add(failed(r, "An event handler must be in application/event/"))
 
         if name.endswith("_integration_event.py"):
             found = True
-            # 디렉토리는 underscore(snake_case)를 쓴다 — 하이픈은 유효한 Python 패키지/모듈
-            # 이름이 아니라서(`from x.integration-event import y`는 SyntaxError) 이 저장소의
-            # 다른 application/ 하위 패키지(command/event/query)와 동일한 규칙을 따른다.
+            # The directory uses underscores (snake_case) — a hyphen isn't a valid Python
+            # package/module name (`from x.integration-event import y` is a SyntaxError),
+            # so it follows the same rule as this repository's other application/
+            # subpackages (command/event/query).
             if "/application/integration_event/" in fn:
                 result.add(passed(r))
             else:
-                result.add(failed(r, "integration event는 application/integration_event/ 에 있어야 함"))
+                result.add(failed(r, "An integration event must be in application/integration_event/"))
 
         if name.endswith("_integration_event_controller.py"):
             found = True
-            # 외부 BC가 발행한 Integration Event를 수신하는 소비자 측 어댑터. HTTP Router와
-            # 동일한 위치(interface/)의 입력 경계이므로 interface/integration_event/ 에 있어야 함.
+            # A consumer-side adapter that receives an Integration Event published by an
+            # external BC. Since it's an input boundary at the same location (interface/)
+            # as an HTTP Router, it must be in interface/integration_event/.
             if "/interface/integration_event/" in fn:
                 result.add(passed(r))
             else:
-                result.add(failed(r, "integration event controller는 interface/integration_event/ 에 있어야 함"))
+                result.add(failed(r, "An integration event controller must be in interface/integration_event/"))
 
     if not found:
-        result.add(skipped("이벤트 핸들러 없음"))
+        result.add(skipped("No event handler"))
     return result

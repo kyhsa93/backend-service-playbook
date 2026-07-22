@@ -44,9 +44,10 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    # Payment BC의 Integration Event 반응(withdraw-by-payment/deposit-by-payment)이 남긴
-    # 거래를 상관관계 짓고, 동일 (reference_id, type) 조합의 재처리를 막는 Level 2 Ledger
-    # 키로도 쓰인다(account_repository.py의 has_transaction_with_reference 참고).
+    # Correlates a transaction left by the Payment BC's Integration Event reactions
+    # (withdraw-by-payment/deposit-by-payment), and also serves as the Level 2 Ledger key
+    # that prevents reprocessing the same (reference_id, type) combination (see
+    # has_transaction_with_reference in account_repository.py).
     op.add_column("transactions", sa.Column("reference_id", sa.String(), nullable=True))
     op.create_index(op.f("ix_transactions_reference_id"), "transactions", ["reference_id"], unique=False)
 

@@ -1,14 +1,14 @@
-# 컨테이너 이미지
+# Container Image
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/container.md](../../../../docs/architecture/container.md)
+> Framework-agnostic principles: [../../../../docs/architecture/container.md](../../../../docs/architecture/container.md)
 
-## 현재 구현 — `implementations/fastapi/examples/Dockerfile`
+## Current implementation — `implementations/fastapi/examples/Dockerfile`
 
-`examples/Dockerfile`, `examples/.dockerignore`가 실제로 존재하며, 아래 멀티스테이지 빌드를 그대로 구현하고 있다.
+`examples/Dockerfile` and `examples/.dockerignore` actually exist, and implement the multi-stage build below as-is.
 
 ---
 
-## 멀티스테이지 빌드
+## Multi-stage build
 
 ```dockerfile
 # implementations/fastapi/examples/Dockerfile
@@ -18,7 +18,7 @@ FROM python:3.12-slim AS build
 
 WORKDIR /app
 
-# 컴파일이 필요한 의존성(asyncpg 등)의 빌드 도구만 이 스테이지에 포함한다.
+# Only this stage includes build tools for dependencies that need compilation (e.g. asyncpg).
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -30,34 +30,34 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 빌드 스테이지에서 설치된 패키지만 복사 — gcc/libpq-dev는 최종 이미지에 없다.
+# Copy only the packages installed in the build stage — gcc/libpq-dev are absent from the final image.
 COPY --from=build /install /usr/local
 
 COPY main.py ./
 COPY src ./src
 
-# 컨테이너 안에서 루트로 실행하지 않는다.
+# Never run as root inside the container.
 RUN useradd --create-home appuser
 USER appuser
 
 EXPOSE 8000
 
-# curl/wget 미설치(slim 이미지) — 별도 패키지 설치 없이 Python 표준 라이브러리로 헬스체크한다.
+# curl/wget aren't installed (slim image) — health-check using the Python standard library, no extra package.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
 
-# exec form — uvicorn이 PID 1이 되어 SIGTERM을 즉시 수신한다.
+# exec form — uvicorn becomes PID 1 and receives SIGTERM immediately.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-**각 스테이지의 목적:**
+**Purpose of each stage:**
 
-| 스테이지 | 내용 | 최종 이미지 포함 |
+| Stage | Contents | In final image |
 |---------|------|---------------|
-| Build | `gcc`, `libpq-dev`(asyncpg 컴파일용) + 전체 Python 패키지 | ✗ |
-| Production | 설치된 패키지(`/usr/local`) + `main.py`, `src/`만 | ✓ |
+| Build | `gcc`, `libpq-dev` (for compiling asyncpg) + the full set of Python packages | ✗ |
+| Production | Only the installed packages (`/usr/local`) + `main.py`, `src/` | ✓ |
 
-`asyncpg`, `aioboto3`의 일부 하위 의존성은 C 확장을 빌드해야 하므로, `gcc`/`libpq-dev` 없이는 `pip install`이 실패한다. 이 도구들을 build 스테이지에만 두어 최종 이미지 크기와 공격 표면을 최소화한다.
+Some of `asyncpg`'s and `aioboto3`'s sub-dependencies need to build C extensions, so `pip install` fails without `gcc`/`libpq-dev`. Keeping these tools only in the build stage minimizes the final image size and attack surface.
 
 ---
 
@@ -76,37 +76,37 @@ localstack/
 tests/
 ```
 
-`tests/`, `docker-compose.yml`은 런타임에 불필요하다. `.env*`를 포함하면 로컬 개발용 민감값이 이미지에 새어 들어갈 위험이 있다.
+`tests/` and `docker-compose.yml` are unnecessary at runtime. Including `.env*` would risk leaking local-development sensitive values into the image.
 
 ---
 
-## CMD — exec form으로 직접 프로세스 실행
+## CMD — run the process directly with exec form
 
 ```dockerfile
-# 올바른 방식 — uvicorn을 PID 1로 직접 실행
+# correct approach — run uvicorn directly as PID 1
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# 잘못된 방식 — 쉘이 중간에 끼어 SIGTERM 전달 지연
+# incorrect approach — a shell sits in between, delaying SIGTERM delivery
 CMD uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-exec form(`["uvicorn", ...]`)은 셸을 거치지 않고 `uvicorn` 프로세스가 PID 1이 되어 SIGTERM을 즉시 수신한다. shell form(`CMD uvicorn ...`)은 `/bin/sh -c`가 PID 1이 되어 SIGTERM이 셸에서 멈추거나 지연 전달될 수 있다.
+With exec form (`["uvicorn", ...]`), the `uvicorn` process becomes PID 1 with no shell in between, so it receives SIGTERM immediately. With shell form (`CMD uvicorn ...`), `/bin/sh -c` becomes PID 1, and SIGTERM can stall in or be delayed by the shell.
 
-→ `uvicorn`이 SIGTERM을 수신한 뒤 FastAPI `lifespan`의 종료 블록이 실행되는 흐름은 [graceful-shutdown.md](graceful-shutdown.md) 참조.
+→ See [graceful-shutdown.md](graceful-shutdown.md) for the flow where FastAPI's `lifespan` shutdown block runs after `uvicorn` receives SIGTERM.
 
 ---
 
-## 환경 변수는 이미지에 포함 금지
+## Never bake environment variables into the image
 
 ```dockerfile
-# 금지 — 이미지에 민감값 하드코딩
+# forbidden — hardcoding sensitive values into the image
 ENV DATABASE_URL=postgresql+asyncpg://prod-user:realpassword@prod-db/account
 
-# 금지 — .env 파일을 이미지에 복사
+# forbidden — copying a .env file into the image
 COPY .env .env
 ```
 
-`docker-compose.yml`이나 오케스트레이터(ECS Task Definition, Kubernetes Secret 등)를 통해 실행 시점에 주입한다. `src/config/database_config.py`의 `DatabaseConfig`(`pydantic_settings.BaseSettings`, `DATABASE_` 환경 변수 접두사)가 환경 변수에서 값을 읽는 패턴 자체는 올바르지만([config.md](config.md) 참조), 값 자체는 이미지 밖에서 와야 한다.
+Inject them at run time via `docker-compose.yml` or an orchestrator (an ECS Task Definition, a Kubernetes Secret, etc.). The pattern of `DatabaseConfig` (`src/config/database_config.py`, `pydantic_settings.BaseSettings`, `DATABASE_` environment-variable prefix) reading values from environment variables is correct in itself (see [config.md](config.md)) — but the values themselves must come from outside the image.
 
 ```bash
 docker run --env-file .env.docker myapp
@@ -115,49 +115,49 @@ docker run -e DATABASE_URL=postgresql+asyncpg://... myapp
 
 ---
 
-## 헬스체크 엔드포인트
+## Health-check endpoints
 
-오케스트레이터가 인스턴스 상태를 확인할 수 있도록 `main.py`가 liveness/readiness 엔드포인트를 제공한다.
+`main.py` provides liveness/readiness endpoints so an orchestrator can check instance health.
 
 ```
-GET /health/live   → 200: 프로세스 생존 확인
-GET /health/ready  → 200: 트래픽 수신 가능 / 503: 종료 중 또는 초기화 전
+GET /health/live   → 200: confirms the process is alive
+GET /health/ready  → 200: can receive traffic / 503: shutting down or not yet initialized
 ```
 
-→ 구현 상세와 `lifespan`과의 연동은 [graceful-shutdown.md](graceful-shutdown.md) 참조.
+→ See [graceful-shutdown.md](graceful-shutdown.md) for implementation details and how it ties into `lifespan`.
 
 ---
 
-## HEALTHCHECK — 컨테이너 자체 헬스 상태
+## HEALTHCHECK — the container's own health status
 
 ```dockerfile
-# curl/wget 미설치(slim 이미지) — 별도 패키지 설치 없이 Python 표준 라이브러리로 헬스체크한다.
+# curl/wget aren't installed (slim image) — health-check using the Python standard library, no extra package.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
 ```
 
-`python:3.12-slim` 런타임 이미지에는 `curl`/`wget`이 기본 설치되어 있지 않다. `apt-get install curl`로 추가하는 대신 Python 인터프리터(이미 이미지에 존재)와 표준 라이브러리 `urllib.request`만으로 `/health/live`를 호출한다 — 별도 패키지 설치·apt 레이어 없이 최종 이미지 크기와 공격 표면을 그대로 유지한다.
+The `python:3.12-slim` runtime image doesn't have `curl`/`wget` installed by default. Instead of adding one via `apt-get install curl`, this calls `/health/live` using only the Python interpreter (already present in the image) and the standard-library `urllib.request` — keeping the final image size and attack surface unchanged, with no extra package install or apt layer.
 
-`docker inspect --format='{{.State.Health.Status}}' <container>`로 상태(`starting`/`healthy`/`unhealthy`)를 확인할 수 있다.
-
----
-
-## 원칙
-
-- **멀티스테이지 빌드 필수**: `gcc`, `libpq-dev` 등 빌드 전용 도구는 프로덕션 이미지에 포함하지 않는다.
-- **non-root 사용자로 실행**: `USER appuser`.
-- **.dockerignore 유지**: `tests/`, `.env*`, `.git`, `docker-compose.yml`은 반드시 제외한다.
-- **CMD는 exec form**: `["uvicorn", ...]` — SIGTERM 즉시 수신.
-- **환경 변수는 이미지 외부에서 주입**: 이미지 자체는 환경 무관하게 동일해야 한다.
-- **헬스체크 엔드포인트 필수**: `/health/live`, `/health/ready`.
-- **HEALTHCHECK는 표준 라이브러리로**: `curl`/`wget` 설치 없이 `python -c "import urllib.request..."`로 이미지 크기·공격 표면을 최소화한다.
-
-멀티스테이지 빌드(`FROM` 2개 이상)·`HEALTHCHECK` 존재·`USER` 존재(non-root 실행)·`.dockerignore` 존재 여부는 harness의 `dockerfile-conventions` 규칙이 `Dockerfile`/`.dockerignore`를 직접 읽어 검사한다.
+`docker inspect --format='{{.State.Health.Status}}' <container>` can be used to check the status (`starting`/`healthy`/`unhealthy`).
 
 ---
 
-### 관련 문서
+## Principles
 
-- [graceful-shutdown.md](graceful-shutdown.md) — SIGTERM 처리, `lifespan`에서의 헬스체크 상태 관리
-- [config.md](config.md) — 환경 변수/설정 관리
-- [local-dev.md](local-dev.md) — `docker-compose.yml`에 app 서비스로 통합하는 방법
+- **A multi-stage build is required**: build-only tools such as `gcc`, `libpq-dev` must never be in the production image.
+- **Run as a non-root user**: `USER appuser`.
+- **Keep a `.dockerignore`**: `tests/`, `.env*`, `.git`, `docker-compose.yml` must always be excluded.
+- **CMD uses exec form**: `["uvicorn", ...]` — for immediate SIGTERM receipt.
+- **Environment variables are injected from outside the image**: the image itself must be identical regardless of environment.
+- **A health-check endpoint is required**: `/health/live`, `/health/ready`.
+- **HEALTHCHECK uses the standard library**: minimize image size/attack surface with `python -c "import urllib.request..."`, with no `curl`/`wget` install.
+
+Whether there's a multi-stage build (2+ `FROM`s), a `HEALTHCHECK`, a `USER` (non-root execution), and a `.dockerignore` are all checked directly by the harness's `dockerfile-conventions` rule, which reads `Dockerfile`/`.dockerignore` itself.
+
+---
+
+### Related documents
+
+- [graceful-shutdown.md](graceful-shutdown.md) — SIGTERM handling, health-check state management in `lifespan`
+- [config.md](config.md) — environment variable/configuration management
+- [local-dev.md](local-dev.md) — how to integrate this as the app service in `docker-compose.yml`

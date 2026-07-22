@@ -7,20 +7,21 @@ from ...domain.repository import AccountRepository
 class DepositByPaymentCommand:
     account_id: str
     amount: int
-    # Payment BC의 payment_id(결제취소 보상 크레딧) 또는 refund_id(환불 승인 크레딧).
-    # 멱등성 판단(Level 2 Ledger)의 키로 쓰인다.
+    # Payment BC's payment_id (payment-cancellation compensating credit) or refund_id
+    # (refund-approval credit). Used as the key for the idempotency check (Level 2 Ledger).
     reference_id: str
 
 
 class DepositByPaymentHandler:
-    """Payment BC의 payment.cancelled.v1(결제취소 보상 크레딧) 및 refund.approved.v1
-    (환불 승인 크레딧) Integration Event 둘 다에 대한 반응 유스케이스다 — 두 이벤트는
-    "이미 차감된 금액을 되돌린다"는 동일한 동작이고 reference_id(payment_id 또는
-    refund_id)만 다르므로 커맨드를 하나로 재사용한다.
+    """The reaction use case for both the Payment BC's payment.cancelled.v1
+    (payment-cancellation compensating credit) and refund.approved.v1 (refund-approval
+    credit) Integration Events — since both events perform the same action, "reverse an
+    amount that was already debited," and differ only in reference_id (a payment_id or a
+    refund_id), a single command is reused for both.
 
-    멱등성은 WithdrawByPaymentHandler와 동일한 이유로 Level 2 Ledger(reference_id+type)를
-    쓴다. Outbox 관련 객체를 직접 참조하지 않는 이유도 동일하다 — OutboxPoller/OutboxConsumer가
-    독립적으로 처리한다.
+    Idempotency uses a Level 2 Ledger (reference_id+type), for the same reason as
+    WithdrawByPaymentHandler. The reason it never references Outbox-related objects
+    directly is the same — OutboxPoller/OutboxConsumer handle that independently.
     """
 
     def __init__(self, repo: AccountRepository) -> None:

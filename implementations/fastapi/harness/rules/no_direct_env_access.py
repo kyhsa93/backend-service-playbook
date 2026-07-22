@@ -1,14 +1,16 @@
-"""[17] no-direct-env-access-outside-config: domain/·application/ 에서 os.environ/os.getenv 직접 호출 금지
-(config.md)
+"""[17] no-direct-env-access-outside-config: calling os.environ/os.getenv directly is
+forbidden in domain/·application/ (config.md)
 
-환경 변수 접근은 `config/`의 Pydantic `BaseSettings` 클래스(`DatabaseConfig`, `JwtConfig`,
-`AwsConfig`)로 캡슐화하고, `infrastructure/`(및 `config/` 자신)에서만 그 설정 클래스나
-`os.environ`/`os.getenv`를 직접 참조한다 — `domain/`, `application/`은 설정에 직접
-의존하지 않는다(config.md "설정 접근 패턴" 절).
+Environment-variable access is encapsulated in Pydantic `BaseSettings` classes in
+`config/` (`DatabaseConfig`, `JwtConfig`, `AwsConfig`), and only `infrastructure/` (and
+`config/` itself) references those configuration classes or `os.environ`/`os.getenv`
+directly — `domain/` and `application/` never depend on configuration directly (see the
+"Configuration access pattern" section of config.md).
 
-정규식 기반 블록리스트: `os.environ`, `os.getenv(` 리터럴 사용만 잡는다 — `getenv`/`environ`을
-가리키는 지역 변수 별칭까지는 추적하지 않는다(이 저장소 전체에 그런 간접 별칭 사용 사례가
-없고, 과도한 일반화는 오히려 오탐 위험을 늘린다).
+A regex-based blocklist: it catches only a literal use of `os.environ`, `os.getenv(` — it
+doesn't trace a local-variable alias pointing to `getenv`/`environ` (there's no such
+indirect-alias usage anywhere in this repository, and over-generalizing would only
+increase the false-positive risk).
 """
 
 from __future__ import annotations
@@ -34,12 +36,12 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    "domain/·application/ 은 os.environ/os.getenv를 직접 호출할 수 없음 — config/의"
-                    " BaseSettings 클래스로 캡슐화해야 함(config.md)",
+                    "domain/·application/ must not call os.environ/os.getenv directly — it"
+                    " must be encapsulated in a BaseSettings class in config/ (config.md)",
                 )
             )
         else:
             result.add(passed(f"{r} (no-direct-env-access-outside-config)"))
     if not found:
-        result.add(skipped("domain/·application/ Python 파일 없음"))
+        result.add(skipped("No Python file in domain/·application/"))
     return result

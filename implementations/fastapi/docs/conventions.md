@@ -1,63 +1,63 @@
-# 코딩 컨벤션
+# Coding Conventions
 
-## 1. 파일 네이밍 규칙
+## 1. File naming rules
 
-- 모든 파일명: `snake_case.py`
-- 패키지(디렉토리)명: 소문자 (`domain`, `application`, `persistence`, `notification`)
-- Command/Query Handler: `<verb>_<noun>_handler.py` (`application/command/` 또는 `application/query/`에 배치) — 같은 파일에 `<Verb><Noun>Command`/`<Verb><Noun>Query` dataclass와 `<Verb><Noun>Handler` 클래스를 함께 둔다
-- Query Result: `result.py` (`application/query/`에 배치, 여러 Result dataclass를 한 파일에 모아도 무방)
-- Adapter 인터페이스: `<external_domain>_adapter.py` (`application/adapter/`에 배치)
-- Adapter 구현체: `<provider>_<external_domain>_adapter.py` 또는 `in_process_<external_domain>_adapter.py` (`infrastructure/`에 배치) — 구현 기술을 접두사로 붙인다
-- Technical Service 인터페이스: `<concern>_service.py` (`application/service/`에 배치) — `notification_service.py`, `storage_service.py`, `secret_service.py` 등
-- Technical Service 구현체: `<provider>_<concern>_service.py` (`infrastructure/<concern>/`에 배치) — `ses_notification_service.py`, `s3_storage_service.py`
-- Repository 인터페이스: `repository.py` 또는 `<aggregate>_repository.py` (`domain/`에 배치)
-- Repository 구현체: `<aggregate>_repository.py` (`infrastructure/persistence/`에 배치, 구현 기술은 클래스명에 `SqlAlchemy` 접두사로 표시하고 파일명 자체는 그대로 둔다)
-- Aggregate Root: `<aggregate_root>.py` (domain 레이어)
-- Entity(하위 개체): `<entity>.py` (domain 레이어)
-- Value Object: `<value_object>.py` (domain 레이어)
-- Domain Event: `events.py` (domain 레이어, 도메인당 하나의 파일에 이벤트를 모은다)
-- 도메인 예외: `errors.py` (domain 레이어)
-- 에러 코드: `error_codes.py` (domain 레이어, 메시지와 1:1 매핑)
-- 도메인 enum: `<concern>_status.py` 등 의미 단위로 분리 (예: `account_status.py`, `order_status.py`) — 모듈 루트가 아니라 `domain/`에 위치 (Python은 파일 자체가 이미 네임스페이스이므로 NestJS처럼 모듈 루트에 별도로 모으지 않는다)
-- 상수: `constants.py` (도메인 패키지 루트, 필요할 때만 생성)
-- Router: `<domain>_router.py` (`interface/rest/`에 배치)
-- Interface DTO(Pydantic): `schemas.py` (`interface/rest/`에 배치, 요청/응답 모델을 한 파일에 모은다)
-- ID 생성 유틸: `generate_id.py` (`src/common/`에 배치, 여러 도메인이 공유)
-- 설정 클래스: `<concern>_config.py` (`src/config/`에 배치) — `database_config.py`, `jwt_config.py`
-- 설정 검증: `validator.py` (`src/config/`에 배치)
+- Every file name: `snake_case.py`
+- Package (directory) names: lowercase (`domain`, `application`, `persistence`, `notification`)
+- Command/Query Handler: `<verb>_<noun>_handler.py` (placed in `application/command/` or `application/query/`) — the `<Verb><Noun>Command`/`<Verb><Noun>Query` dataclass and the `<Verb><Noun>Handler` class live together in the same file
+- Query Result: `result.py` (placed in `application/query/`; multiple Result dataclasses can be grouped in one file)
+- Adapter interface: `<external_domain>_adapter.py` (placed in `application/adapter/`)
+- Adapter implementation: `<provider>_<external_domain>_adapter.py` or `in_process_<external_domain>_adapter.py` (placed in `infrastructure/`) — prefixed with the implementation technology
+- Technical Service interface: `<concern>_service.py` (placed in `application/service/`) — `notification_service.py`, `storage_service.py`, `secret_service.py`, etc.
+- Technical Service implementation: `<provider>_<concern>_service.py` (placed in `infrastructure/<concern>/`) — `ses_notification_service.py`, `s3_storage_service.py`
+- Repository interface: `repository.py` or `<aggregate>_repository.py` (placed in `domain/`)
+- Repository implementation: `<aggregate>_repository.py` (placed in `infrastructure/persistence/`; the implementation technology is shown as a `SqlAlchemy` prefix on the class name, with the file name itself left as-is)
+- Aggregate Root: `<aggregate_root>.py` (the domain layer)
+- Entity (a child object): `<entity>.py` (the domain layer)
+- Value Object: `<value_object>.py` (the domain layer)
+- Domain Event: `events.py` (the domain layer; events are grouped into one file per domain)
+- Domain exceptions: `errors.py` (the domain layer)
+- Error codes: `error_codes.py` (the domain layer, mapped 1:1 with messages)
+- A domain enum: split out by unit of meaning into files such as `<concern>_status.py` (e.g. `account_status.py`, `order_status.py`) — placed in `domain/`, not a module root (since a Python file is itself already a namespace, there's no need to gather them into a module root the way NestJS does)
+- Constants: `constants.py` (the domain package root, created only when needed)
+- Router: `<domain>_router.py` (placed in `interface/rest/`)
+- Interface DTOs (Pydantic): `schemas.py` (placed in `interface/rest/`; request/response models are grouped in one file)
+- The ID-generation util: `generate_id.py` (placed in `src/common/`, shared across domains)
+- Configuration classes: `<concern>_config.py` (placed in `src/config/`) — `database_config.py`, `jwt_config.py`
+- Configuration validation: `validator.py` (placed in `src/config/`)
 
 ---
 
-## 2. 클래스 네이밍 규칙
+## 2. Class naming rules
 
-- Aggregate Root: `Order`, `Account` (도메인 명사, `PascalCase`)
-- Entity(하위 개체): `OrderItem`, `Transaction`
+- Aggregate Root: `Order`, `Account` (a domain noun, `PascalCase`)
+- Entity (a child object): `OrderItem`, `Transaction`
 - Value Object: `Money`, `Address`
-- Domain Event: `OrderPlaced`, `OrderCancelled` (과거형)
-- Repository 인터페이스: `OrderRepository`, `AccountRepository` (구현 기술 이름을 넣지 않는다)
-- Repository 구현체: `SqlAlchemy<Aggregate>Repository` — `SqlAlchemyOrderRepository`
+- Domain Event: `OrderPlaced`, `OrderCancelled` (past tense)
+- Repository interface: `OrderRepository`, `AccountRepository` (never includes the implementation technology's name)
+- Repository implementation: `SqlAlchemy<Aggregate>Repository` — `SqlAlchemyOrderRepository`
 - Command: `<Verb><Noun>Command` — `CancelOrderCommand`, `CreateOrderCommand`
 - CommandHandler: `<Verb><Noun>Handler` — `CancelOrderHandler`, `CreateOrderHandler`
 - Query: `<Verb><Noun>Query` — `GetOrderQuery`, `GetOrdersQuery`
 - QueryHandler: `<Verb><Noun>Handler` — `GetOrderHandler`, `GetOrdersHandler`
 - Result: `<Verb><Noun>Result` / `<Noun>Result` — `GetOrderResult`, `GetOrdersResult`, `OrderSummaryResult`
-- Adapter 인터페이스: `<ExternalDomain>Adapter` — `PaymentAdapter`
-- Adapter 구현체: `<Provider><ExternalDomain>Adapter` — `InProcessPaymentAdapter`, `HttpPaymentAdapter`
-- Technical Service 인터페이스: `<Concern>Service` — `NotificationService`, `StorageService`, `SecretService` (구현 기술 이름을 넣지 않는다)
-- Technical Service 구현체: `<Provider><Concern>Service` — `SesNotificationService`, `S3StorageService`, `AwsSecretService`
-- 도메인 예외: `PascalCase` + `Error` — `OrderNotFoundError`, `OrderAlreadyCancelledError`
-- 에러 코드 enum: `<Domain>ErrorCode` (`str, Enum` 상속, 값은 `SCREAMING_SNAKE_CASE` 고정 문자열) — `OrderErrorCode`
-- Pydantic 요청/응답 모델: `<Verb><Noun>Request` / `<Verb><Noun>Response` — `CreateOrderRequest`, `GetOrderResponse`
-- 함수·변수: `snake_case` — `create_order`, `pull_events`
-- 상수: `UPPER_SNAKE_CASE` — `MAX_ORDER_AMOUNT`
+- Adapter interface: `<ExternalDomain>Adapter` — `PaymentAdapter`
+- Adapter implementation: `<Provider><ExternalDomain>Adapter` — `InProcessPaymentAdapter`, `HttpPaymentAdapter`
+- Technical Service interface: `<Concern>Service` — `NotificationService`, `StorageService`, `SecretService` (never includes the implementation technology's name)
+- Technical Service implementation: `<Provider><Concern>Service` — `SesNotificationService`, `S3StorageService`, `AwsSecretService`
+- Domain exceptions: `PascalCase` + `Error` — `OrderNotFoundError`, `OrderAlreadyCancelledError`
+- The error-code enum: `<Domain>ErrorCode` (extends `str, Enum`, with values as fixed `SCREAMING_SNAKE_CASE` strings) — `OrderErrorCode`
+- Pydantic request/response models: `<Verb><Noun>Request` / `<Verb><Noun>Response` — `CreateOrderRequest`, `GetOrderResponse`
+- Functions/variables: `snake_case` — `create_order`, `pull_events`
+- Constants: `UPPER_SNAKE_CASE` — `MAX_ORDER_AMOUNT`
 
 ---
 
-## 3. Enum / 상수 배치 규칙
+## 3. Enum / constant placement rules
 
-- Python은 파일 자체가 네임스페이스이므로, NestJS처럼 "모듈 루트에 `<domain>-enum.ts` 하나로 모은다"는 규칙이 그대로 적용되지 않는다 — 대신 **의미 단위로 분리해 `domain/`에 둔다**.
-- 도메인 상태값처럼 Aggregate의 일부인 enum은 `domain/<concern>_status.py`에 정의한다.
-- 여러 애그리거트가 공유하는 상수는 도메인 패키지 루트의 `constants.py`에 모은다. 도메인 하나에 국한된 상수는 사용하는 파일 옆에 두어도 무방하다 — 인라인 매직 넘버/문자열만 피하면 된다.
+- Since a Python file is itself a namespace, the NestJS-style rule "gather them into a single `<domain>-enum.ts` at the module root" doesn't directly apply — instead, **split them by unit of meaning and place them in `domain/`**.
+- An enum that's part of an Aggregate, such as a domain status value, is defined in `domain/<concern>_status.py`.
+- A constant shared by multiple aggregates is gathered into `constants.py` at the domain package root. A constant confined to a single domain can live next to the file that uses it — just avoid an inline magic number/string.
 
 ```python
 # src/order/domain/order_status.py
@@ -76,18 +76,18 @@ MAX_ORDER_AMOUNT = 9_999_999
 ALLOWED_ORDER_STATUSES = [OrderStatus.PENDING, OrderStatus.PAID]
 ```
 
-- Application 레이어(Command/Query/Result)에서 사용하는 enum도 `domain/`에서 import해서 재사용한다 — Application에 별도로 enum을 다시 정의하지 않는다.
+- An enum used by the Application layer (Command/Query/Result) is also imported and reused from `domain/` — never redefine an enum separately in Application.
 
 ---
 
-## 4. 타이핑 패턴
+## 4. Typing pattern
 
-### Aggregate Root — 일반 클래스, dataclass 자동 생성자 사용 금지
+### The Aggregate Root — a plain class; a dataclass's auto-generated constructor is forbidden
 
-상태가 변하고 불변식을 스스로 지켜야 하는 Aggregate Root는 `__init__` + 도메인 메서드를 가진 일반 클래스로 작성한다. `@dataclass`의 자동 생성 `__init__`은 필드를 자유롭게 덮어쓸 수 있어 불변식 보호에 적합하지 않다.
+The Aggregate Root, whose state changes and which must guard its own invariants, is written as a plain class with `__init__` + domain methods. A `@dataclass`'s auto-generated `__init__` lets fields be freely overwritten, which doesn't suit protecting invariants.
 
 ```python
-# 올바른 방식 — 일반 클래스
+# correct approach — a plain class
 class Order:
     def __init__(self, order_id: str, user_id: str, items: list[OrderItem], status: OrderStatus) -> None:
         if not items:
@@ -100,17 +100,17 @@ class Order:
 ```
 
 ```python
-# 잘못된 방식 — Aggregate Root를 dataclass로 선언
+# incorrect approach — declaring the Aggregate Root as a dataclass
 @dataclass
 class Order:
     order_id: str
     items: list[OrderItem]
-    status: OrderStatus   # 외부에서 order.status = "cancelled" 처럼 임의로 덮어쓸 수 있다
+    status: OrderStatus   # can be arbitrarily overwritten from outside, e.g. order.status = "cancelled"
 ```
 
 ### Entity / Value Object / Domain Event — `@dataclass(frozen=True)`
 
-생성 이후 값이 바뀌지 않는 하위 개체·값 객체·이벤트는 `frozen=True` dataclass로 선언한다. 필드 재할당 시 `FrozenInstanceError`가 발생하므로 불변성이 구조적으로 보장된다.
+A child object, value object, or event whose value never changes after creation is declared as a `frozen=True` dataclass. Reassigning a field raises `FrozenInstanceError`, so immutability is structurally guaranteed.
 
 ```python
 @dataclass(frozen=True)
@@ -127,9 +127,9 @@ class OrderItem:
             raise InvalidQuantityError()
 ```
 
-동등성 비교가 필요한 Value Object는 `frozen=True` dataclass가 자동 생성하는 `__eq__`(속성 기반 동등성)를 그대로 사용한다 — 별도 `equals()` 메서드를 만들지 않는다.
+A Value Object that needs equality comparison just uses the `__eq__` (attribute-based equality) a `frozen=True` dataclass auto-generates — never create a separate `equals()` method.
 
-### Command / Query — `@dataclass`, 필드는 타입 힌트로 명시
+### Command / Query — `@dataclass`, with fields declared via type hints
 
 ```python
 @dataclass
@@ -139,46 +139,46 @@ class CancelOrderCommand:
     refund_amount: int | None = None
 ```
 
-- Command/Query는 (Handler 생성자 주입과 달리) 매 요청마다 새로 만들어지므로 `frozen=True`를 강제하지 않아도 되지만, 실수로 필드를 변경하지 않도록 `frozen=True`를 붙이는 것을 권장한다.
-- 필드에 기본값이 필요하면 dataclass 필드 기본값을 사용한다 — NestJS의 `Object.assign(this, command)` 생성자 패턴에 대응하는 것은 dataclass의 자동 생성 `__init__`이다.
+- Since a Command/Query is freshly created on every request (unlike a Handler's constructor injection), `frozen=True` isn't mandatory, but attaching `frozen=True` is recommended to avoid accidentally mutating a field.
+- If a field needs a default value, use a dataclass field default — the counterpart to NestJS's `Object.assign(this, command)` constructor pattern is a dataclass's auto-generated `__init__`.
 
-### 리터럴/enum 타입 — 도메인 상태값에 사용
+### Literal/enum types — used for domain state values
 
 ```python
-# 올바른 방식 — enum 또는 Literal
+# correct approach — an enum or Literal
 status: OrderStatus
 result: Literal["success", "fail"]
 
-# 잘못된 방식 — 임의 문자열 허용
+# incorrect approach — allowing an arbitrary string
 status: str
 ```
 
-### 시간대 규칙 — UTC 저장, 타임존 인식 datetime
+### The timezone rule — store in UTC, use timezone-aware datetimes
 
-- 이 저장소는 `datetime.utcnow()`(타임존 정보 없는 naive UTC)를 사용해 DB에 저장하고, 조회 시에도 변환 없이 그대로 반환한다 — NestJS 구현이 KST(UTC+9)로 변환해 저장하는 것과 달리, FastAPI/SQLAlchemy 구현은 **UTC로 통일**하고 클라이언트가 필요 시 타임존을 변환한다.
-- 새 프로젝트에서는 `datetime.now(timezone.utc)`(타임존 인식 aware datetime)를 쓰는 것을 권장한다 — `datetime.utcnow()`는 Python 3.12부터 deprecated다.
+- This repository uses `datetime.utcnow()` (naive UTC with no timezone info) to store into the DB, and returns it as-is with no conversion on lookup either — unlike the NestJS implementation, which converts to and stores as KST (UTC+9), the FastAPI/SQLAlchemy implementation **unifies everything as UTC**, and the client converts the timezone if needed.
+- For a new project, using `datetime.now(timezone.utc)` (a timezone-aware datetime) is recommended — `datetime.utcnow()` is deprecated as of Python 3.12.
 
 ```python
-# 권장 — 타임존 인식 UTC
+# recommended — timezone-aware UTC
 from datetime import datetime, timezone
 
 created_at = datetime.now(timezone.utc)
 ```
 
 ```python
-# 지양 — 타임존 정보 없는 naive datetime (Python 3.12+ deprecated)
+# avoid — a naive datetime with no timezone info (deprecated in Python 3.12+)
 created_at = datetime.utcnow()
 ```
 
-- 저장·조회 모두 UTC를 유지한다 — 저장 시점과 조회 시점에 서로 다른 변환을 적용하면 이중 변환 오류가 발생한다는 원칙은 언어와 무관하게 동일하다.
+- Both storage and lookup keep UTC — the principle that applying a different conversion at storage time vs. lookup time causes a double-conversion bug holds regardless of language.
 
-### Null 처리 규칙
+### Null-handling rules
 
-- DB에서 오는 nullable 필드: `T | None`
-- optional 파라미터(기본값이 있는 키워드 인자): `T | None = None` 또는 타입 자체에 기본값
-- Python에는 `any` 타입에 해당하는 것이 `Any`(`typing.Any`)이며, 사용을 금지한다 — 구체적인 타입 또는 `Union`/제네릭으로 명시한다.
+- A nullable field coming from the DB: `T | None`
+- An optional parameter (a keyword argument with a default value): `T | None = None`, or a default on the type itself
+- Python's counterpart to an `any` type is `Any` (`typing.Any`), and its use is forbidden — declare a concrete type or a `Union`/generic instead.
 
-### ORM — Repository 구현체에서 `AsyncSession` 주입
+### ORM — inject `AsyncSession` in the Repository implementation
 
 ```python
 class SqlAlchemyOrderRepository(OrderRepository):
@@ -186,9 +186,9 @@ class SqlAlchemyOrderRepository(OrderRepository):
         self._session = session
 ```
 
-전용 DI 컨테이너가 없으므로 `AsyncSession`은 생성자 인자로 직접 받는다 — `Depends` 팩토리가 이 생성자 호출을 담당한다([module-pattern.md](architecture/module-pattern.md) 참조).
+Since there's no dedicated DI container, `AsyncSession` is received directly as a constructor argument — a `Depends` factory handles this constructor call (see [module-pattern.md](architecture/module-pattern.md)).
 
-### 복잡한 타입 — type alias 또는 `Union`
+### Complex types — a type alias or `Union`
 
 ```python
 from typing import Union
@@ -196,112 +196,112 @@ from typing import Union
 OrderDomainEvent = Union[OrderPlaced, OrderCancelled]
 ```
 
-Python 3.10+에서는 `|` 문법도 가능하다: `OrderDomainEvent = OrderPlaced | OrderCancelled`.
+On Python 3.10+, the `|` syntax also works: `OrderDomainEvent = OrderPlaced | OrderCancelled`.
 
 ---
 
-## 5. REST API 엔드포인트 설계 규칙
+## 5. REST API endpoint design rules
 
-### URL 구조 — 리소스 중심, 복수 명사
+### URL structure — resource-centric, plural nouns
 
-URL은 **행위(동사)가 아닌 리소스(명사)**를 나타낸다. HTTP 메서드가 행위를 표현한다.
+A URL expresses **a resource (a noun), not an action (a verb)**. The HTTP method expresses the action.
 
 ```
-# 올바른 방식
-GET    /orders              주문 목록 조회
-GET    /orders/{order_id}   주문 단건 조회
-POST   /orders              주문 생성
-PUT    /orders/{order_id}   주문 전체 수정
-PATCH  /orders/{order_id}   주문 부분 수정
-DELETE /orders/{order_id}   주문 삭제
+# correct approach
+GET    /orders              list orders
+GET    /orders/{order_id}   look up a single order
+POST   /orders              create an order
+PUT    /orders/{order_id}   fully update an order
+PATCH  /orders/{order_id}   partially update an order
+DELETE /orders/{order_id}   delete an order
 
-# 잘못된 방식
-GET    /getOrders            동사를 URL에 넣지 않는다
-POST   /createOrder          동사를 URL에 넣지 않는다
-GET    /order/{order_id}     단수형 사용 금지 — 항상 복수형
+# incorrect approach
+GET    /getOrders            never put a verb in the URL
+POST   /createOrder          never put a verb in the URL
+GET    /order/{order_id}     singular form is forbidden — always plural
 ```
 
-`APIRouter(prefix="/orders", tags=["Order"])`로 라우터 자체에 리소스 prefix를 고정하면, 각 라우트 함수는 `@router.get("/{order_id}")`처럼 상대 경로만 작성한다.
+Fixing the resource prefix on the router itself via `APIRouter(prefix="/orders", tags=["Order"])` lets each route function just write a relative path, like `@router.get("/{order_id}")`.
 
-### HTTP 메서드와 응답 코드
+### HTTP methods and response codes
 
-| 메서드 | 용도 | 성공 코드 | 응답 바디 |
+| Method | Purpose | Success code | Response body |
 |--------|------|----------|----------|
-| `GET` | 리소스 조회 | 200 OK | 있음 |
-| `POST` | 리소스 생성 | 201 Created | 선택 |
-| `PUT` | 리소스 전체 수정 | 200 OK | 있음 |
-| `PATCH` | 리소스 부분 수정 | 200 OK | 있음 |
-| `DELETE` | 리소스 삭제 | 204 No Content | 없음 |
+| `GET` | Look up a resource | 200 OK | Present |
+| `POST` | Create a resource | 201 Created | Optional |
+| `PUT` | Fully update a resource | 200 OK | Present |
+| `PATCH` | Partially update a resource | 200 OK | Present |
+| `DELETE` | Delete a resource | 204 No Content | None |
 
-`@router.post("", status_code=201, ...)`처럼 `status_code`를 라우트 데코레이터에 명시한다 — FastAPI 기본값(200)을 그대로 두지 않는다.
+Specify `status_code` explicitly on the route decorator, as in `@router.post("", status_code=201, ...)` — never leave FastAPI's default (200) as-is.
 
-### 비 CRUD 행위 — 하위 리소스 경로
-
-```
-POST   /orders/{order_id}/cancel        주문 취소
-POST   /orders/{order_id}/refund        주문 환불
-POST   /accounts/{account_id}/suspend   계좌 정지
-```
-
-### 계층 관계 — 중첩 리소스
-
-2단계까지만 중첩하고, 그 이상은 최상위 리소스로 분리한다.
+### Non-CRUD actions — a sub-resource path
 
 ```
-# 올바른 방식 — 2단계 중첩
+POST   /orders/{order_id}/cancel        cancel an order
+POST   /orders/{order_id}/refund        refund an order
+POST   /accounts/{account_id}/suspend   suspend an account
+```
+
+### Hierarchical relationships — nested resources
+
+Nest only up to 2 levels; split anything deeper into a top-level resource.
+
+```
+# correct approach — 2-level nesting
 GET  /orders/{order_id}/items
 GET  /orders/{order_id}/items/{item_id}
 
-# 잘못된 방식 — 3단계 이상 중첩
+# incorrect approach — nesting 3+ levels
 GET  /users/{user_id}/orders/{order_id}/items/{item_id}
-# → 대신 최상위로 분리
+# → split into a top-level resource instead
 GET  /order-items/{item_id}
 ```
 
-### 목록 조회 — 페이지네이션과 필터링
+### List queries — pagination and filtering
 
 ```
 GET /orders?page=0&take=20&status=pending&status=paid
 ```
 
-- 페이지네이션: `page`(0부터 시작), `take`(페이지 크기) 쿼리 파라미터로 라우트 함수 인자에 직접 선언한다 (`page: int = 0, take: int = 20`).
-- 필터: querystring 파라미터로 전달, 값이 있을 때만 조건을 적용한다.
+- Pagination: declare `page` (0-based) and `take` (page size) directly as route-function arguments via query parameters (`page: int = 0, take: int = 20`).
+- Filters: passed as querystring parameters, applied only when a value is present.
 
-### URL 네이밍 규칙
+### URL naming rules
 
-- **복수 명사**: `/orders`, `/users` (단수형 사용 금지)
-- **kebab-case**: `/order-items`, `/payment-methods` (Python 코드 자체는 `snake_case`지만 URL 경로는 kebab-case를 유지한다 — 언어 컨벤션과 URL 컨벤션은 별개다)
-- **소문자만 사용**
-- **후행 슬래시 없음**: `/orders/`(X) → `/orders`(O)
-- **파일 확장자 없음**: `/orders.json`(X) → `/orders`(O)
+- **Plural nouns**: `/orders`, `/users` (singular form is forbidden)
+- **kebab-case**: `/order-items`, `/payment-methods` (the Python code itself is `snake_case`, but the URL path keeps kebab-case — the language convention and the URL convention are separate)
+- **Lowercase only**
+- **No trailing slash**: `/orders/` (bad) → `/orders` (good)
+- **No file extension**: `/orders.json` (bad) → `/orders` (good)
 
-### Deprecated 엔드포인트
+### Deprecated endpoints
 
-FastAPI는 라우트 데코레이터에 `deprecated=True`를 지정하면 OpenAPI 스키마와 `/docs`(Swagger UI)에 자동으로 취소선과 "Deprecated" 배지가 표시된다.
+In FastAPI, specifying `deprecated=True` on the route decorator automatically shows a strikethrough and a "Deprecated" badge in the OpenAPI schema and `/docs` (Swagger UI).
 
 ```python
 @router.post("", status_code=201, deprecated=True)
 async def create_order(...) -> CreateOrderResponse: ...
 ```
 
-- 즉시 삭제하지 않고 `deprecated=True`로 표시해 클라이언트가 마이그레이션할 시간을 확보한다.
-- 호출이 발생하면 `logger.warning(...)`으로 기록해 잔존 사용자를 추적한다.
+- Rather than deleting it immediately, mark it `deprecated=True` to give clients time to migrate.
+- Log a call with `logger.warning(...)` to track any remaining usage.
 
 ---
 
-## 6. 메서드 네이밍 및 구성
+## 6. Method naming and organization
 
-### 라우트 함수
+### Route functions
 
-- `get`, `find`, `create`, `update`, `delete`, `suspend`, `cancel`, `transfer` 등 동사 사용
-- 모두 `async def`이며 반환 타입 명시: `-> ResponseModel`
-- 로직 없이 Handler 생성 + `execute()` 호출, 응답 변환만 수행
+- Use verbs such as `get`, `find`, `create`, `update`, `delete`, `suspend`, `cancel`, `transfer`
+- All are `async def` with an explicit return type: `-> ResponseModel`
+- No logic — only construct the Handler + call `execute()`, and convert the response
 
-### Handler(Command/QueryHandler) 메서드 구성 순서
+### Handler (Command/QueryHandler) method order
 
-1. `__init__` — 의존성(Repository/Adapter/Technical Service ABC) 주입, `self._xxx` 형태로 private 관례(단일 언더스코어 접두사) 사용
-2. `async def execute(self, cmd_or_query) -> ResultType` — 공개 조율 메서드
-3. private 헬퍼 메서드(필요 시) — 단일 언더스코어 접두사
+1. `__init__` — injects dependencies (Repository/Adapter/Technical Service ABCs), using the `self._xxx` private convention (a single leading underscore)
+2. `async def execute(self, cmd_or_query) -> ResultType` — the public orchestration method
+3. Private helper methods (as needed) — a single leading underscore
 
 ```python
 class CancelOrderHandler:
@@ -312,18 +312,18 @@ class CancelOrderHandler:
         ...
 ```
 
-### Handler 메서드 반환 타입 — 항상 명시
+### The Handler method's return type — always explicit
 
 ```python
-# 올바른 방식
+# correct approach
 async def execute(self, query: GetOrderQuery) -> GetOrderResult: ...
 async def execute(self, cmd: CancelOrderCommand) -> None: ...
 
-# 잘못된 방식 — 반환 타입 누락
+# incorrect approach — missing return type
 async def execute(self, query: GetOrderQuery): ...
 ```
 
-### private 환경 분기 헬퍼
+### A private environment-branching helper
 
 ```python
 def _payment_api_url() -> str:
@@ -334,123 +334,123 @@ def _payment_api_url() -> str:
 
 ---
 
-## 7. import 구성 패턴
+## 7. Import organization pattern
 
-### 절대 임포트를 기본으로, 같은 레이어 내부는 상대 임포트 허용
+### Absolute imports by default; relative imports allowed within the same layer
 
-이 저장소의 실제 코드(`examples/src/account/`)는 도메인 패키지 내부에서는 상대 임포트(`from ...domain.account import Account`)를, 다른 최상위 패키지를 참조할 때는 절대 임포트(`from src.database import get_session`)를 섞어 쓴다. 아래 기준을 따른다.
+This repository's actual code (`examples/src/account/`) mixes relative imports (`from ...domain.account import Account`) within a domain package and absolute imports (`from src.database import get_session`) when referencing another top-level package. Follow these criteria.
 
-- **같은 도메인 패키지 내부**(`domain/` → `domain/`, `application/` → `domain/` 등): 상대 임포트를 사용해도 된다 — 패키지를 통째로 다른 이름으로 이동해도 내부 참조가 깨지지 않는다.
-- **다른 최상위 패키지 참조**(`src.database`, `src.common`, `src.auth`, 다른 도메인의 `application/adapter/`): 절대 임포트(`from src.xxx import ...`)를 사용한다 — 상대 임포트로 여러 단계(`from ....database import ...`)를 거슬러 올라가면 가독성이 떨어진다.
+- **Within the same domain package** (`domain/` → `domain/`, `application/` → `domain/`, etc.): a relative import is fine — moving the whole package under a different name doesn't break internal references.
+- **Referencing another top-level package** (`src.database`, `src.common`, `src.auth`, another domain's `application/adapter/`): use an absolute import (`from src.xxx import ...`) — climbing several levels with a relative import (`from ....database import ...`) hurts readability.
 
 ```python
-# src/account/interface/rest/account_router.py — 실제 코드 패턴
-from ...application.command.deposit_handler import DepositCommand, DepositHandler   # 같은 도메인 내부 — 상대
-from ....database import get_session                                                  # 다른 최상위 패키지 — 상대(4단계)도 허용되지만
-from src.database import get_session                                                  # 절대 임포트가 더 읽기 쉽다면 이 형태도 허용
+# src/account/interface/rest/account_router.py — the actual code pattern
+from ...application.command.deposit_handler import DepositCommand, DepositHandler   # inside the same domain — relative
+from ....database import get_session                                                  # another top-level package — relative (4 levels) is allowed too, but
+from src.database import get_session                                                  # this form is also allowed if an absolute import reads more clearly
 ```
 
-### 2그룹 순서 — 표준 라이브러리/서드파티 → 내부 모듈
+### Group order — standard library/third-party → internal modules
 
 ```python
-# 1. 표준 라이브러리 + 서드파티 패키지
+# 1. standard library + third-party packages
 from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 2. 내부 모듈 (상대 또는 절대)
+# 2. internal modules (relative or absolute)
 from ...domain.errors import OrderNotFoundError
 from ...domain.order_repository import OrderRepository
 ```
 
-`isort`/`ruff --select I`로 그룹 순서와 알파벳 정렬을 자동화하는 것을 권장한다.
+Automating group order and alphabetical sorting via `isort`/`ruff --select I` is recommended.
 
-### 순환 import — top-level import를 지연 import로 해소
+### Circular imports — resolved by deferring a top-level import
 
-Python은 NestJS의 `forwardRef()`에 대응하는 문법이 없다. 대신 `TYPE_CHECKING`(타입 힌트만 필요할 때) 또는 함수 내부 import(런타임에 실제 값이 필요할 때)로 해소한다. 상세: [module-pattern.md](architecture/module-pattern.md).
+Python has no syntax corresponding to NestJS's `forwardRef()`. Instead, resolve it with `TYPE_CHECKING` (when only a type hint is needed) or a function-local import (when the actual value is needed at runtime). Details: [module-pattern.md](architecture/module-pattern.md).
 
-### `__init__.py` — 빈 파일로 두거나 패키지 마커로만 사용
+### `__init__.py` — leave it empty, or use it only as a package marker
 
-`__init__.py`에서 하위 모듈을 re-export하지 않는다 — import 경로가 이원화되면(패키지 경로로도, 하위 모듈 경로로도 접근 가능) 어느 쪽이 정식 경로인지 혼란스러워진다.
+Never re-export a submodule from `__init__.py` — if the import path splits into two forms (accessible via both the package path and the submodule path), it becomes confusing which one is the canonical path.
 
 ---
 
-## 8. Pydantic 응답 모델 / OpenAPI 문서화 패턴
+## 8. Pydantic response model / OpenAPI documentation pattern
 
-FastAPI는 NestJS의 `@ApiProperty`/`DocumentBuilder`처럼 수동으로 조립하는 절차 없이, Pydantic 모델과 라우트 시그니처만으로 OpenAPI 스키마와 Swagger UI(`/docs`)를 자동 생성한다. 이 저장소에서 사람이 직접 작성해야 하는 것은 **Pydantic 모델 필드와 라우트 데코레이터 인자**뿐이다.
+FastAPI auto-generates the OpenAPI schema and Swagger UI (`/docs`) from just the Pydantic models and route signatures, with no manual assembly procedure like NestJS's `@ApiProperty`/`DocumentBuilder`. In this repository, the only things that must be written by hand are **the Pydantic model fields and the route decorator arguments**.
 
-### `response_model` — 라우트 데코레이터에 항상 명시
+### `response_model` — always specified on the route decorator
 
 ```python
 @router.get("/{order_id}", response_model=GetOrderResponse)
 async def get_order(order_id: str, ...) -> GetOrderResponse: ...
 ```
 
-`response_model`과 함수 반환 타입 힌트를 동일하게 맞춘다 — 둘 다 명시하면 FastAPI가 실제로 필드를 걸러내는 직렬화(불필요한 내부 필드 노출 방지)와 정적 타입 체커(mypy)의 이점을 모두 얻는다.
+Keep `response_model` and the function's return-type hint identical — specifying both gets you both FastAPI's actual field-filtering serialization (preventing unnecessary internal fields from being exposed) and the benefit of a static type checker (mypy).
 
-### 요청 모델 — `Field(...)`로 설명·제약 추가
+### Request models — add descriptions/constraints via `Field(...)`
 
 ```python
 from pydantic import BaseModel, Field
 
 
 class CreateOrderRequest(BaseModel):
-    description: str = Field(..., min_length=1, max_length=200, description="주문 설명")
-    delivery_type: Literal["standard", "express"] = Field(..., description="배송 유형")
+    description: str = Field(..., min_length=1, max_length=200, description="Order description")
+    delivery_type: Literal["standard", "express"] = Field(..., description="Delivery type")
 ```
 
-- `Field(..., min_length=..., max_length=...)`가 NestJS `@IsString()` + `@MinLength()` + `@MaxLength()` 조합에 대응한다 — Pydantic은 검증과 문서화를 같은 선언으로 처리한다.
-- `Literal["standard", "express"]`가 NestJS `@IsEnum()` + `@ApiProperty({ enum: [...] })`에 대응한다.
+- `Field(..., min_length=..., max_length=...)` corresponds to NestJS's combination of `@IsString()` + `@MinLength()` + `@MaxLength()` — Pydantic handles validation and documentation with the same declaration.
+- `Literal["standard", "express"]` corresponds to NestJS's `@IsEnum()` + `@ApiProperty({ enum: [...] })`.
 
-### Optional 필드 — `| None = None` + `Field(None, description=...)`
+### Optional fields — `| None = None` + `Field(None, description=...)`
 
 ```python
 class FindOrdersRequestQuery(BaseModel):
-    keyword: str | None = Field(None, description="검색 키워드")
-    page: int = Field(0, ge=0, description="페이지 번호 (0부터 시작)")
-    take: int = Field(20, ge=1, le=100, description="페이지 크기")
+    keyword: str | None = Field(None, description="Search keyword")
+    page: int = Field(0, ge=0, description="Page number (0-based)")
+    take: int = Field(20, ge=1, le=100, description="Page size")
 ```
 
-FastAPI에서 querystring 파라미터는 별도 DTO 클래스 없이 라우트 함수 인자로 직접 선언해도 된다(`page: int = 0, take: int = Query(20, ge=1, le=100)`) — 필드 수가 많아지면 위처럼 Pydantic 모델로 묶어 `Depends()`로 주입받는다.
+In FastAPI, a querystring parameter can be declared directly as a route-function argument with no separate DTO class (`page: int = 0, take: int = Query(20, ge=1, le=100)`) — once the number of fields grows, group them into a Pydantic model like above and inject it via `Depends()`.
 
-### 배열/nullable 필드 — 타입 힌트가 곧 문서
+### Array/nullable fields — the type hint is the documentation
 
 ```python
 class GetOrdersResult:
-    orders: list[OrderSummaryResult]   # NestJS의 @ApiProperty({ type: [ItemClass] })에 대응
+    orders: list[OrderSummaryResult]   # corresponds to NestJS's @ApiProperty({ type: [ItemClass] })
     total_count: int
 ```
 
 ```python
 class GetOrderResponse(BaseModel):
-    description: str | None   # NestJS의 @ApiProperty({ nullable: true, type: String })에 대응
+    description: str | None   # corresponds to NestJS's @ApiProperty({ nullable: true, type: String })
 ```
 
-별도 데코레이터 없이 타입 힌트 자체가 OpenAPI `nullable`/`items` 스키마로 변환된다.
+With no separate decorator, the type hint itself is converted into the OpenAPI `nullable`/`items` schema.
 
-### Result(Application) vs Response(Interface) — 필드 선언 위치
+### Result (Application) vs. Response (Interface) — where fields are declared
 
-Application 레이어의 Result는 `dataclass`이므로 Pydantic `Field`/검증 데코레이터를 붙이지 않는다 — 검증·문서화는 Interface 레이어의 Pydantic 모델(`schemas.py`)에만 작성한다. NestJS가 "Query/Result 클래스에 `@ApiProperty`를 작성한다"는 것과 반대로, FastAPI 구현은 문서화 책임을 Interface 레이어에 둔다.
+Since the Application layer's Result is a `dataclass`, it never has a Pydantic `Field`/validation decorator attached — validation/documentation is written only on the Interface layer's Pydantic model (`schemas.py`). Opposite to NestJS's "write `@ApiProperty` on the Query/Result class," the FastAPI implementation places the documentation responsibility in the Interface layer.
 
-### deprecated / 요약 / 설명
+### deprecated / summary / description
 
 ```python
 @router.get(
     "/{order_id}",
     response_model=GetOrderResponse,
-    summary="주문 단건 조회",
-    description="주문 ID로 단건 주문 정보를 조회한다.",
+    summary="Look up a single order",
+    description="Looks up a single order's info by order ID.",
 )
 async def get_order(order_id: str, ...) -> GetOrderResponse: ...
 ```
 
 ---
 
-## 9. 로거 패턴
+## 9. Logger pattern
 
-### 항상 모듈 최상위에서 `getLogger(__name__)`
+### Always `getLogger(__name__)` at the module's top level
 
 ```python
 import logging
@@ -458,50 +458,50 @@ import logging
 logger = logging.getLogger(__name__)
 ```
 
-NestJS의 `new Logger(XxxController.name)`(클래스 필드)와 달리, Python 표준 `logging`은 모듈 단위로 로거를 얻는 것이 관용적이다 — 클래스 안에 별도 필드로 두지 않는다.
+Unlike NestJS's `new Logger(XxxController.name)` (a class field), Python's standard `logging` idiomatically obtains a logger per module — it's never kept as a separate field inside a class.
 
-### 구조화된 JSON 로그 — `extra=`로 필드 전달
+### Structured JSON logs — passing fields via `extra=`
 
 ```python
-# 에러 로그
-logger.exception("알림 이메일 발송 실패: account_id=%s", account_id)
+# an error log
+logger.exception("Failed to send notification email: account_id=%s", account_id)
 
-# 정보 로그 — extra=로 구조화된 필드 전달 (snake_case 필드명)
-logger.info("주문 완료", extra={"order_id": order_id, "amount": amount})
+# an info log — passing structured fields via extra= (snake_case field names)
+logger.info("Order completed", extra={"order_id": order_id, "amount": amount})
 ```
 
-`%s` 문자열 보간만으로는 사람이 읽기엔 충분하지만, 구조화 로깅(JSON 포매터)을 적용하면 `extra=`에 담은 필드가 최상위 JSON 키로 병합되어 CloudWatch/Datadog에서 바로 필터링할 수 있다 — 상세: [observability.md](architecture/observability.md).
+`%s` string interpolation alone is readable enough for a human, but applying structured logging (a JSON formatter) merges the fields carried in `extra=` as top-level JSON keys, letting CloudWatch/Datadog filter on them directly — details: [observability.md](architecture/observability.md).
 
 ---
 
-## 10. 주석 스타일
+## 10. Comment style
 
-- 비즈니스 도메인 설명은 팀의 기본 언어(한글)로 인라인 주석(`#`) 작성
-- Docstring(`"""..."""`)은 공개 API(Handler의 `execute()`, Repository ABC의 추상 메서드)에 한 줄 요약 정도로만 사용 — NestJS의 "JSDoc 금지"만큼 엄격하지는 않지만, 장황한 여러 줄 docstring보다 짧은 인라인 주석을 우선한다.
-- 긴 Handler 메서드는 섹션 주석으로 논리적 구분을 표시한다.
+- Write a business-domain explanation as an inline comment (`#`), in English
+- A docstring (`"""..."""`) is used only for a one-line summary on a public API (a Handler's `execute()`, a Repository ABC's abstract method) — not as strict as NestJS's "no JSDoc" rule, but a short inline comment is preferred over a verbose multi-line docstring.
+- A long Handler method uses section comments to mark logical divisions.
 
 ```python
 async def execute(self, cmd: CancelOrderCommand) -> None:
-    # 주문 조회
+    # Look up the order
     orders, _ = await self._repo.find_orders(page=0, take=1, order_id=cmd.order_id)
     order = orders[0] if orders else None
     if order is None:
         raise OrderNotFoundError(cmd.order_id)
 
-    # 비즈니스 규칙 검증 및 상태 변경은 Aggregate에 위임
+    # Business-rule validation and the state change are delegated to the Aggregate
     order.cancel(cmd.reason)
 
-    # 저장 — Outbox 적재까지 포함
+    # Save — including loading the Outbox
     await self._repo.save(order)
 ```
 
 ---
 
-## 11. 커밋 메시지 컨벤션
+## 11. Commit message convention
 
-루트 [conventions.md](../../../docs/conventions.md)의 [Conventional Commits](https://www.conventionalcommits.org/) 규칙을 그대로 따른다 — 언어별로 다른 규칙을 두지 않는다.
+Follows exactly the same [Conventional Commits](https://www.conventionalcommits.org/) rules as the root [conventions.md](../../../docs/conventions.md) — there is no per-language variation.
 
-### 메시지 구조
+### Message structure
 
 ```
 <type>(<scope>): <description>
@@ -511,121 +511,122 @@ async def execute(self, cmd: CancelOrderCommand) -> None:
 [optional footer(s)]
 ```
 
-### type 목록
+### List of types
 
-| type | 설명 | 예시 |
+| type | Description | Example |
 |------|------|------|
-| `feat` | 새로운 기능 추가 | `feat(order): 주문 취소 기능 추가` |
-| `fix` | 버그 수정 | `fix(order): 결제 완료 후 주문 상태가 업데이트되지 않는 현상 수정` |
-| `refactor` | 기능 변경 없이 코드 구조 변경 | `refactor(order): 조회 로직 Repository로 이동` |
-| `docs` | 문서만 변경 | `docs: README 프로젝트 구조 설명 업데이트` |
-| `test` | 테스트 추가 또는 수정 | `test(order): 주문 취소 불변식 단위 테스트 추가` |
-| `chore` | 빌드, CI, 의존성 등 코드 외적인 작업 | `chore(deps): fastapi 버전 업그레이드` |
-| `style` | 코드 포맷팅 등 동작에 영향 없는 변경 | `style: import 정렬 수정 (ruff)` |
-| `perf` | 성능 개선 | `perf(order): 주문 목록 조회 쿼리 최적화` |
+| `feat` | Adds a new feature | `feat(order): add order-cancellation feature` |
+| `fix` | Fixes a bug | `fix(order): fix order status not updating after payment completes` |
+| `refactor` | Changes code structure with no behavior change | `refactor(order): move lookup logic into the Repository` |
+| `docs` | Documentation-only change | `docs: update the README's project-structure section` |
+| `test` | Adds or modifies a test | `test(order): add a unit test for the order-cancellation invariant` |
+| `chore` | Non-code work such as build, CI, dependencies | `chore(deps): upgrade the fastapi version` |
+| `style` | A change with no effect on behavior, such as code formatting | `style: fix import ordering (ruff)` |
+| `perf` | A performance improvement | `perf(order): optimize the order-list lookup query` |
 
-### scope / description 규칙
+### scope / description rules
 
-- scope는 **서비스 도메인명**을 사용한다: `order`, `account`, `payment`, `auth` 등
-- 여러 도메인에 걸친 변경이면 scope를 생략하거나 상위 개념을 사용한다
-- description은 한글, 서술형("추가", "수정", "제거"), 첫 글자 대문자 시작 없음, 끝에 마침표 없음
+- Use the **service domain name** as the scope: `order`, `account`, `payment`, `auth`, etc.
+- For a change spanning multiple domains, omit the scope or use a higher-level concept
+- The description is a plain descriptive sentence, in English, with no capitalized first letter required and no trailing period
 
 ### BREAKING CHANGE
 
 ```
-feat(order)!: 주문 응답 스키마 변경
+feat(order)!: change the order response schema
 
-BREAKING CHANGE: GetOrderResponse의 total_price → total_amount 필드명 변경
+BREAKING CHANGE: renamed GetOrderResponse's total_price field to total_amount
 ```
 
-### 예시
+### Examples
 
 ```
-feat(order): 주문 취소 기능 추가
+feat(order): add order-cancellation feature
 
-fix(order): 결제 완료 후 주문 상태가 업데이트되지 않는 현상 수정 (#123)
+fix(order): fix order status not updating after payment completes (#123)
 
-refactor(account): find_by_id/find_all을 find_accounts로 통합
+refactor(account): unify find_by_id/find_all into find_accounts
 
-repository-pattern.md의 root 컨벤션(find<Noun>s 단일 메서드)에 맞춰
-조회 경로를 하나로 합치고 호출부를 take=1 패턴으로 수정.
+Following the root convention in repository-pattern.md (a single find<Noun>s
+method), the lookup path is merged into one and call sites are updated to
+the take=1 pattern.
 
-docs: enum 배치 규칙 추가
+docs: add the enum-placement rule
 
-test(order): 주문 생성 불변식 단위 테스트 추가
+test(order): add a unit test for the order-creation invariant
 ```
 
 ---
 
-## 12. 브랜치 및 PR 컨벤션
+## 12. Branch and PR convention
 
-루트 [conventions.md](../../../docs/conventions.md)의 Conventional Branch 규칙을 그대로 따른다.
+Follows exactly the same Conventional Branch rules as the root [conventions.md](../../../docs/conventions.md).
 
-### 브랜치 네이밍
+### Branch naming
 
 ```
 <type>/<scope>-<short-description>
 ```
 
-| type | 용도 | 예시 |
+| type | Purpose | Example |
 |------|------|------|
-| `feat` | 새 기능 개발 | `feat/order-cancel` |
-| `fix` | 버그 수정 | `fix/order-status-update` |
-| `refactor` | 리팩터링 | `refactor/account-repository-find-unify` |
-| `docs` | 문서 변경 | `docs/architecture-adapter-pattern` |
-| `test` | 테스트 추가/수정 | `test/order-cancel-invariant` |
-| `chore` | 빌드, CI, 의존성 | `chore/deps-fastapi-upgrade` |
+| `feat` | New feature development | `feat/order-cancel` |
+| `fix` | Bug fix | `fix/order-status-update` |
+| `refactor` | Refactoring | `refactor/account-repository-find-unify` |
+| `docs` | Documentation change | `docs/architecture-adapter-pattern` |
+| `test` | Adding/modifying a test | `test/order-cancel-invariant` |
+| `chore` | Build, CI, dependencies | `chore/deps-fastapi-upgrade` |
 
-**규칙:**
-- 모든 단어는 `kebab-case`로 작성한다 (Python 코드의 `snake_case`와는 별개).
-- scope가 불필요하면 생략한다.
-- `main` 브랜치에서 분기하고, `main`에 직접 commit/push하지 않는다.
+**Rules:**
+- Every word is written in `kebab-case` (separate from the `snake_case` used in Python code).
+- Omit the scope if it isn't needed.
+- Branch off of `main`, and never commit/push directly to `main`.
 
-### PR 워크플로우
+### PR workflow
 
 ```
-1. main에서 새 브랜치 생성
+1. Create a new branch off main
    git checkout main && git pull origin main
    git checkout -b <type>/<scope>-<short-description>
 
-2. 작업 후 commit (Conventional Commits 형식)
+2. Commit after working (Conventional Commits format)
    git add <files>
    git commit -m "<type>(<scope>): <description>"
 
-3. 원격에 push
+3. Push to the remote
    git push -u origin <branch-name>
 
-4. main 브랜치로 PR 생성
+4. Create a PR against the main branch
    gh pr create --base main --title "<type>(<scope>): <description>" --body "..."
 ```
 
-### PR 제목 / 본문
+### PR title / body
 
-PR 제목은 Conventional Commits 형식과 동일하게 작성한다.
+Write the PR title matching the Conventional Commits format.
 
 ```markdown
 ## Summary
-- 변경 사항을 1~3줄로 요약
+- A 1-3 line summary of the change
 
 ## Test plan
-- [ ] 테스트 항목 1
-- [ ] 테스트 항목 2
+- [ ] Test item 1
+- [ ] Test item 2
 ```
 
-### 머지 전략
+### Merge strategy
 
-- **Squash and merge**를 기본으로 사용한다.
-- 머지 후 원격 브랜치는 자동 삭제한다.
+- **Squash and merge** is used by default.
+- The remote branch is automatically deleted after merging.
 
 ---
 
-## 13. 테스트 패턴
+## 13. Testing pattern
 
-상세 원칙(3계층 구조, mock 전략, testcontainers)은 [architecture/testing.md](architecture/testing.md)를 참조한다. 이 절은 네이밍·배치 규칙만 요약한다.
+For the detailed principles (the 3-layer structure, the mocking strategy, testcontainers), see [architecture/testing.md](architecture/testing.md). This section only summarizes the naming/placement rules.
 
-### 단위 테스트 — Domain 레이어
+### Unit tests — the Domain layer
 
-프레임워크·mock 없이 Aggregate를 직접 인스턴스화해서 검증한다.
+Verified by instantiating the Aggregate directly, with no framework or mocks.
 
 ```python
 # tests/unit/domain/test_order.py
@@ -642,15 +643,15 @@ def test_create_주문_항목이_비어있으면_에러를_던진다() -> None:
 
 def test_cancel_이미_취소된_주문을_다시_취소하면_에러를_던진다() -> None:
     order = Order.create(user_id="user-1", items=[make_item()])
-    order.cancel("변심")
+    order.cancel("change of mind")
 
     with pytest.raises(OrderAlreadyCancelledError):
-        order.cancel("변심")
+        order.cancel("change of mind")
 ```
 
-### 단위 테스트 — Application Handler
+### Unit tests — an Application Handler
 
-Repository/Adapter/Technical Service ABC를 `unittest.mock.AsyncMock`으로 대체한다.
+Replace the Repository/Adapter/Technical Service ABC with `unittest.mock.AsyncMock`.
 
 ```python
 # tests/unit/application/test_cancel_order_handler.py
@@ -669,10 +670,10 @@ async def test_execute_주문이_존재하지_않으면_에러를_던진다() ->
     handler = CancelOrderHandler(repo)
 
     with pytest.raises(OrderNotFoundError):
-        await handler.execute(CancelOrderCommand(order_id="non-existent", reason="변심"))
+        await handler.execute(CancelOrderCommand(order_id="non-existent", reason="change of mind"))
 ```
 
-### E2E 테스트 — `httpx.ASGITransport` + testcontainers
+### E2E tests — `httpx.ASGITransport` + testcontainers
 
 ```python
 # tests/test_order_e2e.py
@@ -691,14 +692,14 @@ async def client():
 
 
 @pytest.mark.asyncio
-async def test_주문_취소_성공(client) -> None:
-    response = await client.post(f"/orders/{order_id}/cancel", json={"reason": "변심"})
+async def test_order_cancel_success(client) -> None:
+    response = await client.post(f"/orders/{order_id}/cancel", json={"reason": "change of mind"})
     assert response.status_code == 204
 ```
 
-`pytest.ini`의 `asyncio_mode = auto`로 모든 `async def test_*`를 자동으로 `pytest-asyncio` 대상에 포함시킨다 — 개별 테스트에 `@pytest.mark.asyncio`를 매번 붙이지 않아도 된다(이 저장소에서는 명시적으로 붙이는 스타일과 혼용된다. 팀에서 하나로 통일한다).
+`pytest.ini`'s `asyncio_mode = auto` automatically includes every `async def test_*` as a `pytest-asyncio` target — there's no need to attach `@pytest.mark.asyncio` to each test individually (this repository mixes that in with the explicit-attachment style too — the team should settle on one).
 
-### 테스트 파일 배치
+### Test file placement
 
 ```
 tests/
@@ -710,12 +711,12 @@ tests/
   test_order_e2e.py
 ```
 
-### 테스트 네이밍 패턴
+### Test naming pattern
 
 ```
-test_<메서드>_<조건>_<기대_결과>
-예: test_cancel_이미_취소된_주문을_다시_취소하면_에러를_던진다
-예(영문 스타일도 허용): test_cancel_order_when_already_cancelled_then_raises
+test_<method>_<condition>_<expected_result>
+e.g.: test_cancel_이미_취소된_주문을_다시_취소하면_에러를_던진다
+e.g. (an English style is allowed too): test_cancel_order_when_already_cancelled_then_raises
 ```
 
-기존 E2E 테스트가 영문 스타일(`test_deposit_success`)을 쓰고 있다면, 새 테스트도 그 파일 안에서는 일관되게 영문 스타일을 유지한다 — 파일 단위로는 하나의 스타일을 지킨다.
+If the existing E2E tests use an English style (`test_deposit_success`), keep new tests in that same file consistently in the English style too — keep a single style consistent per file.

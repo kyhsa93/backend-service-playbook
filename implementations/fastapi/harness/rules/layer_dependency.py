@@ -1,9 +1,10 @@
-"""[9] layer-dependency: application/ → infrastructure/ import 금지
+"""[9] layer-dependency: application/ must not import infrastructure/
 
-의존성 역전 — application은 domain/의 추상 인터페이스(ABC/Technical Service 인터페이스)에만
-의존해야 하며, infrastructure/의 구체 구현체를 직접 import하면 안 된다.
-docs/architecture/domain-service.md의 Technical Service 패턴 및 layer-architecture.md의
-의존 방향 규칙 참조.
+Dependency inversion — application must depend only on domain/'s abstract interfaces
+(ABC/Technical Service interfaces), and must never directly import a concrete
+implementation from infrastructure/. See the Technical Service pattern in
+docs/architecture/domain-service.md and the dependency-direction rule in
+layer-architecture.md.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         try:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         violations = []
@@ -37,19 +38,20 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             module = node.module or ""
             if "infrastructure" in module.split("."):
                 names = ", ".join(alias.name for alias in node.names)
-                violations.append(f"{'.' * node.level}{module} 에서 {names} import")
+                violations.append(f"imports {names} from {'.' * node.level}{module}")
 
         if violations:
             result.add(
                 failed(
                     r,
-                    "application/ 은 infrastructure/ 구현체를 직접 import 할 수 없음 "
-                    "(의존성 역전 위반, domain/ 인터페이스에 의존해야 함): " + "; ".join(violations),
+                    "application/ must not import an infrastructure/ implementation directly "
+                    "(a dependency-inversion violation — it must depend on a domain/ interface): "
+                    + "; ".join(violations),
                 )
             )
         else:
             result.add(passed(f"{r} (layer-dependency)"))
 
     if not found:
-        result.add(skipped("application/ Python 파일 없음"))
+        result.add(skipped("No Python file in application/"))
     return result

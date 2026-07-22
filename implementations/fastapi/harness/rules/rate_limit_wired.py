@@ -1,17 +1,19 @@
-"""[26] rate-limit-wired: slowapi Limiter가 정의만 되고 죽은 코드로 남아있지 않은지
+"""[26] rate-limit-wired: whether the slowapi Limiter is only defined and left as dead code
 (rate-limiting.md)
 
-rate-limiting.md는 `slowapi`의 `Limiter`를 `src/common/rate_limit.py`에 싱글턴으로 두고,
-`main.py`에서 (a) `app.state.limiter = limiter`로 앱에 등록하고 (b) `RateLimitExceeded`
-예외 핸들러를 등록하고 (c) `SlowAPIMiddleware`를 미들웨어 체인에 추가하도록 못박는다. 이
-셋 중 하나라도 빠지면 `Limiter` 인스턴스가 정의만 되고 실제로는 요청 처리에 관여하지 않는
-죽은 코드가 된다. 마지막으로 (d) 적어도 하나의 라우터가 `@limiter.limit(...)`을 실제
-엔드포인트에 적용하는지도 확인한다 — 전역 등록만 있고 어디에도 적용되지 않으면 마찬가지로
-무의미하다.
+rate-limiting.md pins down that `slowapi`'s `Limiter` is kept as a singleton in
+`src/common/rate_limit.py`, and in `main.py` it's (a) registered on the app via
+`app.state.limiter = limiter`, (b) has a `RateLimitExceeded` exception handler registered,
+and (c) has `SlowAPIMiddleware` added to the middleware chain. If even one of these three
+is missing, the `Limiter` instance is only defined and becomes dead code that doesn't
+actually participate in request handling. Finally, it also confirms (d) whether at least
+one router applies `@limiter.limit(...)` to an actual endpoint — if it's only registered
+globally and applied nowhere, it's equally meaningless.
 
-이 프로젝트가 애초에 slowapi를 쓰지 않는다면(다른 rate limiting 메커니즘을 쓰거나 아직
-구현하지 않았다면) 이 규칙은 skip한다 — S5는 "정의는 됐는데 배선이 안 된" 상태만 잡는
-가드이지, rate limiting 자체의 존재를 강제하지 않는다.
+If this project doesn't use slowapi at all in the first place (using a different rate-
+limiting mechanism, or not implemented yet), this rule is skipped — this check is a guard
+that only catches the state of "defined but not wired up," and doesn't mandate the
+existence of rate limiting itself.
 """
 
 from __future__ import annotations
@@ -42,58 +44,61 @@ def check(root: str, py_files: list[str]) -> RuleResult:
 
     limiter_defined = any(LIMITER_DEFINITION.search(read(f)) for f in py_files)
     if not limiter_defined:
-        result.add(skipped("slowapi Limiter 정의가 없음 — rate limiting 미구현 또는 다른 메커니즘 사용"))
+        result.add(
+            skipped("No slowapi Limiter defined — rate limiting isn't implemented, or a different mechanism is used")
+        )
         return result
 
     main_py = _find_main_py(root, py_files)
     if main_py is None:
-        result.add(failed("main.py", "Limiter는 정의되어 있으나 앱 진입점(main.py)을 찾을 수 없음"))
+        result.add(failed("main.py", "A Limiter is defined, but the app entry point (main.py) can't be found"))
         return result
 
     label = rel(root, main_py)
     src = read(main_py)
 
     if STATE_REGISTRATION.search(src):
-        result.add(passed(f"{label} (app.state.limiter 등록)"))
+        result.add(passed(f"{label} (app.state.limiter is registered)"))
     else:
         result.add(
             failed(
                 label,
-                "Limiter가 정의만 되고 app.state.limiter로 앱에 등록되지 않음 — 죽은 코드(rate-limiting.md)",
+                "The Limiter is only defined and isn't registered on the app via app.state.limiter"
+                " — dead code (rate-limiting.md)",
             )
         )
 
     if EXCEPTION_HANDLER.search(src):
-        result.add(passed(f"{label} (RateLimitExceeded 예외 핸들러 등록)"))
+        result.add(passed(f"{label} (a RateLimitExceeded exception handler is registered)"))
     else:
         result.add(
             failed(
                 label,
-                "RateLimitExceeded 예외 핸들러가 등록되지 않음 — 제한 초과 시 429 대신 처리되지"
-                " 않은 예외가 발생함(rate-limiting.md)",
+                "No RateLimitExceeded exception handler is registered — once the limit is"
+                " exceeded, an unhandled exception occurs instead of 429 (rate-limiting.md)",
             )
         )
 
     if MIDDLEWARE_REGISTRATION.search(src):
-        result.add(passed(f"{label} (SlowAPIMiddleware 등록)"))
+        result.add(passed(f"{label} (SlowAPIMiddleware is registered)"))
     else:
         result.add(
             failed(
                 label,
-                "SlowAPIMiddleware가 미들웨어 체인에 추가되지 않음 — 표준 응답 헤더"
-                "(X-RateLimit-*)와 자동 429 처리가 적용되지 않음(rate-limiting.md)",
+                "SlowAPIMiddleware isn't added to the middleware chain — the standard"
+                " response headers (X-RateLimit-*) and automatic 429 handling aren't applied (rate-limiting.md)",
             )
         )
 
     applied = any(LIMIT_DECORATOR.search(read(f)) for f in py_files if norm(f) != norm(main_py))
     if applied:
-        result.add(passed("@limiter.limit(...) 이 최소 1개 라우트에 적용됨"))
+        result.add(passed("@limiter.limit(...) is applied to at least 1 route"))
     else:
         result.add(
             failed(
                 "interface/rest/*",
-                "Limiter가 정의·전역 등록만 되고 어떤 라우트에도 @limiter.limit(...)이 적용되지"
-                " 않음 — 죽은 코드(rate-limiting.md)",
+                "The Limiter is only defined and registered globally, with @limiter.limit(...)"
+                " applied to no route — dead code (rate-limiting.md)",
             )
         )
 

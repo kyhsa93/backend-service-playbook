@@ -20,10 +20,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # PaymentModel/RefundModel은 status가 바뀌는(=상태 변경 가능한) Entity인데도 deleted_at이
-    # 없었다 — persistence.md "모든 상태 변경 가능한 Entity에 created_at/updated_at/deleted_at을
-    # 둔다" 원칙에 어긋나는 격차였다(AccountModel/CardModel은 이미 갖고 있었음). soft-delete-filter
-    # harness 규칙이 잡아낸 것을 반영한다.
+    # PaymentModel/RefundModel are Entities whose status changes (i.e. mutable state), yet
+    # they had no deleted_at — a gap that violated persistence.md's "every Entity with
+    # mutable state gets created_at/updated_at/deleted_at" principle (AccountModel/CardModel
+    # already had it). This reflects what the soft-delete-filter harness rule caught.
     op.add_column("payments", sa.Column("deleted_at", sa.DateTime(), nullable=True))
     op.add_column("refunds", sa.Column("deleted_at", sa.DateTime(), nullable=True))
 

@@ -16,19 +16,21 @@ import src.payment.infrastructure.persistence.payment_repository  # noqa: F401
 import src.payment.infrastructure.persistence.refund_repository  # noqa: F401
 import src.task_queue.task_outbox_model  # noqa: F401
 
-# 프로젝트의 Base(및 그 위에 등록된 모든 모델)를 가져와야 autogenerate가 모델 변경을
-# 감지할 수 있다 — outbox_model/sent_email_model/card_repository/credential_repository/
-# payment_repository/refund_repository/sent_statement_email_model/task_outbox_model도 같은
-# Base를 import하면서 메타데이터에 등록되므로 여기서 함께 import해준다(그렇지 않으면 해당
-# 테이블들이 "모델에는 있는데 감지가 안 되는" 상태가 된다).
+# The project's Base (and every model registered on it) must be imported for autogenerate
+# to detect model changes — outbox_model/sent_email_model/card_repository/credential_repository/
+# payment_repository/refund_repository/sent_statement_email_model/task_outbox_model also
+# register onto the metadata by importing the same Base, so they are imported together
+# here too (otherwise those tables end up in a state of "present in the models but not
+# detected").
 from src.account.infrastructure.persistence.account_repository import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# alembic.ini의 sqlalchemy.url 대신 앱과 동일한 DATABASE_URL 환경 변수를 사용한다 —
-# 연결 문자열이 두 곳에 따로 존재하면 배포 환경마다 어긋날 위험이 있다.
+# Uses the same DATABASE_URL environment variable as the app, instead of alembic.ini's
+# sqlalchemy.url — if the connection string existed separately in two places, it would risk
+# drifting apart across deployment environments.
 database_url = os.getenv("DATABASE_URL")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)

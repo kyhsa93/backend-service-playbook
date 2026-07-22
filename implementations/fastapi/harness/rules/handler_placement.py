@@ -1,4 +1,4 @@
-"""[4] Handler — application/command/ 또는 application/query/"""
+"""[4] Handler — application/command/ or application/query/"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         if "/application/command/" in fn or "/application/query/" in fn:
             result.add(passed(r))
         else:
-            result.add(failed(r, "handler 파일은 application/command/ 또는 application/query/ 에 있어야 함"))
+            result.add(failed(r, "A handler file must be in application/command/ or application/query/"))
     if not found:
-        result.add(skipped("handler 파일 없음"))
+        result.add(skipped("No handler file"))
     return result

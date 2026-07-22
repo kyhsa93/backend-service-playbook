@@ -9,14 +9,16 @@ PAGE_SIZE = 200
 
 
 class PaymentAdapterImpl(PaymentAdapter):
-    """PaymentAdapter의 구현체(ACL). Payment BC가 공개한 읽기 인터페이스(PaymentQuery)를
-    주입받아 호출하고, Payment BC의 모델을 Card BC가 쓰는 최소 형태(CardPaymentSummary)로
-    번역한다. Payment의 Repository 구현체나 도메인 객체를 직접 참조하지 않는다
-    (card/infrastructure/account_adapter_impl.py와 동일한 패턴).
+    """The implementation of PaymentAdapter (ACL). It's injected with and calls the read
+    interface (PaymentQuery) the Payment BC exposes, and translates Payment BC's model into
+    the minimal shape the Card BC uses (CardPaymentSummary). It never references Payment's
+    Repository implementation or domain objects directly (the same pattern as
+    card/infrastructure/account_adapter_impl.py).
 
-    `find_payments()`의 (list, total) 페이지네이션을 그대로 재사용해 페이지 단위로 순회하며
-    COMPLETED 결제만 집계한다 — 별도의 count 전용 메서드를 Repository/Query 인터페이스에
-    새로 추가하지 않는다(repository-pattern.md의 find_<noun>s 단일 메서드 컨벤션).
+    Reuses `find_payments()`'s (list, total) pagination as-is, iterating page by page and
+    aggregating only COMPLETED payments — no separate count-only method is added to the
+    Repository/Query interface (following repository-pattern.md's single find_<noun>s
+    method convention).
     """
 
     def __init__(self, payment_query: PaymentQuery) -> None:

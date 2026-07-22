@@ -1,10 +1,10 @@
-# 에러 처리 패턴
+# Error Handling Pattern
 
-> 프레임워크 무관 원칙: [../../../../docs/architecture/error-handling.md](../../../../docs/architecture/error-handling.md)
+> Framework-agnostic principles: [../../../../docs/architecture/error-handling.md](../../../../docs/architecture/error-handling.md)
 
-## 현재 구현
+## Current implementation
 
-`src/account/domain/errors.py`가 예외 계층을 정의하고, `src/account/domain/error_codes.py`가 각 예외에 대응하는 고유 코드를 `AccountErrorCode` enum으로 정의한다.
+`src/account/domain/errors.py` defines the exception hierarchy, and `src/account/domain/error_codes.py` defines the unique code corresponding to each exception as the `AccountErrorCode` enum.
 
 ```python
 # src/account/domain/error_codes.py
@@ -15,8 +15,8 @@ class AccountErrorCode(str, Enum):
     ACCOUNT_NOT_FOUND = "ACCOUNT_NOT_FOUND"
     INVALID_AMOUNT = "INVALID_AMOUNT"
     DEPOSIT_REQUIRES_ACTIVE_ACCOUNT = "DEPOSIT_REQUIRES_ACTIVE_ACCOUNT"
-    # ... errors.py의 모든 예외 클래스에 대응하는 코드가 1:1로 존재
-    VALIDATION_FAILED = "VALIDATION_FAILED"   # Pydantic 검증 실패 전용, 고정값
+    # ... a code exists 1:1 for every exception class in errors.py
+    VALIDATION_FAILED = "VALIDATION_FAILED"   # reserved exclusively for Pydantic validation failures, a fixed value
 ```
 
 ```python
@@ -40,12 +40,12 @@ class InvalidAmountError(AccountError):
     code = AccountErrorCode.INVALID_AMOUNT
 
     def __init__(self) -> None:
-        super().__init__("금액은 0보다 커야 합니다.")
+        super().__init__("The amount must be greater than 0.")
 ```
 
-`src/card/domain/error_codes.py` + `src/card/domain/errors.py`도 동일한 패턴을 따른다 — Account와 Card는 각자의 Bounded Context이므로 에러 코드 enum도 도메인별로 독립적으로 정의한다(공유하지 않는다).
+`src/card/domain/error_codes.py` + `src/card/domain/errors.py` follow the same pattern — since Account and Card are each their own Bounded Context, their error code enums are also defined independently per domain (not shared).
 
-`main.py`에서 두 단계로 매핑하고, 공용 응답 빌더로 표준 형식을 조립한다.
+`main.py` maps this in two stages, assembling the standard shape with a shared response builder.
 
 ```python
 # main.py
@@ -62,13 +62,13 @@ async def account_error_handler(request: Request, exc: AccountError) -> JSONResp
     return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
 ```
 
-**레이어 분리 자체는 올바르다:** Domain(`errors.py`, `error_codes.py`)은 plain `Exception`/`Enum`만 던지고 HTTP를 모른다. HTTP 상태 코드 변환과 표준 응답 조립은 `main.py`(Interface 레이어)와 `src/common/error_response.py`에만 있다. `AccountNotFoundError`를 `AccountError`보다 먼저 등록해 404를 400보다 우선 매칭시키는 것도 정확하다. Card 도메인도 `CardNotFoundError`/`LinkedAccountNotFoundError`를 `CardError`보다 먼저 등록해 동일한 순서를 지킨다.
+**The layer separation itself is correct:** the Domain layer (`errors.py`, `error_codes.py`) only throws plain `Exception`/`Enum` and knows nothing about HTTP. HTTP status-code conversion and standard-response assembly live only in `main.py` (the Interface layer) and `src/common/error_response.py`. Registering `AccountNotFoundError` before `AccountError` so 404 matches before 400 is also correct. The Card domain likewise registers `CardNotFoundError`/`LinkedAccountNotFoundError` before `CardError` to keep the same ordering.
 
 ---
 
-## 표준 에러 응답 스키마
+## Standard error response schema
 
-root 원칙이 요구하는 `statusCode`, `code`, `message`, `error` 네 필드를 모든 에러 응답이 갖는다.
+Every error response has the four fields required by the root principle: `statusCode`, `code`, `message`, `error`.
 
 ```python
 # src/common/error_response.py
@@ -92,7 +92,7 @@ def build_error_response(status_code: int, code: str, message: str) -> dict:
 ```
 
 ```json
-// 실제 응답
+// actual response
 {
   "statusCode": 404,
   "code": "ACCOUNT_NOT_FOUND",
@@ -101,13 +101,13 @@ def build_error_response(status_code: int, code: str, message: str) -> dict:
 }
 ```
 
-`code`가 있으므로 클라이언트는 메시지 텍스트(자연어, 번역 가능)가 아니라 안정적인 `code`로 분기할 수 있다.
+Because `code` is present, the client can branch on the stable `code` rather than on the message text (natural language, translatable).
 
 ---
 
-## Pydantic 검증 실패(422) — `code`는 `VALIDATION_FAILED` 고정
+## Pydantic validation failures (422) — `code` is fixed to `VALIDATION_FAILED`
 
-FastAPI 기본 422 응답도 같은 형식으로 통일되어 있다.
+FastAPI's default 422 response is also unified into the same shape.
 
 ```python
 # main.py
@@ -125,28 +125,28 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 ---
 
-## 매핑되지 않은 예외 — 500
+## Unmapped exceptions — 500
 
-`main.py`에 등록되지 않은 예외 타입은 FastAPI 기본 처리로 500이 반환된다. 프로덕션에서는 스택 트레이스를 응답 본문에 노출하지 않도록 `debug=False`(FastAPI 기본값)를 유지하고, [observability.md](observability.md)의 구조화 로깅으로 서버 측에만 상세 정보를 남긴다.
-
----
-
-## 원칙
-
-- **Domain/Application은 plain Exception만 throw**: `errors.py`는 HTTP를 모른다.
-- **모든 예외에 고유 코드를 부여**: 메시지 텍스트가 아닌 `code`로 클라이언트가 분기하도록 한다. `error_codes.py`의 enum이 `errors.py`의 모든 예외 클래스와 1:1로 대응한다.
-- **에러 응답은 4개 필드 고정**: `statusCode`, `code`, `message`, `error` — `src/common/error_response.py`의 `build_error_response()`가 유일한 조립 지점이다.
-- **에러 변환은 `main.py`(Interface 레이어)에서만**: `@app.exception_handler`가 유일한 변환 지점이다.
-- **Validation 실패는 `code: VALIDATION_FAILED`로 고정**: 비즈니스 에러 코드와 구분한다.
+Any exception type not registered in `main.py` results in a 500 via FastAPI's default handling. In production, keep `debug=False` (FastAPI's default) so a stack trace is never exposed in the response body, and use the structured logging from [observability.md](observability.md) to leave detailed information only on the server side.
 
 ---
 
-### 관련 문서
+## Principles
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 내부 에러 throw 패턴
-- [layer-architecture.md](layer-architecture.md) — 레이어별 역할 분리
-- [observability.md](observability.md) — 에러 로깅
+- **Domain/Application only throw plain Exceptions**: `errors.py` knows nothing about HTTP.
+- **Every exception gets a unique code**: the client branches on `code`, not on message text. The enum in `error_codes.py` corresponds 1:1 with every exception class in `errors.py`.
+- **The error response has a fixed set of 4 fields**: `statusCode`, `code`, `message`, `error` — `build_error_response()` in `src/common/error_response.py` is the sole assembly point.
+- **Error conversion happens only in `main.py` (the Interface layer)**: `@app.exception_handler` is the sole conversion point.
+- **Validation failures are fixed to `code: VALIDATION_FAILED`**: distinguished from business error codes.
 
 ---
 
-harness `error-response-schema` 규칙(`../../harness/rules/error_response_schema.py`)이 `@app.exception_handler(...)`가 조립하는 응답 바디의 필드 집합이 `statusCode`/`code`/`message`/`error` 4개와 정확히 일치하는지(더 많지도 적지도 않게) 검증하고, `typed-errors-only` 규칙(`../../harness/rules/typed_errors_only.py`)이 `domain/`·`application/`에서 `raise Exception("...")` 같은 free-form 문자열 예외 대신 타입화된 예외 클래스를 raise하는지 검증한다.
+### Related documents
+
+- [tactical-ddd.md](tactical-ddd.md) — the pattern for throwing errors inside an Aggregate
+- [layer-architecture.md](layer-architecture.md) — separation of responsibilities per layer
+- [observability.md](observability.md) — error logging
+
+---
+
+The harness's `error-response-schema` rule (`../../harness/rules/error_response_schema.py`) verifies that the field set of the response body assembled by `@app.exception_handler(...)` matches exactly the 4 fields `statusCode`/`code`/`message`/`error` (no more, no fewer), and the `typed-errors-only` rule (`../../harness/rules/typed_errors_only.py`) verifies that `domain/`/`application/` raise typed exception classes instead of free-form string exceptions such as `raise Exception("...")`.

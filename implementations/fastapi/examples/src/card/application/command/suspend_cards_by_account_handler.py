@@ -10,10 +10,11 @@ class SuspendCardsByAccountCommand:
 
 
 class SuspendCardsByAccountHandler:
-    """Account BC의 account.suspended.v1 Integration Event에 대한 반응 유스케이스.
+    """The reaction use case for the Account BC's account.suspended.v1 Integration Event.
 
-    at-least-once 전달을 전제로 멱등하게 구현한다 — ACTIVE 카드만 골라 정지하므로
-    같은 이벤트가 재수신되어도(이미 정지된 카드) 아무 일도 하지 않는다.
+    Implemented to be idempotent, assuming at-least-once delivery — since only ACTIVE cards
+    are picked and suspended, nothing happens even if the same event is redelivered (the
+    card is already suspended).
     """
 
     def __init__(self, repo: CardRepository) -> None:

@@ -58,10 +58,11 @@ class AccountClosed:
 
 @dataclass(frozen=True)
 class InterestPaid:
-    """정기 이자 지급 배치(Task Queue)가 `Account.apply_interest()`를 통해 발행하는
-    Domain Event. MoneyDeposited와 필드 구성이 같지만, 사용자가 직접 요청한 입금이 아니라
-    시스템이 주기적으로 적용한 이자라는 사실을 이벤트 타입 자체로 구분한다
-    (알림 이메일 문구도 MoneyDeposited와 다르게 렌더링된다)."""
+    """A Domain Event published by the regular interest-payment batch (Task Queue) via
+    `Account.apply_interest()`. It has the same field composition as MoneyDeposited, but the
+    event type itself distinguishes the fact that this is interest applied periodically by
+    the system, not a deposit the user requested directly (the notification email text is
+    also rendered differently from MoneyDeposited)."""
 
     account_id: str
     transaction_id: str

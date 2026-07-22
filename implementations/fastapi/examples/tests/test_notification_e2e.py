@@ -121,9 +121,9 @@ async def _count_sent_emails(session_factory, account_id: str, event_type: str) 
 
 
 async def _mark_unprocessed(session_factory, event_type: str) -> None:
-    """OutboxPoller가 아직 SQS에 발행하지 않은 것처럼 보이도록 `processed`를 되돌린다 —
-    다음 tick에서 같은 이벤트가 SQS로 다시 발행되고 OutboxConsumer가 다시 수신하는
-    at-least-once 재전달을 시뮬레이션한다."""
+    """Reverts `processed` so it looks as if OutboxPoller hasn't published to SQS yet —
+    simulates the at-least-once redelivery where the same event is published to SQS again
+    on the next tick and OutboxConsumer receives it again."""
     async with session_factory() as session:
         stmt = select(OutboxModel).where(OutboxModel.event_type == event_type)
         rows = (await session.execute(stmt)).scalars().all()
@@ -133,9 +133,9 @@ async def _mark_unprocessed(session_factory, event_type: str) -> None:
 
 
 async def _wait_for_sent_email(session_factory, account_id: str, event_type: str) -> SentEmailModel:
-    """`_find_sent_email()`이 행을 찾을 때까지 폴링한다 — SesNotificationService는
-    OutboxConsumer가 SQS에서 이벤트를 수신한 뒤에야 호출되므로, API 응답 직후에는
-    아직 이메일이 기록되어 있지 않을 수 있다."""
+    """Polls until `_find_sent_email()` finds a row — since SesNotificationService is only
+    called after OutboxConsumer receives the event from SQS, the email may not be recorded
+    yet right after the API response."""
     found: dict[str, SentEmailModel] = {}
 
     async def _check() -> bool:

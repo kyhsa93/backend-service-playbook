@@ -14,4 +14,4 @@ class AccountErrorCode(str, Enum):
     ACCOUNT_ALREADY_CLOSED = "ACCOUNT_ALREADY_CLOSED"
     ACCOUNT_BALANCE_NOT_ZERO = "ACCOUNT_BALANCE_NOT_ZERO"
     TRANSFER_SAME_ACCOUNT = "TRANSFER_SAME_ACCOUNT"
-    VALIDATION_FAILED = "VALIDATION_FAILED"  # Pydantic 검증 실패 전용, 고정값
+    VALIDATION_FAILED = "VALIDATION_FAILED"  # reserved exclusively for Pydantic validation failures, a fixed value

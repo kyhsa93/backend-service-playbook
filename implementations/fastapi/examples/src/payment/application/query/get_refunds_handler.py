@@ -15,10 +15,10 @@ class GetRefundsQuery:
 
 
 class GetRefundsHandler:
-    """Refund 테이블 자체는 owner_id를 갖지 않는다(Refund는 payment_id로만 원 결제를
-    참조한다) — 소유권 검증은 Payment를 먼저 조회해 확인한다. Account의
-    GetTransactionsHandler가 계좌 소유권을 먼저 확인한 뒤 거래 내역을 조회하는 것과
-    동일한 패턴이다.
+    """The Refund table itself has no owner_id (Refund references the original payment only
+    via payment_id) — ownership is verified by first looking up the Payment. The same
+    pattern as Account's GetTransactionsHandler, which verifies account ownership first
+    before looking up transaction history.
     """
 
     def __init__(self, payment_query: PaymentQuery, refund_query: RefundQuery) -> None:

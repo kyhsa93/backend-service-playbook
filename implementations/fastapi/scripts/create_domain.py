@@ -1,34 +1,40 @@
 #!/usr/bin/env python3
-"""새 도메인 스캐폴딩 생성기.
+"""A scaffolding generator for a new domain.
 
-docs/reference.md의 "실전 구현 템플릿"과 examples/src/account·card/의 실제 코드를 기준으로,
-Aggregate(단일 status 필드, PENDING→ACTIVE/CANCELLED) + CQRS Command/Query Handler + 도메인
-이벤트 1종(cancel에서 발행) + Repository(ABC/구현체) + Router + Pydantic 스키마 + Alembic
-마이그레이션까지 한 번에 생성한다.
+Based on "The Practical Implementation Template" in docs/reference.md and the actual code
+in examples/src/account·card/, generates in one shot: an Aggregate (a single status field,
+PENDING→ACTIVE/CANCELLED) + CQRS Command/Query Handlers + one domain event (published on
+cancel) + a Repository (ABC/implementation) + a Router + Pydantic schemas + an Alembic
+migration.
 
-FastAPI에는 NestJS의 CommandBus/CqrsModule/@Module 같은 DI 컨테이너가 없다 — 대신 Depends
-팩토리 함수가 조립 지점이다. Outbox → SQS 발행/수신은 OutboxPoller/OutboxConsumer가 앱 전체에서
-독립적으로 주기 실행되며(Command Handler는 이를 전혀 참조하지 않는다 — domain-events.md의
-동기 드레인 금지 원칙), eventType → 핸들러 라우팅은 `src/outbox/event_handlers.py`의
-`build_event_handlers()` 하나가 프로세스 전체의 단일 조립 지점(composition root)이다(도메인마다
-전용 Relay를 두는 예전 방식과 다르다). 그래서 이 생성기는 새 도메인 디렉토리를 만드는 것 외에,
-이미 존재하는 세 파일 — main.py(라우터 등록), event_handlers.py(공유 composition root인
-`build_event_handlers()`), migrations/env.py(Alembic이 감지할 모델 import) — 을 함께 수정해야
-한다. 기본값은 수정하지 않고 붙여넣을 스니펫만 출력하며, --wire를 줘야 실제 파일을 고친다
-(기존 프로젝트 파일을 임의로 고치는 걸 원치 않을 수 있어 안전한 쪽을 기본값으로 둔다).
+FastAPI has no DI container like NestJS's CommandBus/CqrsModule/@Module — instead, a
+Depends factory function is the assembly point. Publishing/receiving Outbox → SQS runs
+independently and periodically across the whole app via OutboxPoller/OutboxConsumer (a
+Command Handler never references this at all — domain-events.md's principle forbidding
+synchronous draining), and eventType → handler routing has a single composition root for
+the entire process: `build_event_handlers()` in `src/outbox/event_handlers.py` (unlike the
+older approach of a dedicated Relay per domain). So beyond creating the new domain
+directory, this generator must also modify three existing files together — main.py
+(router registration), event_handlers.py (the shared composition root
+`build_event_handlers()`), and migrations/env.py (the model import Alembic needs to
+detect). By default it doesn't modify them and only prints the snippets to paste in; only
+with --wire does it actually fix the files (since one might not want an existing project
+file modified arbitrarily, the safer option is the default).
 
-사용법:
+Usage:
   python3 scripts/create_domain.py <PascalCaseDomainName> [--out <targetSrcDir>] [--wire]
 
-예:
+Examples:
   python3 scripts/create_domain.py Coupon
-    → ../examples/src/coupon/ 아래에 생성(스크립트 기본 대상), main.py/event_handlers.py/
-      migrations/env.py는 건드리지 않고 붙여넣을 스니펫만 출력
+    → generates under ../examples/src/coupon/ (the script's default target); main.py/
+      event_handlers.py/migrations/env.py are left untouched, only the snippets to paste
+      in are printed
   python3 scripts/create_domain.py Coupon --out /tmp/scratch-app/src --wire
-    → 지정한 src/ 아래 생성 + main.py/event_handlers.py/migrations/env.py/migrations/versions/
-      까지 자동 배선
+    → generates under the specified src/ + automatically wires up main.py/event_handlers.py/
+      migrations/env.py/migrations/versions/ too
 
-검증: 생성 뒤 `ruff check .`, `ruff format --check .`, `bash harness.sh <projectRoot>`로 확인한다.
+Verification: after generating, confirm with `ruff check .`, `ruff format --check .`,
+`bash harness.sh <projectRoot>`.
 """
 
 from __future__ import annotations
@@ -43,7 +49,7 @@ import subprocess
 import sys
 
 # ---------------------------------------------------------------------------
-# 이름 변환
+# Name conversion
 # ---------------------------------------------------------------------------
 
 
@@ -54,7 +60,8 @@ def to_pascal_case(raw: str) -> str:
 
 
 def to_snake_case(pascal: str) -> str:
-    # 첫 글자를 제외한 대문자 앞에 '_'를 삽입한 뒤 전부 소문자로 — "LoyaltyCategory" → "loyalty_category"
+    # Inserts '_' before every uppercase letter except the first, then lowercases everything
+    # — "LoyaltyCategory" -> "loyalty_category"
     return re.sub(r"(?<!^)(?=[A-Z])", "_", pascal).lower()
 
 
@@ -62,12 +69,14 @@ def snake_to_pascal(snake: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in snake.split("_") if part)
 
 
-# 아주 단순한 규칙 기반 복수형 — 불규칙 복수형(예: Category → Categories 이상의 진짜 불규칙,
-# person → people 등)은 생성 후 수동으로 고쳐야 한다는 걸 실행 결과에 안내한다. snake_case
-# 문자열(단어 경계가 '_'로 보존됨) 위에서 접미사만 보고 판단하므로, 여러 단어로 된 도메인명이라도
-# 마지막 단어 하나만 정확히 복수화된다 — kebab-case나 PascalCase 표기 위에서 나이브하게
-# 접미사를 붙이면(예: "loyalty-category" → "loyalty-categorys") 단어 경계가 깨지는 문제를
-# 피하기 위해, 복수형은 snake_case에서 계산한 뒤 kebab/PascalCase로 재변환한다.
+# A very simple rule-based pluralization — the run's output notes that a genuinely
+# irregular plural (e.g. beyond Category → Categories, something like person → people)
+# must be fixed manually after generation. Since it decides based only on the suffix over
+# a snake_case string (where word boundaries are preserved via '_'), even a multi-word
+# domain name gets exactly its last word pluralized correctly — to avoid the problem where
+# naively appending a suffix over kebab-case or PascalCase notation breaks word boundaries
+# (e.g. "loyalty-category" → "loyalty-categorys"), the plural is computed in snake_case
+# first, then converted back to kebab/PascalCase.
 def naive_pluralize_snake(snake: str) -> str:
     if re.search(r"[sxz]$", snake) or re.search(r"[cs]h$", snake):
         return snake + "es"
@@ -77,11 +86,12 @@ def naive_pluralize_snake(snake: str) -> str:
 
 
 def sorted_dotted_imports(prefix: str, entries: list[tuple[str, str]]) -> str:
-    """`from {prefix}.<module> import <names>` 줄들을 모듈명 알파벳 순으로 정렬해 반환한다.
+    """Returns `from {prefix}.<module> import <names>` lines, sorted alphabetically by module name.
 
-    도메인 이름에 따라 모듈명의 알파벳 순서가 달라지므로(예: "coupon" < "repository"지만
-    "voucher" > "repository"), 템플릿에 순서를 하드코딩하면 특정 도메인 이름에서만 isort
-    위반이 나는 잠재 버그가 생긴다 — 항상 실제로 정렬해서 만든다.
+    Since the module name's alphabetical order changes depending on the domain name (e.g.
+    "coupon" < "repository" but "voucher" > "repository"), hardcoding the order in the
+    template would create a latent bug where an isort violation only shows up for certain
+    domain names — it's always actually sorted here instead.
     """
     return "\n".join(f"from {prefix}.{module} import {names}" for module, names in sorted(entries))
 
@@ -98,7 +108,7 @@ class Names:
 
 
 # ---------------------------------------------------------------------------
-# 파일 생성
+# File generation
 # ---------------------------------------------------------------------------
 
 
@@ -134,7 +144,7 @@ class {n.Domain}NotFoundError({n.Domain}Error):
     code = {n.Domain}ErrorCode.{n.DOMAIN_SCREAM}_NOT_FOUND
 
     def __init__(self, {n.domain}_id: str) -> None:
-        super().__init__(f"{n.Domain}을(를) 찾을 수 없습니다: {{{n.domain}_id}}")
+        super().__init__(f"{n.Domain} not found: {{{n.domain}_id}}")
         self.{n.domain}_id = {n.domain}_id
 
 
@@ -142,7 +152,7 @@ class {n.Domain}AlreadyCancelledError({n.Domain}Error):
     code = {n.Domain}ErrorCode.{n.DOMAIN_SCREAM}_ALREADY_CANCELLED
 
     def __init__(self) -> None:
-        super().__init__("이미 취소된 {n.Domain}입니다.")
+        super().__init__("The {n.Domain} is already cancelled.")
 '''
 
     files[f"{n.domain}/domain/events.py"] = f"""from dataclasses import dataclass
@@ -198,12 +208,12 @@ class {n.Domain}:
             created_at=datetime.utcnow(),
         )
 
-    # 이벤트를 발행하지 않는 단순 상태 전이 예시 — 도메인 이벤트가 필요 없는 변경은
-    # 이렇게 그냥 상태만 바꾼다.
+    # An example of a simple state transition that publishes no event — a change that
+    # doesn't need a domain event just changes the state like this.
     def activate(self) -> None:
         self.status = {n.Domain}Status.ACTIVE
 
-    # 이벤트를 발행하는 상태 전이 예시.
+    # An example of a state transition that publishes an event.
     def cancel(self, reason: str) -> None:
         if self.status == {n.Domain}Status.CANCELLED:
             raise {n.Domain}AlreadyCancelledError()
@@ -223,9 +233,10 @@ from .{n.domain} import {n.Domain}
 
 
 class {n.Domain}Query(ABC):
-    """읽기 전용 인터페이스 — Query Handler 전용. `save_{n.domain}()` 등 쓰기 메서드를 노출하지 않는다
-    (cqrs-pattern.md 참고). `{n.Domain}Repository`(쓰기 모델)와 메서드 시그니처를 공유하지만
-    별도 계약이다 — Query Handler는 반드시 이 타입으로만 의존해야 한다.
+    """A read-only interface — for the Query Handler only. Never exposes a write method
+    such as `save_{n.domain}()` (see cqrs-pattern.md). Shares its method signatures with
+    `{n.Domain}Repository` (the write model) but is a separate contract — a Query Handler
+    must always depend only on this type.
     """
 
     @abstractmethod
@@ -353,12 +364,15 @@ logger = logging.getLogger(__name__)
 
 
 class {n.Domain}CancelledEventHandler:
-    """취소된 {n.Domain}에 대한 후속 처리(알림, 다른 BC로의 Integration Event 발행 등)를
-    여기서 구현한다. 스캐폴딩 단계에서는 로깅만 한다.
+    """Implement follow-up processing for a cancelled {n.Domain} here (a notification,
+    publishing an Integration Event to another BC, etc.). At the scaffolding stage, this
+    only logs.
     """
 
     async def handle(self, payload: dict) -> None:
-        logger.info("{n.Domain} 취소됨: %s_id=%s reason=%s", "{n.domain}", payload["{n.domain}_id"], payload["reason"])
+        logger.info(
+            "{n.Domain} cancelled: %s_id=%s reason=%s", "{n.domain}", payload["{n.domain}_id"], payload["reason"]
+        )
 '''
 
     # ---- infrastructure/persistence/ ----
@@ -393,9 +407,9 @@ class {n.Domain}Model(Base):
 
 class SqlAlchemy{n.Domain}Repository({n.Domain}Repository):
     def __init__(self, session: AsyncSession) -> None:
-        # 지연 import — outbox_model.py가 account_repository.py의 Base를 import하므로,
-        # 모듈 최상단에서 OutboxWriter를 import하면 순환 참조가 발생한다
-        # (module-pattern.md "Python의 순환 참조" 참조).
+        # deferred import — since outbox_model.py imports account_repository.py's Base,
+        # importing OutboxWriter at the module's top level would create a circular import
+        # (see "Python's circular imports" in module-pattern.md).
         from ....outbox.outbox_writer import OutboxWriter
 
         self._session = session
@@ -558,10 +572,11 @@ async def get_{n.domain}(
     )
 '''
 
-    # ---- __init__.py — 이 저장소의 모든 패키지 디렉토리는 (namespace package가 아니라)
-    # 명시적 __init__.py를 갖는다(account/card 전부 예외 없이). collect_py_files()가
-    # __init__.py를 SKIP_FILES로 건너뛰어 harness가 이 파일의 존재 여부 자체를 검사하지는
-    # 않지만, 없으면 이 저장소의 나머지 패키지와 구조가 어긋난다.
+    # ---- __init__.py — every package directory in this repository has an explicit
+    # __init__.py (not a namespace package) — account/card, all without exception.
+    # collect_py_files() skips __init__.py via SKIP_FILES, so the harness doesn't check
+    # for this file's existence itself, but omitting it would leave the structure out of
+    # sync with the rest of this repository's packages.
     package_dirs = sorted({os.path.dirname(rel_path) for rel_path in files})
     all_dirs: set[str] = set()
     for d in package_dirs:
@@ -575,12 +590,13 @@ async def get_{n.domain}(
 
 
 # ---------------------------------------------------------------------------
-# Alembic 마이그레이션
+# Alembic migrations
 # ---------------------------------------------------------------------------
 
 
 def find_migration_head(versions_dir: str) -> str | None:
-    """versions/ 아래 모든 리비전 파일을 읽어 down_revision으로 참조되지 않는 리비전(head)을 찾는다."""
+    """Reads every revision file under versions/ and finds the revision (the head) that isn't
+    referenced as any down_revision."""
     if not os.path.isdir(versions_dir):
         return None
 
@@ -602,7 +618,7 @@ def find_migration_head(versions_dir: str) -> str | None:
     if len(heads) == 1:
         return next(iter(heads))
     if len(heads) > 1:
-        raise RuntimeError(f"마이그레이션 head가 여러 개입니다(브랜치 상태): {heads}")
+        raise RuntimeError(f"There are multiple migration heads (a branched state): {heads}")
     return None
 
 
@@ -653,13 +669,13 @@ def downgrade() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 배선 (main.py / event_handlers.py / migrations/env.py)
+# Wiring (main.py / event_handlers.py / migrations/env.py)
 # ---------------------------------------------------------------------------
 
 
 def wire_main(main_path: str, n: Names) -> bool:
     if not os.path.isfile(main_path):
-        print(f"main.py를 찾지 못해 자동 wiring을 건너뜁니다: {main_path}")
+        print(f"Cannot find main.py, skipping automatic wiring: {main_path}")
         return False
 
     with open(main_path, encoding="utf-8") as f:
@@ -669,42 +685,43 @@ def wire_main(main_path: str, n: Names) -> bool:
         f"from src.{n.domain}.interface.rest.{n.domain}_router import router as {n.domain}_router  # noqa: E402"
     )
     if router_import in content:
-        print(f"main.py에 이미 {n.domain}_router가 등록돼 있어 건너뜁니다.")
+        print(f"main.py already has {n.domain}_router registered, skipping.")
         return False
 
     errors_import = f"from src.{n.domain}.domain.errors import {n.Domain}Error, {n.Domain}NotFoundError  # noqa: E402"
 
-    # 마지막 "... import router as ..._router" 줄 다음에 라우터 import를 삽입하고, 그
-    # 앞(마지막 domain.errors import 줄 다음)에 에러 import를 삽입한다.
+    # Insert the router import right after the last "... import router as ..._router" line, and
+    # insert the error import right before it (right after the last domain.errors import line).
     router_import_pattern = re.compile(r"^from src\..*import router as \w+_router {2}#\s*noqa:\s*E402$", re.MULTILINE)
     errors_import_pattern = re.compile(r"^from src\..*domain\.errors import .+#\s*noqa:\s*E402$", re.MULTILINE)
     router_import_lines = list(router_import_pattern.finditer(content))
     errors_import_lines = list(errors_import_pattern.finditer(content))
 
     if not router_import_lines or not errors_import_lines:
-        print("main.py의 import 앵커를 찾지 못해 자동 wiring을 건너뜁니다. 스니펫을 수동으로 추가하세요.")
+        print("Cannot find the import anchor in main.py, skipping automatic wiring. Add the snippet manually.")
         print_main_snippet(n)
         return False
 
     last_errors_end = errors_import_lines[-1].end()
     content = content[:last_errors_end] + "\n" + errors_import + content[last_errors_end:]
 
-    # router import 앵커는 위 삽입으로 오프셋이 밀렸으므로 다시 계산한다.
+    # The router import anchor's offset shifted due to the insertion above, so recompute it.
     router_import_lines = list(router_import_pattern.finditer(content))
     last_router_end = router_import_lines[-1].end()
     content = content[:last_router_end] + "\n" + router_import + content[last_router_end:]
 
-    # app.include_router(...) 마지막 줄 다음에 삽입
+    # Insert right after the last app.include_router(...) line
     include_lines = list(re.finditer(r"^app\.include_router\(\w+_router\)$", content, re.MULTILINE))
     if include_lines:
         last_include_end = include_lines[-1].end()
         content = content[:last_include_end] + f"\napp.include_router({n.domain}_router)" + content[last_include_end:]
 
-    # RequestValidationError 핸들러 바로 앞에 새 예외 핸들러 삽입 (구체 타입을 상위 타입보다 먼저 등록)
+    # Insert the new exception handler right before the RequestValidationError handler
+    # (register the concrete type before the more general one)
     marker = "@app.exception_handler(RequestValidationError)"
     marker_idx = content.find(marker)
     if marker_idx == -1:
-        print("main.py에서 RequestValidationError 핸들러를 찾지 못해 예외 핸들러 wiring을 건너뜁니다.")
+        print("Cannot find the RequestValidationError handler in main.py, skipping exception handler wiring.")
     else:
         handlers = f"""@app.exception_handler({n.Domain}NotFoundError)
 async def {n.domain}_not_found_handler(request: Request, exc: {n.Domain}NotFoundError) -> JSONResponse:
@@ -721,19 +738,19 @@ async def {n.domain}_error_handler(request: Request, exc: {n.Domain}Error) -> JS
 
     with open(main_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"main.py에 {n.Domain} 라우터/예외 핸들러 등록 완료: {main_path}")
+    print(f"Registered {n.Domain} router/exception handlers in main.py: {main_path}")
     return True
 
 
 def wire_event_handlers(event_handlers_path: str, n: Names) -> bool:
-    """`src/outbox/event_handlers.py`의 `build_event_handlers()`에 새 도메인의 Domain Event
-    핸들러를 등록한다 — 이 함수가 프로세스 전체의 단일 조립 지점(composition root)이다.
-    OutboxConsumer가 SQS에서 수신한 메시지를 eventType으로 이 dict에서 찾아 호출한다
-    (domain-events.md 참고. 2026-07 async 전환 전에는 `account_router.py`의 `_outbox_relay()`
-    팩토리를 대신 패치했었다).
+    """Registers the new domain's Domain Event handler in `build_event_handlers()` inside
+    `src/outbox/event_handlers.py` — this function is the single, process-wide composition
+    root. OutboxConsumer looks up messages it receives from SQS in this dict by eventType and
+    invokes them (see domain-events.md. Before the 2026-07 async migration, this used to patch
+    the `_outbox_relay()` factory in `account_router.py` instead).
     """
     if not os.path.isfile(event_handlers_path):
-        print(f"event_handlers.py를 찾지 못해 이벤트 핸들러 자동 wiring을 건너뜁니다: {event_handlers_path}")
+        print(f"Cannot find event_handlers.py, skipping automatic event handler wiring: {event_handlers_path}")
         return False
 
     with open(event_handlers_path, encoding="utf-8") as f:
@@ -743,37 +760,38 @@ def wire_event_handlers(event_handlers_path: str, n: Names) -> bool:
         f"from ..{n.domain}.application.event.{n.domain}_cancelled_event_handler import {n.Domain}CancelledEventHandler"
     )
     if handler_import in content:
-        print(f"event_handlers.py에 이미 {n.Domain}CancelledEventHandler가 등록돼 있어 건너뜁니다.")
+        print(f"event_handlers.py already has {n.Domain}CancelledEventHandler registered, skipping.")
         return False
 
-    # 다른 도메인의 event handler import 블록 마지막 줄 다음에 삽입 (isort 그룹 유지)
+    # Insert right after the last line of another domain's event handler import block (keeps the isort group)
     event_import_lines = list(
         re.finditer(r"^from \.\.\w+\.application\.event\..+ import \w+EventHandler$", content, re.MULTILINE)
     )
     if not event_import_lines:
-        print("event_handlers.py의 event handler import 앵커를 찾지 못해 wiring을 건너뜁니다.")
+        print("Cannot find the event handler import anchor in event_handlers.py, skipping wiring.")
         return False
     last_end = event_import_lines[-1].end()
     content = content[:last_end] + "\n" + handler_import + content[last_end:]
 
-    # return { 딕셔너리의 첫 항목으로 새 도메인 이벤트를 등록한다.
+    # Registers the new domain event as the first entry of the return { dictionary.
     entry = f'        "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,\n'
     content, count = re.subn(r"(    return \{\n)", r"\1" + entry, content, count=1)
     if count == 0:
-        print("event_handlers.py에서 return { 딕셔너리를 찾지 못해 등록을 건너뜁니다.")
+        print("Cannot find the return { dictionary in event_handlers.py, skipping registration.")
         return False
 
     with open(event_handlers_path, "w", encoding="utf-8") as f:
         f.write(content)
     print(
-        f"event_handlers.py의 build_event_handlers()에 {n.Domain}CancelledEventHandler 등록 완료: {event_handlers_path}"
+        f"Registered {n.Domain}CancelledEventHandler in event_handlers.py's build_event_handlers(): "
+        f"{event_handlers_path}"
     )
     return True
 
 
 def wire_migrations_env(env_path: str, n: Names) -> bool:
     if not os.path.isfile(env_path):
-        print(f"migrations/env.py를 찾지 못해 자동 wiring을 건너뜁니다: {env_path}")
+        print(f"Cannot find migrations/env.py, skipping automatic wiring: {env_path}")
         return False
 
     with open(env_path, encoding="utf-8") as f:
@@ -781,25 +799,25 @@ def wire_migrations_env(env_path: str, n: Names) -> bool:
 
     model_import = f"import src.{n.domain}.infrastructure.persistence.{n.domain}_repository  # noqa: F401"
     if model_import in content:
-        print(f"migrations/env.py에 이미 {n.domain}_repository가 등록돼 있어 건너뜁니다.")
+        print(f"migrations/env.py already has {n.domain}_repository registered, skipping.")
         return False
 
     import_lines = list(re.finditer(r"^import src\..+# noqa: F401$", content, re.MULTILINE))
     if not import_lines:
-        print("migrations/env.py의 import 앵커를 찾지 못해 자동 wiring을 건너뜁니다.")
+        print("Cannot find the import anchor in migrations/env.py, skipping automatic wiring.")
         return False
     last_end = import_lines[-1].end()
     content = content[:last_end] + "\n" + model_import + content[last_end:]
 
     with open(env_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"migrations/env.py에 {n.domain}_repository 모델 import 등록 완료: {env_path}")
+    print(f"Registered the {n.domain}_repository model import in migrations/env.py: {env_path}")
     return True
 
 
 def print_main_snippet(n: Names) -> None:
     print("")
-    print("--- main.py에 수동으로 추가할 내용 (--wire를 주지 않았으므로 자동 적용 안 됨) ---")
+    print("--- Add this manually to main.py (not applied automatically since --wire was not given) ---")
     print("")
     print(f"from src.{n.domain}.domain.errors import {n.Domain}Error, {n.Domain}NotFoundError  # noqa: E402")
     print(f"from src.{n.domain}.interface.rest.{n.domain}_router import router as {n.domain}_router  # noqa: E402")
@@ -814,19 +832,19 @@ def print_main_snippet(n: Names) -> None:
 
 
 def print_event_handlers_snippet(n: Names) -> None:
-    print("--- src/outbox/event_handlers.py의 build_event_handlers()에 수동으로 추가할 내용 ---")
+    print("--- Add this manually to build_event_handlers() in src/outbox/event_handlers.py ---")
     print("")
     print(
         f"from ..{n.domain}.application.event.{n.domain}_cancelled_event_handler import {n.Domain}CancelledEventHandler"
     )
     print("")
-    print("  # return {...} 딕셔너리에 추가:")
+    print("  # Add to the return {...} dictionary:")
     print(f'    "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,')
     print("")
 
 
 def print_env_snippet(n: Names) -> None:
-    print("--- migrations/env.py에 수동으로 추가할 내용 ---")
+    print("--- Add this manually to migrations/env.py ---")
     print("")
     print(f"import src.{n.domain}.infrastructure.persistence.{n.domain}_repository  # noqa: F401")
     print("")
@@ -844,32 +862,35 @@ def write_file(path: str, content: str) -> None:
 
 
 def run_ruff_fix(paths: list[str]) -> None:
-    """생성/수정된 파일에 `ruff check --fix`와 `ruff format`을 실행해 import 정렬·포맷을
-    정리한다.
+    """Runs `ruff check --fix` and `ruff format` on the generated/modified files to clean up
+    import ordering and formatting.
 
-    새 도메인 자신의 파일은 템플릿에서 이미 올바른 순서로 만들어지지만, main.py/
-    event_handlers.py/migrations/env.py 같은 기존 공유 파일에 새 import 줄을 텍스트로
-    끼워 넣을 때는 "어디에 삽입해야 알파벳 순서가 정확히 맞는가"가 도메인 이름마다 달라진다
-    (예: "card" 다음 "common" 앞 vs "database" 다음 "outbox" 앞 등, 도메인 이름의 알파벳
-    위치에 따라 삽입 지점이 매번 바뀐다). 정확한 위치를 텍스트 삽입으로 매번 재현하는 대신,
-    문법적으로 안전한 위치에 삽입한 뒤 ruff의 isort 구현이 실제로 재정렬하게 한다 — 이렇게
-    하면 도메인 이름과 무관하게 항상 올바른 순서가 보장된다.
+    The new domain's own files are already generated in the correct order by the template, but
+    when new import lines are inserted as text into existing shared files such as main.py/
+    event_handlers.py/migrations/env.py, "where exactly does it need to go to be alphabetically
+    correct" varies by domain name (e.g. after "card" and before "common" vs. after "database"
+    and before "outbox" — the insertion point shifts depending on the domain name's alphabetical
+    position). Rather than trying to reproduce the exact position via text insertion every time,
+    this inserts at a syntactically safe location and then lets ruff's isort implementation
+    actually re-sort it — this guarantees the correct order regardless of the domain name.
     """
     existing = [p for p in paths if os.path.isfile(p)]
     if not existing:
         return
     if shutil.which("ruff") is None:
-        print("ruff를 찾지 못해 자동 포맷을 건너뜁니다 — 수동으로 `ruff check --fix .`/`ruff format .`를 실행하세요.")
+        print("Cannot find ruff, skipping automatic formatting — run `ruff check --fix .`/`ruff format .` manually.")
         return
     subprocess.run(["ruff", "check", "--fix", "--quiet", *existing], check=False)
     subprocess.run(["ruff", "format", "--quiet", *existing], check=False)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="새 도메인 스캐폴딩 생성기")
-    parser.add_argument("domain_name", help="PascalCase 도메인 이름 (예: Coupon, LoyaltyCategory)")
-    parser.add_argument("--out", dest="out", default=None, help="생성 대상 src/ 디렉토리 (기본: ../examples/src)")
-    parser.add_argument("--wire", action="store_true", help="main.py/event_handlers.py/migrations를 자동 배선")
+    parser = argparse.ArgumentParser(description="New domain scaffolding generator")
+    parser.add_argument("domain_name", help="PascalCase domain name (e.g. Coupon, LoyaltyCategory)")
+    parser.add_argument("--out", dest="out", default=None, help="Target src/ directory (default: ../examples/src)")
+    parser.add_argument(
+        "--wire", action="store_true", help="Automatically wire up main.py/event_handlers.py/migrations"
+    )
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -887,18 +908,24 @@ def main() -> None:
     head = find_migration_head(versions_dir)
     migration_filename, migration_content = generate_migration(n, head)
 
-    print(f"{n.Domain} 도메인 생성 완료: {os.path.join(target_src_dir, n.domain)}/ ({len(files)}개 파일)")
-    print(f"REST 경로: /{n.domains_kebab} (POST 생성, GET/:{n.domain}_id 조회, POST /:{n.domain}_id/cancel 취소)")
+    print(f"Generated the {n.Domain} domain: {os.path.join(target_src_dir, n.domain)}/ ({len(files)} files)")
+    print(
+        f"REST path: /{n.domains_kebab} (POST to create, GET /:{n.domain}_id to look up, "
+        f"POST /:{n.domain}_id/cancel to cancel)"
+    )
     print("")
-    print("참고: 나이브 복수형 규칙(+s / +es / y→ies)을 snake_case 위에서 적용했습니다 — 진짜")
-    print(f"  불규칙 복수형(person→people 등) 도메인이면 {n.Domains}/{n.domains} 등을 수동으로 다듬어야 합니다.")
+    print("Note: a naive pluralization rule (+s / +es / y->ies) was applied on top of snake_case — for a")
+    print(
+        f"  domain with a genuinely irregular plural (e.g. person->people), manually adjust "
+        f"{n.Domains}/{n.domains} etc."
+    )
 
     touched_paths = [os.path.join(target_src_dir, rel_path) for rel_path in files]
 
     if args.wire:
         migration_path = os.path.join(versions_dir, migration_filename)
         write_file(migration_path, migration_content)
-        print(f"Alembic 마이그레이션 생성 완료: {migration_filename} (down_revision={head})")
+        print(f"Generated the Alembic migration: {migration_filename} (down_revision={head})")
         main_path = os.path.join(project_root, "main.py")
         event_handlers_path = os.path.join(target_src_dir, "outbox", "event_handlers.py")
         env_path = os.path.join(project_root, "migrations", "env.py")
@@ -908,8 +935,8 @@ def main() -> None:
         touched_paths += [main_path, event_handlers_path, env_path]
     else:
         print("")
-        print(f"--- migrations/versions/에 수동으로 추가할 마이그레이션 파일: {migration_filename} ---")
-        print(f"(down_revision={head} — --wire 없이 실행했으므로 파일을 만들지 않았습니다)")
+        print(f"--- Migration file to add manually under migrations/versions/: {migration_filename} ---")
+        print(f"(down_revision={head} — the file was not created since --wire was not given)")
         print_main_snippet(n)
         print_event_handlers_snippet(n)
         print_env_snippet(n)
@@ -917,7 +944,7 @@ def main() -> None:
     run_ruff_fix(touched_paths)
 
     print("")
-    print("다음: ruff check . && ruff format --check . && bash harness.sh <projectRoot>로 검증하세요.")
+    print("Next: verify with ruff check . && ruff format --check . && bash harness.sh <projectRoot>.")
 
 
 if __name__ == "__main__":

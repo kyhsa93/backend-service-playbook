@@ -21,7 +21,8 @@ class SignInHandler:
     async def execute(self, cmd: SignInCommand) -> str:
         credentials, _ = await self._repo.find_credentials(page=0, take=1, user_id=cmd.user_id)
         credential = credentials[0] if credentials else None
-        # 아이디 미존재/비밀번호 불일치를 동일한 에러로 응답 — user enumeration 방지
+        # Responds with the same error whether the username doesn't exist or the password doesn't match
+        # — prevents user enumeration
         if credential is None:
             raise InvalidCredentialsError()
 

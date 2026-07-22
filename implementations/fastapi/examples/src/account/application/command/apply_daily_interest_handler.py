@@ -9,14 +9,16 @@ PAGE_SIZE = 200
 
 
 class ApplyDailyInterestHandler:
-    """정기 이자 지급 배치의 Command Service. Task Queue(account.interest.apply)가
-    하루 한 번 트리거하는 시스템 주도 유스케이스이므로, 사용자 요청을 표현하는
-    Command dataclass(다른 Handler들의 관례)는 없다 — HTTP 요청자가 없기 때문이다.
+    """The Command Service for the regular interest-payment batch. Since this is a
+    system-driven use case triggered once a day by the Task Queue
+    (account.interest.apply), there is no Command dataclass representing a user request
+    (the convention for other Handlers) — because there is no HTTP requester.
 
-    ACTIVE 상태의 모든 계좌를 페이지 단위로 순회하며 Account.apply_interest()를 호출한다.
-    이자 지급 여부·금액과 무관하게 매 계좌마다 save_account()를 호출한다 — apply_interest()가
-    내부에서 `last_interest_paid_at`을 갱신했는지 여부를 Handler가 굳이 구분할 필요가
-    없다(이미 오늘 처리된 계좌는 필드조차 안 건드리므로 재저장이 사실상 no-op UPDATE다).
+    Iterates every ACTIVE account page by page, calling Account.apply_interest(). Calls
+    save_account() for every account regardless of whether interest was actually paid or
+    its amount — the Handler doesn't need to distinguish whether apply_interest() updated
+    `last_interest_paid_at` internally (an account already processed today doesn't even
+    touch the field, so re-saving is effectively a no-op UPDATE).
     """
 
     def __init__(self, repo: AccountRepository) -> None:

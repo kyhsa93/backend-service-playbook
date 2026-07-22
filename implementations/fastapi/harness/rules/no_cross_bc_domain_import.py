@@ -1,26 +1,28 @@
-"""[28] no-cross-bc-domain-import: 한 Bounded Context의 domain/ 이 다른 BC의 domain/ 을 직접
-import 금지 (tactical-ddd.md "다른 Aggregate는 ID 참조만 허용한다")
+"""[28] no-cross-bc-domain-import: one Bounded Context's domain/ must not directly import
+another BC's domain/ (tactical-ddd.md "another Aggregate may only be referenced by ID")
 
-tactical-ddd.md의 "다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)" 원칙은 같은 BC
-안의 Aggregate 사이(예: payment/Refund가 Payment 클래스를 직접 참조하지 않아야 함 —
-`no-cross-aggregate-reference` 규칙이 이를 검사)뿐 아니라, 서로 다른 BC 사이에도 동일하게
-적용된다. `domain-layer-isolation`(rules/domain_layer_isolation.py)은 domain/ 이
-application/·infrastructure/·interface/ 레이어를 import하지 않는지만 검사하고,
-`no-cross-aggregate-reference`는 `payment/domain/{payment.py,refund.py}` 안에서만
-검사한다 — 이 둘 사이에 `src/card/domain/*.py`가 `src/payment/domain/*`(다른 BC의
-domain 패키지)를 직접 import하는 것을 막는 규칙이 없었다. 이 규칙이 그 공백을 닫는다.
+tactical-ddd.md's principle "another Aggregate may only be referenced by ID (an object
+reference is forbidden)" applies not only between Aggregates within the same BC (e.g.
+payment/Refund must not reference the Payment class directly — checked by the
+`no-cross-aggregate-reference` rule), but equally between different BCs.
+`domain-layer-isolation` (rules/domain_layer_isolation.py) only checks that domain/
+doesn't import the application/·infrastructure/·interface/ layers, and
+`no-cross-aggregate-reference` only checks within `payment/domain/{payment.py,refund.py}`
+— there was no rule between these two that stopped `src/card/domain/*.py` from directly
+importing `src/payment/domain/*` (another BC's domain package). This rule closes that gap.
 
-**도메인 판별**: 파일 경로에서 `domain` 세그먼트 바로 앞 세그먼트를 "이 파일이 속한 BC"로
-본다(예: `src/card/domain/card.py` → `card`).
+**Determining the domain**: the segment right before the `domain` segment in the file path
+is treated as "the BC this file belongs to" (e.g. `src/card/domain/card.py` → `card`).
 
-**위반 판별**: import 모듈 경로에서 `domain` 세그먼트를 찾고, 그 앞에 있는 세그먼트가
-자기 자신의 BC 이름도 아니고 `src`도 아니며 공유 인프라 디렉터리(`common`/`database`/
-`outbox`/`task_queue`/`config`, `common.is_shared_dir`)도 아니면 위반이다. 같은 BC
-안에서의 상대 import(`from .account_status import ...`, `from .errors import ...`)는
-모듈 문자열에 `domain` 세그먼트 자체가 없으므로(파이썬 상대 import는 같은 패키지 안에서는
-패키지명을 반복하지 않는다) 오탐하지 않는다. `from ...common.generate_id import
-generate_id`처럼 공유 유틸을 참조하는 것도 `common`이 공유 디렉터리로 취급되어 오탐하지
-않는다.
+**Determining a violation**: it finds the `domain` segment in the import's module path,
+and it's a violation if the segment right before it is neither its own BC's name, `src`,
+nor a shared-infrastructure directory (`common`/`database`/`outbox`/`task_queue`/`config`,
+`common.is_shared_dir`). A relative import within the same BC
+(`from .account_status import ...`, `from .errors import ...`) is never a false positive,
+since the module string has no `domain` segment at all (a Python relative import never
+repeats the package name within the same package). Referencing a shared util like `from
+...common.generate_id import generate_id` is also never a false positive, since `common`
+is treated as a shared directory.
 """
 
 from __future__ import annotations
@@ -65,7 +67,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         try:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         violations: list[str] = []
@@ -79,7 +81,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                 idx = segments.index("domain")
                 prefix = segments[:idx]
                 if not prefix:
-                    continue  # 같은 BC 상대 import ("domain.x") — BC 이름 없음
+                    continue  # a same-BC relative import ("domain.x") — no BC name
                 other_bc = prefix[-1]
                 if other_bc in {"src", own_bc} or is_shared_dir(other_bc):
                     continue
@@ -89,12 +91,13 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    f"domain/({own_bc}) 이 다른 BC의 domain/ 을 직접 import함 — 다른 Aggregate는"
-                    " ID 참조만 허용되고 객체 참조는 금지됨(tactical-ddd.md): " + "; ".join(violations),
+                    f"domain/({own_bc}) directly imports another BC's domain/ — another Aggregate"
+                    " may only be referenced by ID; an object reference is forbidden (tactical-ddd.md): "
+                    + "; ".join(violations),
                 )
             )
         else:
             result.add(passed(f"{r} (no-cross-bc-domain-import)"))
     if not found:
-        result.add(skipped("domain/ Python 파일 없음"))
+        result.add(skipped("No Python file in domain/"))
     return result

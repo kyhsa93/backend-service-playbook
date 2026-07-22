@@ -11,10 +11,11 @@ from .outbox_model import OutboxModel
 
 
 class OutboxWriter:
-    """Aggregate가 `pull_events()`로 꺼낸 Domain Event를 Outbox 테이블에 적재한다.
+    """Loads the Domain Events an Aggregate pulled via `pull_events()` into the Outbox table.
 
-    Repository의 save() 메서드가 Aggregate 상태 저장과 같은 `AsyncSession`으로 호출하므로,
-    Aggregate 저장과 Outbox 적재가 하나의 트랜잭션으로 묶여 원자적으로 커밋된다.
+    Since the Repository's save() method is called with the same `AsyncSession` as the
+    Aggregate-state save, the Aggregate save and the Outbox load are bundled into a single
+    transaction and committed atomically.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -22,8 +23,9 @@ class OutboxWriter:
 
     async def save_all(self, events: Sequence[object]) -> None:
         for event in events:
-            # Integration Event는 버전이 명시된 공개 계약명(event_name, 예: 'account.suspended.v1')을
-            # event_type으로 쓴다. Domain Event는 event_name이 없으므로 클래스명을 그대로 쓴다.
+            # An Integration Event uses its versioned public contract name (event_name,
+            # e.g. 'account.suspended.v1') as event_type. A Domain Event has no event_name,
+            # so its class name is used as-is.
             event_type = getattr(event, "event_name", None) or type(event).__name__
             self._session.add(
                 OutboxModel(

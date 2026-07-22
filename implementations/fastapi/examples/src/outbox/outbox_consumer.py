@@ -15,15 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class OutboxConsumer:
-    """SQS를 long polling(`receive_message`의 `WaitTimeSeconds`)으로 수신 대기하다가
-    메시지를 받으면 `eventType`(MessageAttributes)으로 `build_event_handlers()`가 조립한
-    dict에서 핸들러를 찾아 호출한다 — Domain Event Handler(application/event/)든
-    Integration Event Controller(interface/integration_event/)든 이 하나의 Consumer를
-    거친다.
+    """Waits to receive from SQS via long polling (`receive_message`'s
+    `WaitTimeSeconds`), and once a message is received, looks up the handler in the dict
+    `build_event_handlers()` assembled by `eventType` (MessageAttributes) and calls it —
+    whether it's a Domain Event Handler (application/event/) or an Integration Event
+    Controller (interface/integration_event/), it goes through this single Consumer.
 
-    핸들러 성공 → `delete_message`로 삭제(ack). 핸들러 실패(또는 등록된 핸들러가 없음) →
-    삭제하지 않는다 — SQS의 visibility timeout이 지나면 자동 재전달된다(at-least-once).
-    이 저장소가 요구하는 EventHandler 멱등성(domain-events.md)이 바로 이 재전달을 전제한다.
+    Handler success → deleted (ack) via `delete_message`. Handler failure (or no
+    registered handler) → not deleted — SQS automatically redelivers it after the
+    visibility timeout (at-least-once). The EventHandler idempotency this repository
+    requires (domain-events.md) is premised exactly on this redelivery.
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -31,10 +32,10 @@ class OutboxConsumer:
         self._boto_session = aioboto3.Session()
 
     async def run_forever(self) -> None:
-        """`main.py`의 lifespan이 `asyncio.create_task()`로 기동하는 백그라운드 루프.
-        Task가 취소되면 진행 중인 `receive_message` 대기(최대 `WaitTimeSeconds`)를 즉시
-        끝내고 종료한다(Graceful Shutdown) — `sqs_client`는 `async with` 블록을 벗어나며
-        정리된다.
+        """A background loop started by `main.py`'s lifespan via `asyncio.create_task()`.
+        If the Task is cancelled, an in-progress `receive_message` wait (up to
+        `WaitTimeSeconds`) ends immediately and it shuts down (Graceful Shutdown) —
+        `sqs_client` is cleaned up as it exits the `async with` block.
         """
         queue_url = SqsConfig().domain_event_queue_url  # type: ignore[call-arg]
         async with self._boto_session.client("sqs", **AwsConfig().client_kwargs()) as sqs_client:  # type: ignore[call-arg]
@@ -48,8 +49,8 @@ class OutboxConsumer:
                     )
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # noqa: BLE001 - 수신 루프는 예외로 죽으면 안 된다
-                    logger.exception("SQS 수신 실패")
+                except Exception:  # noqa: BLE001 - the receive loop must never die from an exception
+                    logger.exception("Failed to receive from SQS")
                     await asyncio.sleep(1)
                     continue
 
@@ -60,18 +61,18 @@ class OutboxConsumer:
         event_type = message.get("MessageAttributes", {}).get("eventType", {}).get("StringValue")
         try:
             if not event_type:
-                raise ValueError("eventType 메시지 속성이 없습니다.")
+                raise ValueError("The eventType message attribute is missing.")
 
             payload = json.loads(message.get("Body", "{}"))
             async with self._session_factory() as session:
                 handler = build_event_handlers(session).get(event_type)
                 if handler is None:
-                    raise ValueError(f"등록된 핸들러 없음: {event_type}")
+                    raise ValueError(f"No registered handler: {event_type}")
                 await handler(payload)
                 await session.commit()
 
             await sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - 삭제하지 않아야 visibility timeout 이후 재시도된다
-            logger.exception("이벤트 처리 실패: event_type=%s", event_type)
+        except Exception:  # noqa: BLE001 - it must not be deleted, so it's retried after the visibility timeout
+            logger.exception("Failed to process event: event_type=%s", event_type)

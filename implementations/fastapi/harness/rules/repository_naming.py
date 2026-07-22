@@ -1,22 +1,26 @@
-"""[13] Repository/Query 메서드 네이밍 (repository-pattern.md)
+"""[13] Repository/Query method naming (repository-pattern.md)
 
-domain/ 레이어의 Repository/Query ABC 인터페이스는 조회는 `find_<noun>s`(단건도 `take=1`로
-동일 메서드를 재사용), 저장은 `save_<noun>`, 삭제는 `delete_<noun>` 하나로 통일해야 한다.
-`infrastructure/persistence/`의 구체 구현체는 대상이 아니다 — private/내부 보조 메서드를
-자유롭게 가질 수 있다(repository-impl은 그 자체로 별도 규칙이 배치를 검사한다).
+A Repository/Query ABC interface in the domain/ layer must unify lookups into a single
+`find_<noun>s` (a single-item lookup also reuses the same method via `take=1`), saves into
+a single `save_<noun>`, and deletes into a single `delete_<noun>`. A concrete
+implementation in `infrastructure/persistence/` isn't targeted — it's free to have
+private/internal helper methods (repository-impl is itself a separate rule that checks
+placement).
 
-블록리스트 방식(좁고 정밀하게) — 아래 안티패턴에 해당하는 추상 메서드만 실패로 잡는다.
-`has_transaction_with_reference` 같은 정상 메서드를 오탐하지 않도록 넓은 긍정 문법
-대신 알려진 위반 패턴만 매칭한다:
-- `find_by_*` 형태(이름에 "find_by" 포함) — 예: find_by_id, find_by_account_id_and_owner_id
-- 정확히 `find_all`(명사 없는 bare)
-- `count`로 시작하는 메서드 — 개수는 `find_<noun>s`가 반환하는 (list, count) 튜플에
-  포함되어야 하며 별도 메서드로 두지 않는다
-- 정확히 `save`(bare, 명사 접미사 없음) — `save_account`처럼 명사가 붙으면 통과
-- 정확히 `delete`(bare, 명사 접미사 없음) — `delete_account`처럼 명사가 붙으면 통과
-- `update_`로 시작하는 메서드 — 별도 update 메서드를 두지 않는다. 상태 변경은 Aggregate를
-  `find_<noun>s`로 로드해 도메인 메서드로 변경한 뒤 `save_<noun>`으로 통째로 다시 저장하는
-  것으로 표현한다(부분 업데이트용 별도 메서드 금지)
+A blocklist approach (narrow and precise) — only an abstract method matching one of the
+anti-patterns below is caught as a failure. Instead of a broad positive grammar (which
+would false-positive on a legitimate method like `has_transaction_with_reference`), only
+known violation patterns are matched:
+- A `find_by_*` shape (the name contains "find_by") — e.g. find_by_id, find_by_account_id_and_owner_id
+- Exactly `find_all` (a bare lookup with no noun)
+- A method starting with `count` — a count must be included in the (list, count) tuple
+  `find_<noun>s` returns, not a separate method
+- Exactly `save` (bare, no noun suffix) — passes once a noun is attached, like `save_account`
+- Exactly `delete` (bare, no noun suffix) — passes once a noun is attached, like `delete_account`
+- A method starting with `update_` — a separate update method is never added. A state
+  change is expressed by loading the Aggregate via `find_<noun>s`, mutating it via a domain
+  method, then saving it whole again via `save_<noun>` (a separate method for a partial
+  update is forbidden)
 """
 
 from __future__ import annotations
@@ -30,17 +34,26 @@ DOC_REF = "docs/architecture/repository-pattern.md"
 
 def _violation_reason(name: str) -> str | None:
     if "find_by" in name:
-        return f"'{name}' — find_by_* 금지, 단건 조회도 find_<noun>s(..., take=1)로 통일해야 함"
+        return (
+            f"'{name}' — find_by_* is forbidden; a single-item lookup must also be unified via"
+            " find_<noun>s(..., take=1)"
+        )
     if name == "find_all":
-        return "'find_all' — 명사 없는 bare 조회 금지, find_<noun>s로 표현해야 함"
+        return "'find_all' — a bare lookup with no noun is forbidden; express it as find_<noun>s"
     if name.startswith("count"):
-        return f"'{name}' — count 전용 메서드 금지, find_<noun>s의 (list, count) 튜플 반환에 포함해야 함"
+        return (
+            f"'{name}' — a count-only method is forbidden; it must be included in"
+            " find_<noun>s's (list, count) tuple return"
+        )
     if name == "save":
-        return "'save' — bare save 금지, save_<noun>으로 명사를 명시해야 함"
+        return "'save' — a bare save is forbidden; specify a noun via save_<noun>"
     if name == "delete":
-        return "'delete' — bare delete 금지, delete_<noun>으로 명사를 명시해야 함"
+        return "'delete' — a bare delete is forbidden; specify a noun via delete_<noun>"
     if name.startswith("update_"):
-        return f"'{name}' — 별도 update_* 메서드 금지, find로 로드 후 도메인 메서드로 변경해 save_<noun>으로 저장"
+        return (
+            f"'{name}' — a separate update_* method is forbidden; load via find, mutate via a"
+            " domain method, then save via save_<noun>"
+        )
     return None
 
 
@@ -69,7 +82,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
             found = True
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         checked_any = False
@@ -96,12 +109,13 @@ def check(root: str, py_files: list[str]) -> RuleResult:
             result.add(
                 failed(
                     r,
-                    "Repository/Query 추상 메서드명이 네이밍 규칙을 위반함 — "
-                    f"find_<noun>s/save_<noun>/delete_<noun> 패턴을 따라야 함({DOC_REF}): " + "; ".join(violations),
+                    "A Repository/Query abstract method name violates the naming rule — "
+                    f"it must follow the find_<noun>s/save_<noun>/delete_<noun> pattern ({DOC_REF}): "
+                    + "; ".join(violations),
                 )
             )
         else:
             result.add(passed(f"{r} (repository-naming)"))
     if not found:
-        result.add(skipped("domain/ Repository·Query ABC 없음"))
+        result.add(skipped("No Repository·Query ABC in domain/"))
     return result

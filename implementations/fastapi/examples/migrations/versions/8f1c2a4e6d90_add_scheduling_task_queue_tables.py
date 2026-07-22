@@ -20,13 +20,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # 정기 이자 지급 배치(scheduling.md)의 Level 1 멱등성 마커 — Account.apply_interest() 참고.
+    # The Level 1 idempotency marker for the regular interest-payment batch (scheduling.md)
+    # — see Account.apply_interest().
     op.add_column("accounts", sa.Column("last_interest_paid_at", sa.Date(), nullable=True))
-    # 매월 카드 사용내역 발송 배치의 Level 1 멱등성 마커 — Card.send_statement() 참고.
+    # The Level 1 idempotency marker for the monthly card-statement delivery batch
+    # — see Card.send_statement().
     op.add_column("cards", sa.Column("last_statement_sent_month", sa.String(), nullable=True))
 
-    # Task Outbox — Domain Event의 outbox 테이블과 개념적으로 분리된 테이블
-    # (domain-events.md "Task Queue vs Domain Event"). src/task_queue/task_outbox_model.py 참고.
+    # The Task Outbox — a table conceptually separate from the Domain Event's outbox table
+    # (see "Task Queue vs Domain Event" in domain-events.md). See src/task_queue/task_outbox_model.py.
     op.create_table(
         "task_outbox",
         sa.Column("task_id", sa.CHAR(length=32), nullable=False),
@@ -39,8 +41,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("task_id"),
     )
 
-    # Card BC 전용 발송 이력 Ledger — sent_emails(Account)와 동일한 역할.
-    # src/card/infrastructure/notification/sent_statement_email_model.py 참고.
+    # A Card-BC-specific send-history Ledger — the same role as sent_emails (Account).
+    # See src/card/infrastructure/notification/sent_statement_email_model.py.
     op.create_table(
         "sent_statement_emails",
         sa.Column("sent_email_id", sa.String(), nullable=False),

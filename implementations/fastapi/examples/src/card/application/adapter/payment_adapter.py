@@ -7,22 +7,25 @@ from datetime import datetime
 
 @dataclass(frozen=True)
 class CardPaymentSummary:
-    """Payment BC를 Card BC가 필요로 하는 최소 형태로 번역한 읽기 뷰 — 매월 카드 사용내역
-    발송 배치가 필요로 하는 건수·합계만 담는다. Payment의 개별 결제 내역(Payment 객체
-    목록)을 그대로 노출하지 않는다 — 상류 모델 변경이 Card 도메인으로 누수되지 않게 하는
-    것이 ACL의 목적이다(card/application/adapter/account_adapter.py의 AccountView와 동일한
-    설계)."""
+    """A read view that translates the Payment BC into the minimal shape the Card BC needs
+    — carries only the count/total the monthly card-statement delivery batch needs. It
+    never exposes Payment's individual payment records (a list of Payment objects) as-is —
+    preventing an upstream model change from leaking into the Card domain is the ACL's
+    purpose (the same design as AccountView in
+    card/application/adapter/account_adapter.py)."""
 
     payment_count: int
     total_amount: int
 
 
 class PaymentAdapter(ABC):
-    """Payment BC를 동기 조회하기 위한 Adapter 인터페이스 (Anticorruption Layer).
+    """An Adapter interface (an Anti-Corruption Layer) for synchronously querying the
+    Payment BC.
 
-    매월 통계 배치가 한 카드의 지난 한 달 결제 건수·합계를 현재 배치 실행 안에서 즉시
-    집계해야 하므로 동기 Adapter 패턴을 사용한다(cross-domain-communication.md 참조).
-    구현체는 infrastructure/payment_adapter_impl.py 에 있다.
+    Since the monthly statistics batch must immediately aggregate one card's payment
+    count/total for the past month within the current batch run, the synchronous Adapter
+    pattern is used (see cross-domain-communication.md). The implementation lives in
+    infrastructure/payment_adapter_impl.py.
     """
 
     @abstractmethod

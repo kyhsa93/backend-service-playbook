@@ -1,24 +1,27 @@
-"""[18] no-cross-bc-repository-in-application: application/ 이 다른 도메인의 Repository/Query ABC를
-직접 import 금지 (cross-domain.md, root cross-domain-communication.md)
+"""[18] no-cross-bc-repository-in-application: application/ must not directly import
+another domain's Repository/Query ABC (cross-domain.md, root cross-domain-communication.md)
 
-한 도메인의 `application/`은 다른 도메인의 `domain/repository.py`(또는
-`payment_repository.py`/`refund_repository.py` 등 도메인별 Repository 파일)를 직접 import할
-수 없다 — 크로스 도메인 조회는 반드시 호출하는 쪽의 `application/adapter/`에 정의한 Adapter
-ABC(+ `infrastructure/`의 구현체, 대상 도메인의 Query를 그 안에서 호출)를 거쳐야 한다
-(cross-domain.md의 ACL 패턴, 실제 사례: `card/infrastructure/account_adapter_impl.py`,
-`payment/infrastructure/{account,card}_adapter_impl.py`). 같은 도메인 안에서
-`domain/repository.py`를 import하는 것은 정상이다.
+A domain's `application/` must not directly import another domain's
+`domain/repository.py` (or a per-domain Repository file such as
+`payment_repository.py`/`refund_repository.py`) — a cross-domain lookup must always go
+through an Adapter ABC defined in the calling side's `application/adapter/` (+ an
+implementation in `infrastructure/`, calling the target domain's Query inside it) (the ACL
+pattern in cross-domain.md; actual examples: `card/infrastructure/account_adapter_impl.py`,
+`payment/infrastructure/{account,card}_adapter_impl.py`). Importing `domain/repository.py`
+within the same domain is fine.
 
-**도메인 판별**: 파일 경로에서 `application` 세그먼트 바로 앞 세그먼트를 "이 파일이 속한
-도메인"으로 본다 (예: `src/payment/application/command/x.py` → `payment`).
+**Determining the domain**: the segment right before the `application` segment in the
+file path is treated as "the domain this file belongs to" (e.g.
+`src/payment/application/command/x.py` → `payment`).
 
-**위반 판별**: import 모듈 경로에서 `domain` 세그먼트를 찾고, 그 앞에 다른 도메인 이름
-세그먼트가 있으며(상대 import는 도메인 경계를 넘을 때만 모듈 문자열에 도메인 이름이
-등장한다 — 같은 도메인 상대 import는 `domain.repository`처럼 도메인 이름 없이 시작한다),
-`domain` 다음 세그먼트 중 하나라도 "repository"를 포함하면(파일명 또는 import된 이름) 위반으로
-잡는다. `application/adapter/`에서 자신의 Adapter ABC를 정의하는 것은 이 패턴에 걸리지 않는다
-— Adapter ABC는 다른 도메인의 `domain.repository`를 import하지 않고 독자적인 뷰 타입을
-정의하기 때문이다.
+**Determining a violation**: it finds the `domain` segment in the import's module path,
+and it's a violation if a different domain's name segment precedes it (a relative import
+only shows a domain name in its module string when it crosses a domain boundary — a
+same-domain relative import starts with no domain name, like `domain.repository`), and if
+any segment after `domain` contains "repository" (in the file name or the imported name).
+Defining one's own Adapter ABC in `application/adapter/` never triggers this pattern — an
+Adapter ABC never imports another domain's `domain.repository`, and instead defines its
+own independent view type.
 """
 
 from __future__ import annotations
@@ -69,7 +72,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
         try:
             tree = ast.parse(src, filename=f)
         except SyntaxError as e:
-            result.add(failed(r, f"파일을 파싱할 수 없음: {e}"))
+            result.add(failed(r, f"Failed to parse the file: {e}"))
             continue
 
         violations: list[str] = []
@@ -83,7 +86,7 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                 idx = segments.index("domain")
                 prefix = segments[:idx]
                 if not prefix:
-                    continue  # 같은 도메인 상대 import ("domain.repository") — 도메인 이름 없음
+                    continue  # a same-domain relative import ("domain.repository") — no domain name
                 other_domain = prefix[-1]
                 if other_domain in {"src", own_domain}:
                     continue
@@ -93,18 +96,19 @@ def check(root: str, py_files: list[str]) -> RuleResult:
                     "repository" in n.lower() or n.endswith("Query") for n in names
                 )
                 if is_repository:
-                    violations.append(f"{module} ({other_domain} 도메인)")
+                    violations.append(f"{module} ({other_domain} domain)")
 
         if violations:
             result.add(
                 failed(
                     r,
-                    f"application/({own_domain}) 이 다른 도메인의 Repository/Query ABC를 직접 import함 —"
-                    " application/adapter/의 Adapter 인터페이스를 거쳐야 함(cross-domain.md): " + "; ".join(violations),
+                    f"application/({own_domain}) directly imports another domain's Repository/Query ABC —"
+                    " it must go through an Adapter interface in application/adapter/ (cross-domain.md): "
+                    + "; ".join(violations),
                 )
             )
         else:
             result.add(passed(f"{r} (no-cross-bc-repository-in-application)"))
     if not found:
-        result.add(skipped("application/ Python 파일 없음"))
+        result.add(skipped("No Python file in application/"))
     return result

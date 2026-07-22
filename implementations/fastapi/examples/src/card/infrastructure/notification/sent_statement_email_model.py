@@ -6,9 +6,10 @@ from ....account.infrastructure.persistence.account_repository import Base
 
 
 class SentStatementEmailModel(Base):
-    """`account/infrastructure/notification/sent_email_model.py`(SentEmailModel)와 동일한
-    역할의 Ledger — CardStatementSent 이벤트의 Level 2 멱등성(outbox_event_id 기준 중복
-    발송 방지)을 기록한다. Card BC 전용 발송 이력이라 별도 테이블로 분리한다."""
+    """A Ledger with the same role as `account/infrastructure/notification/sent_email_model.py`
+    (SentEmailModel) — records the Level 2 idempotency (preventing duplicate sends based on
+    outbox_event_id) of the CardStatementSent event. Split into a separate table since it's
+    a Card-BC-specific send history."""
 
     __tablename__ = "sent_statement_emails"
 

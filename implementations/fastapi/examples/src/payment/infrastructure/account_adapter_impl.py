@@ -4,9 +4,10 @@ from ..application.adapter.account_adapter import AccountAdapter, AccountView
 
 
 class AccountAdapterImpl(AccountAdapter):
-    """AccountAdapter의 구현체(ACL). Account BC가 공개한 읽기 인터페이스(AccountQuery)를
-    주입받아 호출하고, Account BC의 모델·상태를 Payment BC가 쓰는 최소 형태(AccountView)로
-    번역한다. Account의 Repository 구현체나 도메인 객체를 직접 참조하지 않는다.
+    """The implementation of AccountAdapter (ACL). It's injected with and calls the read
+    interface (AccountQuery) the Account BC exposes, and translates Account BC's
+    model/status into the minimal shape the Payment BC uses (AccountView). It never
+    references Account's Repository implementation or domain objects directly.
     """
 
     def __init__(self, account_query: AccountQuery) -> None:

@@ -124,9 +124,10 @@ async def scheduling_env() -> AsyncGenerator[dict, None]:
 
 
 async def _enqueue_task(session_factory, task_type: str, group_id: str) -> None:
-    """Scheduler(Cron)가 하는 일을 그대로 재현한다 — 실제 Cron tick을 기다리지 않고
-    TaskOutboxWriter.enqueue()를 직접 호출해 같은 트랜잭션 커밋으로 Task를 적재한다
-    (scheduling.md "Task Outbox 패턴"과 동일한 경로, 트리거만 테스트가 대신한다)."""
+    """Reproduces exactly what the Scheduler (Cron) does — instead of waiting for a real
+    Cron tick, calls TaskOutboxWriter.enqueue() directly to load the Task with the same
+    transaction commit (the same path as "The Task Outbox pattern" in scheduling.md, with
+    the test standing in only for the trigger)."""
     async with session_factory() as session:
         await TaskOutboxWriter(session).enqueue(
             task_type=task_type,
