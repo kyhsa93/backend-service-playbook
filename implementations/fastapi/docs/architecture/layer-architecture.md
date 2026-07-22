@@ -130,20 +130,30 @@ class RefundDecision:
 
 
 class RefundEligibilityService:
-    def evaluate(self, payment: Payment, refund: Refund) -> RefundDecision:
+    # classification is a plain value already computed upstream by RefundReasonClassifier (a
+    # Technical Service wrapping an LLM call — see the Technical Service section below). This
+    # method never calls it and doesn't know an LLM produced the value; it only weighs the
+    # fraud-risk signal alongside its other checks and still owns the actual judgment.
+    def evaluate(self, payment: Payment, refund: Refund, classification: RefundReasonClassification) -> RefundDecision:
         if payment.status != PaymentStatus.COMPLETED:
             return RefundDecision(approved=False, reason="A refund can only be requested for a completed payment.")
         if refund.amount > payment.amount:
             return RefundDecision(approved=False, reason="The refund amount cannot exceed the payment amount.")
+        if classification.category == RefundReasonCategory.FRAUD_SUSPECTED and classification.fraud_risk_score >= 0.7:
+            return RefundDecision(approved=False, reason="This refund reason was flagged as high fraud risk and requires manual review.")
         return RefundDecision(approved=True)
 ```
 
 ```python
-# application/command/request_refund_handler.py — loads both Repositories and delegates
+# application/command/request_refund_handler.py — loads both Repositories, classifies the
+# reason via the Technical Service, and delegates
 class RequestRefundHandler:
-    def __init__(self, payment_repo: PaymentRepository, refund_repo: RefundRepository) -> None:
+    def __init__(
+        self, payment_repo: PaymentRepository, refund_repo: RefundRepository, refund_reason_classifier: RefundReasonClassifier
+    ) -> None:
         self._payment_repo = payment_repo
         self._refund_repo = refund_repo
+        self._refund_reason_classifier = refund_reason_classifier  # a Technical Service, Depends-injected
         self._refund_eligibility_service = RefundEligibilityService()
 
     async def execute(self, cmd: RequestRefundCommand) -> Refund:
@@ -153,8 +163,9 @@ class RequestRefundHandler:
             raise PaymentNotFoundError(cmd.payment_id)
 
         refund = Refund.create(payment_id=payment.payment_id, amount=cmd.amount, reason=cmd.reason)
+        classification = await self._refund_reason_classifier.classify(cmd.reason)
 
-        decision = self._refund_eligibility_service.evaluate(payment, refund)
+        decision = self._refund_eligibility_service.evaluate(payment, refund, classification)
         if decision.approved:
             refund.approve(account_id=payment.account_id, owner_id=payment.owner_id)
         else:
@@ -170,11 +181,17 @@ class RequestRefundHandler:
 `RefundEligibilityService` performs only a purely functional decision — it never calls a Repository directly (doing so would be
 the "misusing a Domain Service" anti-pattern; see "Anti-patterns when using a Domain Service" in root [domain-service.md](../../../../docs/architecture/domain-service.md)). Loading is always the Application layer's (`RequestRefundHandler`'s) job.
 
-The unit test also instantiates `RefundEligibilityService` directly without going through the Application layer, verifying only
-the decision logic (`tests/unit/domain/test_refund_eligibility_service.py`).
+The unit test also instantiates `RefundEligibilityService` directly without going through the Application layer, passing in a
+plain `RefundReasonClassification` value (no LLM call, no mocking needed) and verifying only the decision logic
+(`tests/unit/domain/test_refund_eligibility_service.py`). `RefundReasonClassifier` — the Technical Service that produces that
+value from the refund's free-text reason via an LLM call, following the same interface-in-Application/implementation-in-
+Infrastructure split as `notification_service.py` above — is a real, worked example of the Technical Service pattern; see root
+[domain-service.md](../../../../docs/architecture/domain-service.md).
 
-Full code: `examples/src/payment/domain/refund_eligibility_service.py`, `payment.py`, `refund.py`,
-`examples/src/payment/application/command/request_refund_handler.py`.
+Full code: `examples/src/payment/domain/refund_eligibility_service.py`, `refund_reason_classification.py`, `payment.py`,
+`refund.py`, `examples/src/payment/application/command/request_refund_handler.py`,
+`examples/src/payment/application/service/refund_reason_classifier.py`,
+`examples/src/payment/infrastructure/refund_reason_classifier_impl.py`.
 
 Whether `Payment` references the `Refund` class (or vice versa) directly as a field/constructor-parameter type, rather than
 only via an ID reference such as `payment_id: str`, is checked by the harness's `no-cross-aggregate-reference` rule, targeting

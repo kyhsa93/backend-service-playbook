@@ -145,6 +145,9 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret
 APP_ENV=development
+
+ANTHROPIC_API_KEY=dev-anthropic-key
+REFUND_CLASSIFIER_MODEL=claude-opus-4-8
 ```
 
 With `APP_ENV=development` (or unset), `main.py`'s `lifespan` doesn't call Secrets Manager and uses the `JWT_SECRET` environment variable as-is — only when `APP_ENV=production` does it look up the `app/jwt` secret created by `localstack/init-secrets.sh` (see [secret-manager.md](secret-manager.md)).

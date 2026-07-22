@@ -10,6 +10,7 @@ bcrypt
 alembic
 slowapi
 apscheduler
+anthropic
 
 pytest
 pytest-asyncio

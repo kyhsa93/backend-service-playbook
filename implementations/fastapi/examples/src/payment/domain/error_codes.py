@@ -6,8 +6,9 @@ class PaymentErrorCode(str, Enum):
 
     The rejection reasons returned by RefundEligibilityService (a Domain Service) ("A refund
     can only be requested for a completed payment.", "The refund amount cannot exceed the
-    payment amount.") are never thrown as exceptions — they are returned carried in a Refund
-    with REJECTED status (a valid state transition from a domain point of view — a 200/201
+    payment amount.", "This refund reason was flagged as high fraud risk and requires manual
+    review.") are never thrown as exceptions — they are returned carried in a Refund with
+    REJECTED status (a valid state transition from a domain point of view — a 200/201
     response), so there is no corresponding code for them here — this enum corresponds 1:1
     only with "exceptions that are actually thrown."
     """
