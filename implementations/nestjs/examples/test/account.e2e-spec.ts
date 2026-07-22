@@ -120,7 +120,7 @@ describe('AccountController (e2e)', () => {
   }
 
   describe('POST /accounts', () => {
-    it('생성_요청이_유효하면_201과_계좌_정보를_반환한다', async () => {
+    it('when_the_creation_request_is_valid_then_returns_201_and_the_account_info', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
         .set('Authorization', authHeader(OWNER_ID))
@@ -137,7 +137,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.createdAt).toBeDefined()
     })
 
-    it('currency가_없으면_400과_VALIDATION_FAILED를_반환한다', async () => {
+    it('when_currency_is_missing_then_returns_400_and_VALIDATION_FAILED', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
         .set('Authorization', authHeader(OWNER_ID))
@@ -147,7 +147,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('VALIDATION_FAILED')
     })
 
-    it('email이_유효하지_않으면_400과_VALIDATION_FAILED를_반환한다', async () => {
+    it('when_email_is_invalid_then_returns_400_and_VALIDATION_FAILED', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')
         .set('Authorization', authHeader(OWNER_ID))
@@ -159,7 +159,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('POST /accounts/:accountId/deposit', () => {
-    it('입금_요청이_유효하면_201과_거래_내역을_반환한다', async () => {
+    it('when_the_deposit_request_is_valid_then_returns_201_and_the_transaction_details', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -176,7 +176,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.transactionId).toEqual(expect.any(String))
     })
 
-    it('존재하지_않는_계좌면_404와_ACCOUNT_NOT_FOUND를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404_and_ACCOUNT_NOT_FOUND', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/deposit')
         .set('Authorization', authHeader(OWNER_ID))
@@ -186,7 +186,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
     })
 
-    it('다른_소유자의_계좌면_404를_반환한다', async () => {
+    it('when_the_account_belongs_to_a_different_owner_then_returns_404', async () => {
       const account = await createAccount(OWNER_ID)
 
       const response = await request(app.getHttpServer())
@@ -197,7 +197,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(404)
     })
 
-    it('금액이_0_이하이면_400을_반환한다', async () => {
+    it('when_the_amount_is_0_or_less_then_returns_400', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -208,7 +208,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(400)
     })
 
-    it('정지된_계좌면_400과_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+    it('when_the_account_is_suspended_then_returns_400_and_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT', async () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
@@ -225,7 +225,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('POST /accounts/:accountId/withdraw', () => {
-    it('출금_요청이_유효하면_201과_거래_내역을_반환한다', async () => {
+    it('when_the_withdrawal_request_is_valid_then_returns_201_and_the_transaction_details', async () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
@@ -245,7 +245,7 @@ describe('AccountController (e2e)', () => {
       })
     })
 
-    it('존재하지_않는_계좌면_404를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/withdraw')
         .set('Authorization', authHeader(OWNER_ID))
@@ -254,7 +254,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(404)
     })
 
-    it('잔액보다_큰_금액을_출금하면_400과_INSUFFICIENT_BALANCE를_반환한다', async () => {
+    it('when_withdrawing_more_than_the_balance_then_returns_400_and_INSUFFICIENT_BALANCE', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -266,7 +266,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('INSUFFICIENT_BALANCE')
     })
 
-    it('정지된_계좌면_400과_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+    it('when_the_account_is_suspended_then_returns_400_and_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT', async () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
@@ -281,7 +281,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('WITHDRAW_REQUIRES_ACTIVE_ACCOUNT')
     })
 
-    it('금액이_0_이하이면_400을_반환한다', async () => {
+    it('when_the_amount_is_0_or_less_then_returns_400', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -294,7 +294,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('POST /accounts/:accountId/transfer', () => {
-    it('송금_요청이_유효하면_201과_출금_입금_거래_내역을_반환한다', async () => {
+    it('when_the_transfer_request_is_valid_then_returns_201_and_the_withdrawal_and_deposit_transaction_details', async () => {
       const source = await createAccount(OWNER_ID)
       await request(app.getHttpServer())
         .post(`/accounts/${source.accountId}/deposit`)
@@ -327,7 +327,7 @@ describe('AccountController (e2e)', () => {
       expect(targetGet.body.balance).toMatchObject({ amount: 4000, currency: 'KRW' })
     })
 
-    it('타인_소유_계좌로도_송금할_수_있다', async () => {
+    it('can_also_transfer_to_an_account_owned_by_someone_else', async () => {
       const source = await createAccount(OWNER_ID)
       await request(app.getHttpServer())
         .post(`/accounts/${source.accountId}/deposit`)
@@ -343,7 +343,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(201)
     })
 
-    it('존재하지_않는_출금_계좌면_404와_ACCOUNT_NOT_FOUND를_반환한다', async () => {
+    it('when_the_withdrawal_account_does_not_exist_then_returns_404_and_ACCOUNT_NOT_FOUND', async () => {
       const target = await createAccount(OTHER_OWNER_ID)
 
       const response = await request(app.getHttpServer())
@@ -355,7 +355,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
     })
 
-    it('존재하지_않는_입금_계좌면_404와_ACCOUNT_NOT_FOUND를_반환한다', async () => {
+    it('when_the_deposit_account_does_not_exist_then_returns_404_and_ACCOUNT_NOT_FOUND', async () => {
       const source = await createAccount(OWNER_ID)
       await request(app.getHttpServer())
         .post(`/accounts/${source.accountId}/deposit`)
@@ -371,7 +371,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
     })
 
-    it('출금_계좌와_입금_계좌가_같으면_400과_TRANSFER_SAME_ACCOUNT를_반환한다', async () => {
+    it('when_the_withdrawal_and_deposit_accounts_are_the_same_then_returns_400_and_TRANSFER_SAME_ACCOUNT', async () => {
       const account = await createAccount(OWNER_ID)
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
@@ -387,7 +387,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('TRANSFER_SAME_ACCOUNT')
     })
 
-    it('잔액보다_큰_금액을_송금하면_400과_INSUFFICIENT_BALANCE를_반환한다', async () => {
+    it('when_transferring_more_than_the_balance_then_returns_400_and_INSUFFICIENT_BALANCE', async () => {
       const source = await createAccount(OWNER_ID)
       const target = await createAccount(OTHER_OWNER_ID)
 
@@ -400,7 +400,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('INSUFFICIENT_BALANCE')
     })
 
-    it('출금_계좌가_정지_상태면_400과_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+    it('when_the_withdrawal_account_is_suspended_then_returns_400_and_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT', async () => {
       const source = await createAccount(OWNER_ID)
       await request(app.getHttpServer())
         .post(`/accounts/${source.accountId}/deposit`)
@@ -420,7 +420,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('WITHDRAW_REQUIRES_ACTIVE_ACCOUNT')
     })
 
-    it('입금_계좌가_정지_상태면_400과_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+    it('when_the_deposit_account_is_suspended_then_returns_400_and_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT', async () => {
       const source = await createAccount(OWNER_ID)
       await request(app.getHttpServer())
         .post(`/accounts/${source.accountId}/deposit`)
@@ -440,7 +440,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('DEPOSIT_REQUIRES_ACTIVE_ACCOUNT')
     })
 
-    it('통화가_일치하지_않으면_400과_CURRENCY_MISMATCH를_반환한다', async () => {
+    it('when_the_currencies_do_not_match_then_returns_400_and_CURRENCY_MISMATCH', async () => {
       const source = await createAccount(OWNER_ID, 'KRW')
       await request(app.getHttpServer())
         .post(`/accounts/${source.accountId}/deposit`)
@@ -459,7 +459,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('POST /accounts/:accountId/suspend', () => {
-    it('정상_계좌를_정지하면_204를_반환한다', async () => {
+    it('when_suspending_a_normal_account_then_returns_204', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -474,7 +474,7 @@ describe('AccountController (e2e)', () => {
       expect(getResponse.body.status).toBe('SUSPENDED')
     })
 
-    it('존재하지_않는_계좌면_404를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/suspend')
         .set('Authorization', authHeader(OWNER_ID))
@@ -482,7 +482,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(404)
     })
 
-    it('이미_정지된_계좌면_400과_SUSPEND_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+    it('when_the_account_is_already_suspended_then_returns_400_and_SUSPEND_REQUIRES_ACTIVE_ACCOUNT', async () => {
       const account = await createAccount()
       await request(app.getHttpServer()).post(`/accounts/${account.accountId}/suspend`).set('Authorization', authHeader(OWNER_ID))
 
@@ -496,7 +496,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('POST /accounts/:accountId/reactivate', () => {
-    it('정지된_계좌를_재개하면_204를_반환한다', async () => {
+    it('when_reactivating_a_suspended_account_then_returns_204', async () => {
       const account = await createAccount()
       await request(app.getHttpServer()).post(`/accounts/${account.accountId}/suspend`).set('Authorization', authHeader(OWNER_ID))
 
@@ -512,7 +512,7 @@ describe('AccountController (e2e)', () => {
       expect(getResponse.body.status).toBe('ACTIVE')
     })
 
-    it('존재하지_않는_계좌면_404를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/reactivate')
         .set('Authorization', authHeader(OWNER_ID))
@@ -520,7 +520,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(404)
     })
 
-    it('활성_계좌를_재개하면_400과_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT를_반환한다', async () => {
+    it('when_reactivating_an_active_account_then_returns_400_and_REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -533,7 +533,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('POST /accounts/:accountId/close', () => {
-    it('잔액이_0인_계좌를_종료하면_204를_반환한다', async () => {
+    it('when_closing_an_account_with_a_0_balance_then_returns_204', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -548,7 +548,7 @@ describe('AccountController (e2e)', () => {
       expect(getResponse.body.status).toBe('CLOSED')
     })
 
-    it('존재하지_않는_계좌면_404를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts/non-existent/close')
         .set('Authorization', authHeader(OWNER_ID))
@@ -556,7 +556,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(404)
     })
 
-    it('잔액이_0이_아니면_400과_ACCOUNT_BALANCE_NOT_ZERO를_반환한다', async () => {
+    it('when_the_balance_is_not_0_then_returns_400_and_ACCOUNT_BALANCE_NOT_ZERO', async () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
@@ -571,7 +571,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('ACCOUNT_BALANCE_NOT_ZERO')
     })
 
-    it('이미_종료된_계좌면_400과_ACCOUNT_ALREADY_CLOSED를_반환한다', async () => {
+    it('when_the_account_is_already_closed_then_returns_400_and_ACCOUNT_ALREADY_CLOSED', async () => {
       const account = await createAccount()
       await request(app.getHttpServer()).post(`/accounts/${account.accountId}/close`).set('Authorization', authHeader(OWNER_ID))
 
@@ -585,7 +585,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('GET /accounts/:accountId', () => {
-    it('존재하는_계좌를_조회하면_200과_계좌_정보를_반환한다', async () => {
+    it('when_looking_up_an_existing_account_then_returns_200_and_the_account_info', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())
@@ -602,7 +602,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.updatedAt).toBeDefined()
     })
 
-    it('존재하지_않는_계좌면_404를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .get('/accounts/non-existent')
         .set('Authorization', authHeader(OWNER_ID))
@@ -611,7 +611,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.code).toBe('ACCOUNT_NOT_FOUND')
     })
 
-    it('다른_소유자가_조회하면_404를_반환한다', async () => {
+    it('when_a_different_owner_looks_it_up_then_returns_404', async () => {
       const account = await createAccount(OWNER_ID)
 
       const response = await request(app.getHttpServer())
@@ -623,7 +623,7 @@ describe('AccountController (e2e)', () => {
   })
 
   describe('GET /accounts/:accountId/transactions', () => {
-    it('거래_내역을_페이지네이션과_함께_반환한다', async () => {
+    it('returns_the_transaction_history_with_pagination', async () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/deposit`)
@@ -647,7 +647,7 @@ describe('AccountController (e2e)', () => {
       expect(response.body.transactions[0]).toHaveProperty('amount')
     })
 
-    it('존재하지_않는_계좌면_404를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .get('/accounts/non-existent/transactions')
         .set('Authorization', authHeader(OWNER_ID))
@@ -655,7 +655,7 @@ describe('AccountController (e2e)', () => {
       expect(response.status).toBe(404)
     })
 
-    it('take를_초과한_페이지_조회는_빈_배열을_반환한다', async () => {
+    it('when_paging_beyond_the_available_records_then_returns_an_empty_array', async () => {
       const account = await createAccount()
 
       const response = await request(app.getHttpServer())

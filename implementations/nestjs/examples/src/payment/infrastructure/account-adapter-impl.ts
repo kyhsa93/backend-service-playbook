@@ -27,7 +27,7 @@ export class AccountAdapterImpl extends AccountAdapter {
         email: account.email
       }
     } catch (error) {
-      if (error instanceof Error && error.message === AccountErrorMessage['계좌를 찾을 수 없습니다.']) return null
+      if (error instanceof Error && error.message === AccountErrorMessage['Account not found.']) return null
       throw error
     }
   }

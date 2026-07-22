@@ -13,7 +13,7 @@ export class Money {
   public readonly currency: string
 
   constructor(params: { amount: number; currency: string }) {
-    if (params.amount < 0) throw new Error(ErrorMessage['금액은 0 이상이어야 합니다.'])
+    if (params.amount < 0) throw new Error(ErrorMessage['The amount must be 0 or greater.'])
     this.amount = params.amount
     this.currency = params.currency
   }
@@ -28,7 +28,7 @@ export class Money {
   }
 
   private assertSameCurrency(other: Money): void {
-    if (this.currency !== other.currency) throw new Error(ErrorMessage['통화가 일치하지 않습니다.'])
+    if (this.currency !== other.currency) throw new Error(ErrorMessage['The currencies do not match.'])
   }
 }
 ```
@@ -73,8 +73,8 @@ export class Account {
   }
 
   public deposit(amount: Money): Transaction {
-    if (this._status !== AccountStatus.ACTIVE) throw new Error(ErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'])
-    if (amount.amount <= 0) throw new Error(ErrorMessage['금액은 0보다 커야 합니다.'])
+    if (this._status !== AccountStatus.ACTIVE) throw new Error(ErrorMessage['Only an active account can accept a deposit.'])
+    if (amount.amount <= 0) throw new Error(ErrorMessage['The amount must be greater than 0.'])
 
     this._balance = this._balance.add(amount)
     const transaction = new Transaction({ accountId: this.accountId, type: 'DEPOSIT', amount })

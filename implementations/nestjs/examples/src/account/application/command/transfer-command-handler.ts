@@ -24,7 +24,7 @@ export class TransferCommandHandler implements ICommandHandler<TransferCommand, 
     const source = await this.accountRepository
       .findAccounts({ accountId: command.sourceAccountId, ownerId: command.requesterId, take: 1, page: 0 })
       .then((r) => r.accounts.pop())
-    if (!source) throw new Error(ErrorMessage['계좌를 찾을 수 없습니다.'])
+    if (!source) throw new Error(ErrorMessage['Account not found.'])
 
     // Look up target without an owner filter — since transferring to someone else's account is
     // the whole point of this feature, only existence + active status need to be checked
@@ -32,7 +32,7 @@ export class TransferCommandHandler implements ICommandHandler<TransferCommand, 
     const target = await this.accountRepository
       .findAccounts({ accountId: command.targetAccountId, take: 1, page: 0 })
       .then((r) => r.accounts.pop())
-    if (!target) throw new Error(ErrorMessage['계좌를 찾을 수 없습니다.'])
+    if (!target) throw new Error(ErrorMessage['Account not found.'])
 
     const amount = new Money({ amount: command.amount, currency: source.balance.currency })
     const decision = this.transferEligibilityService.evaluate(source, target, amount)

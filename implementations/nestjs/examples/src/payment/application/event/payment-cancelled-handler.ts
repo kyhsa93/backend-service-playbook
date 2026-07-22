@@ -21,7 +21,7 @@ export class PaymentCancelledHandler {
     reason: string
     cancelledAt: string
   }): Promise<void> {
-    this.logger.log({ message: '결제 취소됨', payment_id: event.paymentId, account_id: event.accountId, reason: event.reason })
+    this.logger.log({ message: 'Payment cancelled', payment_id: event.paymentId, account_id: event.accountId, reason: event.reason })
 
     await this.outboxWriter.saveAll([
       new PaymentCancelledIntegrationEventV1(

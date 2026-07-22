@@ -15,7 +15,7 @@ export class Account {
   }
 
   public suspend(): void {
-    if (this._status !== 'ACTIVE') throw new Error(AccountErrorMessage['활성 상태의 계좌만 정지할 수 있습니다.'])
+    if (this._status !== 'ACTIVE') throw new Error(AccountErrorMessage['Only an active account can be suspended.'])
     this._status = 'SUSPENDED'
   }
 }

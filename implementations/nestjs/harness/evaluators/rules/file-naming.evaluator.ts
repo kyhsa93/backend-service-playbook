@@ -35,7 +35,7 @@ export function evaluateFileNaming(submissionRoot: string): EvaluatorResult {
       failures.push({
         ruleId: 'checklist.step1.file-kebab-case',
         severity: 'medium',
-        message: `kebab-case 규칙 위반: ${path.relative(submissionRoot, filePath)}`
+        message: `kebab-case naming rule violation: ${path.relative(submissionRoot, filePath)}`
       })
       score -= 3
     }
@@ -44,7 +44,7 @@ export function evaluateFileNaming(submissionRoot: string): EvaluatorResult {
       failures.push({
         ruleId: 'checklist.step1.service-file-name',
         severity: 'low',
-        message: `서비스 파일명 규칙 검토 필요: ${path.relative(submissionRoot, filePath)}`
+        message: `Service file naming convention needs review: ${path.relative(submissionRoot, filePath)}`
       })
       score -= 1
     }
@@ -53,7 +53,7 @@ export function evaluateFileNaming(submissionRoot: string): EvaluatorResult {
       failures.push({
         ruleId: 'checklist.step1.module-file-name',
         severity: 'medium',
-        message: `모듈 파일명 규칙 위반: ${path.relative(submissionRoot, filePath)}`
+        message: `Module file naming rule violation: ${path.relative(submissionRoot, filePath)}`
       })
       score -= 2
     }

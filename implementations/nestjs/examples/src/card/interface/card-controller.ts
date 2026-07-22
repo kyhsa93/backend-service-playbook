@@ -53,8 +53,8 @@ export class CardController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [CardErrorMessage['연결할 계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.LINKED_ACCOUNT_NOT_FOUND],
-          [CardErrorMessage['활성 상태의 계좌만 카드를 발급할 수 있습니다.'], BadRequestException, ErrorCode.CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT]
+          [CardErrorMessage['The account to link could not be found.'], NotFoundException, ErrorCode.LINKED_ACCOUNT_NOT_FOUND],
+          [CardErrorMessage['Only an active account can have a card issued.'], BadRequestException, ErrorCode.CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT]
         ])
       })
   }
@@ -72,7 +72,7 @@ export class CardController {
     ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [CardErrorMessage['카드를 찾을 수 없습니다.'], NotFoundException, ErrorCode.CARD_NOT_FOUND]
+        [CardErrorMessage['Card not found.'], NotFoundException, ErrorCode.CARD_NOT_FOUND]
       ])
     })
   }

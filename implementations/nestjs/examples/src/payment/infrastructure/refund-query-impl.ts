@@ -31,7 +31,7 @@ export class RefundQueryImpl extends RefundQuery {
       .where('payment.paymentId = :paymentId', { paymentId: query.paymentId })
       .andWhere('payment.ownerId = :ownerId', { ownerId: query.ownerId })
       .getOne()
-    if (!payment) throw new Error(ErrorMessage['결제를 찾을 수 없습니다.'])
+    if (!payment) throw new Error(ErrorMessage['Payment not found.'])
 
     const qb = this.refundRepo.createQueryBuilder('refund')
       .where('refund.paymentId = :paymentId', { paymentId: query.paymentId })

@@ -21,7 +21,7 @@ export class PaymentQueryImpl extends PaymentQuery {
       .where('payment.paymentId = :paymentId', { paymentId: param.paymentId })
       .andWhere('payment.ownerId = :ownerId', { ownerId: param.ownerId })
       .getOne()
-    if (!row) throw new Error(ErrorMessage['결제를 찾을 수 없습니다.'])
+    if (!row) throw new Error(ErrorMessage['Payment not found.'])
 
     return {
       paymentId: row.paymentId,

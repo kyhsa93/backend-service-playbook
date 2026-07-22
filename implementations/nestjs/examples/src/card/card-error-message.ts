@@ -1,8 +1,8 @@
 export enum CardErrorMessage {
-  '카드를 찾을 수 없습니다.' = '카드를 찾을 수 없습니다.',
-  '연결할 계좌를 찾을 수 없습니다.' = '연결할 계좌를 찾을 수 없습니다.',
-  '활성 상태의 계좌만 카드를 발급할 수 있습니다.' = '활성 상태의 계좌만 카드를 발급할 수 있습니다.',
-  '해지된 카드는 정지할 수 없습니다.' = '해지된 카드는 정지할 수 없습니다.',
-  '이미 정지된 카드입니다.' = '이미 정지된 카드입니다.',
-  '이미 해지된 카드입니다.' = '이미 해지된 카드입니다.',
+  'Card not found.' = 'Card not found.',
+  'The account to link could not be found.' = 'The account to link could not be found.',
+  'Only an active account can have a card issued.' = 'Only an active account can have a card issued.',
+  'A cancelled card cannot be suspended.' = 'A cancelled card cannot be suspended.',
+  'The card is already suspended.' = 'The card is already suspended.',
+  'The card is already cancelled.' = 'The card is already cancelled.',
 }

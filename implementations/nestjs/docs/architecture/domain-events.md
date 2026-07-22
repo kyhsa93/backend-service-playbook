@@ -210,7 +210,7 @@ export class OutboxPoller {
     try {
       await this.drainOnce()
     } catch (error) {
-      this.logger.error({ message: 'Outbox 폴링 실패', error })
+      this.logger.error({ message: 'Outbox polling failed', error })
     } finally {
       this.isPolling = false
     }
@@ -230,7 +230,7 @@ export class OutboxPoller {
         }))
         await manager.update(OutboxEntity, { eventId: row.eventId }, { processed: true })
       } catch (error) {
-        this.logger.error({ message: 'SQS 발행 실패', event_type: row.eventType, event_id: row.eventId, error })
+        this.logger.error({ message: 'Failed to publish to SQS', event_type: row.eventType, event_id: row.eventId, error })
       }
     }
   }
@@ -279,11 +279,11 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
   private async handleMessage(queueUrl: string, message: Message): Promise<void> {
     const eventType = message.MessageAttributes?.eventType?.StringValue
     try {
-      if (!eventType) throw new Error('eventType 메시지 속성이 없습니다.')
+      if (!eventType) throw new Error('The eventType message attribute is missing.')
       await this.registry.handle(eventType, JSON.parse(message.Body ?? '{}'))
       await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
     } catch (error) {
-      this.logger.error({ message: '이벤트 처리 실패', event_type: eventType, error })
+      this.logger.error({ message: 'Failed to process event', event_type: eventType, error })
       // don't delete — it gets re-received and retried after the visibility timeout.
     }
   }
@@ -348,7 +348,7 @@ export class OrderCancelledHandler {
 
   @HandleEvent('OrderCancelled')
   public async handle(event: { orderId: string; reason: string }): Promise<void> {
-    this.logger.log({ message: '주문 취소 이벤트 수신', order_id: event.orderId })
+    this.logger.log({ message: 'Order cancellation event received', order_id: event.orderId })
     // follow-up processing: request a refund, send a notification, restock, etc.
   }
 }

@@ -18,7 +18,7 @@ export class MoneyWithdrawnHandler {
     balanceAfter: { amount: number; currency: string }
   }): Promise<void> {
     this.logger.log({
-      message: '출금 완료',
+      message: 'Withdrawal completed',
       account_id: event.accountId,
       transaction_id: event.transactionId,
       amount: event.amount.amount,
@@ -28,8 +28,8 @@ export class MoneyWithdrawnHandler {
       accountId: event.accountId,
       eventType: 'MoneyWithdrawn',
       recipient: event.email,
-      subject: '[Account] 출금이 완료되었습니다',
-      body: `${event.amount.amount} ${event.amount.currency}이 출금되었습니다. 출금 후 잔액: ${event.balanceAfter.amount} ${event.balanceAfter.currency}`
+      subject: '[Account] Your withdrawal is complete',
+      body: `${event.amount.amount} ${event.amount.currency} has been withdrawn. Balance after withdrawal: ${event.balanceAfter.amount} ${event.balanceAfter.currency}`
     })
   }
 }

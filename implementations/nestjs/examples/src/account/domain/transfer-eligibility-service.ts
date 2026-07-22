@@ -25,19 +25,19 @@ export interface TransferDecision {
 export class TransferEligibilityService {
   public evaluate(source: Account, target: Account, amount: Money): TransferDecision {
     if (source.accountId === target.accountId) {
-      return { approved: false, reason: ErrorMessage['출금 계좌와 입금 계좌가 동일할 수 없습니다.'] }
+      return { approved: false, reason: ErrorMessage['The withdrawal account and deposit account cannot be the same.'] }
     }
     if (source.status !== AccountStatus.ACTIVE) {
-      return { approved: false, reason: ErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'] }
+      return { approved: false, reason: ErrorMessage['Only an active account can make a withdrawal.'] }
     }
     if (target.status !== AccountStatus.ACTIVE) {
-      return { approved: false, reason: ErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'] }
+      return { approved: false, reason: ErrorMessage['Only an active account can accept a deposit.'] }
     }
     if (source.balance.currency !== target.balance.currency) {
-      return { approved: false, reason: ErrorMessage['통화가 일치하지 않습니다.'] }
+      return { approved: false, reason: ErrorMessage['The currencies do not match.'] }
     }
     if (source.balance.isLessThan(amount)) {
-      return { approved: false, reason: ErrorMessage['잔액이 부족합니다.'] }
+      return { approved: false, reason: ErrorMessage['Insufficient balance.'] }
     }
     return { approved: true }
   }

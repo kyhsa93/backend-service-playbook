@@ -41,7 +41,7 @@ export class Order {
   private readonly _events: OrderDomainEvent[] = []
 
   constructor(params: { orderId: string; userId: string; items: OrderItem[]; status: 'pending' | 'paid' | 'cancelled' }) {
-    if (params.items.length === 0) throw new Error(OrderErrorMessage['주문 항목은 최소 1개 이상이어야 합니다.'])
+    if (params.items.length === 0) throw new Error(OrderErrorMessage['An order must have at least one item.'])
     this.orderId = params.orderId
     this.userId = params.userId
     this.items = params.items
@@ -52,8 +52,8 @@ export class Order {
   get domainEvents(): OrderDomainEvent[] { return [...this._events] }
 
   public cancel(reason: string): void {
-    if (this._status === 'cancelled') throw new Error(OrderErrorMessage['이미 취소된 주문입니다.'])
-    if (this._status === 'paid') throw new Error(OrderErrorMessage['결제 완료된 주문은 취소할 수 없습니다.'])
+    if (this._status === 'cancelled') throw new Error(OrderErrorMessage['The order is already cancelled.'])
+    if (this._status === 'paid') throw new Error(OrderErrorMessage['A paid order cannot be cancelled.'])
     this._status = 'cancelled'
     this._events.push(new OrderCancelled({ orderId: this.orderId, reason, cancelledAt: new Date() }))
   }
@@ -118,7 +118,7 @@ export class OrderCommandService {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
-    if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+    if (!order) throw new Error(ErrorMessage['Order not found.'])
 
     order.cancel(command.reason)
 
@@ -333,7 +333,7 @@ export class OrderController {
     return this.orderQueryService.getOrder(param).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [OrderErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
+        [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
       ])
     })
   }

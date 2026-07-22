@@ -106,7 +106,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'domain-event-outbox.module-missing',
       severity: 'high',
-      message: `Domain Events(${aggregatesWithEvents.length}개 Aggregate)이 발행되는데 src/outbox/ 공유 모듈 부재 — Outbox 패턴 구성 필요`,
+      message: `Domain Events are published (${aggregatesWithEvents.length} Aggregates) but the shared src/outbox/ module is missing — the Outbox pattern must be set up`,
       docRef: DOC_REF
     })
     score -= 6
@@ -127,7 +127,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'domain-event-outbox.repository-does-not-persist-events',
           severity: 'high',
-          message: `Repository 구현체가 OutboxWriter/outbox saveAll 패턴을 사용하지 않음 — Aggregate가 발행한 도메인 이벤트가 트랜잭션으로 저장되지 않을 위험`,
+          message: `The Repository implementation does not use the OutboxWriter/outbox saveAll pattern — the domain events published by the Aggregate risk not being saved transactionally`,
           docRef: DOC_REF
         })
         score -= 5
@@ -136,7 +136,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.repository-impl-missing',
         severity: 'medium',
-        message: `Domain Events가 발행되는데 Repository 구현체(-repository-impl.ts)를 찾지 못함`,
+        message: `Domain Events are published but no Repository implementation (-repository-impl.ts) was found`,
         docRef: DOC_REF
       })
       score -= 3
@@ -147,7 +147,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.clear-events-missing',
         severity: 'low',
-        message: `Repository 구현체에서 Aggregate.clearEvents() 호출 흔적 없음 — 이벤트 중복 발행 방지 관례 확인 권장`,
+        message: `No trace of an Aggregate.clearEvents() call in the Repository implementation — recommend checking the convention that prevents duplicate event publication`,
         docRef: DOC_REF
       })
       score -= 1
@@ -165,7 +165,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'domain-event-outbox.command-service.event-construction',
           severity: 'high',
-          message: `Application 레이어가 도메인 이벤트(${name})를 직접 생성: ${rel(f)} — 이벤트는 Aggregate 내부 도메인 메서드에서만 생성`,
+          message: `The Application layer creates the domain event (${name}) directly: ${rel(f)} — events must only be created inside an Aggregate's domain methods`,
           docRef: DOC_REF
         })
         score -= 4
@@ -182,7 +182,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.command-service.outbox-writer-injection',
         severity: 'high',
-        message: `Application 레이어(application/event/ 외)가 OutboxWriter를 참조: ${rel(f)} — outbox는 Repository 구현체 또는 application/event/ EventHandler에서만 사용`,
+        message: `The Application layer (outside application/event/) references OutboxWriter: ${rel(f)} — outbox may only be used by a Repository implementation or an application/event/ EventHandler`,
         docRef: DOC_REF
       })
       score -= 4
@@ -199,7 +199,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.handler.layer',
         severity: 'medium',
-        message: `@HandleEvent 보유 파일이 application/event/<domain-event>-handler.ts 경로를 따르지 않음: ${rel(f)}`,
+        message: `The file with @HandleEvent does not follow the application/event/<domain-event>-handler.ts path convention: ${rel(f)}`,
         docRef: DOC_REF
       })
       score -= 2
@@ -216,7 +216,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.integration-event.controller.layer',
         severity: 'medium',
-        message: `@HandleIntegrationEvent 보유 파일이 interface/integration-event/<domain>-integration-event-controller.ts 경로를 따르지 않음: ${rel(f)}`,
+        message: `The file with @HandleIntegrationEvent does not follow the interface/integration-event/<domain>-integration-event-controller.ts path convention: ${rel(f)}`,
         docRef: DOC_REF
       })
       score -= 2
@@ -229,7 +229,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.event-bus.direct-publish',
         severity: 'high',
-        message: `EventBus.publish() 직접 호출: ${rel(f)} — @nestjs/cqrs 사용 중에도 Outbox → SQS 경로를 따라야 함`,
+        message: `Direct call to EventBus.publish(): ${rel(f)} — even when using @nestjs/cqrs, it must go through the Outbox -> SQS path`,
         docRef: DOC_REF
       })
       score -= 4
@@ -253,7 +253,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.poller-missing',
         severity: 'high',
-        message: 'Domain Event가 발행되는데 outbox-poller.ts를 찾지 못함 — outbox 테이블에 적재된 이벤트를 큐로 발행할 경로가 없음',
+        message: 'A Domain Event is published but outbox-poller.ts was not found — there is no path to publish events queued in the outbox table to the queue',
         docRef: DOC_REF
       })
       score -= 5
@@ -262,7 +262,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.consumer-missing',
         severity: 'high',
-        message: 'Domain Event가 발행되는데 outbox-consumer.ts를 찾지 못함 — 큐에서 수신해 EventHandler를 호출할 경로가 없음',
+        message: 'A Domain Event is published but outbox-consumer.ts was not found — there is no path to receive from the queue and call an EventHandler',
         docRef: DOC_REF
       })
       score -= 5
@@ -279,7 +279,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'domain-event-outbox.registry-coverage-incomplete',
             severity: 'high',
-            message: `${domain} 도메인의 다음 Domain Event가 EventHandlerRegistry.register(...)로 등록되지 않음: ${missing.join(', ')} — 해당 이벤트는 Outbox에 적재되어도 OutboxConsumer가 처리할 핸들러를 찾지 못함`,
+            message: `The following Domain Events in the ${domain} domain are not registered via EventHandlerRegistry.register(...): ${missing.join(', ')} — even if queued in the Outbox, OutboxConsumer will find no handler to process them`,
             docRef: DOC_REF
           })
           score -= 4
@@ -305,7 +305,7 @@ export function evaluateDomainEventOutbox(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-event-outbox.command-handler.forbidden-sync-drain',
         severity: 'high',
-        message: `${rel(f)}가 OutboxRelay/OutboxPoller/OutboxConsumer를 직접 참조하거나 드레인을 호출함 — Command Handler는 저장 후 곧바로 반환해야 하며, Outbox → 큐 발행/수신은 독립적으로 주기 실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지)`,
+        message: `${rel(f)} references OutboxRelay/OutboxPoller/OutboxConsumer directly or calls a drain — a Command Handler must return right after saving, and Outbox -> queue publish/receive is solely the responsibility of the independently-scheduled Poller/Consumer (synchronous draining is forbidden)`,
         docRef: DOC_REF
       })
       score -= 6

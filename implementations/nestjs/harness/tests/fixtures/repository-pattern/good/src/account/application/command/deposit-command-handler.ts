@@ -9,7 +9,7 @@ export class DepositCommandHandler {
     const account = await this.accountRepository
       .findAccounts({ accountId: command.accountId, take: 1, page: 0 })
       .then((r) => r.accounts.pop())
-    if (!account) throw new Error(ErrorMessage['계좌를 찾을 수 없습니다.'])
+    if (!account) throw new Error(ErrorMessage['Account not found.'])
 
     const amount = new Money({ amount: command.amount, currency: 'KRW' })
     await this.accountRepository.saveAccount(account)

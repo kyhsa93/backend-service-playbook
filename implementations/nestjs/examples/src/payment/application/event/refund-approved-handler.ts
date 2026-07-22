@@ -21,7 +21,7 @@ export class RefundApprovedHandler {
     amount: number
     approvedAt: string
   }): Promise<void> {
-    this.logger.log({ message: '환불 승인됨', refund_id: event.refundId, payment_id: event.paymentId, account_id: event.accountId })
+    this.logger.log({ message: 'Refund approved', refund_id: event.refundId, payment_id: event.paymentId, account_id: event.accountId })
 
     await this.outboxWriter.saveAll([
       new RefundApprovedIntegrationEventV1(

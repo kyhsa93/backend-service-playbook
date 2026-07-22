@@ -98,7 +98,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'pagination.page-decorator-missing',
         severity: 'medium',
-        message: `${rel(file)}의 page 필드에 @Type(() => Number)와 @IsInt() 데코레이터가 필요합니다.`,
+        message: `${rel(file)}'s page field needs @Type(() => Number) and @IsInt() decorators.`,
         docRef: DOC
       })
       score -= penaltyFor('medium')
@@ -112,7 +112,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'pagination.take-decorator-missing',
         severity: 'medium',
-        message: `${rel(file)}의 take 필드에 @Type(() => Number)와 @IsInt() 데코레이터가 필요합니다.`,
+        message: `${rel(file)}'s take field needs @Type(() => Number) and @IsInt() decorators.`,
         docRef: DOC
       })
       score -= penaltyFor('medium')
@@ -139,7 +139,7 @@ export function evaluatePagination(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'pagination.generic-response-key',
         severity: 'medium',
-        message: `${rel(file)}의 페이지네이션 응답에 data/items/result 범용 키를 사용하지 마세요. 도메인 복수형(예: orders, users)을 사용하세요.`,
+        message: `${rel(file)}'s pagination response must not use generic keys like data/items/result. Use a domain-specific plural instead (e.g. orders, users).`,
         docRef: DOC
       })
       score -= penaltyFor('medium')

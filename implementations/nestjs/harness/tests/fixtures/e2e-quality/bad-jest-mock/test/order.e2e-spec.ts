@@ -16,7 +16,7 @@ describe('OrderController (e2e)', () => {
 
   afterAll(() => app.close())
 
-  it('POST /orders — 결제 mock 후 주문 생성', () => {
+  it('POST /orders — creates an order after mocking payment', () => {
     return request(app.getHttpServer()).post('/orders').send({}).expect(201)
   })
 })

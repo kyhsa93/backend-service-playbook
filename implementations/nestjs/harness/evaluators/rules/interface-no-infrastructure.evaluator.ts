@@ -54,7 +54,7 @@ export function evaluateInterfaceNoInfrastructure(root: string): EvaluatorResult
       failures.push({
         ruleId: 'interface-no-infrastructure.forbidden-import',
         severity: 'high',
-        message: `${rel(file)} — Controller가 infrastructure를 직접 import 함: '${specifier}'. Application Service를 통해서만 접근한다`,
+        message: `${rel(file)} — the Controller imports infrastructure directly: '${specifier}'. Access must go only through an Application Service`,
         docRef: DOC_REF
       })
       score -= penaltyFor('high')

@@ -110,7 +110,7 @@ export function evaluateSoftDeleteFilter(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'soft-delete-filter.entity-not-soft-deletable',
         severity: 'high',
-        message: `${rel(file)} — find 메서드가 조회하는 ${entityName}가 soft-delete 불가능합니다(BaseEntity 미상속, @DeleteDateColumn 없음). 삭제된 행이 조회 결과에 섞일 수 있습니다 — Entity에 @DeleteDateColumn을 추가(BaseEntity 상속)하거나 Repository에서 deletedAt IS NULL을 직접 필터링하세요.`,
+        message: `${rel(file)} — ${entityName}, which the find method queries, is not soft-delete-capable (does not extend BaseEntity, has no @DeleteDateColumn). Deleted rows may leak into the query results — add @DeleteDateColumn to the Entity (extend BaseEntity) or filter deletedAt IS NULL directly in the Repository.`,
         docRef: DOC
       })
       score -= penaltyFor('high')
@@ -128,7 +128,7 @@ export function evaluateSoftDeleteFilter(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'soft-delete-filter.raw-query-missing-filter',
             severity: 'high',
-            message: `${rel(file)}:${line} — raw SQL(.query())이 soft-delete 가능한 Entity(${softDeletableEntityNames.join(', ')})를 조회하면서 deletedAt IS NULL 필터가 없습니다. raw SQL은 TypeORM의 자동 soft-delete 필터를 우회하므로 수동으로 필터링해야 합니다.`,
+            message: `${rel(file)}:${line} — raw SQL (.query()) queries a soft-delete-capable Entity (${softDeletableEntityNames.join(', ')}) without a deletedAt IS NULL filter. Raw SQL bypasses TypeORM's automatic soft-delete filter, so it must be filtered manually.`,
             docRef: DOC
           })
           score -= penaltyFor('high')

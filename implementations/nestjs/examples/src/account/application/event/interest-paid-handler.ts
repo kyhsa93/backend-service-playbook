@@ -18,7 +18,7 @@ export class InterestPaidHandler {
     balanceAfter: { amount: number; currency: string }
   }): Promise<void> {
     this.logger.log({
-      message: '이자 지급 완료',
+      message: 'Interest payment completed',
       account_id: event.accountId,
       transaction_id: event.transactionId,
       amount: event.amount.amount,
@@ -28,8 +28,8 @@ export class InterestPaidHandler {
       accountId: event.accountId,
       eventType: 'InterestPaid',
       recipient: event.email,
-      subject: '[Account] 이자가 지급되었습니다',
-      body: `${event.amount.amount} ${event.amount.currency}의 이자가 지급되었습니다. 지급 후 잔액: ${event.balanceAfter.amount} ${event.balanceAfter.currency}`
+      subject: '[Account] Interest has been paid',
+      body: `Interest of ${event.amount.amount} ${event.amount.currency} has been paid. Balance after payment: ${event.balanceAfter.amount} ${event.balanceAfter.currency}`
     })
   }
 }

@@ -24,7 +24,7 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 import { classifyLayer, readSourceFile, walkTsFiles } from '../shared/ast-utils'
 
-const DOC_REF = '../../docs/architecture/api-response.md#result-객체-설계'
+const DOC_REF = '../../docs/architecture/api-response.md#result-object-design'
 
 function isRepositoryDomainFile(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/')
@@ -86,7 +86,7 @@ function inspectFile(filePath: string, aggregateNames: Set<string>): Violation[]
       if (aggregateNames.has(candidate)) {
         violations.push({
           ruleId: 'query-handler-no-raw-aggregate.raw-aggregate-return',
-          message: `${ownerLabel}.${memberLabel} — Promise<${innerText}> 반환. Domain Aggregate(${candidate})를 그대로 반환하지 말고 전용 Result/DTO 타입으로 감싸야 한다`
+          message: `${ownerLabel}.${memberLabel} — returns Promise<${innerText}>. Must not return the Domain Aggregate (${candidate}) as-is; wrap it in a dedicated Result/DTO type`
         })
       }
     }
@@ -107,7 +107,7 @@ function inspectFile(filePath: string, aggregateNames: Set<string>): Violation[]
             if (aggregateNames.has(candidate)) {
               violations.push({
                 ruleId: 'query-handler-no-raw-aggregate.raw-aggregate-return',
-                message: `${className} — IQueryHandler<..., ${resultArg.getText(sf)}> 반환. Domain Aggregate(${candidate})를 그대로 반환하지 말고 전용 Result/DTO 타입으로 감싸야 한다`
+                message: `${className} — returns IQueryHandler<..., ${resultArg.getText(sf)}>. Must not return the Domain Aggregate (${candidate}) as-is; wrap it in a dedicated Result/DTO type`
               })
             }
           }

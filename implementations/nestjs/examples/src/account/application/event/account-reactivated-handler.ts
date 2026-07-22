@@ -11,13 +11,13 @@ export class AccountReactivatedHandler {
 
   @HandleEvent('AccountReactivated')
   public async handle(event: { accountId: string; email: string }): Promise<void> {
-    this.logger.log({ message: '계좌 재개됨', account_id: event.accountId })
+    this.logger.log({ message: 'Account reactivated', account_id: event.accountId })
     await this.notificationService.sendEmail({
       accountId: event.accountId,
       eventType: 'AccountReactivated',
       recipient: event.email,
-      subject: '[Account] 계좌가 재개되었습니다',
-      body: `계좌(${event.accountId})가 재개되었습니다.`
+      subject: '[Account] Your account has been reactivated',
+      body: `Account (${event.accountId}) has been reactivated.`
     })
   }
 }

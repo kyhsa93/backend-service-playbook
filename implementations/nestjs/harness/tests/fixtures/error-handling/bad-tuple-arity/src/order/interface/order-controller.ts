@@ -8,7 +8,7 @@ export class OrderController {
   public async cancel(@Param('orderId') orderId: string): Promise<void> {
     return Promise.resolve(orderId).then(() => undefined).catch((error: Error) => {
       throw generateErrorResponse(error.message, [
-        [ErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException]
+        [ErrorMessage['Order not found.'], NotFoundException]
       ])
     })
   }

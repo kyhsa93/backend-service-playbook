@@ -22,10 +22,10 @@ export interface RefundDecision {
 export class RefundEligibilityService {
   public evaluate(payment: Payment, refund: Refund): RefundDecision {
     if (payment.status !== PaymentStatus.COMPLETED) {
-      return { approved: false, reason: PaymentErrorMessage['완료된 결제에 대해서만 환불을 요청할 수 있습니다.'] }
+      return { approved: false, reason: PaymentErrorMessage['A refund can only be requested for a completed payment.'] }
     }
     if (refund.amount > payment.amount) {
-      return { approved: false, reason: PaymentErrorMessage['환불 금액은 결제 금액을 초과할 수 없습니다.'] }
+      return { approved: false, reason: PaymentErrorMessage['The refund amount cannot exceed the payment amount.'] }
     }
     return { approved: true }
   }

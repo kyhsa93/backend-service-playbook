@@ -38,7 +38,7 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'database-queries.primary-generated-column',
         severity: 'high',
-        message: `${rel(file)}에서 @PrimaryGeneratedColumn() 사용 금지 — @PrimaryColumn({ type: 'char', length: 32 })를 사용하고 ID는 generateId()로 생성하세요.`,
+        message: `${rel(file)} must not use @PrimaryGeneratedColumn() — use @PrimaryColumn({ type: 'char', length: 32 }) and generate the ID with generateId().`,
         docRef: DOC
       })
       score -= penaltyFor('high')
@@ -55,7 +55,7 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'database-queries.hard-delete-forbidden',
         severity: 'high',
-        message: `${rel(file)}에서 .delete() 직접 호출 금지 — softDelete()를 사용해 논리 삭제하세요.`,
+        message: `${rel(file)} must not call .delete() directly — use softDelete() for a logical delete.`,
         docRef: DOC
       })
       score -= penaltyFor('high')
@@ -85,7 +85,7 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'database-queries.base-entity-missing',
         severity: 'medium',
-        message: `${rel(file)}가 BaseEntity를 상속하지 않습니다. createdAt/updatedAt/deletedAt 공통 컬럼은 BaseEntity를 상속해 재사용하세요 (인라인 @CreateDateColumn/@UpdateDateColumn/@DeleteDateColumn 중복 선언 금지).`,
+        message: `${rel(file)} does not extend BaseEntity. Reuse the common createdAt/updatedAt/deletedAt columns by extending BaseEntity (do not redeclare @CreateDateColumn/@UpdateDateColumn/@DeleteDateColumn inline).`,
         docRef: DOC
       })
       score -= penaltyFor('medium')
@@ -99,7 +99,7 @@ export function evaluateDatabaseQueries(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'database-queries.transaction-manager-missing',
       severity: 'medium',
-      message: 'src/database/transaction-manager.ts 파일이 없습니다. AsyncLocalStorage 기반 TransactionManager가 필요합니다.',
+      message: 'The src/database/transaction-manager.ts file is missing. An AsyncLocalStorage-based TransactionManager is required.',
       docRef: DOC
     })
     score -= penaltyFor('medium')

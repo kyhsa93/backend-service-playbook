@@ -55,7 +55,7 @@ export function evaluateRateLimiting(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'rate-limiting.throttler-module-missing',
       severity: 'high',
-      message: 'ThrottlerModule.forRoot() 또는 forRootAsync() 설정이 없습니다. AppModule에 등록해야 합니다.',
+      message: 'No ThrottlerModule.forRoot() or forRootAsync() configuration was found. It must be registered in AppModule.',
       docRef: DOC
     })
     score -= penaltyFor('high')
@@ -81,7 +81,7 @@ export function evaluateRateLimiting(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'rate-limiting.app-guard-missing',
       severity: 'medium',
-      message: '{ provide: APP_GUARD, useClass: ThrottlerGuard } 전역 가드 등록(@Module providers)이나 컨트롤러의 @UseGuards(ThrottlerGuard) 적용이 없습니다 — ThrottlerModule 설정만 있고 실제로 적용되지 않은(dead code) 상태일 수 있습니다.',
+      message: 'Neither a global guard registration ({ provide: APP_GUARD, useClass: ThrottlerGuard } in @Module providers) nor a controller-level @UseGuards(ThrottlerGuard) was found — ThrottlerModule may be configured but never actually applied (dead code).',
       docRef: DOC
     })
     score -= penaltyFor('medium')

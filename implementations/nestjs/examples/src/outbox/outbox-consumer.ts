@@ -51,7 +51,7 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
           await this.handleMessage(queueUrl, message)
         }
       } catch (error) {
-        this.logger.error({ message: 'SQS 수신 실패', error })
+        this.logger.error({ message: 'Failed to receive from SQS', error })
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     }
@@ -60,11 +60,11 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
   private async handleMessage(queueUrl: string, message: Message): Promise<void> {
     const eventType = message.MessageAttributes?.eventType?.StringValue
     try {
-      if (!eventType) throw new Error('eventType 메시지 속성이 없습니다.')
+      if (!eventType) throw new Error('The eventType message attribute is missing.')
       await this.registry.handle(eventType, JSON.parse(message.Body ?? '{}'))
       await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
     } catch (error) {
-      this.logger.error({ message: '이벤트 처리 실패', event_type: eventType, error })
+      this.logger.error({ message: 'Failed to process event', event_type: eventType, error })
       // Don't delete — it's re-received and retried after the visibility timeout.
     }
   }

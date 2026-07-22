@@ -31,7 +31,7 @@ export class TaskOutboxRelay {
     try {
       await this.drainOnce()
     } catch (error) {
-      this.logger.error({ message: 'Task Outbox 폴링 실패', error })
+      this.logger.error({ message: 'Task Outbox polling failed', error })
     } finally {
       this.isPolling = false
     }
@@ -62,7 +62,7 @@ export class TaskOutboxRelay {
         await manager.update(TaskOutboxEntity, { taskId: row.taskId }, { processed: true })
       } catch (error) {
         // Leave a publish-failed row as processed=false so it retries on the next tick.
-        this.logger.error({ message: 'Task SQS 발행 실패', task_type: row.taskType, task_id: row.taskId, error })
+        this.logger.error({ message: 'Failed to publish Task to SQS', task_type: row.taskType, task_id: row.taskId, error })
       }
     }
   }

@@ -23,7 +23,7 @@ export class AccountAdapterImpl extends AccountAdapter {
       return { accountId: account.accountId, active: account.status === AccountStatus.ACTIVE }
     } catch (error) {
       // Translate the upstream "account not found" signal into a null the Card domain understands (preventing model pollution).
-      if (error instanceof Error && error.message === AccountErrorMessage['계좌를 찾을 수 없습니다.']) return null
+      if (error instanceof Error && error.message === AccountErrorMessage['Account not found.']) return null
       throw error
     }
   }

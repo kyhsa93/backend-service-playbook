@@ -36,7 +36,7 @@ describe('WithdrawByPaymentCommandHandler', () => {
     accountRepository = module.get(AccountRepository)
   })
 
-  it('execute_when_처음_수신하면_then_잔액을_차감하고_저장한다', async () => {
+  it('execute_when_received_for_the_first_time_then_deducts_the_amount_from_the_balance_and_saves', async () => {
     const account = buildAccount(10000)
     accountRepository.hasTransactionWithReference.mockResolvedValue(false)
     accountRepository.findAccounts.mockResolvedValue({ accounts: [account], count: 1 })
@@ -47,7 +47,7 @@ describe('WithdrawByPaymentCommandHandler', () => {
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(account)
   })
 
-  it('execute_when_같은_referenceId를_이미_처리했으면_then_아무_일도_하지_않는다', async () => {
+  it('execute_when_the_same_referenceId_was_already_processed_then_does_nothing', async () => {
     accountRepository.hasTransactionWithReference.mockResolvedValue(true)
 
     await handler.execute(new WithdrawByPaymentCommand({ accountId: 'account-1', amount: 5000, referenceId: 'payment-1' }))
@@ -56,7 +56,7 @@ describe('WithdrawByPaymentCommandHandler', () => {
     expect(accountRepository.saveAccount).not.toHaveBeenCalled()
   })
 
-  it('execute_when_계좌가_없으면_then_아무_일도_하지_않는다', async () => {
+  it('execute_when_the_account_does_not_exist_then_does_nothing', async () => {
     accountRepository.hasTransactionWithReference.mockResolvedValue(false)
     accountRepository.findAccounts.mockResolvedValue({ accounts: [], count: 0 })
 

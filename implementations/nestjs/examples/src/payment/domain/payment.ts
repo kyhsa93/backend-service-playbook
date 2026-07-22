@@ -57,7 +57,7 @@ export class Payment {
 
   public complete(): void {
     if (this._status !== PaymentStatus.PENDING) {
-      throw new Error(PaymentErrorMessage['결제 대기 상태에서만 완료 처리할 수 있습니다.'])
+      throw new Error(PaymentErrorMessage['Can only be marked completed from the pending state.'])
     }
     this._status = PaymentStatus.COMPLETED
     this._events.push(new PaymentCompleted({
@@ -76,7 +76,7 @@ export class Payment {
   // payment gateway callback), the Aggregate itself keeps the state transition (verified by a Domain unit test).
   public fail(_reason: string): void {
     if (this._status !== PaymentStatus.PENDING) {
-      throw new Error(PaymentErrorMessage['결제 대기 상태에서만 실패 처리할 수 있습니다.'])
+      throw new Error(PaymentErrorMessage['Can only be marked failed from the pending state.'])
     }
     this._status = PaymentStatus.FAILED
   }
@@ -84,7 +84,7 @@ export class Payment {
   // A payment cancellation reverses an already-finalized (COMPLETED) payment, so it's only possible from COMPLETED.
   public cancel(reason: string): void {
     if (this._status !== PaymentStatus.COMPLETED) {
-      throw new Error(PaymentErrorMessage['완료된 결제만 취소할 수 있습니다.'])
+      throw new Error(PaymentErrorMessage['Only a completed payment can be cancelled.'])
     }
     this._status = PaymentStatus.CANCELLED
     this._events.push(new PaymentCancelled({

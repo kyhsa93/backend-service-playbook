@@ -39,7 +39,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'aggregate-id.primary-generated-column-forbidden',
         severity: 'high',
-        message: `${rel(file)}에서 @PrimaryGeneratedColumn() 사용 금지 — ID는 애플리케이션에서 generateId()로 생성하고 @PrimaryColumn({ type: 'char', length: 32 })을 사용하세요.`,
+        message: `${rel(file)} must not use @PrimaryGeneratedColumn() — generate the ID in the application with generateId() and use @PrimaryColumn({ type: 'char', length: 32 }).`,
         docRef: DOC
       })
       score -= penaltyFor('high')
@@ -57,7 +57,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'aggregate-id.primary-column-type',
             severity: 'medium',
-            message: `${rel(file)}의 @PrimaryColumn 옵션이 { type: 'char', length: 32 }이 아닙니다. Aggregate ID는 char(32) 타입을 사용하세요.`,
+            message: `${rel(file)}'s @PrimaryColumn options are not { type: 'char', length: 32 }. Use the char(32) type for Aggregate IDs.`,
             docRef: DOC
           })
           score -= penaltyFor('medium')
@@ -75,7 +75,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'aggregate-id.generate-id-missing',
       severity: 'medium',
-      message: 'generateId() 함수가 없습니다. src/common/generate-id.ts에 crypto.randomUUID() 기반 ID 생성 함수를 만드세요.',
+      message: 'The generateId() function is missing. Create a crypto.randomUUID()-based ID generation function at src/common/generate-id.ts.',
       docRef: DOC
     })
     score -= penaltyFor('medium')
@@ -91,7 +91,7 @@ export function evaluateAggregateId(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'aggregate-id.generate-id-raw-uuid',
         severity: 'high',
-        message: `${rel(generateIdFile)}의 generateId()가 randomUUID()를 하이픈 제거 없이 그대로 반환합니다 — .replace(/-/g, '')로 하이픈을 제거해 32자리 hex 문자열을 만드세요.`,
+        message: `${rel(generateIdFile)}'s generateId() returns randomUUID() as-is without stripping hyphens — use .replace(/-/g, '') to strip the hyphens and produce a 32-character hex string.`,
         docRef: DOC
       })
       score -= penaltyFor('high')

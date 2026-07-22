@@ -25,10 +25,10 @@ export class CardStatementScheduler {
         { statementMonth, monthStart: monthStart.toISOString(), monthEnd: monthEnd.toISOString() },
         { groupId: 'payment.card-statement', deduplicationId: dedupId }
       )
-      this.logger.log({ message: '월간 카드 사용내역 Task 적재', statement_month: statementMonth, dedup_id: dedupId })
+      this.logger.log({ message: 'Monthly card statement Task enqueued', statement_month: statementMonth, dedup_id: dedupId })
     } catch (error) {
       // @nestjs/schedule silently swallows exceptions from Cron handlers, so log explicitly.
-      this.logger.error({ message: '월간 카드 사용내역 Task 적재 실패', dedup_id: dedupId, error })
+      this.logger.error({ message: 'Failed to enqueue monthly card statement Task', dedup_id: dedupId, error })
     }
   }
 }

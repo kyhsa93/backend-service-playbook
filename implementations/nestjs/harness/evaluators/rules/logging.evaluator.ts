@@ -70,7 +70,7 @@ export function evaluateLogging(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'logging.no-console',
         severity: 'medium',
-        message: `${rel(file)}:${lineOf(content, consoleMatch.index)}에서 console.${consoleMatch[1]} 직접 사용 — Logger 사용 필요`,
+        message: `${rel(file)}:${lineOf(content, consoleMatch.index)} uses console.${consoleMatch[1]} directly — must use Logger instead`,
         docRef: DOC_REF
       })
       score -= 2
@@ -82,7 +82,7 @@ export function evaluateLogging(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'logging.no-empty-catch',
         severity: 'high',
-        message: `${rel(file)}:${lineOf(content, emptyCatchMatch.index)}의 catch 블록이 비어 있음 — 에러 로깅 또는 재throw 필요`,
+        message: `${rel(file)}:${lineOf(content, emptyCatchMatch.index)}'s catch block is empty — must log the error or rethrow it`,
         docRef: DOC_REF
       })
       score -= 4
@@ -97,7 +97,7 @@ export function evaluateLogging(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'logging.no-swallowed-error',
         severity: 'high',
-        message: `${rel(file)}:${lineOf(content, catchMatch.index)}의 catch 블록이 에러를 로깅하거나 재throw하지 않음`,
+        message: `${rel(file)}:${lineOf(content, catchMatch.index)}'s catch block neither logs the error nor rethrows it`,
         docRef: DOC_REF
       })
       score -= 4
@@ -110,7 +110,7 @@ export function evaluateLogging(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'logging.no-logging-in-domain',
           severity: 'high',
-          message: `${rel(file)} — domain 레이어에서 로깅 사용 금지(${usesWinston ? 'winston' : '@nestjs/common Logger'}). 도메인 로직의 결과는 Application 레이어에서 로깅한다`,
+          message: `${rel(file)} — logging is forbidden in the domain layer (${usesWinston ? 'winston' : '@nestjs/common Logger'}). The result of domain logic must be logged in the Application layer`,
           docRef: DOMAIN_LOGGING_DOC_REF
         })
         score -= 4

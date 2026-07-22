@@ -56,7 +56,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'scheduler.layer',
         severity: 'high',
-        message: `@Cron/@Interval 사용 Scheduler가 infrastructure/ 외 레이어(${layer})에 위치: ${rel(file)}`,
+        message: `A Scheduler using @Cron/@Interval is located outside infrastructure/, in the ${layer} layer: ${rel(file)}`,
         docRef: 'docs/architecture/scheduling.md#scheduler--cron--taskqueue'
       })
       score -= 4
@@ -67,7 +67,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'scheduler.file-suffix',
         severity: 'medium',
-        message: `@Cron/@Interval 보유 Infrastructure 파일은 *-scheduler.ts 형식이어야 함: ${rel(file)}`
+        message: `An Infrastructure file with @Cron/@Interval must follow the *-scheduler.ts naming format: ${rel(file)}`
       })
       score -= 2
     }
@@ -81,7 +81,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'scheduler.cron.try-catch',
           severity: 'medium',
-          message: `Cron/Interval 메서드 ${m.methodName}에 try-catch(또는 runSafely 헬퍼) 부재: ${rel(file)} — @nestjs/schedule이 예외를 삼킴`,
+          message: `Cron/Interval method ${m.methodName} has no try-catch (or runSafely helper): ${rel(file)} — @nestjs/schedule silently swallows exceptions`,
           docRef: 'docs/architecture/scheduling.md#scheduler--cron--taskqueue'
         })
         score -= 2
@@ -95,7 +95,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'scheduler.no-repository-injection',
           severity: 'high',
-          message: `Scheduler가 Repository<Entity>를 주입 (비즈니스 로직 포함 의심): ${rel(file)} — TaskQueue에 위임`
+          message: `The Scheduler injects Repository<Entity> (suspected of containing business logic): ${rel(file)} — delegate it to TaskQueue`
         })
         score -= 3
       }
@@ -103,7 +103,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'scheduler.no-datasource-injection',
           severity: 'high',
-          message: `Scheduler가 DataSource를 주입: ${rel(file)} — Scheduler는 TaskQueue.enqueue만 호출`
+          message: `The Scheduler injects DataSource: ${rel(file)} — a Scheduler must only call TaskQueue.enqueue`
         })
         score -= 3
       }
@@ -111,7 +111,7 @@ export function evaluateScheduler(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'scheduler.no-command-service-injection',
           severity: 'medium',
-          message: `Scheduler가 CommandService를 주입: ${rel(file)} — 비즈니스 실행은 Task Controller 담당`
+          message: `The Scheduler injects CommandService: ${rel(file)} — running business logic is the Task Controller's responsibility`
         })
         score -= 2
       }

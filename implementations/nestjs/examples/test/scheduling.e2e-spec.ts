@@ -55,7 +55,7 @@ async function fetchSesMessages(endpoint: string): Promise<SesMessage[]> {
 // Scheduler's enqueue method directly, the same way existing e2e tests like card.e2e-spec.ts
 // do (since scheduling.md already states "the Scheduler only enqueues," the enqueue method
 // itself is the Cron handler's entire responsibility — there's no separately hidden logic).
-describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내역 발송 (e2e)', () => {
+describe('Scheduling (Task Queue) — daily interest payment / monthly card statement delivery (e2e)', () => {
   let postgres: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
   let sesEndpoint: string
@@ -170,8 +170,8 @@ describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내
     return getBalance(accountId)
   }
 
-  describe('일 이자 지급 (account.apply-daily-interest)', () => {
-    it('이자_지급_Task가_적재되면_ACTIVE_계좌_잔액에_이자가_반영되고_같은_날_재적재해도_중복_지급되지_않는다', async () => {
+  describe('Daily interest payment (account.apply-daily-interest)', () => {
+    it('when_the_interest_payment_Task_is_enqueued_the_ACTIVE_account_balance_reflects_the_interest_and_re-enqueueing_on_the_same_day_does_not_pay_twice', async () => {
       const accountId = await createAccount()
       await deposit(accountId, 1_000_000)
       expect(await getBalance(accountId)).toBe(1_000_000)
@@ -197,8 +197,8 @@ describe('Scheduling(Task Queue) — 일 이자 지급 / 월간 카드 사용내
     }, 60000)
   })
 
-  describe('월간 카드 사용내역 발송 (payment.send-card-statements)', () => {
-    it('지난_달_결제내역이_있는_ACTIVE_카드에_사용내역_이메일이_발송되고_같은_달_재적재해도_중복_발송되지_않는다', async () => {
+  describe('Monthly card statement delivery (payment.send-card-statements)', () => {
+    it('an_ACTIVE_card_with_last_months_payment_history_gets_a_statement_email_and_re-enqueueing_in_the_same_month_does_not_send_it_twice', async () => {
       const accountId = await createAccount()
       await deposit(accountId, 1_000_000)
 

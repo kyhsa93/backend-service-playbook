@@ -18,7 +18,7 @@ export function evaluateImportGraph(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'ast.layer.violation',
             severity: 'high',
-            message: `domain -> infrastructure 의존 금지: ${file}`
+            message: `domain -> infrastructure dependency is forbidden: ${file}`
           })
           score -= 5
         }

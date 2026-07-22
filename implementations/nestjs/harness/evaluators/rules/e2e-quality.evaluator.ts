@@ -28,7 +28,7 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'e2e.jest-mock-in-e2e',
         severity: 'high',
-        message: `E2E 테스트에서 jest.mock() 사용 금지: test/${file} — 외부 HTTP는 nock, DB는 testcontainers로 대체하세요`,
+        message: `jest.mock() must not be used in E2E tests: test/${file} — replace external HTTP with nock and the DB with testcontainers`,
         docRef: `${DOC}#mocking-external-http-nock`
       })
       score -= penaltyFor('high')
@@ -74,7 +74,7 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'e2e.no-nock-or-testcontainers',
       severity: 'medium',
-      message: 'E2E 테스트에 nock 또는 testcontainers 패키지가 없습니다. 외부 HTTP는 nock, DB는 testcontainers를 사용하세요.',
+      message: 'The nock or testcontainers package is missing from E2E tests. Use nock for external HTTP and testcontainers for the DB.',
       docRef: `${DOC}#sqlite-vs-testcontainers-selection-criteria`
     })
     score -= penaltyFor('medium')

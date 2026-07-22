@@ -25,7 +25,7 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
     const payment = await this.paymentRepository
       .findPayments({ paymentId: command.paymentId, ownerId: command.requesterId, take: 1, page: 0 })
       .then((r) => r.payments.pop())
-    if (!payment) throw new Error(ErrorMessage['결제를 찾을 수 없습니다.'])
+    if (!payment) throw new Error(ErrorMessage['Payment not found.'])
 
     const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
 
@@ -40,7 +40,7 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
       // invalid input, but a conclusion reached by coordinating both Aggregates) — so this
       // method doesn't throw, and instead returns the Refund saved as REJECTED as-is. The
       // interface layer responds with this as 201 + status:REJECTED, not an error.
-      refund.reject(decision.reason ?? '환불 요청이 거부되었습니다.')
+      refund.reject(decision.reason ?? 'The refund request was rejected.')
     }
 
     await this.transactionManager.run(async () => {

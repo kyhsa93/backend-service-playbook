@@ -40,13 +40,13 @@ export class Card {
   }
 
   public suspend(): void {
-    if (this._status === CardStatus.CANCELLED) throw new Error(CardErrorMessage['해지된 카드는 정지할 수 없습니다.'])
-    if (this._status === CardStatus.SUSPENDED) throw new Error(CardErrorMessage['이미 정지된 카드입니다.'])
+    if (this._status === CardStatus.CANCELLED) throw new Error(CardErrorMessage['A cancelled card cannot be suspended.'])
+    if (this._status === CardStatus.SUSPENDED) throw new Error(CardErrorMessage['The card is already suspended.'])
     this._status = CardStatus.SUSPENDED
   }
 
   public cancel(): void {
-    if (this._status === CardStatus.CANCELLED) throw new Error(CardErrorMessage['이미 해지된 카드입니다.'])
+    if (this._status === CardStatus.CANCELLED) throw new Error(CardErrorMessage['The card is already cancelled.'])
     this._status = CardStatus.CANCELLED
   }
 }

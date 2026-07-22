@@ -24,7 +24,7 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 import { readSourceFile, walkTsFiles } from '../shared/ast-utils'
 
-const DOC_REF = '../../docs/architecture/persistence.md#마이그레이션'
+const DOC_REF = '../../docs/architecture/persistence.md#migrations'
 
 function isTypeOrmConfigCall(node: ts.Node, sf: ts.SourceFile): boolean {
   if (ts.isNewExpression(node)) {
@@ -88,14 +88,14 @@ function inspectSynchronizeProperty(prop: ts.PropertyAssignment, sf: ts.SourceFi
   if (value.kind === ts.SyntaxKind.TrueKeyword) {
     return {
       ruleId: 'no-orm-autosync-in-prod-config.synchronize-hardcoded-true',
-      message: `synchronize: true — 하드코딩 금지. 운영 환경에서는 절대 true가 되면 안 되며 마이그레이션으로 스키마를 관리한다`
+      message: `synchronize: true — hardcoding this is forbidden. It must never be true in production; manage the schema with migrations instead`
     }
   }
 
   if (evaluatesTrueInProduction(value, sf)) {
     return {
       ruleId: 'no-orm-autosync-in-prod-config.synchronize-true-in-production',
-      message: `synchronize: ${value.getText(sf)} — NODE_ENV=production일 때 true로 평가됨. 운영 환경에서는 auto-schema-sync를 금지한다`
+      message: `synchronize: ${value.getText(sf)} — evaluates to true when NODE_ENV=production. auto-schema-sync is forbidden in production`
     }
   }
 

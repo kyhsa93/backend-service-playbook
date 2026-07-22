@@ -24,7 +24,7 @@ describe('SuspendCardsByAccountCommandHandler', () => {
     cardRepository = module.get(CardRepository)
   })
 
-  it('execute_when_활성_카드가_있으면_then_모두_정지하고_저장한다', async () => {
+  it('execute_when_active_cards_exist_then_suspends_and_saves_all_of_them', async () => {
     const card = new Card({ accountId: 'account-1', ownerId: 'owner-1', brand: 'VISA', status: CardStatus.ACTIVE })
     cardRepository.findCards.mockResolvedValue({ cards: [card], count: 1 })
 
@@ -37,7 +37,7 @@ describe('SuspendCardsByAccountCommandHandler', () => {
     expect(cardRepository.saveCard).toHaveBeenCalledWith(card)
   })
 
-  it('execute_when_활성_카드가_없으면_then_아무것도_하지_않는다_멱등', async () => {
+  it('execute_when_no_active_cards_exist_then_does_nothing_idempotent', async () => {
     cardRepository.findCards.mockResolvedValue({ cards: [], count: 0 })
 
     await handler.execute(new SuspendCardsByAccountCommand({ accountId: 'account-1' }))

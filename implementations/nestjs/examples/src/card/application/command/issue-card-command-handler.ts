@@ -21,8 +21,8 @@ export class IssueCardCommandHandler implements ICommandHandler<IssueCardCommand
       accountId: command.accountId,
       ownerId: command.requesterId
     })
-    if (!account) throw new Error(ErrorMessage['연결할 계좌를 찾을 수 없습니다.'])
-    if (!account.active) throw new Error(ErrorMessage['활성 상태의 계좌만 카드를 발급할 수 있습니다.'])
+    if (!account) throw new Error(ErrorMessage['The account to link could not be found.'])
+    if (!account.active) throw new Error(ErrorMessage['Only an active account can have a card issued.'])
 
     const card = Card.issue({ accountId: command.accountId, ownerId: command.requesterId, brand: command.brand })
     await this.transactionManager.run(async () => {

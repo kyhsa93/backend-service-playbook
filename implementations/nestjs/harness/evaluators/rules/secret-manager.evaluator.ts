@@ -46,7 +46,7 @@ export function evaluateSecretManager(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'secret-manager.config.sensitive-env-without-guard',
       severity: 'high',
-      message: `${rel(file)}이 민감 키(${[...sensitiveKeys].join(', ')})를 process.env로만 받음 — NODE_ENV 분기 또는 SecretService/SecretsManagerClient 사용 필요`,
+      message: `${rel(file)} reads sensitive keys (${[...sensitiveKeys].join(', ')}) only from process.env — a NODE_ENV branch or SecretService/SecretsManagerClient is required`,
       docRef: DOC_REF
     })
     score -= 4

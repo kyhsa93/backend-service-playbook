@@ -52,10 +52,10 @@ export class Refund {
   // will propagate to external BCs (it's never promoted into a field of Refund itself).
   public approve(paymentContext: { accountId: string; ownerId: string }): void {
     if (this._status !== RefundStatus.REQUESTED) {
-      throw new Error(PaymentErrorMessage['환불 요청 상태에서만 승인할 수 있습니다.'])
+      throw new Error(PaymentErrorMessage['Can only be approved from the requested state.'])
     }
     this._status = RefundStatus.APPROVED
-    this._decisionNote = '환불이 승인되었습니다.'
+    this._decisionNote = 'The refund has been approved.'
     this._events.push(new RefundApproved({
       refundId: this.refundId,
       paymentId: this.paymentId,
@@ -68,7 +68,7 @@ export class Refund {
 
   public reject(reason: string): void {
     if (this._status !== RefundStatus.REQUESTED) {
-      throw new Error(PaymentErrorMessage['환불 요청 상태에서만 거부할 수 있습니다.'])
+      throw new Error(PaymentErrorMessage['Can only be rejected from the requested state.'])
     }
     this._status = RefundStatus.REJECTED
     this._decisionNote = reason
@@ -81,7 +81,7 @@ export class Refund {
   // unwired, for the same reason as Payment.fail().
   public complete(): void {
     if (this._status !== RefundStatus.APPROVED) {
-      throw new Error(PaymentErrorMessage['승인된 환불만 완료 처리할 수 있습니다.'])
+      throw new Error(PaymentErrorMessage['Only an approved refund can be marked completed.'])
     }
     this._status = RefundStatus.COMPLETED
   }

@@ -28,7 +28,7 @@ describe('CreateAccountCommandHandler', () => {
     accountRepository = module.get(AccountRepository)
   })
 
-  it('execute_when_정상_입력_then_계좌를_저장하고_계좌를_반환한다', async () => {
+  it('execute_when_valid_input_then_saves_the_account_and_returns_it', async () => {
     const account = await handler.execute(
       new CreateAccountCommand({ requesterId: 'owner-1', email: 'owner1@example.com', currency: 'KRW' })
     )

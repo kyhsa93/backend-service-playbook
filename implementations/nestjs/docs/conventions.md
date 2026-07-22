@@ -644,7 +644,7 @@ describe('Order', () => {
       userId: 'user-1',
       items: [],
       status: 'pending'
-    })).toThrow('주문 항목은 최소 1개 이상이어야 합니다.')
+    })).toThrow('An order must have at least one item.')
   })
 
   it('throws an error when cancelling an already-cancelled order', () => {
@@ -654,7 +654,7 @@ describe('Order', () => {
       items: [{ itemId: 1, quantity: 2 }],
       status: 'cancelled'
     })
-    expect(() => order.cancel('변심')).toThrow('이미 취소된 주문입니다.')
+    expect(() => order.cancel('Change of mind')).toThrow('The order is already cancelled.')
   })
 
   it('publishes an OrderCancelled event when an order is cancelled', () => {
@@ -664,7 +664,7 @@ describe('Order', () => {
       items: [{ itemId: 1, quantity: 2 }],
       status: 'pending'
     })
-    order.cancel('변심')
+    order.cancel('Change of mind')
     expect(order.domainEvents).toHaveLength(1)
     expect(order.domainEvents[0]).toBeInstanceOf(OrderCancelled)
   })
@@ -707,8 +707,8 @@ describe('OrderCommandService', () => {
   it('throws an error when the order does not exist', async () => {
     orderRepository.findOrders.mockResolvedValue({ orders: [], count: 0 })
 
-    await expect(service.cancelOrder({ orderId: 'non-existent-id', reason: '변심' }))
-      .rejects.toThrow(OrderErrorMessage['주문을 찾을 수 없습니다.'])
+    await expect(service.cancelOrder({ orderId: 'non-existent-id', reason: 'Change of mind' }))
+      .rejects.toThrow(OrderErrorMessage['Order not found.'])
   })
 })
 ```

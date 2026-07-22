@@ -94,7 +94,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'task-queue.controller.layer',
         severity: 'high',
-        message: `Task Controller(@TaskConsumer 보유)가 interface/ 외 레이어(${layer})에 위치: ${rel(file)}`,
+        message: `The Task Controller (has @TaskConsumer) is located outside interface/, in the ${layer} layer: ${rel(file)}`,
         docRef: 'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
       })
       score -= 5
@@ -105,7 +105,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'task-queue.controller.file-suffix',
         severity: 'medium',
-        message: `@TaskConsumer 보유 파일은 *-task-controller.ts 형식이어야 함: ${rel(file)}`,
+        message: `A file with @TaskConsumer must follow the *-task-controller.ts naming format: ${rel(file)}`,
         docRef: 'docs/architecture/scheduling.md#layer-placement'
       })
       score -= 2
@@ -126,7 +126,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'task-queue.controller.no-datasource',
           severity: 'high',
-          message: `Task Controller가 DataSource를 직접 주입: ${rel(file)} (CommandService 또는 idempotencyKey 옵션 사용)`,
+          message: `The Task Controller injects DataSource directly: ${rel(file)} (use a CommandService or the idempotencyKey option instead)`,
           docRef: 'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
         })
         score -= 4
@@ -135,7 +135,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'task-queue.controller.no-repository',
           severity: 'high',
-          message: `Task Controller가 Repository<Entity>를 직접 주입: ${rel(file)}`,
+          message: `The Task Controller injects Repository<Entity> directly: ${rel(file)}`,
           docRef: 'docs/architecture/scheduling.md#taskcontroller--executing-commands-with-taskconsumer-methods-interface-layer'
         })
         score -= 4
@@ -147,7 +147,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'task-queue.controller.double-ledger-check',
           severity: 'medium',
-          message: `Task Controller가 TaskExecutionLog 주입 + idempotencyKey 옵션 동시 사용: ${rel(file)} — 이중 체크. 3단계 패턴이면 옵션 제거, 2단계이면 주입 제거`
+          message: `The Task Controller both injects TaskExecutionLog and uses the idempotencyKey option: ${rel(file)} — this double-checks. Remove the option for a 3-step pattern, or remove the injection for a 2-step pattern`
         })
         score -= 2
       }
@@ -156,7 +156,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'task-queue.controller.command-service-injection',
           severity: 'medium',
-          message: `Task Controller에 CommandService/CommandBus 주입 없음: ${rel(file)}`
+          message: `The Task Controller has no CommandService/CommandBus injected: ${rel(file)}`
         })
         score -= 3
       }
@@ -168,7 +168,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'task-queue.controller.no-http-error-response',
             severity: 'high',
-            message: `Task Controller 메서드 ${m.methodName}가 generateErrorResponse 호출: ${rel(file)} — 예외는 throw로 전파해 TaskQueueConsumer에 위임해야 함`
+            message: `Task Controller method ${m.methodName} calls generateErrorResponse: ${rel(file)} — exceptions must be propagated via throw and delegated to TaskQueueConsumer`
           })
           score -= 4
         }
@@ -182,7 +182,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'task-queue.task-type.unique',
         severity: 'critical',
-        message: `taskType '${taskType}'이 ${locations.length}곳에서 중복 등록됨 — ${locations.join(', ')}`,
+        message: `taskType '${taskType}' is registered redundantly in ${locations.length} places — ${locations.join(', ')}`,
         docRef: 'docs/architecture/scheduling.md#taskconsumer-decorator'
       })
       score -= 6
@@ -197,7 +197,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'task-queue.app-module.schedule-module',
         severity: 'critical',
-        message: `@Cron 사용되는데 AppModule에 ScheduleModule.forRoot() 등록 없음 — Cron 메서드가 조용히 동작 안 함`,
+        message: `@Cron is used but AppModule has no ScheduleModule.forRoot() registration — the Cron method silently won't run`,
         docRef: 'docs/architecture/scheduling.md#appmodule-configuration'
       })
       score -= 6
@@ -206,7 +206,7 @@ export function evaluateTaskQueue(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'task-queue.app-module.task-queue-module',
         severity: 'high',
-        message: `@TaskConsumer 사용되는데 AppModule에 TaskQueueModule import 없음`,
+        message: `@TaskConsumer is used but AppModule has no TaskQueueModule import`,
         docRef: 'docs/architecture/scheduling.md#appmodule-configuration'
       })
       score -= 4

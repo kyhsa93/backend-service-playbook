@@ -36,7 +36,7 @@ export function evaluateTestRun(root: string): EvaluatorResult {
       failures: [{
         ruleId: 'test-run.skipped',
         severity: 'low',
-        message: `${OPT_IN_ENV}=1로 활성화되지 않아 건너뜀 (CI/개발 시 opt-in)`
+        message: `Skipped because it wasn't enabled with ${OPT_IN_ENV}=1 (opt-in for CI/local development)`
       }]
     }
   }

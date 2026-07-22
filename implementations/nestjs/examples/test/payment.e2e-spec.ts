@@ -33,7 +33,7 @@ import { createTaskQueue } from './support/task-queue-test-queue'
 // judgment logic coordinating the Payment+Refund Aggregates), and the bidirectional
 // Payment↔Account Integration Events (payment completed → debit, payment cancelled/refund
 // approved → compensating credit). Follows the same pattern as card.e2e-spec.ts.
-describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 도메인', () => {
+describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain', () => {
   let container: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
   let app: INestApplication
@@ -193,8 +193,8 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
     await localstack?.stop()
   })
 
-  describe('POST /payments — 동기 Adapter(ACL)로 Card/Account 상태 확인', () => {
-    it('비활성_카드로_결제하면_400과_PAYMENT_REQUIRES_ACTIVE_CARD를_반환한다', async () => {
+  describe('POST /payments — checking Card/Account status via the synchronous Adapter (ACL)', () => {
+    it('when_paying_with_an_inactive_card_then_returns_400_and_PAYMENT_REQUIRES_ACTIVE_CARD', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -212,7 +212,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       expect(response.body.code).toBe('PAYMENT_REQUIRES_ACTIVE_CARD')
     })
 
-    it('잔액이_부족하면_400과_INSUFFICIENT_BALANCE를_반환한다', async () => {
+    it('when_the_balance_is_insufficient_then_returns_400_and_INSUFFICIENT_BALANCE', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 1000)
       const card = await issueCard(account.accountId)
@@ -223,14 +223,14 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       expect(response.body.code).toBe('INSUFFICIENT_BALANCE')
     })
 
-    it('존재하지_않는_카드면_404와_LINKED_CARD_NOT_FOUND를_반환한다', async () => {
+    it('when_the_card_does_not_exist_then_returns_404_and_LINKED_CARD_NOT_FOUND', async () => {
       const response = await createPayment('non-existent-card', 1000)
 
       expect(response.status).toBe(404)
       expect(response.body.code).toBe('LINKED_CARD_NOT_FOUND')
     })
 
-    it('다른_소유자의_카드면_404를_반환한다', async () => {
+    it('when_the_card_belongs_to_a_different_owner_then_returns_404', async () => {
       const account = await createAccount(OWNER_ID)
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId, OWNER_ID)
@@ -241,7 +241,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       expect(response.body.code).toBe('LINKED_CARD_NOT_FOUND')
     })
 
-    it('활성_카드와_충분한_잔액이면_201과_COMPLETED_결제를_반환하고_비동기로_계좌_잔액이_차감된다', async () => {
+    it('when_the_card_is_active_and_the_balance_is_sufficient_then_returns_201_and_a_COMPLETED_payment_and_asynchronously_debits_the_account_balance', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -263,8 +263,8 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
     })
   })
 
-  describe('POST /payments/:paymentId/cancel — 결제취소 → 보상 크레딧', () => {
-    it('완료된_결제를_취소하면_204를_반환하고_비동기로_계좌_잔액이_복구된다', async () => {
+  describe('POST /payments/:paymentId/cancel — payment cancellation -> compensating credit', () => {
+    it('when_cancelling_a_completed_payment_then_returns_204_and_asynchronously_restores_the_account_balance', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -274,7 +274,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       const cancelResponse = await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/cancel`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ reason: '고객 요청' })
+        .send({ reason: 'Customer request' })
 
       expect(cancelResponse.status).toBe(204)
       expect(await waitForBalance(account.accountId, 50000)).toBe(50000)
@@ -285,17 +285,17 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       expect(getResponse.body.status).toBe('CANCELLED')
     })
 
-    it('존재하지_않는_결제면_404를_반환한다', async () => {
+    it('when_the_payment_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .post('/payments/non-existent/cancel')
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ reason: '사유' })
+        .send({ reason: 'reason' })
 
       expect(response.status).toBe(404)
       expect(response.body.code).toBe('PAYMENT_NOT_FOUND')
     })
 
-    it('이미_취소된_결제를_다시_취소하면_400과_PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT를_반환한다', async () => {
+    it('when_cancelling_an_already_cancelled_payment_again_then_returns_400_and_PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -303,20 +303,20 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/cancel`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ reason: '고객 요청' })
+        .send({ reason: 'Customer request' })
 
       const response = await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/cancel`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ reason: '고객 요청' })
+        .send({ reason: 'Customer request' })
 
       expect(response.status).toBe(400)
       expect(response.body.code).toBe('PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT')
     })
   })
 
-  describe('POST /payments/:paymentId/refunds — RefundEligibilityService(Domain Service) 판단', () => {
-    it('환불_금액이_결제_금액을_초과하면_201과_REJECTED_상태를_반환하고_계좌는_크레딧되지_않는다', async () => {
+  describe('POST /payments/:paymentId/refunds — RefundEligibilityService (Domain Service) judgment', () => {
+    it('when_the_refund_amount_exceeds_the_payment_amount_then_returns_201_and_a_REJECTED_status_and_the_account_is_not_credited', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -326,18 +326,18 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       const response = await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/refunds`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ amount: 20000, reason: '상품 불량' })
+        .send({ amount: 20000, reason: 'Defective product' })
 
       expect(response.status).toBe(201)
       expect(response.body.status).toBe('REJECTED')
-      expect(response.body.decisionNote).toBe('환불 금액은 결제 금액을 초과할 수 없습니다.')
+      expect(response.body.decisionNote).toBe('The refund amount cannot exceed the payment amount.')
 
       // A rejected refund has no Domain Event, so there's nothing to drain — the balance stays unchanged.
       await new Promise((resolve) => setTimeout(resolve, 300))
       expect(await getBalance(account.accountId)).toBe(40000)
     })
 
-    it('완료되지_않은_결제(취소된_결제)에_환불을_요청하면_201과_REJECTED_상태를_반환한다', async () => {
+    it('when_requesting_a_refund_on_a_non-completed_(cancelled)_payment_then_returns_201_and_a_REJECTED_status', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -346,20 +346,20 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/cancel`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ reason: '고객 요청' })
+        .send({ reason: 'Customer request' })
       await waitForBalance(account.accountId, 50000)
 
       const response = await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/refunds`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ amount: 5000, reason: '상품 불량' })
+        .send({ amount: 5000, reason: 'Defective product' })
 
       expect(response.status).toBe(201)
       expect(response.body.status).toBe('REJECTED')
-      expect(response.body.decisionNote).toBe('완료된 결제에 대해서만 환불을 요청할 수 있습니다.')
+      expect(response.body.decisionNote).toBe('A refund can only be requested for a completed payment.')
     })
 
-    it('유효한_환불_요청이면_201과_APPROVED_상태를_반환하고_비동기로_계좌가_크레딧된다', async () => {
+    it('when_the_refund_request_is_valid_then_returns_201_and_an_APPROVED_status_and_asynchronously_credits_the_account', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -369,7 +369,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       const response = await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/refunds`)
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ amount: 4000, reason: '부분 환불' })
+        .send({ amount: 4000, reason: 'Partial refund' })
 
       expect(response.status).toBe(201)
       expect(response.body.status).toBe('APPROVED')
@@ -382,11 +382,11 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       expect(listResponse.body.refunds[0].status).toBe('APPROVED')
     })
 
-    it('존재하지_않는_결제면_404를_반환한다', async () => {
+    it('when_the_payment_does_not_exist_then_returns_404', async () => {
       const response = await request(app.getHttpServer())
         .post('/payments/non-existent/refunds')
         .set('Authorization', authHeader(OWNER_ID))
-        .send({ amount: 1000, reason: '사유' })
+        .send({ amount: 1000, reason: 'reason' })
 
       expect(response.status).toBe(404)
       expect(response.body.code).toBe('PAYMENT_NOT_FOUND')
@@ -394,7 +394,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
   })
 
   describe('GET /payments, GET /payments/:paymentId', () => {
-    it('내_결제_내역을_페이지네이션과_함께_반환한다', async () => {
+    it('returns_my_payment_history_with_pagination', async () => {
       const account = await createAccount()
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId)
@@ -410,7 +410,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account 크로스 �
       expect(response.body.count).toBeGreaterThanOrEqual(2)
     })
 
-    it('다른_소유자의_결제를_조회하면_404를_반환한다', async () => {
+    it('when_looking_up_a_payment_belonging_to_a_different_owner_then_returns_404', async () => {
       const account = await createAccount(OWNER_ID)
       await deposit(account.accountId, 50000)
       const card = await issueCard(account.accountId, OWNER_ID)

@@ -17,7 +17,7 @@ export class CancelPaymentCommandHandler implements ICommandHandler<CancelPaymen
     const payment = await this.paymentRepository
       .findPayments({ paymentId: command.paymentId, ownerId: command.requesterId, take: 1, page: 0 })
       .then((r) => r.payments.pop())
-    if (!payment) throw new Error(ErrorMessage['결제를 찾을 수 없습니다.'])
+    if (!payment) throw new Error(ErrorMessage['Payment not found.'])
 
     payment.cancel(command.reason)
     await this.transactionManager.run(async () => {

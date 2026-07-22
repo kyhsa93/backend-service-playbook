@@ -120,7 +120,7 @@ public async getAttachmentUrl(param: { fileKey: string }): Promise<{ downloadUrl
   const attachment = await this.attachmentRepository
     .findAttachments({ fileKey: param.fileKey, take: 1, page: 0 })
     .then((r) => r.attachments.pop())
-  if (!attachment) throw new Error(ErrorMessage['파일을 찾을 수 없습니다.'])
+  if (!attachment) throw new Error(ErrorMessage['File not found.'])
   const downloadUrl = await this.storageService.generateDownloadUrl(
     `${attachment.orderId}/${attachment.fileKey}.${attachment.extension}`
   )

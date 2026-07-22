@@ -20,7 +20,7 @@ export class PaymentCompletedHandler {
     amount: number
     completedAt: string
   }): Promise<void> {
-    this.logger.log({ message: '결제 완료됨', payment_id: event.paymentId, account_id: event.accountId, amount: event.amount })
+    this.logger.log({ message: 'Payment completed', payment_id: event.paymentId, account_id: event.accountId, amount: event.amount })
 
     await this.outboxWriter.saveAll([
       new PaymentCompletedIntegrationEventV1(

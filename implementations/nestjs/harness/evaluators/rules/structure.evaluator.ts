@@ -51,7 +51,7 @@ export function evaluateStructure(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'structure.task-queue.missing',
       severity: 'high',
-      message: `Task Queue 사용(@TaskConsumer 또는 TaskQueue import 감지)인데 src/task-queue/ 공유 모듈 디렉토리가 없음`
+      message: `Task Queue is used (@TaskConsumer or a TaskQueue import was detected) but the shared src/task-queue/ module directory is missing`
     })
     score -= 4
   }

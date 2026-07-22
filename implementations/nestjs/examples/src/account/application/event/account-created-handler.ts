@@ -11,13 +11,13 @@ export class AccountCreatedHandler {
 
   @HandleEvent('AccountCreated')
   public async handle(event: { accountId: string; ownerId: string; email: string; currency: string }): Promise<void> {
-    this.logger.log({ message: '계좌 생성됨', account_id: event.accountId, owner_id: event.ownerId, currency: event.currency })
+    this.logger.log({ message: 'Account created', account_id: event.accountId, owner_id: event.ownerId, currency: event.currency })
     await this.notificationService.sendEmail({
       accountId: event.accountId,
       eventType: 'AccountCreated',
       recipient: event.email,
-      subject: '[Account] 계좌가 개설되었습니다',
-      body: `계좌(${event.accountId})가 개설되었습니다. 통화: ${event.currency}`
+      subject: '[Account] Your account has been opened',
+      body: `Account (${event.accountId}) has been opened. Currency: ${event.currency}`
     })
   }
 }

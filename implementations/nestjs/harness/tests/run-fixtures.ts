@@ -111,13 +111,13 @@ function run(): void {
   for (const c of cases) {
     const expectedPath = path.join(c.caseRoot, 'expected.json')
     if (!fs.existsSync(expectedPath)) {
-      console.error(`  SKIP ${c.evaluator}/${c.caseName}: expected.json 없음`)
+      console.error(`  SKIP ${c.evaluator}/${c.caseName}: expected.json is missing`)
       continue
     }
     const expected: Expected = JSON.parse(fs.readFileSync(expectedPath, 'utf-8'))
     const evaluator = EVALUATORS[c.evaluator]
     if (!evaluator) {
-      console.error(`  SKIP ${c.evaluator}/${c.caseName}: evaluator 매핑 없음`)
+      console.error(`  SKIP ${c.evaluator}/${c.caseName}: no evaluator mapping`)
       continue
     }
     const result = evaluator(c.caseRoot)

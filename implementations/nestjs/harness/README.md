@@ -73,7 +73,7 @@ Output (JSON):
     {
       "ruleId": "repository.abstract-class",
       "severity": "high",
-      "message": "repository는 abstract class여야 함: src/order/domain/order-repository.ts",
+      "message": "The repository must be an abstract class: src/order/domain/order-repository.ts",
       "docRef": "docs/architecture/repository-pattern.md"
     }
   ]

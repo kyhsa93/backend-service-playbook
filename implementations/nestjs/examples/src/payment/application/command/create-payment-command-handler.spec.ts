@@ -34,7 +34,7 @@ describe('CreatePaymentCommandHandler', () => {
 
   const command = (): CreatePaymentCommand => new CreatePaymentCommand({ cardId: 'card-1', amount: 5000, requesterId: 'owner-1' })
 
-  it('execute_when_카드_활성_계좌_잔액_충분_then_결제를_생성하고_COMPLETED로_저장한다', async () => {
+  it('execute_when_card_and_account_are_active_and_balance_is_sufficient_then_creates_the_payment_and_saves_it_as_COMPLETED', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: true })
     accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true, balanceAmount: 10000, currency: 'KRW', email: 'owner1@example.com' })
 
@@ -47,33 +47,33 @@ describe('CreatePaymentCommandHandler', () => {
     expect(paymentRepository.savePayment).toHaveBeenCalledWith(payment)
   })
 
-  it('execute_when_카드가_없으면_then_에러를_throw한다', async () => {
+  it('execute_when_the_card_does_not_exist_then_throws', async () => {
     cardAdapter.findCard.mockResolvedValue(null)
 
-    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['연결할 카드를 찾을 수 없습니다.'])
+    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['The card to link could not be found.'])
     expect(paymentRepository.savePayment).not.toHaveBeenCalled()
   })
 
-  it('execute_when_카드가_비활성이면_then_에러를_throw한다', async () => {
+  it('execute_when_the_card_is_inactive_then_throws', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: false })
 
-    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['활성 상태의 카드로만 결제할 수 있습니다.'])
+    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['Only an active card can be used for payment.'])
     expect(paymentRepository.savePayment).not.toHaveBeenCalled()
   })
 
-  it('execute_when_계좌가_비활성이면_then_에러를_throw한다', async () => {
+  it('execute_when_the_account_is_inactive_then_throws', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: true })
     accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: false, balanceAmount: 10000, currency: 'KRW', email: 'owner1@example.com' })
 
-    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['활성 상태의 계좌로만 결제할 수 있습니다.'])
+    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['Only an active account can be used for payment.'])
     expect(paymentRepository.savePayment).not.toHaveBeenCalled()
   })
 
-  it('execute_when_잔액이_부족하면_then_에러를_throw한다', async () => {
+  it('execute_when_the_balance_is_insufficient_then_throws', async () => {
     cardAdapter.findCard.mockResolvedValue({ cardId: 'card-1', accountId: 'account-1', active: true })
     accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true, balanceAmount: 1000, currency: 'KRW', email: 'owner1@example.com' })
 
-    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['계좌 잔액이 부족하여 결제할 수 없습니다.'])
+    await expect(handler.execute(command())).rejects.toThrow(PaymentErrorMessage['Payment cannot be made due to insufficient account balance.'])
     expect(paymentRepository.savePayment).not.toHaveBeenCalled()
   })
 })

@@ -52,7 +52,7 @@ export class AccountAdapterImpl extends AccountAdapter {
       const account = await this.accountQuery.getAccount({ accountId: query.accountId, ownerId: query.ownerId })
       return { accountId: account.accountId, active: account.status === AccountStatus.ACTIVE }  // translate the upstream model
     } catch (error) {
-      if (error instanceof Error && error.message === AccountErrorMessage['계좌를 찾을 수 없습니다.']) return null
+      if (error instanceof Error && error.message === AccountErrorMessage['Account not found.']) return null
       throw error
     }
   }
@@ -62,8 +62,8 @@ export class AccountAdapterImpl extends AccountAdapter {
 ```typescript
 // card/application/command/issue-card-command-handler.ts — synchronous lookup through the Adapter
 const account = await this.accountAdapter.findAccount({ accountId: command.accountId, ownerId: command.requesterId })
-if (!account) throw new Error(ErrorMessage['연결할 계좌를 찾을 수 없습니다.'])
-if (!account.active) throw new Error(ErrorMessage['활성 상태의 계좌만 카드를 발급할 수 있습니다.'])
+if (!account) throw new Error(ErrorMessage['The account to link could not be found.'])
+if (!account.active) throw new Error(ErrorMessage['Only an active account can have a card issued.'])
 
 const card = Card.issue({ accountId: command.accountId, ownerId: command.requesterId, brand: command.brand })
 await this.transactionManager.run(async () => { await this.cardRepository.saveCard(card) })

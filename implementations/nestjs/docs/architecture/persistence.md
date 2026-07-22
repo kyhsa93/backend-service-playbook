@@ -25,7 +25,7 @@ return { orders: rows.map((row) => toDomain(row)), count }
 const order = await this.orderRepository
   .findOrders({ orderId, take: 1, page: 0 })
   .then((result) => result.orders.pop())
-if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+if (!order) throw new Error(ErrorMessage['Order not found.'])
 
 // update — fetch, then call the Aggregate's domain method, then save
 order.cancel(reason)

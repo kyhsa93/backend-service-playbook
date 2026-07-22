@@ -16,7 +16,7 @@ export class AccountClosedHandler {
 
   @HandleEvent('AccountClosed')
   public async handle(event: { accountId: string; email: string; closedAt: string }): Promise<void> {
-    this.logger.log({ message: '계좌 종료됨', account_id: event.accountId })
+    this.logger.log({ message: 'Account closed', account_id: event.accountId })
 
     // Write the external-BC Integration Event (account.closed.v1) to the Outbox.
     await this.outboxWriter.saveAll([
@@ -29,11 +29,11 @@ export class AccountClosedHandler {
         accountId: event.accountId,
         eventType: 'AccountClosed',
         recipient: event.email,
-        subject: '[Account] 계좌가 해지되었습니다',
-        body: `계좌(${event.accountId})가 해지되었습니다.`
+        subject: '[Account] Your account has been closed',
+        body: `Account (${event.accountId}) has been closed.`
       })
     } catch (error) {
-      this.logger.error({ message: '해지 알림 발송 실패', account_id: event.accountId, error })
+      this.logger.error({ message: 'Failed to send closure notification', account_id: event.accountId, error })
     }
   }
 }

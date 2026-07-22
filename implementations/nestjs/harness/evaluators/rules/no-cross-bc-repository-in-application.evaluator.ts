@@ -26,7 +26,7 @@ import {
   walkTsFiles
 } from '../shared/ast-utils'
 
-const DOC_REF = '../../docs/architecture/cross-domain-communication.md#동기-호출--adapter-패턴-acl'
+const DOC_REF = '../../docs/architecture/cross-domain-communication.md#synchronous-calls--the-adapter-pattern-acl'
 
 // Since an import specifier resolves with no extension (e.g. '@/user/domain/user-repository'), the '.ts' suffix is left optional.
 function isRepositoryFile(filePath: string): boolean {
@@ -65,7 +65,7 @@ export function evaluateNoCrossBcRepositoryInApplication(root: string): Evaluato
       failures.push({
         ruleId: 'no-cross-bc-repository-in-application.cross-domain-repository-import',
         severity: 'high',
-        message: `${rel(file)} (${ownDomain}) — 다른 BC(${targetDomain})의 Repository를 직접 import함: '${specifier}'. Adapter(ACL)를 거쳐야 한다`,
+        message: `${rel(file)} (${ownDomain}) — directly imports another BC's (${targetDomain}) Repository: '${specifier}'. It must go through an Adapter (ACL)`,
         docRef: DOC_REF
       })
       score -= penaltyFor('high')

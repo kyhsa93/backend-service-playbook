@@ -16,7 +16,7 @@ export function evaluateTestPresence(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'checklist.step15.tests.missing',
       severity: 'high',
-      message: '테스트 코드가 존재하지 않습니다'
+      message: 'No test code exists'
     })
     score -= 10
   }

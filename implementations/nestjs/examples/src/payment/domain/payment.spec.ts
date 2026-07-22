@@ -13,7 +13,7 @@ describe('Payment', () => {
     status
   })
 
-  it('create_when_정상_입력_then_PENDING_상태로_생성되고_이벤트가_없다', () => {
+  it('create_when_valid_input_then_created_PENDING_with_no_events', () => {
     const payment = Payment.create({ cardId: 'card-1', accountId: 'account-1', ownerId: 'owner-1', amount: 10000 })
 
     expect(payment.status).toBe(PaymentStatus.PENDING)
@@ -23,7 +23,7 @@ describe('Payment', () => {
   })
 
   describe('complete', () => {
-    it('complete_when_PENDING_상태_then_COMPLETED로_전환하고_PaymentCompleted_이벤트가_발행된다', () => {
+    it('complete_when_PENDING_then_transitions_to_COMPLETED_and_publishes_PaymentCompleted_event', () => {
       const payment = createPayment(PaymentStatus.PENDING)
 
       payment.complete()
@@ -33,56 +33,56 @@ describe('Payment', () => {
       expect(payment.domainEvents[0]).toBeInstanceOf(PaymentCompleted)
     })
 
-    it('complete_when_PENDING이_아니면_then_에러를_throw한다', () => {
+    it('complete_when_not_PENDING_then_throws', () => {
       const payment = createPayment(PaymentStatus.COMPLETED)
 
-      expect(() => payment.complete()).toThrow('결제 대기 상태에서만 완료 처리할 수 있습니다.')
+      expect(() => payment.complete()).toThrow('Can only be marked completed from the pending state.')
     })
   })
 
   describe('fail', () => {
-    it('fail_when_PENDING_상태_then_FAILED로_전환한다', () => {
+    it('fail_when_PENDING_then_transitions_to_FAILED', () => {
       const payment = createPayment(PaymentStatus.PENDING)
 
-      payment.fail('카드 승인 거부')
+      payment.fail('Card authorization declined')
 
       expect(payment.status).toBe(PaymentStatus.FAILED)
     })
 
-    it('fail_when_PENDING이_아니면_then_에러를_throw한다', () => {
+    it('fail_when_not_PENDING_then_throws', () => {
       const payment = createPayment(PaymentStatus.COMPLETED)
 
-      expect(() => payment.fail('사유')).toThrow('결제 대기 상태에서만 실패 처리할 수 있습니다.')
+      expect(() => payment.fail('reason')).toThrow('Can only be marked failed from the pending state.')
     })
   })
 
   describe('cancel', () => {
-    it('cancel_when_COMPLETED_상태_then_CANCELLED로_전환하고_PaymentCancelled_이벤트가_발행된다', () => {
+    it('cancel_when_COMPLETED_then_transitions_to_CANCELLED_and_publishes_PaymentCancelled_event', () => {
       const payment = createPayment(PaymentStatus.COMPLETED)
 
-      payment.cancel('고객 요청')
+      payment.cancel('Customer request')
 
       expect(payment.status).toBe(PaymentStatus.CANCELLED)
       expect(payment.domainEvents).toHaveLength(1)
       expect(payment.domainEvents[0]).toBeInstanceOf(PaymentCancelled)
-      expect((payment.domainEvents[0] as PaymentCancelled).reason).toBe('고객 요청')
+      expect((payment.domainEvents[0] as PaymentCancelled).reason).toBe('Customer request')
     })
 
-    it('cancel_when_PENDING_상태면_then_에러를_throw한다', () => {
+    it('cancel_when_PENDING_then_throws', () => {
       const payment = createPayment(PaymentStatus.PENDING)
 
-      expect(() => payment.cancel('사유')).toThrow('완료된 결제만 취소할 수 있습니다.')
+      expect(() => payment.cancel('reason')).toThrow('Only a completed payment can be cancelled.')
     })
 
-    it('cancel_when_이미_취소된_결제면_then_에러를_throw한다', () => {
+    it('cancel_when_payment_is_already_cancelled_then_throws', () => {
       const payment = createPayment(PaymentStatus.CANCELLED)
 
-      expect(() => payment.cancel('사유')).toThrow('완료된 결제만 취소할 수 있습니다.')
+      expect(() => payment.cancel('reason')).toThrow('Only a completed payment can be cancelled.')
     })
   })
 
   describe('clearEvents', () => {
-    it('clearEvents_when_호출_then_domainEvents가_비워진다', () => {
+    it('clearEvents_when_called_then_domainEvents_is_emptied', () => {
       const payment = createPayment(PaymentStatus.PENDING)
       payment.complete()
 

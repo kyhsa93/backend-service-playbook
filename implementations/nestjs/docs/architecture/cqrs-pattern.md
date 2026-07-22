@@ -91,7 +91,7 @@ export class CancelOrderCommandHandler implements ICommandHandler<CancelOrderCom
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
-    if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+    if (!order) throw new Error(ErrorMessage['Order not found.'])
 
     order.cancel(command.reason)
 
@@ -182,7 +182,7 @@ export class OrderCancelledHandler {
   @HandleEvent('OrderCancelled')
   public async handle(event: { orderId: string; reason: string }): Promise<void> {
     // follow-up processing: send a notification, log an audit record, restock, etc.
-    this.logger.log({ message: '주문 취소됨', order_id: event.orderId, reason: event.reason })
+    this.logger.log({ message: 'Order cancelled', order_id: event.orderId, reason: event.reason })
   }
 }
 ```
@@ -231,9 +231,9 @@ export class OrderController {
     return this.commandBus.execute(new CancelOrderCommand({ ...body, orderId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [OrderErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
-        [OrderErrorMessage['이미 취소된 주문입니다.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED],
-        [OrderErrorMessage['결제 완료된 주문은 취소할 수 없습니다.'], BadRequestException, ErrorCode.ORDER_PAID_NOT_CANCELLABLE]
+        [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
+        [OrderErrorMessage['The order is already cancelled.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED],
+        [OrderErrorMessage['A paid order cannot be cancelled.'], BadRequestException, ErrorCode.ORDER_PAID_NOT_CANCELLABLE]
       ])
     })
   }

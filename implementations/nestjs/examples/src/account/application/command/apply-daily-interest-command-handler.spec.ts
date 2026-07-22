@@ -39,7 +39,7 @@ describe('ApplyDailyInterestCommandHandler', () => {
     accountRepository = module.get(AccountRepository)
   })
 
-  it('execute_when_ACTIVE_계좌에_이자가_발생하면_then_모든_계좌를_저장하고_지급건수를_반환한다', async () => {
+  it('execute_when_interest_accrues_on_ACTIVE_accounts_then_saves_all_accounts_and_returns_the_credited_count', async () => {
     const highBalance = buildAccount('account-1', 1_000_000)
     const zeroInterest = buildAccount('account-2', 100)
     accountRepository.findAccounts
@@ -57,7 +57,7 @@ describe('ApplyDailyInterestCommandHandler', () => {
     expect(accountRepository.saveAccount).toHaveBeenCalledTimes(2)
   })
 
-  it('execute_when_두_페이지에_걸쳐_계좌가_있으면_then_모든_페이지를_순회한다', async () => {
+  it('execute_when_accounts_span_two_pages_then_iterates_through_all_pages', async () => {
     const page0 = Array.from({ length: 100 }, (_, i) => buildAccount(`account-${i}`, 1_000_000))
     const page1 = [buildAccount('account-101', 1_000_000)]
     accountRepository.findAccounts
@@ -71,7 +71,7 @@ describe('ApplyDailyInterestCommandHandler', () => {
     expect(accountRepository.findAccounts).toHaveBeenCalledTimes(3)
   })
 
-  it('execute_when_지급할_계좌가_없으면_then_0을_반환하고_저장하지_않는다', async () => {
+  it('execute_when_there_are_no_accounts_to_pay_then_returns_0_and_does_not_save', async () => {
     accountRepository.findAccounts.mockResolvedValueOnce({ accounts: [], count: 0 })
 
     const creditedCount = await handler.execute(new ApplyDailyInterestCommand({ today: new Date('2026-07-20T00:00:00.000Z') }))

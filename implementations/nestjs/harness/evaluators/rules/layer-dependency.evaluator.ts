@@ -27,7 +27,7 @@ export function evaluateLayerDependency(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'layer.domain.no-framework',
           severity: 'high',
-          message: `domain layer에서 framework 의존 발견: ${file}`
+          message: `Framework dependency found in the domain layer: ${file}`
         })
         score -= 5
       }
@@ -38,7 +38,7 @@ export function evaluateLayerDependency(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'layer.application.no-direct-orm',
           severity: 'high',
-          message: `application layer에서 ORM 직접 사용: ${file}`
+          message: `Direct ORM usage in the application layer: ${file}`
         })
         score -= 5
       }

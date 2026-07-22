@@ -46,7 +46,7 @@ async function bootstrap(): Promise<void> {
   // Swagger
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Account Service API')
-    .setDescription('DDD 기반 Account 도메인 예시 서비스 API 문서')
+    .setDescription('API documentation for the DDD-based Account domain example service')
     .setVersion('0.1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'token')
     .build()

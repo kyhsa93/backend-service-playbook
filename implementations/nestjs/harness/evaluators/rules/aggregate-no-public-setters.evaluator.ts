@@ -49,7 +49,7 @@ function inspectFile(filePath: string): Violation[] {
           const name = member.name.getText(sf)
           violations.push({
             ruleId: 'aggregate-no-public-setters.public-setter',
-            message: `${node.name.text}.${name}(...) — public setter 금지. 상태 변경은 이름 있는 도메인 메서드로만 노출한다`
+            message: `${node.name.text}.${name}(...) — public setters are forbidden. Expose state changes only through named domain methods`
           })
         }
 
@@ -58,7 +58,7 @@ function inspectFile(filePath: string): Violation[] {
           if (!isPrivate && !isProtected && !isReadonly && !isStatic) {
             violations.push({
               ruleId: 'aggregate-no-public-setters.public-mutable-field',
-              message: `${node.name.text}.${member.name.text} — public mutable field 금지. private로 감추고 readonly 또는 도메인 메서드로만 변경한다`
+              message: `${node.name.text}.${member.name.text} — public mutable fields are forbidden. Hide it as private and change it only via readonly or a domain method`
             })
           }
         }

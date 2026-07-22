@@ -1,4 +1,4 @@
 export enum AuthErrorMessage {
-  '아이디 또는 비밀번호가 올바르지 않습니다.' = '아이디 또는 비밀번호가 올바르지 않습니다.',
-  '이미 사용 중인 아이디입니다.' = '이미 사용 중인 아이디입니다.'
+  'Incorrect username or password.' = 'Incorrect username or password.',
+  'This username is already in use.' = 'This username is already in use.'
 }

@@ -172,10 +172,10 @@ export class SignInCommandHandler implements ICommandHandler<SignInCommand, stri
       .findCredentials({ userId: command.userId, take: 1, page: 0 })
       .then((r) => r.credentials.pop())
     // respond with the same message for a nonexistent ID and a password mismatch — prevents user enumeration
-    if (!credential) throw new Error(ErrorMessage['아이디 또는 비밀번호가 올바르지 않습니다.'])
+    if (!credential) throw new Error(ErrorMessage['Incorrect username or password.'])
 
     const isValid = await this.passwordHasher.verify(command.password, credential.passwordHash)
-    if (!isValid) throw new Error(ErrorMessage['아이디 또는 비밀번호가 올바르지 않습니다.'])
+    if (!isValid) throw new Error(ErrorMessage['Incorrect username or password.'])
 
     return this.authService.sign({ userId: credential.userId })
   }

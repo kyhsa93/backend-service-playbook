@@ -6,8 +6,8 @@
 return this.service.doSomething(param).catch((error) => {
   this.logger.error(error)
   throw generateErrorResponse(error.message, [
-    [ErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
-    [ErrorMessage['이미 취소된 주문입니다.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED]
+    [ErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
+    [ErrorMessage['The order is already cancelled.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED]
   ])
 })
 ```
@@ -42,11 +42,11 @@ Error messages reference the `ErrorMessage` enum everywhere, including inside th
 ```typescript
 // domain/order.ts — references the enum even inside the Aggregate
 import { OrderErrorMessage } from '@/order/order-error-message'
-if (this._status === 'cancelled') throw new Error(OrderErrorMessage['이미 취소된 주문입니다.'])
+if (this._status === 'cancelled') throw new Error(OrderErrorMessage['The order is already cancelled.'])
 
 // application/command/order-command-service.ts — the Command Service
 import { OrderErrorMessage as ErrorMessage } from '@/order/order-error-message'
-if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+if (!order) throw new Error(ErrorMessage['Order not found.'])
 ```
 
 If the argument to `throw new Error(...)` in the Domain/Application layer is a raw string rather than a `<Domain>ErrorMessage` enum reference, `harness/evaluators/rules/error-handling.evaluator.ts` catches it as `checklist.step7.domain.no-generic-error` / `checklist.step7.application.no-generic-error` respectively.
@@ -55,13 +55,13 @@ If the argument to `throw new Error(...)` in the Domain/Application layer is a r
 
 ```typescript
 export enum OrderErrorMessage {
-  '주문을 찾을 수 없습니다.' = '주문을 찾을 수 없습니다.',
-  '이미 취소된 주문입니다.' = '이미 취소된 주문입니다.',
-  '결제 완료된 주문은 취소할 수 없습니다.' = '결제 완료된 주문은 취소할 수 없습니다.',
-  '결제 정보를 찾을 수 없습니다.' = '결제 정보를 찾을 수 없습니다.',
-  '주문 항목은 최소 1개 이상이어야 합니다.' = '주문 항목은 최소 1개 이상이어야 합니다.',
-  '상품 가격은 0보다 커야 합니다.' = '상품 가격은 0보다 커야 합니다.',
-  '수량은 0보다 커야 합니다.' = '수량은 0보다 커야 합니다.',
+  'Order not found.' = 'Order not found.',
+  'The order is already cancelled.' = 'The order is already cancelled.',
+  'A paid order cannot be cancelled.' = 'A paid order cannot be cancelled.',
+  'Payment information could not be found.' = 'Payment information could not be found.',
+  'An order must have at least one item.' = 'An order must have at least one item.',
+  'The product price must be greater than 0.' = 'The product price must be greater than 0.',
+  'The quantity must be greater than 0.' = 'The quantity must be greater than 0.',
 }
 ```
 
@@ -107,7 +107,7 @@ Every error response follows the format below. The client implements its error h
 {
   "statusCode": 404,
   "code": "ORDER_NOT_FOUND",
-  "message": "주문을 찾을 수 없습니다.",
+  "message": "Order not found.",
   "error": "Not Found"
 }
 ```

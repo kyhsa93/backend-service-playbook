@@ -25,7 +25,7 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 import { readSourceFile } from '../shared/ast-utils'
 
-const DOC_REF = '../../docs/architecture/domain-service.md#실제-동작하는-예시--refundeligibilityservice-cross-aggregate-조율'
+const DOC_REF = '../../docs/architecture/domain-service.md#a-real-working-example--refundeligibilityservice-coordinating-across-aggregates'
 
 interface Pair {
   file: string
@@ -77,7 +77,7 @@ export function evaluateNoCrossAggregateReference(root: string): EvaluatorResult
     failures.push({
       ruleId: 'no-cross-aggregate-reference.aggregate-field-reference',
       severity: 'high',
-      message: `${rel(pair.file)} — 다른 Aggregate(${pair.forbiddenName})를 직접 import함. ID(예: ${pair.forbiddenName.toLowerCase()}Id: string) 참조만 허용된다`,
+      message: `${rel(pair.file)} — directly imports another Aggregate (${pair.forbiddenName}). Only an ID reference (e.g. ${pair.forbiddenName.toLowerCase()}Id: string) is allowed`,
       docRef: DOC_REF
     })
     score -= penaltyFor('high')

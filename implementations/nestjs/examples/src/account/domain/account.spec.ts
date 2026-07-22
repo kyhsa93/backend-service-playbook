@@ -21,7 +21,7 @@ describe('Account', () => {
   }
 
   describe('create', () => {
-    it('create_when_정상_입력_then_ACTIVE_상태와_0원_잔액으로_생성되고_AccountCreated_이벤트가_발행된다', () => {
+    it('create_when_valid_input_then_created_ACTIVE_with_0_balance_and_publishes_AccountCreated_event', () => {
       const account = Account.create({ ownerId: 'owner-1', email: 'owner1@example.com', currency: 'KRW' })
 
       expect(account.status).toBe(AccountStatus.ACTIVE)
@@ -32,7 +32,7 @@ describe('Account', () => {
   })
 
   describe('deposit', () => {
-    it('deposit_when_활성_계좌에_양수_금액_then_잔액이_증가하고_MoneyDeposited_이벤트가_발행된다', () => {
+    it('deposit_when_positive_amount_on_active_account_then_balance_increases_and_publishes_MoneyDeposited_event', () => {
       const account = createActiveAccount(1000)
 
       const transaction = account.deposit(new Money({ amount: 500, currency: 'KRW' }))
@@ -44,24 +44,24 @@ describe('Account', () => {
       expect(account.domainEvents[0]).toBeInstanceOf(MoneyDeposited)
     })
 
-    it('deposit_when_정지된_계좌_then_에러를_throw한다', () => {
+    it('deposit_when_account_is_suspended_then_throws', () => {
       const account = createActiveAccount()
       account.suspend()
 
       expect(() => account.deposit(new Money({ amount: 500, currency: 'KRW' })))
-        .toThrow('활성 상태의 계좌만 입금할 수 있습니다.')
+        .toThrow('Only an active account can accept a deposit.')
     })
 
-    it('deposit_when_금액이_0이하_then_에러를_throw한다', () => {
+    it('deposit_when_amount_is_0_or_less_then_throws', () => {
       const account = createActiveAccount()
 
       expect(() => account.deposit(new Money({ amount: 0, currency: 'KRW' })))
-        .toThrow('금액은 0보다 커야 합니다.')
+        .toThrow('The amount must be greater than 0.')
     })
   })
 
   describe('withdraw', () => {
-    it('withdraw_when_활성_계좌에_잔액_이내_금액_then_잔액이_감소하고_MoneyWithdrawn_이벤트가_발행된다', () => {
+    it('withdraw_when_amount_is_within_balance_on_active_account_then_balance_decreases_and_publishes_MoneyWithdrawn_event', () => {
       const account = createActiveAccount(1000)
 
       const transaction = account.withdraw(new Money({ amount: 400, currency: 'KRW' }))
@@ -71,26 +71,26 @@ describe('Account', () => {
       expect(account.domainEvents[0]).toBeInstanceOf(MoneyWithdrawn)
     })
 
-    it('withdraw_when_정지된_계좌_then_에러를_throw한다', () => {
+    it('withdraw_when_account_is_suspended_then_throws', () => {
       const account = createActiveAccount(1000)
       account.suspend()
 
       expect(() => account.withdraw(new Money({ amount: 100, currency: 'KRW' })))
-        .toThrow('활성 상태의 계좌만 출금할 수 있습니다.')
+        .toThrow('Only an active account can make a withdrawal.')
     })
 
-    it('withdraw_when_금액이_0이하_then_에러를_throw한다', () => {
+    it('withdraw_when_amount_is_0_or_less_then_throws', () => {
       const account = createActiveAccount(1000)
 
       expect(() => account.withdraw(new Money({ amount: 0, currency: 'KRW' })))
-        .toThrow('금액은 0보다 커야 합니다.')
+        .toThrow('The amount must be greater than 0.')
     })
 
-    it('withdraw_when_잔액_초과_금액_then_에러를_throw한다', () => {
+    it('withdraw_when_amount_exceeds_balance_then_throws', () => {
       const account = createActiveAccount(100)
 
       expect(() => account.withdraw(new Money({ amount: 200, currency: 'KRW' })))
-        .toThrow('잔액이 부족합니다.')
+        .toThrow('Insufficient balance.')
     })
   })
 
@@ -98,7 +98,7 @@ describe('Account', () => {
     const today = new Date('2026-07-20T00:00:00.000Z')
     const yesterday = new Date('2026-07-19T00:00:00.000Z')
 
-    it('applyInterest_when_활성_계좌에_이자가_0보다_크면_then_잔액이_증가하고_INTEREST_거래와_InterestPaid_이벤트가_발행된다', () => {
+    it('applyInterest_when_active_account_has_interest_greater_than_0_then_balance_increases_and_publishes_INTEREST_transaction_and_InterestPaid_event', () => {
       const account = createActiveAccount(1_000_000)
 
       const transaction = account.applyInterest(today)
@@ -111,7 +111,7 @@ describe('Account', () => {
       expect(account.domainEvents[0].constructor.name).toBe('InterestPaid')
     })
 
-    it('applyInterest_when_계산된_이자가_0이면_then_null을_반환하고_잔액은_변하지_않지만_lastInterestPaidAt은_갱신된다', () => {
+    it('applyInterest_when_computed_interest_is_0_then_returns_null_balance_unchanged_but_lastInterestPaidAt_is_updated', () => {
       const account = createActiveAccount(100)
 
       const transaction = account.applyInterest(today)
@@ -122,7 +122,7 @@ describe('Account', () => {
       expect(account.domainEvents).toHaveLength(0)
     })
 
-    it('applyInterest_when_같은_날_두_번_호출되면_then_두_번째_호출은_null을_반환하고_잔액이_중복_증가하지_않는다', () => {
+    it('applyInterest_when_called_twice_on_the_same_day_then_second_call_returns_null_and_balance_is_not_double_incremented', () => {
       const account = createActiveAccount(1_000_000)
       account.applyInterest(today)
       account.clearEvents()
@@ -135,7 +135,7 @@ describe('Account', () => {
       expect(account.domainEvents).toHaveLength(0)
     })
 
-    it('applyInterest_when_전날_이미_지급됐고_오늘_다시_호출되면_then_다시_지급된다', () => {
+    it('applyInterest_when_already_paid_yesterday_and_called_again_today_then_pays_again', () => {
       const account = new Account({
         ownerId: 'owner-1',
         email: 'owner1@example.com',
@@ -150,7 +150,7 @@ describe('Account', () => {
       expect(account.balance.amount).toBe(1_000_100)
     })
 
-    it('applyInterest_when_정지된_계좌면_then_null을_반환하고_lastInterestPaidAt도_변하지_않는다', () => {
+    it('applyInterest_when_account_is_suspended_then_returns_null_and_lastInterestPaidAt_is_unchanged', () => {
       const account = createActiveAccount(1_000_000)
       account.suspend()
 
@@ -162,7 +162,7 @@ describe('Account', () => {
   })
 
   describe('suspend', () => {
-    it('suspend_when_활성_계좌_then_SUSPENDED_상태가_되고_AccountSuspended_이벤트가_발행된다', () => {
+    it('suspend_when_account_is_active_then_becomes_SUSPENDED_and_publishes_AccountSuspended_event', () => {
       const account = createActiveAccount()
 
       account.suspend()
@@ -171,16 +171,16 @@ describe('Account', () => {
       expect(account.domainEvents[0]).toBeInstanceOf(AccountSuspended)
     })
 
-    it('suspend_when_이미_정지된_계좌_then_에러를_throw한다', () => {
+    it('suspend_when_account_is_already_suspended_then_throws', () => {
       const account = createActiveAccount()
       account.suspend()
 
-      expect(() => account.suspend()).toThrow('활성 상태의 계좌만 정지할 수 있습니다.')
+      expect(() => account.suspend()).toThrow('Only an active account can be suspended.')
     })
   })
 
   describe('reactivate', () => {
-    it('reactivate_when_정지된_계좌_then_ACTIVE_상태가_되고_AccountReactivated_이벤트가_발행된다', () => {
+    it('reactivate_when_account_is_suspended_then_becomes_ACTIVE_and_publishes_AccountReactivated_event', () => {
       const account = createActiveAccount()
       account.suspend()
       account.clearEvents()
@@ -191,15 +191,15 @@ describe('Account', () => {
       expect(account.domainEvents[0]).toBeInstanceOf(AccountReactivated)
     })
 
-    it('reactivate_when_활성_계좌_then_에러를_throw한다', () => {
+    it('reactivate_when_account_is_active_then_throws', () => {
       const account = createActiveAccount()
 
-      expect(() => account.reactivate()).toThrow('정지 상태의 계좌만 재개할 수 있습니다.')
+      expect(() => account.reactivate()).toThrow('Only a suspended account can be reactivated.')
     })
   })
 
   describe('close', () => {
-    it('close_when_잔액이_0인_계좌_then_CLOSED_상태가_되고_AccountClosed_이벤트가_발행된다', () => {
+    it('close_when_balance_is_0_then_becomes_CLOSED_and_publishes_AccountClosed_event', () => {
       const account = createActiveAccount(0)
 
       account.close()
@@ -208,28 +208,28 @@ describe('Account', () => {
       expect(account.domainEvents[0]).toBeInstanceOf(AccountClosed)
     })
 
-    it('close_when_잔액이_0이_아님_then_에러를_throw한다', () => {
+    it('close_when_balance_is_not_0_then_throws', () => {
       const account = createActiveAccount(1000)
 
-      expect(() => account.close()).toThrow('잔액이 0이 아닌 계좌는 종료할 수 없습니다.')
+      expect(() => account.close()).toThrow('An account with a non-zero balance cannot be closed.')
     })
 
-    it('close_when_이미_종료된_계좌_then_에러를_throw한다', () => {
+    it('close_when_account_is_already_closed_then_throws', () => {
       const account = createActiveAccount(0)
       account.close()
 
-      expect(() => account.close()).toThrow('이미 종료된 계좌입니다.')
+      expect(() => account.close()).toThrow('The account is already closed.')
     })
   })
 
   describe('clearEvents/clearTransactions', () => {
-    it('clearEvents_when_호출_then_domainEvents가_비워진다', () => {
+    it('clearEvents_when_called_then_domainEvents_is_emptied', () => {
       const account = Account.create({ ownerId: 'owner-1', email: 'owner1@example.com', currency: 'KRW' })
       account.clearEvents()
       expect(account.domainEvents).toHaveLength(0)
     })
 
-    it('clearTransactions_when_호출_then_pendingTransactions가_비워진다', () => {
+    it('clearTransactions_when_called_then_pendingTransactions_is_emptied', () => {
       const account = createActiveAccount(1000)
       account.deposit(new Money({ amount: 100, currency: 'KRW' }))
       account.clearTransactions()

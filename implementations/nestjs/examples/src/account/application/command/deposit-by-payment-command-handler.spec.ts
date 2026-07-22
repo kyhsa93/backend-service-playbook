@@ -36,7 +36,7 @@ describe('DepositByPaymentCommandHandler', () => {
     accountRepository = module.get(AccountRepository)
   })
 
-  it('execute_when_처음_수신하면_then_잔액을_보상_크레딧하고_저장한다', async () => {
+  it('execute_when_received_for_the_first_time_then_credits_the_compensating_amount_to_the_balance_and_saves', async () => {
     const account = buildAccount(1000)
     accountRepository.hasTransactionWithReference.mockResolvedValue(false)
     accountRepository.findAccounts.mockResolvedValue({ accounts: [account], count: 1 })
@@ -47,7 +47,7 @@ describe('DepositByPaymentCommandHandler', () => {
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(account)
   })
 
-  it('execute_when_같은_referenceId를_이미_처리했으면_then_아무_일도_하지_않는다', async () => {
+  it('execute_when_the_same_referenceId_was_already_processed_then_does_nothing', async () => {
     accountRepository.hasTransactionWithReference.mockResolvedValue(true)
 
     await handler.execute(new DepositByPaymentCommand({ accountId: 'account-1', amount: 5000, referenceId: 'refund-1' }))

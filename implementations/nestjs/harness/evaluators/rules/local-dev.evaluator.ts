@@ -28,7 +28,7 @@ export function evaluateLocalDev(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'local-dev.postgres-service-missing',
       severity: 'high',
-      message: 'docker-compose.yml에 postgres 서비스가 없습니다.',
+      message: 'docker-compose.yml has no postgres service.',
       docRef: DOC
     })
     score -= penaltyFor('high')
@@ -39,7 +39,7 @@ export function evaluateLocalDev(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'local-dev.healthcheck-missing',
       severity: 'medium',
-      message: 'docker-compose.yml 서비스에 healthcheck가 없습니다. depends_on condition: service_healthy를 위해 필요합니다.',
+      message: 'The docker-compose.yml service has no healthcheck. It is needed for depends_on condition: service_healthy.',
       docRef: DOC
     })
     score -= penaltyFor('medium')
@@ -54,7 +54,7 @@ export function evaluateLocalDev(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'local-dev.env-file-missing',
       severity: 'low',
-      message: '.env.development 또는 .env.example 파일이 없습니다.',
+      message: 'The .env.development or .env.example file is missing.',
       docRef: DOC
     })
     score -= penaltyFor('low')

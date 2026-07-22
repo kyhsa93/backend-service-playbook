@@ -171,7 +171,7 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
         failures.push({
           ruleId: `checklist.step7.${layerLabel}.no-generic-error`,
           severity: 'medium',
-          message: `${rel(file)}:${line} — throw new Error()의 인자는 <Domain>ErrorMessage enum 참조여야 함 (raw 문자열 금지)`,
+          message: `${rel(file)}:${line} — the argument to throw new Error() must be a <Domain>ErrorMessage enum reference (a raw string is forbidden)`,
           docRef: DOC_REF_BASE
         })
         score -= 5
@@ -185,13 +185,13 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
         const extra = obj.keys.filter((k) => !RESPONSE_SCHEMA_FIELDS.includes(k))
         if (missing.length > 0 || extra.length > 0) {
           const detail = [
-            missing.length > 0 ? `누락: ${missing.join(', ')}` : null,
-            extra.length > 0 ? `불필요한 필드: ${extra.join(', ')}` : null
+            missing.length > 0 ? `missing: ${missing.join(', ')}` : null,
+            extra.length > 0 ? `unnecessary fields: ${extra.join(', ')}` : null
           ].filter(Boolean).join(' / ')
           failures.push({
             ruleId: 'error-handling.response-schema.field-mismatch',
             severity: 'high',
-            message: `${rel(file)}:${obj.line} — 에러 응답 객체가 정확히 4개 필드(statusCode, code, message, error)를 갖지 않음 (${detail})`,
+            message: `${rel(file)}:${obj.line} — the error response object does not have exactly 4 fields (statusCode, code, message, error) (${detail})`,
             docRef: DOC_REF_RESPONSE_SCHEMA
           })
           score -= penaltyFor('high')
@@ -214,7 +214,7 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'error-handling.error-code.file-missing',
         severity: 'high',
-        message: `${rel(emFile)}에 대응하는 ${kebabDomain}-error-code.ts 파일이 없음`,
+        message: `No ${kebabDomain}-error-code.ts file corresponding to ${rel(emFile)} was found`,
         docRef: DOC_REF_ERROR_CODE
       })
       score -= 4
@@ -228,7 +228,7 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'error-handling.error-code.enum-count-mismatch',
         severity: 'medium',
-        message: `${pascalDomain}ErrorMessage(${messageMembers.length}) vs ${pascalDomain}ErrorCode(${codeMembers.length}) 항목 수 불일치: ${rel(codeFile)}`,
+        message: `${pascalDomain}ErrorMessage(${messageMembers.length}) vs ${pascalDomain}ErrorCode(${codeMembers.length}) member count mismatch: ${rel(codeFile)}`,
         docRef: DOC_REF_ERROR_CODE
       })
       score -= 2
@@ -240,7 +240,7 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'error-handling.error-code.naming',
             severity: 'low',
-            message: `${pascalDomain}ErrorCode.${key}는 SCREAMING_SNAKE_CASE가 아님: ${rel(codeFile)}`,
+            message: `${pascalDomain}ErrorCode.${key} is not SCREAMING_SNAKE_CASE: ${rel(codeFile)}`,
             docRef: DOC_REF_ERROR_CODE
           })
           score -= 1
@@ -257,7 +257,7 @@ export function evaluateErrorHandling(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'error-handling.generate-error-response.tuple-arity',
           severity: 'high',
-          message: `generateErrorResponse 매핑이 [메시지, 예외, 에러 코드] 3-튜플이 아님 (길이=${call.arity}): ${rel(file)}:${call.line}`,
+          message: `A generateErrorResponse mapping is not a [message, exception, error code] 3-tuple (length=${call.arity}): ${rel(file)}:${call.line}`,
           docRef: DOC_REF_CATCH
         })
         score -= 4

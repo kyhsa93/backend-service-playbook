@@ -38,7 +38,7 @@ describe('TransferCommandHandler', () => {
     accountRepository = module.get(AccountRepository)
   })
 
-  it('execute_when_승인되면_then_두_계좌를_저장한다', async () => {
+  it('execute_when_approved_then_saves_both_accounts', async () => {
     const source = createAccount({ accountId: 'account-1', amount: 10000 })
     const target = createAccount({ accountId: 'account-2', amount: 0 })
     accountRepository.findAccounts
@@ -58,16 +58,16 @@ describe('TransferCommandHandler', () => {
     expect(accountRepository.saveAccount).toHaveBeenCalledTimes(2)
   })
 
-  it('execute_when_출금_계좌를_찾을_수_없으면_then_에러를_throw하고_저장하지_않는다', async () => {
+  it('execute_when_the_withdrawal_account_cannot_be_found_then_throws_and_does_not_save', async () => {
     accountRepository.findAccounts.mockResolvedValueOnce({ accounts: [], count: 0 })
 
     await expect(handler.execute(
       new TransferCommand({ sourceAccountId: 'missing', targetAccountId: 'account-2', amount: 5000, requesterId: 'owner-1' })
-    )).rejects.toThrow(AccountErrorMessage['계좌를 찾을 수 없습니다.'])
+    )).rejects.toThrow(AccountErrorMessage['Account not found.'])
     expect(accountRepository.saveAccount).not.toHaveBeenCalled()
   })
 
-  it('execute_when_잔액이_부족하면_then_에러를_throw하고_저장하지_않는다', async () => {
+  it('execute_when_the_balance_is_insufficient_then_throws_and_does_not_save', async () => {
     const source = createAccount({ accountId: 'account-1', amount: 1000 })
     const target = createAccount({ accountId: 'account-2', amount: 0 })
     accountRepository.findAccounts
@@ -76,7 +76,7 @@ describe('TransferCommandHandler', () => {
 
     await expect(handler.execute(
       new TransferCommand({ sourceAccountId: 'account-1', targetAccountId: 'account-2', amount: 5000, requesterId: 'owner-1' })
-    )).rejects.toThrow(AccountErrorMessage['잔액이 부족합니다.'])
+    )).rejects.toThrow(AccountErrorMessage['Insufficient balance.'])
     expect(accountRepository.saveAccount).not.toHaveBeenCalled()
   })
 })

@@ -21,7 +21,7 @@ export class AccountSuspendedHandler {
 
   @HandleEvent('AccountSuspended')
   public async handle(event: { accountId: string; email: string; suspendedAt: string }): Promise<void> {
-    this.logger.log({ message: '계좌 정지됨', account_id: event.accountId })
+    this.logger.log({ message: 'Account suspended', account_id: event.accountId })
 
     // Write the Integration Event notifying external BCs (Card, etc.) to the Outbox.
     await this.outboxWriter.saveAll([
@@ -37,11 +37,11 @@ export class AccountSuspendedHandler {
         accountId: event.accountId,
         eventType: 'AccountSuspended',
         recipient: event.email,
-        subject: '[Account] 계좌가 정지되었습니다',
-        body: `계좌(${event.accountId})가 정지되었습니다.`
+        subject: '[Account] Your account has been suspended',
+        body: `Account (${event.accountId}) has been suspended.`
       })
     } catch (error) {
-      this.logger.error({ message: '정지 알림 발송 실패', account_id: event.accountId, error })
+      this.logger.error({ message: 'Failed to send suspension notification', account_id: event.accountId, error })
     }
   }
 }

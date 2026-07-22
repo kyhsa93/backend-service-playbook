@@ -28,7 +28,7 @@ describe('IssueCardCommandHandler', () => {
     accountAdapter = module.get(AccountAdapter)
   })
 
-  it('execute_when_활성_계좌_then_카드를_발급하고_저장한다', async () => {
+  it('execute_when_account_is_active_then_issues_and_saves_the_card', async () => {
     accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: true })
 
     const card = await handler.execute(
@@ -41,21 +41,21 @@ describe('IssueCardCommandHandler', () => {
     expect(cardRepository.saveCard).toHaveBeenCalledWith(card)
   })
 
-  it('execute_when_계좌가_없으면_then_에러를_throw한다', async () => {
+  it('execute_when_the_account_does_not_exist_then_throws', async () => {
     accountAdapter.findAccount.mockResolvedValue(null)
 
     await expect(handler.execute(
       new IssueCardCommand({ accountId: 'missing', brand: 'VISA', requesterId: 'owner-1' })
-    )).rejects.toThrow(CardErrorMessage['연결할 계좌를 찾을 수 없습니다.'])
+    )).rejects.toThrow(CardErrorMessage['The account to link could not be found.'])
     expect(cardRepository.saveCard).not.toHaveBeenCalled()
   })
 
-  it('execute_when_계좌가_비활성이면_then_에러를_throw한다', async () => {
+  it('execute_when_the_account_is_inactive_then_throws', async () => {
     accountAdapter.findAccount.mockResolvedValue({ accountId: 'account-1', active: false })
 
     await expect(handler.execute(
       new IssueCardCommand({ accountId: 'account-1', brand: 'VISA', requesterId: 'owner-1' })
-    )).rejects.toThrow(CardErrorMessage['활성 상태의 계좌만 카드를 발급할 수 있습니다.'])
+    )).rejects.toThrow(CardErrorMessage['Only an active account can have a card issued.'])
     expect(cardRepository.saveCard).not.toHaveBeenCalled()
   })
 })

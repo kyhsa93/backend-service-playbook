@@ -24,7 +24,7 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
 import { createDomainEventQueue } from './support/sqs-test-queue'
 import { createTaskQueue } from './support/task-queue-test-queue'
 
-describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
+describe('CardController (e2e) — cross-domain Account<->Card', () => {
   let container: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
   let app: INestApplication
@@ -149,8 +149,8 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
     await localstack?.stop()
   })
 
-  describe('POST /cards — 동기 Adapter(ACL)로 Account 상태 확인', () => {
-    it('활성_계좌에_카드를_발급하면_201과_ACTIVE_카드를_반환한다', async () => {
+  describe('POST /cards — checking Account status via the synchronous Adapter (ACL)', () => {
+    it('issuing_a_card_for_an_active_account_returns_201_and_an_ACTIVE_card', async () => {
       const account = await createAccount()
 
       const response = await issueCard(account.accountId)
@@ -165,14 +165,14 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
       expect(response.body.cardId).toEqual(expect.any(String))
     })
 
-    it('존재하지_않는_계좌면_404와_LINKED_ACCOUNT_NOT_FOUND를_반환한다', async () => {
+    it('when_the_account_does_not_exist_then_returns_404_and_LINKED_ACCOUNT_NOT_FOUND', async () => {
       const response = await issueCard('non-existent-account')
 
       expect(response.status).toBe(404)
       expect(response.body.code).toBe('LINKED_ACCOUNT_NOT_FOUND')
     })
 
-    it('다른_소유자의_계좌면_404를_반환한다', async () => {
+    it('when_the_account_belongs_to_a_different_owner_then_returns_404', async () => {
       const account = await createAccount(OWNER_ID)
 
       const response = await issueCard(account.accountId, OTHER_OWNER_ID)
@@ -181,7 +181,7 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
       expect(response.body.code).toBe('LINKED_ACCOUNT_NOT_FOUND')
     })
 
-    it('정지된_계좌면_400과_CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT를_반환한다', async () => {
+    it('when_the_account_is_suspended_then_returns_400_and_CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT', async () => {
       const account = await createAccount()
       await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/suspend`)
@@ -194,8 +194,8 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
     })
   })
 
-  describe('비동기 Integration Event — Account 상태 변화에 Card가 반응', () => {
-    it('계좌가_정지되면_연결된_카드가_SUSPENDED로_전환된다', async () => {
+  describe('Async Integration Event — Card reacts to Account status changes', () => {
+    it('when_the_account_is_suspended_the_linked_card_transitions_to_SUSPENDED', async () => {
       const account = await createAccount()
       const issued = await issueCard(account.accountId)
       const cardId = issued.body.cardId as string
@@ -209,7 +209,7 @@ describe('CardController (e2e) — 크로스 도메인 Account↔Card', () => {
       expect(await waitForCardStatus(cardId, 'SUSPENDED')).toBe('SUSPENDED')
     })
 
-    it('계좌가_해지되면_연결된_카드가_CANCELLED로_전환된다', async () => {
+    it('when_the_account_is_closed_the_linked_card_transitions_to_CANCELLED', async () => {
       const account = await createAccount()
       const issued = await issueCard(account.accountId)
       const cardId = issued.body.cardId as string

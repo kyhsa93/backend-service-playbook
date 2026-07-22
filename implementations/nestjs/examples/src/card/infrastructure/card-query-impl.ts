@@ -21,7 +21,7 @@ export class CardQueryImpl extends CardQuery {
       .where('card.cardId = :cardId', { cardId: param.cardId })
       .andWhere('card.ownerId = :ownerId', { ownerId: param.ownerId })
       .getOne()
-    if (!row) throw new Error(ErrorMessage['카드를 찾을 수 없습니다.'])
+    if (!row) throw new Error(ErrorMessage['Card not found.'])
 
     return {
       cardId: row.cardId,

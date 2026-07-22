@@ -60,7 +60,7 @@ export function evaluateAuth(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'auth.jwt-strategy-required',
       severity: 'medium',
-      message: 'Controller가 존재하지만 AuthGuard/JwtStrategy/guard 관련 인증 구성이 보이지 않음',
+      message: 'Controllers exist but no AuthGuard/JwtStrategy/guard-related authentication configuration was found',
       docRef: DOC_REF
     })
     score -= 2
@@ -82,7 +82,7 @@ export function evaluateAuth(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'auth.route-intent-required',
         severity: 'medium',
-        message: `${rel(file)}:${lineOf(content, methodMatch.index)} ${methodMatch[2]} route에 @UseGuards 또는 @Public 의도 표시가 없음`,
+        message: `${rel(file)}:${lineOf(content, methodMatch.index)} the ${methodMatch[2]} route has no @UseGuards or @Public intent marker`,
         docRef: DOC_REF
       })
       score -= 2
@@ -92,7 +92,7 @@ export function evaluateAuth(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'auth.controller-intent-required',
         severity: 'medium',
-        message: `${rel(file)}에 보호/공개 의도(@UseGuards 또는 @Public)가 전혀 없음`,
+        message: `${rel(file)} has no protection/public intent marker at all (@UseGuards or @Public)`,
         docRef: DOC_REF
       })
       score -= 2

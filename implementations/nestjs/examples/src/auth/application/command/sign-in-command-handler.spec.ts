@@ -38,7 +38,7 @@ describe('SignInCommandHandler', () => {
     authService = module.get(AuthService)
   })
 
-  it('execute_when_아이디와_비밀번호가_일치하면_then_액세스_토큰을_발급한다', async () => {
+  it('execute_when_username_and_password_match_then_issues_an_access_token', async () => {
     const credential = Credential.create({ userId: 'owner-1', passwordHash: 'hashed-password' })
     credentialRepository.findCredentials.mockResolvedValue({ credentials: [credential], count: 1 })
     passwordHasher.verify.mockResolvedValue(true)
@@ -51,23 +51,23 @@ describe('SignInCommandHandler', () => {
     expect(accessToken).toBe('access-token')
   })
 
-  it('execute_when_존재하지_않는_아이디면_then_에러를_throw한다', async () => {
+  it('execute_when_the_username_does_not_exist_then_throws', async () => {
     credentialRepository.findCredentials.mockResolvedValue({ credentials: [], count: 0 })
 
     await expect(
       handler.execute(new SignInCommand({ userId: 'no-such-user', password: 'plain-password' }))
-    ).rejects.toThrow('아이디 또는 비밀번호가 올바르지 않습니다.')
+    ).rejects.toThrow('Incorrect username or password.')
     expect(authService.sign).not.toHaveBeenCalled()
   })
 
-  it('execute_when_비밀번호가_틀리면_then_에러를_throw한다', async () => {
+  it('execute_when_the_password_is_wrong_then_throws', async () => {
     const credential = Credential.create({ userId: 'owner-1', passwordHash: 'hashed-password' })
     credentialRepository.findCredentials.mockResolvedValue({ credentials: [credential], count: 1 })
     passwordHasher.verify.mockResolvedValue(false)
 
     await expect(
       handler.execute(new SignInCommand({ userId: 'owner-1', password: 'wrong-password' }))
-    ).rejects.toThrow('아이디 또는 비밀번호가 올바르지 않습니다.')
+    ).rejects.toThrow('Incorrect username or password.')
     expect(authService.sign).not.toHaveBeenCalled()
   })
 })

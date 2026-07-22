@@ -23,7 +23,7 @@ describe('GetAccountQueryHandler', () => {
     accountQuery = module.get(AccountQuery)
   })
 
-  it('execute_when_호출되면_then_accountId와_ownerId를_그대로_전달해_AccountQuery를_조회한다', async () => {
+  it('execute_when_called_then_queries_AccountQuery_passing_accountId_and_ownerId_through_as_is', async () => {
     const expected = {
       accountId: 'account-1',
       ownerId: 'owner-1',

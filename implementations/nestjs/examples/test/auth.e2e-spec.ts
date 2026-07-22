@@ -46,7 +46,7 @@ describe('AuthController (e2e)', () => {
     await container?.stop()
   })
 
-  it('sign-up_후_sign-in하면_201과_액세스_토큰을_반환한다', async () => {
+  it('sign-in_after_sign-up_returns_201_and_an_access_token', async () => {
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: 'owner-1', password: 'password123!' }).expect(201)
 
     const response = await request(app.getHttpServer())
@@ -57,7 +57,7 @@ describe('AuthController (e2e)', () => {
     expect((response.body as { accessToken: string }).accessToken).toEqual(expect.any(String))
   })
 
-  it('sign-in_when_비밀번호가_틀리면_then_401과_INVALID_CREDENTIALS를_반환한다', async () => {
+  it('sign-in_when_the_password_is_wrong_then_returns_401_and_INVALID_CREDENTIALS', async () => {
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: 'owner-2', password: 'password123!' }).expect(201)
 
     const response = await request(app.getHttpServer())
@@ -68,7 +68,7 @@ describe('AuthController (e2e)', () => {
     expect(response.body).toMatchObject({ code: 'INVALID_CREDENTIALS' })
   })
 
-  it('sign-in_when_존재하지_않는_아이디면_then_401과_INVALID_CREDENTIALS를_반환한다', async () => {
+  it('sign-in_when_the_username_does_not_exist_then_returns_401_and_INVALID_CREDENTIALS', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/sign-in')
       .send({ userId: 'no-such-user', password: 'password123!' })
@@ -77,7 +77,7 @@ describe('AuthController (e2e)', () => {
     expect(response.body).toMatchObject({ code: 'INVALID_CREDENTIALS' })
   })
 
-  it('sign-up_when_이미_사용중인_아이디면_then_400과_USER_ID_ALREADY_EXISTS를_반환한다', async () => {
+  it('sign-up_when_the_username_is_already_in_use_then_returns_400_and_USER_ID_ALREADY_EXISTS', async () => {
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: 'owner-3', password: 'password123!' }).expect(201)
 
     const response = await request(app.getHttpServer())
@@ -88,7 +88,7 @@ describe('AuthController (e2e)', () => {
     expect(response.body).toMatchObject({ code: 'USER_ID_ALREADY_EXISTS' })
   })
 
-  it('sign-up_when_비밀번호가_8자_미만이면_then_400과_VALIDATION_FAILED를_반환한다', async () => {
+  it('sign-up_when_the_password_is_shorter_than_8_characters_then_returns_400_and_VALIDATION_FAILED', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/sign-up')
       .send({ userId: 'owner-4', password: 'short' })

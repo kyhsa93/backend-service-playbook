@@ -26,7 +26,7 @@ export class AuthController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [ErrorMessage['이미 사용 중인 아이디입니다.'], BadRequestException, 'USER_ID_ALREADY_EXISTS']
+          [ErrorMessage['This username is already in use.'], BadRequestException, 'USER_ID_ALREADY_EXISTS']
         ])
       })
   }
@@ -40,7 +40,7 @@ export class AuthController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [ErrorMessage['아이디 또는 비밀번호가 올바르지 않습니다.'], UnauthorizedException, 'INVALID_CREDENTIALS']
+          [ErrorMessage['Incorrect username or password.'], UnauthorizedException, 'INVALID_CREDENTIALS']
         ])
       })
   }

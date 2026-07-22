@@ -18,7 +18,7 @@ export class MoneyDepositedHandler {
     balanceAfter: { amount: number; currency: string }
   }): Promise<void> {
     this.logger.log({
-      message: '입금 완료',
+      message: 'Deposit completed',
       account_id: event.accountId,
       transaction_id: event.transactionId,
       amount: event.amount.amount,
@@ -28,8 +28,8 @@ export class MoneyDepositedHandler {
       accountId: event.accountId,
       eventType: 'MoneyDeposited',
       recipient: event.email,
-      subject: '[Account] 입금이 완료되었습니다',
-      body: `${event.amount.amount} ${event.amount.currency}이 입금되었습니다. 입금 후 잔액: ${event.balanceAfter.amount} ${event.balanceAfter.currency}`
+      subject: '[Account] Your deposit is complete',
+      body: `${event.amount.amount} ${event.amount.currency} has been deposited. Balance after deposit: ${event.balanceAfter.amount} ${event.balanceAfter.currency}`
     })
   }
 }

@@ -39,7 +39,7 @@ describe('DepositCommandHandler', () => {
     accountRepository = module.get(AccountRepository)
   })
 
-  it('execute_when_계좌가_존재하면_then_잔액이_증가하고_저장된다', async () => {
+  it('execute_when_the_account_exists_then_the_balance_increases_and_is_saved', async () => {
     const account = buildAccount(1000)
     accountRepository.findAccounts.mockResolvedValue({ accounts: [account], count: 1 })
 
@@ -52,22 +52,22 @@ describe('DepositCommandHandler', () => {
     expect(accountRepository.saveAccount).toHaveBeenCalledWith(account)
   })
 
-  it('execute_when_계좌가_존재하지_않으면_then_에러를_throw한다', async () => {
+  it('execute_when_the_account_does_not_exist_then_throws', async () => {
     accountRepository.findAccounts.mockResolvedValue({ accounts: [], count: 0 })
 
     await expect(
       handler.execute(new DepositCommand({ accountId: 'non-existent', requesterId: 'owner-1', amount: 500 }))
-    ).rejects.toThrow('계좌를 찾을 수 없습니다.')
+    ).rejects.toThrow('Account not found.')
   })
 
-  it('execute_when_정지된_계좌면_then_에러를_throw하고_저장하지_않는다', async () => {
+  it('execute_when_the_account_is_suspended_then_throws_and_does_not_save', async () => {
     const account = buildAccount(1000)
     account.suspend()
     accountRepository.findAccounts.mockResolvedValue({ accounts: [account], count: 1 })
 
     await expect(
       handler.execute(new DepositCommand({ accountId: 'account-1', requesterId: 'owner-1', amount: 500 }))
-    ).rejects.toThrow('활성 상태의 계좌만 입금할 수 있습니다.')
+    ).rejects.toThrow('Only an active account can accept a deposit.')
     expect(accountRepository.saveAccount).not.toHaveBeenCalled()
   })
 })

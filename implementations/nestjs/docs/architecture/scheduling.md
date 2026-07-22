@@ -241,7 +241,7 @@ export class TaskConsumerRegistry {
       const result = await this.executionLog.recordOnce(key, taskType)
       if (result === 'already-executed') {
         this.logger.log({
-          message: '중복 수신 — ledger에 이미 기록, 스킵',
+          message: 'Duplicate receipt — already recorded in the ledger, skipping',
           task_type: taskType,
           idempotency_key: key
         })
@@ -310,7 +310,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
           const messageId = message.MessageId
           try {
             const { taskType, payload } = JSON.parse(message.Body ?? '{}')
-            this.logger.log({ message: 'Task 시작', message_id: messageId, task_type: taskType })
+            this.logger.log({ message: 'Task started', message_id: messageId, task_type: taskType })
 
             const heartbeat = this.registry.getHeartbeat(taskType)
             const run = (): Promise<void> => this.registry.dispatch(taskType, payload ?? {})
@@ -325,10 +325,10 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
               QueueUrl: this.queueUrl,
               ReceiptHandle: message.ReceiptHandle!
             }))
-            this.logger.log({ message: 'Task 완료', message_id: messageId, task_type: taskType })
+            this.logger.log({ message: 'Task completed', message_id: messageId, task_type: taskType })
           } catch (error) {
             this.logger.error({
-              message: 'Task 실패 — visibility timeout 경과 후 재수신',
+              message: 'Task failed — will be re-received after the visibility timeout elapses',
               message_id: messageId,
               error
             })
@@ -336,7 +336,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
           }
         }
       } catch (error) {
-        this.logger.error({ message: 'SQS 수신 실패', error })
+        this.logger.error({ message: 'Failed to receive from SQS', error })
         await new Promise((resolve) => setTimeout(resolve, 3000))
       }
     }
@@ -352,7 +352,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
         QueueUrl: this.queueUrl,
         ReceiptHandle: receiptHandle,
         VisibilityTimeout: config.extendSeconds
-      })).catch((error) => this.logger.warn({ message: '하트비트 실패', error }))
+      })).catch((error) => this.logger.warn({ message: 'Heartbeat failed', error }))
     }, config.intervalMs)
 
     try {
@@ -392,7 +392,7 @@ export class OrderTaskController {
   @TaskConsumer('order.cleanup-expired')
   public async cleanupExpired(): Promise<void> {
     const count = await this.orderCommandService.cleanupExpiredOrders()
-    this.logger.log({ message: '만료 주문 정리', cleaned_count: count })
+    this.logger.log({ message: 'Expired orders cleaned up', cleaned_count: count })
   }
 
   // a Task that needs protection against per-entity duplicate execution — idempotencyKey specified
@@ -563,7 +563,7 @@ export class TaskOutboxRelay {
         }))
         await repo.update({ taskId: row.taskId }, { processed: true })
       } catch (error) {
-        this.logger.error({ message: 'SQS 발행 실패', task_id: row.taskId, error })
+        this.logger.error({ message: 'Failed to publish to SQS', task_id: row.taskId, error })
       }
     }
   }
@@ -633,10 +633,10 @@ export class OrderCleanupScheduler {
         {},
         { groupId: 'order.cleanup', deduplicationId: dedupId }
       )
-      this.logger.log({ message: '만료 주문 정리 Task 적재', dedup_id: dedupId })
+      this.logger.log({ message: 'Expired-order cleanup Task enqueued', dedup_id: dedupId })
     } catch (error) {
       // @nestjs/schedule silently swallows exceptions from Cron handlers, so log explicitly
-      this.logger.error({ message: '만료 주문 정리 Task 적재 실패', dedup_id: dedupId, error })
+      this.logger.error({ message: 'Failed to enqueue expired-order cleanup Task', dedup_id: dedupId, error })
     }
   }
 }
@@ -652,7 +652,7 @@ private async runSafely(name: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn()
   } catch (error) {
-    this.logger.error({ message: `Cron 실패: ${name}`, error })
+    this.logger.error({ message: `Cron failed: ${name}`, error })
   }
 }
 

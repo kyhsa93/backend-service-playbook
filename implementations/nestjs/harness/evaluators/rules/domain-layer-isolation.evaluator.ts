@@ -39,7 +39,7 @@ export function evaluateDomainLayerIsolation(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-layer-isolation.forbidden-import',
         severity: 'high',
-        message: `${rel(file)} — domain 레이어에서 ${targetLayer} 레이어를 import 함: '${specifier}'. Domain은 어떤 레이어에도 의존하지 않는다`,
+        message: `${rel(file)} — the domain layer imports the ${targetLayer} layer: '${specifier}'. Domain must not depend on any other layer`,
         docRef: DOC_REF
       })
       score -= penaltyFor('high')

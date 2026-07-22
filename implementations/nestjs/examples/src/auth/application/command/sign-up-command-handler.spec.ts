@@ -31,7 +31,7 @@ describe('SignUpCommandHandler', () => {
     passwordHasher = module.get(PasswordHasher)
   })
 
-  it('execute_when_신규_아이디면_then_비밀번호를_해싱해서_저장한다', async () => {
+  it('execute_when_the_username_is_new_then_hashes_the_password_and_saves', async () => {
     credentialRepository.findCredentials.mockResolvedValue({ credentials: [], count: 0 })
     passwordHasher.hash.mockResolvedValue('hashed-password')
 
@@ -43,13 +43,13 @@ describe('SignUpCommandHandler', () => {
     )
   })
 
-  it('execute_when_이미_존재하는_아이디면_then_에러를_throw하고_저장하지_않는다', async () => {
+  it('execute_when_the_username_already_exists_then_throws_and_does_not_save', async () => {
     const existing = Credential.create({ userId: 'owner-1', passwordHash: 'existing-hash' })
     credentialRepository.findCredentials.mockResolvedValue({ credentials: [existing], count: 1 })
 
     await expect(
       handler.execute(new SignUpCommand({ userId: 'owner-1', password: 'plain-password' }))
-    ).rejects.toThrow('이미 사용 중인 아이디입니다.')
+    ).rejects.toThrow('This username is already in use.')
     expect(credentialRepository.saveCredential).not.toHaveBeenCalled()
   })
 })

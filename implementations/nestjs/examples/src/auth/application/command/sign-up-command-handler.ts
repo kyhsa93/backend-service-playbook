@@ -17,7 +17,7 @@ export class SignUpCommandHandler implements ICommandHandler<SignUpCommand> {
     const existing = await this.credentialRepository
       .findCredentials({ userId: command.userId, take: 1, page: 0 })
       .then((r) => r.credentials.pop())
-    if (existing) throw new Error(ErrorMessage['이미 사용 중인 아이디입니다.'])
+    if (existing) throw new Error(ErrorMessage['This username is already in use.'])
 
     const passwordHash = await this.passwordHasher.hash(command.password)
     const credential = Credential.create({ userId: command.userId, passwordHash })

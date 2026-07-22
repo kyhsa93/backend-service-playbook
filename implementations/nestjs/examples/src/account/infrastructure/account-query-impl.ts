@@ -22,7 +22,7 @@ export class AccountQueryImpl extends AccountQuery {
       .where('account.accountId = :accountId', { accountId: param.accountId })
       .andWhere('account.ownerId = :ownerId', { ownerId: param.ownerId })
       .getOne()
-    if (!row) throw new Error(ErrorMessage['계좌를 찾을 수 없습니다.'])
+    if (!row) throw new Error(ErrorMessage['Account not found.'])
 
     return {
       accountId: row.accountId,
@@ -45,7 +45,7 @@ export class AccountQueryImpl extends AccountQuery {
       .where('account.accountId = :accountId', { accountId: query.accountId })
       .andWhere('account.ownerId = :ownerId', { ownerId: query.ownerId })
       .getOne()
-    if (!account) throw new Error(ErrorMessage['계좌를 찾을 수 없습니다.'])
+    if (!account) throw new Error(ErrorMessage['Account not found.'])
 
     const qb = this.transactionRepo.createQueryBuilder('transaction')
       .where('transaction.accountId = :accountId', { accountId: query.accountId })

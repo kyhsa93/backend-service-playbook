@@ -17,12 +17,12 @@ export function evaluateBootstrapHealthcheck(root: string): EvaluatorResult {
   const main = fs.readFileSync(mainPath, 'utf-8')
 
   if (!main.includes('enableShutdownHooks')) {
-    failures.push({ ruleId: 'bootstrap.shutdown-hooks', severity: 'high', message: 'enableShutdownHooks 없음', docRef: HEALTH_DOC_REF })
+    failures.push({ ruleId: 'bootstrap.shutdown-hooks', severity: 'high', message: 'enableShutdownHooks is missing', docRef: HEALTH_DOC_REF })
     score -= 4
   }
 
   if (!main.includes('ValidationPipe')) {
-    failures.push({ ruleId: 'bootstrap.validation-pipe', severity: 'high', message: 'ValidationPipe 없음', docRef: BOOTSTRAP_DOC_REF })
+    failures.push({ ruleId: 'bootstrap.validation-pipe', severity: 'high', message: 'ValidationPipe is missing', docRef: BOOTSTRAP_DOC_REF })
     score -= 4
   }
 

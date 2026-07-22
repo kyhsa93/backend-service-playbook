@@ -37,7 +37,7 @@ export class OutboxPoller {
     try {
       await this.drainOnce()
     } catch (error) {
-      this.logger.error({ message: 'Outbox 폴링 실패', error })
+      this.logger.error({ message: 'Outbox polling failed', error })
     } finally {
       this.isPolling = false
     }
@@ -65,7 +65,7 @@ export class OutboxPoller {
         await manager.update(OutboxEntity, { eventId: row.eventId }, { processed: true })
       } catch (error) {
         // Leave a publish-failed row as processed=false so it retries on the next tick.
-        this.logger.error({ message: 'SQS 발행 실패', event_type: row.eventType, event_id: row.eventId, error })
+        this.logger.error({ message: 'Failed to publish to SQS', event_type: row.eventType, event_id: row.eventId, error })
       }
     }
   }

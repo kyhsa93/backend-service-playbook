@@ -91,7 +91,7 @@ export class Order {
     items: OrderItem[]
     status: 'pending' | 'paid' | 'cancelled'
   }) {
-    if (params.items.length === 0) throw new Error(OrderErrorMessage['주문 항목은 최소 1개 이상이어야 합니다.'])
+    if (params.items.length === 0) throw new Error(OrderErrorMessage['An order must have at least one item.'])
     this.orderId = params.orderId ?? generateId()
     this.userId = params.userId
     this.items = params.items
@@ -102,8 +102,8 @@ export class Order {
   get domainEvents(): OrderDomainEvent[] { return [...this._events] }
 
   public cancel(reason: string): void {
-    if (this._status === 'cancelled') throw new Error(OrderErrorMessage['이미 취소된 주문입니다.'])
-    if (this._status === 'paid') throw new Error(OrderErrorMessage['결제 완료된 주문은 취소할 수 없습니다.'])
+    if (this._status === 'cancelled') throw new Error(OrderErrorMessage['The order is already cancelled.'])
+    if (this._status === 'paid') throw new Error(OrderErrorMessage['A paid order cannot be cancelled.'])
     this._status = 'cancelled'
     this._events.push(new OrderCancelled({
       orderId: this.orderId,
@@ -133,8 +133,8 @@ export class OrderItem {
   public readonly quantity: number
 
   constructor(params: { itemId: number; name: string; price: number; quantity: number }) {
-    if (params.price <= 0) throw new Error(OrderErrorMessage['상품 가격은 0보다 커야 합니다.'])
-    if (params.quantity <= 0) throw new Error(OrderErrorMessage['수량은 0보다 커야 합니다.'])
+    if (params.price <= 0) throw new Error(OrderErrorMessage['The product price must be greater than 0.'])
+    if (params.quantity <= 0) throw new Error(OrderErrorMessage['The quantity must be greater than 0.'])
     this.itemId = params.itemId
     this.name = params.name
     this.price = params.price
@@ -244,7 +244,7 @@ export class OrderCommandService {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
-    if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+    if (!order) throw new Error(ErrorMessage['Order not found.'])
 
     // business rules are validated inside the Aggregate
     order.cancel(command.reason)
@@ -260,7 +260,7 @@ export class OrderCommandService {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
-    if (!order) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+    if (!order) throw new Error(ErrorMessage['Order not found.'])
 
     await this.orderRepository.deleteOrder(command.orderId)
   }
@@ -463,7 +463,7 @@ export class OrderQueryImpl extends OrderQuery {
       .leftJoinAndSelect('order.items', 'item')
       .where('order.orderId = :orderId', { orderId: param.orderId })
       .getOne()
-    if (!row) throw new Error(ErrorMessage['주문을 찾을 수 없습니다.'])
+    if (!row) throw new Error(ErrorMessage['Order not found.'])
 
     const totalAmount = row.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
     return {
@@ -630,7 +630,7 @@ export class OrderController {
     return this.orderQueryService.getOrder(param).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [OrderErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
+        [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
       ])
     })
   }
@@ -658,9 +658,9 @@ export class OrderController {
     return this.orderCommandService.cancelOrder(new CancelOrderCommand({ ...body, orderId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [OrderErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
-        [OrderErrorMessage['이미 취소된 주문입니다.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED],
-        [OrderErrorMessage['결제 완료된 주문은 취소할 수 없습니다.'], BadRequestException, ErrorCode.ORDER_PAID_NOT_CANCELLABLE]
+        [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
+        [OrderErrorMessage['The order is already cancelled.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED],
+        [OrderErrorMessage['A paid order cannot be cancelled.'], BadRequestException, ErrorCode.ORDER_PAID_NOT_CANCELLABLE]
       ])
     })
   }
@@ -675,7 +675,7 @@ export class OrderController {
     return this.orderCommandService.deleteOrder(param).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [OrderErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
+        [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
       ])
     })
   }
@@ -779,7 +779,7 @@ export class OrderTaskController {
   @TaskConsumer('order.cleanup-expired')
   public async cleanupExpired(): Promise<void> {
     const count = await this.orderCommandService.cleanupExpiredOrders()
-    this.logger.log({ message: '만료 주문 정리', cleaned_count: count })
+    this.logger.log({ message: 'Expired orders cleaned up', cleaned_count: count })
   }
 
   // a Task that needs protection against per-entity duplicate execution — via the
@@ -820,7 +820,7 @@ export class OrderCleanupScheduler {
       )
     } catch (error) {
       // @nestjs/schedule swallows exceptions from Cron handlers, so explicit logging is required
-      this.logger.error({ message: '적재 실패', dedup_id: dedupId, error })
+      this.logger.error({ message: 'Failed to enqueue', dedup_id: dedupId, error })
     }
   }
 }
@@ -878,12 +878,12 @@ export class OrderModule {}
 ```typescript
 // order-error-message.ts
 export enum OrderErrorMessage {
-  '주문을 찾을 수 없습니다.' = '주문을 찾을 수 없습니다.',
-  '이미 취소된 주문입니다.' = '이미 취소된 주문입니다.',
-  '결제 완료된 주문은 취소할 수 없습니다.' = '결제 완료된 주문은 취소할 수 없습니다.',
-  '결제 정보를 찾을 수 없습니다.' = '결제 정보를 찾을 수 없습니다.',
-  '주문 항목은 최소 1개 이상이어야 합니다.' = '주문 항목은 최소 1개 이상이어야 합니다.',
-  '상품 가격은 0보다 커야 합니다.' = '상품 가격은 0보다 커야 합니다.',
-  '수량은 0보다 커야 합니다.' = '수량은 0보다 커야 합니다.',
+  'Order not found.' = 'Order not found.',
+  'The order is already cancelled.' = 'The order is already cancelled.',
+  'A paid order cannot be cancelled.' = 'A paid order cannot be cancelled.',
+  'Payment information could not be found.' = 'Payment information could not be found.',
+  'An order must have at least one item.' = 'An order must have at least one item.',
+  'The product price must be greater than 0.' = 'The product price must be greater than 0.',
+  'The quantity must be greater than 0.' = 'The quantity must be greater than 0.',
 }
 ```

@@ -46,7 +46,7 @@ export class TaskQueueConsumer implements OnModuleInit, OnModuleDestroy {
           await this.handleMessage(queueUrl, message)
         }
       } catch (error) {
-        this.logger.error({ message: 'Task 큐 수신 실패', error })
+        this.logger.error({ message: 'Failed to receive from Task queue', error })
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     }
@@ -55,14 +55,14 @@ export class TaskQueueConsumer implements OnModuleInit, OnModuleDestroy {
   private async handleMessage(queueUrl: string, message: Message): Promise<void> {
     const taskType = message.MessageAttributes?.taskType?.StringValue
     try {
-      if (!taskType) throw new Error('taskType 메시지 속성이 없습니다.')
-      this.logger.log({ message: 'Task 시작', message_id: message.MessageId, task_type: taskType })
+      if (!taskType) throw new Error('The taskType message attribute is missing.')
+      this.logger.log({ message: 'Task started', message_id: message.MessageId, task_type: taskType })
       await this.registry.dispatch(taskType, JSON.parse(message.Body ?? '{}'))
       await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
-      this.logger.log({ message: 'Task 완료', message_id: message.MessageId, task_type: taskType })
+      this.logger.log({ message: 'Task completed', message_id: message.MessageId, task_type: taskType })
     } catch (error) {
       this.logger.error({
-        message: 'Task 실패 — visibility timeout 경과 후 재수신',
+        message: 'Task failed — will be re-received after the visibility timeout elapses',
         message_id: message.MessageId,
         task_type: taskType,
         error

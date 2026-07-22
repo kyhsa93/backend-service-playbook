@@ -18,7 +18,7 @@ export class WithdrawCommandHandler implements ICommandHandler<WithdrawCommand, 
     const account = await this.accountRepository
       .findAccounts({ accountId: command.accountId, ownerId: command.requesterId, take: 1, page: 0 })
       .then((r) => r.accounts.pop())
-    if (!account) throw new Error(ErrorMessage['계좌를 찾을 수 없습니다.'])
+    if (!account) throw new Error(ErrorMessage['Account not found.'])
 
     const transaction = account.withdraw(new Money({ amount: command.amount, currency: account.balance.currency }))
     await this.transactionManager.run(async () => {

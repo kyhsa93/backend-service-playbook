@@ -63,7 +63,7 @@ export function evaluateNoCrossBcDomainImport(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'no-cross-bc-domain-import.cross-bc-domain-import',
         severity: 'high',
-        message: `${rel(file)} (${ownBc}) — 다른 BC(${targetBc})의 domain/을 직접 import함: '${specifier}'. 다른 Aggregate는 ID 참조만 허용한다(객체 참조 금지)`,
+        message: `${rel(file)} (${ownBc}) — directly imports another BC's (${targetBc}) domain/: '${specifier}'. Another Aggregate may only be referenced by ID (object references are forbidden)`,
         docRef: DOC_REF
       })
       score -= penaltyFor('high')

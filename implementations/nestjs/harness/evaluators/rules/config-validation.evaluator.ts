@@ -74,7 +74,7 @@ export function evaluateConfigValidation(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'config.file-naming',
         severity: 'low',
-        message: `${rel(file)}는 config factory 파일명 규칙(*.config.ts)을 따르지 않음`,
+        message: `${rel(file)} does not follow the config factory file naming convention (*.config.ts)`,
         docRef: DOC_REF
       })
       score -= 1
@@ -88,7 +88,7 @@ export function evaluateConfigValidation(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'config.validation-required',
         severity: 'high',
-        message: `${rel(file)}의 ConfigModule.forRoot()에 validationSchema 또는 validate 옵션이 없음`,
+        message: `${rel(file)}'s ConfigModule.forRoot() has no validationSchema or validate option`,
         docRef: DOC_REF
       })
       score -= 4
@@ -98,7 +98,7 @@ export function evaluateConfigValidation(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'config.process-env-direct-access',
         severity: 'medium',
-        message: `${rel(file)}에서 process.env를 직접 참조함 — src/config/*.config.ts로 캡슐화 필요`,
+        message: `${rel(file)} references process.env directly — it must be encapsulated in src/config/*.config.ts`,
         docRef: DOC_REF
       })
       score -= 2

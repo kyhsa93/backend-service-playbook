@@ -15,7 +15,7 @@ describe('HttpExceptionFilter', () => {
     return { host, json, status }
   }
 
-  it('HttpException_when_객체_응답_then_그대로_직렬화한다', () => {
+  it('HttpException_when_object_response_then_serializes_as_is', () => {
     const filter = new HttpExceptionFilter()
     const { host, json, status } = createHost()
     const exception = new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message: ['msg'], error: 'Bad Request' })
@@ -26,37 +26,37 @@ describe('HttpExceptionFilter', () => {
     expect(json).toHaveBeenCalledWith({ statusCode: 400, code: 'VALIDATION_FAILED', message: ['msg'], error: 'Bad Request' })
   })
 
-  it('HttpException_when_문자열_응답_then_표준_형식으로_변환한다', () => {
+  it('HttpException_when_string_response_then_converts_to_the_standard_format', () => {
     const filter = new HttpExceptionFilter()
     const { host, json, status } = createHost()
-    const exception = new HttpException('간단한 메시지', HttpStatus.BAD_REQUEST)
+    const exception = new HttpException('Simple message', HttpStatus.BAD_REQUEST)
 
     filter.catch(exception, host)
 
     expect(status).toHaveBeenCalledWith(400)
-    expect(json).toHaveBeenCalledWith({ statusCode: 400, code: 'HTTP_EXCEPTION', message: '간단한 메시지', error: 'HttpException' })
+    expect(json).toHaveBeenCalledWith({ statusCode: 400, code: 'HTTP_EXCEPTION', message: 'Simple message', error: 'HttpException' })
   })
 
-  it('non_HttpException_when_미처리_에러_then_500_표준_에러_응답으로_변환한다', () => {
+  it('non_HttpException_when_unhandled_error_then_converts_to_the_standard_500_error_response', () => {
     const filter = new HttpExceptionFilter()
     const { host, json, status } = createHost()
 
-    filter.catch(new Error('예상치 못한 에러'), host)
+    filter.catch(new Error('Unexpected error'), host)
 
     expect(status).toHaveBeenCalledWith(500)
     expect(json).toHaveBeenCalledWith({
       statusCode: 500,
       code: 'INTERNAL_ERROR',
-      message: '예상치 못한 에러',
+      message: 'Unexpected error',
       error: 'Internal Server Error'
     })
   })
 
-  it('non_Error_when_알수없는_예외_then_500_기본_메시지로_응답한다', () => {
+  it('non_Error_when_unknown_exception_then_responds_with_the_default_500_message', () => {
     const filter = new HttpExceptionFilter()
     const { host, json, status } = createHost()
 
-    filter.catch('문자열 throw', host)
+    filter.catch('string throw', host)
 
     expect(status).toHaveBeenCalledWith(500)
     expect(json).toHaveBeenCalledWith({

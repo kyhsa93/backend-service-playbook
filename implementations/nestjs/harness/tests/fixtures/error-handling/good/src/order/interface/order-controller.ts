@@ -9,8 +9,8 @@ export class OrderController {
   public async cancel(@Param('orderId') orderId: string): Promise<void> {
     return Promise.resolve(orderId).then(() => undefined).catch((error: Error) => {
       throw generateErrorResponse(error.message, [
-        [ErrorMessage['주문을 찾을 수 없습니다.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
-        [ErrorMessage['이미 취소된 주문입니다.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED]
+        [ErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
+        [ErrorMessage['The order is already cancelled.'], BadRequestException, ErrorCode.ORDER_ALREADY_CANCELLED]
       ])
     })
   }

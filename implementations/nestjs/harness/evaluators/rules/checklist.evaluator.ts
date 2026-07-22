@@ -96,19 +96,19 @@ export function evaluateChecklist(root: string): EvaluatorResult {
     if (layer === 'domain') {
       if (content.includes('@Injectable(')) {
         push('checklist.step2.domain.no-nest-decorator', 'high',
-          `${stepTitle(steps, 2)} — Domain에 @Injectable() 사용: ${rel(file)}`, 8)
+          `${stepTitle(steps, 2)} — Domain uses @Injectable(): ${rel(file)}`, 8)
       }
       if (/from\s+['"]class-validator['"]/.test(content) || /from\s+['"]class-transformer['"]/.test(content)) {
         push('checklist.step2.domain.no-validator-import', 'high',
-          `${stepTitle(steps, 2)} — Domain에 class-validator/class-transformer import: ${rel(file)}`, 6)
+          `${stepTitle(steps, 2)} — Domain imports class-validator/class-transformer: ${rel(file)}`, 6)
       }
       if (/@Entity\(/.test(content)) {
         push('checklist.step2.domain.no-typeorm-entity', 'high',
-          `${stepTitle(steps, 2)} — Domain에 @Entity() 데코레이터(TypeORM 누수): ${rel(file)}`, 8)
+          `${stepTitle(steps, 2)} — Domain has an @Entity() decorator (TypeORM leak): ${rel(file)}`, 8)
       }
       if (/\bLogger\b/.test(content) && /from\s+['"]@nestjs\/common['"]/.test(content)) {
         push('checklist.step2.domain.no-logger', 'medium',
-          `${stepTitle(steps, 2)} — Domain에서 NestJS Logger 사용 (로깅은 Application): ${rel(file)}`, 4)
+          `${stepTitle(steps, 2)} — Domain uses the NestJS Logger (logging belongs in Application): ${rel(file)}`, 4)
       }
     }
 
@@ -116,36 +116,36 @@ export function evaluateChecklist(root: string): EvaluatorResult {
     if (layer === 'application') {
       if (content.includes('HttpException')) {
         push('checklist.step3.application.no-http-exception', 'high',
-          `${stepTitle(steps, 3)} — Application에 HttpException 사용: ${rel(file)}`, 8)
+          `${stepTitle(steps, 3)} — Application uses HttpException: ${rel(file)}`, 8)
       }
       if (/from\s+['"]@aws-sdk\//.test(content)) {
         push('checklist.step3.application.no-aws-sdk', 'medium',
-          `${stepTitle(steps, 3)} — Application이 AWS SDK를 직접 import: ${rel(file)}`, 5)
+          `${stepTitle(steps, 3)} — Application imports the AWS SDK directly: ${rel(file)}`, 5)
       }
       // Application must not directly import a Repository implementation (only the abstract class should be used)
       if (/from\s+['"][^'"]*-repository-impl['"]/.test(content)) {
         push('checklist.step3.application.no-impl-import', 'high',
-          `${stepTitle(steps, 3)} — Application에서 -impl 직접 import (abstract class 경유 필요): ${rel(file)}`, 6)
+          `${stepTitle(steps, 3)} — Application imports an -impl directly (must go through the abstract class): ${rel(file)}`, 6)
       }
     }
 
     // STEP 4 — Infrastructure *-impl.ts misplacement
     if (/-impl\.ts$/.test(file) && !file.includes('/infrastructure/')) {
       push('checklist.step4.impl-outside-infrastructure', 'medium',
-        `${stepTitle(steps, 4)} — *-impl.ts가 infrastructure/ 외부에 위치: ${rel(file)}`, 4)
+        `${stepTitle(steps, 4)} — *-impl.ts is located outside infrastructure/: ${rel(file)}`, 4)
     }
 
     // STEP 5 — Interface: 1 @Controller per file
     const controllerCount = (content.match(/@Controller\s*\(/g) ?? []).length
     if (controllerCount > 1) {
       push('checklist.step5.interface.single-controller-per-file', 'medium',
-        `${stepTitle(steps, 5)} — 한 파일에 @Controller가 ${controllerCount}개: ${rel(file)}`, 3)
+        `${stepTitle(steps, 5)} — ${controllerCount} @Controller decorators in a single file: ${rel(file)}`, 3)
     }
 
     // STEP 5 — a Module file lives at the domain root (must not be inside interface/application/infrastructure)
     if (/-module\.ts$/.test(file) && (layer === 'application' || layer === 'interface' || layer === 'infrastructure')) {
       push('checklist.step5.module-placement', 'medium',
-        `${stepTitle(steps, 5)} — Module 파일이 ${layer}/ 내부에 위치 (도메인 루트 권장): ${rel(file)}`, 3)
+        `${stepTitle(steps, 5)} — the Module file is located inside ${layer}/ (recommended at the domain root): ${rel(file)}`, 3)
     }
 
     // STEP 12 — an Entity file must be located at infrastructure/entity/
@@ -162,14 +162,14 @@ export function evaluateChecklist(root: string): EvaluatorResult {
       // base.entity.ts is an exception (database/)
       if (path.basename(file) !== 'base.entity.ts') {
         push('checklist.step12.entity-placement', 'medium',
-          `${stepTitle(steps, 12)} — *.entity.ts가 infrastructure/ 외부에 위치: ${rel(file)}`, 3)
+          `${stepTitle(steps, 12)} — *.entity.ts is located outside infrastructure/: ${rel(file)}`, 3)
       }
     }
 
     // STEP 3 — using a Repository in the Query Service is prohibited (CQRS — only the Query interface should be used)
     if (/-query-service\.ts$/.test(file) && /\bRepository\b/.test(content) && !/\bQuery\b/.test(content)) {
       push('checklist.step3.query-service-uses-repository', 'medium',
-        `${stepTitle(steps, 3)} — Query Service가 Repository를 사용 (Query 인터페이스 사용 필요): ${rel(file)}`, 4)
+        `${stepTitle(steps, 3)} — the Query Service uses a Repository (must use the Query interface instead): ${rel(file)}`, 4)
     }
 
     // STEP 11 — an async Task Controller method returns a Promise
@@ -178,26 +178,26 @@ export function evaluateChecklist(root: string): EvaluatorResult {
     // STEP 12 — hardcoding Migration/sync is prohibited (checked against production NODE_ENV)
     if (/synchronize\s*:\s*true(?![^,})]*process\.env)/.test(content)) {
       push('checklist.step12.typeorm-synchronize-unconditional', 'high',
-        `${stepTitle(steps, 12)} — TypeORM synchronize: true가 조건 없이 설정됨 (production 사고 위험): ${rel(file)}`, 6)
+        `${stepTitle(steps, 12)} — TypeORM synchronize: true is set unconditionally (risk of a production incident): ${rel(file)}`, 6)
     }
 
     // STEP 12 — detecting a hardcoded secret (*.spec.ts is excluded, even if a mock/fixture value looks like a real one)
     if (!file.endsWith('.spec.ts') && /(?:password|secret|apikey|api_key|token)\s*[:=]\s*['"][A-Za-z0-9_-]{8,}['"]/i.test(content)) {
       push('checklist.step12.no-hardcoded-secret', 'critical',
-        `${stepTitle(steps, 12)} — 비밀값 하드코딩 의심 (process.env 사용): ${rel(file)}`, 8)
+        `${stepTitle(steps, 12)} — suspected hardcoded secret (use process.env instead): ${rel(file)}`, 8)
     }
 
     // STEP 14 — cleanup (a leftover TODO is prohibited)
     if (/\bTODO\b/.test(content)) {
       push('checklist.step14.no-todo', 'low',
-        `${stepTitle(steps, 14)} — TODO 주석 잔존: ${rel(file)}`, 2)
+        `${stepTitle(steps, 14)} — a leftover TODO comment remains: ${rel(file)}`, 2)
     }
 
     // STEP 14 — relative-path imports are prohibited (using ../ — an absolute @/ path is recommended)
     const relImportCount = (content.match(/from\s+['"]\.\.\//g) ?? []).length
     if (relImportCount >= 3) {
       push('checklist.step14.avoid-relative-imports', 'low',
-        `${stepTitle(steps, 14)} — '../' 상대경로 import ${relImportCount}회 (절대경로 @/ 권장): ${rel(file)}`, 1)
+        `${stepTitle(steps, 14)} — ${relImportCount} relative-path ('../') imports (an absolute @/ path is recommended): ${rel(file)}`, 1)
     }
   }
 
@@ -207,13 +207,13 @@ export function evaluateChecklist(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'checklist.meta.coverage',
       severity: 'low',
-      message: `docs/checklist.md 파싱: STEP ${steps.length}개, 체크 항목 ${totalItems}개 (하네스는 일부만 기계적으로 검증)`
+      message: `Parsed docs/checklist.md: ${steps.length} STEPs, ${totalItems} check items (the harness mechanically verifies only some of them)`
     })
   } else {
     failures.push({
       ruleId: 'checklist.meta.doc-missing',
       severity: 'medium',
-      message: `docs/checklist.md를 찾지 못함 — STEP 구조 파싱 생략`
+      message: `docs/checklist.md not found — skipping STEP structure parsing`
     })
   }
 

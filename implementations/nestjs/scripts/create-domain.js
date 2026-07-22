@@ -88,8 +88,8 @@ function generateFiles(n) {
 `
 
   files[`${n.domainKebab}/${n.domainKebab}-error-message.ts`] = `export enum ${n.Domain}ErrorMessage {
-  '${n.Domain}을(를) 찾을 수 없습니다.' = '${n.Domain}을(를) 찾을 수 없습니다.',
-  '이미 취소된 ${n.Domain}입니다.' = '이미 취소된 ${n.Domain}입니다.',
+  '${n.Domain} not found.' = '${n.Domain} not found.',
+  'The ${n.domain} is already cancelled.' = 'The ${n.domain} is already cancelled.',
 }
 `
 
@@ -148,7 +148,7 @@ export class ${n.Domain} {
   // A state-transition example that publishes an event.
   public cancel(reason: string): void {
     if (this._status === ${n.Domain}Status.CANCELLED) {
-      throw new Error(${n.Domain}ErrorMessage['이미 취소된 ${n.Domain}입니다.'])
+      throw new Error(${n.Domain}ErrorMessage['The ${n.domain} is already cancelled.'])
     }
     this._status = ${n.Domain}Status.CANCELLED
     this._events.push(new ${n.Domain}Cancelled({ ${n.domain}Id: this.${n.domain}Id, reason, cancelledAt: new Date() }))
@@ -238,7 +238,7 @@ export class Cancel${n.Domain}CommandHandler implements ICommandHandler<Cancel${
     const ${n.domain} = await this.${n.domain}Repository
       .find${n.Domains}({ ${n.domain}Id: command.${n.domain}Id, take: 1, page: 0 })
       .then((r) => r.${n.domains}.pop())
-    if (!${n.domain}) throw new Error(ErrorMessage['${n.Domain}을(를) 찾을 수 없습니다.'])
+    if (!${n.domain}) throw new Error(ErrorMessage['${n.Domain} not found.'])
 
     ${n.domain}.cancel(command.reason)
 
@@ -303,7 +303,7 @@ export class ${n.Domain}CancelledHandler {
   private readonly logger = new Logger(${n.Domain}CancelledHandler.name)
 
   public async handle(event: { ${n.domain}Id: string; reason: string; cancelledAt: string }): Promise<void> {
-    this.logger.log({ message: '${n.Domain} 취소됨', ${n.domain}_id: event.${n.domain}Id, reason: event.reason })
+    this.logger.log({ message: '${n.Domain} cancelled', ${n.domain}_id: event.${n.domain}Id, reason: event.reason })
   }
 }
 `
@@ -413,7 +413,7 @@ export class ${n.Domain}QueryImpl extends ${n.Domain}Query {
       .where('${n.domain}.${n.domain}Id = :${n.domain}Id', { ${n.domain}Id: param.${n.domain}Id })
       .andWhere('${n.domain}.ownerId = :ownerId', { ownerId: param.ownerId })
       .getOne()
-    if (!row) throw new Error(ErrorMessage['${n.Domain}을(를) 찾을 수 없습니다.'])
+    if (!row) throw new Error(ErrorMessage['${n.Domain} not found.'])
 
     return {
       ${n.domain}Id: row.${n.domain}Id,
@@ -550,7 +550,7 @@ export class ${n.Domain}Controller {
     ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [${n.Domain}ErrorMessage['${n.Domain}을(를) 찾을 수 없습니다.'], NotFoundException, ErrorCode.${n.DOMAIN_SCREAM}_NOT_FOUND]
+        [${n.Domain}ErrorMessage['${n.Domain} not found.'], NotFoundException, ErrorCode.${n.DOMAIN_SCREAM}_NOT_FOUND]
       ])
     })
   }
@@ -566,7 +566,7 @@ export class ${n.Domain}Controller {
     return this.commandBus.execute<Cancel${n.Domain}Command, void>(new Cancel${n.Domain}Command({ ...body, ${n.domain}Id })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [${n.Domain}ErrorMessage['${n.Domain}을(를) 찾을 수 없습니다.'], NotFoundException, ErrorCode.${n.DOMAIN_SCREAM}_NOT_FOUND]
+        [${n.Domain}ErrorMessage['${n.Domain} not found.'], NotFoundException, ErrorCode.${n.DOMAIN_SCREAM}_NOT_FOUND]
       ])
     })
   }
@@ -630,17 +630,17 @@ export class ${n.Domain}Module implements OnModuleInit {
 
 function printAppModuleSnippet(n) {
   console.log('')
-  console.log('--- app-module.ts에 수동으로 추가할 내용 (--wire를 주지 않았으므로 자동 적용 안 됨) ---')
+  console.log('--- Content to add manually to app-module.ts (not applied automatically since --wire was not given) ---')
   console.log('')
   console.log(`import { ${n.Domain}Module } from '@/${n.domainKebab}/${n.domainKebab}-module'`)
   console.log('')
-  console.log(`  // imports 배열에 추가:\n    ${n.Domain}Module`)
+  console.log(`  // add to the imports array:\n    ${n.Domain}Module`)
   console.log('')
 }
 
 function wireAppModule(appModulePath, n) {
   if (!fs.existsSync(appModulePath)) {
-    console.warn(`app-module.ts를 찾지 못해 자동 wiring을 건너뜁니다: ${appModulePath}`)
+    console.warn(`Could not find app-module.ts, skipping automatic wiring: ${appModulePath}`)
     printAppModuleSnippet(n)
     return
   }
@@ -653,7 +653,7 @@ function wireAppModule(appModulePath, n) {
     && new RegExp(`imports:\\s*\\[[^]*?\\b${n.Domain}Module\\b`).test(content)
 
   if (alreadyImported && alreadyRegistered) {
-    console.log(`이미 app-module.ts에 ${n.Domain}Module이 등록돼 있어 건너뜁니다.`)
+    console.log(`${n.Domain}Module is already registered in app-module.ts, skipping.`)
     return
   }
 
@@ -667,7 +667,7 @@ function wireAppModule(appModulePath, n) {
   }
 
   if (!importsArrayMatch) {
-    console.warn('imports: [ 배열을 찾지 못해 자동 등록을 건너뜁니다. 아래를 수동으로 추가하세요.')
+    console.warn('Could not find the imports: [ array, skipping automatic registration. Add the following manually.')
     console.log(`    ${n.Domain}Module`)
   } else if (!alreadyRegistered) {
     // Inserts at the very front of the array — searching for the closing bracket via regex has
@@ -678,14 +678,14 @@ function wireAppModule(appModulePath, n) {
   }
 
   fs.writeFileSync(appModulePath, content, 'utf-8')
-  console.log(`app-module.ts에 ${n.Domain}Module import/등록 완료: ${appModulePath}`)
+  console.log(`${n.Domain}Module import/registration complete in app-module.ts: ${appModulePath}`)
 }
 
 function main() {
   const args = process.argv.slice(2)
   const rawDomainName = args[0]
   if (!rawDomainName || rawDomainName.startsWith('--')) {
-    console.error('사용법: node scripts/create-domain.js <PascalCaseDomainName> [--out <targetSrcDir>] [--wire]')
+    console.error('Usage: node scripts/create-domain.js <PascalCaseDomainName> [--out <targetSrcDir>] [--wire]')
     process.exit(1)
   }
 
@@ -700,11 +700,11 @@ function main() {
     writeFile(path.join(targetSrcDir, relPath), content)
   }
 
-  console.log(`${n.Domain} 도메인 생성 완료: ${path.join(targetSrcDir, n.domainKebab)}/ (${Object.keys(files).length}개 파일)`)
-  console.log(`REST 경로: /${n.domainsKebab} (POST 생성, GET/:${n.domain}Id 조회, POST /:${n.domain}Id/cancel 취소)`)
+  console.log(`${n.Domain} domain generation complete: ${path.join(targetSrcDir, n.domainKebab)}/ (${Object.keys(files).length} files)`)
+  console.log(`REST path: /${n.domainsKebab} (POST to create, GET /:${n.domain}Id to look up, POST /:${n.domain}Id/cancel to cancel)`)
   console.log('')
-  console.log('참고: 나이브 복수형 규칙(+s / +es / y→ies)을 썼습니다 — 불규칙 복수형 도메인이면')
-  console.log(`  find${n.Domains}/${n.domains} 등을 수동으로 다듬어야 할 수 있습니다.`)
+  console.log('Note: a naive pluralization rule (+s / +es / y->ies) was used — for domains with irregular plurals,')
+  console.log(`  you may need to manually adjust names like find${n.Domains}/${n.domains}.`)
 
   if (shouldWire) {
     wireAppModule(path.join(targetSrcDir, 'app-module.ts'), n)
@@ -712,7 +712,7 @@ function main() {
     printAppModuleSnippet(n)
   }
 
-  console.log('다음: bash harness.sh <projectRoot>로 검증하세요.')
+  console.log('Next: verify with bash harness.sh <projectRoot>.')
 }
 
 main()

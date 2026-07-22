@@ -27,7 +27,7 @@ export function evaluateControllerPath(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'controller.path.no-verb-prefix',
           severity: 'medium',
-          message: `동사형 path 금지 (${verb}): ${file}`
+          message: `Verb-form paths are forbidden (${verb}): ${file}`
         })
         score -= 5
         break

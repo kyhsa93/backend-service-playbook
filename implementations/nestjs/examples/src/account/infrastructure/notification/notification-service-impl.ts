@@ -46,7 +46,7 @@ export class NotificationServiceImpl extends NotificationService {
     })
 
     this.logger.log({
-      message: '이메일 발송됨',
+      message: 'Email sent',
       account_id: params.accountId,
       event_type: params.eventType,
       recipient: params.recipient,

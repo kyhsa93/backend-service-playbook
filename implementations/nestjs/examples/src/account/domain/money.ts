@@ -5,7 +5,7 @@ export class Money {
   public readonly currency: string
 
   constructor(params: { amount: number; currency: string }) {
-    if (params.amount < 0) throw new Error(ErrorMessage['금액은 0 이상이어야 합니다.'])
+    if (params.amount < 0) throw new Error(ErrorMessage['The amount must be 0 or greater.'])
     this.amount = params.amount
     this.currency = params.currency
   }
@@ -34,6 +34,6 @@ export class Money {
   }
 
   private assertSameCurrency(other: Money): void {
-    if (this.currency !== other.currency) throw new Error(ErrorMessage['통화가 일치하지 않습니다.'])
+    if (this.currency !== other.currency) throw new Error(ErrorMessage['The currencies do not match.'])
   }
 }

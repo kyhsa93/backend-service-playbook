@@ -90,7 +90,7 @@ export function evaluateDeprecatedApi(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'deprecated-api.missing-decorator',
           severity: 'medium',
-          message: `Deprecated/legacy 엔드포인트 의심 — @ApiOperation({ deprecated: true }) 누락: ${rel(file)} @ ${m.name}('${m.routePath}')`,
+          message: `Suspected deprecated/legacy endpoint — missing @ApiOperation({ deprecated: true }): ${rel(file)} @ ${m.name}('${m.routePath}')`,
           docRef: 'docs/conventions.md'
         })
         score -= 3
@@ -102,7 +102,7 @@ export function evaluateDeprecatedApi(root: string): EvaluatorResult {
           failures.push({
             ruleId: 'deprecated-api.missing-warn-log',
             severity: 'low',
-            message: `Deprecated 엔드포인트인데 logger.warn 호출 흔적 없음: ${rel(file)} @ ${m.name} — 잔존 호출 추적 권장`
+            message: `Deprecated endpoint with no trace of a logger.warn call: ${rel(file)} @ ${m.name} — tracking lingering calls is recommended`
           })
           score -= 1
         }

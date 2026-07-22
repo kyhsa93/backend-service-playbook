@@ -93,9 +93,9 @@ export class AccountController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
-          [AccountErrorMessage['금액은 0보다 커야 합니다.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
-          [AccountErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'], BadRequestException, ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT]
+          [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['The amount must be greater than 0.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
+          [AccountErrorMessage['Only an active account can accept a deposit.'], BadRequestException, ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT]
         ])
       })
   }
@@ -120,10 +120,10 @@ export class AccountController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
-          [AccountErrorMessage['금액은 0보다 커야 합니다.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
-          [AccountErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'], BadRequestException, ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT],
-          [AccountErrorMessage['잔액이 부족합니다.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
+          [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['The amount must be greater than 0.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
+          [AccountErrorMessage['Only an active account can make a withdrawal.'], BadRequestException, ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT],
+          [AccountErrorMessage['Insufficient balance.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
         ])
       })
   }
@@ -160,13 +160,13 @@ export class AccountController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
-          [AccountErrorMessage['금액은 0보다 커야 합니다.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
-          [AccountErrorMessage['출금 계좌와 입금 계좌가 동일할 수 없습니다.'], BadRequestException, ErrorCode.TRANSFER_SAME_ACCOUNT],
-          [AccountErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'], BadRequestException, ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT],
-          [AccountErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'], BadRequestException, ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT],
-          [AccountErrorMessage['통화가 일치하지 않습니다.'], BadRequestException, ErrorCode.CURRENCY_MISMATCH],
-          [AccountErrorMessage['잔액이 부족합니다.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
+          [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['The amount must be greater than 0.'], BadRequestException, ErrorCode.INVALID_AMOUNT],
+          [AccountErrorMessage['The withdrawal account and deposit account cannot be the same.'], BadRequestException, ErrorCode.TRANSFER_SAME_ACCOUNT],
+          [AccountErrorMessage['Only an active account can make a withdrawal.'], BadRequestException, ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT],
+          [AccountErrorMessage['Only an active account can accept a deposit.'], BadRequestException, ErrorCode.DEPOSIT_REQUIRES_ACTIVE_ACCOUNT],
+          [AccountErrorMessage['The currencies do not match.'], BadRequestException, ErrorCode.CURRENCY_MISMATCH],
+          [AccountErrorMessage['Insufficient balance.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
         ])
       })
   }
@@ -184,8 +184,8 @@ export class AccountController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
-          [AccountErrorMessage['활성 상태의 계좌만 정지할 수 있습니다.'], BadRequestException, ErrorCode.SUSPEND_REQUIRES_ACTIVE_ACCOUNT]
+          [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['Only an active account can be suspended.'], BadRequestException, ErrorCode.SUSPEND_REQUIRES_ACTIVE_ACCOUNT]
         ])
       })
   }
@@ -203,8 +203,8 @@ export class AccountController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
-          [AccountErrorMessage['정지 상태의 계좌만 재개할 수 있습니다.'], BadRequestException, ErrorCode.REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT]
+          [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['Only a suspended account can be reactivated.'], BadRequestException, ErrorCode.REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT]
         ])
       })
   }
@@ -222,9 +222,9 @@ export class AccountController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
-          [AccountErrorMessage['이미 종료된 계좌입니다.'], BadRequestException, ErrorCode.ACCOUNT_ALREADY_CLOSED],
-          [AccountErrorMessage['잔액이 0이 아닌 계좌는 종료할 수 없습니다.'], BadRequestException, ErrorCode.ACCOUNT_BALANCE_NOT_ZERO]
+          [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+          [AccountErrorMessage['The account is already closed.'], BadRequestException, ErrorCode.ACCOUNT_ALREADY_CLOSED],
+          [AccountErrorMessage['An account with a non-zero balance cannot be closed.'], BadRequestException, ErrorCode.ACCOUNT_BALANCE_NOT_ZERO]
         ])
       })
   }
@@ -240,7 +240,7 @@ export class AccountController {
     return this.queryBus.execute(new GetAccountQuery({ accountId: param.accountId, requesterId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
+        [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
       ])
     })
   }
@@ -259,7 +259,7 @@ export class AccountController {
     ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [AccountErrorMessage['계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
+        [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
       ])
     })
   }

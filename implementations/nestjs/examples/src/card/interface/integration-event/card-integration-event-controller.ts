@@ -17,13 +17,13 @@ export class CardIntegrationEventController {
 
   @HandleIntegrationEvent('account.suspended.v1')
   public async onAccountSuspended(event: { accountId: string }): Promise<void> {
-    this.logger.log({ message: 'account.suspended.v1 수신', account_id: event.accountId })
+    this.logger.log({ message: 'account.suspended.v1 received', account_id: event.accountId })
     await this.commandBus.execute(new SuspendCardsByAccountCommand({ accountId: event.accountId }))
   }
 
   @HandleIntegrationEvent('account.closed.v1')
   public async onAccountClosed(event: { accountId: string }): Promise<void> {
-    this.logger.log({ message: 'account.closed.v1 수신', account_id: event.accountId })
+    this.logger.log({ message: 'account.closed.v1 received', account_id: event.accountId })
     await this.commandBus.execute(new CancelCardsByAccountCommand({ accountId: event.accountId }))
   }
 }

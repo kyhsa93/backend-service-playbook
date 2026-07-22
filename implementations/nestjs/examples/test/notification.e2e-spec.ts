@@ -36,7 +36,7 @@ async function fetchSesMessages(endpoint: string): Promise<SesMessage[]> {
   return body.messages
 }
 
-describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () => {
+describe('SES email sent on Account domain events (e2e)', () => {
   let postgres: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
   let sesEndpoint: string
@@ -128,7 +128,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     return dataSource.getRepository(SentEmailEntity).findOneBy({ accountId, eventType })
   }
 
-  it('계좌_생성시_SES로_이메일이_발송되고_발송_내역이_DB와_localstack에_기록된다', async () => {
+  it('on_account_creation_an_email_is_sent_via_SES_and_the_send_record_is_stored_in_the_DB_and_localstack', async () => {
     const response = await request(app.getHttpServer())
       .post('/accounts')
       .set('Authorization', `Bearer ${ownerToken}`)
@@ -150,7 +150,7 @@ describe('Account 도메인 이벤트 발생시 SES 이메일 발송 (e2e)', () 
     expect(matched?.Destination.ToAddresses).toContain(RECIPIENT_EMAIL)
   })
 
-  it('입금시_SES로_이메일이_발송되고_발송_내역이_DB에_기록된다', async () => {
+  it('on_deposit_an_email_is_sent_via_SES_and_the_send_record_is_stored_in_the_DB', async () => {
     const createResponse = await request(app.getHttpServer())
       .post('/accounts')
       .set('Authorization', `Bearer ${ownerToken}`)

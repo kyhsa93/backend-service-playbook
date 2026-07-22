@@ -50,10 +50,10 @@ Use **snake_case** for the field names of a log object.
 
 ```typescript
 // a business event log
-this.logger.log({ message: '주문 생성 완료', order_id: orderId, user_id: userId, amount })
+this.logger.log({ message: 'Order created', order_id: orderId, user_id: userId, amount })
 
 // an error log
-this.logger.error({ message: 'SQS 전송 실패', event_id: event.eventId, error })
+this.logger.error({ message: 'Failed to send to SQS', event_id: event.eventId, error })
 ```
 
 ### Per-Layer Logging Criteria
@@ -134,7 +134,7 @@ export class AppModule implements NestModule {
 import { CorrelationIdStore } from '@/common/correlation-id-store'
 
 this.logger.log({
-  message: '주문 생성 완료',
+  message: 'Order created',
   correlation_id: CorrelationIdStore.getId(),
   order_id: orderId
 })

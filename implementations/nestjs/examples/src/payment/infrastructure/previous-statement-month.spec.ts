@@ -1,7 +1,7 @@
 import { computePreviousStatementMonth } from '@/payment/infrastructure/previous-statement-month'
 
 describe('computePreviousStatementMonth', () => {
-  it('compute_when_7월_1일_실행되면_then_6월_전체_구간을_반환한다', () => {
+  it('compute_when_run_on_July_1st_then_returns_the_full_June_range', () => {
     const result = computePreviousStatementMonth(new Date('2026-07-01T01:00:00.000Z'))
 
     expect(result.statementMonth).toBe('2026-06')
@@ -9,7 +9,7 @@ describe('computePreviousStatementMonth', () => {
     expect(result.monthEnd).toEqual(new Date('2026-07-01T00:00:00.000Z'))
   })
 
-  it('compute_when_1월_1일_실행되면_then_연도가_바뀐_전년_12월_구간을_반환한다', () => {
+  it('compute_when_run_on_January_1st_then_returns_the_previous_years_December_range', () => {
     const result = computePreviousStatementMonth(new Date('2026-01-01T01:00:00.000Z'))
 
     expect(result.statementMonth).toBe('2025-12')

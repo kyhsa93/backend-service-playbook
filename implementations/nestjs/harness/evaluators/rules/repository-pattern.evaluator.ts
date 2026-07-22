@@ -52,7 +52,7 @@ export function evaluateRepositoryPattern(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'repository.abstract-class',
           severity: 'high',
-          message: `repository는 abstract class여야 함: ${file}`
+          message: `The repository must be an abstract class: ${file}`
         })
         score -= 5
       }
@@ -63,7 +63,7 @@ export function evaluateRepositoryPattern(root: string): EvaluatorResult {
         failures.push({
           ruleId: 'repository.no-direct-instantiation',
           severity: 'high',
-          message: `application에서 repository 직접 생성 금지: ${file}`
+          message: `Directly instantiating a repository in application is forbidden: ${file}`
         })
         score -= 5
       }

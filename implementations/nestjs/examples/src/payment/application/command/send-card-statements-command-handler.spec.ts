@@ -41,7 +41,7 @@ describe('SendCardStatementsCommandHandler', () => {
     notificationService = module.get(CardStatementNotificationService)
   })
 
-  it('execute_when_ACTIVE_카드에_아직_발송_안됐으면_then_요약_통계로_발송하고_건수를_반환한다', async () => {
+  it('execute_when_an_ACTIVE_card_has_not_been_sent_yet_then_sends_with_summary_stats_and_returns_the_count', async () => {
     cardAdapter.findActiveCards.mockResolvedValue([{ cardId: 'card-1', accountId: 'account-1', ownerId: 'owner-1' }])
     notificationService.hasSentStatement.mockResolvedValue(false)
     paymentRepository.summarizePayments.mockResolvedValue({ count: 3, totalAmount: 15000 })
@@ -63,7 +63,7 @@ describe('SendCardStatementsCommandHandler', () => {
     })
   })
 
-  it('execute_when_이용_건수가_0이어도_then_발송한다', async () => {
+  it('execute_when_the_usage_count_is_0_then_still_sends', async () => {
     cardAdapter.findActiveCards.mockResolvedValue([{ cardId: 'card-1', accountId: 'account-1', ownerId: 'owner-1' }])
     notificationService.hasSentStatement.mockResolvedValue(false)
     paymentRepository.summarizePayments.mockResolvedValue({ count: 0, totalAmount: 0 })
@@ -77,7 +77,7 @@ describe('SendCardStatementsCommandHandler', () => {
     expect(notificationService.sendStatement).toHaveBeenCalledWith(expect.objectContaining({ paymentCount: 0, totalAmount: 0 }))
   })
 
-  it('execute_when_이미_이번_달_발송했으면_then_스킵하고_요약_쿼리도_호출하지_않는다', async () => {
+  it('execute_when_already_sent_this_month_then_skips_and_does_not_call_the_summary_query_either', async () => {
     cardAdapter.findActiveCards.mockResolvedValue([{ cardId: 'card-1', accountId: 'account-1', ownerId: 'owner-1' }])
     notificationService.hasSentStatement.mockResolvedValue(true)
 
@@ -88,7 +88,7 @@ describe('SendCardStatementsCommandHandler', () => {
     expect(notificationService.sendStatement).not.toHaveBeenCalled()
   })
 
-  it('execute_when_계좌를_찾을_수_없으면_then_스킵한다', async () => {
+  it('execute_when_the_account_cannot_be_found_then_skips', async () => {
     cardAdapter.findActiveCards.mockResolvedValue([{ cardId: 'card-1', accountId: 'account-1', ownerId: 'owner-1' }])
     notificationService.hasSentStatement.mockResolvedValue(false)
     paymentRepository.summarizePayments.mockResolvedValue({ count: 1, totalAmount: 1000 })
@@ -100,7 +100,7 @@ describe('SendCardStatementsCommandHandler', () => {
     expect(notificationService.sendStatement).not.toHaveBeenCalled()
   })
 
-  it('execute_when_ACTIVE_카드가_없으면_then_0을_반환한다', async () => {
+  it('execute_when_there_are_no_ACTIVE_cards_then_returns_0', async () => {
     cardAdapter.findActiveCards.mockResolvedValue([])
 
     const sentCount = await handler.execute(command)

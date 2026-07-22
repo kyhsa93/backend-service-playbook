@@ -21,7 +21,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'dockerfile.multistage-required',
       severity: 'critical',
-      message: 'Dockerfile에 멀티스테이지 빌드(AS build)가 없습니다. build → production 2단계 구조가 필요합니다.',
+      message: 'The Dockerfile has no multi-stage build (AS build). A build -> production two-stage structure is required.',
       docRef: DOC
     })
     score -= penaltyFor('critical')
@@ -32,7 +32,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'dockerfile.cmd-node-direct',
       severity: 'high',
-      message: 'CMD에서 npm/yarn wrapper 대신 node dist/main.js를 직접 실행해야 합니다. npm은 SIGTERM을 자식 프로세스에 전달하지 않습니다.',
+      message: 'CMD must run node dist/main.js directly instead of an npm/yarn wrapper. npm does not forward SIGTERM to its child process.',
       docRef: DOC
     })
     score -= penaltyFor('high')
@@ -43,7 +43,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'dockerfile.prod-deps-only',
       severity: 'medium',
-      message: 'Dockerfile production 스테이지에서 npm ci --omit=dev로 devDependencies를 제외해야 합니다.',
+      message: 'The Dockerfile production stage must exclude devDependencies with npm ci --omit=dev.',
       docRef: DOC
     })
     score -= penaltyFor('medium')
@@ -58,7 +58,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'dockerfile.non-root-user-missing',
       severity: 'high',
-      message: 'Dockerfile에 USER 지시문이 없습니다 — 컨테이너가 root로 실행됩니다. non-root 사용자로 전환해야 합니다(node:alpine은 USER node로 기본 제공되는 사용자를 바로 쓸 수 있습니다).',
+      message: 'The Dockerfile has no USER directive — the container runs as root. It must switch to a non-root user (node:alpine provides a ready-to-use "node" user via USER node).',
       docRef: DOC
     })
     score -= penaltyFor('high')
@@ -69,7 +69,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'dockerfile.dockerignore-missing',
       severity: 'medium',
-      message: '.dockerignore 파일이 없습니다. node_modules, dist, .env* 등을 제외해야 합니다.',
+      message: 'The .dockerignore file is missing. It must exclude node_modules, dist, .env*, etc.',
       docRef: DOC
     })
     score -= penaltyFor('medium')
@@ -81,7 +81,7 @@ export function evaluateDockerfile(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'dockerfile.healthcheck-missing',
       severity: 'medium',
-      message: 'HEALTHCHECK 지시문이 없습니다. 단독 docker run 환경에서 컨테이너 헬스 상태를 바로 확인하려면 필요합니다(오케스트레이터가 liveness/readiness probe를 이미 담당한다면 생략 가능).',
+      message: 'The HEALTHCHECK directive is missing. It is needed to check container health directly in a standalone docker run environment (it may be omitted if an orchestrator already handles liveness/readiness probes).',
       docRef: `${DOC}#principles`
     })
     score -= penaltyFor('medium')

@@ -16,7 +16,7 @@ describe('OrderController (e2e)', () => {
 
   afterAll(() => app.close())
 
-  it('GET /orders/:orderId — 존재하는 주문 조회', () => {
+  it('GET /orders/:orderId — looks up an existing order', () => {
     return request(app.getHttpServer()).get('/orders/1').expect(200)
   })
 })

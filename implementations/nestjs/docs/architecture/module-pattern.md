@@ -147,7 +147,7 @@ export class OrderCommandService {
     const user = await this.userAdapter
       .findUsers({ userId: command.userId, take: 1, page: 0 })
       .then((r) => r.users.pop())
-    if (!user) throw new Error(ErrorMessage['사용자를 찾을 수 없습니다.'])
+    if (!user) throw new Error(ErrorMessage['User not found.'])
 
     const order = new Order({ userId: user.userId, items: command.items.map((i) => new OrderItem(i)), status: 'pending' })
     await this.orderRepository.saveOrder(order)

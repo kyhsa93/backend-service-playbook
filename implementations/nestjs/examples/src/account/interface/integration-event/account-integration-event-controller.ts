@@ -19,7 +19,7 @@ export class AccountIntegrationEventController {
 
   @HandleIntegrationEvent('payment.completed.v1')
   public async onPaymentCompleted(event: { paymentId: string; accountId: string; amount: number }): Promise<void> {
-    this.logger.log({ message: 'payment.completed.v1 수신', payment_id: event.paymentId, account_id: event.accountId })
+    this.logger.log({ message: 'payment.completed.v1 received', payment_id: event.paymentId, account_id: event.accountId })
     await this.commandBus.execute(new WithdrawByPaymentCommand({
       accountId: event.accountId,
       amount: event.amount,
@@ -29,7 +29,7 @@ export class AccountIntegrationEventController {
 
   @HandleIntegrationEvent('payment.cancelled.v1')
   public async onPaymentCancelled(event: { paymentId: string; accountId: string; amount: number }): Promise<void> {
-    this.logger.log({ message: 'payment.cancelled.v1 수신', payment_id: event.paymentId, account_id: event.accountId })
+    this.logger.log({ message: 'payment.cancelled.v1 received', payment_id: event.paymentId, account_id: event.accountId })
     await this.commandBus.execute(new DepositByPaymentCommand({
       accountId: event.accountId,
       amount: event.amount,
@@ -44,7 +44,7 @@ export class AccountIntegrationEventController {
     accountId: string
     amount: number
   }): Promise<void> {
-    this.logger.log({ message: 'refund.approved.v1 수신', refund_id: event.refundId, account_id: event.accountId })
+    this.logger.log({ message: 'refund.approved.v1 received', refund_id: event.refundId, account_id: event.accountId })
     await this.commandBus.execute(new DepositByPaymentCommand({
       accountId: event.accountId,
       amount: event.amount,

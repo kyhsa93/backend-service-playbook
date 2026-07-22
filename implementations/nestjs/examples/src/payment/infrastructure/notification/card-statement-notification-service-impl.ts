@@ -36,9 +36,9 @@ export class CardStatementNotificationServiceImpl extends CardStatementNotificat
     currency: string
     recipient: string
   }): Promise<void> {
-    const subject = `[Card] ${params.statementMonth} 카드 사용내역 안내`
-    const body = `${params.statementMonth} 카드(${params.cardId}) 사용내역입니다. `
-      + `이용 건수: ${params.paymentCount}건, 총 이용금액: ${params.totalAmount} ${params.currency}`
+    const subject = `[Card] Your ${params.statementMonth} card statement`
+    const body = `Here is your card (${params.cardId}) statement for ${params.statementMonth}. `
+      + `Number of transactions: ${params.paymentCount}, total amount: ${params.totalAmount} ${params.currency}`
 
     const result = await this.sesClient.send(new SendEmailCommand({
       Source: getSesSenderEmail(),
@@ -63,7 +63,7 @@ export class CardStatementNotificationServiceImpl extends CardStatementNotificat
     })
 
     this.logger.log({
-      message: '카드 사용내역 발송됨',
+      message: 'Card statement sent',
       card_id: params.cardId,
       statement_month: params.statementMonth,
       recipient: params.recipient,

@@ -45,7 +45,7 @@ export function evaluateDomainService(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-service.injectable-forbidden',
         severity: 'high',
-        message: `${rel(file)}에 @Injectable() 사용 금지. Domain Service는 NestJS 프레임워크에 의존하지 않아야 합니다.`,
+        message: `${rel(file)} must not use @Injectable(). A Domain Service must not depend on the NestJS framework.`,
         docRef: DOC
       })
       score -= penaltyFor('high')
@@ -56,7 +56,7 @@ export function evaluateDomainService(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'domain-service.nestjs-decorator-forbidden',
         severity: 'high',
-        message: `${rel(file)}에 NestJS 라우팅/모듈 데코레이터 사용 금지. Domain Service는 순수 TypeScript 클래스여야 합니다.`,
+        message: `${rel(file)} must not use NestJS routing/module decorators. A Domain Service must be a plain TypeScript class.`,
         docRef: DOC
       })
       score -= penaltyFor('high')

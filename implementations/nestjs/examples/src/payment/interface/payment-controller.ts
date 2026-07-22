@@ -60,11 +60,11 @@ export class PaymentController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [PaymentErrorMessage['연결할 카드를 찾을 수 없습니다.'], NotFoundException, ErrorCode.LINKED_CARD_NOT_FOUND],
-          [PaymentErrorMessage['활성 상태의 카드로만 결제할 수 있습니다.'], BadRequestException, ErrorCode.PAYMENT_REQUIRES_ACTIVE_CARD],
-          [PaymentErrorMessage['연결된 계좌를 찾을 수 없습니다.'], NotFoundException, ErrorCode.LINKED_ACCOUNT_NOT_FOUND],
-          [PaymentErrorMessage['활성 상태의 계좌로만 결제할 수 있습니다.'], BadRequestException, ErrorCode.PAYMENT_REQUIRES_ACTIVE_ACCOUNT],
-          [PaymentErrorMessage['계좌 잔액이 부족하여 결제할 수 없습니다.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
+          [PaymentErrorMessage['The card to link could not be found.'], NotFoundException, ErrorCode.LINKED_CARD_NOT_FOUND],
+          [PaymentErrorMessage['Only an active card can be used for payment.'], BadRequestException, ErrorCode.PAYMENT_REQUIRES_ACTIVE_CARD],
+          [PaymentErrorMessage['The linked account could not be found.'], NotFoundException, ErrorCode.LINKED_ACCOUNT_NOT_FOUND],
+          [PaymentErrorMessage['Only an active account can be used for payment.'], BadRequestException, ErrorCode.PAYMENT_REQUIRES_ACTIVE_ACCOUNT],
+          [PaymentErrorMessage['Payment cannot be made due to insufficient account balance.'], BadRequestException, ErrorCode.INSUFFICIENT_BALANCE]
         ])
       })
   }
@@ -83,8 +83,8 @@ export class PaymentController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [PaymentErrorMessage['결제를 찾을 수 없습니다.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND],
-          [PaymentErrorMessage['완료된 결제만 취소할 수 있습니다.'], BadRequestException, ErrorCode.PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT]
+          [PaymentErrorMessage['Payment not found.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND],
+          [PaymentErrorMessage['Only a completed payment can be cancelled.'], BadRequestException, ErrorCode.PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT]
         ])
       })
   }
@@ -102,7 +102,7 @@ export class PaymentController {
     ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [PaymentErrorMessage['결제를 찾을 수 없습니다.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
+        [PaymentErrorMessage['Payment not found.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
       ])
     })
   }
@@ -144,7 +144,7 @@ export class PaymentController {
       .catch((error) => {
         this.logger.error(error)
         throw generateErrorResponse(error.message, [
-          [PaymentErrorMessage['결제를 찾을 수 없습니다.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
+          [PaymentErrorMessage['Payment not found.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
         ])
       })
   }
@@ -163,7 +163,7 @@ export class PaymentController {
     ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
-        [PaymentErrorMessage['결제를 찾을 수 없습니다.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
+        [PaymentErrorMessage['Payment not found.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
       ])
     })
   }

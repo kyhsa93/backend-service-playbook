@@ -23,7 +23,7 @@ export class CardAdapterImpl extends CardAdapter {
       return { cardId: card.cardId, accountId: card.accountId, active: card.status === CardStatus.ACTIVE }
     } catch (error) {
       // Translate the upstream "card not found" signal into a null the Payment domain understands (preventing model pollution).
-      if (error instanceof Error && error.message === CardErrorMessage['카드를 찾을 수 없습니다.']) return null
+      if (error instanceof Error && error.message === CardErrorMessage['Card not found.']) return null
       throw error
     }
   }

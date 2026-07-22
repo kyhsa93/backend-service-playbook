@@ -58,32 +58,32 @@ const ANTI_PATTERNS: AntiPattern[] = [
   {
     ruleId: 'repository-naming.find-by-shape',
     test: (name) => /^findBy([A-Z]|$)/.test(name),
-    describe: (name) => `${name}: find...By... 형태 금지. 조건은 find<Noun>s(query) 하나의 query 객체 파라미터로 받는다 (예: findAccounts({ accountId, ownerId }))`
+    describe: (name) => `${name}: find...By... form is forbidden. Conditions must be received as a single query object parameter to find<Noun>s(query) (e.g. findAccounts({ accountId, ownerId }))`
   },
   {
     ruleId: 'repository-naming.find-all-bare',
     test: (name) => name === 'findAll',
-    describe: () => `findAll: bare findAll 금지. 도메인 명사를 포함한 find<Noun>s로 명명한다 (예: findAccounts)`
+    describe: () => `findAll: a bare findAll is forbidden. Name it find<Noun>s, including the domain noun (e.g. findAccounts)`
   },
   {
     ruleId: 'repository-naming.count-method',
     test: (name) => /^count/.test(name),
-    describe: (name) => `${name}: 별도 count 메서드 금지. find<Noun>s가 { items, count } 형태로 개수를 함께 반환한다`
+    describe: (name) => `${name}: a separate count method is forbidden. find<Noun>s must return the count together in an { items, count } shape`
   },
   {
     ruleId: 'repository-naming.save-bare',
     test: (name) => name === 'save',
-    describe: () => `save: bare save 금지. 도메인 명사를 포함한 save<Noun>으로 명명한다 (예: saveAccount)`
+    describe: () => `save: a bare save is forbidden. Name it save<Noun>, including the domain noun (e.g. saveAccount)`
   },
   {
     ruleId: 'repository-naming.delete-bare',
     test: (name) => name === 'delete',
-    describe: () => `delete: bare delete 금지. 도메인 명사를 포함한 delete<Noun>으로 명명한다 (예: deleteAccount)`
+    describe: () => `delete: a bare delete is forbidden. Name it delete<Noun>, including the domain noun (e.g. deleteAccount)`
   },
   {
     ruleId: 'repository-naming.update-method',
     test: (name) => /^update([A-Z]|$)/.test(name),
-    describe: (name) => `${name}: 별도 update 메서드 금지. 조회 후 Aggregate의 도메인 메서드로 상태를 변경하고 save<Noun>으로 저장한다`
+    describe: (name) => `${name}: a separate update method is forbidden. Load it, change state via the Aggregate's domain method, and save it with save<Noun>`
   }
 ]
 

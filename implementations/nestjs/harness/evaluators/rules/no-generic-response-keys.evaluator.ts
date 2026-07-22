@@ -19,7 +19,7 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 import { penaltyFor } from '../shared/penalty'
 import { classifyLayer, readSourceFile, walkTsFiles } from '../shared/ast-utils'
 
-const DOC_REF = '../../docs/architecture/api-response.md#목록-조회-응답-형식'
+const DOC_REF = '../../docs/architecture/api-response.md#list-lookup-response-format'
 
 const GENERIC_KEYS = new Set(['result', 'data', 'items'])
 
@@ -59,7 +59,7 @@ function inspectFile(filePath: string): Violation[] {
 
           violations.push({
             ruleId: 'no-generic-response-keys.generic-list-field',
-            message: `${node.name.text}.${name} — 목록 응답 배열 필드에 범용 키(${name}) 사용 금지. 도메인 복수형 명사를 사용한다 (예: orders, accounts)`
+            message: `${node.name.text}.${name} — a generic key (${name}) must not be used for a list response's array field. Use a domain-specific plural noun instead (e.g. orders, accounts)`
           })
         }
       }

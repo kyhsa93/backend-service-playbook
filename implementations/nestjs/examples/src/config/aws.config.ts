@@ -20,7 +20,7 @@ export function getAwsCredentials(): { accessKeyId: string; secretAccessKey: str
 // The shared Domain/Integration Event SQS queue that OutboxPoller publishes to and OutboxConsumer receives from.
 export function getDomainEventQueueUrl(): string {
   const url = process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-  if (!url) throw new Error('SQS_DOMAIN_EVENT_QUEUE_URL 환경 변수가 설정되지 않았습니다.')
+  if (!url) throw new Error('The SQS_DOMAIN_EVENT_QUEUE_URL environment variable is not set.')
   return url
 }
 
@@ -30,6 +30,6 @@ export function getDomainEventQueueUrl(): string {
 // mixed (see docs/architecture/scheduling.md, the Task vs Domain Event section).
 export function getTaskQueueUrl(): string {
   const url = process.env.SQS_TASK_QUEUE_URL
-  if (!url) throw new Error('SQS_TASK_QUEUE_URL 환경 변수가 설정되지 않았습니다.')
+  if (!url) throw new Error('The SQS_TASK_QUEUE_URL environment variable is not set.')
   return url
 }

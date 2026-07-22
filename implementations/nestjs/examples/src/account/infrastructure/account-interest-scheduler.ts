@@ -28,10 +28,10 @@ export class AccountInterestScheduler {
         { today: today.toISOString() },
         { groupId: 'account.interest', deduplicationId: dedupId }
       )
-      this.logger.log({ message: '일 이자 지급 Task 적재', dedup_id: dedupId })
+      this.logger.log({ message: 'Daily interest Task enqueued', dedup_id: dedupId })
     } catch (error) {
       // @nestjs/schedule silently swallows exceptions from Cron handlers, so log explicitly.
-      this.logger.error({ message: '일 이자 지급 Task 적재 실패', dedup_id: dedupId, error })
+      this.logger.error({ message: 'Failed to enqueue daily interest Task', dedup_id: dedupId, error })
     }
   }
 }

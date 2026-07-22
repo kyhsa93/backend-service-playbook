@@ -85,8 +85,8 @@ export class Account {
   }
 
   public deposit(amount: Money, referenceId?: string): Transaction {
-    if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['활성 상태의 계좌만 입금할 수 있습니다.'])
-    if (amount.amount <= 0) throw new Error(AccountErrorMessage['금액은 0보다 커야 합니다.'])
+    if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['Only an active account can accept a deposit.'])
+    if (amount.amount <= 0) throw new Error(AccountErrorMessage['The amount must be greater than 0.'])
 
     this._balance = this._balance.add(amount)
     const transaction = new Transaction({ accountId: this.accountId, type: 'DEPOSIT', amount, referenceId })
@@ -103,9 +103,9 @@ export class Account {
   }
 
   public withdraw(amount: Money, referenceId?: string): Transaction {
-    if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['활성 상태의 계좌만 출금할 수 있습니다.'])
-    if (amount.amount <= 0) throw new Error(AccountErrorMessage['금액은 0보다 커야 합니다.'])
-    if (this._balance.isLessThan(amount)) throw new Error(AccountErrorMessage['잔액이 부족합니다.'])
+    if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['Only an active account can make a withdrawal.'])
+    if (amount.amount <= 0) throw new Error(AccountErrorMessage['The amount must be greater than 0.'])
+    if (this._balance.isLessThan(amount)) throw new Error(AccountErrorMessage['Insufficient balance.'])
 
     this._balance = this._balance.subtract(amount)
     const transaction = new Transaction({ accountId: this.accountId, type: 'WITHDRAWAL', amount, referenceId })
@@ -159,20 +159,20 @@ export class Account {
   }
 
   public suspend(): void {
-    if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['활성 상태의 계좌만 정지할 수 있습니다.'])
+    if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['Only an active account can be suspended.'])
     this._status = AccountStatus.SUSPENDED
     this._events.push(new AccountSuspended({ accountId: this.accountId, email: this.email, suspendedAt: new Date() }))
   }
 
   public reactivate(): void {
-    if (this._status !== AccountStatus.SUSPENDED) throw new Error(AccountErrorMessage['정지 상태의 계좌만 재개할 수 있습니다.'])
+    if (this._status !== AccountStatus.SUSPENDED) throw new Error(AccountErrorMessage['Only a suspended account can be reactivated.'])
     this._status = AccountStatus.ACTIVE
     this._events.push(new AccountReactivated({ accountId: this.accountId, email: this.email, reactivatedAt: new Date() }))
   }
 
   public close(): void {
-    if (this._status === AccountStatus.CLOSED) throw new Error(AccountErrorMessage['이미 종료된 계좌입니다.'])
-    if (!this._balance.isZero()) throw new Error(AccountErrorMessage['잔액이 0이 아닌 계좌는 종료할 수 없습니다.'])
+    if (this._status === AccountStatus.CLOSED) throw new Error(AccountErrorMessage['The account is already closed.'])
+    if (!this._balance.isZero()) throw new Error(AccountErrorMessage['An account with a non-zero balance cannot be closed.'])
     this._status = AccountStatus.CLOSED
     this._events.push(new AccountClosed({ accountId: this.accountId, email: this.email, closedAt: new Date() }))
   }

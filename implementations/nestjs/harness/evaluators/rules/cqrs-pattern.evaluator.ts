@@ -16,7 +16,7 @@ export function evaluateCqrsPattern(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'checklist.step3.application.command-directory-missing',
       severity: 'medium',
-      message: 'application/command 디렉토리가 없습니다'
+      message: 'The application/command directory is missing'
     })
     score -= 8
   }
@@ -25,7 +25,7 @@ export function evaluateCqrsPattern(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'checklist.step3.application.query-directory-missing',
       severity: 'medium',
-      message: 'application/query 디렉토리가 없습니다'
+      message: 'The application/query directory is missing'
     })
     score -= 8
   }
@@ -41,7 +41,7 @@ export function evaluateCqrsPattern(root: string): EvaluatorResult {
     failures.push({
       ruleId: 'checklist.step3.query.no-repository-direct-use',
       severity: 'high',
-      message: 'query 계층에서 Repository 직접 사용이 감지되었습니다'
+      message: 'Direct use of a Repository was detected in the query layer'
     })
     score -= 10
   }

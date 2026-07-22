@@ -73,7 +73,7 @@ const order = await this.orderRepository
   .findOrders({ orderId, take: 1, page: 0 })
   .then((r) => r.orders.pop())
 
-if (!order) throw new Error(OrderErrorMessage['주문을 찾을 수 없습니다.'])
+if (!order) throw new Error(OrderErrorMessage['Order not found.'])
 ```
 
 ## Repository Implementation — the QueryBuilder Pattern
