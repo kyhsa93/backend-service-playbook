@@ -2,11 +2,15 @@ import {
   BadRequestException, Body, Controller, Get, HttpCode,
   Logger, NotFoundException, Param, Post, Query, Req, UseGuards
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+  ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
+  ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
+} from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import { Request } from 'express'
 
 import { generateErrorResponse } from '@/common/generate-error-response'
+import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
 import { CancelPaymentCommand } from '@/payment/application/command/cancel-payment-command'
 import { CreatePaymentCommand } from '@/payment/application/command/create-payment-command'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
@@ -38,6 +42,7 @@ type AuthenticatedRequest = Request & { user: { userId: string } }
 @Controller()
 @ApiTags('Payment')
 @ApiBearerAuth('token')
+@ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
 @UseGuards(AuthGuard)
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name)
@@ -48,8 +53,20 @@ export class PaymentController {
   ) {}
 
   @Post('/payments')
-  @ApiOperation({ operationId: 'createPayment' })
-  @ApiCreatedResponse({ type: CreatePaymentResponseBody })
+  @ApiOperation({
+    operationId: 'createPayment',
+    summary: 'Create a payment',
+    description: 'Charges an active card linked to an active account with sufficient balance. The account balance is debited asynchronously once the payment completes.'
+  })
+  @ApiCreatedResponse({ description: 'The payment was created.', type: CreatePaymentResponseBody })
+  @ApiBadRequestResponse({
+    description: 'One of: the card is not active (`PAYMENT_REQUIRES_ACTIVE_CARD`), the linked account is not active (`PAYMENT_REQUIRES_ACTIVE_ACCOUNT`), the account balance is insufficient (`INSUFFICIENT_BALANCE`), or request validation failed (`VALIDATION_FAILED`).',
+    type: ErrorResponseBody
+  })
+  @ApiNotFoundResponse({
+    description: 'One of: no card exists with the given `cardId` (`LINKED_CARD_NOT_FOUND`), or the card\'s linked account could not be found (`LINKED_ACCOUNT_NOT_FOUND`).',
+    type: ErrorResponseBody
+  })
   public async createPayment(
     @Req() req: AuthenticatedRequest,
     @Body() body: CreatePaymentRequestBody
@@ -71,8 +88,17 @@ export class PaymentController {
 
   @Post('/payments/:paymentId/cancel')
   @HttpCode(204)
-  @ApiOperation({ operationId: 'cancelPayment' })
-  @ApiNoContentResponse()
+  @ApiOperation({
+    operationId: 'cancelPayment',
+    summary: 'Cancel a payment',
+    description: 'Cancels a completed payment before it is refunded.'
+  })
+  @ApiNoContentResponse({ description: 'The payment was cancelled.' })
+  @ApiBadRequestResponse({
+    description: 'One of: only a completed payment can be cancelled (`PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT`), or request validation failed (`VALIDATION_FAILED`).',
+    type: ErrorResponseBody
+  })
+  @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async cancelPayment(
     @Req() req: AuthenticatedRequest,
     @Param('paymentId') paymentId: string,
@@ -90,8 +116,13 @@ export class PaymentController {
   }
 
   @Get('/payments/:paymentId')
-  @ApiOperation({ operationId: 'getPayment' })
-  @ApiOkResponse({ type: GetPaymentResponseBody })
+  @ApiOperation({
+    operationId: 'getPayment',
+    summary: 'Look up a payment',
+    description: 'Returns the payment only if it belongs to the authenticated requester.'
+  })
+  @ApiOkResponse({ description: 'The payment was found.', type: GetPaymentResponseBody })
+  @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` for this requester (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getPayment(
     @Req() req: AuthenticatedRequest,
     @Param() param: GetPaymentRequestParam
@@ -108,8 +139,13 @@ export class PaymentController {
   }
 
   @Get('/payments')
-  @ApiOperation({ operationId: 'getPayments' })
-  @ApiOkResponse({ type: GetPaymentsResponseBody })
+  @ApiOperation({
+    operationId: 'getPayments',
+    summary: "List the requester's payments",
+    description: 'Returns the authenticated requester\'s payments, newest first, paginated with `page`/`take`.'
+  })
+  @ApiOkResponse({ description: 'The payment list was found.', type: GetPaymentsResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `page`/`take` out of range.', type: ErrorResponseBody })
   public async getPayments(
     @Req() req: AuthenticatedRequest,
     @Query() querystring: GetPaymentsRequestQuerystring
@@ -121,8 +157,14 @@ export class PaymentController {
   }
 
   @Post('/payments/:paymentId/refunds')
-  @ApiOperation({ operationId: 'requestRefund' })
-  @ApiCreatedResponse({ type: RequestRefundResponseBody })
+  @ApiOperation({
+    operationId: 'requestRefund',
+    summary: 'Request a refund',
+    description: 'Requests a refund for a payment. Eligibility is judged synchronously (`APPROVED`/`REJECTED`); an approved refund is credited back to the account asynchronously.'
+  })
+  @ApiCreatedResponse({ description: 'The refund request was recorded (its `status` may still be `REJECTED` — check the response body, not just the HTTP status).', type: RequestRefundResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. a non-positive amount or missing reason.', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async requestRefund(
     @Req() req: AuthenticatedRequest,
     @Param('paymentId') paymentId: string,
@@ -150,8 +192,14 @@ export class PaymentController {
   }
 
   @Get('/payments/:paymentId/refunds')
-  @ApiOperation({ operationId: 'getRefunds' })
-  @ApiOkResponse({ type: GetRefundsResponseBody })
+  @ApiOperation({
+    operationId: 'getRefunds',
+    summary: "List a payment's refunds",
+    description: 'Returns the refunds requested against a payment, newest first, paginated with `page`/`take`.'
+  })
+  @ApiOkResponse({ description: 'The refund list was found.', type: GetRefundsResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `page`/`take` out of range.', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getRefunds(
     @Req() req: AuthenticatedRequest,
     @Param() param: GetRefundsRequestParam,

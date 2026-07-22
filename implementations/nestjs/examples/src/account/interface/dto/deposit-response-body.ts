@@ -3,18 +3,18 @@ import { ApiProperty } from '@nestjs/swagger'
 import { MoneyResult } from '@/account/application/query/account-result'
 
 export class DepositResponseBody {
-  @ApiProperty()
+  @ApiProperty({ description: 'A 32-character hex string uniquely identifying the transaction.' })
   public readonly transactionId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The account this transaction belongs to.' })
   public readonly accountId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The transaction type.', example: 'DEPOSIT' })
   public readonly type: string
 
-  @ApiProperty({ type: MoneyResult })
+  @ApiProperty({ description: 'The deposited amount.', type: MoneyResult })
   public readonly amount: MoneyResult
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the transaction was recorded.' })
   public readonly createdAt: Date
 }

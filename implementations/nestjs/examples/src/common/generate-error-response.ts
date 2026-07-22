@@ -1,4 +1,6 @@
-import { HttpException, HttpStatus, InternalServerErrorException } from '@nestjs/common'
+import { STATUS_CODES } from 'http'
+
+import { HttpException, InternalServerErrorException } from '@nestjs/common'
 
 type ExceptionCtor = new (response: string | object) => HttpException
 
@@ -10,6 +12,6 @@ export function generateErrorResponse(
   const [, ExceptionClass, code] = matched ?? [null, InternalServerErrorException, 'INTERNAL_ERROR']
   const probe = new ExceptionClass(message)
   const statusCode = probe.getStatus()
-  const error = HttpStatus[statusCode] ?? probe.name
+  const error = STATUS_CODES[statusCode] ?? probe.name
   return new ExceptionClass({ statusCode, code, message, error })
 }

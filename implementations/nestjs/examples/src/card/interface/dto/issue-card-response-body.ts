@@ -1,21 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger'
 
 export class IssueCardResponseBody {
-  @ApiProperty()
+  @ApiProperty({ description: 'A 32-character hex string uniquely identifying the card.' })
   public readonly cardId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The account this card is linked to.' })
   public readonly accountId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ID of the user who owns this card.' })
   public readonly ownerId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The card brand.', example: 'VISA' })
   public readonly brand: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The card status.', enum: ['ACTIVE', 'SUSPENDED', 'CANCELLED'] })
   public readonly status: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the card was issued.' })
   public readonly createdAt: Date
 }

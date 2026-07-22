@@ -1,54 +1,54 @@
 import { ApiProperty } from '@nestjs/swagger'
 
 export class MoneyResult {
-  @ApiProperty()
+  @ApiProperty({ description: 'The amount, in the currency\'s minor unit.' })
   public readonly amount: number
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ISO 4217 currency code.', example: 'KRW' })
   public readonly currency: string
 }
 
 export class GetAccountResult {
-  @ApiProperty()
+  @ApiProperty({ description: 'A 32-character hex string uniquely identifying the account.' })
   public readonly accountId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The ID of the user who owns this account.' })
   public readonly ownerId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: "The account owner's email address." })
   public readonly email: string
 
-  @ApiProperty({ type: MoneyResult })
+  @ApiProperty({ description: 'The current balance.', type: MoneyResult })
   public readonly balance: MoneyResult
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The account status.', enum: ['ACTIVE', 'SUSPENDED', 'CLOSED'] })
   public readonly status: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the account was opened.' })
   public readonly createdAt: Date
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the account was last modified.' })
   public readonly updatedAt: Date
 }
 
 export class TransactionSummaryResult {
-  @ApiProperty()
+  @ApiProperty({ description: 'A 32-character hex string uniquely identifying the transaction.' })
   public readonly transactionId: string
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The transaction type.', enum: ['DEPOSIT', 'WITHDRAWAL', 'INTEREST'] })
   public readonly type: string
 
-  @ApiProperty({ type: MoneyResult })
+  @ApiProperty({ description: 'The transaction amount.', type: MoneyResult })
   public readonly amount: MoneyResult
 
-  @ApiProperty()
+  @ApiProperty({ description: 'When the transaction was recorded.' })
   public readonly createdAt: Date
 }
 
 export class GetTransactionsResult {
-  @ApiProperty({ type: [TransactionSummaryResult] })
+  @ApiProperty({ description: 'The transactions for the current page, newest first.', type: [TransactionSummaryResult] })
   public readonly transactions: TransactionSummaryResult[]
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The total number of transactions across all pages.' })
   public readonly count: number
 }

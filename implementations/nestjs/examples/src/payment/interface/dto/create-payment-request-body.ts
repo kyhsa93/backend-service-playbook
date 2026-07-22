@@ -3,12 +3,12 @@ import { Type } from 'class-transformer'
 import { IsInt, IsString, Min, MinLength } from 'class-validator'
 
 export class CreatePaymentRequestBody {
-  @ApiProperty()
+  @ApiProperty({ description: 'The card to charge.' })
   @IsString()
   @MinLength(1)
   public readonly cardId: string
 
-  @ApiProperty({ minimum: 1 })
+  @ApiProperty({ description: 'The amount to charge, in the account\'s currency minor unit. Must be a positive integer.', minimum: 1, example: 5000 })
   @Type(() => Number)
   @IsInt()
   @Min(1)

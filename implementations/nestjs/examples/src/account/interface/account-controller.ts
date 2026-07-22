@@ -2,11 +2,15 @@ import {
   BadRequestException, Body, Controller, Get, HttpCode,
   Logger, NotFoundException, Param, Post, Query, Req, UseGuards
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+  ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
+  ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
+} from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import { Request } from 'express'
 
 import { generateErrorResponse } from '@/common/generate-error-response'
+import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
 import { CloseAccountCommand } from '@/account/application/command/close-account-command'
 import { CreateAccountCommand } from '@/account/application/command/create-account-command'
 import { DepositCommand } from '@/account/application/command/deposit-command'
@@ -41,6 +45,7 @@ type AuthenticatedRequest = Request & { user: { userId: string } }
 @Controller()
 @ApiTags('Account')
 @ApiBearerAuth('token')
+@ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
 @UseGuards(AuthGuard)
 export class AccountController {
   private readonly logger = new Logger(AccountController.name)
@@ -51,8 +56,13 @@ export class AccountController {
   ) {}
 
   @Post('/accounts')
-  @ApiOperation({ operationId: 'createAccount' })
-  @ApiCreatedResponse({ type: CreateAccountResponseBody })
+  @ApiOperation({
+    operationId: 'createAccount',
+    summary: 'Open a new account',
+    description: 'Opens a new account for the authenticated requester with a 0 balance in the given currency.'
+  })
+  @ApiCreatedResponse({ description: 'The account was created.', type: CreateAccountResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. an invalid email or missing currency.', type: ErrorResponseBody })
   public async createAccount(
     @Req() req: AuthenticatedRequest,
     @Body() body: CreateAccountRequestBody
@@ -74,8 +84,17 @@ export class AccountController {
   }
 
   @Post('/accounts/:accountId/deposit')
-  @ApiOperation({ operationId: 'deposit' })
-  @ApiCreatedResponse({ type: DepositResponseBody })
+  @ApiOperation({
+    operationId: 'deposit',
+    summary: 'Deposit money into an account',
+    description: 'Credits the given amount to the account and records a `DEPOSIT` transaction.'
+  })
+  @ApiCreatedResponse({ description: 'The deposit succeeded.', type: DepositResponseBody })
+  @ApiBadRequestResponse({
+    description: 'One of: the amount is not a positive integer (`INVALID_AMOUNT`), the account is not active (`DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`), or request validation failed (`VALIDATION_FAILED`).',
+    type: ErrorResponseBody
+  })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async deposit(
     @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
@@ -101,8 +120,17 @@ export class AccountController {
   }
 
   @Post('/accounts/:accountId/withdraw')
-  @ApiOperation({ operationId: 'withdraw' })
-  @ApiCreatedResponse({ type: WithdrawResponseBody })
+  @ApiOperation({
+    operationId: 'withdraw',
+    summary: 'Withdraw money from an account',
+    description: 'Debits the given amount from the account and records a `WITHDRAWAL` transaction.'
+  })
+  @ApiCreatedResponse({ description: 'The withdrawal succeeded.', type: WithdrawResponseBody })
+  @ApiBadRequestResponse({
+    description: 'One of: the amount is not a positive integer (`INVALID_AMOUNT`), the account is not active (`WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`), the balance is insufficient (`INSUFFICIENT_BALANCE`), or request validation failed (`VALIDATION_FAILED`).',
+    type: ErrorResponseBody
+  })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async withdraw(
     @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
@@ -129,8 +157,17 @@ export class AccountController {
   }
 
   @Post('/accounts/:accountId/transfer')
-  @ApiOperation({ operationId: 'transfer' })
-  @ApiCreatedResponse({ type: TransferResponseBody })
+  @ApiOperation({
+    operationId: 'transfer',
+    summary: 'Transfer money to another account',
+    description: 'Atomically debits the source account and credits the target account with the given amount, recording one `WITHDRAWAL` and one `DEPOSIT` transaction.'
+  })
+  @ApiCreatedResponse({ description: 'The transfer succeeded.', type: TransferResponseBody })
+  @ApiBadRequestResponse({
+    description: 'One of: the amount is not a positive integer (`INVALID_AMOUNT`), the source and target accounts are the same (`TRANSFER_SAME_ACCOUNT`), either account is not active (`WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`/`DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`), the currencies do not match (`CURRENCY_MISMATCH`), the balance is insufficient (`INSUFFICIENT_BALANCE`), or request validation failed (`VALIDATION_FAILED`).',
+    type: ErrorResponseBody
+  })
+  @ApiNotFoundResponse({ description: 'No account exists with the given source or target `accountId` (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async transfer(
     @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
@@ -173,8 +210,14 @@ export class AccountController {
 
   @Post('/accounts/:accountId/suspend')
   @HttpCode(204)
-  @ApiOperation({ operationId: 'suspendAccount' })
-  @ApiNoContentResponse()
+  @ApiOperation({
+    operationId: 'suspendAccount',
+    summary: 'Suspend an account',
+    description: 'Suspends an active account, blocking further deposits/withdrawals/transfers until it is reactivated.'
+  })
+  @ApiNoContentResponse({ description: 'The account was suspended.' })
+  @ApiBadRequestResponse({ description: 'Only an active account can be suspended (`SUSPEND_REQUIRES_ACTIVE_ACCOUNT`).', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async suspendAccount(
     @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
@@ -192,8 +235,14 @@ export class AccountController {
 
   @Post('/accounts/:accountId/reactivate')
   @HttpCode(204)
-  @ApiOperation({ operationId: 'reactivateAccount' })
-  @ApiNoContentResponse()
+  @ApiOperation({
+    operationId: 'reactivateAccount',
+    summary: 'Reactivate a suspended account',
+    description: 'Moves a suspended account back to active, restoring its ability to accept deposits/withdrawals/transfers.'
+  })
+  @ApiNoContentResponse({ description: 'The account was reactivated.' })
+  @ApiBadRequestResponse({ description: 'Only a suspended account can be reactivated (`REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT`).', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async reactivateAccount(
     @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
@@ -211,8 +260,17 @@ export class AccountController {
 
   @Post('/accounts/:accountId/close')
   @HttpCode(204)
-  @ApiOperation({ operationId: 'closeAccount' })
-  @ApiNoContentResponse()
+  @ApiOperation({
+    operationId: 'closeAccount',
+    summary: 'Close an account',
+    description: 'Permanently closes an account. The balance must be exactly 0 first (withdraw or transfer out any remaining funds).'
+  })
+  @ApiNoContentResponse({ description: 'The account was closed.' })
+  @ApiBadRequestResponse({
+    description: 'One of: the account is already closed (`ACCOUNT_ALREADY_CLOSED`), or the balance is not 0 (`ACCOUNT_BALANCE_NOT_ZERO`).',
+    type: ErrorResponseBody
+  })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async closeAccount(
     @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
@@ -230,8 +288,13 @@ export class AccountController {
   }
 
   @Get('/accounts/:accountId')
-  @ApiOperation({ operationId: 'getAccount' })
-  @ApiOkResponse({ type: GetAccountResponseBody })
+  @ApiOperation({
+    operationId: 'getAccount',
+    summary: 'Look up an account',
+    description: 'Returns the account only if it belongs to the authenticated requester.'
+  })
+  @ApiOkResponse({ description: 'The account was found.', type: GetAccountResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getAccount(
     @Req() req: AuthenticatedRequest,
     @Param() param: GetAccountRequestParam
@@ -246,8 +309,14 @@ export class AccountController {
   }
 
   @Get('/accounts/:accountId/transactions')
-  @ApiOperation({ operationId: 'getTransactions' })
-  @ApiOkResponse({ type: GetTransactionsResponseBody })
+  @ApiOperation({
+    operationId: 'getTransactions',
+    summary: 'List an account\'s transaction history',
+    description: 'Returns the account\'s deposit/withdrawal/interest transactions, newest first, paginated with `page`/`take`.'
+  })
+  @ApiOkResponse({ description: 'The transaction history was found.', type: GetTransactionsResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `page`/`take` out of range.', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getTransactions(
     @Req() req: AuthenticatedRequest,
     @Param() param: GetTransactionsRequestParam,
