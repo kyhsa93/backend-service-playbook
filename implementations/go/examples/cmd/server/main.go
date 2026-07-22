@@ -28,6 +28,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
+	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/logging"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
@@ -230,10 +231,20 @@ func main() {
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
 	passwordHasher := auth.NewBcryptPasswordHasher()
 
+	// RefundReasonClassifier (a Technical Service, domain-service.md) — the API key is resolved
+	// once here (production: Secrets Manager; otherwise: ANTHROPIC_API_KEY) exactly like
+	// jwtSecret above, then injected into the real Claude-API-backed implementation.
+	anthropicAPIKey, err := config.LoadAnthropicAPIKey(context.Background(), secretService, os.Getenv("APP_ENV"))
+	if err != nil {
+		slog.Error("failed to load anthropic api key", "error", err)
+		os.Exit(1)
+	}
+	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(anthropicAPIKey, config.RefundClassifierModel())
+
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, limiter, dbManager)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, refundReasonClassifier, limiter, dbManager)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 

@@ -46,7 +46,7 @@ type PaymentStore interface {
 // much higher threshold) — this keeps production values separate from test
 // values, per rate-limiting.md's "manage thresholds via environment
 // variables" principle.
-func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, limiter *rate.Limiter, txManager command.TransactionManager) (http.Handler, *HealthHandler) {
+func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, refundReasonClassifier command.RefundReasonClassifier, limiter *rate.Limiter, txManager command.TransactionManager) (http.Handler, *HealthHandler) {
 	createAccountHandler := command.NewCreateAccountHandler(repo)
 	depositHandler := command.NewDepositHandler(repo)
 	withdrawHandler := command.NewWithdrawHandler(repo)
@@ -83,7 +83,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	// it (cross-domain.md).
 	createPaymentHandler := command.NewCreatePaymentHandler(paymentStore, paymentCardAdapter, paymentAccountAdapter)
 	cancelPaymentHandler := command.NewCancelPaymentHandler(paymentStore)
-	requestRefundHandler := command.NewRequestRefundHandler(paymentStore, paymentStore)
+	requestRefundHandler := command.NewRequestRefundHandler(paymentStore, paymentStore, refundReasonClassifier)
 	getPaymentHandler := query.NewGetPaymentHandler(paymentStore)
 	getPaymentsHandler := query.NewGetPaymentsHandler(paymentStore)
 	getRefundsHandler := query.NewGetRefundsHandler(paymentStore, paymentStore)

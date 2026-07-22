@@ -24,6 +24,7 @@ var (
 	ErrCancelRequiresCompletedPayment       = errors.New("payment must be completed to cancel")
 	ErrRefundRequiresCompletedPayment       = errors.New("refund requires a completed payment")
 	ErrRefundAmountExceedsPayment           = errors.New("refund amount must not exceed payment amount")
+	ErrRefundFlaggedHighFraudRisk           = errors.New("refund reason was flagged as high fraud risk and requires manual review")
 	ErrCompleteRequiresPendingPayment       = errors.New("payment must be pending to complete")
 	ErrFailRequiresPendingPayment           = errors.New("payment must be pending to fail")
 	ErrRefundApproveRequiresRequestedRefund = errors.New("refund must be requested to approve")

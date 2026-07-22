@@ -24,15 +24,17 @@ type RequestRefundCommand struct {
 // saved with REJECTED status as-is. The Interface layer responds to this
 // not as an error but as 201 + status:REJECTED.
 type RequestRefundHandler struct {
-	payments payment.Repository
-	refunds  payment.RefundRepository
+	payments   payment.Repository
+	refunds    payment.RefundRepository
+	classifier RefundReasonClassifier
 }
 
 func NewRequestRefundHandler(
 	payments payment.Repository,
 	refunds payment.RefundRepository,
+	classifier RefundReasonClassifier,
 ) *RequestRefundHandler {
-	return &RequestRefundHandler{payments: payments, refunds: refunds}
+	return &RequestRefundHandler{payments: payments, refunds: refunds, classifier: classifier}
 }
 
 func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundCommand) (*payment.Refund, error) {
@@ -43,7 +45,12 @@ func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundComm
 
 	r := payment.NewRefund(p.PaymentID, cmd.Amount, cmd.Reason)
 
-	decision := payment.EvaluateRefundEligibility(p, r)
+	// classifier is a Technical Service (command.RefundReasonClassifier) — this Handler calls it
+	// before delegating to the Domain Service below, and passes its result in as one more plain
+	// input alongside the two Aggregates.
+	classification := h.classifier.Classify(ctx, cmd.Reason)
+
+	decision := payment.EvaluateRefundEligibility(p, r, classification)
 	if decision.Approved {
 		if err := r.Approve(p.AccountID, p.OwnerID); err != nil {
 			return nil, err

@@ -31,6 +31,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
+	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -251,6 +252,12 @@ func runTests(m *testing.M) int {
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 	testPasswordHasher := auth.NewBcryptPasswordHasher()
 
+	// A placeholder key, same idiom as "test-secret" above — an invalid key
+	// makes the real Anthropic API call fail, and RefundReasonClassifierImpl
+	// falls back to a neutral classification on any failure (see its own
+	// doc comment), so refund e2e assertions never depend on a live LLM call.
+	testRefundReasonClassifier := llm.NewRefundReasonClassifierImpl("test-anthropic-key", "claude-opus-4-8")
+
 	// e2e tests send dozens of requests in a short time within the same
 	// process — using the production default (100/second, burst 20) as-is
 	// would let the rate limiter return 429 mid-test, causing unrelated
@@ -259,7 +266,7 @@ func runTests(m *testing.M) int {
 	// here only.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter, database.NewManager(db))
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testRefundReasonClassifier, testLimiter, database.NewManager(db))
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
