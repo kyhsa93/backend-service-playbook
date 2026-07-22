@@ -10,7 +10,7 @@ import (
 // abstracting an LLM call that classifies a refund's free-text reason —
 // the same pattern as PasswordHasher/TokenIssuer: defined in the Application
 // layer in the minimal form the consumer (RequestRefundHandler) needs, with
-// the real implementation (an Anthropic Claude API call) living in
+// the real implementation (a self-hosted Ollama call) living in
 // infrastructure.
 //
 // payment.EvaluateRefundEligibility (a Domain Service) never depends on this

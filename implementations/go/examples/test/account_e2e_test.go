@@ -252,11 +252,11 @@ func runTests(m *testing.M) int {
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 	testPasswordHasher := auth.NewBcryptPasswordHasher()
 
-	// A placeholder key, same idiom as "test-secret" above — an invalid key
-	// makes the real Anthropic API call fail, and RefundReasonClassifierImpl
-	// falls back to a neutral classification on any failure (see its own
-	// doc comment), so refund e2e assertions never depend on a live LLM call.
-	testRefundReasonClassifier := llm.NewRefundReasonClassifierImpl("test-anthropic-key", "claude-opus-4-8")
+	// A placeholder, unreachable base URL, same idiom as "test-secret" above — pointing at no
+	// real Ollama instance makes the HTTP call fail, and RefundReasonClassifierImpl falls back
+	// to a neutral classification on any failure (see its own doc comment), so refund e2e
+	// assertions never depend on a live LLM call.
+	testRefundReasonClassifier := llm.NewRefundReasonClassifierImpl("http://localhost:1", "qwen2.5:1.5b")
 
 	// e2e tests send dozens of requests in a short time within the same
 	// process — using the production default (100/second, burst 20) as-is
