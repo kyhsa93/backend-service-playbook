@@ -93,30 +93,34 @@ A `@RestControllerAdvice` class doesn't need any registration code added to `mai
 
 ---
 
-## OpenAPI/Swagger — not currently adopted; the pattern to use if introduced
+## OpenAPI/Swagger
 
-`build.gradle` has no `springdoc-openapi` dependency — this repository does not yet auto-generate API documentation. If introduced:
+`build.gradle` has the `springdoc-openapi-starter-webmvc-ui` dependency:
 
 ```groovy
-// build.gradle — would need to be added (proposal)
-implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+// build.gradle — actual code
+implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 ```
 
-Unlike NestJS's `SwaggerModule.createDocument()`, springdoc does not require assembling a document object in `main()` — simply adding the dependency causes it to read `@RestController`/`@RequestMapping`/`@Valid` annotations via reflection and **automatically** expose `/v3/api-docs` and `/swagger-ui.html`. If customization (title, version, Bearer auth scheme) is needed, only a single `@Bean OpenAPI` needs to be added to a `@Configuration` class:
+Unlike NestJS's `SwaggerModule.createDocument()`, springdoc does not require assembling a document object in `main()` — simply adding the dependency causes it to read `@RestController`/`@RequestMapping`/`@Valid` annotations via reflection and **automatically** expose `/v3/api-docs` and `/swagger-ui.html`. Title/version and the Bearer auth scheme are customized via a single `@Bean OpenAPI` in a `@Configuration` class:
 
 ```java
-// common/config/OpenApiConfig.java — proposal if introduced
+// config/OpenApiConfig.java — actual code (excerpt)
 @Configuration
 public class OpenApiConfig {
     @Bean
     public OpenAPI accountServiceOpenApi() {
         return new OpenAPI()
-                .info(new Info().title("Account Service API").version("v1"))
+                .info(new Info().title("Account Service API").version("0.1.0"))
                 .components(new Components().addSecuritySchemes("bearer-jwt",
                         new SecurityScheme().type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")));
     }
 }
 ```
+
+This lives in `config/` (alongside `SecurityConfig`/`WebConfig`), not under `common/config/` — `common/config/` is reserved for infrastructure-level concerns that must run before the Spring context exists (`SecretsEnvironmentPostProcessor`, an `EnvironmentPostProcessor`), while `OpenApiConfig` is an ordinary `@Bean`-declaring `@Configuration` class like every other file already in `config/`.
+
+Every `@RestController`'s operations are annotated with `@Operation` (`summary`/`description`) and `@ApiResponse` (one per status code the handler can actually return, cross-checked against its `@ExceptionHandler`'s error-mapping — not just the success response) — see the root [api-response.md](../../../../docs/architecture/api-response.md) "Machine-readable API documentation (OpenAPI)" section for the exact completeness bar, and `harness/src/rules/ApiDocumentation.java` (rule: `api-documentation`) for the mechanical check that enforces it.
 
 ---
 
@@ -169,7 +173,7 @@ Since Spring Security is used (see [authentication.md](authentication.md)), it's
 | `app.useGlobalPipes(new ValidationPipe())` | `@Valid` + `spring-boot-starter-validation` | Parameters of each Controller method |
 | `app.useGlobalFilters(new HttpExceptionFilter())` | A `@RestControllerAdvice` class | `common/web/GlobalExceptionHandler.java` |
 | `app.enableCors({...})` | `WebMvcConfigurer.addCorsMappings()` (not currently adopted) | `config/WebConfig.java` (add to the existing file — don't create a new class) |
-| `SwaggerModule.setup('api', app, document)` | Auto-exposed simply by adding the `springdoc-openapi` dependency (not currently adopted) | `build.gradle` + an optional `OpenApiConfig` |
+| `SwaggerModule.setup('api', app, document)` | Auto-exposed simply by adding the `springdoc-openapi` dependency | `build.gradle` + `config/OpenApiConfig` |
 | `app.listen(process.env.PORT ?? 3000)` | `server.port` (default 8080) | `application.yml` |
 
 Core difference: NestJS lists its bootstrap concerns **imperatively** in `main.ts`, while Spring Boot distributes each concern via **declarative annotations + classpath auto-configuration** — leaving `main()` with only the single `SpringApplication.run()` line.

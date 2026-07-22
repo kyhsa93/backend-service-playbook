@@ -353,27 +353,31 @@ Top-level packages are not split by layer (`controllers/`, `services/`) — they
 
 ---
 
-## 9. Swagger / OpenAPI documentation pattern — springdoc-openapi (once introduced)
+## 9. Swagger / OpenAPI documentation pattern — springdoc-openapi
 
-`build.gradle` does not yet have the `springdoc-openapi` dependency (see `bootstrap.md`) — this section is the pattern to follow once it's introduced; do not document it as if it's already implemented.
+`build.gradle` has the `springdoc-openapi-starter-webmvc-ui` dependency (see `bootstrap.md`).
 
 ```groovy
-// build.gradle — add once introduced
-implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+// build.gradle — actual code
+implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 ```
 
 ```java
 // Correct — springdoc annotations on record fields
 public record CreateAccountRequest(
-        @Schema(description = "Email", example = "owner@example.com") @NotBlank @Email String email,
-        @Schema(description = "Currency code (ISO 4217)", example = "KRW") @NotBlank String currency
+        @Schema(description = "The account owner's email address.", example = "owner@example.com") @NotBlank @Email String email,
+        @Schema(description = "The ISO 4217 currency code the account is opened in.", example = "KRW") @NotBlank String currency
 ) {}
 ```
 
 ```java
-// Controller method — @Operation for a summary, @ApiResponse to document status codes
-@Operation(summary = "Open an account")
-@ApiResponse(responseCode = "201", description = "Created successfully")
+// Controller method — @Operation for a summary+description, one @ApiResponse per status code
+// the handler can actually return (cross-checked against its @ExceptionHandler's error-mapping,
+// not just the success response — see the root api-response.md "Machine-readable API
+// documentation (OpenAPI)" section for the exact completeness bar)
+@Operation(summary = "Open a new account", description = "Opens a new account for the authenticated requester with a 0 balance in the given currency.")
+@ApiResponse(responseCode = "201", description = "The account was created.", content = @Content(schema = @Schema(implementation = CreateAccountResult.class)))
+@ApiResponse(responseCode = "400", description = "Request validation failed (`VALIDATION_FAILED`) — e.g. an invalid email or missing currency.", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 public CreateAccountResult createAccount(@Valid @RequestBody CreateAccountRequest request) { ... }
@@ -381,7 +385,9 @@ public CreateAccountResult createAccount(@Valid @RequestBody CreateAccountReques
 
 - **DTO validation is expressed via Bean Validation** (`jakarta.validation.constraints.*`) — `@NotBlank`, `@Email`, `@Min`, `@Max`, etc. This corresponds to NestJS's `class-validator` decorators.
 - springdoc reads `@RestController`/`@RequestMapping`/`@Valid` annotations via reflection and **automatically** exposes `/v3/api-docs`, `/swagger-ui.html` — unlike NestJS's `SwaggerModule.createDocument()`, there's no need to assemble a document object in `main()` (see `bootstrap.md`).
-- Customizing the Bearer auth scheme, title/version, etc. only requires a single `@Bean OpenAPI` in a `@Configuration` class.
+- Customizing the Bearer auth scheme, title/version, etc. only requires a single `@Bean OpenAPI` in `config/OpenApiConfig` (a `@Configuration` class).
+- A controller-wide error (e.g. a missing/invalid bearer token) is documented once at the class level via `@SecurityRequirement` + a class-level `@ApiResponse(responseCode = "401", ...)`, rather than repeating it on every method.
+- `harness/src/rules/ApiDocumentation.java` (rule: `api-documentation`) mechanically fails the build if an operation's `@Operation` is missing a `summary`/`description`, or if no non-2xx `@ApiResponse` is documented for it (counting class-level `@ApiResponse`s too).
 
 ---
 

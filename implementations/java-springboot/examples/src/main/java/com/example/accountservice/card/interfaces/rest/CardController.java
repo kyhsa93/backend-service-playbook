@@ -9,6 +9,12 @@ import com.example.accountservice.card.application.command.IssueCardService;
 import com.example.accountservice.card.application.query.GetCardResult;
 import com.example.accountservice.card.application.query.GetCardService;
 import com.example.accountservice.card.domain.CardException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +35,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/cards")
 @RequiredArgsConstructor
+@Tag(name = "Card")
+@SecurityRequirement(name = "bearer-jwt")
+@ApiResponse(
+        responseCode = "401",
+        description = "The bearer token is missing, malformed, or invalid.",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
 public class CardController {
 
     private static final Logger log = LoggerFactory.getLogger(CardController.class);
@@ -43,6 +55,26 @@ public class CardController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+            summary = "Issue a new card",
+            description =
+                    "Issues a new card linked to the given account. The account must exist and be active.")
+    @ApiResponse(
+            responseCode = "201",
+            description = "The card was issued.",
+            content = @Content(schema = @Schema(implementation = IssueCardResult.class)))
+    @ApiResponse(
+            responseCode = "400",
+            description =
+                    "One of: only an active account can have a card issued"
+                            + " (`CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT`), or request validation failed"
+                            + " (`VALIDATION_FAILED`) — e.g. a missing accountId or brand.",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No account exists with the given `accountId` (`LINKED_ACCOUNT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public IssueCardResult issueCard(
             Authentication authentication, @Valid @RequestBody IssueCardRequest request) {
         String requesterId = authentication.getName();
@@ -51,6 +83,18 @@ public class CardController {
     }
 
     @GetMapping("/{cardId}")
+    @Operation(
+            summary = "Look up a card",
+            description = "Returns the card only if it belongs to the authenticated requester.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "The card was found.",
+            content = @Content(schema = @Schema(implementation = GetCardResult.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No card exists with the given `cardId` for this requester (`CARD_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public GetCardResult getCard(Authentication authentication, @PathVariable String cardId) {
         return getCardService.getCard(cardId, authentication.getName());
     }

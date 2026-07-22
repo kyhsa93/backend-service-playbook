@@ -200,6 +200,7 @@ com.example.accountservice/
     JwtProperties.java
     SecurityConfig.java                  # the JWT SecurityFilterChain
     WebConfig.java                       # Filter/Interceptor registration
+    OpenApiConfig.java                   # springdoc title/version + bearer-jwt security scheme (see bootstrap.md)
 
   outbox/                                # domain-agnostic shared infrastructure (see shared-modules.md) — not Account-only
     OutboxEvent.java                     # @Entity — the Outbox table
@@ -281,7 +282,7 @@ Both `common/` (ID-generation utilities, etc.) and `config/` (per-concern config
 | Directory | Contents | Related documents |
 |---------|----------|----------|
 | `common/` | `IdGenerator`, `CorrelationIdFilter`/`RequestLoggingInterceptor`/`RateLimitFilter`/`GlobalExceptionHandler` (`web/`), `SecretService` (`service/`+`infrastructure/`) | [aggregate-id.md](aggregate-id.md), [cross-cutting-concerns.md](cross-cutting-concerns.md), [secret-manager.md](secret-manager.md) |
-| `config/` | `@ConfigurationProperties` classes such as `AwsProperties`, `SesProperties`, `JwtProperties`, plus `SecurityConfig`, `WebConfig` | [config.md](config.md) |
+| `config/` | `@ConfigurationProperties` classes such as `AwsProperties`, `SesProperties`, `JwtProperties`, plus `SecurityConfig`, `WebConfig`, `OpenApiConfig` | [config.md](config.md), [bootstrap.md](bootstrap.md) |
 | `outbox/` | `OutboxEvent`, `OutboxWriter`, `OutboxPoller`, `OutboxConsumer`, `OutboxEventHandler` | [domain-events.md](domain-events.md) |
 | `taskqueue/` | `TaskOutboxEntry`, `TaskOutboxWriter`, `TaskOutboxPoller`, `TaskConsumer`, `TaskHandler` | [scheduling.md](scheduling.md) |
 

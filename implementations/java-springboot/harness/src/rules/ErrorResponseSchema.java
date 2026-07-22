@@ -168,14 +168,17 @@ public final class ErrorResponseSchema {
 
     private static Map<String, String> parseParamList(String params) {
         Map<String, String> fields = new LinkedHashMap<>();
+        // Depth tracks both generics (<...>) and annotation argument lists (e.g. a record
+        // component annotated with @Schema(description = "...", example = "...")) so a comma
+        // inside either doesn't get mistaken for the component separator.
         int depth = 0;
         int start = 0;
         for (int i = 0; i <= params.length(); i++) {
             char c = i < params.length() ? params.charAt(i) : ',';
-            if (c == '<') depth++;
-            else if (c == '>') depth--;
+            if (c == '<' || c == '(') depth++;
+            else if (c == '>' || c == ')') depth--;
             else if (c == ',' && depth == 0) {
-                String segment = params.substring(start, i).trim();
+                String segment = stripLeadingAnnotations(params.substring(start, i));
                 start = i + 1;
                 if (segment.isEmpty()) continue;
                 int lastSpace = segment.lastIndexOf(' ');
@@ -186,6 +189,33 @@ public final class ErrorResponseSchema {
             }
         }
         return fields;
+    }
+
+    /**
+     * Strips leading record-component annotations (e.g. {@code @Schema(description = "...")}) so
+     * the remaining text is just {@code <Type> <name>} — otherwise the annotation's own text
+     * (which may contain spaces) would get mistaken for part of the type/name split.
+     */
+    private static String stripLeadingAnnotations(String segment) {
+        String s = segment.trim();
+        while (s.startsWith("@")) {
+            int i = 1;
+            while (i < s.length() && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '.' || s.charAt(i) == '_')) {
+                i++;
+            }
+            if (i < s.length() && s.charAt(i) == '(') {
+                int depth = 1;
+                i++;
+                while (i < s.length() && depth > 0) {
+                    char c = s.charAt(i);
+                    if (c == '(') depth++;
+                    else if (c == ')') depth--;
+                    i++;
+                }
+            }
+            s = s.substring(i).trim();
+        }
+        return s;
     }
 
     private static boolean isNumericType(String type) {

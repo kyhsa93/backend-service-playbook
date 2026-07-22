@@ -41,7 +41,16 @@ public class SecurityConfig {
                                                 "/actuator/health/**",
                                                 "/error",
                                                 "/auth/sign-in",
-                                                "/auth/sign-up")
+                                                "/auth/sign-up",
+                                                // The OpenAPI/Swagger docs must be reachable
+                                                // without
+                                                // a token — a client that doesn't have one yet
+                                                // still
+                                                // needs to be able to read the docs to learn how to
+                                                // sign in (see bootstrap.md, api-response.md).
+                                                "/v3/api-docs/**",
+                                                "/swagger-ui.html",
+                                                "/swagger-ui/**")
                                         .permitAll()
                                         .anyRequest()
                                         .authenticated())

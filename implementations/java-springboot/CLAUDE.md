@@ -33,6 +33,7 @@ It follows the 4-layer structure `<domain>/{domain,application,infrastructure,in
 |---------------|----------|
 | REST endpoints, `@RestController`, Interface DTOs (`record`) | `docs/architecture/layer-architecture.md` |
 | API response format, pagination, `page`/`take` | `docs/architecture/api-response.md` |
+| API documentation, Swagger/OpenAPI, springdoc, `@Operation`/`@ApiResponse`/`@Schema` | `docs/architecture/api-response.md` (completeness bar), `docs/architecture/bootstrap.md` (springdoc setup, `OpenApiConfig`) |
 | Authentication, JWT, Bearer tokens, Spring Security `SecurityFilterChain` | `docs/architecture/authentication.md` |
 | `Filter`/`HandlerInterceptor`, correlation ID, MDC | `docs/architecture/cross-cutting-concerns.md` |
 | Error handling, `AccountException`, `@ExceptionHandler`, the 4-field error response format | `docs/architecture/error-handling.md` |
@@ -67,7 +68,7 @@ It follows the 4-layer structure `<domain>/{domain,application,infrastructure,in
 
 | Task / keyword | Document to read |
 |---------------|----------|
-| `AccountServiceApplication`, `SpringApplication.run()` bootstrap order, `application.yml` loading order, introducing springdoc/CORS/Actuator | `docs/architecture/bootstrap.md` |
+| `AccountServiceApplication`, `SpringApplication.run()` bootstrap order, `application.yml` loading order, springdoc setup, introducing CORS/Actuator | `docs/architecture/bootstrap.md` |
 | Inter-domain calls, Adapter pattern implementation examples (`application/adapter/`, `infrastructure/`), ACL | `docs/architecture/cross-domain.md` |
 | Summary (TL;DR) of the 13 core design principles, index of known gaps | `docs/architecture/design-principles.md` |
 | `@Component`/`@Service`/`@Repository`/`@Configuration` stereotypes, constructor injection, `@Bean` methods, circular dependencies and `@Lazy` | `docs/architecture/module-pattern.md` |

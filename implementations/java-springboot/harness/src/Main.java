@@ -11,6 +11,7 @@ package harness;
 
 import harness.rules.AggregateIdFormat;
 import harness.rules.AggregateNoPublicSetters;
+import harness.rules.ApiDocumentation;
 import harness.rules.ControllerPlacement;
 import harness.rules.CqrsQueryPurity;
 import harness.rules.DockerfileConventions;
@@ -80,7 +81,8 @@ public final class Main {
         NoGenericResponseKeys::check,
         QueryHandlerNoRawAggregate::check,
         NoCrossBcDomainImport::check,
-        NoOrmAutoSyncInProdConfig::check
+        NoOrmAutoSyncInProdConfig::check,
+        ApiDocumentation::check
     );
 
     public static void main(String[] args) {

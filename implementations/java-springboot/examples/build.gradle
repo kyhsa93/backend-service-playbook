@@ -41,6 +41,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
+    // Spring Boot 4 extracted FlywayAutoConfiguration out of spring-boot-autoconfigure into its own
+    // module (org.springframework.boot.flyway.autoconfigure) — flyway-core +
+    // flyway-database-postgresql alone are no longer sufficient to trigger migrations at startup;
+    // the starter is what actually pulls in spring-boot-flyway.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'software.amazon.awssdk:ses'
@@ -55,6 +60,10 @@ dependencies {
     implementation 'org.apache.httpcomponents.core5:httpcore5:5.4.3'
     implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
     implementation 'io.github.resilience4j:resilience4j-spring-boot4:2.4.0'
+    // Generates the OpenAPI/Swagger document from the existing @RestController/@Valid annotations
+    // (docs/architecture/api-response.md "Machine-readable API documentation (OpenAPI)") — exposes
+    // /v3/api-docs and /swagger-ui.html with no separate hand-written document to keep in sync.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
     runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

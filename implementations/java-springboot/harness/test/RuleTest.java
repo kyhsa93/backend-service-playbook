@@ -8,6 +8,7 @@ import harness.Kind;
 import harness.RuleResult;
 import harness.rules.AggregateIdFormat;
 import harness.rules.AggregateNoPublicSetters;
+import harness.rules.ApiDocumentation;
 import harness.rules.ControllerPlacement;
 import harness.rules.CqrsQueryPurity;
 import harness.rules.DockerfileConventions;
@@ -190,7 +191,13 @@ public final class RuleTest {
 
         new TestCase("no-orm-autosync-in-prod-config/good", () -> assertNoFailures(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/good"))),
         new TestCase("no-orm-autosync-in-prod-config/bad-prod-update", () -> assertHasFailure(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/bad-prod-update"))),
-        new TestCase("no-orm-autosync-in-prod-config/bad-default-update", () -> assertHasFailure(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/bad-default-update")))
+        new TestCase("no-orm-autosync-in-prod-config/bad-default-update", () -> assertHasFailure(NoOrmAutoSyncInProdConfig.check("testdata/no-orm-autosync-in-prod-config/bad-default-update"))),
+
+        new TestCase("api-documentation/good", () -> assertNoFailures(ApiDocumentation.check("testdata/api-documentation/good"))),
+        new TestCase("api-documentation/good-class-level-error-response", () -> assertNoFailures(ApiDocumentation.check("testdata/api-documentation/good-class-level-error-response"))),
+        new TestCase("api-documentation/bad-missing-operation", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-missing-operation"))),
+        new TestCase("api-documentation/bad-missing-description", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-missing-description"))),
+        new TestCase("api-documentation/bad-only-success-response", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-only-success-response")))
     );
 
     public static void main(String[] args) {

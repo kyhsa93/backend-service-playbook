@@ -17,6 +17,12 @@ import com.example.accountservice.payment.application.query.GetRefundResult;
 import com.example.accountservice.payment.application.query.GetRefundsResult;
 import com.example.accountservice.payment.application.query.GetRefundsService;
 import com.example.accountservice.payment.domain.PaymentException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +49,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/payments")
 @RequiredArgsConstructor
+@Tag(name = "Payment")
+@SecurityRequirement(name = "bearer-jwt")
+@ApiResponse(
+        responseCode = "401",
+        description = "The bearer token is missing, malformed, or invalid.",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
 public class PaymentController {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentController.class);
@@ -62,6 +74,33 @@ public class PaymentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+            summary = "Create a payment",
+            description =
+                    "Charges the given card for the given amount. The linked card and account must"
+                            + " both be active, and the account must have a sufficient balance —"
+                            + " the actual balance debit happens asynchronously once this payment's"
+                            + " completion event is processed.")
+    @ApiResponse(
+            responseCode = "201",
+            description = "The payment was created.",
+            content = @Content(schema = @Schema(implementation = GetPaymentResult.class)))
+    @ApiResponse(
+            responseCode = "400",
+            description =
+                    "One of: only an active card can be used for payment"
+                            + " (`PAYMENT_REQUIRES_ACTIVE_CARD`), only an active account can be used"
+                            + " for payment (`PAYMENT_REQUIRES_ACTIVE_ACCOUNT`), the account balance"
+                            + " is insufficient (`INSUFFICIENT_BALANCE`), or request validation"
+                            + " failed (`VALIDATION_FAILED`) — e.g. a missing cardId or non-positive"
+                            + " amount.",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "One of: no card exists with the given `cardId` (`LINKED_CARD_NOT_FOUND`), or"
+                            + " no account is linked to that card (`LINKED_ACCOUNT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public GetPaymentResult createPayment(
             Authentication authentication, @Valid @RequestBody CreatePaymentRequest request) {
         String requesterId = authentication.getName();
@@ -71,6 +110,25 @@ public class PaymentController {
 
     @PostMapping("/{paymentId}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Cancel a payment",
+            description =
+                    "Reverses an already-completed payment. Only a `COMPLETED` payment can be"
+                            + " cancelled — the compensating account credit happens asynchronously"
+                            + " once this cancellation event is processed.")
+    @ApiResponse(responseCode = "204", description = "The payment was cancelled.")
+    @ApiResponse(
+            responseCode = "400",
+            description =
+                    "One of: only a completed payment can be cancelled"
+                            + " (`PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT`), or request validation"
+                            + " failed (`VALIDATION_FAILED`) — e.g. a missing reason.",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No payment exists with the given `paymentId` for this requester (`PAYMENT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public void cancelPayment(
             Authentication authentication,
             @PathVariable String paymentId,
@@ -81,12 +139,32 @@ public class PaymentController {
     }
 
     @GetMapping("/{paymentId}")
+    @Operation(
+            summary = "Look up a payment",
+            description = "Returns the payment only if it belongs to the authenticated requester.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "The payment was found.",
+            content = @Content(schema = @Schema(implementation = GetPaymentResult.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No payment exists with the given `paymentId` for this requester (`PAYMENT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public GetPaymentResult getPayment(
             Authentication authentication, @PathVariable String paymentId) {
         return getPaymentService.getPayment(paymentId, authentication.getName());
     }
 
     @GetMapping
+    @Operation(
+            summary = "List the authenticated requester's payments",
+            description =
+                    "Returns the requester's payments, newest first, paginated with `page`/`take`.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "The payment history was found.",
+            content = @Content(schema = @Schema(implementation = GetPaymentsResult.class)))
     public GetPaymentsResult getPayments(
             Authentication authentication,
             @RequestParam(defaultValue = "0") int page,
@@ -96,6 +174,29 @@ public class PaymentController {
 
     @PostMapping("/{paymentId}/refunds")
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+            summary = "Request a refund for a payment",
+            description =
+                    "Requests a refund against a completed payment. A rejected refund is a valid"
+                            + " business outcome, not an error — this endpoint still returns 201"
+                            + " with `status: REJECTED` when the original payment isn't `COMPLETED`"
+                            + " or the refund amount exceeds the payment amount; the account credit"
+                            + " for an approved refund happens asynchronously once the approval"
+                            + " event is processed.")
+    @ApiResponse(
+            responseCode = "201",
+            description = "The refund request was recorded, either `APPROVED` or `REJECTED`.",
+            content = @Content(schema = @Schema(implementation = GetRefundResult.class)))
+    @ApiResponse(
+            responseCode = "400",
+            description =
+                    "Request validation failed (`VALIDATION_FAILED`) — e.g. a missing reason or non-positive amount.",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No payment exists with the given `paymentId` for this requester (`PAYMENT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public GetRefundResult requestRefund(
             Authentication authentication,
             @PathVariable String paymentId,
@@ -107,6 +208,19 @@ public class PaymentController {
     }
 
     @GetMapping("/{paymentId}/refunds")
+    @Operation(
+            summary = "List a payment's refund history",
+            description =
+                    "Returns the payment's refund requests, newest first, paginated with `page`/`take`.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "The refund history was found.",
+            content = @Content(schema = @Schema(implementation = GetRefundsResult.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No payment exists with the given `paymentId` for this requester (`PAYMENT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public GetRefundsResult getRefunds(
             Authentication authentication,
             @PathVariable String paymentId,

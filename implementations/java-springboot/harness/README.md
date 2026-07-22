@@ -49,6 +49,7 @@ harness/
       QueryHandlerNoRawAggregate.java
       NoCrossBcDomainImport.java
       NoOrmAutoSyncInProdConfig.java
+      ApiDocumentation.java
   test/
     RuleTest.java                 Self-contained fixture test runner (no external framework dependency)
     testdata/<rule>/good/         The minimal fixture that must pass this rule
@@ -103,6 +104,7 @@ If `javac`/`java` isn't on PATH, specify them via environment variables, e.g. `J
 | `query-handler-no-raw-aggregate` | `QueryHandlerNoRawAggregate.java` | Fails if the return type of a `public` method on a Query Service under `application/query/` or a `interfaces/*Controller.java` directly exposes (or wraps in a generic like `List<...>`) a raw Aggregate/Entity class from `domain/` — it must always return a dedicated Result/DTO instead (api-response.md). The Aggregate/Entity names are not hardcoded; they're dynamically collected from `public class` declarations under `<bc>/domain/` (excluding `*Exception`/`*Service`). Only scans methods with an explicit `public` keyword (a Query interface's idiomatic modifier-omitted methods are out of scan scope — matching broadly without that requirement carries a high risk of false-positiving on a constructor call like `new XxxException(...)`, so a narrow blocklist approach was chosen) |
 | `no-cross-bc-domain-import` | `NoCrossBcDomainImport.java` | Fails if `<bc>/domain/*.java` imports another BC's `<otherBc>/domain/*` type — the "another Aggregate may only be referenced by ID" principle (tactical-ddd.md) applies across BC boundaries too. A rule that closes a gap missed by both `no-cross-aggregate-reference` (which only looks at Payment/Refund within the same BC) and `domain-layer-isolation` (where domain/ only checks its own upper layers) |
 | `no-orm-autosync-in-prod-config` | `NoOrmAutoSyncInProdConfig.java` | Fails if the `spring.jpa.hibernate.ddl-auto` value in either `src/main/resources/application.yml` (default) or `application-prod.yml` (prod profile) is `update`/`create`/`create-drop` — schema changes must be managed only via Flyway/Liquibase migrations (persistence.md). The default file is checked too because, if `SPRING_PROFILES_ACTIVE` is missing, its value applies in production as-is. If the `ddl-auto` key is absent, that means there's no automatic sync, so it's a PASS |
+| `api-documentation` | `ApiDocumentation.java` | Fails if a `@RestController` operation's springdoc `@Operation` is missing a non-blank `summary`/`description`, or if no non-2xx `@ApiResponse` is documented for it — only documenting the success response is a fail (docs/architecture/api-response.md "Machine-readable API documentation (OpenAPI)"). A controller-wide `@ApiResponse` declared at the class level (e.g. a shared 401 for a missing/invalid bearer token) counts toward every operation in that class, not just the one it's textually closest to |
 
 ## Regression tests
 
