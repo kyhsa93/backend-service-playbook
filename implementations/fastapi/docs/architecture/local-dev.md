@@ -8,7 +8,7 @@ This is implemented to match the root document's criteria — `examples/docker-c
 
 ```
 implementations/fastapi/examples/
-  docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager, SQS) + app(profiles: [app])
+  docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager, SQS) + Ollama + app(profiles: [app])
   .env.example                ← the committed template — copy this to create .env.development
   .gitignore                  ← excludes local-only values from commits via the .env* pattern
   localstack/
@@ -47,6 +47,29 @@ services:
       timeout: 3s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    ports: ['11434:11434']
+    volumes: ['ollama-data:/root/.ollama']
+    healthcheck:
+      test: ['CMD-SHELL', 'ollama list || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A one-shot init container — pulls the classifier model into the shared ollama-data volume
+  # once, then exits. `app` depends on it completing (service_completed_successfully), the same
+  # role LocalStack's init/ready.d scripts play for AWS resources.
+  ollama-init:
+    image: ollama/ollama:latest
+    entrypoint: ['/bin/sh', '-c']
+    command: ['ollama pull qwen2.5:1.5b']
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   app:
     build: .
     ports: ['8000:8000']
@@ -57,17 +80,24 @@ services:
       DATABASE_URL: postgresql+asyncpg://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
+      SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/tasks.fifo
+      OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     profiles:
       - app
 
 volumes:
   db-data:
+  ollama-data:
 ```
+
+`ollama` (the open-source LLM server, for `payment/infrastructure/refund_reason_classifier_impl.py`) serves the model over its native `/api/chat` HTTP endpoint; `ollama-init` (the one-shot pull container above) runs once and exits.
 
 ```bash
 # localstack/init-ses.sh
@@ -146,8 +176,8 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 JWT_SECRET=local-dev-secret
 APP_ENV=development
 
-ANTHROPIC_API_KEY=dev-anthropic-key
-REFUND_CLASSIFIER_MODEL=claude-opus-4-8
+OLLAMA_BASE_URL=http://localhost:11434
+REFUND_CLASSIFIER_MODEL=qwen2.5:1.5b
 ```
 
 With `APP_ENV=development` (or unset), `main.py`'s `lifespan` doesn't call Secrets Manager and uses the `JWT_SECRET` environment variable as-is — only when `APP_ENV=production` does it look up the `app/jwt` secret created by `localstack/init-secrets.sh` (see [secret-manager.md](secret-manager.md)).
