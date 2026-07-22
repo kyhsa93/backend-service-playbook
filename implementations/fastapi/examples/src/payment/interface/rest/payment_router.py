@@ -6,10 +6,8 @@ from ....account.infrastructure.persistence.account_repository import SqlAlchemy
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 from ....card.domain.repository import CardQuery
 from ....card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
-from ....common.aws_secret_service import AwsSecretService
 from ....common.error_response import ErrorResponse
 from ....common.rate_limit import limiter, rate_limit_config
-from ....common.secret_service import SecretService
 from ....database import get_session
 from ...application.adapter.account_adapter import AccountAdapter
 from ...application.adapter.card_adapter import CardAdapter
@@ -84,12 +82,8 @@ def _account_adapter(account_query: AccountQuery = Depends(_account_query)) -> A
     return AccountAdapterImpl(account_query)
 
 
-def _secret_service() -> SecretService:
-    return AwsSecretService()
-
-
-def _refund_reason_classifier(secret_service: SecretService = Depends(_secret_service)) -> RefundReasonClassifier:
-    return RefundReasonClassifierImpl(secret_service)
+def _refund_reason_classifier() -> RefundReasonClassifier:
+    return RefundReasonClassifierImpl()
 
 
 @router.post(

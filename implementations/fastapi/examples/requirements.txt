@@ -10,10 +10,9 @@ bcrypt
 alembic
 slowapi
 apscheduler
-anthropic
+httpx
 
 pytest
 pytest-asyncio
-httpx
 testcontainers[localstack]
 ruff
