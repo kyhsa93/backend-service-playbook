@@ -32,7 +32,7 @@ services:
     env_file:
       - .env.development
     environment:
-      # 컨테이너 네트워크 안에서는 localhost 대신 서비스명으로 연결한다.
+      # Inside the container network, connect via service name instead of localhost.
       DATABASE_URL: postgres://dev:dev@database:5432/app?sslmode=disable
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events

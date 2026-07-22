@@ -14,9 +14,10 @@ type GetRefundsQuery struct {
 	Take        int
 }
 
-// GetRefundsHandler — Refund 테이블 자체는 OwnerID를 갖지 않는다(Refund는 PaymentID로만
-// 원 결제를 참조한다) — 소유권 검증은 Payment를 먼저 조회해 확인한다
-// (account.Query.FindTransactions가 계좌 소유권을 먼저 확인하는 것과 동일한 패턴).
+// GetRefundsHandler — the Refund table itself has no OwnerID (a Refund
+// references the original payment only via PaymentID) — ownership is
+// verified by looking up the Payment first (the same pattern as
+// account.Query.FindTransactions verifying account ownership first).
 type GetRefundsHandler struct {
 	payments payment.Query
 	refunds  payment.RefundQuery

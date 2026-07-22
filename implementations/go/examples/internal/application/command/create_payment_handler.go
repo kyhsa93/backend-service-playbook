@@ -12,11 +12,14 @@ type CreatePaymentCommand struct {
 	RequesterID string
 }
 
-// CreatePaymentHandler는 카드로 결제한다 — Card BC(카드 활성 여부)와 Account BC(계좌 활성
-// 여부·잔액 충분 여부)를 동기 Adapter(ACL)로 조회해 판단을 마친 뒤 Payment를 생성하고
-// 즉시 완료 처리한다. 실제 계좌 차감은 여기서 하지 않는다 — PaymentCompleted Domain
-// Event가 payment.completed.v1 Integration Event로 변환되어 Account BC가 비동기로
-// 수행한다(cross-domain.md의 "동기=조회, 비동기=상태변경" 원칙).
+// CreatePaymentHandler pays with a card — it queries the Card BC (card active
+// status) and the Account BC (account active status, sufficient balance) via
+// synchronous Adapters (ACL) to complete its checks, then creates the Payment
+// and immediately marks it completed. It does not debit the account here —
+// the PaymentCompleted Domain Event is translated into a
+// payment.completed.v1 Integration Event, which the Account BC processes
+// asynchronously (cross-domain.md's "synchronous = query, asynchronous =
+// state change" principle).
 type CreatePaymentHandler struct {
 	repo     payment.Repository
 	cards    PaymentCardAdapter
@@ -32,7 +35,7 @@ func NewCreatePaymentHandler(
 }
 
 func (h *CreatePaymentHandler) Handle(ctx context.Context, cmd CreatePaymentCommand) (*payment.Payment, error) {
-	// 동기 Adapter(ACL)로 카드가 존재·활성 상태인지 확인 — 응답(결제 가부)에 필요하므로 동기 호출.
+	// Check via a synchronous Adapter (ACL) that the card exists and is active — a synchronous call because the response (whether payment can proceed) depends on it.
 	card, err := h.cards.FindCard(ctx, cmd.CardID, cmd.RequesterID)
 	if err != nil {
 		return nil, err
@@ -44,8 +47,9 @@ func (h *CreatePaymentHandler) Handle(ctx context.Context, cmd CreatePaymentComm
 		return nil, payment.ErrRequiresActiveCard
 	}
 
-	// 동기 Adapter(ACL)로 연결 계좌가 활성이고 잔액이 충분한지 확인(읽기 전용 판단).
-	// 실제 차감은 여기서 하지 않는다.
+	// Check via a synchronous Adapter (ACL) that the linked account is active
+	// and has sufficient balance (a read-only check). The actual debit does
+	// not happen here.
 	acc, err := h.accounts.FindAccount(ctx, card.AccountID, cmd.RequesterID)
 	if err != nil {
 		return nil, err
@@ -65,8 +69,9 @@ func (h *CreatePaymentHandler) Handle(ctx context.Context, cmd CreatePaymentComm
 		return nil, err
 	}
 
-	// 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기 실행되는
-	// outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지, domain-events.md).
+	// Save and return immediately — publishing to/consuming from SQS via the
+	// Outbox is solely the responsibility of the independently, periodically
+	// running outbox.Poller/outbox.Consumer (no synchronous draining, domain-events.md).
 	if err := h.repo.SavePayment(ctx, p); err != nil {
 		return nil, err
 	}

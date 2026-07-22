@@ -8,11 +8,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// rateLimitErrorResponse는 root docs/architecture/error-handling.md가 요구하는
-// {statusCode, code, message, error} 표준 JSON 에러 응답과 같은 필드 구성을 갖는다.
-// interface/http 패키지의 ErrorResponse를 그대로 재사용하지 못하는 이유는, middleware
-// 패키지가 그 패키지를 import하면 router.go(interface/http)가 middleware를 import하는
-// 것과 순환 참조가 되기 때문이다 — 스키마만 동일하게 복제해 둔다.
+// rateLimitErrorResponse has the same field layout as the standard
+// {statusCode, code, message, error} JSON error response required by root
+// docs/architecture/error-handling.md. It cannot simply reuse the
+// interface/http package's ErrorResponse because, if the middleware package
+// imported that package, it would form a circular reference with
+// router.go (interface/http) importing middleware — so only the schema is
+// duplicated here.
 type rateLimitErrorResponse struct {
 	StatusCode int    `json:"statusCode"`
 	Code       string `json:"code"`
@@ -20,8 +22,9 @@ type rateLimitErrorResponse struct {
 	Error      string `json:"error"`
 }
 
-// RateLimit은 전체 서버에 걸쳐 초당 요청 수를 제한하는 토큰 버킷 미들웨어다.
-// limiter 하나를 모든 요청이 공유하므로, 특정 클라이언트가 아니라 서버 전체의 처리량을 제한한다.
+// RateLimit is a token-bucket middleware that limits requests per second
+// across the entire server. Since all requests share a single limiter, it
+// throttles the server's overall throughput rather than any specific client.
 func RateLimit(limiter *rate.Limiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

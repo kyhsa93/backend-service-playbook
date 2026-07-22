@@ -14,13 +14,15 @@ type CardRepository struct {
 	db *sql.DB
 }
 
-// 컴파일 타임 interface 충족 검증 — CardRepository는 Repository(Command)와 Query 양쪽을
-// 모두 만족한다(account_repository.go와 동일한 구조적 타이핑 관용구).
+// Compile-time interface satisfaction check — CardRepository satisfies both
+// Repository (Command) and Query (the same structural typing idiom as
+// account_repository.go).
 var _ card.Repository = (*CardRepository)(nil)
 var _ card.Query = (*CardRepository)(nil)
 
-// NewCardRepository는 Card 저장소를 만든다. Card는 도메인 이벤트를 발생시키지 않으므로
-// AccountRepository와 달리 outbox.Writer를 주입받지 않는다.
+// NewCardRepository creates a Card repository. Since Card doesn't raise
+// domain events, it doesn't take an outbox.Writer as a dependency, unlike
+// AccountRepository.
 func NewCardRepository(db *sql.DB) *CardRepository {
 	return &CardRepository{db: db}
 }

@@ -34,9 +34,10 @@ import (
 )
 
 func main() {
-	// CorrelationHandler가 JSONHandler를 감싸, ctx에 correlation ID가 있으면 모든
-	// 로그 호출에 자동으로 "correlation_id" 필드를 추가한다 — 호출부마다 직접
-	// 넘길 필요가 없다(observability.md).
+	// CorrelationHandler wraps JSONHandler so that, whenever the ctx carries a
+	// correlation ID, it automatically adds a "correlation_id" field to every
+	// log call — call sites never need to pass it in themselves
+	// (observability.md).
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 	slog.SetDefault(slog.New(logging.NewCorrelationHandler(jsonHandler)))
 
@@ -57,7 +58,7 @@ func main() {
 		}
 	}()
 
-	// 의존성 조립 — 프레임워크 없이 생성자 체이닝
+	// Dependency assembly — constructor chaining, no framework
 	notifier := notification.NewService(notification.NewSESClient(), db)
 
 	sqsConfig, err := config.LoadSQSConfig()
@@ -70,13 +71,17 @@ func main() {
 	outboxPublisher := outbox.NewPublisher(db)
 	sqsClient := outbox.NewSQSClient()
 
-	// Card BC 의존성. 합성 루트(main)만 Account와 Card 양쪽을 알고, 두 BC는 서로를
-	// import하지 않는다 — Account는 Outbox에 Integration Event를 문자열 event_type으로
-	// 적재하고, Card는 아래 handler map에서 그 문자열을 구독한다(cross-domain.md).
+	// Card BC dependencies. Only the composition root (main) knows about both
+	// Account and Card, and the two BCs never import each other — Account
+	// writes Integration Events to the Outbox under a string event_type, and
+	// Card subscribes to that string in the handler map below
+	// (cross-domain.md).
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
-	// dbManager는 command.TransactionManager 포트를 만족한다 — TransferHandler처럼 한
-	// Handler가 둘 이상의 SaveAccount 호출을 원자적으로 묶어야 할 때만 쓴다(그 외
-	// 단독 호출부는 지금처럼 SaveAccount가 스스로 여닫는 로컬 트랜잭션으로 충분하다).
+	// dbManager satisfies the command.TransactionManager port — used only
+	// when a Handler like TransferHandler needs to atomically group two or
+	// more SaveAccount calls (for standalone call sites elsewhere, a local
+	// transaction that SaveAccount itself opens and closes, as it does now,
+	// is sufficient).
 	dbManager := database.NewManager(db)
 	cardRepo := persistence.NewCardRepository(db)
 	credentialRepo := persistence.NewCredentialRepository(db)
@@ -84,19 +89,22 @@ func main() {
 	suspendCardsHandler := command.NewSuspendCardsByAccountHandler(cardRepo)
 	cancelCardsHandler := command.NewCancelCardsByAccountHandler(cardRepo)
 
-	// Payment BC 의존성 — Account/Card와 마찬가지로 합성 루트만 세 BC를 모두 알고, 서로는
-	// Outbox의 문자열 event_type을 매개로만 연결된다. Payment는 Card/Account를 동기
-	// Adapter(ACL)로 조회하고(paymentCardAdapter/paymentAccountAdapter), Account는 Payment의
-	// Integration Event(payment.completed.v1 등)에 비동기로 반응한다(아래 handler map).
+	// Payment BC dependencies — as with Account/Card, only the composition
+	// root knows about all three BCs, and they are connected to each other
+	// only via the Outbox's string event_type. Payment looks up Card/Account
+	// synchronously via an Adapter (ACL) (paymentCardAdapter/
+	// paymentAccountAdapter), and Account reacts asynchronously to Payment's
+	// Integration Events (payment.completed.v1, etc.) (handler map below).
 	paymentRepo := persistence.NewPaymentRepository(db)
 	paymentCardAdapter := acl.NewPaymentCardAdapter(cardRepo)
 	paymentAccountAdapter := acl.NewPaymentAccountAdapter(accountRepo)
 	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(accountRepo)
 	depositByPaymentHandler := command.NewDepositByPaymentHandler(accountRepo)
 
-	// 이 handlers map은 outbox.Consumer가 SQS에서 수신한 메시지의 eventType으로
-	// 핸들러를 찾는 데 쓰인다 — Command Handler는 더 이상 이 map을 참조하지 않는다
-	// (동기 드레인 금지, domain-events.md).
+	// This handlers map is used by outbox.Consumer to look up a handler by
+	// the eventType of a message received from SQS — Command Handlers no
+	// longer reference this map at all (no synchronous draining,
+	// domain-events.md).
 	outboxHandlers := map[string]outbox.Handler{
 		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
 		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
@@ -104,19 +112,22 @@ func main() {
 		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
 		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
 		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
-		// Payment BC의 Domain Event를 외부 BC용 Integration Event로 변환해 Outbox에
-		// 다시 적재한다(account.AccountSuspended가 account.suspended.v1로 변환되는 것과
-		// 동일한 관용구).
+		// Converts a Payment BC Domain Event into an Integration Event for
+		// external BCs and writes it back to the Outbox (the same idiom as
+		// account.AccountSuspended being converted into account.suspended.v1).
 		"PaymentCompleted": event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
 		"PaymentCancelled": event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
 		"RefundApproved":   event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
-		// 일일 이자 지급 배치(Task Queue)가 발생시키는 Domain Event. Task Queue
-		// (account.apply-interest, 아래 taskHandlers map)와는 별개의 흐름이다 —
-		// 이 이벤트는 "이자가 지급됐다"는 사실을 이메일로 알리는 통상적인 Domain
-		// Event 소비다(scheduling.md, "Task vs Domain Event 구분").
+		// A Domain Event raised by the daily interest payment batch (Task
+		// Queue). This is a separate flow from the Task Queue
+		// (account.apply-interest, taskHandlers map below) — this event is
+		// ordinary Domain Event consumption that emails the fact that
+		// "interest was paid" (scheduling.md, "Task vs Domain Event
+		// distinction").
 		"InterestPaid": event.NewInterestPaidEventHandler(notifier).Handle,
-		// Card BC가 Account의 Integration Event에 반응한다(비동기). 언마샬 글루만 여기 두고
-		// 실제 유스케이스는 Card Application 핸들러에 위임한다.
+		// The Card BC reacts to Account's Integration Events (asynchronously).
+		// Only unmarshal glue lives here — the actual use case is delegated
+		// to the Card Application handler.
 		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountSuspendedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
@@ -131,9 +142,11 @@ func main() {
 			}
 			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
 		},
-		// Account BC가 Payment의 Integration Event에 반응한다(비동기). payment.cancelled.v1과
-		// refund.approved.v1은 둘 다 "이미 차감된 금액을 되돌린다"는 동일한 동작이라
-		// DepositByPaymentHandler 하나를 재사용한다(referenceId만 paymentId/refundId로 다름).
+		// The Account BC reacts to Payment's Integration Events
+		// (asynchronously). payment.cancelled.v1 and refund.approved.v1 both
+		// perform the same action — "reverse an amount that was already
+		// debited" — so they reuse a single DepositByPaymentHandler (only the
+		// referenceId differs, as paymentId vs refundId).
 		"payment.completed.v1": func(ctx context.Context, payload []byte) error {
 			var e integrationevent.PaymentCompletedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
@@ -166,10 +179,12 @@ func main() {
 	outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)
 	outboxConsumer := outbox.NewConsumer(sqsClient, sqsConfig.QueueURL, outboxHandlers)
 
-	// Task Queue 의존성 — Domain/Integration Event(outbox, 위)와는 별도의 테이블·큐를
-	// 쓴다(scheduling.md, domain-events.md의 "Task Queue vs Domain Event" 구분을
-	// 인프라까지 그대로 유지). SQS 클라이언트 자체는 리전/자격증명만 다루는 저수준
-	// 객체라 outbox와 공유해도 무방하다 — 큐 URL만 다르게 넘긴다.
+	// Task Queue dependencies — uses a separate table/queue from the
+	// Domain/Integration Events (outbox, above) (this preserves the "Task
+	// Queue vs Domain Event" distinction from scheduling.md/domain-events.md
+	// all the way down into infrastructure). The SQS client itself is a
+	// low-level object that only handles region/credentials, so it's fine to
+	// share it with outbox — only the queue URL differs.
 	interestConfig := config.LoadInterestConfig()
 	taskWriter := taskqueue.NewWriter(db)
 	interestScheduler := scheduling.NewInterestScheduler(taskWriter)
@@ -182,8 +197,9 @@ func main() {
 	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
 	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
 
-	// taskqueue.Consumer가 taskType 문자열로 이 map에서 Task Controller를 찾아 호출한다
-	// (outboxHandlers와 동일한 라우팅 관용구).
+	// taskqueue.Consumer looks up a Task Controller in this map by the
+	// taskType string and calls it (the same routing idiom as
+	// outboxHandlers).
 	taskHandlers := map[string]taskqueue.Handler{
 		"account.apply-interest":    interestTaskController.HandleApplyInterest,
 		"card.send-usage-statement": statementTaskController.HandleSendStatement,
@@ -207,8 +223,9 @@ func main() {
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
-	// SIGTERM/SIGINT를 받으면 ctx가 취소된다 — HTTP 서버뿐 아니라 아래 Poller/Consumer
-	// 백그라운드 루프도 이 같은 ctx로 정지시킨다(graceful-shutdown.md).
+	// ctx is cancelled on receiving SIGTERM/SIGINT — not just the HTTP
+	// server, but also the Poller/Consumer background loops below are
+	// stopped via this same ctx (graceful-shutdown.md).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -220,36 +237,41 @@ func main() {
 		}
 	}()
 
-	// Outbox → SQS 발행(Poller)과 SQS → EventHandler 수신(Consumer)은 HTTP 요청과
-	// 무관하게 독립적으로 주기 실행된다 — Command Handler는 이들을 전혀 참조하지
-	// 않는다(동기 드레인 금지, domain-events.md). ctx가 취소되면 둘 다 스스로 멈춘다.
+	// Outbox → SQS publishing (Poller) and SQS → EventHandler receiving
+	// (Consumer) both run periodically and independently of HTTP requests —
+	// Command Handlers never reference either of them at all (no synchronous
+	// draining, domain-events.md). Both stop themselves when ctx is
+	// cancelled.
 	go outboxPoller.Run(ctx)
 	go outboxConsumer.Run(ctx)
 
-	// Task Queue의 Poller/Consumer도 outbox와 동일하게 독립적인 백그라운드 루프다.
-	// Scheduler(interest/statement)는 그 자체가 Task를 만드는 또 하나의 독립 goroutine
-	// 이다 — enqueue만 하고 비즈니스 로직은 절대 실행하지 않는다(scheduling.md).
+	// The Task Queue's Poller/Consumer are also independent background loops,
+	// just like outbox. The Scheduler (interest/statement) is itself yet
+	// another independent goroutine that creates Tasks — it only enqueues and
+	// never executes business logic (scheduling.md).
 	go taskPoller.Run(ctx)
 	go taskConsumer.Run(ctx)
 	go interestScheduler.Run(ctx)
 	go statementScheduler.Run(ctx)
 
-	<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
+	<-ctx.Done() // blocks until SIGTERM/SIGINT is received
 	slog.Info("shutdown signal received")
 
-	// srv.Shutdown(ctx)보다 반드시 먼저 호출한다 — readiness가 503으로 바뀐 뒤에야
-	// 오케스트레이터가 새 트래픽을 끊으므로, HTTP 서버가 실제로 멈추기 전에 readiness부터
-	// 실패시켜야 무중단 전환이 된다(graceful-shutdown.md).
+	// Must be called before srv.Shutdown(ctx) — the orchestrator only cuts
+	// off new traffic after readiness flips to 503, so readiness must be
+	// failed first, before the HTTP server actually stops, for a seamless
+	// cutover (graceful-shutdown.md).
 	healthHandler.StartShutdown()
 
-	// terminationGracePeriodSeconds(오케스트레이터 설정)에 맞춰 여유 있게 설정.
+	// Set generously to match terminationGracePeriodSeconds (orchestrator setting).
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 진행 중인 요청이 끝날 때까지 대기하며 새 연결은 거부한다.
+	// Waits for in-flight requests to finish while rejecting new connections.
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
 	}
 	slog.Info("server stopped")
-	// defer db.Close()가 이 시점 이후에 실행됨 — HTTP 서버가 완전히 닫힌 뒤 DB 연결 정리
+	// defer db.Close() runs after this point — DB connections are cleaned up
+	// only after the HTTP server is fully closed
 }

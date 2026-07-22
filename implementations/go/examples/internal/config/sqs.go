@@ -5,14 +5,16 @@ import (
 	"os"
 )
 
-// SQSConfig는 Poller/Consumer가 공유하는 큐 URL들이다. DatabaseConfig와 동일하게
-// fail-fast로 검증한다 — 값이 없으면 이벤트/Task가 조용히 큐로 나가지 못하는 상태로
-// 기동되는 것보다 즉시 실패하는 편이 낫다.
+// SQSConfig holds the queue URLs shared by the Poller/Consumer. Validated
+// fail-fast just like DatabaseConfig — if a value is missing, it's better to
+// fail immediately than to start up in a state where events/Tasks silently
+// never make it out to the queue.
 //
-// QueueURL(Domain/Integration Event, "사실이 일어났다")과 TaskQueueURL(Task Queue,
-// "명령: X를 수행하라")은 서로 다른 SQS 큐다 — domain-events.md가 규정하는 개념적
-// 구분을 인프라 수준에서도 그대로 유지한다(같은 큐에 event_type/task_type을 섞지
-// 않는다).
+// QueueURL (Domain/Integration Event, "a fact occurred") and TaskQueueURL
+// (Task Queue, "command: perform X") are different SQS queues — the
+// conceptual distinction that domain-events.md defines is preserved all the
+// way down at the infrastructure level too (event_type and task_type are
+// never mixed into the same queue).
 type SQSConfig struct {
 	QueueURL     string
 	TaskQueueURL string

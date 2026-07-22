@@ -1,7 +1,9 @@
 package payment
 
-// Status는 Payment Aggregate의 상태다. Refund는 별도의 RefundStatus를 쓴다(refund.go) —
-// 두 Aggregate가 같은 패키지에 있어도 서로의 상태 enum을 공유하지 않는다(경계 유지).
+// Status is the state of the Payment Aggregate. Refund uses a separate
+// RefundStatus (refund.go) — even though both Aggregates live in the same
+// package, they don't share each other's state enum (boundary is
+// preserved).
 type Status string
 
 const (
@@ -11,7 +13,7 @@ const (
 	StatusCancelled Status = "CANCELLED"
 )
 
-// RefundStatus는 Refund Aggregate의 상태다.
+// RefundStatus is the state of the Refund Aggregate.
 type RefundStatus string
 
 const (

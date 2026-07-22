@@ -20,8 +20,9 @@ func NewCreateAccountHandler(repo account.Repository) *CreateAccountHandler {
 	return &CreateAccountHandler{repo: repo}
 }
 
-// Handle은 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기
-// 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
+// Handle saves and returns immediately — publishing to/consuming from SQS via
+// the Outbox is solely the responsibility of the independently, periodically
+// running outbox.Poller/outbox.Consumer (no synchronous draining,
 // domain-events.md).
 func (h *CreateAccountHandler) Handle(ctx context.Context, cmd CreateAccountCommand) (*account.Account, error) {
 	a := account.New(cmd.RequesterID, cmd.Email, cmd.Currency)

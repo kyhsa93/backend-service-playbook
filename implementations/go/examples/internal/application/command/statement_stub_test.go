@@ -7,8 +7,9 @@ import (
 	"github.com/example/account-service/internal/application/command"
 )
 
-// stubPaymentQueryAdapter는 command.PaymentQueryAdapter 포트를 함수 필드로 대체하는
-// 최소 mock이다(stubAccountAdapter/stubPaymentCardAdapter와 동일한 관용구).
+// stubPaymentQueryAdapter is a minimal mock that substitutes the
+// command.PaymentQueryAdapter port with function fields (same idiom as
+// stubAccountAdapter/stubPaymentCardAdapter).
 type stubPaymentQueryAdapter struct {
 	summarizeFn func(ctx context.Context, cardID string, from, to time.Time) (command.CardPaymentSummary, error)
 }
@@ -20,8 +21,8 @@ func (s *stubPaymentQueryAdapter) SummarizeCardPayments(ctx context.Context, car
 	return s.summarizeFn(ctx, cardID, from, to)
 }
 
-// stubStatementNotifier는 command.StatementNotifier 포트를 함수 필드로 대체하는
-// 최소 mock이다.
+// stubStatementNotifier is a minimal mock that substitutes the
+// command.StatementNotifier port with function fields.
 type stubStatementNotifier struct {
 	notifyFn func(ctx context.Context, accountID, recipient, cardID, period string, paymentCount int, totalAmount int64) error
 }

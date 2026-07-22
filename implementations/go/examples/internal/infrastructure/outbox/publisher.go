@@ -9,13 +9,16 @@ import (
 	"github.com/example/account-service/internal/common"
 )
 
-// Publisher는 Application EventHandler가 만든 Integration Event를 Outbox 테이블에 새 행으로
-// 적재한다. Writer가 Aggregate의 Domain Event를 Repository.Save 트랜잭션 안에서 적재하는 것과
-// 달리, Publisher는 이미 커밋된 이벤트를 Drain하는 도중(Relay 내부)에 호출되므로 자체 커넥션으로
-// 단일 행을 insert한다(auto-commit).
+// Publisher loads an Integration Event built by an Application EventHandler
+// into the Outbox table as a new row. Unlike Writer, which loads an
+// Aggregate's Domain Events inside the Repository.Save transaction,
+// Publisher is called while draining an already-committed event (inside
+// the Relay), so it inserts a single row using its own connection
+// (auto-commit).
 //
-// 적재된 행은 Relay가 다음 Drain 패스에서 event_type(예: "account.suspended.v1")에 매핑된
-// 핸들러로 전달한다 — Account가 Card를 직접 호출하지 않고 Outbox를 매개로 느슨하게 연결된다.
+// The loaded row is delivered by the Relay on the next Drain pass to the
+// handler mapped to its event_type (e.g. "account.suspended.v1") — Account
+// doesn't call Card directly; they're loosely coupled via the Outbox.
 type Publisher struct {
 	db *sql.DB
 }
@@ -24,8 +27,9 @@ func NewPublisher(db *sql.DB) *Publisher {
 	return &Publisher{db: db}
 }
 
-// Publish는 eventName을 event_type으로, payload의 JSON 직렬화 결과를 payload로 하는 Outbox
-// 행을 하나 insert한다. event.IntegrationPublisher 포트를 구조적으로 만족한다.
+// Publish inserts a single Outbox row with eventName as event_type and the
+// JSON-serialized payload as payload. It structurally satisfies the
+// event.IntegrationPublisher port.
 func (p *Publisher) Publish(ctx context.Context, eventName string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {

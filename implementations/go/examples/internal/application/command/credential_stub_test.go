@@ -6,10 +6,12 @@ import (
 	"github.com/example/account-service/internal/domain/credential"
 )
 
-// stubCredentialRepository는 테스트별로 필요한 동작만 함수 필드로 주입받는 최소 mock이다
-// (stub_test.go의 stubRepository와 동일한 관용구). findByUserIDFn은 credential.FindOne이
-// 감싸는 단건 조회 시나리오만 흉내내면 충분하므로, FindCredentials 구현이 이를 단건
-// 결과([]*credential.Credential 길이 0 또는 1)로 감싸 반환한다.
+// stubCredentialRepository is a minimal mock that injects only the behavior
+// needed per test via function fields (same idiom as stubRepository in
+// stub_test.go). It's enough for findByUserIDFn to mimic only the
+// single-record lookup scenario wrapped by credential.FindOne, so the
+// FindCredentials implementation wraps its result as a single-element slice
+// ([]*credential.Credential of length 0 or 1).
 type stubCredentialRepository struct {
 	findByUserIDFn func(ctx context.Context, userID string) (*credential.Credential, error)
 	saveFn         func(ctx context.Context, c *credential.Credential) error

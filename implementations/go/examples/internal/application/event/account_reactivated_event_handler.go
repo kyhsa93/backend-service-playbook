@@ -8,8 +8,9 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// AccountReactivatedEventHandler는 outbox에 적재된 AccountReactivated 페이로드를
-// 역직렬화해 계좌 재개 알림 이메일로 변환한다.
+// AccountReactivatedEventHandler deserializes the AccountReactivated payload
+// persisted in the outbox and translates it into an account-reactivation
+// notification email.
 type AccountReactivatedEventHandler struct {
 	notifier Notifier
 }

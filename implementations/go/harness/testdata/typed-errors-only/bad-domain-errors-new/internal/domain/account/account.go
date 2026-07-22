@@ -6,7 +6,7 @@ type Account struct {
 	Status string
 }
 
-// errors.go가 아닌 이 파일에서 ad-hoc sentinel을 선언하는 위반 사례.
+// Declares an ad-hoc sentinel in a file other than errors.go — a violation case.
 func (a *Account) Deposit(amount int64) error {
 	if amount <= 0 {
 		return errors.New("amount must be greater than zero")

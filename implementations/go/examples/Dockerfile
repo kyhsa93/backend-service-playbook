@@ -9,12 +9,13 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 
-# CGO_ENABLED=0 — libc에 동적 링크하지 않는 완전한 정적 바이너리를 만든다.
-# scratch/distroless에는 libc가 없으므로 필수.
+# CGO_ENABLED=0 — produces a fully static binary that doesn't dynamically
+# link against libc. Required since scratch/distroless has no libc.
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
 
-# HEALTHCHECK 전용 정적 바이너리 — distroless에는 curl/wget이 없어 HTTP 헬스체크를
-# 실행할 방법이 없으므로, 직접 컴파일해 최종 이미지에 함께 넣는다.
+# Static binary dedicated to HEALTHCHECK — distroless has no curl/wget, so
+# there's no way to run an HTTP health check, so this is compiled directly
+# and bundled into the final image.
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/healthcheck ./cmd/healthcheck
 
 # ---- Stage 2: Production ----
@@ -27,9 +28,10 @@ EXPOSE 8080
 
 USER nonroot:nonroot
 
-# exec form 필수 — distroless에는 셸이 없어 shell form(`HEALTHCHECK CMD curl ...`)은
-# 애초에 실행 불가능하다. /bin/healthcheck가 컨테이너 내부 localhost:8080/health/live를
-# 호출해 exit code로 상태를 알린다(0=healthy, 1=unhealthy).
+# exec form is required — distroless has no shell, so shell form
+# (`HEALTHCHECK CMD curl ...`) can't be run at all. /bin/healthcheck calls
+# localhost:8080/health/live inside the container and reports status via its
+# exit code (0=healthy, 1=unhealthy).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD ["/bin/healthcheck"]
 

@@ -99,9 +99,10 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, toPaymentResponse(result.PaymentID, result.CardID, result.AccountID, result.OwnerID, result.Amount, result.Status, result.CreatedAt))
 }
 
-// GetPayments — 목록은 항상 인증된 요청자 자신의 결제 내역만 반환한다. 이 저장소의 어떤
-// 엔드포인트도 클라이언트가 넘긴 ?ownerId= 같은 소유자 ID를 신뢰하지 않는다
-// (query.GetPaymentsQuery의 주석 참고).
+// GetPayments — the list always returns only the authenticated requester's
+// own payment history. No endpoint in this repository trusts an owner ID
+// passed by the client, such as a ?ownerId= query param (see the comment on
+// query.GetPaymentsQuery).
 func (h *PaymentHandler) GetPayments(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	page, take := parsePagination(r)
@@ -122,10 +123,12 @@ func (h *PaymentHandler) GetPayments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, GetPaymentsResponse{Payments: payments, Count: result.Count})
 }
 
-// RequestRefund — 환불 거부는 도메인 관점에서 유효한 상태 전이다(입력이 잘못된 것이
-// 아니라 RefundEligibilityService가 Payment+Refund 두 Aggregate를 조율해 내린 결론).
-// 따라서 거부돼도 4xx가 아니라 201 + status:REJECTED로 응답한다 — 승인/거부 모두 요청
-// 자체는 성공적으로 "평가"되었다.
+// RequestRefund — a refund rejection is a valid state transition from a
+// domain perspective (not invalid input, but a conclusion reached by
+// RefundEligibilityService coordinating the Payment and Refund Aggregates).
+// So even on rejection, it responds with 201 + status:REJECTED rather than a
+// 4xx — whether approved or rejected, the request itself was successfully
+// "evaluated."
 func (h *PaymentHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 	requesterID, _ := middleware.UserIDFromContext(r.Context())
 	paymentID := r.PathValue("paymentId")
@@ -199,12 +202,14 @@ func toRefundResponse(refundID, paymentID string, amount int64, reason, status, 
 	}
 }
 
-// paymentErrorMapping은 sentinel error → (HTTP 상태 코드, client-facing 에러 코드) 매핑
-// 테이블이다(account_handler.go의 accountErrorMapping과 동일한 관용구 —
-// error-handling.md). Payment/Refund 두 Aggregate가 반환할 수 있는 모든 sentinel error를
-// 담는다 — 일부는 현재 REST 표면에서 도달하지 않는 방어적 코드지만(errors.go 주석 참고)
-// 매핑 테이블에는 여전히 함께 둔다(account/card errorMapping과 동일하게 REST 도달 가능성이
-// 아니라 Aggregate 불변식 커버리지에 맞춘다).
+// paymentErrorMapping is the sentinel error → (HTTP status code,
+// client-facing error code) mapping table (the same idiom as
+// accountErrorMapping in account_handler.go — error-handling.md). It holds
+// every sentinel error the Payment/Refund Aggregates can return — some are
+// currently unreachable defensive code from the REST surface (see the
+// comment in errors.go), but they still belong in the mapping table (as with
+// the account/card errorMapping, this is scoped to Aggregate invariant
+// coverage, not REST reachability).
 var paymentErrorMapping = []struct {
 	err    error
 	status int

@@ -25,7 +25,7 @@ func TestCheckNoDirectEnvAccess(t *testing.T) {
 	})
 
 	t.Run("good-infra-ignored", func(t *testing.T) {
-		// infrastructure/의 os.Getenv 호출은 이 규칙의 대상이 아니다 — domain/, application/만 검사한다.
+		// os.Getenv calls under infrastructure/ are out of scope for this rule — only domain/ and application/ are checked.
 		result := checkNoDirectEnvAccess("testdata/no-direct-env-access/good-infra-ignored")
 		if got := countKind(result, Fail); got != 0 {
 			t.Fatalf("want 0 failures, got %d: %+v", got, result.Findings)

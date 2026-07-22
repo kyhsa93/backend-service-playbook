@@ -1,10 +1,12 @@
-// Payment BC가 다른 두 Bounded Context(Card, Account)를 동기 호출할 때 쓰는
-// Anticorruption Layer 구현체다. 인터페이스(command.PaymentCardAdapter/
-// command.PaymentAccountAdapter)는 호출하는 쪽(Payment)의 Application 레이어에 있고,
-// 이 구현체는 호출하는 쪽의 Infrastructure에 두어 Card/Account 도메인을 import한다 —
-// 의존 방향은 "Payment Infrastructure → Card/Account 도메인"이며 Payment의
-// Application/Domain은 Card/Account를 전혀 모른다(cross-domain.md, account_adapter.go와
-// 동일한 패턴).
+// These are the Anticorruption Layer implementations used when the Payment
+// BC synchronously calls two other Bounded Contexts (Card, Account). The
+// interfaces (command.PaymentCardAdapter/command.PaymentAccountAdapter)
+// live in the calling side's (Payment) Application layer, and this
+// implementation lives in the calling side's Infrastructure and imports
+// the Card/Account domains — the dependency direction is "Payment
+// Infrastructure → Card/Account domain," and Payment's Application/Domain
+// know nothing about Card/Account at all (cross-domain.md, the same
+// pattern as account_adapter.go).
 package acl
 
 import (
@@ -17,9 +19,10 @@ import (
 	"github.com/example/account-service/internal/domain/card"
 )
 
-// PaymentCardAdapter는 command.PaymentCardAdapter를 만족하는 ACL 구현체다. Card BC가
-// 노출하는 읽기 인터페이스(card.Query)를 호출하고, Card의 모델·에러를 Payment가 이해하는
-// 최소 형태(command.PaymentCardView)로 번역한다.
+// PaymentCardAdapter is an ACL implementation satisfying
+// command.PaymentCardAdapter. It calls the read interface (card.Query)
+// exposed by the Card BC and translates Card's model/errors into the
+// minimal form Payment understands (command.PaymentCardView).
 type PaymentCardAdapter struct {
 	cards card.Query
 }
@@ -33,7 +36,7 @@ var _ command.PaymentCardAdapter = (*PaymentCardAdapter)(nil)
 func (a *PaymentCardAdapter) FindCard(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) {
 	c, err := card.FindOne(ctx, a.cards, cardID, ownerID)
 	if err != nil {
-		// 상류의 "카드 없음" 에러 타입을 Payment 도메인으로 누수시키지 않고 nil 신호로 번역한다.
+		// Translate the upstream "card not found" error type into a nil signal instead of leaking it into the Payment domain.
 		if errors.Is(err, card.ErrNotFound) {
 			return nil, nil
 		}
@@ -46,9 +49,10 @@ func (a *PaymentCardAdapter) FindCard(ctx context.Context, cardID, ownerID strin
 	}, nil
 }
 
-// PaymentAccountAdapter는 command.PaymentAccountAdapter를 만족하는 ACL 구현체다.
-// Account BC가 노출하는 읽기 인터페이스(account.Query)를 호출하고, Account의 모델·에러를
-// Payment가 이해하는 최소 형태(command.PaymentAccountView)로 번역한다.
+// PaymentAccountAdapter is an ACL implementation satisfying
+// command.PaymentAccountAdapter. It calls the read interface (account.Query)
+// exposed by the Account BC and translates Account's model/errors into the
+// minimal form Payment understands (command.PaymentAccountView).
 type PaymentAccountAdapter struct {
 	accounts account.Query
 }

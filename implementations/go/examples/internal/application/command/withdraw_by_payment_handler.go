@@ -7,25 +7,30 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// WithdrawByPaymentCommand는 Payment BC의 payment.completed.v1 Integration Event에 대한
-// 반응 유스케이스의 입력이다. ReferenceID는 Payment BC의 paymentId이며 멱등성 판단
-// (Level 2 Ledger)의 키로 쓰인다.
+// WithdrawByPaymentCommand is the input to the use case reacting to the
+// Payment BC's payment.completed.v1 Integration Event. ReferenceID is the
+// Payment BC's paymentId and is used as the key for the idempotency check
+// (Level 2 Ledger).
 type WithdrawByPaymentCommand struct {
 	AccountID   string
 	Amount      int64
 	ReferenceID string
 }
 
-// WithdrawByPaymentHandler는 결제 시점에 이미 동기 Adapter로 판정된 차감을 여기서 실제로
-// 수행한다 — WithdrawHandler(사용자 직접 출금)와 달리 이 반응은 같은 ReferenceID
-// (paymentId)의 거래가 이미 있으면 조용히 무시한다(at-least-once 재수신에 안전해야
-// 하므로 — 금액 이동은 반복 적용하면 잔액이 계속 줄어든다).
+// WithdrawByPaymentHandler actually performs here the debit that was
+// already decided via a synchronous Adapter at payment time — unlike
+// WithdrawHandler (a user-initiated direct withdrawal), this reaction
+// silently ignores the request if a transaction with the same ReferenceID
+// (paymentId) already exists (it must be safe under at-least-once
+// redelivery — repeatedly applying a money movement would keep draining the
+// balance).
 //
-// 이 Handler는 항상 outbox.Consumer의 handlers map을 통해서만 호출된다
-// ("payment.completed.v1" event_type, main.go 참고) — outbox.Poller/outbox.Consumer를
-// 직접 참조하지 않는다. Save()가 발생시키는 새 Domain Event(MoneyWithdrawn)는 같은
-// 트랜잭션으로 Outbox에 함께 적재되고, 독립적으로 주기 실행되는 Poller가 다음 tick에
-// SQS로 발행한다(동기 드레인 금지, domain-events.md).
+// This Handler is always invoked only through outbox.Consumer's handlers
+// map (event_type "payment.completed.v1", see main.go) — it does not
+// directly reference outbox.Poller/outbox.Consumer. The new Domain Event
+// (MoneyWithdrawn) raised by Save() is persisted to the Outbox within the
+// same transaction, and the independently, periodically running Poller
+// publishes it to SQS on the next tick (no synchronous draining, domain-events.md).
 type WithdrawByPaymentHandler struct {
 	repo account.Repository
 }
@@ -48,7 +53,7 @@ func (h *WithdrawByPaymentHandler) Handle(ctx context.Context, cmd WithdrawByPay
 		return fmt.Errorf("withdraw by payment: %w", err)
 	}
 	if len(accounts) == 0 {
-		return nil // 반응할 대상 계좌가 없으면 조용히 무시한다(예: 계좌가 이미 삭제됨).
+		return nil // Silently ignore if there's no target account to react against (e.g. the account was already deleted).
 	}
 
 	a := accounts[0]

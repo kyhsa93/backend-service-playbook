@@ -10,9 +10,11 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// AccountClosedEventHandler는 outbox에 적재된 AccountClosed 도메인 이벤트를 처리한다.
-// 외부 BC(Card 등)용 Integration Event(account.closed.v1)를 Outbox에 적재하고,
-// 계좌 종료 알림 이메일을 발송한다(알림은 best-effort — AccountSuspendedEventHandler 참고).
+// AccountClosedEventHandler processes the AccountClosed domain event
+// persisted in the outbox. It persists an Integration Event
+// (account.closed.v1) for external BCs (Card, etc.) to the Outbox, and
+// sends an account-closure notification email (notification is best-effort
+// — see AccountSuspendedEventHandler).
 type AccountClosedEventHandler struct {
 	notifier  Notifier
 	publisher IntegrationPublisher

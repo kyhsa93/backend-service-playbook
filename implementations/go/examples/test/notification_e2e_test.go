@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sesDestination은 LocalStack의 SES 디버그 엔드포인트(/_aws/ses) 응답에서
-// 우리가 검증에 필요한 필드만 추려낸 것이다.
+// sesDestination extracts just the fields we need for assertions from the
+// LocalStack SES debug endpoint (/_aws/ses) response.
 type sesDestination struct {
 	ToAddresses []string `json:"ToAddresses"`
 }
@@ -26,9 +26,9 @@ type sesMessagesResponse struct {
 	Messages []sesMessage `json:"messages"`
 }
 
-// fetchSesMessages는 LocalStack 전용 디버그 엔드포인트를 호출해 지금까지 SES
-// 에뮬레이터가 "발송"한 모든 이메일 목록을 가져온다. 실제 AWS API에는 없는
-// LocalStack만의 기능이다.
+// fetchSesMessages calls the LocalStack-only debug endpoint to fetch every
+// email the SES emulator has "sent" so far. This is a LocalStack-only
+// feature that doesn't exist in the real AWS API.
 func fetchSesMessages(t *testing.T) []sesMessage {
 	t.Helper()
 	resp, err := http.Get(localstackHTTP + "/_aws/ses")
@@ -64,10 +64,12 @@ func findSentEmail(t *testing.T, accountID, eventType string) (sentEmailRow, boo
 	return r, true
 }
 
-// waitForSentEmail은 findSentEmail을 폴링한다 — 이메일 발송은 이제 EventHandler가
-// Outbox → SQS → Consumer 경로를 거쳐 비동기로 수행하므로, HTTP 응답이 돌아온 시점에는
-// 아직 sent_emails에 기록되지 않았을 수 있다(waitForCardStatus/waitForAccountBalance와
-// 동일한 예산 — Poller 1초 tick + Consumer 5초 long polling + LocalStack 지연).
+// waitForSentEmail polls findSentEmail — since email sending is performed
+// asynchronously by an EventHandler via the Outbox → SQS → Consumer path, it
+// may not yet be recorded in sent_emails by the time the HTTP response
+// returns (the same budget as waitForCardStatus/waitForAccountBalance —
+// Poller's 1-second tick + Consumer's 5-second long polling + LocalStack
+// latency).
 func waitForSentEmail(t *testing.T, accountID, eventType string) sentEmailRow {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -77,12 +79,12 @@ func waitForSentEmail(t *testing.T, accountID, eventType string) sentEmailRow {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatalf("sent_emails에 accountId=%s eventType=%s 기록이 나타나지 않음(timed out)", accountID, eventType)
+	t.Fatalf("no sent_emails record found for accountId=%s eventType=%s (timed out)", accountID, eventType)
 	return sentEmailRow{}
 }
 
 func TestNotification(t *testing.T) {
-	t.Run("계좌_생성시_이메일이_실제로_발송되고_DB에_기록된다", func(t *testing.T) {
+	t.Run("an_email_is_actually_sent_and_recorded_in_the_DB_on_account_creation", func(t *testing.T) {
 		email := "notify-created@example.com"
 		account := createAccountWithEmail(t, "notify-owner-created", email, "KRW")
 		accountID := account["accountId"].(string)
@@ -99,11 +101,11 @@ func TestNotification(t *testing.T) {
 				break
 			}
 		}
-		require.NotNil(t, matched, "LocalStack SES가 실제로 수신한 메시지와 DB 기록의 MessageId가 일치해야 한다")
+		require.NotNil(t, matched, "the MessageId actually received by LocalStack SES must match the DB record")
 		require.Contains(t, matched.Destination.ToAddresses, email)
 	})
 
-	t.Run("입금시_이메일이_실제로_발송되고_DB에_기록된다", func(t *testing.T) {
+	t.Run("an_email_is_actually_sent_and_recorded_in_the_DB_on_deposit", func(t *testing.T) {
 		email := "notify-deposit@example.com"
 		account := createAccountWithEmail(t, "notify-owner-deposit", email, "KRW")
 		accountID := account["accountId"].(string)
@@ -128,7 +130,7 @@ func TestNotification(t *testing.T) {
 		require.Contains(t, matched.Destination.ToAddresses, email)
 	})
 
-	t.Run("계좌_종료시_이메일이_실제로_발송되고_DB에_기록된다", func(t *testing.T) {
+	t.Run("an_email_is_actually_sent_and_recorded_in_the_DB_on_account_closure", func(t *testing.T) {
 		email := "notify-closed@example.com"
 		account := createAccountWithEmail(t, "notify-owner-closed", email, "KRW")
 		accountID := account["accountId"].(string)

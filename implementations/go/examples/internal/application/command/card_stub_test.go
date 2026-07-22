@@ -7,7 +7,7 @@ import (
 	"github.com/example/account-service/internal/domain/card"
 )
 
-// stubCardRepository는 테스트별로 필요한 동작만 함수 필드로 주입받는 최소 mock이다.
+// stubCardRepository is a minimal mock that injects only the behavior needed per test via function fields.
 type stubCardRepository struct {
 	findAllFn func(ctx context.Context, q card.FindQuery) ([]*card.Card, int, error)
 	saveFn    func(ctx context.Context, c *card.Card) error
@@ -27,7 +27,7 @@ func (s *stubCardRepository) SaveCard(ctx context.Context, c *card.Card) error {
 	return s.saveFn(ctx, c)
 }
 
-// stubAccountAdapter는 command.AccountAdapter 포트를 함수 필드로 대체하는 최소 mock이다.
+// stubAccountAdapter is a minimal mock that substitutes the command.AccountAdapter port with function fields.
 type stubAccountAdapter struct {
 	findAccountFn func(ctx context.Context, accountID, ownerID string) (*command.AccountView, error)
 }

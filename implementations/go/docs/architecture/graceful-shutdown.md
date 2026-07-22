@@ -1,20 +1,20 @@
 # Graceful Shutdown (Go)
 
-원칙은 루트 [graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md)를 따른다: SIGTERM 수신 시 readiness를 먼저 실패로 전환하고, 진행 중인 요청을 마친 뒤, HTTP 서버를 닫고, 그 다음에 리소스를 정리한다. Go 표준 라이브러리는 이 전체 흐름을 프레임워크 없이 `signal.NotifyContext` + `http.Server.Shutdown(ctx)` 두 가지만으로 구현한다.
+The principle follows the root [graceful-shutdown.md](../../../../docs/architecture/graceful-shutdown.md): on receiving SIGTERM, flip readiness to failing first, let in-flight requests finish, close the HTTP server, and only then clean up resources. The Go standard library implements this entire flow without a framework, using just `signal.NotifyContext` and `http.Server.Shutdown(ctx)`.
 
-`cmd/server/main.go`가 실제로 이 패턴을 쓴다 — 아래는 그 실제 코드다.
+`cmd/server/main.go` actually uses this pattern — below is the real code.
 
 ---
 
-## 실제 구현 — `signal.NotifyContext` + `Shutdown(ctx)`
+## Actual implementation — `signal.NotifyContext` + `Shutdown(ctx)`
 
-`main()`의 나머지 조립(config 검증, DB, Infrastructure, `outboxPoller`/`outboxConsumer`, `NewRouter(accountRepo, jwtService, limiter)` 등)은 [bootstrap.md](bootstrap.md)의 코드 그대로이고, 서버 시작/종료 부분만 아래와 같다:
+The rest of `main()`'s assembly (config validation, DB, Infrastructure, `outboxPoller`/`outboxConsumer`, `NewRouter(accountRepo, jwtService, limiter)`, etc.) is exactly the code shown in [bootstrap.md](bootstrap.md); only the server start/stop portion is shown below:
 
 ```go
-// cmd/server/main.go — 실제 코드 (마지막 부분만 발췌)
+// cmd/server/main.go — actual code (excerpt of the final part)
 srv := &http.Server{Addr: ":8080", Handler: mux}
 
-// SIGTERM/SIGINT를 받으면 ctx가 취소된다.
+// ctx is canceled on receiving SIGTERM/SIGINT.
 ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 defer stop()
 
@@ -26,40 +26,40 @@ go func() {
 	}
 }()
 
-<-ctx.Done() // SIGTERM 수신까지 블록
+<-ctx.Done() // blocks until SIGTERM is received
 slog.Info("shutdown signal received")
 
-// terminationGracePeriodSeconds에 맞춰 여유 있게 설정 (예: 오케스트레이터 설정과 동일하게 30초)
+// set with margin to match terminationGracePeriodSeconds (e.g. same 30s as the orchestrator's setting)
 shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
 
-// 진행 중인 요청이 끝날 때까지 대기하며 새 연결은 거부한다.
+// waits for in-flight requests to finish while rejecting new connections.
 if err := srv.Shutdown(shutdownCtx); err != nil {
 	slog.Error("graceful shutdown failed", "error", err)
 }
 slog.Info("server stopped")
-// defer db.Close()가 이 시점 이후에 실행됨 — HTTP 서버가 완전히 닫힌 뒤 DB 연결 정리
+// defer db.Close() runs after this point — DB connections are cleaned up only after the HTTP server has fully closed
 ```
 
-**흐름과 root 원칙의 대응:**
+**How the flow maps to the root principle's steps:**
 
-| root 단계 | Go 구현 |
+| Root step | Go implementation |
 |---|---|
-| 1. SIGTERM 수신 | `signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)` — 시그널을 컨텍스트 취소로 변환 |
-| 2. readiness를 503으로 | `healthHandler.StartShutdown()`이 `atomic.Bool` 플래그를 세우고, `/health/ready` 핸들러가 이를 검사해 503 반환 — 아래 헬스체크 섹션 참고 |
-| 3. 진행 중인 요청 완료 대기 | `srv.Shutdown(shutdownCtx)`가 자동으로 처리 — 새 연결은 즉시 거부하고, 기존 연결은 idle이 될 때까지 기다린다 |
-| 4. HTTP 서버 종료 | `Shutdown()` 반환 시점 |
-| 5. 리소스 정리 | `defer db.Close()`가 `main()` 함수 종료 시(= `Shutdown()` 반환 이후) 실행 |
-| 6. 정상 종료 | `main()`이 정상 리턴하면 exit code 0 |
+| 1. Receive SIGTERM | `signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)` — converts the signal into context cancellation |
+| 2. Flip readiness to 503 | `healthHandler.StartShutdown()` sets an `atomic.Bool` flag, and the `/health/ready` handler checks it and returns 503 — see the healthcheck section below |
+| 3. Wait for in-flight requests to finish | `srv.Shutdown(shutdownCtx)` handles this automatically — it rejects new connections immediately and waits for existing connections to go idle |
+| 4. Close the HTTP server | The point at which `Shutdown()` returns |
+| 5. Clean up resources | `defer db.Close()` runs when `main()` exits (i.e. after `Shutdown()` returns) |
+| 6. Normal exit | When `main()` returns normally, exit code 0 |
 
 ---
 
-## Liveness / Readiness 엔드포인트
+## Liveness / readiness endpoints
 
-`internal/interface/http/health_handler.go`의 `HealthHandler`가 `/health/live`·`/health/ready`를 제공하고, `router.go`가 이 두 라우트를 rate limit 미들웨어([rate-limiting.md](rate-limiting.md))로 감싸지 않은 채 `mux`에 직접 등록한다.
+`HealthHandler` in `internal/interface/http/health_handler.go` provides `/health/live` and `/health/ready`, and `router.go` registers these two routes directly on `mux` without wrapping them in the rate-limit middleware ([rate-limiting.md](rate-limiting.md)).
 
 ```go
-// internal/interface/http/health_handler.go — 실제 코드
+// internal/interface/http/health_handler.go — actual code
 type HealthHandler struct {
 	shuttingDown atomic.Bool
 }
@@ -69,7 +69,7 @@ func NewHealthHandler() *HealthHandler { return &HealthHandler{} }
 func (h *HealthHandler) StartShutdown() { h.shuttingDown.Store(true) }
 
 func (h *HealthHandler) Live(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK) // 항상 200 — 종료 중이어도 프로세스는 살아있다
+	w.WriteHeader(http.StatusOK) // always 200 — the process is alive even while shutting down
 }
 
 func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
@@ -81,21 +81,21 @@ func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-`NewRouter`가 조립한 `*HealthHandler`를 반환하고, `main()`은 이를 붙잡아 두었다가 시그널 수신 직후 사용한다:
+`NewRouter` returns the `*HealthHandler` it assembled, and `main()` holds onto it to use right after receiving the signal:
 
 ```go
-// cmd/server/main.go — 실제 코드(발췌)
+// cmd/server/main.go — actual code (excerpt)
 accountRepo := persistence.NewAccountRepository(db, outboxWriter)
 mux, healthHandler := httphandler.NewRouter(accountRepo, jwtService, limiter)
 
 // ...
 
-<-ctx.Done() // SIGTERM/SIGINT 수신까지 블록
+<-ctx.Done() // blocks until SIGTERM/SIGINT is received
 slog.Info("shutdown signal received")
 
-// srv.Shutdown(ctx)보다 반드시 먼저 호출한다 — readiness가 503으로 바뀐 뒤에야
-// 오케스트레이터가 새 트래픽을 끊으므로, HTTP 서버가 실제로 멈추기 전에 readiness부터
-// 실패시켜야 무중단 전환이 된다.
+// must be called before srv.Shutdown(ctx) — the orchestrator only cuts new traffic
+// after readiness flips to 503, so readiness must fail before the HTTP server actually
+// stops in order to get a zero-downtime transition.
 healthHandler.StartShutdown()
 
 shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -105,30 +105,30 @@ if err := srv.Shutdown(shutdownCtx); err != nil {
 }
 ```
 
-`healthHandler.StartShutdown()`을 `srv.Shutdown()`보다 **먼저** 호출하는 순서가 핵심이다 — root가 강조하는 순서(readiness 전환이 HTTP 서버 종료보다 먼저)를 지켜야, 오케스트레이터가 `/health/ready`의 503을 보고 새 트래픽 라우팅을 끊는 시점과 서버가 실제로 새 연결을 거부하기 시작하는 시점 사이에 공백이 생기지 않는다.
+The key is calling `healthHandler.StartShutdown()` **before** `srv.Shutdown()` — following the order the root document emphasizes (readiness flips before the HTTP server closes) ensures there's no gap between the moment the orchestrator sees `/health/ready`'s 503 and cuts new traffic routing, and the moment the server actually starts rejecting new connections.
 
 ---
 
-## 컨테이너에서 직접 프로세스 실행
+## Running the process directly in the container
 
 ```dockerfile
-# 올바른 방식 — Go 바이너리를 PID 1로 직접 실행 (container.md 참고)
+# correct — run the Go binary directly as PID 1 (see container.md)
 CMD ["/app/server"]
 ```
 
-Go 바이너리는 애초에 셸 스크립트나 `npm`/`yarn` 같은 런처가 필요 없다 — 컴파일된 단일 실행 파일을 `CMD`의 exec form으로 직접 실행하면 그 프로세스가 PID 1이 되어 SIGTERM을 지연 없이 즉시 수신한다. Node/npm처럼 "래퍼 프로세스가 시그널을 삼키는" 문제가 Go에는 원천적으로 없다.
+A Go binary needs no shell script or launcher like `npm`/`yarn` in the first place — running the compiled single executable directly via the exec form of `CMD` makes that process PID 1, so it receives SIGTERM immediately with no delay. The "wrapper process swallows the signal" problem that affects Node/npm simply doesn't exist in Go.
 
 ---
 
 ## `terminationGracePeriodSeconds`
 
-`context.WithTimeout(context.Background(), 30*time.Second)`의 30초 값은 오케스트레이터(Kubernetes 등)의 `terminationGracePeriodSeconds`와 맞춰야 한다 — Go 쪽 타임아웃이 오케스트레이터의 grace period보다 길면, 서버가 아직 graceful shutdown 중인데 SIGKILL이 먼저 와서 강제 종료된다.
+The 30-second value in `context.WithTimeout(context.Background(), 30*time.Second)` must match the orchestrator's (Kubernetes, etc.) `terminationGracePeriodSeconds` — if the Go-side timeout is longer than the orchestrator's grace period, SIGKILL arrives and force-terminates the process while graceful shutdown is still in progress.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [container.md](container.md) — Dockerfile CMD 설정, 헬스체크 엔드포인트 노출
-- [observability.md](observability.md) — 종료 과정의 구조화 로깅
-- [scheduling.md](scheduling.md) — 백그라운드 워커(Ticker)의 graceful shutdown
-- [rate-limiting.md](rate-limiting.md) — `/health/live`·`/health/ready`를 rate limit 미들웨어에서 제외하는 라우팅 방식
+- [container.md](container.md) — Dockerfile CMD configuration, exposing healthcheck endpoints
+- [observability.md](observability.md) — structured logging during shutdown
+- [scheduling.md](scheduling.md) — graceful shutdown of the background worker (Ticker)
+- [rate-limiting.md](rate-limiting.md) — the routing approach that excludes `/health/live`/`/health/ready` from the rate-limit middleware

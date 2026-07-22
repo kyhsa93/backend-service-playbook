@@ -6,9 +6,11 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// TestEvaluateTransferEligibility는 root docs/architecture/domain-service.md가 요구하는
-// "여러 Aggregate 인스턴스를 조율하는 순수 도메인 로직"을 두 Account 인스턴스 조합으로
-// 직접 검증한다 — 어느 한쪽 Account의 단위 테스트만으로는 이 판단을 검증할 수 없다.
+// TestEvaluateTransferEligibility directly verifies "pure domain logic that
+// coordinates multiple Aggregate instances," as required by the root
+// docs/architecture/domain-service.md, using a combination of two Account
+// instances — this judgment cannot be verified by a unit test of either
+// Account alone.
 func TestEvaluateTransferEligibility(t *testing.T) {
 	fundedAccount := func(currency string, amount int64) *account.Account {
 		a := account.New("owner-1", "a@example.com", currency)
@@ -33,42 +35,42 @@ func TestEvaluateTransferEligibility(t *testing.T) {
 		sameAcctID bool
 	}{
 		{
-			name:      "출금_계좌_잔액이_충분하면_승인",
+			name:      "sufficient_source_balance_is_approved",
 			source:    fundedAccount("KRW", 10000),
 			target:    fundedAccount("KRW", 0),
 			amount:    5000,
 			wantApprv: true,
 		},
 		{
-			name:       "출금_입금_계좌가_같으면_거부",
+			name:       "same_source_and_target_account_is_rejected",
 			source:     fundedAccount("KRW", 10000),
 			sameAcctID: true,
 			amount:     5000,
 			wantErr:    account.ErrTransferSameAccount,
 		},
 		{
-			name:    "출금_계좌가_비활성이면_거부",
+			name:    "inactive_source_account_is_rejected",
 			source:  suspendedAccount("KRW", 10000),
 			target:  fundedAccount("KRW", 0),
 			amount:  5000,
 			wantErr: account.ErrWithdrawRequiresActiveAccount,
 		},
 		{
-			name:    "입금_계좌가_비활성이면_거부",
+			name:    "inactive_target_account_is_rejected",
 			source:  fundedAccount("KRW", 10000),
 			target:  suspendedAccount("KRW", 0),
 			amount:  5000,
 			wantErr: account.ErrDepositRequiresActiveAccount,
 		},
 		{
-			name:    "통화가_일치하지_않으면_거부",
+			name:    "mismatched_currency_is_rejected",
 			source:  fundedAccount("KRW", 10000),
 			target:  fundedAccount("USD", 0),
 			amount:  5000,
 			wantErr: account.ErrCurrencyMismatch,
 		},
 		{
-			name:    "출금_계좌_잔액이_부족하면_거부",
+			name:    "insufficient_source_balance_is_rejected",
 			source:  fundedAccount("KRW", 1000),
 			target:  fundedAccount("KRW", 0),
 			amount:  5000,

@@ -35,13 +35,13 @@ func TestCard_Suspend(t *testing.T) {
 		want    card.Status
 	}{
 		{
-			name:    "활성_카드를_정지하면_SUSPENDED가_된다",
+			name:    "suspending_an_active_card_becomes_SUSPENDED",
 			setup:   func() *card.Card { return card.IssueCard("acc-1", "owner-1", "VISA") },
 			wantErr: nil,
 			want:    card.StatusSuspended,
 		},
 		{
-			name: "이미_정지된_카드를_다시_정지하면_에러",
+			name: "suspending_an_already_suspended_card_errors",
 			setup: func() *card.Card {
 				c := card.IssueCard("acc-1", "owner-1", "VISA")
 				_ = c.Suspend()
@@ -51,7 +51,7 @@ func TestCard_Suspend(t *testing.T) {
 			want:    card.StatusSuspended,
 		},
 		{
-			name: "해지된_카드는_정지할_수_없다",
+			name: "a_cancelled_card_cannot_be_suspended",
 			setup: func() *card.Card {
 				c := card.IssueCard("acc-1", "owner-1", "VISA")
 				_ = c.Cancel()
@@ -77,7 +77,7 @@ func TestCard_Suspend(t *testing.T) {
 }
 
 func TestCard_MarkStatementSent(t *testing.T) {
-	t.Run("처음_보내는_기간이면_true를_반환하고_기록된다", func(t *testing.T) {
+	t.Run("first_send_for_a_period_returns_true_and_records_it", func(t *testing.T) {
 		c := card.IssueCard("acc-1", "owner-1", "VISA")
 
 		if changed := c.MarkStatementSent("2026-07"); !changed {
@@ -88,7 +88,7 @@ func TestCard_MarkStatementSent(t *testing.T) {
 		}
 	})
 
-	t.Run("같은_기간을_다시_보내면_멱등하게_false를_반환한다", func(t *testing.T) {
+	t.Run("resending_the_same_period_idempotently_returns_false", func(t *testing.T) {
 		c := card.IssueCard("acc-1", "owner-1", "VISA")
 		_ = c.MarkStatementSent("2026-07")
 
@@ -100,7 +100,7 @@ func TestCard_MarkStatementSent(t *testing.T) {
 		}
 	})
 
-	t.Run("다음_기간이면_다시_true를_반환한다", func(t *testing.T) {
+	t.Run("the_next_period_returns_true_again", func(t *testing.T) {
 		c := card.IssueCard("acc-1", "owner-1", "VISA")
 		_ = c.MarkStatementSent("2026-07")
 
@@ -120,12 +120,12 @@ func TestCard_Cancel(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "활성_카드를_해지하면_CANCELLED가_된다",
+			name:    "cancelling_an_active_card_becomes_CANCELLED",
 			setup:   func() *card.Card { return card.IssueCard("acc-1", "owner-1", "VISA") },
 			wantErr: nil,
 		},
 		{
-			name: "정지된_카드도_해지할_수_있다",
+			name: "a_suspended_card_can_also_be_cancelled",
 			setup: func() *card.Card {
 				c := card.IssueCard("acc-1", "owner-1", "VISA")
 				_ = c.Suspend()
@@ -134,7 +134,7 @@ func TestCard_Cancel(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "이미_해지된_카드를_다시_해지하면_에러",
+			name: "cancelling_an_already_cancelled_card_errors",
 			setup: func() *card.Card {
 				c := card.IssueCard("acc-1", "owner-1", "VISA")
 				_ = c.Cancel()

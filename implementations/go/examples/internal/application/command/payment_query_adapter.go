@@ -5,18 +5,21 @@ import (
 	"time"
 )
 
-// CardPaymentSummary는 Card BC가 월간 사용내역 명세서 발송에 필요로 하는 최소 정보다
-// (건수·합계) — Payment의 도메인 모델(Payment 목록, 상태 등)을 그대로 노출하지 않는다.
+// CardPaymentSummary is the minimal information the Card BC needs for
+// sending monthly usage statements (count, total amount) — it does not
+// expose Payment's domain model (the list of Payments, their statuses, etc.) directly.
 type CardPaymentSummary struct {
 	Count       int
 	TotalAmount int64
 }
 
-// PaymentQueryAdapter는 Card BC가 Payment BC를 동기 조회하기 위한 포트(ACL 인터페이스)다.
-// SendCardUsageStatementHandler가 기간별 이용내역 요약을 얻는 데만 쓰인다 —
-// Card의 Application/Domain 레이어는 payment 패키지를 전혀 import하지 않는다
-// (cross-domain-communication.md, PaymentCardAdapter/PaymentAccountAdapter와 동일한
-// 패턴을 반대 방향으로 적용). 구현체는 infrastructure/acl에 둔다.
+// PaymentQueryAdapter is the port (ACL interface) the Card BC uses to
+// synchronously query the Payment BC. It is used only for
+// SendCardUsageStatementHandler to obtain a usage summary for a period —
+// Card's Application/Domain layers never import the payment package at all
+// (cross-domain-communication.md; the same pattern as
+// PaymentCardAdapter/PaymentAccountAdapter applied in the reverse direction).
+// The implementation lives in infrastructure/acl.
 type PaymentQueryAdapter interface {
 	SummarizeCardPayments(ctx context.Context, cardID string, from, to time.Time) (CardPaymentSummary, error)
 }

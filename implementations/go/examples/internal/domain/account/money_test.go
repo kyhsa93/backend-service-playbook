@@ -13,9 +13,9 @@ func TestNewMoney(t *testing.T) {
 		amount  int64
 		wantErr error
 	}{
-		{name: "음수_금액은_에러", amount: -1, wantErr: account.ErrInvalidMoneyAmount},
-		{name: "0원은_정상", amount: 0, wantErr: nil},
-		{name: "양수_금액은_정상", amount: 1000, wantErr: nil},
+		{name: "negative_amount_errors", amount: -1, wantErr: account.ErrInvalidMoneyAmount},
+		{name: "zero_amount_is_valid", amount: 0, wantErr: nil},
+		{name: "positive_amount_is_valid", amount: 1000, wantErr: nil},
 	}
 
 	for _, tt := range tests {

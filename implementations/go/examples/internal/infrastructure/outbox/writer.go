@@ -11,17 +11,19 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// Writer는 Aggregate가 도메인 메서드 실행 중 쌓아둔 Domain Event를 outbox 테이블에
-// 적재한다. Repository의 저장 트랜잭션 내부(같은 *sql.Tx)에서 호출되어야
-// 계좌 상태 변경과 이벤트 적재가 원자적으로 커밋된다(dual-write 회피).
+// Writer loads Domain Events an Aggregate accumulated while running domain
+// methods into the outbox table. It must be called inside the
+// Repository's save transaction (the same *sql.Tx) for the account state
+// change and the event load to commit atomically (avoiding dual-write).
 type Writer struct{}
 
 func NewWriter() *Writer {
 	return &Writer{}
 }
 
-// SaveAll은 주어진 트랜잭션 안에서 이벤트들을 outbox 테이블에 insert 한다.
-// 호출부(Repository)가 트랜잭션을 커밋/롤백할 책임을 진다 — 이 메서드는 커밋하지 않는다.
+// SaveAll inserts the events into the outbox table within the given
+// transaction. The caller (Repository) is responsible for committing/
+// rolling back the transaction — this method does not commit.
 func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []account.DomainEvent) error {
 	for _, event := range events {
 		payload, err := json.Marshal(event)
@@ -38,8 +40,9 @@ func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []account.Domai
 	return nil
 }
 
-// eventTypeName은 이벤트 struct의 타입명을 그대로 event_type 컬럼 값으로 쓴다
-// (예: account.MoneyDeposited{} → "MoneyDeposited"). Relay가 이 문자열로 핸들러를 찾는다.
+// eventTypeName uses the event struct's type name as-is for the event_type
+// column value (e.g. account.MoneyDeposited{} → "MoneyDeposited"). The
+// Relay looks up its handler using this string.
 func eventTypeName(event account.DomainEvent) string {
 	return reflect.TypeOf(event).Name()
 }

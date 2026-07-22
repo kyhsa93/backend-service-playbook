@@ -10,19 +10,24 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-// Handler는 하나의 taskType을 처리하는 함수다. main.go에서 이 map의 값으로 등록되는
-// 것은 항상 interface/task/의 Task Controller 메서드다 — Task Controller가 로직 없이
-// Command Service로 위임하고, 여기서는 taskType 문자열로 그 함수를 찾아 호출하는
-// 라우팅만 한다(outbox.Consumer가 application/event EventHandler를 찾아 호출하는 것과
-// 동일한 역할 분리).
+// Handler is a function that processes a single taskType. What's registered
+// in main.go as a value of this map is always a Task Controller method from
+// interface/task/ — the Task Controller has no logic of its own and
+// delegates to a Command Service, and this package only does routing,
+// looking up that function by the taskType string (the same separation of
+// responsibilities as outbox.Consumer looking up and calling an
+// application/event EventHandler).
 type Handler func(ctx context.Context, payload []byte) error
 
-// Consumer는 Task Queue(SQS)를 long polling으로 수신 대기하다가 메시지를 받으면
-// taskType(MessageAttributes)으로 handlers map에서 Task Controller를 찾아 호출한다.
+// Consumer waits to receive from the Task Queue (SQS) via long polling, and
+// when a message arrives, looks up a Task Controller in the handlers map by
+// taskType (MessageAttributes) and calls it.
 //
-// 핸들러 성공 → 메시지 삭제(ack). 핸들러 실패(또는 등록된 핸들러가 없음) → 삭제하지
-// 않는다 — SQS의 visibility timeout이 지나면 자동 재전달된다(at-least-once,
-// scheduling.md의 "Task 핸들러는 멱등하다"가 바로 이 재전달을 전제한다).
+// Handler success → message deleted (ack). Handler failure (or no
+// registered handler) → not deleted — once SQS's visibility timeout
+// passes, it's automatically redelivered (at-least-once; scheduling.md's
+// "Task handlers are idempotent" is exactly what assumes this
+// redelivery).
 type Consumer struct {
 	sqs      *sqs.Client
 	queueURL string
@@ -33,9 +38,10 @@ func NewConsumer(sqsClient *sqs.Client, queueURL string, handlers map[string]Han
 	return &Consumer{sqs: sqsClient, queueURL: queueURL, handlers: handlers}
 }
 
-// Run은 main()의 goroutine으로 단 한 번 시작되는 백그라운드 루프다(outbox.Consumer.Run과
-// 동일한 모양). ctx가 취소되면(signal.NotifyContext) 진행 중인 ReceiveMessage(최대
-// WaitTimeSeconds)를 끝까지 기다린 뒤 종료한다.
+// Run is a background loop started exactly once as a goroutine in main()
+// (the same shape as outbox.Consumer.Run). When ctx is cancelled
+// (signal.NotifyContext), it waits out any in-flight ReceiveMessage (up to
+// WaitTimeSeconds) before exiting.
 func (c *Consumer) Run(ctx context.Context) {
 	for {
 		if ctx.Err() != nil {
@@ -50,9 +56,9 @@ func (c *Consumer) Run(ctx context.Context) {
 		})
 		if err != nil {
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-				return // graceful shutdown 중 ReceiveMessage가 취소된 경우
+				return // ReceiveMessage was cancelled during graceful shutdown
 			}
-			slog.ErrorContext(ctx, "Task Queue 수신 실패", "error", err)
+			slog.ErrorContext(ctx, "task queue receive failed", "error", err)
 			continue
 		}
 
@@ -70,21 +76,22 @@ func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
 
 	handler, ok := c.handlers[taskType]
 	if !ok {
-		slog.ErrorContext(ctx, "등록된 Task Controller를 찾지 못함 — 재시도로 남겨둠", "task_type", taskType)
-		return // 삭제하지 않음 — visibility timeout 이후 재수신되어 재시도된다.
+		slog.ErrorContext(ctx, "no registered task controller found — leaving for retry", "task_type", taskType)
+		return // not deleted — will be redelivered and retried after the visibility timeout.
 	}
 
-	// 에러는 그대로 위로 전파된 것을 여기서 로깅만 하고 삭제하지 않는다 — Task
-	// Controller 자신은 catch+변환하지 않는다(scheduling.md, "에러를 그대로 던진다").
+	// The error is propagated as-is; it's only logged here, not deleted —
+	// the Task Controller itself never catches and translates it
+	// (scheduling.md, "let errors propagate as-is").
 	if err := handler(ctx, []byte(aws.ToString(message.Body))); err != nil {
-		slog.ErrorContext(ctx, "Task 처리 실패", "task_type", taskType, "error", err)
-		return // 삭제하지 않음 — visibility timeout 이후 재수신되어 재시도된다.
+		slog.ErrorContext(ctx, "task processing failed", "task_type", taskType, "error", err)
+		return // not deleted — will be redelivered and retried after the visibility timeout.
 	}
 
 	if _, err := c.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(c.queueURL),
 		ReceiptHandle: message.ReceiptHandle,
 	}); err != nil {
-		slog.ErrorContext(ctx, "메시지 삭제 실패", "task_type", taskType, "error", err)
+		slog.ErrorContext(ctx, "message deletion failed", "task_type", taskType, "error", err)
 	}
 }

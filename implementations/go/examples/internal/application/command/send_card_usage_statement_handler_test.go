@@ -120,7 +120,7 @@ func TestSendCardUsageStatementHandler_Handle_SkipsMissingLinkedAccount(t *testi
 		},
 		&stubAccountAdapter{
 			findAccountFn: func(ctx context.Context, accountID, ownerID string) (*command.AccountView, error) {
-				return nil, nil // 계좌가 사라짐
+				return nil, nil // The account is gone
 			},
 		},
 		&stubPaymentQueryAdapter{},

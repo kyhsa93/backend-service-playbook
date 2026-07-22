@@ -5,12 +5,13 @@ import (
 	"strconv"
 )
 
-// InterestConfig는 일일 이자 지급 배치(Account.ApplyInterest)가 쓰는 이자율이다.
-// RateLimitConfig와 동일한 원칙 — 로컬 개발에서 바로 동작하는 기본값을 두고,
-// 운영값은 환경 변수로 override한다(민감값이 아니므로 config.md의 Secrets Manager
-// 대상이 아니다).
+// InterestConfig is the interest rate used by the daily interest payment
+// batch (Account.ApplyInterest). Same principle as RateLimitConfig — a
+// default that works out of the box for local development, with production
+// values overridden via environment variables (not a Secrets Manager target
+// per config.md, since it isn't a sensitive value).
 type InterestConfig struct {
-	DailyRate float64 // 일 이자율. 기본값 0.0001 = 0.01%
+	DailyRate float64 // daily interest rate. Default 0.0001 = 0.01%
 }
 
 func LoadInterestConfig() InterestConfig {

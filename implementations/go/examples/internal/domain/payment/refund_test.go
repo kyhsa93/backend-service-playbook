@@ -28,12 +28,12 @@ func TestRefund_Approve(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "REQUESTED_환불을_승인하면_성공",
+			name:    "approving_a_REQUESTED_refund_succeeds",
 			setup:   func() *payment.Refund { return payment.NewRefund("payment-1", 500, "wrong item") },
 			wantErr: nil,
 		},
 		{
-			name: "이미_승인된_환불을_다시_승인하면_에러",
+			name: "approving_an_already_approved_refund_errors",
 			setup: func() *payment.Refund {
 				r := payment.NewRefund("payment-1", 500, "wrong item")
 				_ = r.Approve("account-1", "owner-1")
@@ -84,12 +84,12 @@ func TestRefund_Reject(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "REQUESTED_환불을_거부하면_성공",
+			name:    "rejecting_a_REQUESTED_refund_succeeds",
 			setup:   func() *payment.Refund { return payment.NewRefund("payment-1", 500, "wrong item") },
 			wantErr: nil,
 		},
 		{
-			name: "이미_거부된_환불을_다시_거부하면_에러",
+			name: "rejecting_an_already_rejected_refund_errors",
 			setup: func() *payment.Refund {
 				r := payment.NewRefund("payment-1", 500, "wrong item")
 				_ = r.Reject("policy violation")
@@ -114,8 +114,9 @@ func TestRefund_Reject(t *testing.T) {
 					t.Fatalf("DecisionNote = %q, want %q", r.DecisionNote, "policy violation")
 				}
 			}
-			// Reject()는 도메인 이벤트를 발생시키지 않는다 — 승인 시(payment.completed.v1
-			// 흐름의 대칭인 refund.approved.v1)만 외부 BC에 알릴 것이 있다.
+			// Reject() does not raise a domain event — only approval (via
+			// refund.approved.v1, symmetric to the payment.completed.v1 flow)
+			// has anything to notify an external BC about.
 			if len(r.DomainEvents()) != 0 {
 				t.Fatalf("want 0 events after Reject(), got %d", len(r.DomainEvents()))
 			}
@@ -130,7 +131,7 @@ func TestRefund_Complete(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "APPROVED_환불을_완료하면_성공",
+			name: "completing_an_APPROVED_refund_succeeds",
 			setup: func() *payment.Refund {
 				r := payment.NewRefund("payment-1", 500, "wrong item")
 				_ = r.Approve("account-1", "owner-1")
@@ -139,7 +140,7 @@ func TestRefund_Complete(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:    "REQUESTED_환불을_완료하면_에러",
+			name:    "completing_a_REQUESTED_refund_errors",
 			setup:   func() *payment.Refund { return payment.NewRefund("payment-1", 500, "wrong item") },
 			wantErr: payment.ErrRefundCompleteRequiresApprovedRefund,
 		},

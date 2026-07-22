@@ -6,21 +6,24 @@ import (
 	"strings"
 )
 
-// forbiddenDomainImportSegments — domain/ 레이어가 import해서는 안 되는 상위 레이어
-// 경로 세그먼트(layer-architecture.md: "Domain 레이어는 어떤 레이어에도 의존하지
-// 않는다"). 특정 라이브러리 이름을 나열하는 블록리스트가 아니라 경로 기반이므로,
-// application/infrastructure/interface 아래 어떤 새 패키지가 생기든(도메인 이름이
-// 늘어나도) 자동으로 커버된다.
+// forbiddenDomainImportSegments — the higher-layer path segments that the
+// domain/ layer must not import (layer-architecture.md: "the Domain layer
+// depends on no layer"). Because this is path-based rather than a blocklist
+// enumerating specific library names, any new package created under
+// application/infrastructure/interface (even as more domains are added) is
+// automatically covered.
 var forbiddenDomainImportSegments = []string{
 	"/internal/application/",
 	"/internal/infrastructure/",
 	"/internal/interface/",
 }
 
-// checkDomainLayerIsolation — [10] domain-layer-isolation: internal/domain/**/*.go는
-// internal/application|infrastructure|interface/의 어떤 패키지도 import할 수 없다
-// (layer-architecture.md). go/parser로 import 선언만 정밀 파싱하므로(import_paths.go),
-// 주석·문자열 리터럴 안에 저 경로들이 언급돼도 오탐하지 않는다.
+// checkDomainLayerIsolation — [10] domain-layer-isolation: internal/domain/**/*.go
+// must not import any package under
+// internal/application|infrastructure|interface/ (layer-architecture.md).
+// Because import declarations are precisely parsed with go/parser
+// (import_paths.go), mentioning those paths inside a comment or string
+// literal never causes a false positive.
 func checkDomainLayerIsolation(root string) RuleResult {
 	result := RuleResult{Section: "domain-layer-isolation"}
 	found := false
@@ -39,7 +42,7 @@ func checkDomainLayerIsolation(root string) RuleResult {
 		imports, parseErr := fileImportPaths(path)
 		if parseErr != nil {
 			found = true
-			result.Findings = append(result.Findings, failFinding(rel, "Go 파일 파싱 실패: "+parseErr.Error()))
+			result.Findings = append(result.Findings, failFinding(rel, "failed to parse Go file: "+parseErr.Error()))
 			return nil
 		}
 		found = true
@@ -55,16 +58,16 @@ func checkDomainLayerIsolation(root string) RuleResult {
 		}
 		if len(violated) > 0 {
 			result.Findings = append(result.Findings, failFinding(rel,
-				"domain/ 레이어가 상위 레이어를 import함("+strings.Join(violated, ", ")+") — Domain은 어떤 레이어에도 의존하지 않는 프레임워크 무의존 코드여야 한다(layer-architecture.md)"))
+				"the domain/ layer imports a higher layer ("+strings.Join(violated, ", ")+") — Domain must be framework-independent code that depends on no layer (layer-architecture.md)"))
 		} else {
 			result.Findings = append(result.Findings, passFinding(rel))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("internal/domain/ 없음"))
+		result.Findings = append(result.Findings, skipFinding("internal/domain/ not found"))
 	}
 	return result
 }

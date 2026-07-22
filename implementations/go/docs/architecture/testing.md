@@ -1,21 +1,21 @@
-# 테스트 전략 (Go)
+# Testing Strategy (Go)
 
-원칙은 루트 [testing.md](../../../../docs/architecture/testing.md)를 따른다: Domain 단위 테스트, Application 단위 테스트(Repository mock), E2E 테스트 3단계로 구성한다. 3단계 모두 `examples/`에 구현되어 있다. 이 문서는 Go 표준 라이브러리 `testing` 패키지와 table-driven test 관용구로 각 계층을 어떻게 작성했는지 제시한다.
+The principle follows the root [testing.md](../../../../docs/architecture/testing.md): 3 tiers — Domain unit tests, Application unit tests (Repository mocks), and E2E tests. All 3 tiers are implemented under `examples/`. This document presents how each layer is written using the Go standard library's `testing` package and the table-driven test idiom.
 
-| 레이어 | 검증 범위 | 의존성 전략 | 현재 상태 |
+| Layer | Verification scope | Dependency strategy | Current state |
 |---|---|---|---|
-| Domain 단위 테스트 | Aggregate, Value Object | 프레임워크 없음, 순수 함수 호출 | **있음** — `internal/domain/account/account_test.go`, `money_test.go` |
-| Application 단위 테스트 | Command/Query Handler | Repository를 수동 stub으로 대체(`stub_test.go`) | **있음** — `create_account_handler_test.go`, `deposit_handler_test.go` |
-| E2E 테스트 | HTTP → Handler → Repository → 실제 DB | testcontainers-go (Postgres + LocalStack) | **있음** — `test/account_e2e_test.go`, `test/notification_e2e_test.go` |
+| Domain unit tests | Aggregate, Value Object | No framework, pure function calls | **Present** — `internal/domain/account/account_test.go`, `money_test.go` |
+| Application unit tests | Command/Query Handler | Repository replaced with a manual stub (`stub_test.go`) | **Present** — `create_account_handler_test.go`, `deposit_handler_test.go` |
+| E2E tests | HTTP → Handler → Repository → real DB | testcontainers-go (Postgres + LocalStack) | **Present** — `test/account_e2e_test.go`, `test/notification_e2e_test.go` |
 
 ---
 
-## Domain 단위 테스트 — 실제 코드
+## Domain unit tests — actual code
 
-Go 표준 컨벤션대로 소스 옆에 `_test.go`로 둔다(`internal/domain/account/account_test.go`). 외부 의존성이 없으므로 `go test ./internal/domain/...`만으로 밀리초 단위로 끝난다. **table-driven test**가 Go의 표준 스타일이다 — `describe`/`it` 대신 `[]struct{...}` 슬라이스 + `for` 루프 + `t.Run` 서브테스트를 쓴다.
+Following standard Go convention, these live as `_test.go` files next to the source (`internal/domain/account/account_test.go`). Since there's no external dependency, `go test ./internal/domain/...` finishes in milliseconds. **Table-driven tests** are Go's standard style — instead of `describe`/`it`, a `[]struct{...}` slice + a `for` loop + `t.Run` subtests are used.
 
 ```go
-// internal/domain/account/account_test.go — 실제 코드
+// internal/domain/account/account_test.go — actual code
 package account_test
 
 import (
@@ -32,19 +32,19 @@ func TestAccount_Withdraw(t *testing.T) {
 		wantErr    error
 	}{
 		{
-			name:    "정지된_계좌에서_출금하면_에러",
+			name:    "withdraw_from_suspended_account_errors",
 			setup:   func() *account.Account { a := account.New("owner-1", "a@example.com", "KRW"); _ = a.Suspend(); return a },
 			amount:  1000,
 			wantErr: account.ErrWithdrawRequiresActiveAccount,
 		},
 		{
-			name:    "잔액보다_큰_금액을_출금하면_에러",
+			name:    "withdraw_more_than_balance_errors",
 			setup:   func() *account.Account { return account.New("owner-1", "a@example.com", "KRW") },
 			amount:  1000,
 			wantErr: account.ErrInsufficientBalance,
 		},
 		{
-			name:    "0원_이하_출금은_에러",
+			name:    "withdraw_zero_or_less_errors",
 			setup:   func() *account.Account { a := account.New("owner-1", "a@example.com", "KRW"); _, _ = a.Deposit(5000); return a },
 			amount:  0,
 			wantErr: account.ErrInvalidAmount,
@@ -64,7 +64,7 @@ func TestAccount_Withdraw(t *testing.T) {
 
 func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
-	a.ClearEvents() // New()가 이미 AccountCreated를 쌓아두므로 테스트 대상 이벤트만 남기고 초기화
+	a.ClearEvents() // New() has already accumulated an AccountCreated event, so this resets it, leaving only the event under test
 
 	if _, err := a.Deposit(1000); err != nil {
 		t.Fatalf("Deposit() unexpected error: %v", err)
@@ -80,20 +80,20 @@ func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 }
 ```
 
-**원칙:**
-- `package account_test`(외부 테스트 패키지)를 써서 공개 API만으로 테스트한다 — 패키지 내부 비공개 필드에 의존하지 않는지 자연스럽게 검증된다.
-- 테스트 픽스처는 `setup func() *account.Account` 클로저로 구성하고 필요한 상태만 조립한다(root의 `createOrder(overrides)` 헬퍼 패턴과 동일한 의도).
-- 기대 에러는 `errors.Is`로 비교한다(sentinel error 값 자체를 비교 — 문자열 비교 금지).
-- `math/rand`, 시간, 외부 패키지 import 없이 순수 로직만 검증한다.
+**Principles:**
+- Using `package account_test` (an external test package) tests only through the public API — this naturally verifies that the test doesn't depend on the package's private internal fields.
+- Test fixtures are built as a `setup func() *account.Account` closure, assembling only the state that's needed (the same intent as the root's `createOrder(overrides)` helper pattern).
+- Expected errors are compared with `errors.Is` (comparing the sentinel error value itself — string comparison is forbidden).
+- Only pure logic is verified, with no `math/rand`, time, or external package imports.
 
 ---
 
-## Application 단위 테스트 — 실제 코드
+## Application unit tests — actual code
 
-Repository를 mock으로 대체해 Handler의 조율 로직(에러 전파, Save 호출 여부, notify 호출 여부)만 검증한다. Go에는 mocking 프레임워크가 필수는 아니다 — `account.Repository` 인터페이스를 구현하는 최소 stub 구조체(`stub_test.go`)를 직접 작성하는 것으로 충분하다.
+Replaces the Repository with a mock to verify only the Handler's orchestration logic (error propagation, whether Save was called, whether notify was called). Go doesn't require a mocking framework — writing a minimal stub struct (`stub_test.go`) that implements the `account.Repository` interface by hand is sufficient.
 
 ```go
-// internal/application/command/deposit_handler_test.go — 실제 코드
+// internal/application/command/deposit_handler_test.go — actual code
 package command_test
 
 import (
@@ -105,9 +105,10 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// stubRepository는 테스트별로 필요한 동작만 함수 필드로 주입받는 최소 mock이다.
-// findByIDFn은 account.FindOne이 감싸는 단건 조회 시나리오만 흉내내면 충분하므로,
-// FindAccounts가 이를 단건 결과([]*account.Account 길이 0 또는 1)로 감싸 반환한다.
+// stubRepository is a minimal mock that's injected, per test, with only the
+// behavior it needs, as function fields. Since findByIDFn only needs to mimic
+// the single-item lookup scenario wrapped by account.FindOne, FindAccounts
+// wraps it as a single-item result ([]*account.Account of length 0 or 1) and returns that.
 type stubRepository struct {
 	findByIDFn func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
 	saveFn     func(ctx context.Context, a *account.Account) error
@@ -161,17 +162,17 @@ func TestDepositHandler_Handle_Saves(t *testing.T) {
 }
 ```
 
-`go.mod`에 이미 `github.com/stretchr/testify`가 있으므로(E2E에서 `require` 패키지로 사용 중), 필요하면 `testify/mock`으로 stub을 대체할 수도 있지만 — 인터페이스가 메서드 3~4개 수준으로 작을 때는 위처럼 손으로 쓴 stub이 더 읽기 쉽고 디버깅하기 쉽다는 것이 Go 커뮤니티의 일반적인 선호다.
+Since `go.mod` already includes `github.com/stretchr/testify` (used as a `require` package in E2E), the stub could be replaced with `testify/mock` if needed — but when an interface is small, on the order of 3-4 methods, the Go community generally prefers a hand-written stub like the one above for being easier to read and debug.
 
-**원칙:**
-- Repository는 반드시 인터페이스 타입(`account.Repository`)으로 mock — 구체 타입 mock 금지(root 원칙과 동일).
-- 비즈니스 로직(잔액 계산, 상태 전이 검증)은 이미 Domain 단위 테스트에서 검증했으므로 여기서는 반복하지 않는다 — Handler가 Repository를 **올바른 순서로 호출하는지**만 본다. Handler는 Repository.Save 이후 곧바로 반환하므로, Outbox 발행/수신 검증은 이 테스트의 범위가 아니다(독립적으로 주기 실행되는 `outbox.Poller`/`outbox.Consumer`의 책임, domain-events.md 참고).
+**Principles:**
+- The Repository is always mocked as the interface type (`account.Repository`) — mocking a concrete type is forbidden (same as the root principle).
+- Business logic (balance calculation, state-transition validation) has already been verified in the Domain unit tests, so it isn't repeated here — this only checks that the Handler **calls the Repository in the right order**. Since the Handler returns immediately after Repository.Save, verifying Outbox publish/consume isn't in scope for this test (that's the responsibility of the independently-ticking `outbox.Poller`/`outbox.Consumer`, see domain-events.md).
 
 ---
 
-## E2E 테스트
+## E2E tests
 
-`test/account_e2e_test.go`가 testcontainers-go로 실제 Postgres + LocalStack(SES) 컨테이너를 띄우고, `httptest.Server`로 실제 HTTP 요청을 보내 전체 경로를 검증한다.
+`test/account_e2e_test.go` uses testcontainers-go to start real Postgres + LocalStack (SES) containers, and sends real HTTP requests via `httptest.Server` to verify the full path.
 
 ```go
 // test/account_e2e_test.go
@@ -190,50 +191,50 @@ func runTests(m *testing.M) int {
 			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(60*time.Second),
 		),
 	)
-	// ... LocalStack 컨테이너도 유사하게 기동 ...
-	// ... migrations/*.sql을 순서대로 읽어 실행 ...
+	// ... the LocalStack container is started similarly ...
+	// ... migrations/*.sql are read and run in order ...
 	return m.Run()
 }
 ```
 
-`test/notification_e2e_test.go`는 LocalStack의 SES 디버그 엔드포인트(`/_aws/ses`)를 호출해 실제로 이메일이 "발송"되었는지, 그리고 `sent_emails` 테이블에 기록이 남았는지까지 검증한다 — HTTP 계층부터 인프라 계층까지 실제 경로를 우회 없이 통과한다.
+`test/notification_e2e_test.go` calls LocalStack's SES debug endpoint (`/_aws/ses`) to verify that an email was actually "sent," and even that a record was left in the `sent_emails` table — passing through the real path from the HTTP layer down to the infrastructure layer with no bypass.
 
-**원칙 준수 확인:**
-- 운영 DB가 아닌 컨테이너 사용 — root 원칙과 일치.
-- `TestMain`에서 컨테이너를 한 번만 띄우고 여러 테스트가 공유 — 컨테이너 기동 비용을 상쇄. 다만 테스트 간 데이터 격리를 위해 각 테스트가 자체적으로 고유한 `ownerID`/`AccountID`를 생성해 충돌을 피한다(파일 상단 `ownerID`, `otherOwnerID` 상수 및 각 테스트에서의 신규 계좌 생성 패턴).
+**Confirming principle compliance:**
+- Uses a container rather than a production DB — matches the root principle.
+- The container is started only once in `TestMain` and shared across multiple tests — offsetting the container-startup cost. Still, to keep test data isolated, each test generates its own unique `ownerID`/`AccountID` to avoid collisions (the `ownerID`, `otherOwnerID` constants at the top of the file, and the pattern of creating a fresh account in each test).
 
 ---
 
-## 테스트 파일 배치
+## Test file placement
 
 ```
 internal/
   domain/account/
-    account_test.go              ← Domain 단위 테스트 (package account_test, 소스 옆)
+    account_test.go              ← Domain unit test (package account_test, next to the source)
   application/command/
-    deposit_handler_test.go      ← Application 단위 테스트 (package command_test, 소스 옆)
+    deposit_handler_test.go      ← Application unit test (package command_test, next to the source)
 test/
-  account_e2e_test.go            ← E2E 테스트 (별도 디렉토리, 모듈 루트의 test/)
+  account_e2e_test.go            ← E2E test (separate directory, test/ at the module root)
   notification_e2e_test.go
 ```
 
-Go 컨벤션은 단위 테스트를 소스와 같은 디렉토리에 두는 것이다(`_test.go` 접미사만으로 `go build`에서 제외됨) — root가 예시로 든 `order.spec.ts`를 소스 옆에 두는 것과 동일한 배치 원칙이다. E2E처럼 여러 패키지를 조립해 컨테이너까지 띄우는 테스트만 별도 `test/` 디렉토리로 분리한다.
+Go convention is to place unit tests in the same directory as the source (excluded from `go build` purely by the `_test.go` suffix) — the same placement principle as the root document's example of putting `order.spec.ts` next to the source. Only tests like E2E, which assemble multiple packages and even start containers, are separated into their own `test/` directory.
 
 ---
 
-## 실행
+## Running tests
 
 ```bash
-go test ./internal/...        # Domain + Application 단위 테스트 (빠름, 외부 의존성 없음)
-go test ./test/...            # E2E (Docker 필요, testcontainers-go가 컨테이너를 직접 기동)
-go test ./...                 # 전체
+go test ./internal/...        # Domain + Application unit tests (fast, no external dependency)
+go test ./test/...            # E2E (requires Docker, testcontainers-go starts the containers itself)
+go test ./...                 # everything
 ```
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [tactical-ddd.md](tactical-ddd.md) — Domain 단위 테스트 대상(Aggregate 불변식)
-- [layer-architecture.md](layer-architecture.md) — Application 레이어 조율 로직(단위 테스트 대상)
-- [repository-pattern.md](repository-pattern.md) — mock 대상 인터페이스
-- [local-dev.md](local-dev.md) — E2E가 사용하는 것과 동일한 Postgres/LocalStack 구성
+- [tactical-ddd.md](tactical-ddd.md) — what Domain unit tests target (Aggregate invariants)
+- [layer-architecture.md](layer-architecture.md) — the Application layer's orchestration logic (the unit test target)
+- [repository-pattern.md](repository-pattern.md) — the interface that gets mocked
+- [local-dev.md](local-dev.md) — the same Postgres/LocalStack setup E2E uses

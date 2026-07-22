@@ -7,24 +7,30 @@ import (
 	"strings"
 )
 
-// checkTypedErrorsOnly — typed-errors-only: 루트 AGENTS.md의 절대 규칙 "에러는 enum으로
-// 타입화 — free-form 문자열 금지"를 Go 관용구(sentinel `var ErrXxx = errors.New(...)`를
-// `domain/<bc>/errors.go`에 한 번만 선언하고 `errors.Is`로 재사용)로 검사한다.
+// checkTypedErrorsOnly — typed-errors-only: checks the root AGENTS.md's absolute
+// rule "errors must be typed as an enum — free-form strings are forbidden"
+// against the Go idiom (declaring a sentinel `var ErrXxx = errors.New(...)`
+// exactly once in `domain/<bc>/errors.go` and reusing it via `errors.Is`).
 //
-// 이 저장소를 실측한 결과(2026-07) internal/domain/, internal/application/ 어디에도
-// errors.New(...)가 <bc>/errors.go 밖에서 호출되는 곳이 없고, fmt.Errorf(...)는 전부
-// `%w`로 기존 sentinel(또는 그 체인)을 감싸는 형태다 — 그래서 다음 두 가지만 정밀
-// 타겟팅해도 오탐 없이 실제 위반을 잡을 수 있다:
+// Having verified this repository's actual state (as of 2026-07), neither
+// internal/domain/ nor internal/application/ has an errors.New(...) call
+// outside of <bc>/errors.go anywhere, and every fmt.Errorf(...) call wraps an
+// existing sentinel (or a chain of them) with `%w` — so precisely targeting
+// only the following two patterns catches real violations without false
+// positives:
 //
-//  1. errors.New(...) — 파일명이 정확히 "errors.go"가 아닌 domain/·application/ 파일에서
-//     호출되면 FAIL. domain/<bc>/errors.go는 sentinel을 선언하는 유일하게 허용된
-//     위치다(예: internal/domain/account/errors.go). application/는애초에 sentinel을
-//     새로 선언하지 않고 domain의 것을 재사용해야 하므로, application/ 안의
-//     errors.New(...)는 위치를 가리지 않고 전부 FAIL이다.
-//  2. fmt.Errorf(...) — 호출 인자에 `%w`가 없으면 FAIL(어떤 typed error도 감싸지 않는
-//     free-form 메시지). `%w`가 있으면(예: `fmt.Errorf("close account: %w", err)`처럼
-//     기존 typed error를 감싸 컨텍스트만 덧붙이는 관용구) PASS로 취급한다 — 이게 바로
-//     "레거시 sentinel을 감싸는 정당한 wrapping을 오탐하지 않는" 지점이다.
+//  1. errors.New(...) — FAIL if called from a domain/ or application/ file
+//     whose name is not exactly "errors.go". domain/<bc>/errors.go is the
+//     only allowed location for declaring sentinels (e.g.
+//     internal/domain/account/errors.go). application/ must never declare a
+//     new sentinel of its own and must instead reuse the domain's, so any
+//     errors.New(...) inside application/ is a FAIL regardless of location.
+//  2. fmt.Errorf(...) — FAIL if the call's arguments contain no `%w` (a
+//     free-form message that wraps no typed error at all). If `%w` is present
+//     (e.g. `fmt.Errorf("close account: %w", err)`, the idiom of wrapping an
+//     existing typed error while adding context), treat it as PASS — this is
+//     exactly the point that avoids a false positive on legitimately wrapping
+//     a legacy sentinel.
 var (
 	errorsNewCall = regexp.MustCompile(`\berrors\.New\(`)
 	fmtErrorfCall = regexp.MustCompile(`\bfmt\.Errorf\(`)
@@ -57,26 +63,26 @@ func checkTypedErrorsOnly(root string) RuleResult {
 
 		var violations []string
 
-		// errors.New(...) — domain/<bc>/errors.go만 예외.
+		// errors.New(...) — the only exception is domain/<bc>/errors.go.
 		isCanonicalErrorsFile := inDomain && name == "errors.go"
 		if !isCanonicalErrorsFile && errorsNewCall.MatchString(src) {
 			if inDomain {
-				violations = append(violations, "errors.New(...)를 domain/<bc>/errors.go 밖에서 호출함 — "+
-					"sentinel error는 domain/<bc>/errors.go에 한 번만 선언하고 errors.Is로 재사용해야 한다")
+				violations = append(violations, "calls errors.New(...) outside domain/<bc>/errors.go — "+
+					"a sentinel error must be declared exactly once in domain/<bc>/errors.go and reused via errors.Is")
 			} else {
-				violations = append(violations, "errors.New(...)를 application/에서 직접 호출함 — "+
-					"새 sentinel을 여기서 선언하지 말고 domain/<bc>/errors.go의 기존 sentinel을 재사용해야 한다")
+				violations = append(violations, "calls errors.New(...) directly from application/ — "+
+					"it must not declare a new sentinel here, and must instead reuse an existing sentinel from domain/<bc>/errors.go")
 			}
 		}
 
-		// fmt.Errorf(...) — %w로 기존 typed error를 감싸지 않으면 free-form 메시지.
+		// fmt.Errorf(...) — a free-form message unless it wraps an existing typed error with %w.
 		for _, idx := range fmtErrorfCall.FindAllStringIndex(src, -1) {
 			openParen := idx[1] - 1
 			args := extractBalancedBlock(src, openParen, '(', ')')
 			if !strings.Contains(args, "%w") {
-				violations = append(violations, "fmt.Errorf(...)가 %w로 기존 typed error를 감싸지 않는 free-form 메시지를 만듦 — "+
-					"에러는 enum/sentinel로 타입화해야 한다(AGENTS.md, free-form 문자열 금지)")
-				break // 같은 파일에서 반복 보고하지 않는다
+				violations = append(violations, "fmt.Errorf(...) builds a free-form message that does not wrap an existing typed error with %w — "+
+					"errors must be typed as an enum/sentinel (AGENTS.md, free-form strings are forbidden)")
+				break // do not report the same file repeatedly
 			}
 		}
 
@@ -88,9 +94,9 @@ func checkTypedErrorsOnly(root string) RuleResult {
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("internal/domain/, internal/application/ 안에 .go 파일 없음"))
+		result.Findings = append(result.Findings, skipFinding("no .go files in internal/domain/, internal/application/"))
 	}
 	return result
 }

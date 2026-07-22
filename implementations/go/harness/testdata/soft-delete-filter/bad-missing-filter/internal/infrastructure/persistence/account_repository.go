@@ -9,8 +9,8 @@ type AccountRepository struct {
 	db *sql.DB
 }
 
-// FindAccounts는 accounts 테이블(deleted_at 컬럼 있음)을 조회하지만 필터를 빠뜨린
-// 위반 사례.
+// FindAccounts queries the accounts table (which has a deleted_at column) but
+// omits the filter — a violation case.
 func (r *AccountRepository) FindAccounts(ctx context.Context, ownerID string) ([]string, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id FROM accounts WHERE owner_id = $1`, ownerID)
 	if err != nil {

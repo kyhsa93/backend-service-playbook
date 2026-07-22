@@ -12,8 +12,9 @@ type GetPaymentQuery struct {
 	RequesterID string
 }
 
-// GetPaymentHandler는 읽기 전용 payment.Query에만 의존한다(cqrs-pattern.md).
-// 요청자(RequesterID)를 소유자로 매칭해 다른 사람의 결제는 조회되지 않는다.
+// GetPaymentHandler depends only on the read-only payment.Query
+// (cqrs-pattern.md). It matches the requester (RequesterID) as the owner,
+// so another person's payment cannot be looked up.
 type GetPaymentHandler struct {
 	payments payment.Query
 }

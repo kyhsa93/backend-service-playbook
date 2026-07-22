@@ -6,8 +6,9 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// PaymentCardAdapter는 Card BC를 domain 패키지를 직접 import하지 않고 자체 View로만
-// 조회하는 ACL Adapter다 — 이 파일이 payment 하나의 BC domain만 import하는 예.
+// PaymentCardAdapter is an ACL Adapter that queries the Card BC through its own
+// View instead of importing its domain package directly — an example of this
+// file importing only a single BC's domain (payment).
 type PaymentCardAdapter interface {
 	FindCard(ctx context.Context, cardID string) (*PaymentCardView, error)
 }

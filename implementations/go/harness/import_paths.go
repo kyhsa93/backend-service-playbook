@@ -6,16 +6,19 @@ import (
 	"strconv"
 )
 
-// fileImportPaths는 Go 소스 파일의 import 선언에 나열된 경로 문자열(따옴표 제거)만
-// 뽑아 반환한다. 여러 규칙(domain-layer-isolation, interface-no-infrastructure,
-// no-cross-bc-repository-in-application, no-logging-in-domain)이 "이 파일이 특정
-// 레이어/패키지를 import하는가"를 판단해야 하는데, repository_naming.go 등 다른
-// 규칙처럼 정규식으로 import 블록을 근사하면 주석이나 문자열 리터럴 안의 경로 비슷한
-// 텍스트에 오탐할 여지가 남는다(outbox_drain_order.go의 stripGoComments가 바로 이
-// 문제를 회피하려고 도입된 것). import 선언은 go/parser의 parser.ImportsOnly 모드로
-// 패키지 절+import만 파싱하면 되므로(함수 본문은 파싱하지 않아 문법 오류에도 안전하고
-// 빠르다), 여기서는 정규식 대신 표준 라이브러리 파서를 그대로 쓴다 — 결과적으로 더
-// 간단하고 완전히 정밀하다.
+// fileImportPaths extracts and returns only the path strings (quotes stripped)
+// listed in a Go source file's import declarations. Several rules
+// (domain-layer-isolation, interface-no-infrastructure,
+// no-cross-bc-repository-in-application, no-logging-in-domain) need to
+// determine "does this file import a given layer/package" — approximating the
+// import block with a regex, as repository_naming.go and others do, leaves
+// room for false positives on path-like text inside comments or string
+// literals (stripGoComments in outbox_drain_order.go exists precisely to work
+// around that problem). Import declarations only require go/parser's
+// parser.ImportsOnly mode to parse the package clause + imports (function
+// bodies are not parsed, so it is safe against syntax errors and fast), so
+// this uses the standard library parser directly instead of a regex — the
+// result is both simpler and fully precise.
 func fileImportPaths(path string) ([]string, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)

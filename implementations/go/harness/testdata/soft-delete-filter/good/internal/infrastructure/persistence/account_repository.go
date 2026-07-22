@@ -20,8 +20,9 @@ func (r *AccountRepository) FindAccounts(ctx context.Context, ownerID string) ([
 	return nil, nil
 }
 
-// FindTransactions는 transactions 테이블을 조회한다 — 이 테이블에는 deleted_at 컬럼이
-// 없으므로(마이그레이션 기준) 필터가 없어도 위반이 아니다.
+// FindTransactions queries the transactions table — this table has no
+// deleted_at column (per the migrations), so missing the filter here is not a
+// violation.
 func (r *AccountRepository) FindTransactions(ctx context.Context, accountID string) ([]string, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id FROM transactions WHERE account_id = $1`, accountID)
 	if err != nil {

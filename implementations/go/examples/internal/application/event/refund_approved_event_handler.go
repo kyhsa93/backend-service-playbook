@@ -9,9 +9,10 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// RefundApprovedEventHandler는 outbox에 적재된 RefundApproved 도메인 이벤트를 수신해
-// refund.approved.v1 Integration Event로 변환해 Outbox에 적재한다. Account BC가 이를
-// 구독해 환불 크레딧(deposit)을 실행한다.
+// RefundApprovedEventHandler receives the RefundApproved domain event
+// persisted in the outbox, translates it into a refund.approved.v1
+// Integration Event, and persists it to the Outbox. The Account BC
+// subscribes to this and executes a refund credit (deposit).
 type RefundApprovedEventHandler struct {
 	publisher IntegrationPublisher
 }

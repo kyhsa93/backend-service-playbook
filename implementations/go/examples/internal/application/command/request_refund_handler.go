@@ -13,13 +13,16 @@ type RequestRefundCommand struct {
 	RequesterID string
 }
 
-// RequestRefundHandler는 환불을 요청한다. 어느 한 Aggregate만으로는 내릴 수 없는 판단
-// (원 결제 상태 + 환불 금액 비교)을 Payment+Refund 두 Aggregate를 함께 로드한 이 Handler가
-// payment.EvaluateRefundEligibility(Domain Service)에 위임해 조율한다.
+// RequestRefundHandler requests a refund. A decision that cannot be made
+// from either Aggregate alone (comparing the original payment's status
+// against the refund amount) is delegated to payment.EvaluateRefundEligibility
+// (a Domain Service), which this Handler coordinates after loading both the
+// Payment and Refund Aggregates together.
 //
-// 환불 거부는 에러가 아니라 유효한 도메인 결과다 — 이 Handler는 거부돼도 에러를 반환하지
-// 않고 REJECTED 상태로 저장한 Refund를 그대로 반환한다. Interface 레이어가 이를 에러가
-// 아닌 201 + status:REJECTED로 응답한다.
+// A refund rejection is not an error but a valid domain outcome — even when
+// rejected, this Handler does not return an error; it returns the Refund
+// saved with REJECTED status as-is. The Interface layer responds to this
+// not as an error but as 201 + status:REJECTED.
 type RequestRefundHandler struct {
 	payments payment.Repository
 	refunds  payment.RefundRepository
@@ -55,10 +58,11 @@ func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundComm
 		}
 	}
 
-	// 저장 후 곧바로 반환한다 — RefundApproved → refund.approved.v1은 outbox.Poller가
-	// 다음 tick에 SQS로 발행하고 outbox.Consumer가 Account BC의 반응을 실행한다
-	// (동기 드레인 금지, domain-events.md). 거부된 경우에는 Domain Event가 없으므로
-	// 발행할 것도 없다.
+	// Save and return immediately — RefundApproved -> refund.approved.v1 is
+	// published to SQS by outbox.Poller on the next tick, and outbox.Consumer
+	// runs the Account BC's reaction (no synchronous draining,
+	// domain-events.md). When rejected, there is no Domain Event, so there is
+	// nothing to publish.
 	if err := h.refunds.SaveRefund(ctx, r); err != nil {
 		return nil, err
 	}

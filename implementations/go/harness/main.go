@@ -1,10 +1,11 @@
-// Go Harness — Go 프로젝트 구조·네이밍 규칙 검사
+// Go Harness — checks Go project structure/naming rules
 // Usage: go run . <projectRoot>
 //
-// 각 규칙은 별도 파일(file_naming.go, repository_placement.go, ...)에 구현되어
-// 있고, 각각 RuleResult를 반환한다 — 이 파일은 규칙 목록을 정의하고 결과를
-// 집계·출력하는 CLI 진입점 역할만 한다. 규칙별 회귀 테스트는 <rule>_test.go +
-// testdata/<rule>/ fixture로 검증한다(README.md 참고).
+// Each rule is implemented in its own file (file_naming.go,
+// repository_placement.go, ...) and each returns a RuleResult — this file
+// only serves as the CLI entry point that defines the rule list and
+// aggregates/prints the results. Per-rule regression tests are verified with
+// <rule>_test.go + testdata/<rule>/ fixtures (see README.md).
 package main
 
 import (

@@ -13,17 +13,18 @@ type CredentialRepository struct {
 	db *sql.DB
 }
 
-// 컴파일 타임 interface 충족 검증 — account_repository.go/card_repository.go와 동일한 관용구.
+// Compile-time interface satisfaction check — the same idiom as account_repository.go/card_repository.go.
 var _ credential.Repository = (*CredentialRepository)(nil)
 
 func NewCredentialRepository(db *sql.DB) *CredentialRepository {
 	return &CredentialRepository{db: db}
 }
 
-// FindCredentials는 UserID 필터로 0건 또는 1건을 반환한다(UserID UNIQUE 제약). 없으면
-// 에러 없이 빈 슬라이스를 반환한다 — "존재하지 않음"을 ErrNotFound로 승격하는 판단은
-// credential.FindOne 헬퍼의 책임이다(account/card_repository.go의 FindAccounts/FindCards와
-// 동일한 관용구).
+// FindCredentials returns 0 or 1 records filtered by UserID (UNIQUE
+// constraint on UserID). If there is none, it returns an empty slice with
+// no error — deciding to promote "doesn't exist" to ErrNotFound is the
+// responsibility of the credential.FindOne helper (the same idiom as
+// FindAccounts/FindCards in account/card_repository.go).
 func (r *CredentialRepository) FindCredentials(ctx context.Context, q credential.FindQuery) ([]*credential.Credential, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, user_id, password_hash, created_at FROM credentials WHERE user_id = $1`,
@@ -40,9 +41,11 @@ func (r *CredentialRepository) FindCredentials(ctx context.Context, q credential
 	return []*credential.Credential{credential.Reconstitute(id, userIDCol, passwordHash, createdAt)}, nil
 }
 
-// SaveCredential은 신규 Credential만 만든다(비밀번호 변경 유스케이스가 아직 없어 upsert가
-// 필요 없다) — user_id에 UNIQUE 인덱스가 있어 SignUpHandler의 사전 중복 확인을
-// 통과한 뒤에도 동시 가입 레이스가 있으면 DB 제약이 최종 방어선 역할을 한다.
+// SaveCredential only creates new Credentials (there's no password-change
+// use case yet, so upsert isn't needed) — since user_id has a UNIQUE index,
+// even if there's a concurrent sign-up race after SignUpHandler's
+// pre-check for duplicates passes, the DB constraint serves as the final
+// line of defense.
 func (r *CredentialRepository) SaveCredential(ctx context.Context, c *credential.Credential) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO credentials (id, user_id, password_hash, created_at) VALUES ($1, $2, $3, $4)`,

@@ -11,9 +11,10 @@ type TransactionType string
 const (
 	TransactionTypeDeposit    TransactionType = "DEPOSIT"
 	TransactionTypeWithdrawal TransactionType = "WITHDRAWAL"
-	// TransactionTypeInterest는 Account.ApplyInterest가 만드는 이자 지급 거래다 —
-	// 사용자가 직접 요청하지 않는 시스템 기동(Task Queue 배치) 거래라는 점에서
-	// Deposit/Withdrawal과 구분된다(docs/architecture/scheduling.md).
+	// TransactionTypeInterest is the interest-payment transaction created by
+	// Account.ApplyInterest — it's distinguished from Deposit/Withdrawal in
+	// that it is a system-triggered (Task Queue batch) transaction, not one
+	// requested directly by the user (docs/architecture/scheduling.md).
 	TransactionTypeInterest TransactionType = "INTEREST"
 )
 
@@ -22,11 +23,14 @@ type Transaction struct {
 	AccountID     string
 	Type          TransactionType
 	Amount        Money
-	// ReferenceID는 외부 BC(Payment)의 Integration Event 반응(withdraw-by-payment/
-	// deposit-by-payment)에서만 채워지는 선택 필드다. 사용자가 직접 요청한 입금/출금에는
-	// 없다(빈 문자열) — Payment 반응 커맨드에서만 다른 BC의 Aggregate ID(paymentId/
-	// refundId)로 상관관계를 지어, at-least-once 재수신 시 이 값+Type 조합으로 중복
-	// 처리를 막는 Level 2 Ledger 키로 쓰인다(docs/architecture/domain-events.md 참고).
+	// ReferenceID is an optional field populated only for reactions to an
+	// external BC's (Payment) Integration Event (withdraw-by-payment/
+	// deposit-by-payment). It's absent (empty string) for deposits/
+	// withdrawals requested directly by the user — only Payment-reaction
+	// commands correlate it with another BC's Aggregate ID (paymentId/
+	// refundId), and this value plus Type together serve as the Level 2
+	// Ledger key that prevents duplicate processing on at-least-once
+	// redelivery (see docs/architecture/domain-events.md).
 	ReferenceID string
 	CreatedAt   time.Time
 }

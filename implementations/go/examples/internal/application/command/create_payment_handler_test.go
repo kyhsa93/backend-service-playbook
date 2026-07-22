@@ -21,14 +21,14 @@ func TestCreatePaymentHandler_Handle(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "카드를_찾을_수_없으면_에러",
+			name:    "card_not_found_errors",
 			cards:   &stubPaymentCardAdapter{findCardFn: func(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) { return nil, nil }},
 			accts:   &stubPaymentAccountAdapter{},
 			amount:  1000,
 			wantErr: payment.ErrLinkedCardNotFound,
 		},
 		{
-			name: "카드가_비활성이면_에러",
+			name: "inactive_card_errors",
 			cards: &stubPaymentCardAdapter{findCardFn: func(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) {
 				return &command.PaymentCardView{CardID: "card-1", AccountID: "account-1", Active: false}, nil
 			}},
@@ -37,7 +37,7 @@ func TestCreatePaymentHandler_Handle(t *testing.T) {
 			wantErr: payment.ErrRequiresActiveCard,
 		},
 		{
-			name: "계좌를_찾을_수_없으면_에러",
+			name: "account_not_found_errors",
 			cards: &stubPaymentCardAdapter{findCardFn: func(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) {
 				return activeCard, nil
 			}},
@@ -48,7 +48,7 @@ func TestCreatePaymentHandler_Handle(t *testing.T) {
 			wantErr: payment.ErrLinkedAccountNotFound,
 		},
 		{
-			name: "잔액이_부족하면_에러",
+			name: "insufficient_balance_errors",
 			cards: &stubPaymentCardAdapter{findCardFn: func(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) {
 				return activeCard, nil
 			}},
@@ -59,7 +59,7 @@ func TestCreatePaymentHandler_Handle(t *testing.T) {
 			wantErr: payment.ErrInsufficientBalance,
 		},
 		{
-			name: "카드_활성_계좌_잔액_충분하면_성공",
+			name: "active_card_and_sufficient_account_balance_succeeds",
 			cards: &stubPaymentCardAdapter{findCardFn: func(ctx context.Context, cardID, ownerID string) (*command.PaymentCardView, error) {
 				return activeCard, nil
 			}},

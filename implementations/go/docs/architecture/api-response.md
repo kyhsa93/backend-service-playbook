@@ -1,14 +1,14 @@
-# API 응답 구조 (Go)
+# API Response Structure (Go)
 
-원칙은 루트 [api-response.md](../../../../docs/architecture/api-response.md)를 따른다: 오프셋 페이지네이션(`page`/`take`, 0-base), 목록 응답은 도메인 복수형 키 + `count`, 단건 응답은 범용 래퍼 없이 도메인 객체를 직접 반환한다.
+The principle follows the root [api-response.md](../../../../docs/architecture/api-response.md): offset pagination (`page`/`take`, 0-based), list responses use a domain-plural key + `count`, and single-item responses return the domain object directly with no generic wrapper.
 
-이 저장소의 Go 예제(`internal/interface/http/`)는 이 규칙을 따른다 — 이 문서는 실제 코드를 근거로 규칙을 설명한다.
+This repository's Go example (`internal/interface/http/`) follows this rule — this document explains the rule grounded in the actual code.
 
 ---
 
-## 페이지네이션 — 쿼리 파라미터 파싱
+## Pagination — parsing query parameters
 
-Go에는 프레임워크의 자동 DTO 바인딩이 없으므로 `net/http`의 `r.URL.Query()`에서 직접 파싱한다. `internal/interface/http/account_handler.go`:
+Go has no framework-level automatic DTO binding, so parsing is done directly from `net/http`'s `r.URL.Query()`. `internal/interface/http/account_handler.go`:
 
 ```go
 func parsePagination(r *http.Request) (page, take int) {
@@ -23,16 +23,16 @@ func parsePagination(r *http.Request) (page, take int) {
 }
 ```
 
-- 파싱 실패(`strconv.Atoi` 에러) 시 기본값을 유지한다 — 잘못된 쿼리 파라미터로 400을 던지기보다 기본값으로 흡수하는 관대한 파싱이다. 엄격한 검증이 필요하면 에러를 400으로 변환하도록 바꿀 수 있다.
-- `page=0`이 기본값이며 `skip = page * take` 계산이 자연스럽다.
+- If parsing fails (`strconv.Atoi` error), the default value is kept — this is lenient parsing that absorbs bad query parameters into a default rather than throwing a 400. If strict validation is needed, this can be changed to convert the error into a 400.
+- `page=0` is the default, and the `skip = page * take` calculation follows naturally.
 
 ```go
-// internal/application/query/get_transactions_handler.go에서 사용
+// used in internal/application/query/get_transactions_handler.go
 transactions, count, err := h.repo.FindTransactions(ctx, q.AccountID, q.Page, q.Take)
 ```
 
 ```go
-// internal/infrastructure/persistence/account_repository.go — SQL로 변환
+// internal/infrastructure/persistence/account_repository.go — converted into SQL
 args = append(args, q.Take, q.Page*q.Take)
 rows, err := r.db.QueryContext(ctx,
 	fmt.Sprintf(`... ORDER BY id DESC LIMIT $%d OFFSET $%d`, i, i+1), args...)
@@ -40,9 +40,9 @@ rows, err := r.db.QueryContext(ctx,
 
 ---
 
-## 목록 조회 응답 — 도메인 복수형 키 + count
+## List response — domain-plural key + count
 
-`GetTransactionsResponse`는 `result`/`data`/`items` 같은 범용 키 대신 도메인 명사의 복수형(`transactions`)을 키로 쓴다.
+`GetTransactionsResponse` uses the plural of the domain noun (`transactions`) as the key, instead of a generic key like `result`/`data`/`items`.
 
 ```go
 // internal/interface/http/dto.go
@@ -52,15 +52,15 @@ type GetTransactionsResponse struct {
 }
 ```
 
-`Count`는 페이지 크기가 아니라 **필터 적용 후 전체 건수**다. `internal/infrastructure/persistence/account_repository.go`의 `FindTransactions`는 `SELECT COUNT(*)`를 별도로 실행해 `total`을 구하고, `FindAccounts`도 동일한 패턴(`COUNT(*)` 쿼리 + `LIMIT/OFFSET` 쿼리 두 번 실행)을 따른다.
+`Count` is not the page size but **the total count after filters are applied**. `FindTransactions` in `internal/infrastructure/persistence/account_repository.go` runs a separate `SELECT COUNT(*)` to get `total`, and `FindAccounts` follows the same pattern (two queries: a `COUNT(*)` query and a `LIMIT/OFFSET` query).
 
-`result`/`data`/`items` 같은 범용 키 사용 금지는 `implementations/go/harness/no_generic_response_keys.go`(`no-generic-response-keys` 규칙)가 자동으로 검사한다 — `internal/interface/**`의 struct 선언에 `json:"result"`/`json:"data"`/`json:"items"` 태그가 붙은 필드가 있으면 FAIL로 잡아낸다.
+The prohibition on generic keys like `result`/`data`/`items` is automatically checked by `implementations/go/harness/no_generic_response_keys.go` (the `no-generic-response-keys` rule) — it flags FAIL if any struct declaration under `internal/interface/**` has a field tagged `json:"result"`/`json:"data"`/`json:"items"`.
 
 ---
 
-## 단건 조회 응답 — 범용 래퍼 없음
+## Single-item response — no generic wrapper
 
-`GetAccountResponse`는 `{ success: true, data: {...} }` 같은 래퍼 없이 필드를 평탄하게 노출한다.
+`GetAccountResponse` exposes its fields flat, with no wrapper like `{ success: true, data: {...} }`.
 
 ```go
 // internal/interface/http/dto.go
@@ -75,13 +75,13 @@ type GetAccountResponse struct {
 }
 ```
 
-에러와 정상 응답의 구분은 HTTP 상태 코드가 담당한다(자세한 매핑은 [error-handling.md](error-handling.md) 참조). Go 응답 DTO에 `Success bool` 필드를 추가하지 않는다.
+The distinction between error and success responses is handled by the HTTP status code (see [error-handling.md](error-handling.md) for the detailed mapping). No `Success bool` field is added to Go response DTOs.
 
 ---
 
-## Repository 조회 메서드 — 배열 + count 반환
+## Repository query methods — return an array + count
 
-`account.Repository` 인터페이스의 `FindAccounts`는 root의 "목록 조회는 항상 도메인 객체 배열 + count"를 그대로 따른다.
+The `FindAccounts` method on the `account.Repository` interface follows the root document's "list queries always return an array of domain objects + count" as-is.
 
 ```go
 // internal/domain/account/repository.go
@@ -92,17 +92,17 @@ type Repository interface {
 }
 ```
 
-Go의 다중 반환값(`([]*Account, int, error)`)이 TypeScript의 `Promise<{ orders: Order[]; count: number }>`와 동일한 역할을 한다 — 별도 Result 래퍼 타입 없이 언어 기능으로 표현된다.
+Go's multiple return values (`([]*Account, int, error)`) play the same role as TypeScript's `Promise<{ orders: Order[]; count: number }>` — expressed via a language feature instead of a separate Result wrapper type.
 
-### 단건 조회 — `find<Noun>s` + `take: 1`
+### Single-item lookup — `find<Noun>s` + `take: 1`
 
-root 문서가 권장하는 대로 `findOne` 상당의 전용 메서드를 따로 두지 않고, `FindAccounts`를 `FindQuery{AccountID, OwnerID, Take: 1}`로 호출해 단건 조회를 흉내낸다. 이 반복 패턴(첫 결과 꺼내기 + 없으면 `ErrNotFound`)은 `internal/domain/account/repository.go`의 `FindOne(ctx, q, accountID, ownerID)` 헬퍼로 추출해 각 호출부가 재사용한다 — java/kotlin-springboot의 `findAccounts(...).stream().findFirst().orElseThrow(...)`와 동일한 역할이다. 자세한 내용은 [repository-pattern.md](repository-pattern.md) 참조.
+As the root document recommends, no dedicated method equivalent to `findOne` is added separately — a single-item lookup is mimicked by calling `FindAccounts` with `FindQuery{AccountID, OwnerID, Take: 1}`. This repeated pattern (pull out the first result, `ErrNotFound` if none) is extracted into the `FindOne(ctx, q, accountID, ownerID)` helper in `internal/domain/account/repository.go`, reused by every call site — it plays the same role as java/kotlin-springboot's `findAccounts(...).stream().findFirst().orElseThrow(...)`. See [repository-pattern.md](repository-pattern.md) for details.
 
 ---
 
-## 동적 필터 조건 패턴
+## Dynamic filter condition pattern
 
-`internal/infrastructure/persistence/account_repository.go`의 `FindAccounts`는 값이 있을 때만 WHERE 조건을 추가한다.
+`FindAccounts` in `internal/infrastructure/persistence/account_repository.go` adds a WHERE condition only when a value is present.
 
 ```go
 where := []string{"deleted_at IS NULL"}
@@ -117,17 +117,17 @@ if q.OwnerID != "" {
 	i++
 }
 if len(q.Status) > 0 {
-	// IN 조건 — 빈 슬라이스는 조건에서 제외
+	// IN condition — an empty slice is excluded from the condition
 }
 ```
 
-Go에서는 zero value(`""`, `nil`, `len() == 0`)가 "값 없음"의 자연스러운 표현이다. TypeScript의 `if (query.field)` 가드와 동일한 의도를 Go의 zero value 체크로 구현한다.
+In Go, the zero value (`""`, `nil`, `len() == 0`) is the natural expression of "no value." The same intent as TypeScript's `if (query.field)` guard is implemented via a Go zero-value check.
 
 ---
 
-## Result 객체 — 도메인 Aggregate를 직접 노출하지 않는다
+## Result objects — the domain Aggregate is never exposed directly
 
-`internal/application/query/`의 Query Handler는 `account.Account`(Aggregate)를 그대로 반환하지 않고, 응답 전용 Result 구조체(`GetAccountResult`, `TransactionSummary`)로 변환한다.
+The Query Handlers in `internal/application/query/` never return `account.Account` (the Aggregate) as-is — they convert it into a response-only Result struct (`GetAccountResult`, `TransactionSummary`).
 
 ```go
 // internal/application/query/result.go
@@ -151,19 +151,19 @@ func (h *GetAccountHandler) Handle(ctx context.Context, q GetAccountQuery) (*Get
 	}
 	return &GetAccountResult{
 		AccountID: a.AccountID,
-		// ... Aggregate 필드를 Result 필드로 명시적으로 매핑
+		// ... Aggregate fields are mapped explicitly to Result fields
 	}, nil
 }
 ```
 
-`interface/http/account_handler.go`가 다시 `GetAccountResult`를 `GetAccountResponse`(JSON DTO)로 매핑한다 — Domain → Application Result → Interface DTO 세 단계를 거치며, 각 단계가 얇은 필드 매핑이라도 레이어 경계를 명확히 유지한다.
+`interface/http/account_handler.go` then maps `GetAccountResult` again into `GetAccountResponse` (the JSON DTO) — it passes through Domain → Application Result → Interface DTO in three stages, and even though each stage is a thin field mapping, the layer boundaries stay clearly maintained.
 
-Query Handler가 raw Aggregate를 그대로 반환하지 않는지는 `implementations/go/harness/query_handler_no_raw_aggregate.go`(`query-handler-no-raw-aggregate` 규칙)가 자동으로 검사한다 — `internal/application/query/*.go`의 `Handle()`이 `internal/domain/<bc>` 패키지로 qualify된 포인터 타입(예: `*account.Account`)을 반환하면 FAIL로 잡아낸다.
+Whether a Query Handler returns the raw Aggregate directly is automatically checked by `implementations/go/harness/query_handler_no_raw_aggregate.go` (the `query-handler-no-raw-aggregate` rule) — it flags FAIL if `Handle()` in `internal/application/query/*.go` returns a pointer type qualified by an `internal/domain/<bc>` package (e.g. `*account.Account`).
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [repository-pattern.md](repository-pattern.md) — Repository 메서드 설계
-- [layer-architecture.md](layer-architecture.md) — Result 객체와 레이어 간 변환
-- [error-handling.md](error-handling.md) — 에러와 HTTP 상태 코드 매핑
+- [repository-pattern.md](repository-pattern.md) — Repository method design
+- [layer-architecture.md](layer-architecture.md) — Result objects and conversion across layers
+- [error-handling.md](error-handling.md) — mapping errors to HTTP status codes

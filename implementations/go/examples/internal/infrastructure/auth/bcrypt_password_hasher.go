@@ -6,12 +6,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// bcryptCost는 nestjs 구현(bcryptjs, salt rounds 12)과 동일한 작업 비용으로 맞춘다.
+// bcryptCost matches the same work factor as the nestjs implementation (bcryptjs, salt rounds 12).
 const bcryptCost = 12
 
-// BcryptPasswordHasher는 command.PasswordHasher를 구조적으로 만족하는 구현체다 —
-// Go는 명시적 implements 선언이 없으므로 Hash/Verify 시그니처만 맞으면 충분하다
-// (jwt_service.go의 JWTService가 command.TokenIssuer를 만족하는 것과 동일한 관용구).
+// BcryptPasswordHasher is an implementation that structurally satisfies
+// command.PasswordHasher — Go has no explicit implements declaration, so
+// matching the Hash/Verify signatures is enough (the same idiom as
+// jwt_service.go's JWTService satisfying command.TokenIssuer).
 type BcryptPasswordHasher struct{}
 
 func NewBcryptPasswordHasher() *BcryptPasswordHasher {
@@ -26,9 +27,10 @@ func (h *BcryptPasswordHasher) Hash(plainPassword string) (string, error) {
 	return string(hash), nil
 }
 
-// Verify는 해시 불일치(ErrMismatchedHashAndPassword)를 에러가 아니라 false로
-// 번역한다 — 호출부(SignInHandler)가 "비밀번호가 틀림"과 "검증 중 시스템 오류"를
-// 구분해서 처리할 수 있도록 하기 위함이다.
+// Verify translates a hash mismatch (ErrMismatchedHashAndPassword) into
+// false rather than an error — this lets the caller (SignInHandler)
+// distinguish between "wrong password" and "system error during
+// verification."
 func (h *BcryptPasswordHasher) Verify(plainPassword, passwordHash string) (bool, error) {
 	err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(plainPassword))
 	if err == nil {

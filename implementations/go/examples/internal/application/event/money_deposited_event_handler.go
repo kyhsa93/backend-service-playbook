@@ -8,8 +8,8 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// MoneyDepositedEventHandler는 outbox에 적재된 MoneyDeposited 페이로드를 역직렬화해
-// 입금 알림 이메일로 변환한다.
+// MoneyDepositedEventHandler deserializes the MoneyDeposited payload
+// persisted in the outbox and translates it into a deposit notification email.
 type MoneyDepositedEventHandler struct {
 	notifier Notifier
 }

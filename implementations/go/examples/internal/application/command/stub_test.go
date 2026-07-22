@@ -6,9 +6,11 @@ import (
 	"github.com/example/account-service/internal/domain/account"
 )
 
-// stubRepository는 테스트별로 필요한 동작만 함수 필드로 주입받는 최소 mock이다.
-// findByIDFn은 account.FindOne이 감싸는 단건 조회 시나리오만 흉내내면 충분하므로,
-// FindAccounts 구현이 이를 단건 결과([]*account.Account 길이 0 또는 1)로 감싸 반환한다.
+// stubRepository is a minimal mock that injects only the behavior needed per
+// test via function fields. It's enough for findByIDFn to mimic only the
+// single-record lookup scenario wrapped by account.FindOne, so the
+// FindAccounts implementation wraps its result as a single-element slice
+// ([]*account.Account of length 0 or 1).
 type stubRepository struct {
 	findByIDFn                    func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
 	findAllFn                     func(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error)
@@ -16,10 +18,11 @@ type stubRepository struct {
 	hasTransactionWithReferenceFn func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error)
 }
 
-// FindAccounts는 두 가지 시나리오를 지원한다: findAllFn이 설정돼 있으면(예:
-// ApplyDailyInterestHandler처럼 Status 필터로 여러 계좌를 순회하는 배치) 그대로
-// 위임하고, 그렇지 않으면 기존 findByIDFn 기반의 단건 조회 흉내(FindOne이 감싸는
-// 시나리오)로 폴백한다.
+// FindAccounts supports two scenarios: if findAllFn is set (e.g. a batch
+// like ApplyDailyInterestHandler that iterates over multiple accounts via a
+// Status filter), it delegates to it directly; otherwise it falls back to
+// the existing findByIDFn-based single-record lookup mimic (the scenario
+// wrapped by FindOne).
 func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
 	if s.findAllFn != nil {
 		return s.findAllFn(ctx, q)
@@ -56,9 +59,10 @@ func (s *stubRepository) HasTransactionWithReference(
 	return s.hasTransactionWithReferenceFn(ctx, referenceID, txType)
 }
 
-// stubTransactionManager는 실제 DB 트랜잭션 없이 fn을 그대로 실행한다 — TransferHandler
-// 같은 호출부가 "두 SaveAccount 호출을 하나의 RunInTx로 묶어 호출하는지"만 검증하면
-// 충분하고, 실제 커밋/롤백 동작은 database.Manager의 몫(별도 관심사)이기 때문이다.
+// stubTransactionManager runs fn as-is without a real DB transaction — it is
+// enough for a caller like TransferHandler to verify only "does it call the
+// two SaveAccount calls wrapped in a single RunInTx," while the actual
+// commit/rollback behavior is database.Manager's job (a separate concern).
 type stubTransactionManager struct{}
 
 func (stubTransactionManager) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {

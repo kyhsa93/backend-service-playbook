@@ -54,7 +54,7 @@ func TestTransferHandler_Handle_TargetAccountNotFound(t *testing.T) {
 	}
 }
 
-func TestTransferHandler_Handle_승인되면_두_계좌를_저장한다(t *testing.T) {
+func TestTransferHandler_Handle_SavesBothAccountsWhenApproved(t *testing.T) {
 	source, target := newTransferAccounts()
 	var saved []string
 	repo := &stubRepository{
@@ -92,7 +92,7 @@ func TestTransferHandler_Handle_승인되면_두_계좌를_저장한다(t *testi
 	}
 }
 
-func TestTransferHandler_Handle_잔액이_부족하면_저장하지_않는다(t *testing.T) {
+func TestTransferHandler_Handle_DoesNotSaveWhenBalanceIsInsufficient(t *testing.T) {
 	source, target := newTransferAccounts()
 	saveCalled := false
 	repo := &stubRepository{
@@ -118,7 +118,7 @@ func TestTransferHandler_Handle_잔액이_부족하면_저장하지_않는다(t 
 	}
 }
 
-func TestTransferHandler_Handle_출금_입금_계좌가_같으면_저장하지_않는다(t *testing.T) {
+func TestTransferHandler_Handle_DoesNotSaveWhenSourceAndTargetAccountAreTheSame(t *testing.T) {
 	source, _ := newTransferAccounts()
 	saveCalled := false
 	repo := &stubRepository{

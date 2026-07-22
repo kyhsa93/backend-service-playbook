@@ -13,10 +13,11 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// PaymentRepository는 Payment/Refund 두 Aggregate를 모두 담당한다 — Refund는 Payment
-// 없이는 의미가 없는 종속 개념이라 별도 Repository 구현체를 두 벌 만들지 않고 한 struct가
-// payment.Repository/Query와 payment.RefundRepository/Query를 모두 만족한다(구조적
-// 타이핑 — account_repository.go와 동일한 관용구).
+// PaymentRepository handles both the Payment and Refund Aggregates — since
+// Refund is a dependent concept that's meaningless without Payment, rather
+// than building two separate Repository implementations, a single struct
+// satisfies both payment.Repository/Query and payment.RefundRepository/
+// Query (structural typing — the same idiom as account_repository.go).
 type PaymentRepository struct {
 	db *sql.DB
 }
@@ -112,12 +113,15 @@ func (r *PaymentRepository) FindPayments(ctx context.Context, q payment.FindQuer
 	return payments, total, rows.Err()
 }
 
-// Save는 Payment row와 Outbox row를 같은 트랜잭션으로 커밋한다(dual-write 회피,
-// domain-events.md). 공유 outbox.Writer(internal/infrastructure/outbox/writer.go)는
-// 현재 []account.DomainEvent에 고정된 시그니처라 Payment의 이벤트 슬라이스를 그대로 넘길
-// 수 없다 — Writer를 제네릭화하기 전까지는 이 트랜잭션 안에서 직접 적재한다(Relay는
-// event_type 문자열 기준으로 동작하므로 적재 방식과 무관하게 정상적으로 드레인한다).
-// scripts/create-domain이 생성하는 Repository와 동일한 우회 패턴이다.
+// Save commits the Payment row and the Outbox row in the same transaction
+// (avoiding dual-write, domain-events.md). The shared outbox.Writer
+// (internal/infrastructure/outbox/writer.go) currently has a signature
+// fixed to []account.DomainEvent, so Payment's event slice can't be passed
+// to it directly — until Writer is made generic, events are loaded
+// directly within this transaction instead (the Relay operates based on
+// the event_type string, so it drains normally regardless of how the row
+// was loaded). This is the same workaround pattern used by the Repository
+// that scripts/create-domain generates.
 func (r *PaymentRepository) SavePayment(ctx context.Context, p *payment.Payment) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -209,7 +213,7 @@ func (r *PaymentRepository) FindRefunds(ctx context.Context, q payment.RefundFin
 	return refunds, total, rows.Err()
 }
 
-// SaveRefund는 Save와 동일한 우회 패턴으로 Refund row와 Outbox row를 같은 트랜잭션으로 커밋한다.
+// SaveRefund commits the Refund row and the Outbox row in the same transaction, using the same workaround pattern as Save.
 func (r *PaymentRepository) SaveRefund(ctx context.Context, ref *payment.Refund) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -242,8 +246,9 @@ func (r *PaymentRepository) SaveRefund(ctx context.Context, ref *payment.Refund)
 	return nil
 }
 
-// insertOutboxEvents는 Payment/Refund 두 Aggregate가 공유하는 Outbox 직접 적재 헬퍼다
-// (Save/SaveRefund의 우회 패턴을 한 곳에 모아 중복을 줄인다).
+// insertOutboxEvents is the direct Outbox-loading helper shared by the
+// Payment/Refund Aggregates (it consolidates the Save/SaveRefund workaround
+// pattern in one place to reduce duplication).
 func insertOutboxEvents(ctx context.Context, tx *sql.Tx, events []payment.DomainEvent) error {
 	for _, evt := range events {
 		body, err := json.Marshal(evt)

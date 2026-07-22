@@ -7,16 +7,19 @@ import (
 	"strings"
 )
 
-// envAccessCall — os.Getenv(...)/os.LookupEnv(...) 호출. import 별칭으로 os를 다른
-// 이름으로 감출 가능성은 이 저장소의 실제 코드에 전례가 없어 다루지 않는다(다른
-// 규칙들과 동일하게 실제로 반복되는 패턴만 정밀 타겟팅).
+// envAccessCall — calls to os.Getenv(...)/os.LookupEnv(...). The possibility
+// of hiding os behind an import alias is not handled, since there is no
+// precedent for it in this repository's actual code (as with the other
+// rules, only patterns that actually recur are precisely targeted).
 var envAccessCall = regexp.MustCompile(`\bos\.(?:Getenv|LookupEnv)\s*\(`)
 
 // checkNoDirectEnvAccess — [13] no-direct-env-access-outside-config:
-// internal/domain/, internal/application/은 os.Getenv/os.LookupEnv를 직접 호출할 수
-// 없다 — 환경 변수 검증은 internal/config/(fail-fast)에 모으고, internal/infrastructure/는
-// config를 거치지 않는 하위 SDK 초기화(예: AWS SDK가 자체적으로 읽는 값) 정도만
-// 예외적으로 허용한다(config.md — "관심사별로 설정을 분리한다").
+// internal/domain/ and internal/application/ must not directly call
+// os.Getenv/os.LookupEnv — environment variable validation must be
+// consolidated in internal/config/ (fail-fast), and internal/infrastructure/
+// is exceptionally allowed only for lower-level SDK initialization that
+// bypasses config (e.g. values the AWS SDK reads on its own) (config.md —
+// "separate configuration by concern").
 func checkNoDirectEnvAccess(root string) RuleResult {
 	result := RuleResult{Section: "no-direct-env-access-outside-config"}
 	found := false
@@ -42,16 +45,16 @@ func checkNoDirectEnvAccess(root string) RuleResult {
 		found = true
 		if envAccessCall.MatchString(src) {
 			result.Findings = append(result.Findings, failFinding(rel,
-				"os.Getenv/os.LookupEnv를 직접 호출함 — 환경 변수 검증은 internal/config/(fail-fast)로만 모아야 한다(docs/architecture/config.md)"))
+				"directly calls os.Getenv/os.LookupEnv — env var validation must be consolidated only in internal/config/ (fail-fast) (docs/architecture/config.md)"))
 		} else {
 			result.Findings = append(result.Findings, passFinding(rel))
 		}
 		return nil
 	})
 	if walkErr != nil {
-		result.Findings = append(result.Findings, failFinding(root, "디렉토리 탐색 실패: "+walkErr.Error()))
+		result.Findings = append(result.Findings, failFinding(root, "directory walk failed: "+walkErr.Error()))
 	} else if !found {
-		result.Findings = append(result.Findings, skipFinding("internal/domain/, internal/application/ 안에 .go 파일 없음"))
+		result.Findings = append(result.Findings, skipFinding("no .go files in internal/domain/, internal/application/"))
 	}
 	return result
 }

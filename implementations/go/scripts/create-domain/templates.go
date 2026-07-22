@@ -6,8 +6,9 @@ import (
 	"text/template"
 )
 
-// render는 tmplStr(Go text/template)을 Names로 실행해 문자열을 반환한다.
-// 실행 실패는 생성기 자체의 버그이므로 panic으로 즉시 드러낸다.
+// render executes tmplStr (a Go text/template) with Names and returns the
+// result string. An execution failure means the generator itself has a bug, so
+// it's surfaced immediately via panic.
 func render(name, tmplStr string, n Names) string {
 	t := template.Must(template.New(name).Parse(tmplStr))
 	var buf bytes.Buffer
@@ -17,7 +18,7 @@ func render(name, tmplStr string, n Names) string {
 	return buf.String()
 }
 
-// ---- Domain 레이어 ----
+// ---- Domain layer ----
 
 const tmplAggregate = `package {{.DomainLower}}
 
@@ -27,9 +28,11 @@ import (
 	"{{.ModulePath}}/internal/common"
 )
 
-// {{.Domain}}은 이 스캐폴딩 생성기(scripts/create-domain)가 만든 최소 Aggregate Root다 —
-// 단일 Status 필드가 PENDING -> ACTIVE|CANCELLED로 전이한다. 실제 도메인 규칙(불변식,
-// 추가 필드)은 이 골격 위에 채워 넣는다(reference.md 템플릿과 동일한 설계).
+// {{.Domain}} is the minimal Aggregate Root created by this scaffolding
+// generator (scripts/create-domain) — a single Status field transitions
+// PENDING -> ACTIVE|CANCELLED. Fill in the actual domain rules (invariants,
+// additional fields) on top of this skeleton (same design as the reference.md
+// template).
 type {{.Domain}} struct {
 	{{.Domain}}ID string
 	OwnerID   string
@@ -38,9 +41,9 @@ type {{.Domain}} struct {
 	events    []DomainEvent
 }
 
-// New는 신규 {{.Domain}}을 PENDING 상태로 생성한다. ID는 여기서 새로 발급한다 —
-// 파라미터 목록에 ID가 없다는 것 자체가 "클라이언트가 제공한 ID를 받지 않는다"는
-// 규칙을 코드로 강제한다(aggregate-id.md).
+// New creates a new {{.Domain}} in the PENDING state. The ID is issued fresh
+// here — the parameter list having no ID param is itself how the code enforces
+// the rule "never accept a client-supplied ID" (aggregate-id.md).
 func New(ownerID string) *{{.Domain}} {
 	return &{{.Domain}}{
 		{{.Domain}}ID: common.NewID(),
@@ -50,13 +53,13 @@ func New(ownerID string) *{{.Domain}} {
 	}
 }
 
-// Reconstitute는 DB에서 읽은 값으로 {{.Domain}}을 복원한다. 이벤트를 발행하지 않는다.
+// Reconstitute rebuilds a {{.Domain}} from values read from the DB. Doesn't emit events.
 func Reconstitute({{.DomainCamel}}ID, ownerID string, status Status, createdAt time.Time) *{{.Domain}} {
 	return &{{.Domain}}{ {{.Domain}}ID: {{.DomainCamel}}ID, OwnerID: ownerID, Status: status, CreatedAt: createdAt }
 }
 
-// Activate는 이벤트를 발행하지 않는 단순 상태 전이 예시다 — 도메인 이벤트가
-// 필요 없는 변경은 이렇게 상태만 바꾼다.
+// Activate is an example of a plain state transition that doesn't emit an
+// event — changes that don't need a domain event just flip the state like this.
 func ({{.Recv}} *{{.Domain}}) Activate() error {
 	if {{.Recv}}.Status == StatusCancelled {
 		return ErrAlreadyCancelled
@@ -65,8 +68,9 @@ func ({{.Recv}} *{{.Domain}}) Activate() error {
 	return nil
 }
 
-// Cancel은 {{.Domain}}을 취소한다. 이벤트를 발행하는 상태 전이 예시다 — 불변식은
-// 여기서만 검증한다(Application Handler는 호출만 하고 조건을 직접 검사하지 않는다).
+// Cancel cancels the {{.Domain}}. An example of a state transition that emits
+// an event — invariants are validated only here (the Application Handler only
+// calls this and never checks the condition itself).
 func ({{.Recv}} *{{.Domain}}) Cancel(reason string) error {
 	if {{.Recv}}.Status == StatusCancelled {
 		return ErrAlreadyCancelled
@@ -99,13 +103,14 @@ const tmplEvents = `package {{.DomainLower}}
 
 import "time"
 
-// DomainEvent는 {{.Domain}} 도메인 이벤트가 공유하는 마커 인터페이스다. Go에는 union
-// 타입이 없으므로 빈 메서드로 "이 이벤트들 중 하나"라는 관계를 표현한다(tactical-ddd.md).
+// DomainEvent is the marker interface shared by {{.Domain}} domain events. Go
+// has no union types, so an empty method expresses the "one of these events"
+// relationship (tactical-ddd.md).
 type DomainEvent interface {
 	is{{.Domain}}DomainEvent()
 }
 
-// {{.Domain}}Cancelled는 {{.Domain}}이 취소됐을 때 발행되는 도메인 이벤트다.
+// {{.Domain}}Cancelled is the domain event emitted when a {{.Domain}} is cancelled.
 type {{.Domain}}Cancelled struct {
 	{{.Domain}}ID   string
 	Reason      string
@@ -136,24 +141,28 @@ type FindQuery struct {
 	OwnerID   string
 }
 
-// Query는 읽기 전용 조회 메서드만 노출하는 Query 전용 인터페이스다. Query Handler는
-// 쓰기 메서드(Save{{.Domain}})에 접근할 수 없도록 이 인터페이스에만 의존해야 한다(cqrs-pattern.md).
+// Query is a read-only interface exposing only query methods. Query Handlers
+// must depend only on this interface so they can never reach the write method
+// (Save{{.Domain}}) (cqrs-pattern.md).
 //
-// 조회는 root의 find<Noun>s 컨벤션에 맞춰 Find{{.Domain}}s 단일 메서드로 통일한다 — 단건
-// 조회 전용 메서드는 두지 않는다. 호출부는 FindOne(이 패키지가 제공하는 헬퍼)로
-// Find{{.Domain}}s를 Take: 1로 호출하고 첫 결과를 꺼낸다(account.FindOne과 동일한 관용구).
+// Queries are unified into a single Find{{.Domain}}s method following the root's
+// find<Noun>s convention — there's no dedicated single-item lookup method.
+// Callers use FindOne (a helper this package provides) to call Find{{.Domain}}s
+// with Take: 1 and pull out the first result (same idiom as account.FindOne).
 type Query interface {
 	Find{{.Domain}}s(ctx context.Context, q FindQuery) ([]*{{.Domain}}, int, error)
 }
 
-// Repository는 Query의 읽기 메서드에 쓰기 메서드(Save{{.Domain}})를 더한 Command 전용 인터페이스다.
+// Repository is the Command-only interface adding a write method
+// (Save{{.Domain}}) on top of Query's read methods.
 type Repository interface {
 	Query
 	Save{{.Domain}}(ctx context.Context, {{.Recv}} *{{.Domain}}) error
 }
 
-// FindOne은 단건 조회 호출부의 반복되는 패턴(Find{{.Domain}}s를 Take: 1로 호출한 뒤 첫 번째
-// 결과를 꺼내고, 없으면 ErrNotFound)을 감싼 헬퍼다(account.FindOne과 동일한 관용구).
+// FindOne is a helper wrapping the repeated single-item lookup pattern (call
+// Find{{.Domain}}s with Take: 1, pull out the first result, and return
+// ErrNotFound if there is none) (same idiom as account.FindOne).
 func FindOne(ctx context.Context, q Query, {{.DomainCamel}}ID, ownerID string) (*{{.Domain}}, error) {
 	items, _, err := q.Find{{.Domain}}s(ctx, FindQuery{ {{.Domain}}ID: {{.DomainCamel}}ID, OwnerID: ownerID, Take: 1})
 	if err != nil {
@@ -166,7 +175,7 @@ func FindOne(ctx context.Context, q Query, {{.DomainCamel}}ID, ownerID string) (
 }
 `
 
-// ---- Application 레이어 — Command ----
+// ---- Application layer — Command ----
 
 const tmplCreateHandler = `package command
 
@@ -189,12 +198,13 @@ func NewCreate{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Create{{.Dom
 	return &Create{{.Domain}}Handler{repo: repo}
 }
 
-// Handle은 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기
-// 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
+// Handle returns immediately after saving — publishing/receiving from Outbox →
+// SQS is solely the responsibility of the independently, periodically running
+// outbox.Poller/outbox.Consumer (synchronous draining is prohibited,
 // domain-events.md).
 func (h *Create{{.Domain}}Handler) Handle(ctx context.Context, cmd Create{{.Domain}}Command) (*{{.DomainLower}}.{{.Domain}}, error) {
 	{{.Recv}} := {{.DomainLower}}.New(cmd.OwnerID)
-	// Repository.Save{{.Domain}}이 {{.DomainLower}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(domain-events.md).
+	// Repository.Save{{.Domain}} commits the {{.DomainLower}} row and the Outbox row in the same transaction (domain-events.md).
 	if err := h.repo.Save{{.Domain}}(ctx, {{.Recv}}); err != nil {
 		return nil, fmt.Errorf("create {{.DomainLower}}: %w", err)
 	}
@@ -225,8 +235,9 @@ func NewCancel{{.Domain}}Handler(repo {{.DomainLower}}.Repository) *Cancel{{.Dom
 	return &Cancel{{.Domain}}Handler{repo: repo}
 }
 
-// Handle은 저장 후 곧바로 반환한다 — Outbox → SQS 발행/수신은 독립적으로 주기
-// 실행되는 outbox.Poller/outbox.Consumer만의 책임이다(동기 드레인 금지,
+// Handle returns immediately after saving — publishing/receiving from Outbox →
+// SQS is solely the responsibility of the independently, periodically running
+// outbox.Poller/outbox.Consumer (synchronous draining is prohibited,
 // domain-events.md).
 func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Domain}}Command) error {
 	{{.Recv}}, err := {{.DomainLower}}.FindOne(ctx, h.repo, cmd.{{.Domain}}ID, cmd.OwnerID)
@@ -234,7 +245,7 @@ func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Doma
 		return fmt.Errorf("cancel {{.DomainLower}}: %w", err)
 	}
 
-	// 비즈니스 규칙은 Aggregate 내부에서 검증 — Handler는 조율만 한다.
+	// Business rules are validated inside the Aggregate — the Handler only coordinates.
 	if err := {{.Recv}}.Cancel(cmd.Reason); err != nil {
 		return err
 	}
@@ -246,7 +257,7 @@ func (h *Cancel{{.Domain}}Handler) Handle(ctx context.Context, cmd Cancel{{.Doma
 }
 `
 
-// ---- Application 레이어 — Query ----
+// ---- Application layer — Query ----
 
 const tmplGetHandler = `package query
 
@@ -262,8 +273,8 @@ type Get{{.Domain}}Query struct {
 	OwnerID   string
 }
 
-// Get{{.Domain}}Handler는 읽기 전용 {{.DomainLower}}.Query에만 의존한다(쓰기 전용
-// 인터페이스는 참조하지 않는다 — cqrs-pattern.md).
+// Get{{.Domain}}Handler depends only on the read-only {{.DomainLower}}.Query (it
+// never references the write interface — cqrs-pattern.md).
 type Get{{.Domain}}Handler struct {
 	repo {{.DomainLower}}.Query
 }
@@ -298,7 +309,7 @@ type Get{{.Domain}}Result struct {
 }
 `
 
-// ---- Application 레이어 — Event ----
+// ---- Application layer — Event ----
 
 const tmplEventHandler = `package event
 
@@ -311,18 +322,20 @@ import (
 	"{{.ModulePath}}/internal/domain/{{.DomainLower}}"
 )
 
-// {{.Domain}}CancelledEventHandler는 outbox가 드레인한 {{.Domain}}Cancelled 페이로드를
-// 처리한다. 스캐폴딩 단계에서는 구조화 로깅만 한다 — 실제 알림 발송이 필요해지면
-// infrastructure/notification에 전용 Notifier를 추가해 주입한다(이벤트 패키지가 이미
-// 갖고 있는 account 전용 Notifier는 account.DomainEvent에 고정돼 있어 재사용할 수 없다).
+// {{.Domain}}CancelledEventHandler processes the {{.Domain}}Cancelled payload
+// drained by the outbox. At the scaffolding stage it only does structured
+// logging — once actual notification sending is needed, add a dedicated
+// Notifier under infrastructure/notification and inject it (the account-only
+// Notifier already in the event package is fixed to account.DomainEvent, so it
+// can't be reused).
 type {{.Domain}}CancelledEventHandler struct{}
 
 func New{{.Domain}}CancelledEventHandler() *{{.Domain}}CancelledEventHandler {
 	return &{{.Domain}}CancelledEventHandler{}
 }
 
-// Handle은 outbox.Handler 시그니처를 만족한다 — Consumer가 SQS에서 event_type=
-// "{{.Domain}}Cancelled" 메시지를 수신할 때마다 호출한다.
+// Handle satisfies the outbox.Handler signature — called every time the
+// Consumer receives an event_type="{{.Domain}}Cancelled" message from SQS.
 func (h *{{.Domain}}CancelledEventHandler) Handle(ctx context.Context, payload []byte) error {
 	var evt {{.DomainLower}}.{{.Domain}}Cancelled
 	if err := json.Unmarshal(payload, &evt); err != nil {
@@ -333,7 +346,7 @@ func (h *{{.Domain}}CancelledEventHandler) Handle(ctx context.Context, payload [
 }
 `
 
-// ---- Infrastructure 레이어 ----
+// ---- Infrastructure layer ----
 
 const tmplPersistence = `package persistence
 
@@ -354,9 +367,9 @@ type {{.Domain}}Repository struct {
 	db *sql.DB
 }
 
-// 컴파일 타임 interface 충족 검증 — {{.Domain}}Repository는 Repository(Command)와 Query
-// 양쪽을 모두 만족한다(account_repository.go와 동일한 구조적 타이핑 관용구 — 구현체를
-// 두 벌 둘 필요가 없다).
+// Compile-time interface satisfaction check — {{.Domain}}Repository satisfies
+// both Repository (Command) and Query (same structural-typing idiom as
+// account_repository.go — no need for two separate implementations).
 var _ {{.DomainLower}}.Repository = (*{{.Domain}}Repository)(nil)
 var _ {{.DomainLower}}.Query = (*{{.Domain}}Repository)(nil)
 
@@ -415,11 +428,13 @@ func (r *{{.Domain}}Repository) Find{{.Domain}}s(ctx context.Context, q {{.Domai
 	return items, total, rows.Err()
 }
 
-// Save{{.Domain}}은 {{.Domain}} row와 Outbox row를 같은 트랜잭션으로 커밋한다(dual-write 회피,
-// domain-events.md). 공유 outbox.Writer(internal/infrastructure/outbox/writer.go)는
-// 현재 []account.DomainEvent에 고정된 시그니처라 다른 도메인의 이벤트 슬라이스를 그대로
-// 넘길 수 없다 — Writer를 제네릭화하기 전까지는 이 트랜잭션 안에서 직접 적재한다(Poller/Consumer는
-// event_type 문자열 기준으로 동작하므로 적재 방식과 무관하게 정상적으로 드레인한다).
+// Save{{.Domain}} commits the {{.Domain}} row and the Outbox row in the same
+// transaction (avoiding dual-write, domain-events.md). The shared outbox.Writer
+// (internal/infrastructure/outbox/writer.go) currently has a signature fixed to
+// []account.DomainEvent, so it can't be handed another domain's event slice
+// as-is — until Writer is made generic, this loads the row directly within this
+// transaction instead (the Poller/Consumer operate on the event_type string, so
+// they drain correctly regardless of how the row was loaded).
 func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.Recv}} *{{.DomainLower}}.{{.Domain}}) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -458,7 +473,7 @@ func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.Recv}} *
 }
 `
 
-// ---- Interface 레이어 ----
+// ---- Interface layer ----
 
 const tmplDTO = `package http
 
@@ -563,8 +578,9 @@ func (h *{{.Domain}}Handler) Get{{.Domain}}(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// {{.DomainCamel}}ErrorMapping은 sentinel error -> (HTTP 상태 코드, client-facing 에러 코드)
-// 매핑 테이블이다(account_handler.go의 accountErrorMapping과 동일한 관용구 — error-handling.md).
+// {{.DomainCamel}}ErrorMapping is the sentinel error -> (HTTP status code,
+// client-facing error code) mapping table (same idiom as account_handler.go's
+// accountErrorMapping — error-handling.md).
 var {{.DomainCamel}}ErrorMapping = []struct {
 	err    error
 	status int
@@ -596,9 +612,10 @@ const tmplMigration = `CREATE TABLE {{.DomainsLower}} (
 CREATE INDEX idx_{{.DomainsLower}}_owner_id ON {{.DomainsLower}} (owner_id);
 `
 
-// GenerateFiles는 대상 앱 루트(예: examples/) 기준 상대 경로 -> 파일 내용 맵을 만든다.
-// migrationSeq는 migrations/000N_*.sql의 다음 번호다(호출부가 기존 migrations/ 디렉토리를
-// 스캔해 넘긴다).
+// GenerateFiles builds a map of relative path (from the target app root, e.g.
+// examples/) -> file content. migrationSeq is the next number for
+// migrations/000N_*.sql (the caller scans the existing migrations/ directory
+// and passes it in).
 func GenerateFiles(n Names, migrationSeq int) map[string]string {
 	files := map[string]string{}
 

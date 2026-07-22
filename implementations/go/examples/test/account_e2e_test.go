@@ -43,11 +43,12 @@ import (
 var (
 	testServer     *httptest.Server
 	testDB         *sql.DB
-	localstackHTTP string // LocalStack 컨테이너의 base URL (예: http://localhost:32771)
+	localstackHTTP string // the LocalStack container's base URL (e.g. http://localhost:32771)
 	testJWTService *auth.JWTService
 
-	// 스케줄링 e2e 테스트(scheduling_e2e_test.go)가 실제 tick을 기다리지 않고 Cron
-	// 핸들러를 직접 호출할 수 있도록 노출한다(scheduling.md 예시와 동일한 테스트 패턴).
+	// Exposed so the scheduling e2e tests (scheduling_e2e_test.go) can call
+	// the Cron handlers directly instead of waiting for a real tick (the
+	// same test pattern as the scheduling.md example).
 	testInterestScheduler  *scheduling.InterestScheduler
 	testStatementScheduler *scheduling.StatementScheduler
 )
@@ -103,8 +104,9 @@ func runTests(m *testing.M) int {
 		}
 	}
 
-	// LocalStack로 SES·SQS를 에뮬레이션한다. 반드시 3.0(무료 Community 태그)을 고정한다 —
-	// :latest는 유료 라이선스를 요구해 컨테이너가 즉시 종료된다.
+	// Emulates SES/SQS with LocalStack. Must pin 3.0 (the free Community
+	// tag) — :latest requires a paid license and the container exits
+	// immediately.
 	localstackContainer, err := localstack.Run(ctx, "localstack/localstack:3.0",
 		testcontainers.WithEnv(map[string]string{"SERVICES": "ses,sqs"}),
 	)
@@ -123,15 +125,17 @@ func runTests(m *testing.M) int {
 	}
 	localstackHTTP = fmt.Sprintf("http://%s:%s", host, port.Port())
 
-	// 프로덕션과 동일한 경로(환경변수 → notification.NewSESClient())로 SES 클라이언트를 만든다.
+	// Builds the SES client via the same path as production (env vars →
+	// notification.NewSESClient()).
 	_ = os.Setenv("AWS_ENDPOINT_URL", localstackHTTP)
 	_ = os.Setenv("AWS_REGION", "us-east-1")
 	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
 	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
 	sesClient := notification.NewSESClient()
 
-	// 실제 SES와 마찬가지로 LocalStack의 SES 에뮬레이터도 발신자 검증을 요구한다 —
-	// 검증하지 않으면 MessageRejected: Email address not verified로 실패한다.
+	// Just like real SES, LocalStack's SES emulator also requires sender
+	// verification — without it, it fails with MessageRejected: Email
+	// address not verified.
 	if _, err := sesClient.VerifyEmailIdentity(ctx, &ses.VerifyEmailIdentityInput{
 		EmailAddress: aws.String(notification.SenderEmail()),
 	}); err != nil {
@@ -140,7 +144,8 @@ func runTests(m *testing.M) int {
 
 	notifier := notification.NewService(sesClient, db)
 
-	// 프로덕션과 동일한 경로(환경변수 → outbox.NewSQSClient())로 SQS 클라이언트를 만든다.
+	// Builds the SQS client via the same path as production (env vars →
+	// outbox.NewSQSClient()).
 	sqsClient := outbox.NewSQSClient()
 	queueURL := setupDomainEventQueue(ctx, sqsClient)
 
@@ -213,16 +218,18 @@ func runTests(m *testing.M) int {
 		},
 	}
 
-	// Poller(Outbox → SQS 발행)와 Consumer(SQS → Handler 실행)를 main()과 동일하게
-	// 독립 goroutine으로 띄운다 — Command Handler는 이들을 전혀 참조하지 않는다(동기
-	// 드레인 금지, domain-events.md). runTests(테스트 프로세스 전체)가 끝날 때 함께
-	// 정지되도록 이 ctx를 그대로 쓴다.
+	// Launches the Poller (Outbox → SQS publish) and Consumer (SQS → Handler
+	// execution) as independent goroutines, just like main() — Command
+	// Handlers never reference either of them at all (no synchronous
+	// draining, domain-events.md). This ctx is reused as-is so both stop
+	// together when runTests (the entire test process) ends.
 	go outbox.NewPoller(db, sqsClient, queueURL).Run(ctx)
 	go outbox.NewConsumer(sqsClient, queueURL, outboxHandlers).Run(ctx)
 
-	// Task Queue 인프라 — main.go와 동일한 조립을 테스트에서도 재현한다(domain-events
-	// 큐와 개념적으로 구분되는 별도 SQS 큐, docs/architecture/domain-events.md의
-	// "Task Queue vs Domain Event").
+	// Task Queue infrastructure — reproduces the same assembly as main.go in
+	// tests too (a separate SQS queue conceptually distinct from the
+	// domain-events queue, per the "Task Queue vs Domain Event" distinction
+	// in docs/architecture/domain-events.md).
 	taskQueueURL := setupTaskQueue(ctx, sqsClient)
 	taskWriter := taskqueue.NewWriter(db)
 	testInterestScheduler = scheduling.NewInterestScheduler(taskWriter)
@@ -244,10 +251,12 @@ func runTests(m *testing.M) int {
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 	testPasswordHasher := auth.NewBcryptPasswordHasher()
 
-	// e2e 테스트는 같은 프로세스 안에서 짧은 시간에 수십 개 요청을 보낸다 — 운영 기본값
-	// (초당 100개, burst 20)을 그대로 쓰면 rate limiter가 테스트 도중에도 429를 반환해
-	// 무관한 실패를 만든다. rate-limiting.md의 "환경 변수로 임계값을 관리한다" 원칙에 따라
-	// 여기서만 넉넉한 limiter로 override한다.
+	// e2e tests send dozens of requests in a short time within the same
+	// process — using the production default (100/second, burst 20) as-is
+	// would let the rate limiter return 429 mid-test, causing unrelated
+	// failures. Following rate-limiting.md's "manage thresholds via
+	// environment variables" principle, override it with a generous limiter
+	// here only.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
 	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter, database.NewManager(db))
@@ -257,11 +266,13 @@ func runTests(m *testing.M) int {
 	return m.Run()
 }
 
-// setupDomainEventQueue는 nestjs의 localstack/init-sqs.sh와 동일한 파라미터(같은 큐
-// 이름, RedrivePolicy maxReceiveCount=3)로 domain-events/domain-events-dlq 큐를
-// 만들고 메인 큐 URL을 반환한다. docker-compose 기반 로컬 실행은 init-sqs.sh가 이
-// 역할을 대신하지만, testcontainers-go로 매 테스트마다 새로 뜨는 LocalStack에는 그
-// 초기화 스크립트가 마운트되지 않으므로 SQS API를 직접 호출해 동등한 상태를 만든다.
+// setupDomainEventQueue creates the domain-events/domain-events-dlq queues
+// with the same parameters as nestjs's localstack/init-sqs.sh (the same
+// queue names, RedrivePolicy maxReceiveCount=3) and returns the main queue
+// URL. init-sqs.sh plays this role for docker-compose-based local runs, but
+// the LocalStack instance testcontainers-go spins up fresh for every test
+// has no such init script mounted, so the SQS API is called directly here to
+// produce the same state.
 func setupDomainEventQueue(ctx context.Context, sqsClient *sqs.Client) string {
 	dlqOut, err := sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("domain-events-dlq")})
 	if err != nil {
@@ -288,8 +299,9 @@ func setupDomainEventQueue(ctx context.Context, sqsClient *sqs.Client) string {
 	return *queueOut.QueueUrl
 }
 
-// setupTaskQueue는 setupDomainEventQueue와 동일한 이유로, localstack/init-sqs.sh가
-// 만드는 task-queue/task-queue-dlq를 testcontainers-go LocalStack에도 직접 재현한다.
+// setupTaskQueue, for the same reason as setupDomainEventQueue, directly
+// reproduces the task-queue/task-queue-dlq that localstack/init-sqs.sh
+// creates on the testcontainers-go LocalStack too.
 func setupTaskQueue(ctx context.Context, sqsClient *sqs.Client) string {
 	dlqOut, err := sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("task-queue-dlq")})
 	if err != nil {
@@ -375,7 +387,7 @@ func createAccountWithEmail(t *testing.T, ownerID, email, currency string) map[s
 }
 
 func TestAuth(t *testing.T) {
-	t.Run("sign-in으로_발급받은_토큰으로_보호된_엔드포인트에_접근할_수_있다", func(t *testing.T) {
+	t.Run("can_access_a_protected_endpoint_with_a_token_issued_by_sign_in", func(t *testing.T) {
 		signUpResp := doRequest(t, http.MethodPost, "/auth/sign-up", "", map[string]string{"userId": ownerID, "password": "password123!"})
 		require.Equal(t, http.StatusCreated, signUpResp.StatusCode)
 
@@ -394,7 +406,7 @@ func TestAuth(t *testing.T) {
 		require.Equal(t, http.StatusCreated, created.StatusCode)
 	})
 
-	t.Run("Authorization_헤더가_없으면_401을_반환한다", func(t *testing.T) {
+	t.Run("missing_Authorization_header_returns_401", func(t *testing.T) {
 		req, err := http.NewRequest(http.MethodPost, testServer.URL+"/accounts", bytes.NewReader(
 			[]byte(`{"email":"no-auth@example.com","currency":"KRW"}`)))
 		require.NoError(t, err)
@@ -404,7 +416,7 @@ func TestAuth(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
-	t.Run("유효하지_않은_토큰이면_401을_반환한다", func(t *testing.T) {
+	t.Run("invalid_token_returns_401", func(t *testing.T) {
 		req, err := http.NewRequest(http.MethodPost, testServer.URL+"/accounts", bytes.NewReader(
 			[]byte(`{"email":"bad-token@example.com","currency":"KRW"}`)))
 		require.NoError(t, err)
@@ -417,7 +429,7 @@ func TestAuth(t *testing.T) {
 }
 
 func TestCreateAccount(t *testing.T) {
-	t.Run("생성_요청이_유효하면_201과_계좌_정보를_반환한다", func(t *testing.T) {
+	t.Run("valid_create_request_returns_201_and_account_info", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts", ownerID,
 			map[string]string{"email": ownerID + "@example.com", "currency": "KRW"})
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -433,12 +445,12 @@ func TestCreateAccount(t *testing.T) {
 		require.Equal(t, "KRW", balance["currency"])
 	})
 
-	t.Run("email이_비어있으면_400을_반환한다", func(t *testing.T) {
+	t.Run("empty_email_returns_400", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts", ownerID, map[string]string{"currency": "KRW"})
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
-	t.Run("email_형식이_유효하지_않으면_400을_반환한다", func(t *testing.T) {
+	t.Run("invalid_email_format_returns_400", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts", ownerID,
 			map[string]string{"email": "not-an-email", "currency": "KRW"})
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -446,7 +458,7 @@ func TestCreateAccount(t *testing.T) {
 }
 
 func TestDeposit(t *testing.T) {
-	t.Run("입금_요청이_유효하면_201과_거래_내역을_반환한다", func(t *testing.T) {
+	t.Run("valid_deposit_request_returns_201_and_transaction_history", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
@@ -459,12 +471,12 @@ func TestDeposit(t *testing.T) {
 		require.NotEmpty(t, body["transactionId"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/deposit", ownerID, map[string]int{"amount": 10000})
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("다른_소유자의_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("another_owners_account_returns_404", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", otherOwnerID,
@@ -472,7 +484,7 @@ func TestDeposit(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("금액이_0_이하이면_400을_반환한다", func(t *testing.T) {
+	t.Run("amount_of_zero_or_less_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
@@ -480,7 +492,7 @@ func TestDeposit(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
-	t.Run("정지된_계좌면_400을_반환한다", func(t *testing.T) {
+	t.Run("suspended_account_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/suspend", ownerID, nil)
 
@@ -491,7 +503,7 @@ func TestDeposit(t *testing.T) {
 }
 
 func TestWithdraw(t *testing.T) {
-	t.Run("출금_요청이_유효하면_201과_거래_내역을_반환한다", func(t *testing.T) {
+	t.Run("valid_withdraw_request_returns_201_and_transaction_history", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -504,12 +516,12 @@ func TestWithdraw(t *testing.T) {
 		require.Equal(t, "WITHDRAWAL", body["type"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/withdraw", ownerID, map[string]int{"amount": 1000})
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("잔액보다_큰_금액을_출금하면_400을_반환한다", func(t *testing.T) {
+	t.Run("withdrawing_more_than_the_balance_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
@@ -517,7 +529,7 @@ func TestWithdraw(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
-	t.Run("정지된_계좌면_400을_반환한다", func(t *testing.T) {
+	t.Run("suspended_account_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/suspend", ownerID, nil)
 
@@ -526,7 +538,7 @@ func TestWithdraw(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
-	t.Run("금액이_0_이하이면_400을_반환한다", func(t *testing.T) {
+	t.Run("amount_of_zero_or_less_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
@@ -536,7 +548,7 @@ func TestWithdraw(t *testing.T) {
 }
 
 func TestTransfer(t *testing.T) {
-	t.Run("송금_요청이_유효하면_201과_출금_입금_거래_내역을_반환한다", func(t *testing.T) {
+	t.Run("valid_transfer_request_returns_201_and_withdraw_deposit_transaction_history", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -560,7 +572,7 @@ func TestTransfer(t *testing.T) {
 		require.InDelta(t, float64(4000), targetGet["balance"].(map[string]any)["amount"], 0)
 	})
 
-	t.Run("타인_소유_계좌로도_송금할_수_있다", func(t *testing.T) {
+	t.Run("can_also_transfer_to_another_owners_account", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -571,7 +583,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 	})
 
-	t.Run("존재하지_않는_출금_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_source_account_returns_404", func(t *testing.T) {
 		target := createAccount(t, otherOwnerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/transfer", ownerID,
@@ -579,7 +591,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("존재하지_않는_입금_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_target_account_returns_404", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -589,7 +601,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("출금_계좌와_입금_계좌가_같으면_400을_반환한다", func(t *testing.T) {
+	t.Run("same_source_and_target_account_returns_400", func(t *testing.T) {
 		acc := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+acc["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -602,7 +614,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, "ACCOUNT_TRANSFER_SAME_ACCOUNT", body["code"])
 	})
 
-	t.Run("잔액보다_큰_금액을_송금하면_400을_반환한다", func(t *testing.T) {
+	t.Run("transferring_more_than_the_balance_returns_400", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		target := createAccount(t, otherOwnerID, "KRW")
 
@@ -614,7 +626,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, "ACCOUNT_INSUFFICIENT_BALANCE", body["code"])
 	})
 
-	t.Run("출금_계좌가_정지_상태면_400을_반환한다", func(t *testing.T) {
+	t.Run("suspended_source_account_returns_400", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -629,7 +641,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, "ACCOUNT_WITHDRAW_REQUIRES_ACTIVE_ACCOUNT", body["code"])
 	})
 
-	t.Run("입금_계좌가_정지_상태면_400을_반환한다", func(t *testing.T) {
+	t.Run("suspended_target_account_returns_400", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -644,7 +656,7 @@ func TestTransfer(t *testing.T) {
 		require.Equal(t, "ACCOUNT_DEPOSIT_REQUIRES_ACTIVE_ACCOUNT", body["code"])
 	})
 
-	t.Run("통화가_일치하지_않으면_400을_반환한다", func(t *testing.T) {
+	t.Run("mismatched_currency_returns_400", func(t *testing.T) {
 		source := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+source["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -660,7 +672,7 @@ func TestTransfer(t *testing.T) {
 }
 
 func TestSuspendAccount(t *testing.T) {
-	t.Run("정상_계좌를_정지하면_204를_반환한다", func(t *testing.T) {
+	t.Run("suspending_a_normal_account_returns_204", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/suspend", ownerID, nil)
@@ -671,12 +683,12 @@ func TestSuspendAccount(t *testing.T) {
 		require.Equal(t, "SUSPENDED", getBody["status"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/suspend", ownerID, nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("이미_정지된_계좌면_400을_반환한다", func(t *testing.T) {
+	t.Run("already_suspended_account_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/suspend", ownerID, nil)
 
@@ -686,7 +698,7 @@ func TestSuspendAccount(t *testing.T) {
 }
 
 func TestReactivateAccount(t *testing.T) {
-	t.Run("정지된_계좌를_재개하면_204를_반환한다", func(t *testing.T) {
+	t.Run("resuming_a_suspended_account_returns_204", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/suspend", ownerID, nil)
 
@@ -698,12 +710,12 @@ func TestReactivateAccount(t *testing.T) {
 		require.Equal(t, "ACTIVE", getBody["status"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/reactivate", ownerID, nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("활성_계좌를_재개하면_400을_반환한다", func(t *testing.T) {
+	t.Run("resuming_an_active_account_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/reactivate", ownerID, nil)
@@ -712,7 +724,7 @@ func TestReactivateAccount(t *testing.T) {
 }
 
 func TestCloseAccount(t *testing.T) {
-	t.Run("잔액이_0인_계좌를_종료하면_204를_반환한다", func(t *testing.T) {
+	t.Run("closing_an_account_with_zero_balance_returns_204", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/close", ownerID, nil)
@@ -723,12 +735,12 @@ func TestCloseAccount(t *testing.T) {
 		require.Equal(t, "CLOSED", getBody["status"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/close", ownerID, nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("잔액이_0이_아니면_400을_반환한다", func(t *testing.T) {
+	t.Run("nonzero_balance_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 5000})
@@ -737,7 +749,7 @@ func TestCloseAccount(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
-	t.Run("이미_종료된_계좌면_400을_반환한다", func(t *testing.T) {
+	t.Run("already_closed_account_returns_400", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/close", ownerID, nil)
 
@@ -747,7 +759,7 @@ func TestCloseAccount(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	t.Run("존재하는_계좌를_조회하면_200과_계좌_정보를_반환한다", func(t *testing.T) {
+	t.Run("looking_up_an_existing_account_returns_200_and_account_info", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodGet, "/accounts/"+account["accountId"].(string), ownerID, nil)
@@ -759,12 +771,12 @@ func TestGetAccount(t *testing.T) {
 		require.NotEmpty(t, body["updatedAt"])
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodGet, "/accounts/non-existent", ownerID, nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("다른_소유자가_조회하면_404를_반환한다", func(t *testing.T) {
+	t.Run("lookup_by_another_owner_returns_404", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodGet, "/accounts/"+account["accountId"].(string), otherOwnerID, nil)
@@ -773,7 +785,7 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestGetTransactions(t *testing.T) {
-	t.Run("거래_내역을_페이지네이션과_함께_반환한다", func(t *testing.T) {
+	t.Run("returns_transaction_history_with_pagination", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
@@ -790,12 +802,12 @@ func TestGetTransactions(t *testing.T) {
 		require.Len(t, transactions, 2)
 	})
 
-	t.Run("존재하지_않는_계좌면_404를_반환한다", func(t *testing.T) {
+	t.Run("nonexistent_account_returns_404", func(t *testing.T) {
 		resp := doRequest(t, http.MethodGet, "/accounts/non-existent/transactions", ownerID, nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("take를_초과한_페이지_조회는_빈_배열을_반환한다", func(t *testing.T) {
+	t.Run("a_page_lookup_beyond_take_returns_an_empty_array", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 
 		resp := doRequest(t, http.MethodGet,

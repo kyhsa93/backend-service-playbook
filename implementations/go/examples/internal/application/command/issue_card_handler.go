@@ -22,7 +22,7 @@ func NewIssueCardHandler(repo card.Repository, accounts AccountAdapter) *IssueCa
 }
 
 func (h *IssueCardHandler) Handle(ctx context.Context, cmd IssueCardCommand) (*card.Card, error) {
-	// 동기 Adapter(ACL)로 연결 계좌를 조회한다 — 발급 가부 판단에 필요하므로 동기 호출.
+	// Look up the linked account via a synchronous Adapter (ACL) — a synchronous call because the issuance decision depends on it.
 	view, err := h.accounts.FindAccount(ctx, cmd.AccountID, cmd.RequesterID)
 	if err != nil {
 		return nil, err

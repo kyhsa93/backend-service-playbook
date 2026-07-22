@@ -9,10 +9,11 @@ import (
 	"github.com/example/account-service/internal/domain/payment"
 )
 
-// PaymentCompletedEventHandler는 outbox에 적재된 PaymentCompleted 도메인 이벤트를 수신해
-// 외부 BC용 Integration Event(payment.completed.v1)로 변환해 Outbox에 적재하는
-// Application EventHandler다. Account BC가 이 Integration Event를 구독해 실제 차감
-// (withdraw)을 수행한다.
+// PaymentCompletedEventHandler is an Application EventHandler that receives
+// the PaymentCompleted domain event persisted in the outbox, translates it
+// into an Integration Event for external BCs (payment.completed.v1), and
+// persists it to the Outbox. The Account BC subscribes to this Integration
+// Event and performs the actual debit (withdraw).
 type PaymentCompletedEventHandler struct {
 	publisher IntegrationPublisher
 }
