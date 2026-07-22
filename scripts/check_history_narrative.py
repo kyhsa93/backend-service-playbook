@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXCLUDE_DIR_NAMES = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist",
     "target", ".gradle", "bin", "obj", ".pytest_cache", "htmlcov",
-    ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode",
+    ".mypy_cache", "coverage", ".next", "out", ".idea", ".vscode", ".claude",
 }
 
 INCLUDE_SUFFIXES = {".md", ".ts", ".go", ".java", ".kt", ".py", ".yml", ".yaml"}

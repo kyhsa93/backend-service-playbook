@@ -1,26 +1,26 @@
-# Aggregate ID 생성
+# Aggregate ID Generation
 
-### 원칙
+### Principles
 
-- **ID 생성 위치**: Domain 레이어 (Aggregate 생성자)
-- **생성 주체**: 서버 (클라이언트 제공 ID 사용 금지)
-- **타입**: `string`
-- **형식**: UUID v4 하이픈 제거 32자리 hex 문자열
+- **Where the ID is generated**: the Domain layer (the Aggregate constructor)
+- **Who generates it**: the server (never use a client-supplied ID)
+- **Type**: `string`
+- **Format**: a UUID v4 with hyphens stripped, a 32-char hex string
 
 ```
-'550e8400e29b41d4a716446655440000'   // 올바른 방식 — 32자리, 하이픈 없음
-'550e8400-e29b-41d4-a716-446655440000'  // 잘못된 방식 — 하이픈 포함
-1, 2, 3                                  // 잘못된 방식 — auto-increment 숫자
+'550e8400e29b41d4a716446655440000'   // correct — 32 chars, no hyphens
+'550e8400-e29b-41d4-a716-446655440000'  // wrong — has hyphens
+1, 2, 3                                  // wrong — an auto-increment number
 ```
 
-**auto-increment 숫자 ID를 사용하지 않는 이유:**
-- DB 레코드 수·생성 순서를 외부에 노출한다 (보안)
-- 여러 서비스·샤드 간 ID 충돌 가능
-- ID가 DB 생성 시점까지 결정되지 않아 Domain 레이어에서 미리 생성 불가
+**Why not use an auto-increment numeric ID:**
+- It exposes the record count/creation order externally (a security concern)
+- It can collide across multiple services/shards
+- The ID isn't determined until it's created in the DB, so it can't be pre-generated in the Domain layer
 
 ---
 
-### ID 생성 유틸
+### ID generation utility
 
 ```typescript
 // common/generate-id.ts
@@ -33,7 +33,7 @@ export function generateId(): string {
 
 ---
 
-### Aggregate에서 사용
+### Using it in an Aggregate
 
 ```typescript
 // domain/order.ts
@@ -41,7 +41,7 @@ export class Order {
   public readonly orderId: string
 
   constructor(params: {
-    orderId?: string   // 신규 생성 시 생략, DB 복원 시 전달
+    orderId?: string   // omit on new creation, passed in on DB restoration
     userId: string
     items: OrderItem[]
     status: 'pending' | 'paid' | 'cancelled'
@@ -52,20 +52,20 @@ export class Order {
 }
 ```
 
-- **신규 생성**: `orderId`를 생략하면 생성자에서 자동 할당
-- **DB 복원**: Repository 구현체가 기존 `orderId`를 그대로 전달
+- **New creation**: omitting `orderId` has the constructor assign it automatically
+- **DB restoration**: the Repository implementation passes the existing `orderId` through as-is
 
 ---
 
-### Repository 구현체에서 ID 처리
+### Handling the ID in a Repository implementation
 
-Repository는 Aggregate의 ID를 그대로 사용한다. DB에서 ID를 새로 발급하지 않는다.
+The Repository uses the Aggregate's ID as-is. It never issues a fresh ID from the DB.
 
 ```typescript
-// infrastructure/order-repository-impl.ts (개념)
+// infrastructure/order-repository-impl.ts (conceptual)
 public async saveOrder(order: Order): Promise<void> {
   await persist({
-    orderId: order.orderId,   // Aggregate가 이미 가진 ID 사용
+    orderId: order.orderId,   // use the ID the Aggregate already has
     userId: order.userId,
     status: order.status,
     // ...
@@ -75,13 +75,13 @@ public async saveOrder(order: Order): Promise<void> {
 
 ---
 
-### 하위 Entity ID
+### IDs for child Entities
 
-Aggregate 내부의 하위 Entity(OrderItem 등)도 동일하게 UUID v4 기반 string ID를 사용한다. 단, 숫자 auto-increment가 더 적합한 경우(단순 순서 인덱스 등)는 도메인 특성에 따라 결정한다.
+A child Entity inside an Aggregate (like OrderItem) uses the same UUID-v4-based string ID. That said, where a numeric auto-increment fits better (a simple ordering index, etc.), decide based on the domain's characteristics.
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 생성자 패턴
-- [repository-pattern.md](repository-pattern.md) — Repository에서 Aggregate 저장
+- [tactical-ddd.md](tactical-ddd.md) — the Aggregate constructor pattern
+- [repository-pattern.md](repository-pattern.md) — saving an Aggregate in a Repository

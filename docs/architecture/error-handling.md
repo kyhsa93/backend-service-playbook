@@ -1,64 +1,64 @@
-# 에러 처리 패턴
+# Error-Handling Pattern
 
-### 계층별 에러 처리 원칙
+### Error-handling principle per layer
 
-| 레이어 | 에러 처리 방식 |
+| Layer | How errors are handled |
 |---|---|
-| Domain / Application | plain `Error` throw. 프레임워크 HTTP 예외 사용 금지 |
-| Interface (Controller) | 에러를 catch → HTTP 상태 코드로 변환 후 re-throw |
+| Domain / Application | throw a plain `Error`. Never use a framework's HTTP exception |
+| Interface (Controller) | catch the error → convert it to an HTTP status code, then re-throw |
 
-이 분리를 통해 Domain/Application 레이어는 HTTP에 의존하지 않고, 에러 변환 책임은 Interface 레이어에만 집중된다.
+This separation keeps the Domain/Application layers free of any HTTP dependency, concentrating error-conversion responsibility solely in the Interface layer.
 
 ---
 
-### Domain / Application — plain Error throw
+### Domain / Application — throw a plain Error
 
-Domain 레이어와 Application Service에서는 plain `Error`만 throw한다. 에러 메시지는 타입화된 enum을 참조한다.
+The Domain layer and Application Services only ever throw a plain `Error`. The error message references a typed enum.
 
 ```typescript
-// domain/order.ts — Aggregate 내부
-if (this._status === 'cancelled') throw new Error(OrderErrorMessage['이미 취소된 주문입니다.'])
+// domain/order.ts — inside the Aggregate
+if (this._status === 'cancelled') throw new Error(OrderErrorMessage['This order has already been cancelled.'])
 
 // application/command/order-command-service.ts
-if (!order) throw new Error(OrderErrorMessage['주문을 찾을 수 없습니다.'])
+if (!order) throw new Error(OrderErrorMessage['Order not found.'])
 ```
 
 ---
 
-### 에러 메시지 — enum으로 타입화 (free-form 문자열 금지)
+### Error messages — typed as an enum (no free-form strings)
 
 ```typescript
 // order-error-message.ts
 export enum OrderErrorMessage {
-  '주문을 찾을 수 없습니다.' = '주문을 찾을 수 없습니다.',
-  '이미 취소된 주문입니다.' = '이미 취소된 주문입니다.',
-  '결제 완료된 주문은 취소할 수 없습니다.' = '결제 완료된 주문은 취소할 수 없습니다.',
-  '주문 항목은 최소 1개 이상이어야 합니다.' = '주문 항목은 최소 1개 이상이어야 합니다.',
+  'Order not found.' = 'Order not found.',
+  'This order has already been cancelled.' = 'This order has already been cancelled.',
+  'A paid order cannot be cancelled.' = 'A paid order cannot be cancelled.',
+  'An order must have at least one item.' = 'An order must have at least one item.',
 }
 ```
 
-**키와 값을 동일하게 쓰는 이유:**
+**Why the key and value are the same string:**
 
-Interface 레이어는 `error.message`를 enum 값과 비교하여 HTTP 예외로 변환한다.
+The Interface layer compares `error.message` against the enum values to convert it into an HTTP exception.
 
 ```typescript
-// Interface 레이어 매핑
-[OrderErrorMessage['주문을 찾을 수 없습니다.'], 404, OrderErrorCode.ORDER_NOT_FOUND]
-//  ↑ enum 키(컴파일 타임 검증)                  ↑ 이 값이 error.message와 런타임 비교됨
+// The Interface layer's mapping
+[OrderErrorMessage['Order not found.'], 404, OrderErrorCode.ORDER_NOT_FOUND]
+//  ↑ the enum key (checked at compile time)      ↑ this value is compared against error.message at runtime
 ```
 
-키 ≠ 값이면 두 가지 문제가 생긴다:
-1. Aggregate에서 `throw new Error('주문을 찾을 수 없습니다.')`로 값을 직접 쓰면 오타가 생겨도 컴파일 오류 없음
-2. Interface에서 `OrderErrorMessage['주문을 찾을 수 없습니다.']`와 `error.message` 비교가 실패
+If the key ≠ the value, two problems arise:
+1. If the Aggregate writes the value directly, e.g. `throw new Error('Order not found.')`, a typo produces no compile error
+2. In the Interface layer, comparing `OrderErrorMessage['Order not found.']` against `error.message` fails
 
-키 = 값으로 정의하면 `throw new Error(OrderErrorMessage['주문을 찾을 수 없습니다.'])`로 **enum 키를 통해서만** 메시지를 쓰게 되어 오타가 컴파일 타임에 드러난다.
+Defining key = value means the message can only be written **through the enum key**, as in `throw new Error(OrderErrorMessage['Order not found.'])`, so a typo shows up at compile time.
 
 ---
 
-### 에러 코드 — enum으로 정의 (메시지와 1:1 매핑)
+### Error codes — defined as an enum (1:1 mapped to messages)
 
-모든 에러 상황은 고유한 에러 코드(string)를 가진다. HTTP 상태 코드가 "범주"라면 에러 코드는 "정확한 원인"이다.
-클라이언트는 메시지 텍스트가 아닌 `code`로 분기 처리해야 하므로, 코드는 안정적이어야 하며 번역/수정될 수 있는 메시지 문자열과 분리한다.
+Every error situation has its own unique error code (a string). If the HTTP status code is the "category," the error code is the "precise cause."
+Since the client should branch on `code`, not the message text, the code must be stable and kept separate from the message string, which can be translated/edited.
 
 ```typescript
 // order-error-code.ts
@@ -70,55 +70,55 @@ export enum OrderErrorCode {
 }
 ```
 
-코드 작성 규칙:
-- 키/값: `SCREAMING_SNAKE_CASE`, 값은 키와 동일 문자열
-- 프로젝트 전역 유일 — 다른 도메인 코드와 충돌 시 도메인 prefix 추가
-- `<Domain>ErrorMessage`의 모든 항목에 대해 1:1 매핑되는 코드가 존재해야 한다
+Rules for writing codes:
+- Key/value: `SCREAMING_SNAKE_CASE`, with the value identical to the key
+- Unique across the whole project — add a domain prefix if it collides with another domain's code
+- Every entry in `<Domain>ErrorMessage` must have a 1:1-mapped code
 
 ---
 
-### Interface 레이어 — 에러 변환
+### The Interface layer — converting errors
 
-Controller에서 에러를 catch하여 HTTP 예외로 변환한다. 변환 시 에러 메시지 → HTTP 상태 코드 매핑과 고유 에러 코드를 부여한다.
+The Controller catches the error and converts it to an HTTP exception. Conversion assigns both the error-message → HTTP-status-code mapping and a unique error code.
 
 ```typescript
-// interface/order-controller.ts (개념)
+// interface/order-controller.ts (conceptual)
 public async getOrder(param: GetOrderRequestParam): Promise<GetOrderResponseBody> {
   return this.orderQueryService.getOrder(param).catch((error) => {
-    // error.message를 HTTP 예외로 변환
+    // convert error.message into an HTTP exception
     throw convertToHttpError(error.message, [
-      [OrderErrorMessage['주문을 찾을 수 없습니다.'], 404, OrderErrorCode.ORDER_NOT_FOUND],
-      [OrderErrorMessage['이미 취소된 주문입니다.'], 400, OrderErrorCode.ORDER_ALREADY_CANCELLED]
+      [OrderErrorMessage['Order not found.'], 404, OrderErrorCode.ORDER_NOT_FOUND],
+      [OrderErrorMessage['This order has already been cancelled.'], 400, OrderErrorCode.ORDER_ALREADY_CANCELLED]
     ])
   })
 }
 ```
 
-매핑에 없는 에러는 500 Internal Server Error로 처리한다.
+An error with no entry in the mapping is treated as a 500 Internal Server Error.
 
 ---
 
-### 에러 응답 형식 — 표준 JSON 구조
+### Error-response format — the standard JSON structure
 
-모든 에러 응답은 아래 형식을 따른다.
+Every error response follows this format.
 
 ```json
 {
   "statusCode": 404,
   "code": "ORDER_NOT_FOUND",
-  "message": "주문을 찾을 수 없습니다.",
+  "message": "Order not found.",
   "error": "Not Found"
 }
 ```
 
-| 필드 | 타입 | 설명 |
+| Field | Type | Description |
 |------|------|------|
-| `statusCode` | `number` | HTTP 상태 코드 |
-| `code` | `string` | `<Domain>ErrorCode` enum 값. 클라이언트 분기 처리의 기준 |
-| `message` | `string` | `<Domain>ErrorMessage` enum에 정의된 에러 메시지 (사용자 표시용) |
-| `error` | `string` | HTTP 상태 텍스트 |
+| `statusCode` | `number` | The HTTP status code |
+| `code` | `string` | A `<Domain>ErrorCode` enum value. What the client branches on |
+| `message` | `string` | The error message defined in the `<Domain>ErrorMessage` enum (for display to the user) |
+| `error` | `string` | The HTTP status text |
 
-Validation 실패 시 — `code`는 `VALIDATION_FAILED` 고정:
+On a validation failure — `code` is fixed to `VALIDATION_FAILED`:
 
 ```json
 {
@@ -131,7 +131,7 @@ Validation 실패 시 — `code`는 `VALIDATION_FAILED` 고정:
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [tactical-ddd.md](tactical-ddd.md) — Aggregate 내부 에러 throw 패턴
-- [layer-architecture.md](layer-architecture.md) — 레이어별 역할 분리
+- [tactical-ddd.md](tactical-ddd.md) — the pattern for throwing errors inside an Aggregate
+- [layer-architecture.md](layer-architecture.md) — the separation of responsibilities per layer

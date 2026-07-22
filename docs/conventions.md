@@ -1,70 +1,70 @@
-# 컨벤션
+# Conventions
 
-## 1. REST API 설계 원칙
+## 1. REST API design principles
 
-### URL 구조 — 리소스 중심, 복수 명사
+### URL structure — resource-centric, plural nouns
 
-URL은 **행위(동사)가 아닌 리소스(명사)**를 나타낸다. HTTP 메서드가 행위를 표현한다.
-
-```
-GET    /orders              주문 목록 조회
-GET    /orders/:orderId     주문 단건 조회
-POST   /orders              주문 생성
-PUT    /orders/:orderId     주문 전체 수정
-PATCH  /orders/:orderId     주문 부분 수정
-DELETE /orders/:orderId     주문 삭제
-```
-
-잘못된 방식:
+A URL names **a resource (a noun), not an action (a verb)**. The HTTP method expresses the action.
 
 ```
-GET  /getOrders      동사를 URL에 넣지 않는다
-POST /createOrder    동사를 URL에 넣지 않는다
-GET  /order/:id      단수형 사용 금지 — 항상 복수형
+GET    /orders              list orders
+GET    /orders/:orderId     look up a single order
+POST   /orders              create an order
+PUT    /orders/:orderId     fully update an order
+PATCH  /orders/:orderId     partially update an order
+DELETE /orders/:orderId     delete an order
 ```
 
-### HTTP 메서드와 응답 코드
+Wrong:
 
-| 메서드 | 용도 | 성공 코드 | 응답 바디 |
+```
+GET  /getOrders      never put a verb in the URL
+POST /createOrder    never put a verb in the URL
+GET  /order/:id      never use the singular form — always plural
+```
+
+### HTTP methods and response codes
+
+| Method | Purpose | Success code | Response body |
 |--------|------|----------|----------|
-| `GET` | 리소스 조회 | 200 OK | 있음 |
-| `POST` | 리소스 생성 | 201 Created | 선택 |
-| `PUT` | 리소스 전체 수정 | 200 OK | 있음 |
-| `PATCH` | 리소스 부분 수정 | 200 OK | 있음 |
-| `DELETE` | 리소스 삭제 | 204 No Content | 없음 |
+| `GET` | Look up a resource | 200 OK | present |
+| `POST` | Create a resource | 201 Created | optional |
+| `PUT` | Fully update a resource | 200 OK | present |
+| `PATCH` | Partially update a resource | 200 OK | present |
+| `DELETE` | Delete a resource | 204 No Content | absent |
 
-### 비 CRUD 행위 — 하위 리소스 경로
+### Non-CRUD actions — a sub-resource path
 
 ```
-POST   /orders/:orderId/cancel     주문 취소
-POST   /orders/:orderId/refund     주문 환불
-POST   /users/:userId/verify-email 이메일 인증
+POST   /orders/:orderId/cancel     cancel an order
+POST   /orders/:orderId/refund     refund an order
+POST   /users/:userId/verify-email verify an email
 ```
 
-### URL 네이밍 규칙
+### URL naming rules
 
-- **복수 명사**: `/orders`, `/users` (단수형 사용 금지)
+- **Plural nouns**: `/orders`, `/users` (never singular)
 - **kebab-case**: `/order-items`, `/payment-methods`
-- **소문자만**: `/Orders` (X) → `/orders` (O)
-- **후행 슬래시 없음**: `/orders/` (X)
+- **lowercase only**: `/Orders` (wrong) → `/orders` (correct)
+- **no trailing slash**: `/orders/` (wrong)
 
-### 목록 조회 — 페이지네이션
+### List lookups — pagination
 
 ```
 GET /orders?page=0&take=20&status=pending
 ```
 
-- `page`: 0부터 시작
-- `take`: 페이지 크기
-- 필터: querystring으로 전달
+- `page`: starts at 0
+- `take`: the page size
+- filters: passed as query-string parameters
 
 ---
 
-## 2. 커밋 메시지 컨벤션
+## 2. Commit-message convention
 
-[Conventional Commits](https://www.conventionalcommits.org/) 스펙을 따른다.
+Follows the [Conventional Commits](https://www.conventionalcommits.org/) spec.
 
-### 메시지 구조
+### Message structure
 
 ```
 <type>(<scope>): <description>
@@ -74,104 +74,104 @@ GET /orders?page=0&take=20&status=pending
 [optional footer(s)]
 ```
 
-### type 목록
+### List of types
 
-| type | 설명 |
+| type | Description |
 |------|------|
-| `feat` | 새로운 기능 추가 |
-| `fix` | 버그 수정 |
-| `refactor` | 기능 변경 없이 코드 구조 변경 |
-| `docs` | 문서만 변경 |
-| `test` | 테스트 추가 또는 수정 |
-| `chore` | 빌드, CI, 의존성 등 코드 외적인 작업 |
-| `style` | 코드 포맷팅, 동작에 영향 없는 변경 |
-| `perf` | 성능 개선 |
+| `feat` | Adds a new feature |
+| `fix` | Fixes a bug |
+| `refactor` | Restructures code with no behavior change |
+| `docs` | Docs-only change |
+| `test` | Adds or modifies tests |
+| `chore` | Non-code work — build, CI, dependencies, etc. |
+| `style` | Code formatting, a change with no effect on behavior |
+| `perf` | A performance improvement |
 
-### scope 규칙
+### scope rules
 
-- scope는 **서비스 도메인명**: `order`, `user`, `payment`, `auth`
-- 여러 도메인에 걸친 변경이면 scope 생략 또는 상위 개념 사용
-- 코드 외적 변경: `ci`, `deps`, `docker` 등
+- The scope is **the service's domain name**: `order`, `user`, `payment`, `auth`
+- For a change spanning multiple domains, omit the scope or use a higher-level concept
+- For a non-code change: `ci`, `deps`, `docker`, etc.
 
-### description 규칙
+### description rules
 
-- 명령형이 아닌 서술형: "추가", "수정", "제거"
-- 끝에 마침표 없음
+- Descriptive, not imperative: "adds", "fixes", "removes"
+- No trailing period
 
 ### BREAKING CHANGE
 
 ```
-feat(order)!: 주문 응답 스키마 변경
+feat(order)!: change the order response schema
 
-BREAKING CHANGE: GetOrderResponseBody의 totalPrice → totalAmount 필드명 변경
+BREAKING CHANGE: renamed GetOrderResponseBody's totalPrice field to totalAmount
 ```
 
 ---
 
-## 3. 브랜치 네이밍
+## 3. Branch naming
 
 ```
 <type>/<scope>-<short-description>
 ```
 
-예시: `feat/order-cancel`, `fix/order-status-update`, `docs/cqrs-pattern`
+Examples: `feat/order-cancel`, `fix/order-status-update`, `docs/cqrs-pattern`
 
-**규칙:**
-- 모든 단어는 `kebab-case`
-- `main` 브랜치에서 분기한다
-- `main` 브랜치에 직접 commit/push하지 않는다
+**Rules:**
+- Every word is `kebab-case`
+- Branch off of `main`
+- Never commit/push directly to the `main` branch
 
-### PR 워크플로우
+### PR workflow
 
 ```
-1. main에서 새 브랜치 생성
-2. 작업 후 commit (Conventional Commits 형식)
-3. 원격에 push
-4. main 브랜치로 PR 생성
+1. Create a new branch off of main
+2. Do the work, then commit (in Conventional Commits format)
+3. Push to the remote
+4. Open a PR targeting the main branch
 ```
 
-### 머지 전략
+### Merge strategy
 
-- **Squash and merge**를 기본으로 사용한다.
-- 머지 후 원격 브랜치는 자동 삭제한다.
+- **Squash and merge** is the default.
+- The remote branch is deleted automatically after merging.
 
 ---
 
-## 4. Rate Limiting 원칙
+## 4. Rate-limiting principles
 
-API에 속도 제한을 적용하여 남용을 방지한다.
+Apply rate limiting to the API to prevent abuse.
 
-### 기본 원칙
+### Basic principles
 
-- **전역 기본값 설정**: 모든 엔드포인트에 기본 제한을 적용한다.
-- **쓰기 API는 읽기 API보다 엄격하게**: POST/PUT/DELETE는 GET보다 낮은 한도를 설정한다.
-- **내부 엔드포인트 제외**: 헬스체크(`/health/*`), 메트릭(`/metrics`) 등은 제한에서 제외한다.
-- **제한값은 환경 변수로 관리**: 하드코딩하지 않고 환경별 조정이 가능하도록 한다.
+- **Set a global default**: apply a default limit to every endpoint.
+- **Write APIs are stricter than read APIs**: set a lower limit for POST/PUT/DELETE than for GET.
+- **Exclude internal endpoints**: exclude things like health checks (`/health/*`) and metrics (`/metrics`) from the limit.
+- **Manage limit values via environment variables**: don't hardcode them, so they can be tuned per environment.
 
-### 응답 헤더
+### Response headers
 
-제한 초과 전 클라이언트가 현재 상태를 파악할 수 있도록 응답 헤더를 포함한다.
+Include response headers so the client can see its current status before hitting the limit.
 
-| 헤더 | 설명 |
+| Header | Description |
 |------|------|
-| `X-RateLimit-Limit` | 허용된 최대 요청 수 |
-| `X-RateLimit-Remaining` | 남은 요청 수 |
-| `X-RateLimit-Reset` | 제한 초기화까지 남은 시간 |
+| `X-RateLimit-Limit` | The maximum number of requests allowed |
+| `X-RateLimit-Remaining` | Requests remaining |
+| `X-RateLimit-Reset` | Time remaining until the limit resets |
 
-제한 초과 시 `429 Too Many Requests`를 반환한다.
+Return `429 Too Many Requests` when the limit is exceeded.
 
 ---
 
-## 5. 메서드 네이밍 원칙
+## 5. Method-naming principles
 
-### Service / Handler 메서드
+### Service / Handler methods
 
-- 동사 사용: `get`, `find`, `create`, `update`, `delete`, `cancel`, `transfer` 등
-- 반환 타입 항상 명시
+- Use a verb: `get`, `find`, `create`, `update`, `delete`, `cancel`, `transfer`, etc.
+- Always state the return type explicitly
 
-### Repository 메서드
+### Repository methods
 
-- 조회: `find<Noun>s` (목록, 단건 동일)
-- 저장: `save<Noun>`
-- 삭제: `delete<Noun>`
-- 수정(update) 메서드 금지 — 조회 후 도메인 메서드로 수정, `save<Noun>`으로 저장
+- Lookup: `find<Noun>s` (the same for a list or a single record)
+- Save: `save<Noun>`
+- Delete: `delete<Noun>`
+- No update method — look it up, modify it via a domain method, then save it via `save<Noun>`

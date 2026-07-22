@@ -1,24 +1,24 @@
-# 개발 프로세스 — 에이전트 역할 기반
+# Development Process — Agent-Role Based
 
-이 문서는 도메인 주도 설계 기반 백엔드 프로젝트를 **8개의 독립 에이전트 역할**로 분리하여 진행하는 프로세스를 정의한다. 언어/프레임워크에 관계없이 동일하게 적용된다 — 코드 예시는 TypeScript를 사용하지만 패턴 자체는 어떤 언어에서도 동일하다.
+This doc defines a process for running a domain-driven-design-based backend project split into **8 independent agent roles**. It applies the same way regardless of language/framework — the code examples use TypeScript, but the patterns themselves are identical in any language.
 
-각 에이전트는 명확한 입력과 출력을 가지며, 입력이 주어지면 독립적으로 수행할 수 있다.
+Each agent has a clear input and output, and can work independently once given its input.
 
-### 공통 진행 규칙
+### Shared conduct rules
 
-모든 에이전트는 사용자와 대화할 때 아래 규칙을 따른다:
+Every agent follows these rules when talking with the user:
 
-- 한 번에 너무 많은 질문을 하지 않는다. 하위 단계별로 3~5개 이내의 질문을 하고, 답변을 받은 뒤 후속 질문을 이어간다.
-- 사용자의 답변이 모호하거나 불충분하면, 구체적인 예시를 들어 재질문한다.
-- 사용자가 답변하지 못하는 부분은 도메인 지식을 기반으로 선택지를 제안한다.
-- 각 단계의 마지막에 산출물을 마크다운 문서로 정리하고, 사용자의 확인을 받는다.
-- 사용자가 수정을 요청하면 해당 부분을 반영한 뒤 다시 확인을 받는다.
+- Never ask too many questions at once. Ask 3-5 questions per sub-step at most, then continue with follow-up questions once you get an answer.
+- If the user's answer is vague or insufficient, ask again with a concrete example.
+- For anything the user can't answer, propose options based on domain knowledge.
+- At the end of each step, write up the deliverable as a markdown doc and get the user's confirmation.
+- If the user asks for a change, apply it and get confirmation again.
 
-## 에이전트 구성
+## Agent composition
 
 ```
                    Orchestrator Agent
-      (전체 흐름 조율 / 산출물 전달 / 품질 게이트)
+      (coordinates the overall flow / hands off deliverables / quality gate)
       │      │      │      │      │      │      │      │
       ▼      ▼      ▼      ▼      ▼      ▼      ▼      ▼
     [RA]   [SD]   [DM]   [TD]   [TE]   [IM]   [VA]   [LA]
@@ -29,385 +29,385 @@ TE = Test Engineer            IM = Implementer
 VA = Validator               LA = Legacy Analyzer
 ```
 
-### 산출물 흐름
+### Deliverable flow
 
 ```
-사용자 요구 ──▶ [RA] ──요구사항 명세──▶ [SD] ──전략 설계서──▶ [DM] ──도메인 모델──▶ [TD] ──전술 설계서──▶ [TE] ──테스트 코드──▶ [IM] ──구현 코드──▶ [VA] ──검증 보고서
+User request ──▶ [RA] ──requirements spec──▶ [SD] ──strategic design doc──▶ [DM] ──domain model──▶ [TD] ──tactical design doc──▶ [TE] ──test code──▶ [IM] ──implementation code──▶ [VA] ──verification report
 ```
 
-### 작업 유형별 워크플로우
+### Workflow by task type
 
-모든 작업이 전체 프로세스(RA~VA)를 거칠 필요는 없다. 작업 요청을 받으면 Orchestrator가 먼저 작업 유형을 판단하고, 해당 유형에 맞는 워크플로우로 진입한다.
+Not every task needs to go through the whole process (RA-VA). On receiving a task request, the Orchestrator first judges the task type, then enters the workflow that fits it.
 
-| 작업 유형 | 워크플로우 | 판단 기준 |
+| Task type | Workflow | How to judge |
 |-----------|-----------|----------|
-| 신규 도메인 개발 | RA → SD → DM → TD → **(사용자 확인)** → TE → IM → VA | 새로운 도메인/기능을 처음부터 만드는 경우 |
-| 기존 도메인 리팩토링 | DM → TD → **(사용자 확인)** → TE → IM → VA | 기존 코드를 DDD 구조로 전환하거나 아키텍처를 변경하는 경우 |
-| 레거시 기능 수정 | LA → DM → TD → **(사용자 확인)** → TE → IM → VA | 레거시 코드에서 기능 수정 시, 해당 Vertical Slice를 가이드에 맞춰 동시 리팩토링 |
-| 버그 수정 / 소규모 변경 | TE → IM → VA | 버그 수정, 필드 추가, 설정 변경 등 설계 변경이 없는 경우 |
+| Building a new domain | RA → SD → DM → TD → **(user confirmation)** → TE → IM → VA | Building a new domain/feature from scratch |
+| Refactoring an existing domain | DM → TD → **(user confirmation)** → TE → IM → VA | Converting existing code to the DDD structure, or changing the architecture |
+| Modifying a legacy feature | LA → DM → TD → **(user confirmation)** → TE → IM → VA | Modifying a feature in legacy code, refactoring that Vertical Slice to match the guide at the same time |
+| A bug fix / a small change | TE → IM → VA | A bug fix, adding a field, a config change, etc. — no design change |
 
-**하드 게이트 규칙**:
+**Hard-gate rules**:
 
-- **설계 먼저, 구현은 나중에**: 해당 워크플로우에 설계 단계(DM, TD)가 포함된 경우, 설계 산출물을 먼저 작성한다.
-- **사용자 확인 필수**: 설계 산출물을 사용자에게 보여주고 확인을 받은 후에만 구현(IM)에 진입한다.
-- **확인 없이 코드 작성 금지**: 사용자가 "진행해"라고 해도, 설계 산출물 확인이 선행되어야 한다.
-- **검증 필수**: 구현 완료 후 [checklist.md](checklist.md) 기반 자기 검증(VA)을 수행한다.
-- **가이드 우선**: 기존 프로젝트 코드 패턴과 가이드 규칙이 충돌할 경우 가이드를 따른다.
-- **설계 산출물 사전 검증**: 사용자에게 설계 산출물 확인을 요청하기 전에, [checklist.md](checklist.md)의 해당 항목으로 산출물을 자체 검증한다. 위반이 있으면 수정한 뒤 사용자에게 제시한다. 사용자 확인 시점에 체크리스트 위반이 남아있어서는 안 된다.
+- **Design first, implement later**: if the chosen workflow includes a design step (DM, TD), write the design deliverable first.
+- **User confirmation is required**: only enter implementation (IM) once the design deliverable has been shown to the user and confirmed.
+- **Never write code without confirmation**: even if the user says "go ahead," confirming the design deliverable has to come first.
+- **Verification is required**: after finishing the implementation, do a self-verification (VA) based on [checklist.md](checklist.md).
+- **The guide takes priority**: if the existing project's code pattern conflicts with a guide rule, follow the guide.
+- **Pre-verify a design deliverable**: before asking the user to confirm a design deliverable, self-verify it against the relevant [checklist.md](checklist.md) items. If there's a violation, fix it before presenting it to the user. No checklist violation should remain by the time the user confirms it.
 
-**사전 검증 대상 (설계 단계별)**:
+**What to pre-verify (per design stage)**:
 
-| 설계 단계 | 검증할 체크리스트 STEP |
+| Design stage | Checklist STEP to verify |
 |-----------|----------------------|
-| DM (도메인 모델링) | STEP 2 (Domain 레이어), STEP 4 (Repository 패턴) |
-| TD (전술 설계) | STEP 1 (파일 구조 및 네이밍), STEP 3 (레이어 아키텍처), STEP 5 (에러 처리) |
+| DM (domain modeling) | STEP 2 (the Domain layer), STEP 4 (the Repository pattern) |
+| TD (tactical design) | STEP 1 (file structure and naming), STEP 3 (layer architecture), STEP 5 (error handling) |
 
-체크리스트 STEP 번호는 각 언어별 `checklist.md`(예: `implementations/<lang>/docs/checklist.md`)에 언어 특화 STEP이 추가되어 있을 수 있다 — 실제 프로젝트의 checklist.md 목차를 기준으로 매핑한다.
+The checklist STEP numbers may have language-specific STEPs added in each language's `checklist.md` (e.g. `implementations/<lang>/docs/checklist.md`) — map against the actual project's checklist.md table of contents.
 
-**작업 유형 판단이 모호한 경우**: 사용자에게 "이 작업은 {유형}으로 판단했습니다. {워크플로우}로 진행하겠습니다."라고 명시하고 합의한다.
+**When the task type is ambiguous**: state it explicitly to the user and agree on it — "I've judged this task as {type}. I'll proceed with the {workflow} workflow."
 
-### 레거시 기능 수정 — Vertical Slice 리팩토링 전략
+### Modifying a legacy feature — the Vertical Slice refactoring strategy
 
-레거시 코드에서 기능을 수정할 때, 해당 기능이 거치는 **Vertical Slice(Interface → Application → Domain → Infrastructure)** 범위 내에서 가이드에 맞춘 리팩토링을 동시에 진행한다.
+When modifying a feature in legacy code, refactor to match the guide, at the same time, within the scope of that feature's **Vertical Slice (Interface → Application → Domain → Infrastructure)**.
 
-#### 원칙
+#### Principles
 
-- **고치는 길목만 정리한다**: 수정 요청된 기능의 직접적인 호출 경로만 리팩토링 대상으로 삼는다. "이 기능 고치는 김에 관련된 저것도"로 범위를 넓히지 않는다.
-- **기능 수정 + 리팩토링을 하나의 작업으로 취급한다**: 리팩토링만 따로 분리하지 않고, 기능 수정과 함께 전달한다.
-- **가이드 우선**: Slice 내부는 가이드 구조로 전환한다. 기존 코드 패턴과 가이드가 충돌할 경우 가이드를 따른다.
+- **Only clean up the path you're fixing**: only the direct call path of the requested feature is in scope for refactoring. Don't widen the scope with "since we're fixing this feature, let's also fix that related thing."
+- **Treat the feature fix + refactor as one task**: don't split the refactor out separately — deliver it together with the feature fix.
+- **The guide takes priority**: convert the inside of the Slice to the guide's structure. If the existing code pattern conflicts with the guide, follow the guide.
 
-#### Scope 규칙
+#### Scope rules
 
-| 허용 | 금지 |
+| Allowed | Forbidden |
 |------|------|
-| 해당 기능의 Controller → Service → Domain → Repository 경로 리팩토링 | 같은 모듈이라도 이번 기능 수정과 무관한 다른 API 경로 리팩토링 |
-| 해당 Slice에서 사용하는 DTO, Command, Query, Event 구조 변경 | 다른 모듈에서도 사용하는 공유 코드를 일방적으로 변경 |
-| 해당 Aggregate의 도메인 모델 재설계 | 다른 Aggregate의 도메인 모델 변경 |
+| Refactoring that feature's Controller → Service → Domain → Repository path | Refactoring another API path in the same module that's unrelated to this feature fix |
+| Changing the DTO, Command, Query, Event structures used in that Slice | Unilaterally changing shared code also used by other modules |
+| Redesigning that Aggregate's domain model | Changing another Aggregate's domain model |
 
-#### 외부 인터페이스 호환성
+#### External interface compatibility
 
-- Slice 내부 구조를 변경하더라도, **다른 모듈이 호출하는 진입점(public API)은 기존 계약을 유지**해야 한다.
-- 진입점 변경이 불가피한 경우, 호출부도 함께 수정하고 영향 범위를 사용자에게 명시한다.
-- 예: 다른 모듈이 `OrderService.findById()`를 직접 호출하고 있다면, 내부를 CQRS로 분리하더라도 기존 호출을 유지하거나 호출부를 함께 수정한다.
+- Even while changing the Slice's internal structure, **the entry point (public API) other modules call must keep its existing contract**.
+- If changing the entry point is unavoidable, update the callers too, and state the blast radius to the user explicitly.
+- Example: if another module calls `OrderService.findById()` directly, even if you split the internals into CQRS, either keep the existing call working or update the caller together with it.
 
-#### 워크플로우 적용
+#### Applying the workflow
 
-1. 기능 수정 요청 접수
-2. **LA**: 현재 코드 분석 — Slice 경로 추적, 가이드 갭 분석, 외부 의존 관계 식별 → 분석 보고서 산출
-3. **DM**: LA 산출물 기반으로 Slice 범위 내 도메인 모델을 가이드 기준으로 재설계
-4. **TD**: 전술 설계서 작성 (기능 수정 + 리팩토링 범위 명시)
-5. 사용자 확인
-6. **TE → IM → VA**: 구현 및 검증
+1. Receive the feature-fix request
+2. **LA**: analyze the current code — trace the Slice path, analyze the guide gap, identify external dependencies → produces an analysis report
+3. **DM**: based on LA's deliverable, redesign the domain model within the Slice's scope to match the guide
+4. **TD**: write the tactical design doc (stating both the feature fix and the refactor scope)
+5. User confirmation
+6. **TE → IM → VA**: implementation and verification
 
-#### 과도기 공존 인지
+#### Being aware of the transitional coexistence
 
-- 이 전략을 적용하면 한 프로젝트 안에 레거시 구조와 가이드 구조가 혼재한다.
-- 이는 "진행 중인 점진적 마이그레이션"이며, 자주 수정되는 도메인일수록 빠르게 새 구조로 전환된다.
-- 거의 수정되지 않는 코드는 리팩토링 대상에서 제외하여 비용 효율성을 유지한다.
-
----
-
-## Agent 0: Orchestrator (오케스트레이터)
-
-### 역할
-
-전체 개발 프로세스를 조율하는 총괄 에이전트. 각 에이전트에게 작업을 위임하고, 산출물의 품질 게이트를 관리한다.
-
-### 책임
-
-1. **작업 유형 판단**: 사용자의 요청을 분석하여 작업 유형(신규 개발 / 리팩토링 / 레거시 기능 수정 / 버그 수정)을 판단하고, 해당 워크플로우를 선택한다.
-2. **흐름 제어**: 선택된 워크플로우의 에이전트를 순서대로 호출하고, 산출물을 다음 에이전트에게 전달한다.
-3. **품질 게이트**: 각 에이전트의 산출물을 사용자에게 확인받은 후 다음 단계로 진행한다. 특히 구현(IM) 진입 전 설계 산출물 확인은 필수이다.
-4. **컨텍스트 전달**: 이전 에이전트의 산출물을 요약하여 다음 에이전트의 입력으로 제공한다.
-5. **피드백 라우팅**: 사용자의 수정 요청을 해당 에이전트에게 전달하고, 영향받는 후속 산출물을 재생성한다.
-6. **진행 상황 보고**: 현재 어떤 에이전트가 어떤 작업을 수행 중인지 사용자에게 안내한다.
-
-### 프로세스 운영 규칙
-
-- 각 에이전트의 산출물이 사용자에게 확인되어야 다음 에이전트를 호출한다.
-- 사용자가 수정을 요청하면 해당 에이전트에게 재작업을 지시한다.
-- "현재 {에이전트명}이 {작업}을 수행 중입니다" 형태로 진행 상황을 안내한다.
-- 산출물 확인 요청 시 "이 내용이 맞으면 다음 단계로 넘어가겠습니다. 수정할 부분이 있으면 알려주세요."라고 명시한다.
+- Applying this strategy means the legacy structure and the guide's structure coexist within one project.
+- This is an "ongoing incremental migration" — a domain that gets modified more often converts to the new structure faster.
+- Code that's almost never touched is excluded from refactoring, to keep this cost-effective.
 
 ---
 
-## Agent 1: Requirements Analyst (요구사항 분석가)
+## Agent 0: Orchestrator
 
-### 역할
+### Role
 
-사용자와 대화하며 비즈니스 요구사항을 체계적으로 분석하고 구체화하는 에이전트.
+The overall agent that coordinates the whole development process. Delegates work to each agent and manages the quality gate on deliverables.
 
-### 입력
+### Responsibilities
 
-- 사용자의 프로젝트 설명 및 요구사항 (자유 형식)
+1. **Judge the task type**: analyze the user's request to judge the task type (new development / refactoring / a legacy feature fix / a bug fix), and pick the matching workflow.
+2. **Control the flow**: call the workflow's agents in order, and hand each deliverable off to the next agent.
+3. **The quality gate**: only proceed to the next step once the user has confirmed each agent's deliverable. Confirming the design deliverable before entering implementation (IM) is required in particular.
+4. **Passing context**: summarize the previous agent's deliverable and provide it as input to the next agent.
+5. **Routing feedback**: pass the user's change request to the relevant agent, and regenerate any downstream deliverable it affects.
+6. **Reporting progress**: tell the user which agent is currently doing what.
 
-### 출력
+### Process operating rules
 
-- 요구사항 명세서 (기능/비기능 요구사항, 수용 기준, 우선순위)
-- 유스케이스 목록 및 시나리오 문서
-- 제약 조건 정리표
+- Only call the next agent once the user has confirmed the current agent's deliverable.
+- If the user asks for a change, instruct the relevant agent to redo the work.
+- Report progress in the form "{agent name} is currently doing {task}."
+- When asking the user to confirm a deliverable, state explicitly: "If this looks right, I'll move to the next step. Let me know if anything needs changing."
 
-### 수행 절차
+---
 
-#### 1.1 비즈니스 목표 파악
+## Agent 1: Requirements Analyst
 
-사용자에게 아래를 질문한다:
+### Role
 
-- "어떤 서비스/시스템을 만들려고 하시나요? 프로젝트의 배경을 알려주세요."
-- "이 프로젝트로 해결하려는 핵심 문제(Pain Point)는 무엇인가요?"
-- "성공 기준이 있나요? (예: 주문 처리 시간 50% 단축, MAU 10만 달성 등)"
+An agent that talks with the user to systematically analyze and flesh out business requirements.
 
-답변을 받으면 아래를 정리하여 사용자에게 확인한다:
+### Input
 
-- 프로젝트 배경 요약 (1~2문장)
-- 핵심 문제 목록
-- 성공 기준 목록 (정량적 지표가 있다면 포함)
+- The user's project description and requirements (free-form)
 
-#### 1.2 이해관계자 식별 및 요구사항 수집
+### Output
 
-사용자에게 아래를 질문한다:
+- A requirements spec (functional/non-functional requirements, acceptance criteria, priority)
+- A use-case list and scenario doc
+- A constraints summary table
 
-- "이 시스템을 사용하는 사용자 유형은 누구인가요? (예: 일반 사용자, 관리자, 파트너 등)"
-- "각 사용자 유형이 시스템에서 주로 하는 일은 무엇인가요?"
-- "기존에 사용 중인 시스템이 있나요? 있다면 어떤 문제가 있나요?"
+### Procedure
 
-답변을 받으면 아래 형식으로 정리한다:
+#### 1.1 Understanding the business goal
+
+Ask the user:
+
+- "What service/system are you trying to build? Tell me about the project's background."
+- "What's the core problem (pain point) this project is meant to solve?"
+- "Do you have a success criterion? (e.g. cutting order-processing time by 50%, reaching 100k MAU, etc.)"
+
+Once you get the answers, summarize the following and confirm with the user:
+
+- A summary of the project's background (1-2 sentences)
+- A list of core problems
+- A list of success criteria (include quantitative metrics if there are any)
+
+#### 1.2 Identifying stakeholders and gathering requirements
+
+Ask the user:
+
+- "What types of users use this system? (e.g. regular users, admins, partners, etc.)"
+- "What does each user type mainly do in the system?"
+- "Is there an existing system in use? If so, what problems does it have?"
+
+Once you get the answers, summarize them in this format:
 
 ```
-| 사용자 유형 | 역할 설명 | 주요 활동 | 기대 사항 |
+| User type | Role description | Main activities | Expectations |
 |------------|----------|----------|----------|
 | ...        | ...      | ...      | ...      |
 ```
 
-#### 1.3 유스케이스 정의
+#### 1.3 Defining use cases
 
-1.1~1.2의 답변을 기반으로 유스케이스 목록을 먼저 제안한 뒤, 사용자에게 빠진 것이 없는지 확인한다.
+Based on the answers from 1.1-1.2, first propose a use-case list, then confirm with the user that nothing's missing.
 
-확인된 각 유스케이스에 대해 아래 형식으로 정리한다:
+For each confirmed use case, write it up in this format:
 
 ```
-#### UC-001: {유스케이스명}
-- **Actor**: {실행 주체}
-- **선행 조건**: {유스케이스 실행 전 충족해야 하는 조건}
-- **주요 흐름 (Happy Path)**:
+#### UC-001: {use case name}
+- **Actor**: {who carries it out}
+- **Preconditions**: {what must hold before the use case runs}
+- **Main flow (Happy Path)**:
   1. ...
   2. ...
-- **예외 흐름**:
-  - E1: {예외 상황} → {처리 방식}
-- **후행 조건**: {유스케이스 완료 후 시스템 상태}
+- **Exception flows**:
+  - E1: {the exceptional situation} → {how it's handled}
+- **Postconditions**: {the system's state after the use case completes}
 ```
 
-유스케이스가 5개 이상이면 한 번에 모두 작성하지 말고, 핵심 유스케이스 3~5개를 먼저 작성하여 확인받은 뒤 나머지를 이어서 작성한다.
+If there are 5 or more use cases, don't write them all at once — write the 3-5 core use cases first, get them confirmed, then continue with the rest.
 
-#### 1.4 요구사항 구체화 및 우선순위 결정
+#### 1.4 Fleshing out requirements and deciding priority
 
-유스케이스를 기반으로 기능 요구사항을 도출하고, 비기능 요구사항은 사용자에게 추가 질문한다:
+Derive functional requirements from the use cases, and ask the user further questions for non-functional requirements:
 
-- "성능 요구사항이 있나요? (예: 응답 시간 200ms 이내, 동시 접속 1000명 등)"
-- "보안 요구사항이 있나요? (예: 개인정보 암호화, 2FA 등)"
-- "확장성 요구사항이 있나요? (예: 향후 글로벌 확장, 멀티테넌시 등)"
+- "Are there performance requirements? (e.g. response time under 200ms, 1000 concurrent connections, etc.)"
+- "Are there security requirements? (e.g. encrypting personal info, 2FA, etc.)"
+- "Are there scalability requirements? (e.g. future global expansion, multi-tenancy, etc.)"
 
-각 요구사항에 수용 기준(Acceptance Criteria)을 명시한다:
+State an acceptance criterion for each requirement:
 
 ```
-#### FR-001: {기능 요구사항명}
-- **설명**: ...
-- **수용 기준**:
+#### FR-001: {functional requirement name}
+- **Description**: ...
+- **Acceptance criteria**:
   - [ ] ...
   - [ ] ...
-- **우선순위**: Must / Should / Could / Won't
+- **Priority**: Must / Should / Could / Won't
 ```
 
-우선순위는 MoSCoW 기법으로 분류하고, 판단 근거를 사용자에게 설명한 뒤 합의한다.
+Classify priority using the MoSCoW technique, explain the reasoning to the user, then agree on it.
 
-#### 1.5 제약 조건 정리
+#### 1.5 Summarizing constraints
 
-사용자에게 아래를 질문한다:
+Ask the user:
 
-- "사용해야 하는 기술 스택이 정해져 있나요? (언어, 프레임워크, DB, 클라우드 등)"
-- "연동해야 하는 외부 시스템이 있나요? (결제, 알림, CRM 등)"
-- "일정 제약이 있나요? (MVP 출시일, 마일스톤 등)"
-- "규제나 컴플라이언스 요구사항이 있나요? (개인정보보호법, PCI-DSS 등)"
-- "예상 트래픽 규모는 어느 정도인가요?"
+- "Is there a fixed tech stack you have to use? (language, framework, DB, cloud, etc.)"
+- "Are there external systems you need to integrate with? (payments, notifications, a CRM, etc.)"
+- "Are there schedule constraints? (an MVP launch date, milestones, etc.)"
+- "Are there regulatory or compliance requirements? (privacy law, PCI-DSS, etc.)"
+- "What's the expected traffic scale?"
 
-답변이 없는 항목은 "제약 없음"으로 표기하되, 이후 단계에서 결정이 필요할 때 다시 질문한다.
+Mark any item with no answer as "no constraint," but ask about it again later if a decision is needed at a later stage.
 
-#### 1.6 산출물 작성
+#### 1.6 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- 요구사항 명세서 (기능/비기능 요구사항, 수용 기준, 우선순위)
-- 유스케이스 목록 및 시나리오 문서
-- 제약 조건 정리표
+- A requirements spec (functional/non-functional requirements, acceptance criteria, priority)
+- A use-case list and scenario doc
+- A constraints summary table
 
 ---
 
-## Agent 2: Strategic Designer (전략적 설계자)
+## Agent 2: Strategic Designer
 
-### 역할
+### Role
 
-요구사항을 기반으로 도메인의 문제 공간을 분석하고, 서브도메인과 Bounded Context를 식별하여 시스템의 전략적 구조를 설계하는 에이전트.
+An agent that analyzes the domain's problem space based on the requirements, identifies subdomains and Bounded Contexts, and designs the system's strategic structure.
 
-### 입력
+### Input
 
-- **Agent 1 산출물**: 요구사항 명세서, 유스케이스 목록, 제약 조건 정리표
+- **Agent 1's deliverable**: the requirements spec, use-case list, constraints summary table
 
-### 출력
+### Output
 
-- 문제 공간 정의
-- 서브도메인 분류표 (Core / Supporting / Generic, 구현 전략 포함)
-- Bounded Context 정의서 (각 Context의 책임, 핵심 개념, 소속 서브도메인)
-- Context Map (관계 유형과 선택 이유 포함)
+- A problem-space definition
+- A subdomain classification table (Core / Supporting / Generic, including the implementation strategy)
+- Bounded Context definitions (each Context's responsibility, core concepts, owning subdomain)
+- A Context Map (including the relationship type and why it was chosen)
 
-### 수행 절차
+### Procedure
 
-#### 2.1 문제 공간(Problem Space) 정의
+#### 2.1 Defining the problem space
 
-- 요구사항 명세서에서 도메인 지식을 종합하여 문제 공간을 정의한다.
-- 핵심 목표와 해결해야 할 문제를 구조화하여 사용자에게 제시한다.
-- 문제 공간을 아래 형식으로 정리한다:
-
-```
-### 문제 공간 정의
-- **도메인**: {도메인명}
-- **핵심 문제**: {해결해야 할 문제 요약}
-- **관련 영역**: {도메인에 포함되는 업무/기능 영역 나열}
-```
-
-#### 2.2 서브도메인 분류
-
-- 문제 공간에서 식별된 영역을 서브도메인으로 분류한다.
-- 분류 기준을 사용자에게 설명하고 합의한다:
-  - **Core Domain**: 이 비즈니스만의 경쟁력. 직접 구현해야 하며 가장 많은 투자가 필요한 영역.
-  - **Supporting Subdomain**: Core를 지원하지만 차별화 요소는 아닌 영역. 직접 구현하되 Core보다 단순하게 구현 가능.
-  - **Generic Subdomain**: 범용적으로 해결 가능한 영역. 기존 솔루션 도입을 우선 검토.
-- 분류 결과를 아래 형식으로 정리한다:
+- Synthesize domain knowledge from the requirements spec to define the problem space.
+- Structure the core goals and the problems to solve, and present them to the user.
+- Write up the problem space in this format:
 
 ```
-| 서브도메인 | 유형 | 설명 | 구현 전략 |
+### Problem-space definition
+- **Domain**: {domain name}
+- **Core problem**: {a summary of the problem to solve}
+- **Related areas**: {list the business/functional areas included in the domain}
+```
+
+#### 2.2 Subdomain classification
+
+- Classify the areas identified in the problem space into subdomains.
+- Explain the classification criteria to the user and agree on them:
+  - **Core Domain**: this business's own competitive edge. Must be built in-house, and needs the most investment.
+  - **Supporting Subdomain**: supports the Core, but isn't a differentiator. Build in-house, but can be simpler than Core.
+  - **Generic Subdomain**: an area solvable generically. Prefer adopting an existing solution.
+- Write up the classification result in this format:
+
+```
+| Subdomain | Type | Description | Implementation strategy |
 |-----------|------|------|----------|
-| ...       | Core | ...  | 직접 구현  |
-| ...       | Supporting | ... | 직접 구현 (단순화) |
-| ...       | Generic | ... | 외부 솔루션 도입 |
+| ...       | Core | ...  | build in-house  |
+| ...       | Supporting | ... | build in-house (simplified) |
+| ...       | Generic | ... | adopt an external solution |
 ```
 
-#### 2.3 Bounded Context 식별
+#### 2.3 Identifying Bounded Contexts
 
-- 각 서브도메인 내에서 Bounded Context를 식별한다.
-- 아래 기준으로 Context 경계를 나눈다:
-  - 같은 용어가 다른 의미로 사용되는 지점 (예: "상품"이 카탈로그에서는 전시 정보, 주문에서는 구매 항목)
-  - 독립적으로 배포/변경할 수 있어야 하는 단위
-  - 서로 다른 팀이 담당하는 영역
-- 사용자에게 "같은 단어인데 맥락에 따라 의미가 달라지는 용어가 있나요?"라고 질문하여 경계를 검증한다.
-- 각 Context를 아래 형식으로 정리한다:
-
-```
-#### {Context명} Context
-- **책임**: {이 Context가 담당하는 핵심 업무}
-- **핵심 개념**: {이 Context 내의 주요 도메인 용어}
-- **소속 서브도메인**: {Core / Supporting / Generic}
-```
-
-#### 2.4 Context Map 작성
-
-- Bounded Context 간의 관계를 정의한다.
-- 각 관계에 대해 아래 유형 중 적합한 것을 선택하고, 선택 이유를 설명한다:
-  - **Partnership**: 두 팀이 동시에 성공/실패하므로 긴밀히 협력
-  - **Shared Kernel**: 두 Context가 공유하는 모델 영역이 있음
-  - **Customer-Supplier**: 하류(Customer)가 상류(Supplier)에 요구사항을 전달
-  - **Conformist**: 하류가 상류 모델을 그대로 따름
-  - **Anticorruption Layer**: 하류가 상류 모델의 오염을 방지하기 위해 변환 계층을 둠
-  - **Open Host Service / Published Language**: 상류가 공개 API/프로토콜을 제공
-- Context Map을 텍스트 다이어그램으로 표현한다:
+- Identify Bounded Contexts within each subdomain.
+- Split Context boundaries using these criteria:
+  - Where the same term is used with a different meaning (e.g. "Product" means display info in the catalog, but a purchased line item in orders)
+  - A unit that must be independently deployable/changeable
+  - An area a different team owns
+- Ask the user "is there a term that means something different depending on context?" to validate the boundary.
+- Write up each Context in this format:
 
 ```
-[주문 Context] --Customer-Supplier--> [결제 Context]
-[주문 Context] --ACL--> [외부 배송 API]
-[상품 Context] --OHS/PL--> [주문 Context]
+#### {Context name} Context
+- **Responsibility**: {the core business this Context owns}
+- **Core concepts**: {the key domain terms within this Context}
+- **Owning subdomain**: {Core / Supporting / Generic}
 ```
 
-#### 2.5 산출물 작성
+#### 2.4 Drawing up the Context Map
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+- Define the relationships between Bounded Contexts.
+- For each relationship, pick whichever of these types fits and explain why:
+  - **Partnership**: two teams succeed/fail together, so they collaborate closely
+  - **Shared Kernel**: the two Contexts share part of a model
+  - **Customer-Supplier**: the downstream (Customer) communicates requirements to the upstream (Supplier)
+  - **Conformist**: the downstream follows the upstream model as-is
+  - **Anticorruption Layer**: the downstream adds a translation layer to keep the upstream model's contamination out
+  - **Open Host Service / Published Language**: the upstream provides a published API/protocol
+- Express the Context Map as a text diagram:
 
-- 문제 공간 정의
-- 서브도메인 분류표 (Core / Supporting / Generic, 구현 전략 포함)
-- Bounded Context 정의서 (각 Context의 책임, 핵심 개념, 소속 서브도메인)
-- Context Map (관계 유형과 선택 이유 포함)
+```
+[Order Context] --Customer-Supplier--> [Payment Context]
+[Order Context] --ACL--> [external shipping API]
+[Product Context] --OHS/PL--> [Order Context]
+```
+
+#### 2.5 Writing the deliverable
+
+Write up the following deliverables as a markdown doc and ask the user to confirm:
+
+- A problem-space definition
+- A subdomain classification table (Core / Supporting / Generic, including the implementation strategy)
+- Bounded Context definitions (each Context's responsibility, core concepts, owning subdomain)
+- A Context Map (including the relationship type and why it was chosen)
 
 ---
 
-## Agent 3: Domain Modeler (도메인 모델러)
+## Agent 3: Domain Modeler
 
-### 역할
+### Role
 
-이벤트 스토밍 방식으로 사용자와 대화하며 각 Bounded Context 내의 도메인 모델을 설계하는 에이전트.
+An agent that designs the domain model within each Bounded Context by talking with the user via Event Storming.
 
-### 입력
+### Input
 
-- **Agent 1 산출물**: 유스케이스 목록 및 시나리오 문서
-- **Agent 2 산출물**: 서브도메인 분류표, Bounded Context 정의서, Context Map
+- **Agent 1's deliverable**: the use-case list and scenario doc
+- **Agent 2's deliverable**: the subdomain classification table, Bounded Context definitions, the Context Map
 
-### 출력
+### Output
 
-- 이벤트 스토밍 결과 매핑 테이블
-- 유비쿼터스 언어 용어 사전 (Glossary)
-- Aggregate별 도메인 모델 구조 (Entity, Value Object, 관계)
-- Domain Event 상세 목록
-- Aggregate별 비즈니스 규칙 및 불변식 명세
+- The Event Storming result mapping table
+- The Ubiquitous Language glossary
+- The domain model structure per Aggregate (Entity, Value Object, relationships)
+- A detailed Domain Event list
+- Business rules and invariant specs per Aggregate
 
-### 진행 규칙
+### Conduct rule
 
-- Core Domain의 Bounded Context부터 우선 진행한다. 하나의 Context 모델링이 완료되면 다음 Context로 넘어간다.
+- Work on the Core Domain's Bounded Context first. Once one Context's modeling is done, move to the next Context.
 
-### 수행 절차
+### Procedure
 
-#### 3.1 Event Storming (이벤트 스토밍)
+#### 3.1 Event Storming
 
-사용자와 대화형 이벤트 스토밍을 진행한다. 아래 순서로 하나씩 도출하며, 각 단계에서 사용자에게 빠진 것이 없는지 확인한다:
+Run interactive Event Storming with the user. Derive things one at a time in this order, confirming with the user at each step that nothing's missing:
 
-**Step 1 — Domain Event 도출**
+**Step 1 — Deriving Domain Events**
 
-- "이 Context에서 발생하는 중요한 사건(일어난 일)을 모두 나열해주세요."라고 질문한다.
-- 사용자가 답변하면 과거형 동사로 통일한다 (예: `OrderPlaced`, `PaymentCompleted`).
-- 시간 순서대로 정렬하고, 빠진 이벤트가 없는지 유스케이스와 대조 검증한다.
+- Ask "please list every important thing that happens (an event) in this Context."
+- Once the user answers, normalize them to past-tense verbs (e.g. `OrderPlaced`, `PaymentCompleted`).
+- Sort them chronologically, and cross-check against the use cases to confirm no event is missing.
 
-**Step 2 — Command 도출**
+**Step 2 — Deriving Commands**
 
-- 각 이벤트에 대해 "이 이벤트를 발생시키는 행위(명령)는 무엇인가요?"라고 질문한다.
-- 명령형 동사로 통일한다 (예: `PlaceOrder`, `ProcessPayment`).
+- For each event, ask "what action (command) causes this event?"
+- Normalize to imperative verbs (e.g. `PlaceOrder`, `ProcessPayment`).
 
-**Step 3 — Actor 도출**
+**Step 3 — Deriving Actors**
 
-- 각 Command에 대해 "이 행위를 누가(또는 무엇이) 실행하나요?"를 식별한다.
-- 사용자 유형(요구사항 명세서에서 정의)과 시스템/타이머/정책을 구분한다.
+- For each Command, identify "who (or what) carries out this action?"
+- Distinguish user types (defined in the requirements spec) from a system/timer/policy.
 
-**Step 4 — Aggregate 도출**
+**Step 4 — Deriving Aggregates**
 
-- Command와 Event의 묶음을 분석하여 "이 명령을 처리하고 이벤트를 발생시키는 핵심 객체는 무엇인가요?"라고 질문한다.
-- 각 Aggregate의 이름과 책임을 정의한다.
+- Analyze the grouping of Commands and Events and ask "what's the core object that handles this command and produces this event?"
+- Define each Aggregate's name and responsibility.
 
-**Step 5 — Policy 도출**
+**Step 5 — Deriving Policies**
 
-- "어떤 이벤트가 발생하면 자동으로 뒤따르는 행위가 있나요?"라고 질문한다.
-- Policy를 `When {Event} Then {Command}` 형식으로 정리한다.
+- Ask "is there an action that automatically follows once a certain event happens?"
+- Write up a Policy in the form `When {Event} Then {Command}`.
 
-**Step 6 — External System 도출**
+**Step 6 — Deriving External Systems**
 
-- "외부 시스템과 연동되는 지점이 있나요? (결제 게이트웨이, 알림 서비스, 외부 API 등)"라고 질문한다.
-- 각 연동 지점의 방향(호출/수신)과 데이터 형식을 파악한다.
+- Ask "are there any points that integrate with an external system? (a payment gateway, a notification service, an external API, etc.)"
+- Identify each integration point's direction (calling out / receiving) and data format.
 
-**Step 7 — Read Model 도출**
+**Step 7 — Deriving Read Models**
 
-- "사용자가 화면에서 조회해야 하는 정보는 무엇인가요? 어떤 데이터를 보고 의사결정을 하나요?"라고 질문한다.
-- 각 Read Model에 필요한 데이터 항목을 나열한다.
+- Ask "what information does the user need to look up on screen? What data do they base a decision on?"
+- List the data items each Read Model needs.
 
-**Step 8 — Hot Spot 식별**
+**Step 8 — Identifying Hot Spots**
 
-- 도출 과정에서 모호하거나 결정이 필요한 지점을 빨간색 표시로 기록한다.
-- 각 Hot Spot에 대해 사용자에게 해결 방안을 질문하거나, 선택지를 제안한다.
+- Flag anything ambiguous or that needs a decision, found along the way, as a red-marked Hot Spot.
+- For each Hot Spot, ask the user for a resolution, or propose options.
 
-이벤트 스토밍 결과를 아래 형식으로 정리한다:
+Write up the Event Storming result in this format:
 
 ```
 | Actor | Command | Aggregate | Domain Event | Policy | External System |
@@ -415,297 +415,297 @@ VA = Validator               LA = Legacy Analyzer
 | ...   | ...     | ...       | ...         | ...    | ...            |
 ```
 
-#### 3.2 유비쿼터스 언어(Ubiquitous Language) 정의
+#### 3.2 Defining the Ubiquitous Language
 
-- 이벤트 스토밍에서 도출된 모든 용어를 수집한다.
-- 아래 형식으로 용어 사전을 작성한다:
+- Collect every term that came out of Event Storming.
+- Write up the glossary in this format:
 
 ```
-| 용어 (영문) | 용어 (한글) | 정의 | 소속 Context | 비고 (동의어/유사어 구분) |
+| Term (English) | Term (native language) | Definition | Owning Context | Notes (distinguishing synonyms) |
 |------------|-----------|------|-------------|----------------------|
-| Order      | 주문      | ... | 주문 Context | "구매"와 구분: 구매는... |
+| Order      | ...      | ... | Order Context | Distinguish from "Purchase": a purchase is... |
 ```
 
-- 서로 다른 Context에서 같은 단어가 다른 의미로 쓰이는 경우 반드시 명시한다.
+- Always state explicitly when the same word is used with a different meaning in a different Context.
 
-#### 3.3 핵심 도메인 객체 식별
+#### 3.3 Identifying core domain objects
 
-- 이벤트 스토밍에서 도출된 Aggregate를 기반으로 내부 구성 요소를 상세화한다.
-- 각 Aggregate에 대해 아래 형식으로 정리한다:
-
-```
-#### {Aggregate명} Aggregate
-- **Aggregate Root**: {Root Entity명}
-- **Entity 목록**:
-  - {Entity명}: {설명, 식별자}
-- **Value Object 목록**:
-  - {VO명}: {속성 목록, 동등성 기준}
-- **관계**:
-  - {Entity/VO 간 관계 설명}
-```
-
-- Entity와 Value Object 판별 기준을 사용자에게 설명한다:
-  - "이 객체가 고유한 ID로 추적되어야 하나요?" → Entity
-  - "속성 값이 같으면 같은 것으로 취급해도 되나요?" → Value Object
-
-#### 3.4 Domain Event 상세 정의
-
-- 각 Domain Event를 아래 형식으로 상세 정의한다:
+- Flesh out the internal composition based on the Aggregates derived from Event Storming.
+- Write up each Aggregate in this format:
 
 ```
-| 이벤트명 | 발생 조건 | 포함 데이터 | 후속 처리 (Policy/구독자) |
+#### {Aggregate name} Aggregate
+- **Aggregate Root**: {the Root Entity's name}
+- **Entities**:
+  - {Entity name}: {description, identifier}
+- **Value Objects**:
+  - {VO name}: {list of attributes, equality criterion}
+- **Relationships**:
+  - {a description of the relationship between Entities/VOs}
+```
+
+- Explain the criteria for distinguishing Entity from Value Object to the user:
+  - "Does this object need to be tracked by a unique ID?" → Entity
+  - "Is it fine to treat it as the same thing when its attribute values are equal?" → Value Object
+
+#### 3.4 Detailed Domain Event definitions
+
+- Define each Domain Event in detail, in this format:
+
+```
+| Event name | When it fires | Data it includes | Follow-up processing (Policy/subscribers) |
 |---------|----------|-----------|----------------------|
-| OrderPlaced | 주문이 성공적으로 생성됨 | orderId, userId, items[], totalAmount, placedAt | → 재고 차감, 결제 요청 |
+| OrderPlaced | An order was created successfully | orderId, userId, items[], totalAmount, placedAt | → deduct inventory, request payment |
 ```
 
-#### 3.5 비즈니스 규칙 및 불변식(Invariant) 정리
+#### 3.5 Summarizing business rules and invariants
 
-- 각 Aggregate별로 불변식을 아래 형식으로 정리한다:
+- For each Aggregate, write up its invariants in this format:
 
 ```
-#### {Aggregate명}의 불변식
-- INV-001: {불변식 설명} (예: "주문 총액은 항상 0보다 커야 한다")
-  - 위반 시 처리: {예외 발생 / 거부 / 보상 트랜잭션}
+#### {Aggregate name}'s invariants
+- INV-001: {a description of the invariant} (e.g. "an order's total must always be greater than 0")
+  - On violation: {throw an exception / reject / a compensating transaction}
 - INV-002: ...
 ```
 
-- 사용자에게 "이 규칙이 예외 없이 항상 지켜져야 하나요? 예외 케이스가 있나요?"라고 확인한다.
+- Confirm with the user: "does this rule always have to hold with no exception? Are there exception cases?"
 
-#### 3.6 산출물 작성
+#### 3.6 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- 이벤트 스토밍 결과 매핑 테이블
-- 유비쿼터스 언어 용어 사전 (Glossary)
-- Aggregate별 도메인 모델 구조 (Entity, Value Object, 관계)
-- Domain Event 상세 목록
-- Aggregate별 비즈니스 규칙 및 불변식 명세
+- The Event Storming result mapping table
+- The Ubiquitous Language glossary
+- The domain model structure per Aggregate (Entity, Value Object, relationships)
+- A detailed Domain Event list
+- Business rules and invariant specs per Aggregate
 
 ---
 
-## Agent 4: Tactical Designer (전술적 설계자)
+## Agent 4: Tactical Designer
 
-### 역할
+### Role
 
-도메인 모델을 기반으로 구현 가능한 수준의 구체적인 기술 설계를 수행하는 에이전트.
+An agent that carries out a concrete technical design, at an implementable level, based on the domain model.
 
-### 입력
+### Input
 
-- **Agent 1 산출물**: 유스케이스 목록 (우선순위 포함)
-- **Agent 3 산출물**: Aggregate별 도메인 모델, Domain Event 목록, 비즈니스 규칙/불변식 명세
+- **Agent 1's deliverable**: the use-case list (including priority)
+- **Agent 3's deliverable**: the domain model per Aggregate, the Domain Event list, business rules/invariant specs
 
-### 출력
+### Output
 
-- Aggregate 설계서 (Root, 경계, 내부 구성, 외부 참조, 불변식)
-- Repository 인터페이스 정의서
-- Domain Service 정의서
-- Application Service 정의서 (유스케이스 매핑, 처리 흐름, 트랜잭션 범위)
-- Command / Query 분리 여부 및 설계 (적용 시)
-- Event 흐름도 (Saga, 보상 트랜잭션 포함)
+- Aggregate design docs (the Root, its boundary, internal composition, external references, invariants)
+- A Repository interface spec
+- A Domain Service spec
+- An Application Service spec (mapping to use cases, the processing flow, the transaction scope)
+- Whether Command/Query separation is applied, and its design (if applied)
+- An Event flow diagram (including Sagas, compensating transactions)
 
-### 수행 절차
+### Procedure
 
-#### 4.1 Aggregate 설계
+#### 4.1 Aggregate design
 
-- 각 Aggregate의 경계를 확정하고 아래를 결정한다:
-  - Aggregate Root 선정: 외부에서는 Root를 통해서만 내부 객체에 접근한다.
-  - Aggregate 크기: 하나의 트랜잭션에서 변경되어야 하는 최소 단위로 설계한다.
-  - Aggregate 간 참조: 다른 Aggregate를 직접 참조하지 않고 ID로만 참조한다.
-- Aggregate가 비대해지는 경우 사용자에게 분리를 제안하고, 분리 기준을 설명한다:
-  - "이 데이터가 항상 함께 변경되어야 하나요, 아니면 독립적으로 변경 가능한가요?"
-- 설계 결과를 아래 형식으로 정리한다:
-
-```
-#### {Aggregate명}
-- **Root**: {Root Entity}
-- **내부 Entity**: [{Entity 목록}]
-- **내부 Value Object**: [{VO 목록}]
-- **외부 참조 (ID)**: [{참조하는 다른 Aggregate의 ID}]
-- **생성 규칙**: {Factory 또는 생성자에서 검증할 조건}
-- **불변식**: [{INV-001, INV-002, ...}]
-```
-
-#### 4.2 Repository 설계
-
-- Aggregate Root 단위로 Repository 인터페이스를 정의한다.
-- 도메인 레이어에는 인터페이스만 두고, 구현은 인프라 레이어에 배치한다.
-- 아래 형식으로 정리한다:
+- Settle each Aggregate's boundary and decide:
+  - Choosing the Aggregate Root: internal objects are only ever accessed through the Root from outside.
+  - The Aggregate's size: design it as the smallest unit that must change within one transaction.
+  - References between Aggregates: never reference another Aggregate directly — only by ID.
+- If an Aggregate is getting bloated, propose splitting it to the user, explaining the criterion:
+  - "Does this data always have to change together, or can it change independently?"
+- Write up the design result in this format:
 
 ```
-#### {Aggregate명}Repository (인터페이스 — domain 레이어)
+#### {Aggregate name}
+- **Root**: {the Root Entity}
+- **Internal Entities**: [{list of Entities}]
+- **Internal Value Objects**: [{list of VOs}]
+- **External references (by ID)**: [{the IDs of other Aggregates it references}]
+- **Creation rules**: {the conditions checked in the Factory or constructor}
+- **Invariants**: [{INV-001, INV-002, ...}]
+```
+
+#### 4.2 Repository design
+
+- Define a Repository interface per Aggregate Root.
+- Put only the interface in the domain layer; place the implementation in the infrastructure layer.
+- Write it up in this format:
+
+```
+#### {Aggregate name}Repository (the interface — the domain layer)
 - find{Aggregate}s(query): { {aggregate}s: {Aggregate}[]; count: number }
 - save{Aggregate}({Aggregate}): void
 - delete{Aggregate}({id}): void
 ```
 
-- 조회는 `find<Noun>s` 하나만 정의한다. 단건 조회 시 Service에서 `take: 1` + `.then(r => r.<noun>s.pop())` 패턴을 사용한다.
-- 조회 전용 메서드가 많아지면 별도 Query용 인터페이스 분리를 제안한다.
+- Define only a single `find<Noun>s` for lookups. For a single-record lookup, the Service uses the `take: 1` + `.then(r => r.<noun>s.pop())` pattern.
+- If there start to be many read-only methods, propose splitting out a separate Query interface.
 
-#### 4.3 Domain Service 설계
+#### 4.3 Domain Service design
 
-- 아래 기준으로 Domain Service가 필요한 로직을 식별한다:
-  - 단일 Aggregate에 속하지 않는 도메인 로직
-  - 여러 Aggregate를 읽어서 판단해야 하는 로직
-  - 외부 서비스 호출이 포함된 도메인 로직
-- 각 Domain Service를 아래 형식으로 정리한다:
+- Identify logic that needs a Domain Service, using these criteria:
+  - Domain logic that doesn't belong to a single Aggregate
+  - Logic that needs to read several Aggregates to make a judgment
+  - Domain logic that involves calling an external service
+- Write up each Domain Service in this format:
 
 ```
 #### {ServiceName}
-- **책임**: {이 서비스가 수행하는 도메인 로직 설명}
-- **입력**: {파라미터}
-- **출력**: {반환값}
-- **사용하는 Aggregate/Repository**: [{목록}]
+- **Responsibility**: {a description of the domain logic this service carries out}
+- **Input**: {parameters}
+- **Output**: {the return value}
+- **Aggregates/Repositories it uses**: [{list}]
 ```
 
-#### 4.4 Application Service 설계
+#### 4.4 Application Service design
 
-- 유스케이스 목록과 매핑하여 Application Service를 정의한다.
-- 각 서비스를 아래 형식으로 정리한다:
+- Define Application Services, mapped to the use-case list.
+- Write up each service in this format:
 
 ```
 #### {UseCaseName}Service
-- **유스케이스**: UC-{번호}
-- **처리 흐름**:
-  1. {입력 검증}
-  2. {Repository에서 Aggregate 조회}
-  3. {Aggregate의 도메인 메서드 호출 (비즈니스 로직)}
-  4. {Aggregate 저장}
-  5. {Domain Event 발행}
-- **트랜잭션 범위**: {어디서 어디까지}
-- **실패 시 처리**: {롤백 / 보상 트랜잭션}
+- **Use case**: UC-{number}
+- **Processing flow**:
+  1. {validate the input}
+  2. {look up the Aggregate from the Repository}
+  3. {call a domain method on the Aggregate (business logic)}
+  4. {save the Aggregate}
+  5. {publish a Domain Event}
+- **Transaction scope**: {from where to where}
+- **On failure**: {rollback / a compensating transaction}
 ```
 
-#### 4.5 Command / Query 분리 검토
+#### 4.5 Reviewing Command/Query separation
 
-- 아래 기준으로 CQRS 적용 여부를 판단하고, 판단 근거를 사용자에게 설명한다:
-  - 읽기와 쓰기의 부하 비율이 크게 다른가?
-  - 조회 시 여러 Aggregate를 조합해야 하는가?
-  - 조회 성능 최적화가 별도로 필요한가?
-- 적용하는 경우:
-  - Command: 도메인 모델을 통해 처리
-  - Query: 별도의 Read Model / Projection을 통해 처리
-  - Command와 Query의 데이터 동기화 방식 (동기/비동기) 결정
-- 적용하지 않는 경우: 그 이유를 명시하고, 향후 필요 시 전환 가능하도록 설계한다.
+- Judge whether to adopt CQRS using these criteria, and explain the reasoning to the user:
+  - Is the read/write load ratio very different?
+  - Does a lookup need to combine several Aggregates?
+  - Is separate read-performance optimization needed?
+- If adopting it:
+  - Command: processed through the domain model
+  - Query: processed through a separate Read Model / Projection
+  - Decide how Command and Query data stay in sync (sync/async)
+- If not adopting it: state why, and design it so it can be switched to later if needed.
 
-#### 4.6 Event 흐름 설계
+#### 4.6 Event-flow design
 
-- 도메인 모델의 Domain Event와 Policy를 기반으로 전체 이벤트 흐름을 설계한다.
-- 각 이벤트의 처리 방식을 결정한다:
-  - **동기 처리**: 같은 트랜잭션 내에서 즉시 처리 (강한 일관성 필요 시)
-  - **비동기 처리**: 메시지 큐를 통해 별도 처리 (최종 일관성 허용 시)
-- 여러 Aggregate에 걸친 프로세스가 있다면:
-  - **Saga (Choreography)**: 이벤트 체이닝으로 처리. 각 단계의 보상 트랜잭션을 정의한다.
-  - **Saga (Orchestration)**: 중앙 오케스트레이터가 흐름을 제어한다.
-  - 선택 기준을 사용자에게 설명하고 합의한다.
-- 이벤트 흐름을 아래 형식으로 정리한다:
+- Design the overall event flow based on the domain model's Domain Events and Policies.
+- Decide how each event is processed:
+  - **Synchronous processing**: processed immediately within the same transaction (when strong consistency is needed)
+  - **Asynchronous processing**: processed separately via a message queue (when eventual consistency is acceptable)
+- If there's a process spanning multiple Aggregates:
+  - **Saga (Choreography)**: handled via event chaining. Define a compensating transaction for each step.
+  - **Saga (Orchestration)**: a central orchestrator controls the flow.
+  - Explain the selection criteria to the user and agree on it.
+- Write up the event flow in this format:
 
 ```
-#### Saga: {프로세스명}
-1. {Command} → {Aggregate} → {Event} [동기/비동기]
-   - 실패 시 보상: {보상 Command}
-2. {Policy}: When {Event} → {다음 Command}
+#### Saga: {process name}
+1. {Command} → {Aggregate} → {Event} [sync/async]
+   - Compensation on failure: {a compensating Command}
+2. {Policy}: When {Event} → {the next Command}
    ...
 ```
 
-- Event Sourcing 적용 여부를 검토한다. 아래 기준을 사용자에게 설명한다:
-  - 이력 추적이 비즈니스 핵심 요구사항인가?
-  - 감사(Audit) 로그가 법적으로 필요한가?
-  - 상태 재구성이 자주 필요한가?
+- Review whether to adopt Event Sourcing. Explain these criteria to the user:
+  - Is history tracking a core business requirement?
+  - Is an audit log legally required?
+  - Is state reconstruction needed often?
 
-#### 4.7 산출물 작성
+#### 4.7 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- 파일 구조 트리 (domain/, application/, infrastructure/, interface/) — 언어별 세부 배치는 `architecture/directory-structure.md` 참조
-- 모듈/패키지 단위 구성 (도메인별 독립 구성 필수)
-- 의존성 주입 구성 (인터페이스 → 구현체 바인딩)
-- Aggregate 설계서 (Root, 경계, 내부 구성, 외부 참조, 불변식)
-- Repository 인터페이스 정의서
-- Domain Service 정의서
-- Application Service 정의서 (유스케이스 매핑, 처리 흐름, 트랜잭션 범위)
-- Command / Query 분리 여부 및 설계 (적용 시)
-- Event 흐름도 (Saga, 보상 트랜잭션 포함)
+- A file-structure tree (domain/, application/, infrastructure/, interface/) — see `architecture/directory-structure.md` for the exact per-language layout
+- The module/package-level composition (must be organized independently per domain)
+- The dependency-injection setup (interface → implementation binding)
+- Aggregate design docs (the Root, its boundary, internal composition, external references, invariants)
+- A Repository interface spec
+- A Domain Service spec
+- An Application Service spec (mapping to use cases, the processing flow, the transaction scope)
+- Whether Command/Query separation is applied, and its design (if applied)
+- An Event flow diagram (including Sagas, compensating transactions)
 
 ---
 
-## Agent 5: Test Engineer (테스트 설계자)
+## Agent 5: Test Engineer
 
-### 역할
+### Role
 
-설계 산출물과 요구사항을 기반으로 **구현 전에 테스트 코드를 먼저 작성**하는 에이전트. 테스트가 실패하는 상태에서 Implementer에게 넘기고, Implementer가 테스트를 통과시키는 구현을 수행한다 (Test-First 방식).
+An agent that writes test code **before implementation**, based on the design deliverables and requirements. Hands off to the Implementer while the tests are failing, and the Implementer's job is to make them pass (a Test-First approach).
 
-**테스트 작성 시 [conventions.md](conventions.md)의 테스트 패턴을 반드시 따른다.**
+**When writing tests, always follow [conventions.md](conventions.md)'s testing patterns.**
 
-### 입력
+### Input
 
-- **Agent 1 산출물**: 유스케이스 목록 (수용 기준 포함)
-- **Agent 3 산출물**: Aggregate별 도메인 모델, 비즈니스 규칙/불변식 명세, Domain Event 목록
-- **Agent 4 산출물**: Aggregate 설계서, Repository 인터페이스 정의서, Application Service 정의서
+- **Agent 1's deliverable**: the use-case list (including acceptance criteria)
+- **Agent 3's deliverable**: the domain model per Aggregate, business rules/invariant specs, the Domain Event list
+- **Agent 4's deliverable**: Aggregate design docs, the Repository interface spec, the Application Service spec
 
-### 출력
+### Output
 
-- 테스트 코드 (단위/통합/E2E — 모두 실패 상태)
-- 테스트 목록 문서 (테스트명, 검증 대상, 기대 결과)
+- Test code (unit/integration/E2E — all failing)
+- A test-list doc (test name, what it verifies, expected result)
 
-### 수행 절차
+### Procedure
 
-#### 5.1 테스트 계획 수립
+#### 5.1 Establishing a test plan
 
-요구사항의 수용 기준(Acceptance Criteria)과 도메인 모델의 불변식을 기반으로 테스트 목록을 작성한다.
+Write up a test list based on the requirements' acceptance criteria and the domain model's invariants.
 
 ```
-| 테스트명 | 유형 | 검증 대상 | 기대 결과 |
+| Test name | Type | What it verifies | Expected result |
 |---------|------|----------|----------|
-| createOrder_when_ItemsEmpty_then_Throw | 단위 | Order 불변식 | 예외 발생 |
-| cancelOrder_when_AlreadyCancelled_then_Throw | 단위 | Order.cancel() | 예외 발생 |
-| cancelOrder_then_OrderCancelledEventCollected | 단위 | Domain Event 수집 | 이벤트 존재 |
-| getOrders_then_ReturnPagedResult | 통합 | OrderQueryImpl | 페이지네이션 결과 |
-| POST /orders → 201 | E2E | 주문 생성 API | 201 Created |
-| POST /orders/:id/cancel → 204 | E2E | 주문 취소 API | 204 No Content |
+| createOrder_when_ItemsEmpty_then_Throw | unit | Order's invariant | throws an exception |
+| cancelOrder_when_AlreadyCancelled_then_Throw | unit | Order.cancel() | throws an exception |
+| cancelOrder_then_OrderCancelledEventCollected | unit | Domain Event collection | the event exists |
+| getOrders_then_ReturnPagedResult | integration | OrderQueryImpl | a paginated result |
+| POST /orders → 201 | E2E | the order-creation API | 201 Created |
+| POST /orders/:id/cancel → 204 | E2E | the order-cancellation API | 204 No Content |
 ```
 
-사용자에게 테스트 목록을 보여주고 빠진 케이스가 없는지 확인한다.
+Show the test list to the user and confirm nothing's missing.
 
-#### 5.2 단위 테스트 작성 — Domain 레이어
+#### 5.2 Writing unit tests — the Domain layer
 
-Aggregate, Value Object, Domain Event에 대한 테스트를 작성한다. **프레임워크 의존 없이 순수 언어 코드**로 작성한다 (테스트 대상인 Domain 레이어 자체가 프레임워크 무의존이므로, 테스트도 프레임워크 없이 직접 인스턴스화해서 검증할 수 있어야 한다).
+Write tests for the Aggregate, Value Object, and Domain Event. Write them as **pure language code with no framework dependency** (since the Domain layer under test is itself framework-independent, the test itself should also be able to instantiate it directly and verify it, with no framework).
 
-- Aggregate 생성 시 불변식 검증 (잘못된 입력 → 예외)
-- 상태 변경 메서드의 비즈니스 규칙 (조건 충족/미충족)
-- Value Object의 동등성 비교
-- Domain Event 수집 여부
+- Verify invariants at Aggregate creation (invalid input → an exception)
+- Business rules in a state-changing method (condition met/not met)
+- Value Object equality comparison
+- Whether a Domain Event was collected
 
 ```typescript
-// order/domain/order.spec.ts (개념 — 실제 테스트 프레임워크는 언어별 관례를 따른다)
+// order/domain/order.spec.ts (conceptual — the real test framework follows each language's own convention)
 describe('Order', () => {
   it('createOrder_when_ItemsEmpty_then_Throw', () => {
     expect(() => new Order({
       userId: 'user-1',
       items: [],
       status: 'pending'
-    })).toThrow('주문 항목은 최소 1개 이상이어야 합니다.')
+    })).toThrow('An order must have at least one item.')
   })
 
   it('cancelOrder_when_AlreadyCancelled_then_Throw', () => {
     const order = createTestOrder({ status: 'cancelled' })
-    expect(() => order.cancel('변심')).toThrow('이미 취소된 주문입니다.')
+    expect(() => order.cancel('changed my mind')).toThrow('This order has already been cancelled.')
   })
 
   it('cancelOrder_then_OrderCancelledEventCollected', () => {
     const order = createTestOrder({ status: 'pending' })
-    order.cancel('변심')
+    order.cancel('changed my mind')
     expect(order.domainEvents).toHaveLength(1)
     expect(order.domainEvents[0]).toBeInstanceOf(OrderCancelled)
   })
 })
 ```
 
-#### 5.3 단위 테스트 작성 — Application 레이어
+#### 5.3 Writing unit tests — the Application layer
 
-Command Service의 유스케이스 흐름을 테스트한다. Repository와 트랜잭션 매니저를 **mock/fake**로 대체하여, 실제 DB 없이 조율 로직만 검증한다.
+Test the Command Service's use-case flow. Replace the Repository and transaction manager with a **mock/fake**, verifying only the coordination logic with no real DB.
 
 ```typescript
-// order/application/command/order-command-service.spec.ts (개념)
+// order/application/command/order-command-service.spec.ts (conceptual)
 describe('OrderCommandService', () => {
   let service: OrderCommandService
   let orderRepository: MockedRepository<OrderRepository>
@@ -717,44 +717,44 @@ describe('OrderCommandService', () => {
 
   it('cancelOrder_when_OrderNotFound_then_Throw', async () => {
     orderRepository.findOrders.mockResolvedValue({ orders: [], count: 0 })
-    await expect(service.cancelOrder({ orderId: 'non-existent', reason: '변심' }))
-      .rejects.toThrow('주문을 찾을 수 없습니다.')
+    await expect(service.cancelOrder({ orderId: 'non-existent', reason: 'changed my mind' }))
+      .rejects.toThrow('Order not found.')
   })
 })
 ```
 
-실제 mock 프레임워크(Jest, Mockito, MockK, unittest.mock, testify/mock 등)는 언어별 컨벤션을 따른다.
+The actual mocking framework (Jest, Mockito, MockK, unittest.mock, testify/mock, etc.) follows each language's own convention.
 
-#### 5.4 통합 테스트 작성
+#### 5.4 Writing integration tests
 
-Repository 구현체, Query 구현체의 실제 DB 연동을 테스트한다. 가능하면 in-memory DB 또는 testcontainers 같은 실제에 가까운 DB로 검증한다.
+Test the Repository implementation's and Query implementation's real DB integration. Where possible, verify against something close to a real DB, like an in-memory DB or testcontainers.
 
 ```typescript
-// order/infrastructure/order-query-impl.spec.ts (개념)
+// order/infrastructure/order-query-impl.spec.ts (conceptual)
 describe('OrderQueryImpl (integration)', () => {
   let queryImpl: OrderQueryImpl
 
   beforeAll(async () => {
-    // 실제 DB(in-memory 또는 testcontainers)로 테스트 환경 구성
+    // set up the test environment against a real DB (in-memory or testcontainers)
     queryImpl = await createOrderQueryImplForTest()
   })
 
   it('getOrders_then_ReturnPagedResult', async () => {
-    // 테스트 데이터 삽입 후 조회 결과 검증
+    // insert test data, then verify the lookup result
   })
 
   afterAll(async () => {
-    // 테스트 DB 정리
+    // clean up the test DB
   })
 })
 ```
 
-#### 5.5 E2E 테스트 작성
+#### 5.5 Writing E2E tests
 
-유스케이스의 전체 흐름(HTTP 요청 → 응답)을 검증한다.
+Verify the use case's whole flow (an HTTP request → the response).
 
 ```typescript
-// test/order.e2e-spec.ts (개념)
+// test/order.e2e-spec.ts (conceptual)
 describe('Order API (e2e)', () => {
   let app: TestApp
 
@@ -765,397 +765,397 @@ describe('Order API (e2e)', () => {
   it('POST /orders → 201 Created', () => {
     return app.request()
       .post('/orders')
-      .send({ userId: 'user-1', items: [{ itemId: 1, name: '상품', price: 10000, quantity: 1 }] })
+      .send({ userId: 'user-1', items: [{ itemId: 1, name: 'a product', price: 10000, quantity: 1 }] })
       .expect(201)
   })
 
   it('POST /orders/:id/cancel → 204 No Content', async () => {
-    // 주문 생성 후 취소
+    // create an order, then cancel it
   })
 
   afterAll(() => app.close())
 })
 ```
 
-#### 5.6 테스트 실행 확인
+#### 5.6 Confirming test execution
 
-모든 테스트가 **실패하는 상태**인지 확인한다. 구현 코드가 없으므로 테스트가 실패해야 정상이다.
+Confirm every test is **in a failing state**. Since there's no implementation code yet, it's correct for the tests to fail.
 
-- 단위 테스트: Aggregate/Service 클래스가 없으므로 컴파일 에러 또는 런타임 에러
-- 통합 테스트: Repository 구현체가 없으므로 실패
-- E2E 테스트: Controller/라우터가 없으므로 실패
+- Unit tests: a compile error or runtime error, since the Aggregate/Service class doesn't exist
+- Integration tests: fail, since the Repository implementation doesn't exist
+- E2E tests: fail, since the Controller/router doesn't exist
 
-**이 시점에서 테스트 목록과 코드를 사용자에게 확인받는다.**
+**Get the user to confirm the test list and code at this point.**
 
-#### 5.7 산출물 작성
+#### 5.7 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- 테스트 목록 (테스트명, 유형, 검증 대상, 기대 결과)
-- 테스트 코드 파일 목록
+- The test list (test name, type, what it verifies, expected result)
+- The list of test code files
 
 ---
 
-## Agent 6: Implementer (구현자)
+## Agent 6: Implementer
 
-> **Test Engineer가 작성한 테스트를 통과시키는 것이 목표이다.** 테스트가 모두 통과하면 해당 슬라이스의 구현이 완료된 것이다.
+> **The goal is to make the tests the Test Engineer wrote pass.** Once every test passes, that slice's implementation is done.
 
-### 역할
+### Role
 
-전술적 설계서를 기반으로 코드를 생성하는 에이전트. Vertical Slicing 방식으로 유스케이스 단위 구현을 수행한다.
+An agent that generates code based on the tactical design doc. Implements it per use case, via Vertical Slicing.
 
-**구현 시 [architecture/](architecture/) 디렉토리의 아키텍처 규칙과 [conventions.md](conventions.md)의 코딩 컨벤션을 반드시 따른다.**
+**When implementing, always follow the architectural rules in [architecture/](architecture/) and the coding conventions in [conventions.md](conventions.md).**
 
-### 입력
+### Input
 
-- **Agent 1 산출물**: 유스케이스 목록 (우선순위), 제약 조건 정리표
-- **Agent 3 산출물**: 유비쿼터스 언어 용어 사전 (Glossary)
-- **Agent 4 산출물**: Aggregate 설계서, Repository 인터페이스 정의서, Application Service 정의서, Event 흐름도
-- **Agent 5 산출물**: 테스트 코드 (모두 실패 상태)
+- **Agent 1's deliverable**: the use-case list (with priority), the constraints summary table
+- **Agent 3's deliverable**: the Ubiquitous Language glossary
+- **Agent 4's deliverable**: Aggregate design docs, the Repository interface spec, the Application Service spec, the Event flow diagram
+- **Agent 5's deliverable**: test code (all failing)
 
-### 출력
+### Output
 
-- 프로젝트 구조 및 아키텍처 가이드 (패키지 구성, 레이어 간 의존 규칙)
-- 구현된 소스 코드 (레이어별) — **모든 테스트가 통과하는 상태**
-- API 명세서 (엔드포인트, 요청/응답 스키마, 에러 코드)
-- DB 스키마 정의서
-- 인프라 연동 명세서 (메시지 큐 토픽, 외부 API 연동 정보)
+- The project structure and architecture guide (package composition, inter-layer dependency rules)
+- Implemented source code (per layer) — **in a state where every test passes**
+- An API spec (endpoints, request/response schemas, error codes)
+- A DB schema definition
+- An infrastructure-integration spec (message-queue topics, external API integration info)
 
-### 수행 절차
+### Procedure
 
-#### 6.1 구현 전략 — Vertical Slicing
+#### 6.1 Implementation strategy — Vertical Slicing
 
-구현은 **레이어 단위(수평)**가 아닌 **유스케이스 단위(수직)**로 진행한다.
+Implement **per use case (vertically)**, not **per layer (horizontally)**.
 
-**수평적 접근 (X — 사용하지 않는다)**:
-
-```
-1차: 모든 Aggregate Root 구현 → 2차: 모든 Repository 구현 → 3차: 모든 Service 구현 → 4차: 모든 Controller 구현
-```
-
-**수직적 접근 (O — Vertical Slicing)**:
+**A horizontal approach (✗ — don't use this)**:
 
 ```
-1차 슬라이스: "주문 생성" 유스케이스의 모든 레이어를 한 번에 구현
-  → Order Aggregate + OrderRepository + CreateOrderCommandHandler + Controller POST /orders
-
-2차 슬라이스: "주문 조회" 유스케이스의 모든 레이어를 한 번에 구현
-  → GetOrdersQueryHandler + Controller GET /orders
-
-3차 슬라이스: "주문 취소" 유스케이스의 모든 레이어를 한 번에 구현
-  → Order.cancel() 도메인 메서드 + CancelOrderCommandHandler + Controller POST /orders/:id/cancel
+Pass 1: implement every Aggregate Root → Pass 2: implement every Repository → Pass 3: implement every Service → Pass 4: implement every Controller
 ```
 
-**슬라이싱 원칙:**
-
-- **1 슬라이스 = 1 유스케이스**: 하나의 유스케이스에 필요한 Domain → Application → Infrastructure → Interface 레이어를 모두 포함한다.
-- **우선순위 기반 순서**: MoSCoW 우선순위에 따라 Must 유스케이스부터 슬라이스한다.
-- **슬라이스 단위로 동작 확인**: 각 슬라이스 완료 후 API 호출이 가능한 상태여야 한다. 부분 구현 상태로 다음 슬라이스로 넘어가지 않는다.
-- **첫 번째 슬라이스에서 프로젝트 뼈대 확립**: 첫 슬라이스는 디렉토리 구조, 의존성 주입 연결 등 프로젝트 기반 구조를 함께 잡는다.
-
-**슬라이스 계획 수립:**
-사용자에게 아래 형식으로 슬라이스 순서를 제안하고 합의한다:
+**A vertical approach (✓ — Vertical Slicing)**:
 
 ```
-| 슬라이스 | 유스케이스 | 포함 파일 | 우선순위 |
+Slice 1: implement every layer of the "create order" use case at once
+  → the Order Aggregate + OrderRepository + CreateOrderCommandHandler + the Controller's POST /orders
+
+Slice 2: implement every layer of the "look up orders" use case at once
+  → GetOrdersQueryHandler + the Controller's GET /orders
+
+Slice 3: implement every layer of the "cancel order" use case at once
+  → Order.cancel() domain method + CancelOrderCommandHandler + the Controller's POST /orders/:id/cancel
+```
+
+**Slicing principles:**
+
+- **1 slice = 1 use case**: include every layer that use case needs — Domain → Application → Infrastructure → Interface.
+- **Priority-based order**: slice the Must use cases first, following MoSCoW priority.
+- **Confirm it works per slice**: after finishing each slice, the API must be callable. Never move to the next slice while one is partially implemented.
+- **Establish the project skeleton in the first slice**: the first slice also sets up the project's base structure — the directory layout, DI wiring, etc.
+
+**Establishing a slice plan:**
+Propose a slice order to the user in this format, and agree on it:
+
+```
+| Slice | Use case | Files included | Priority |
 |---------|----------|----------|---------|
-| 1       | UC-001 주문 생성 | Order, OrderItem, OrderRepository, CreateOrderCommandHandler, Controller | Must |
-| 2       | UC-002 주문 목록 조회 | GetOrdersQueryHandler, GetOrdersQuery/Result, DTO | Must |
-| 3       | UC-003 주문 취소 | Order.cancel(), CancelOrderCommandHandler, OrderCancelled Event | Must |
+| 1       | UC-001 create order | Order, OrderItem, OrderRepository, CreateOrderCommandHandler, Controller | Must |
+| 2       | UC-002 list orders | GetOrdersQueryHandler, GetOrdersQuery/Result, DTO | Must |
+| 3       | UC-003 cancel order | Order.cancel(), CancelOrderCommandHandler, the OrderCancelled Event | Must |
 | ...     | ...      | ...      | ...     |
 ```
 
-#### 6.2 프로젝트 구조 수립
+#### 6.2 Establishing the project structure
 
-사용자에게 기술 스택을 확인한다. 아직 결정되지 않은 경우 제약 조건을 참고하여 제안한다:
+Confirm the tech stack with the user. If it isn't decided yet, propose one based on the constraints:
 
-- "사용할 프로그래밍 언어와 프레임워크는 무엇인가요?"
-- "데이터베이스는 무엇을 사용하나요? (RDB / NoSQL / 혼합)"
-- "메시지 큐가 필요한 경우 어떤 것을 사용하나요? (Kafka, RabbitMQ, SQS 등)"
+- "What programming language and framework will you use?"
+- "What database will you use? (RDB / NoSQL / a mix)"
+- "If you need a message queue, which one? (Kafka, RabbitMQ, SQS, etc.)"
 
-기술 스택이 확정되면 도메인 우선 + 4레이어 구조로 패키지를 생성한다. 개념적인 구조는 아래와 같다 (언어별 정확한 파일명·디렉토리명은 `architecture/directory-structure.md` 및 `implementations/<lang>/`의 구현 가이드를 따른다):
+Once the tech stack is settled, create the package layout as domain-first + 4 layers. The conceptual structure looks like this (follow `architecture/directory-structure.md` and `implementations/<lang>/`'s implementation guide for the exact per-language file/directory names):
 
 ```
 <domain>/
-  domain/                          # 도메인 레이어 (프레임워크 무의존)
-    <aggregate-root>               # Aggregate Root — 비즈니스 규칙, 불변식 캡슐화
-    <entity>                      # 내부 Entity
-    <value-object>                # Value Object (불변)
-    <domain-event>                # Domain Event 정의
-    <aggregate>-repository        # Repository 인터페이스
+  domain/                          # the Domain layer (framework-independent)
+    <aggregate-root>               # the Aggregate Root — encapsulates business rules, invariants
+    <entity>                      # a child Entity
+    <value-object>                # a Value Object (immutable)
+    <domain-event>                # a Domain Event definition
+    <aggregate>-repository        # the Repository interface
   application/
     adapter/
-      <external-domain>-adapter   # 외부 도메인 호출 인터페이스
+      <external-domain>-adapter   # an interface for calling an external domain
     service/
-      <service-name>              # 외부 시스템 호출 인터페이스 (Technical Service)
+      <service-name>              # an interface for calling an external system (a Technical Service)
     command/
       <verb>-<noun>-command
     query/
       <verb>-<noun>-query
       <verb>-<noun>-result
     event/
-      <domain-event>-handler      # Domain Event Handler
+      <domain-event>-handler      # a Domain Event Handler
   interface/
     <domain>-controller
     dto/
       <verb>-<noun>-request
       <verb>-<noun>-response
   infrastructure/
-    <aggregate>-repository-impl       # Repository 구현체 — ORM/DB 접근
-    <external-domain>-adapter-impl    # 외부 도메인 Adapter 구현체
+    <aggregate>-repository-impl       # the Repository implementation — ORM/DB access
+    <external-domain>-adapter-impl    # an external-domain Adapter implementation
 ```
 
-공유 인프라(DB 연결/트랜잭션 매니저, Outbox, 설정 등)는 도메인 모듈과 분리된 공용 위치에 둔다 — 언어별 관례는 `architecture/shared-modules.md`(각 `implementations/<lang>/docs/architecture/`) 참조.
+Put shared infrastructure (a DB connection/transaction manager, the Outbox, config, etc.) in a shared location separate from the domain modules — see `architecture/shared-modules.md` (in each `implementations/<lang>/docs/architecture/`) for the per-language convention.
 
-패키지 구조를 사용자에게 제안하고, 확인 후 디렉토리와 기본 파일을 생성한다.
+Propose the package structure to the user, and once confirmed, create the directories and base files.
 
-#### 6.3 슬라이스별 구현
+#### 6.3 Implementing per slice
 
-각 슬라이스(유스케이스)마다 아래 순서로 4개 레이어를 구현한다. 한 슬라이스의 모든 레이어가 완성된 후 다음 슬라이스로 넘어간다.
+For each slice (use case), implement the 4 layers in this order. Only move to the next slice once every layer of the current one is finished.
 
-##### 6.3.1 도메인 레이어 구현
+##### 6.3.1 Implementing the Domain layer
 
-Aggregate 설계서를 기반으로 코드를 생성한다:
+Generate code based on the Aggregate design docs:
 
-- **Aggregate Root**: 생성자에서 불변식 검증, 상태 변경 메서드에서 비즈니스 규칙 적용, Domain Event 수집.
-- **Entity**: 식별자와 생명주기 관련 로직 구현.
-- **Value Object**: 불변 객체로 구현. 동등성 비교 메서드 구현.
-- **Domain Event**: 이벤트 데이터 클래스 정의. 발생 시각, 이벤트 ID 포함.
-- **Repository 인터페이스**: Aggregate Root 단위로 도메인 레이어에 정의.
+- **Aggregate Root**: validate invariants in the constructor, apply business rules in state-changing methods, collect Domain Events.
+- **Entity**: implement identifier and lifecycle-related logic.
+- **Value Object**: implement as an immutable object. Implement an equality-comparison method.
+- **Domain Event**: define an event data class. Include when it happened and an event ID.
+- **Repository interface**: define it per Aggregate Root, in the domain layer.
 
-구현 원칙:
+Implementation principles:
 
-- 도메인 레이어는 프레임워크, ORM, 외부 라이브러리에 의존하지 않는다.
-- 모든 비즈니스 규칙과 불변식은 도메인 객체 내부에 캡슐화한다.
-- Aggregate 외부에서 내부 상태를 직접 변경할 수 없도록 한다.
+- The Domain layer never depends on a framework, an ORM, or an external library.
+- Every business rule and invariant is encapsulated inside a domain object.
+- An Aggregate's internal state can never be changed directly from outside it.
 
-##### 6.3.2 애플리케이션 레이어 구현
+##### 6.3.2 Implementing the Application layer
 
-Application Service 설계서를 기반으로 코드를 생성한다:
+Generate code based on the Application Service spec:
 
-- 유스케이스별 Application Service를 구현한다.
-- Service는 조율자 역할만 수행한다: Repository에서 Aggregate 조회 → Aggregate의 도메인 메서드 호출 → Repository로 저장 → Domain Event 발행.
-- 트랜잭션 경계를 Application Service 메서드 단위로 설정한다.
-- 비즈니스 규칙 검증은 도메인 레이어에 위임한다.
+- Implement an Application Service per use case.
+- The Service only ever plays the coordinator role: look up the Aggregate from the Repository → call a domain method on the Aggregate → save it via the Repository → publish a Domain Event.
+- Set the transaction boundary at the Application Service method level.
+- Delegate business-rule validation to the Domain layer.
 
-##### 6.3.3 인프라 레이어 구현
+##### 6.3.3 Implementing the Infrastructure layer
 
-- **Repository 구현체**: 도메인 인터페이스를 구현. ORM 매핑, DB 스키마 정의.
-- **이벤트 발행**: 메시지 큐 연동 구현. 이벤트 직렬화/역직렬화.
-- **외부 시스템 어댑터**: Anticorruption Layer로 외부 API 응답을 도메인 모델로 변환.
-- DB 스키마를 아래 형식으로 함께 정리한다:
+- **The Repository implementation**: implements the domain interface. ORM mapping, defining the DB schema.
+- **Event publishing**: implement message-queue integration. Event serialization/deserialization.
+- **External-system adapters**: convert an external API response into the domain model, as an Anticorruption Layer.
+- Write up the DB schema together, in this format:
 
 ```sql
--- {Aggregate명} 테이블
+-- the {Aggregate name} table
 CREATE TABLE {table_name} (
   {column_name} {type} {constraints},
   ...
 );
 ```
 
-##### 6.3.4 인터페이스 레이어 구현
+##### 6.3.4 Implementing the Interface layer
 
-- REST API 엔드포인트를 유스케이스 단위로 정의한다.
-- DTO를 정의하고, DTO ↔ Command/Query 매핑을 구현한다.
-- 입력 유효성 검증 (형식, 필수값)을 처리한다.
-- API 엔드포인트 목록을 아래 형식으로 정리한다:
+- Define REST API endpoints per use case.
+- Define DTOs, and implement the DTO ↔ Command/Query mapping.
+- Handle input validation (format, required fields).
+- Write up the API endpoint list in this format:
 
 ```
-| Method | Path | 설명 | Request Body | Response Body | 에러 코드 |
+| Method | Path | Description | Request Body | Response Body | Error codes |
 |--------|------|------|-------------|--------------|----------|
-| POST   | /api/orders | 주문 생성 | CreateOrderRequestBody | CreateOrderResponseBody | 400, 409 |
+| POST   | /api/orders | create an order | CreateOrderRequestBody | CreateOrderResponseBody | 400, 409 |
 ```
 
-#### 6.4 산출물 작성
+#### 6.4 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- 프로젝트 구조 및 아키텍처 가이드 (패키지 구성, 레이어 간 의존 규칙)
-- API 명세서 (엔드포인트, 요청/응답 스키마, 에러 코드)
-- DB 스키마 정의서
-- 인프라 연동 명세서 (메시지 큐 토픽, 외부 API 연동 정보)
+- The project structure and architecture guide (package composition, inter-layer dependency rules)
+- An API spec (endpoints, request/response schemas, error codes)
+- A DB schema definition
+- An infrastructure-integration spec (message-queue topics, external API integration info)
 
 ---
 
-## Agent 7: Validator (검증자)
+## Agent 7: Validator
 
-### 역할
+### Role
 
-구현된 코드가 도메인 모델과 요구사항에 부합하는지 검증하고, 개선점을 식별하는 에이전트. **테스트 코드는 Test Engineer(Agent 5)가 이미 작성했으므로, Validator는 테스트 통과 여부 확인과 코드 품질 검증에 집중한다.**
+An agent that verifies whether the implemented code matches the domain model and requirements, and identifies improvements. **The test code was already written by the Test Engineer (Agent 5), so the Validator focuses on confirming the tests pass and on verifying code quality.**
 
-**검증 시 [checklist.md](checklist.md)의 자기 검토 체크리스트를 함께 수행한다.**
+**When verifying, also run through the self-review checklist in [checklist.md](checklist.md).**
 
-### 입력
+### Input
 
-- **Agent 1 산출물**: 유스케이스 목록 (수용 기준 포함)
-- **Agent 3 산출물**: Aggregate별 도메인 모델, 비즈니스 규칙/불변식 명세, 유비쿼터스 언어 용어 사전
-- **Agent 5 산출물**: 테스트 코드
-- **Agent 6 산출물**: 구현된 소스 코드
+- **Agent 1's deliverable**: the use-case list (including acceptance criteria)
+- **Agent 3's deliverable**: the domain model per Aggregate, business rules/invariant specs, the Ubiquitous Language glossary
+- **Agent 5's deliverable**: the test code
+- **Agent 6's deliverable**: the implemented source code
 
-### 출력
+### Output
 
-- 테스트 실행 결과 (전체 통과 여부, 실패 항목)
-- 도메인 모델 검증 체크리스트 결과
-- 변경 이력 (변경 대상, 변경 사유, 변경 내용)
-- 최신화된 산출물 목록 (어떤 산출물이 업데이트되었는지)
+- Test-execution results (whether everything passed, what failed)
+- The domain-model verification checklist result
+- A change log (what changed, why, and how)
+- A list of updated deliverables (which deliverables were updated)
 
-### 수행 절차
+### Procedure
 
-#### 7.1 테스트 실행 및 결과 확인
+#### 7.1 Running tests and checking the result
 
-Test Engineer가 작성한 모든 테스트를 실행하고 결과를 확인한다.
+Run every test the Test Engineer wrote and check the result.
 
-- 모든 테스트가 통과하는지 확인
-- 실패하는 테스트가 있으면 원인을 분석하고 Implementer에게 수정을 요청
-- 테스트 커버리지가 수용 기준을 충족하는지 확인
-- 누락된 테스트 케이스가 있으면 Test Engineer에게 추가를 요청
+- Confirm every test passes
+- If any test fails, analyze the cause and ask the Implementer to fix it
+- Confirm test coverage meets the acceptance criteria
+- If a test case is missing, ask the Test Engineer to add it
 
-#### 7.2 도메인 모델 검증
+#### 7.2 Domain-model verification
 
-아래 체크리스트로 구현된 코드와 도메인 모델 산출물의 일치 여부를 검증한다:
+Verify whether the implemented code matches the domain-model deliverables, using this checklist:
 
-- [ ] 모든 Aggregate가 설계서대로 구현되었는가?
-- [ ] 모든 불변식이 Aggregate Root 내부에 코드로 반영되어 있는가?
-- [ ] 모든 Domain Event가 정의되고, 올바른 시점에 발행되는가?
-- [ ] 유비쿼터스 언어가 코드(클래스명, 메서드명, 변수명)에 일관되게 반영되어 있는가?
-- [ ] Aggregate 간 직접 참조 없이 ID 참조만 사용하는가?
-- [ ] 도메인 레이어가 인프라/프레임워크에 의존하지 않는가?
-- [ ] Application Service가 비즈니스 로직을 직접 수행하지 않고 도메인 객체에 위임하는가?
+- [ ] Was every Aggregate implemented as designed?
+- [ ] Is every invariant reflected in code, inside the Aggregate Root?
+- [ ] Is every Domain Event defined and published at the correct moment?
+- [ ] Is the Ubiquitous Language reflected consistently in the code (class names, method names, variable names)?
+- [ ] Do Aggregates reference each other only by ID, with no direct reference?
+- [ ] Does the Domain layer avoid depending on infrastructure/a framework?
+- [ ] Does the Application Service delegate to a domain object instead of carrying out business logic itself?
 
-불일치가 발견되면 사용자에게 보고하고, 코드 수정 또는 모델 수정 중 어떤 방향이 적절한지 합의한다.
+If a mismatch is found, report it to the user, and agree on whether fixing the code or the model is the right direction.
 
-#### 7.3 리팩터링 및 경계 재조정
+#### 7.3 Refactoring and re-adjusting boundaries
 
-검증 과정에서 아래 문제가 발견되면 사용자에게 개선안을 제안한다:
+If any of these problems surface during verification, propose an improvement to the user:
 
-- **Aggregate가 비대한 경우**: 분리 기준과 분리 후 구조를 제안한다.
-- **Bounded Context 경계가 부적절한 경우**: 재조정 방향과 영향 범위를 설명한다.
-- **용어 불일치**: 코드와 용어 사전 간 불일치를 수정하고 용어 사전을 업데이트한다.
-- **누락된 비즈니스 규칙**: 테스트 과정에서 발견된 새로운 규칙을 추가한다.
+- **An Aggregate is bloated**: propose the splitting criterion and the structure after splitting it.
+- **A Bounded Context boundary is wrong**: explain the re-adjustment direction and its blast radius.
+- **A terminology mismatch**: fix the mismatch between the code and the glossary, and update the glossary.
+- **A missing business rule**: add a new rule discovered during testing.
 
-변경 사항이 있으면 영향받는 이전 단계 산출물도 함께 업데이트한다.
+If there's a change, also update whichever earlier-stage deliverable it affects.
 
-#### 7.4 산출물 작성
+#### 7.4 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- 테스트 실행 결과 (전체 통과 여부, 실패 항목과 원인)
-- 도메인 모델 검증 체크리스트 결과
-- 변경 이력 (변경 대상, 변경 사유, 변경 내용)
-- 최신화된 산출물 목록 (어떤 산출물이 업데이트되었는지)
+- Test-execution results (whether everything passed, what failed and why)
+- The domain-model verification checklist result
+- A change log (what changed, why, and how)
+- A list of updated deliverables (which deliverables were updated)
 
-**완료 조건**: 모든 테스트가 통과하고, 도메인 모델 검증 체크리스트가 충족되고, 사용자가 최종 확인하면 프로세스를 완료한다.
+**Completion condition**: the process is complete once every test passes, the domain-model verification checklist is satisfied, and the user gives final confirmation.
 
 ---
 
-## Agent 8: Legacy Analyzer (레거시 분석가)
+## Agent 8: Legacy Analyzer
 
-### 역할
+### Role
 
-레거시 기능 수정 워크플로우에서 가장 먼저 수행되는 에이전트. 수정 대상 기능의 현재 코드를 분석하여, Vertical Slice 경로를 추적하고 가이드와의 갭을 식별한다. 후속 에이전트(DM, TD)가 정확한 범위와 현황을 기반으로 설계할 수 있도록 분석 보고서를 산출한다.
+The very first agent run in the legacy-feature-fix workflow. Analyzes the current code for the feature being modified, traces its Vertical Slice path, and identifies the gap against the guide. Produces an analysis report so the downstream agents (DM, TD) can design against the right scope and current state.
 
-### 입력
+### Input
 
-- 사용자의 기능 수정 요청 (어떤 기능을 어떻게 변경할지)
-- 현재 프로젝트 소스 코드
+- The user's feature-fix request (what feature, changed how)
+- The current project's source code
 
-### 출력
+### Output
 
-- 레거시 코드 분석 보고서
-  - Vertical Slice 경로 맵 (해당 기능이 거치는 파일 목록과 레이어 매핑)
-  - 가이드 갭 분석표 (현재 코드 vs 가이드 기준, 항목별 준수/위반)
-  - 외부 의존 관계 목록 (이 Slice를 호출하는 다른 모듈, 이 Slice가 호출하는 다른 모듈)
-  - 리팩토링 범위 권고 (변경해야 할 파일, 변경하지 말아야 할 파일)
+- A legacy-code analysis report
+  - A Vertical Slice path map (the list of files this feature goes through, and their layer mapping)
+  - A guide-gap analysis table (the current code vs. the guide's standard, compliant/violating per item)
+  - A list of external dependencies (other modules that call this Slice, other modules this Slice calls)
+  - Refactoring-scope recommendations (files that should change, files that should not)
 
-### 수행 절차
+### Procedure
 
-#### 8.1 수정 대상 기능 식별
+#### 8.1 Identifying the feature to fix
 
-사용자의 요청에서 수정 대상 기능을 명확히 한다:
+Get clear on the feature to fix from the user's request:
 
-- "수정하려는 기능이 어떤 API 엔드포인트(또는 유스케이스)에 해당하나요?"
-- "해당 기능의 진입점(Controller 또는 호출부)을 알고 있나요?"
+- "Which API endpoint (or use case) does the feature you want to fix correspond to?"
+- "Do you know this feature's entry point (the Controller or the caller)?"
 
-진입점이 불분명하면 코드 검색을 통해 식별하고 사용자에게 확인한다.
+If the entry point is unclear, identify it via a code search and confirm with the user.
 
-#### 8.2 Vertical Slice 경로 추적
+#### 8.2 Tracing the Vertical Slice path
 
-식별된 진입점부터 호출 흐름을 따라가며 해당 기능이 거치는 모든 파일을 추적한다:
+Starting from the identified entry point, follow the call flow and trace every file this feature goes through:
 
-1. **Interface 레이어**: Controller, DTO (Request/Response)
-2. **Application 레이어**: Service, Command/Query, Handler, Adapter 인터페이스
-3. **Domain 레이어**: Aggregate Root, Entity, Value Object, Domain Event, Repository 인터페이스
-4. **Infrastructure 레이어**: Repository 구현체, Adapter 구현체, ORM Entity/Schema
+1. **The Interface layer**: the Controller, DTOs (Request/Response)
+2. **The Application layer**: the Service, Command/Query, Handler, Adapter interfaces
+3. **The Domain layer**: the Aggregate Root, Entity, Value Object, Domain Event, the Repository interface
+4. **The Infrastructure layer**: the Repository implementation, Adapter implementations, the ORM Entity/Schema
 
-추적 결과를 아래 형식으로 정리한다:
+Write up the trace result in this format:
 
 ```
-| 레이어 | 파일 경로 | 역할 | 비고 |
+| Layer | File path | Role | Notes |
 |--------|----------|------|------|
 | Interface | src/order/interface/order.controller.ts | Controller | |
-| Application | src/order/application/order.service.ts | Service | Command/Query 미분리 |
+| Application | src/order/application/order.service.ts | Service | Command/Query not yet separated |
 | Domain | src/order/domain/order.ts | Aggregate Root | |
-| Infrastructure | src/order/infrastructure/order.repository-impl.ts | Repository 구현체 | |
+| Infrastructure | src/order/infrastructure/order.repository-impl.ts | Repository implementation | |
 ```
 
-#### 8.3 가이드 갭 분석
+#### 8.3 Analyzing the guide gap
 
-Slice 내 각 파일을 가이드 문서 기준으로 대조하여 위반 항목을 식별한다. 아래 관점에서 점검한다 (STEP 번호는 실제 프로젝트의 `checklist.md` 목차를 기준으로 매핑한다):
+Cross-check each file in the Slice against the guide docs to identify a violation. Check from these angles (map the STEP number against the actual project's `checklist.md` table of contents):
 
-- **파일 구조 및 네이밍**: checklist.md STEP 1 기준
-- **Domain 레이어**: checklist.md STEP 2 기준 (비즈니스 로직 위치, 프레임워크 의존성 등)
-- **레이어 아키텍처**: checklist.md STEP 3 기준 (레이어 간 의존 방향)
-- **Repository 패턴**: checklist.md STEP 4 기준
-- **에러 처리**: checklist.md 에러 처리 STEP 기준
+- **File structure and naming**: checklist.md STEP 1
+- **The Domain layer**: checklist.md STEP 2 (where business logic lives, framework dependency, etc.)
+- **Layer architecture**: checklist.md STEP 3 (the inter-layer dependency direction)
+- **The Repository pattern**: checklist.md STEP 4
+- **Error handling**: checklist.md's error-handling STEP
 
-분석 결과를 아래 형식으로 정리한다:
+Write up the analysis result in this format:
 
 ```
-| 점검 항목 | 현재 상태 | 가이드 기준 | 판정 | 비고 |
+| Item checked | Current state | The guide's standard | Verdict | Notes |
 |-----------|----------|------------|------|------|
-| 파일명 kebab-case | order.service.ts | order-command-service.ts | 위반 | CQRS 분리 필요 |
-| Domain 프레임워크 무의존 | 프레임워크 데코레이터/애노테이션 사용 | 프레임워크 의존 없음 | 위반 | |
-| Aggregate 비즈니스 로직 캡슐화 | Service에 검증 로직 | Aggregate 내부 | 위반 | |
+| kebab-case file names | order.service.ts | order-command-service.ts | Violation | needs CQRS separation |
+| Domain has no framework dependency | uses a framework decorator/annotation | no framework dependency | Violation | |
+| Business logic encapsulated in the Aggregate | validation logic is in the Service | should be inside the Aggregate | Violation | |
 ```
 
-#### 8.4 외부 의존 관계 식별
+#### 8.4 Identifying external dependencies
 
-이 Slice의 코드를 다른 모듈에서 호출하거나, 이 Slice가 다른 모듈을 호출하는 관계를 모두 식별한다:
+Identify every relationship where another module calls this Slice's code, or this Slice calls another module:
 
-- **인바운드**: 이 Slice의 Service, Repository, Domain 객체를 import하는 외부 모듈 파일
-- **아웃바운드**: 이 Slice에서 import하는 외부 모듈의 Service, Repository, Domain 객체
+- **Inbound**: files in an external module that import this Slice's Service, Repository, or domain objects
+- **Outbound**: the Service, Repository, or domain objects of an external module that this Slice imports
 
 ```
-| 방향 | 외부 모듈 | 참조 대상 | 참조 방식 | 리팩토링 시 영향 |
+| Direction | External module | What it references | How it's referenced | Impact on refactoring |
 |------|----------|----------|----------|----------------|
-| 인바운드 | payment | OrderService.findById() | 직접 호출 | 인터페이스 유지 필요 |
-| 아웃바운드 | product | ProductService.getPrice() | 직접 호출 | Adapter 전환 검토 |
+| Inbound | payment | OrderService.findById() | direct call | the interface must be kept |
+| Outbound | product | ProductService.getPrice() | direct call | consider switching to an Adapter |
 ```
 
-#### 8.5 리팩토링 범위 권고
+#### 8.5 Refactoring-scope recommendations
 
-8.2~8.4의 분석을 종합하여, Vertical Slice 리팩토링 전략의 Scope 규칙에 따라 변경 범위를 권고한다:
+Combining the analysis from 8.2-8.4, recommend the change scope per the Vertical Slice refactoring strategy's scope rules:
 
-- **변경 대상**: 이번 기능 수정의 직접 경로에 있으며 가이드 위반이 있는 파일
-- **변경 제외**: 같은 모듈이라도 이번 기능과 무관한 파일, 다른 모듈의 공유 코드
-- **주의 필요**: 외부 모듈이 의존하는 인터페이스 — 변경 시 호출부 동시 수정 필요
+- **In scope for change**: a file on this feature fix's direct path, with a guide violation
+- **Out of scope**: a file in the same module unrelated to this feature, or another module's shared code
+- **Needs care**: an interface an external module depends on — its callers need to be updated at the same time as a change to it
 
 ```
-| 파일 | 권고 | 사유 |
+| File | Recommendation | Reason |
 |------|------|------|
-| src/order/application/order.service.ts | 변경 | CQRS 분리 + 기능 수정 대상 |
-| src/order/domain/order.ts | 변경 | 비즈니스 로직 이동 필요 |
-| src/order/interface/order-admin.controller.ts | 제외 | 이번 기능과 무관한 API |
-| src/payment/application/payment.service.ts | 주의 | OrderService 호출부 수정 필요 |
+| src/order/application/order.service.ts | change | needs CQRS separation + is the feature-fix target |
+| src/order/domain/order.ts | change | business logic needs to move here |
+| src/order/interface/order-admin.controller.ts | exclude | an API unrelated to this feature |
+| src/payment/application/payment.service.ts | needs care | its call to OrderService needs updating |
 ```
 
-#### 8.6 산출물 작성
+#### 8.6 Writing the deliverable
 
-아래 산출물을 마크다운 문서로 정리하고 사용자에게 확인을 요청한다:
+Write up the following deliverables as a markdown doc and ask the user to confirm:
 
-- Vertical Slice 경로 맵
-- 가이드 갭 분석표
-- 외부 의존 관계 목록
-- 리팩토링 범위 권고표
+- The Vertical Slice path map
+- The guide-gap analysis table
+- The list of external dependencies
+- The refactoring-scope recommendation table
 
-**완료 조건**: 사용자가 분석 보고서를 확인하고, 리팩토링 범위에 합의하면 DM(Domain Modeler)에게 산출물을 전달한다.
+**Completion condition**: once the user confirms the analysis report and agrees on the refactoring scope, hand the deliverable off to DM (Domain Modeler).

@@ -1,34 +1,34 @@
-# 문서-코드 드리프트 자동 점검
+# Automated doc-vs-code drift check
 
-`scripts/check_docs_drift.py`는 문서가 실제 코드 상태를 잘못 서술하는 두 가지 패턴을 자동으로 잡는다:
+`scripts/check_docs_drift.py` automatically catches two patterns where a doc misdescribes the actual state of the code:
 
-1. **STALE-ABSENCE** — 문서가 "아직 없다"/"미구현"/"부재"라고 서술하는 파일이 실제로는 이미 존재한다. 기능이 추가된 뒤 그 사실을 서술하는 문서가 갱신되지 않은 경우다.
-2. **PHANTOM-PRESENCE** — 문서가 "실제 코드"/"이미 구현되어 있다"라고 서술하는 파일이 실제로는 존재하지 않는다. 코드가 리네임/삭제되었거나, 문서가 애초에 존재하지 않는 코드를 실제 코드인 것처럼 인용한 경우다.
+1. **STALE-ABSENCE** — a doc says a file "doesn't exist yet" / "not implemented" / "missing," but the file actually already exists. This happens when a feature was added but the doc describing that fact was never updated.
+2. **PHANTOM-PRESENCE** — a doc says a file is "the real code" / "already implemented," but the file doesn't actually exist. This happens when code was renamed/deleted, or a doc cited code that never existed in the first place as if it were real.
 
-두 패턴 모두 문서가 실제 코드 상태를 반대로 서술하는 경우다(예: 이미 구현된 기능을 "아직 없다"고 서술하거나, 존재하지 않는 코드를 "실제 코드"라고 인용하는 경우). 사람이 매번 grep으로 찾는 대신 CI에서 상시 점검한다.
+Both patterns are cases where a doc describes the actual code state backwards (e.g. describing an already-implemented feature as "not yet there," or citing nonexistent code as "the real code"). Rather than a human grepping for this every time, CI checks it continuously.
 
-## 동작 방식
+## How it works
 
-- `docs/`, `implementations/*/docs/`, `implementations/*/CLAUDE.md`의 모든 마크다운 파일을 스캔한다.
-- 백틱으로 감싼 `path/to/file.ext` 형태의 문자열과, 코드 블록 첫 줄의 주석(`// path — 실제 코드` 같은 헤더)에서 경로를 추출한다.
-- 각 경로가 저장소 실제 파일 트리에 존재하는지 suffix 매칭으로 확인한다(문서가 `examples/`를 생략한 상대 경로를 써도 매칭되도록).
-- "아직 없다"/"미구현" 류 키워드와 "실제 코드"/"이미 구현" 류 키워드가 **같은 em dash(—) 구간**에 있을 때만 그 구간의 경로와 대조한다 — 한 문단 안의 다른 절이 우연히 다른 파일을 언급하며 같은 키워드를 쓰는 경우의 오탐을 줄인다.
+- Scans every markdown file under `docs/`, `implementations/*/docs/`, and `implementations/*/CLAUDE.md`.
+- Extracts paths from backtick-quoted strings shaped like `path/to/file.ext`, and from the comment on the first line of a code block (headers like `// path — actual code`).
+- Checks whether each path exists in the repo's real file tree via suffix matching (so it still matches even if a doc uses a relative path that omits `examples/`).
+- Only cross-checks a path against "doesn't exist yet" / "not implemented"-style keywords and "actual code" / "already implemented"-style keywords when they appear **within the same em-dash (—) span** — this reduces false positives from a different clause in the same paragraph happening to mention a different file with the same keyword.
 
-## 로컬 실행
+## Running locally
 
 ```bash
 python3 scripts/check_docs_drift.py
 ```
 
-발견 사항이 있으면 `파일:줄번호: [STALE-ABSENCE|PHANTOM-PRESENCE] 메시지` 형식으로 출력하고 종료 코드 1을 반환한다. CI(`.github/workflows/docs-drift.yml`)가 `**/*.md` 또는 `implementations/*/examples/**` 변경 시 이 스크립트를 실행한다.
+If it finds anything, it prints in the form `file:line: [STALE-ABSENCE|PHANTOM-PRESENCE] message` and exits with code 1. CI (`.github/workflows/docs-drift.yml`) runs this script whenever `**/*.md` or `implementations/*/examples/**` changes.
 
-## 한계 (의도적으로 좁힌 범위)
+## Limitations (intentionally narrow scope)
 
-이 도구는 의미론적 이해 없이 순수 문자열/경로 매칭만 한다 — 정밀도를 낮추는 애매한 신호는 잡지 않는다:
+This tool does purely string/path matching with no semantic understanding — it deliberately does not try to catch ambiguous signals that would lower precision:
 
-- **경로가 없는 서술은 못 잡는다.** 예: "`app` 서비스가 compose에 없다"처럼 구체적인 백틱 경로 없이 서술하면 대조할 대상이 없다.
-- **"기존 파일에 내용을 추가하라"는 제안은 절대 STALE-ABSENCE로 잡지 않는다.** `build.gradle`/`application.yml`/`docker-compose.yml`/`main.go`처럼 거의 항상 존재하는 파일에 "— 추가 필요 (제안)" 같은 문구가 붙어 있어도, 그건 대개 "이 파일에 이 섹션을 추가하라"는 뜻이지 "이 파일 자체가 없다"는 뜻이 아니기 때문이다. 오직 "아직 없음"처럼 명확한 비존재 주장만 STALE-ABSENCE로 판정한다.
-- **코드 스니펫 내용 자체는 검증하지 않는다.** 파일이 존재하는지만 확인하고, 그 파일 안에 문서가 보여주는 정확한 코드가 실제로 있는지는 확인하지 않는다.
-- **`package.Type` 표기(Go/Java/Kotlin)를 경로로 오인하지 않도록 필터링**하지만, 완벽하지는 않다 — 새로운 오탐 패턴이 나오면 이 스크립트에 예외를 추가한다.
+- **It can't catch a claim with no path.** For example, a sentence like "the `app` service isn't in compose" with no concrete backtick-quoted path has nothing to cross-check against.
+- **A suggestion to "add content to an existing file" is never flagged as STALE-ABSENCE.** Files like `build.gradle`/`application.yml`/`docker-compose.yml`/`main.go` almost always exist, so even if a phrase like "— needs to be added (suggestion)" is attached to them, that usually means "add this section to this file," not "this file itself doesn't exist." Only an unambiguous nonexistence claim like "doesn't exist yet" is judged as STALE-ABSENCE.
+- **It doesn't validate the content of code snippets.** It only checks whether the file exists, not whether the exact code the doc shows is actually present inside that file.
+- **It filters out `package.Type` notation (Go/Java/Kotlin) so it isn't mistaken for a path**, but this isn't perfect — if a new false-positive pattern shows up, add an exception to this script.
 
-새로운 오탐 패턴을 발견하면 이 스크립트의 필터 로직을 확장하고, 이 문서의 "한계" 절도 함께 갱신한다.
+If you find a new false-positive pattern, extend this script's filter logic and update this doc's "Limitations" section too.

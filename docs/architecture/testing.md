@@ -1,20 +1,20 @@
-# 테스트 전략
+# Testing Strategy
 
-3개 레이어로 테스트를 구성한다. 각 레이어는 검증 범위와 의존성 전략이 다르다.
+Tests are organized into 3 layers. Each layer differs in what it verifies and its dependency strategy.
 
-| 레이어 | 검증 범위 | 의존성 전략 | 실행 속도 |
+| Layer | What it verifies | Dependency strategy | Execution speed |
 |--------|----------|------------|----------|
-| Domain 단위 테스트 | Aggregate, Value Object, Domain Service | 프레임워크 없음 (순수 비즈니스 로직) | 매우 빠름 |
-| Application 단위 테스트 | Command/Query Service, Handler | Repository, Adapter를 mock | 빠름 |
-| E2E 테스트 | Interface → Application → Infrastructure 전체 경로 | 실제 DB (in-memory 또는 컨테이너) | 느림 |
+| Domain unit tests | Aggregate, Value Object, Domain Service | No framework (pure business logic) | Very fast |
+| Application unit tests | Command/Query Service, Handler | Mocks the Repository, Adapter | Fast |
+| E2E tests | The whole path: Interface → Application → Infrastructure | A real DB (in-memory or a container) | Slow |
 
 ---
 
-### Domain 단위 테스트
+### Domain unit tests
 
-프레임워크 없이 순수 비즈니스 로직만 검증한다. 외부 의존성이 없으므로 매우 빠르게 실행된다.
+Verify pure business logic with no framework. Runs very fast since there are no external dependencies.
 
-**테스트 대상:** Aggregate 불변식, 도메인 메서드, Value Object 동등성, Domain Service 판단 로직
+**What's tested:** Aggregate invariants, domain methods, Value Object equality, a Domain Service's decision logic
 
 ```typescript
 // order/domain/order.spec.ts
@@ -27,37 +27,37 @@ describe('Order', () => {
     ...overrides
   })
 
-  it('주문_항목이_비어있으면_생성_시_에러를_throw한다', () => {
+  it('throws an error on creation when the order items are empty', () => {
     expect(() => createOrder({ items: [] }))
-      .toThrow('주문 항목은 최소 1개 이상이어야 합니다.')
+      .toThrow('An order must have at least one item.')
   })
 
-  it('이미_취소된_주문을_cancel_시_에러를_throw한다', () => {
+  it('throws an error when cancelling an already-cancelled order', () => {
     const order = createOrder({ status: 'cancelled' })
-    expect(() => order.cancel('변심')).toThrow('이미 취소된 주문입니다.')
+    expect(() => order.cancel('changed my mind')).toThrow('This order has already been cancelled.')
   })
 
-  it('cancel_시_OrderCancelled_이벤트가_수집된다', () => {
+  it('collects an OrderCancelled event on cancel', () => {
     const order = createOrder()
-    order.cancel('변심')
+    order.cancel('changed my mind')
     expect(order.domainEvents).toHaveLength(1)
     expect(order.domainEvents[0]).toBeInstanceOf(OrderCancelled)
   })
 })
 ```
 
-**원칙:**
-- 테스트 픽스처는 헬퍼 함수(`createOrder`)로 기본값을 두고 `overrides`로 변형
-- 에러 메시지는 enum 참조 (문자열 하드코딩 금지)
-- 프레임워크 모듈을 import하지 않는다
+**Principles:**
+- Give test fixtures default values via a helper function (`createOrder`), varied via `overrides`
+- Reference error messages via the enum (never hardcode the string)
+- Never import a framework module
 
 ---
 
-### Application 단위 테스트
+### Application unit tests
 
-Repository, Adapter 등 외부 의존성을 **mock**으로 대체한다. 유스케이스의 조율 로직을 검증한다.
+Replace external dependencies like the Repository and Adapter with **mocks**. Verify the use case's coordination logic.
 
-**테스트 대상:** Command Service의 조율 흐름, 에러 전파, 트랜잭션 경계
+**What's tested:** a Command Service's coordination flow, error propagation, the transaction boundary
 
 ```typescript
 // order/application/command/order-command-service.spec.ts
@@ -74,19 +74,19 @@ describe('OrderCommandService', () => {
     service = new OrderCommandService(orderRepository, mockTransactionManager)
   })
 
-  it('주문이_존재하지_않으면_에러를_throw한다', async () => {
+  it('throws an error when the order does not exist', async () => {
     orderRepository.findOrders.mockResolvedValue({ orders: [], count: 0 })
 
-    await expect(service.cancelOrder({ orderId: 'non-existent', reason: '변심' }))
-      .rejects.toThrow(OrderErrorMessage['주문을 찾을 수 없습니다.'])
+    await expect(service.cancelOrder({ orderId: 'non-existent', reason: 'changed my mind' }))
+      .rejects.toThrow(OrderErrorMessage['Order not found.'])
   })
 
-  it('주문_취소_시_saveOrder가_호출된다', async () => {
+  it('calls saveOrder when cancelling an order', async () => {
     const order = new Order({ orderId: 'order-1', userId: 'user-1',
       items: [{ itemId: 'i1', quantity: 1, price: 1000 }], status: 'pending' })
     orderRepository.findOrders.mockResolvedValue({ orders: [order], count: 1 })
 
-    await service.cancelOrder({ orderId: 'order-1', reason: '변심' })
+    await service.cancelOrder({ orderId: 'order-1', reason: 'changed my mind' })
 
     expect(orderRepository.saveOrder).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'cancelled' })
@@ -95,18 +95,18 @@ describe('OrderCommandService', () => {
 })
 ```
 
-**원칙:**
-- Repository mock은 abstract class를 타입으로 사용 (구체 클래스 mock 금지)
-- mock은 반드시 abstract class의 메서드 시그니처와 일치
-- 비즈니스 로직은 Domain 단위 테스트에서 검증. Application 테스트는 조율 흐름만
+**Principles:**
+- Type the Repository mock as the abstract class (never mock the concrete class)
+- The mock must match the abstract class's method signatures exactly
+- Business logic is verified in the Domain unit tests. An Application test only verifies the coordination flow
 
 ---
 
-### E2E 테스트
+### E2E tests
 
-Interface → Application → Infrastructure 전체 경로를 실제 DB와 함께 검증한다.
+Verify the whole path — Interface → Application → Infrastructure — against a real DB.
 
-**테스트 대상:** HTTP 엔드포인트 통합, 실제 DB 저장/조회, 트랜잭션 롤백
+**What's tested:** HTTP endpoint integration, actual DB save/lookup, transaction rollback
 
 ```typescript
 // test/order.e2e-spec.ts
@@ -119,7 +119,7 @@ describe('OrderController (e2e)', () => {
     app = await createApp({ db })
   })
 
-  it('GET /orders/:orderId — 존재하는 주문 반환', async () => {
+  it('GET /orders/:orderId — returns an existing order', async () => {
     const orderId = await createTestOrder(db)
 
     const response = await request(app).get(`/orders/${orderId}`)
@@ -129,7 +129,7 @@ describe('OrderController (e2e)', () => {
     expect(response.body.orderId).toBe(orderId)
   })
 
-  it('GET /orders/:orderId — 없는 주문은 404', async () => {
+  it('GET /orders/:orderId — returns 404 for a nonexistent order', async () => {
     const response = await request(app).get('/orders/non-existent')
       .set('Authorization', `Bearer ${testToken}`)
 
@@ -141,40 +141,40 @@ describe('OrderController (e2e)', () => {
 })
 ```
 
-**원칙:**
-- E2E 테스트는 in-memory DB (SQLite 등) 또는 컨테이너(testcontainers) 사용. 운영 DB 사용 금지
-- 각 테스트는 독립적으로 실행 가능해야 함 (테스트 간 상태 공유 금지)
-- 실제 HTTP 요청으로 검증 — 프레임워크 내부를 우회하지 않는다
+**Principles:**
+- E2E tests use an in-memory DB (SQLite, etc.) or a container (testcontainers). Never use the production DB
+- Each test must be runnable independently (never share state between tests)
+- Verify via real HTTP requests — never bypass the framework internals
 
 ---
 
-### 테스트 파일 배치
+### Test-file placement
 
 ```
 src/
   order/
     domain/
-      order.spec.ts                      ← Domain 단위 테스트 (소스 옆에)
+      order.spec.ts                      ← Domain unit tests (next to the source)
     application/
       command/
-        order-command-service.spec.ts    ← Application 단위 테스트 (소스 옆에)
+        order-command-service.spec.ts    ← Application unit tests (next to the source)
 test/
-  order.e2e-spec.ts                      ← E2E 테스트 (별도 디렉토리)
+  order.e2e-spec.ts                      ← E2E tests (a separate directory)
 ```
 
 ---
 
-### 테스트 네이밍 패턴
+### Test-naming pattern
 
 ```
-<행위>_when_<조건>_then_<기대_결과>
-예: cancelOrder_when_이미취소됨_then_에러를throw한다
+<action>_when_<condition>_then_<expected result>
+Example: cancelOrder_when_alreadyCancelled_then_throwsAnError
 ```
 
 ---
 
-### 관련 문서
+### Related docs
 
-- [tactical-ddd.md](tactical-ddd.md) — Domain 레이어 설계 (단위 테스트 대상)
-- [layer-architecture.md](layer-architecture.md) — Application Service (Application 단위 테스트 대상)
-- [error-handling.md](error-handling.md) — 에러 응답 형식 (E2E 테스트 검증 포인트)
+- [tactical-ddd.md](tactical-ddd.md) — Domain-layer design (what unit tests target)
+- [layer-architecture.md](layer-architecture.md) — the Application Service (what Application unit tests target)
+- [error-handling.md](error-handling.md) — the error-response format (a verification point for E2E tests)
