@@ -114,6 +114,9 @@ SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret-local-dev-secret
+
+ANTHROPIC_API_KEY=
+REFUND_CLASSIFIER_MODEL=claude-opus-4-8
 ```
 
 Since Spring Boot doesn't automatically read `.env` files (there's no standard mechanism equivalent to Node's `dotenv`), you load it into the shell yourself — e.g. `export $(cat .env.development | xargs) && ./gradlew bootRun` — or use something like direnv. Since `application.yml` embeds defaults in the form `${AWS_ACCESS_KEY_ID:test}`, local startup is possible even without `.env.development` — `.env.development` is used when you want to manage those defaults explicitly.

@@ -51,6 +51,9 @@ dependencies {
     implementation 'software.amazon.awssdk:ses'
     implementation 'software.amazon.awssdk:secretsmanager'
     implementation 'software.amazon.awssdk:sqs'
+    // Anthropic Claude API client — used by RefundReasonClassifierImpl (Payment BC) to classify a
+    // refund's free-text reason as a Technical Service (see docs/architecture/domain-service.md).
+    implementation 'com.anthropic:anthropic-java:2.34.0'
     // AWS SDK v2's apache-client module internally uses Apache HttpClient 5 (Apache5HttpClient).
     // Spring Boot's dependency-management BOM downgrades
     // org.apache.httpcomponents.client5:httpclient5 to a lower version, causing a class the AWS

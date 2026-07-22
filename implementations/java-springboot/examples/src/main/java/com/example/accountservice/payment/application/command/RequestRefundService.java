@@ -1,6 +1,7 @@
 package com.example.accountservice.payment.application.command;
 
 import com.example.accountservice.payment.application.query.GetRefundResult;
+import com.example.accountservice.payment.application.service.RefundReasonClassifier;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
@@ -8,6 +9,7 @@ import com.example.accountservice.payment.domain.PaymentRepository;
 import com.example.accountservice.payment.domain.Refund;
 import com.example.accountservice.payment.domain.RefundDecision;
 import com.example.accountservice.payment.domain.RefundEligibilityService;
+import com.example.accountservice.payment.domain.RefundReasonClassification;
 import com.example.accountservice.payment.domain.RefundRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,11 @@ public class RequestRefundService {
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
 
+    // A Technical Service (DI-bound to its real LLM-backed implementation) — unlike
+    // RefundEligibilityService above, it wraps external I/O, so it's injected rather than `new`'d
+    // directly.
+    private final RefundReasonClassifier refundReasonClassifier;
+
     public GetRefundResult request(RequestRefundCommand command) {
         Payment payment =
                 paymentRepository
@@ -41,12 +48,16 @@ public class RequestRefundService {
                                                 "Payment not found."));
 
         Refund refund = Refund.create(payment.getPaymentId(), command.amount(), command.reason());
+        RefundReasonClassification classification =
+                refundReasonClassifier.classify(command.reason());
 
         // A judgment that no single Aggregate alone can make (comparing the original payment's
-        // state + the refund amount) is delegated to RefundEligibilityService (a Domain Service)
-        // by this Application layer, which has loaded both the Payment and Refund Aggregates
-        // together to coordinate it.
-        RefundDecision decision = refundEligibilityService.evaluate(payment, refund);
+        // state, the refund amount, and the fraud-risk signal classified above) is delegated to
+        // RefundEligibilityService (a Domain Service) by this Application layer, which has loaded
+        // both the Payment and Refund Aggregates together and classified the refund reason via the
+        // Technical Service above to coordinate it.
+        RefundDecision decision =
+                refundEligibilityService.evaluate(payment, refund, classification);
         if (decision.approved()) {
             refund.approve(payment.getAccountId(), payment.getOwnerId());
         } else {
