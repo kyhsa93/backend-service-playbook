@@ -134,14 +134,14 @@ public interface RefundReasonClassifier {
 }
 ```
 
-The implementation (`payment/infrastructure/RefundReasonClassifierImpl.java`) calls the Claude API with a JSON-schema-constrained response and falls back to a neutral, non-blocking result (`RefundReasonCategory.OTHER`, `fraudRiskScore: 0`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Its unit test (`RequestRefundServiceTest`) mocks the interface rather than hitting the real LLM — no external dependency, no non-determinism, in the test.
+The implementation (`payment/infrastructure/RefundReasonClassifierImpl.java`) calls a self-hosted, open-source LLM (Ollama, running the lightweight `qwen2.5:1.5b` model — see `docker-compose.yml`'s `ollama`/`ollama-init` services) over plain HTTP (`java.net.http.HttpClient` — Ollama has no official Java SDK) with a JSON-schema-constrained response, and falls back to a neutral, non-blocking result (`RefundReasonCategory.OTHER`, `fraudRiskScore: 0`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Its unit test (`RequestRefundServiceTest`) mocks the interface rather than hitting the real LLM — no external dependency, no non-determinism, in the test.
 
-The Anthropic API key gates on the same `Profiles.of("prod")` check as the JWT secret, but resolved lazily via the injected `SecretService` rather than eagerly via `EnvironmentPostProcessor` — see [secret-manager.md](secret-manager.md) → "A second consumer" for why the two secrets use different timings of the same mechanism.
+Because this interface is defined in the shape the Domain Service needs rather than around a specific vendor's API, this implementation originally called the Claude API and was swapped to Ollama with no change to the Domain Service, the Application-layer interface, or any of their tests — exactly the point of the pattern. Ollama is self-hosted, so unlike the API key it replaced, its base URL isn't a secret — it's a plain `@ConfigurationProperties` value (`config/RefundClassifierProperties.java`), not a `Profiles.of("prod")`-gated `SecretService` lookup (see [secret-manager.md](secret-manager.md)).
 
 ### Related code
 
 - `payment/application/service/RefundReasonClassifier.java`, `payment/infrastructure/RefundReasonClassifierImpl.java`
-- `config/RefundClassifierProperties.java` — the non-production API key + model, via `@ConfigurationProperties`
+- `config/RefundClassifierProperties.java` — the Ollama base URL + model, via `@ConfigurationProperties`
 - `payment/application/command/RequestRefundServiceTest.java` — mocks `RefundReasonClassifier`
 
 ---

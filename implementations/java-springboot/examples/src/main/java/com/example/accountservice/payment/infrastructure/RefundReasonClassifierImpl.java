@@ -1,34 +1,37 @@
 package com.example.accountservice.payment.infrastructure;
 
-import com.anthropic.client.AnthropicClient;
-import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-import com.anthropic.core.JsonValue;
-import com.anthropic.models.messages.JsonOutputFormat;
-import com.anthropic.models.messages.Message;
-import com.anthropic.models.messages.MessageCreateParams;
-import com.anthropic.models.messages.OutputConfig;
-import com.anthropic.models.messages.StopReason;
-import com.anthropic.models.messages.TextBlock;
-import com.example.accountservice.common.service.SecretService;
 import com.example.accountservice.config.RefundClassifierProperties;
 import com.example.accountservice.payment.application.service.RefundReasonClassifier;
 import com.example.accountservice.payment.domain.RefundReasonCategory;
 import com.example.accountservice.payment.domain.RefundReasonClassification;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 /**
- * The real implementation of {@link RefundReasonClassifier} — calls the Claude API with a
- * JSON-schema-constrained response and falls back to a neutral, non-blocking result on any failure.
- * A classification outage must never block a refund request, so the failure is swallowed here at
- * this Infrastructure boundary rather than surfaced as a domain error.
+ * The real implementation of {@link RefundReasonClassifier} — calls a self-hosted, open-source LLM
+ * (Ollama, running the lightweight {@code qwen2.5:1.5b} model — see {@code docker-compose.yml}'s
+ * {@code ollama}/{@code ollama-init} services) with a JSON-schema-constrained response, and falls
+ * back to a neutral, non-blocking result on any failure. A classification outage must never block a
+ * refund request, so the failure is swallowed here at this Infrastructure boundary rather than
+ * surfaced as a domain error.
+ *
+ * <p>Talks to Ollama's native {@code /api/chat} endpoint over plain HTTP via {@link HttpClient}
+ * rather than a vendor SDK, since Ollama has no official Java client. {@code qwen2.5:1.5b} (not the
+ * smaller {@code 0.5b} variant) was chosen after live-testing both: {@code 0.5b} misclassified
+ * plain billing complaints ("charged twice, refund the duplicate") as {@code fraud_suspected} with
+ * {@code fraudRiskScore} 1.0, which would wrongly reject a legitimate refund at the 0.7 threshold
+ * in {@code RefundEligibilityService}. {@code 1.5b} is meaningfully more reliable while still small
+ * enough to run locally.
  */
 @Component
 public class RefundReasonClassifierImpl implements RefundReasonClassifier {
@@ -44,112 +47,106 @@ public class RefundReasonClassifierImpl implements RefundReasonClassifier {
                     "fraud_suspected",
                     "other");
 
-    // Used whenever the classification can't be trusted (API error, refusal, malformed output). A
-    // neutral 'other'/no-fraud-signal result never blocks the refund flow on its own —
-    // RefundEligibilityService's other checks still run against it.
+    // Used whenever the classification can't be trusted (Ollama unreachable, non-2xx response,
+    // malformed output). A neutral 'other'/no-fraud-signal result never blocks the refund flow on
+    // its own — RefundEligibilityService's other checks still run against it.
     private static final RefundReasonClassification FALLBACK_CLASSIFICATION =
             new RefundReasonClassification(RefundReasonCategory.OTHER, 0);
 
+    // Deliberately explicit and example-anchored — the classifier runs on a small, self-hosted
+    // model (qwen2.5:1.5b) that, tested live against this exact prompt shape, otherwise conflates
+    // ordinary billing complaints ("charged twice, refund the duplicate") with fraud_suspected. A
+    // calm, single-issue complaint is never fraud_suspected on its own; only report fraud when the
+    // text itself shows deception or denies placing the order.
     private static final String SYSTEM_PROMPT =
-            "You classify a customer refund request's free-text reason. Respond only through the"
-                    + " given schema. Base fraudRiskScore purely on linguistic signals in the text"
-                    + " itself (vagueness, internal inconsistency, urgency/pressure language, or an"
-                    + " admission unrelated to the product) — never infer a high score just because"
-                    + " the category is fraud_suspected, and never infer a low score just because it"
-                    + " isn't.";
+            "You classify a customer refund request's free-text reason into exactly one category and"
+                    + " a fraud-risk score from 0 to 1. Respond only through the given schema.\n"
+                    + "Categories: defective_product (item broken/damaged/malfunctioning),"
+                    + " not_as_described (wrong item or mismatched description), duplicate_charge"
+                    + " (billed more than once for the same order), changed_mind (no longer wants the"
+                    + " item, no product issue), fraud_suspected (the customer explicitly states they"
+                    + " never placed the order, or the message itself shows deception/inconsistency),"
+                    + " other.\n"
+                    + "A plain, calm complaint about being billed twice is duplicate_charge with a LOW"
+                    + " fraud score near 0 — it is not fraud_suspected. Only use fraud_suspected for"
+                    + " signs of deception, not for an ordinary billing complaint.";
+
+    // Ollama's `format` field takes a raw JSON Schema and constrains decoding to match it (grammar-
+    // based — this guarantees syntactically valid JSON matching this shape regardless of model
+    // size; it does NOT guarantee the category/score judgment itself is reliable at small sizes,
+    // which is why SYSTEM_PROMPT above is unusually explicit and example-anchored).
+    private static final Map<String, Object> RESPONSE_FORMAT =
+            Map.of(
+                    "type",
+                    "object",
+                    "properties",
+                    Map.of(
+                            "category", Map.of("type", "string", "enum", CATEGORIES),
+                            "fraudRiskScore", Map.of("type", "number")),
+                    "required",
+                    List.of("category", "fraudRiskScore"),
+                    "additionalProperties",
+                    false);
 
     private final RefundClassifierProperties refundClassifierProperties;
-    private final SecretService secretService;
-    private final Environment environment;
     private final ObjectMapper objectMapper;
-    private volatile AnthropicClient client;
+    private final HttpClient httpClient;
 
     public RefundReasonClassifierImpl(
-            RefundClassifierProperties refundClassifierProperties,
-            SecretService secretService,
-            Environment environment,
-            ObjectMapper objectMapper) {
+            RefundClassifierProperties refundClassifierProperties, ObjectMapper objectMapper) {
         this.refundClassifierProperties = refundClassifierProperties;
-        this.secretService = secretService;
-        this.environment = environment;
         this.objectMapper = objectMapper;
-    }
-
-    // The API key is looked up from Secrets Manager only in production, exactly like
-    // JwtProperties/SecretsEnvironmentPostProcessor (see docs/architecture/secret-manager.md) —
-    // every other environment (dev/test) uses the environment-variable-backed
-    // RefundClassifierProperties.anthropicApiKey() directly, with no network call. Unlike the JWT
-    // secret (resolved eagerly at Environment-post-processing time, before the ApplicationContext
-    // exists), this lookup happens lazily on first use, inside this DI-managed Technical Service,
-    // via the injected SecretService. Both gate on the same Spring profile check
-    // (Environment.acceptsProfiles(Profiles.of("prod"))), not an environment-variable value.
-    private AnthropicClient getClient() {
-        AnthropicClient existing = client;
-        if (existing != null) {
-            return existing;
-        }
-        synchronized (this) {
-            if (client == null) {
-                String apiKey =
-                        environment.acceptsProfiles(Profiles.of("prod"))
-                                ? secretService.getSecret("app/anthropic")
-                                : refundClassifierProperties.anthropicApiKey();
-                client = AnthropicOkHttpClient.builder().apiKey(apiKey).build();
-            }
-            return client;
-        }
+        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
     @Override
     public RefundReasonClassification classify(String reason) {
         try {
-            Map<String, Object> schema =
+            Map<String, Object> requestBody =
                     Map.of(
-                            "type",
-                            "object",
-                            "properties",
-                            Map.of(
-                                    "category", Map.of("type", "string", "enum", CATEGORIES),
-                                    "fraudRiskScore", Map.of("type", "number")),
-                            "required",
-                            List.of("category", "fraudRiskScore"),
-                            "additionalProperties",
-                            false);
+                            "model",
+                            refundClassifierProperties.model(),
+                            "stream",
+                            false,
+                            "messages",
+                            List.of(
+                                    Map.of("role", "system", "content", SYSTEM_PROMPT),
+                                    Map.of("role", "user", "content", reason)),
+                            "format",
+                            RESPONSE_FORMAT);
 
-            MessageCreateParams params =
-                    MessageCreateParams.builder()
-                            .model(refundClassifierProperties.model())
-                            .maxTokens(256L)
-                            .system(SYSTEM_PROMPT)
-                            .addUserMessage(reason)
-                            .outputConfig(
-                                    OutputConfig.builder()
-                                            .format(
-                                                    JsonOutputFormat.builder()
-                                                            .schema(JsonValue.from(schema))
-                                                            .build())
-                                            .build())
+            HttpRequest request =
+                    HttpRequest.newBuilder()
+                            .uri(
+                                    URI.create(
+                                            refundClassifierProperties.ollamaBaseUrl()
+                                                    + "/api/chat"))
+                            .header("Content-Type", "application/json")
+                            .POST(
+                                    HttpRequest.BodyPublishers.ofString(
+                                            objectMapper.writeValueAsString(requestBody)))
                             .build();
 
-            Message response = getClient().messages().create(params);
+            HttpResponse<String> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if (response.stopReason().isPresent()
-                    && response.stopReason().get() == StopReason.REFUSAL) {
+            if (response.statusCode() / 100 != 2) {
+                log.warn(
+                        "Refund reason classification failed, using fallback: status={}",
+                        response.statusCode());
                 return FALLBACK_CLASSIFICATION;
             }
 
-            String text =
-                    response.content().stream()
-                            .flatMap(block -> block.text().stream())
-                            .findFirst()
-                            .map(TextBlock::text)
-                            .orElse(null);
-            if (text == null) {
+            OllamaChatResponse parsedResponse =
+                    objectMapper.readValue(response.body(), OllamaChatResponse.class);
+            String content =
+                    parsedResponse.message() != null ? parsedResponse.message().content() : null;
+            if (content == null || content.isBlank()) {
                 return FALLBACK_CLASSIFICATION;
             }
 
             ClassificationResponse parsed =
-                    objectMapper.readValue(text, ClassificationResponse.class);
+                    objectMapper.readValue(content, ClassificationResponse.class);
             if (parsed.category() == null || !CATEGORIES.contains(parsed.category())) {
                 return FALLBACK_CLASSIFICATION;
             }
@@ -165,6 +162,10 @@ public class RefundReasonClassifierImpl implements RefundReasonClassifier {
             return FALLBACK_CLASSIFICATION;
         }
     }
+
+    private record OllamaChatResponse(OllamaMessage message) {}
+
+    private record OllamaMessage(String content) {}
 
     private record ClassificationResponse(String category, double fraudRiskScore) {}
 }

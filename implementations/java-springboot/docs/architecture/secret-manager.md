@@ -69,7 +69,7 @@ public class SecretServiceImpl implements SecretService {
 
 - **A TTL cache via `ConcurrentHashMap`**: since Spring manages this bean as a singleton, multiple request threads can call `getSecret()` concurrently — a `ConcurrentHashMap` rather than a plain `HashMap` is needed for thread safety. Switching to a dedicated cache library like Caffeine (`com.github.ben-manes.caffeine:caffeine`) would allow finer control over the expiration policy (size-based eviction, etc.).
 - **Reuses `AwsProperties` as-is**: rather than individual `@Value`s, `region`/`endpointUrl` lookups are handled by injecting the `AwsProperties` bean (`@ConfigurationProperties`) defined in [config.md](config.md) via the constructor — the same "LocalStack if endpoint-url is present, real AWS if not" pattern that `SesConfig` uses (see [local-dev.md](local-dev.md)).
-- **Two call sites, two different timings**: `SecretsEnvironmentPostProcessor` below builds its own `SecretsManagerClient` directly (it runs before the `ApplicationContext` — and therefore DI — exists, so it can't inject this bean) to resolve the JWT secret eagerly at startup. `payment/infrastructure/RefundReasonClassifierImpl` is the first caller that injects `SecretService` directly and calls `getSecret(...)` lazily, on first use, from inside a normal DI-managed Technical Service — see "A second consumer" below.
+- **One call site so far**: `SecretsEnvironmentPostProcessor` below builds its own `SecretsManagerClient` directly (it runs before the `ApplicationContext` — and therefore DI — exists, so it can't inject this bean) to resolve the JWT secret eagerly at startup. `payment/infrastructure/RefundReasonClassifierImpl` (the `RefundReasonClassifier` Technical Service — see [domain-service.md](domain-service.md)) does **not** use `SecretService`: it calls a self-hosted Ollama instance, and a base URL isn't a secret — see `config/RefundClassifierProperties.java` (a plain `@ConfigurationProperties` value, no Secrets Manager lookup).
 
 ---
 
@@ -92,7 +92,7 @@ String password = dbSecret.get("password").asText();
 
 ## Connecting with `@ConfigurationProperties` — looked up only once at startup
 
-To integrate the Secrets Manager lookup value into the `@ConfigurationProperties` + `@Validated` system described by [config.md](config.md), Spring's `EnvironmentPostProcessor` is used to inject Secrets Manager values into the `Environment` before `ApplicationContext` is prepared. The JWT signing key (`app/jwt`) is the only secret resolved this eager, pre-context way — DB connection info hasn't been moved to Secrets Manager (Postgres is configured only via `SPRING_DATASOURCE_*` environment variables, see [local-dev.md](local-dev.md)). The Anthropic API key (`app/anthropic`) is a second production secret, but it's resolved lazily via `SecretService` instead — see "A second consumer" below.
+To integrate the Secrets Manager lookup value into the `@ConfigurationProperties` + `@Validated` system described by [config.md](config.md), Spring's `EnvironmentPostProcessor` is used to inject Secrets Manager values into the `Environment` before `ApplicationContext` is prepared. The JWT signing key (`app/jwt`) is the only secret resolved this way — DB connection info hasn't been moved to Secrets Manager (Postgres is configured only via `SPRING_DATASOURCE_*` environment variables, see [local-dev.md](local-dev.md)), and the refund classifier's Ollama base URL isn't a secret at all (see [domain-service.md](domain-service.md) → "Technical Service — RefundReasonClassifier").
 
 ```java
 // common/config/SecretsEnvironmentPostProcessor.java — actual code
@@ -138,36 +138,18 @@ If you want to move DB connection info (`spring.datasource.username`/`password`)
 
 ---
 
-## A second consumer — `RefundReasonClassifierImpl` (lazy, not eager)
+## A non-consumer, by design — `RefundReasonClassifierImpl`
 
-`payment/infrastructure/RefundReasonClassifierImpl.java` (the real Claude API-backed implementation of the `RefundReasonClassifier` Technical Service — see [domain-service.md](domain-service.md)) needs the Anthropic API key only in production, and only the first time it's actually called — not at application startup. Since it's a normal Spring bean, it can inject `SecretService` directly instead of going through an `EnvironmentPostProcessor`:
+`payment/infrastructure/RefundReasonClassifierImpl.java` (the `RefundReasonClassifier` Technical Service — see [domain-service.md](domain-service.md)) does not inject `SecretService` at all, in production or otherwise. It calls a self-hosted Ollama instance (`docker-compose.yml`'s `ollama`/`ollama-init` services) over plain HTTP, and the only configuration it needs — the base URL and model name — is a plain, non-sensitive value bound via `@ConfigurationProperties` (`config/RefundClassifierProperties.java`), exactly like `AwsProperties.region` or `SesProperties.senderEmail`:
 
 ```java
-// payment/infrastructure/RefundReasonClassifierImpl.java — actual code (excerpt)
-private AnthropicClient getClient() {
-    AnthropicClient existing = client;
-    if (existing != null) return existing;
-    synchronized (this) {
-        if (client == null) {
-            String apiKey = environment.acceptsProfiles(Profiles.of("prod"))
-                    ? secretService.getSecret("app/anthropic")
-                    : refundClassifierProperties.anthropicApiKey();
-            client = AnthropicOkHttpClient.builder().apiKey(apiKey).build();
-        }
-        return client;
-    }
-}
+// config/RefundClassifierProperties.java — actual code
+@ConfigurationProperties(prefix = "refund-classifier")
+@Validated
+public record RefundClassifierProperties(@NotBlank String ollamaBaseUrl, @NotBlank String model) {}
 ```
 
-This gates on the exact same `Profiles.of("prod")` check as `SecretsEnvironmentPostProcessor` — the same convention, applied at a different point in time. The difference from the JWT secret:
-
-| | JWT secret | Anthropic API key |
-|---|---|---|
-| When resolved | Eagerly, in `EnvironmentPostProcessor`, before the `ApplicationContext` exists | Lazily, on first `classify()` call, inside a DI-managed `@Component` |
-| How it reaches `SecretsManagerClient` | Builds its own client directly (no DI available yet) | Injects the existing `SecretService` bean |
-| Non-production value | Falls back to the `application.yml` default via property binding | Falls back to `RefundClassifierProperties.anthropicApiKey()`, injected via `@ConfigurationProperties` |
-
-Both are correct uses of the same gating mechanism — eager `EnvironmentPostProcessor` injection is for values a `@ConfigurationProperties` record needs bound before the context loads (like the JWT secret, consumed by `SecurityConfig` during bean wiring); lazy `SecretService` injection is for values only a specific Infrastructure bean needs, on its own schedule (a classification-outage-safe LLM call, not a request every service touches).
+An earlier iteration of this Technical Service called the Claude API and needed an API key, which — being a genuine secret — was looked up from Secrets Manager in production via a lazily-injected `SecretService` (the same "gate on `Profiles.of("prod")`, resolve on first use inside a DI-managed `@Component`" pattern `SecretsEnvironmentPostProcessor` uses eagerly for the JWT secret above). Swapping the backend to a self-hosted model removed that secret entirely — there's nothing left in this Technical Service for `SecretService`/Secrets Manager to protect. This is one concrete illustration of why `RefundReasonClassifier`'s interface is defined in the shape the Domain Service needs, not around a specific vendor's API: the backend swap required no change above the Infrastructure layer, including whether a secret is involved at all.
 
 ---
 
