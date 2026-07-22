@@ -41,6 +41,10 @@ sqs:
   domain-event-queue-url: ${SQS_DOMAIN_EVENT_QUEUE_URL:}
   task-queue-url: ${SQS_TASK_QUEUE_URL:}
 
+llm:
+  api-key: ${ANTHROPIC_API_KEY:}
+  model: ${REFUND_CLASSIFIER_MODEL:claude-opus-4-8}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

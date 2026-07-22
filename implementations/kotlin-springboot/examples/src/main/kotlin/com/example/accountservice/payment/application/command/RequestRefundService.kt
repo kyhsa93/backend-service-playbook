@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.application.command
 
+import com.example.accountservice.payment.application.service.RefundReasonClassifier
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import com.example.accountservice.payment.domain.PaymentRepository
@@ -10,17 +11,22 @@ import org.springframework.stereotype.Service
 
 /**
  * A judgment that neither Aggregate can make alone (comparing the original payment's status + the
- * refund amount) is delegated to [RefundEligibilityService] (a Domain Service) and coordinated by this
- * Application layer, which loads both the Payment and Refund Aggregates together.
+ * refund amount + the LLM-classified reason's fraud-risk signal) is delegated to
+ * [RefundEligibilityService] (a Domain Service) and coordinated by this Application layer, which loads
+ * both the Payment and Refund Aggregates together and classifies the reason via the
+ * [RefundReasonClassifier] Technical Service.
  *
  * [refundEligibilityService] is a stateless, pure Domain Service, so instead of registering it as a
  * Spring bean, this Service holds it by instantiating it directly (a constructor call in Kotlin) —
- * the same reasoning as the nestjs reference.
+ * the same reasoning as the nestjs reference. [refundReasonClassifier], unlike
+ * [refundEligibilityService], wraps external I/O (an LLM call), so it's constructor-injected rather
+ * than instantiated directly.
  */
 @Service
 class RequestRefundService(
     private val paymentRepository: PaymentRepository,
     private val refundRepository: RefundRepository,
+    private val refundReasonClassifier: RefundReasonClassifier,
 ) {
     private val refundEligibilityService = RefundEligibilityService()
 
@@ -32,8 +38,9 @@ class RequestRefundService(
         val payment = payments.firstOrNull() ?: throw PaymentNotFoundException(command.paymentId)
 
         val refund = Refund.create(paymentId = payment.paymentId, amount = command.amount, reason = command.reason)
+        val classification = refundReasonClassifier.classify(command.reason)
 
-        val decision = refundEligibilityService.evaluate(payment, refund)
+        val decision = refundEligibilityService.evaluate(payment, refund, classification)
         if (decision.approved) {
             refund.approve(payment.accountId, payment.ownerId)
         } else {

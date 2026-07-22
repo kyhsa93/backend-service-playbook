@@ -16,9 +16,15 @@ package com.example.accountservice.payment.domain
  * `docs/architecture/domain-service.md`).
  */
 class RefundEligibilityService {
+    // classification is a plain value already computed upstream by RefundReasonClassifier (a
+    // Technical Service wrapping an LLM call — see payment/application/service/RefundReasonClassifier.kt
+    // and payment/infrastructure/RefundReasonClassifierImpl.kt). This method never calls it and
+    // doesn't know an LLM produced the value; it only weighs the fraud-risk signal alongside its
+    // other checks and still owns the actual judgment.
     fun evaluate(
         payment: Payment,
         refund: Refund,
+        classification: RefundReasonClassification,
     ): RefundDecision {
         if (payment.status != PaymentStatus.COMPLETED) {
             return RefundDecision(approved = false, reason = "A refund can only be requested for a completed payment.")
@@ -26,7 +32,21 @@ class RefundEligibilityService {
         if (refund.amount > payment.amount) {
             return RefundDecision(approved = false, reason = "The refund amount cannot exceed the payment amount.")
         }
+        if (classification.category == RefundReasonCategory.FRAUD_SUSPECTED &&
+            classification.fraudRiskScore >= FRAUD_RISK_REJECTION_THRESHOLD
+        ) {
+            return RefundDecision(
+                approved = false,
+                reason = "This refund reason was flagged as high fraud risk and requires manual review.",
+            )
+        }
         return RefundDecision(approved = true)
+    }
+
+    companion object {
+        // The LLM supplies a signal (the fraud-risk score); this fixed threshold is what actually
+        // owns the approve/reject judgment — the classifier can never decide the outcome itself.
+        private const val FRAUD_RISK_REJECTION_THRESHOLD = 0.7
     }
 }
 
