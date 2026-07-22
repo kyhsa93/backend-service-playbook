@@ -9,17 +9,18 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// 완전히 빈 catch 블록만 좁게 잡는다(중괄호 사이에 공백/개행 외에 아무것도 없음). 로깅이든
-// rethrow든 한 글자라도 있으면 매치되지 않으므로, 이 저장소가 실제로 쓰는
-// `catch (e: Exception) { logger.atError()... }`나 `runCatching { }.onFailure { logger.error(...) }`
-// 같은 정상 패턴을 오탐할 위험이 없다.
+// Narrowly catches only completely empty catch blocks(nothing but whitespace/newlines between the
+// braces). If there's so much as a single character — logging, a rethrow, whatever — it won't match,
+// so there's no risk of falsely flagging normal patterns this repository actually uses, like
+// `catch (e: Exception) { logger.atError()... }` or `runCatching { }.onFailure { logger.error(...) }`.
 private val EMPTY_CATCH = Regex("""catch\s*\([^)]*\)\s*\{\s*}""")
 
 /**
- * [R10] no-silent-catch — application/, infrastructure/ 에서 예외를 잡고도 로깅도 재던지기도
- * 하지 않는 완전히 빈 catch 블록을 금지한다 (observability.md). 좁은 blocklist(빈 블록만)로 한정해
- * 오탐 위험을 최소화했다 — 넓은 "catch 안에 logger 호출이 없으면 실패" 같은 규칙은
- * runCatching/커스텀 헬퍼 등 이 저장소가 실제로 쓰는 정상 패턴까지 걸릴 위험이 있어 채택하지 않았다.
+ * [R10] no-silent-catch — forbids a completely empty catch block in application/, infrastructure/
+ * that catches an exception without either logging or rethrowing it(observability.md). Scoped to a
+ * narrow blocklist(empty blocks only) to minimize false-positive risk — a broader rule like "fail if
+ * there's no logger call inside the catch" was not adopted, since it risks flagging normal patterns
+ * this repository actually uses, such as runCatching/custom helpers.
  */
 fun checkNoSilentCatch(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -32,12 +33,12 @@ fun checkNoSilentCatch(rootPath: String): RuleResult {
         val rel = f.relTo(root)
         val code = stripComments(f.readText())
         if (EMPTY_CATCH.containsMatchIn(code)) {
-            result.add(failFinding(rel, "빈 catch 블록 금지 — 로깅하거나 재던지기(rethrow)해야 함 (observability.md)"))
+            result.add(failFinding(rel, "empty catch blocks are forbidden — must log or rethrow (observability.md)"))
         } else {
-            result.add(passFinding("$rel (빈 catch 블록 없음)"))
+            result.add(passFinding("$rel (no empty catch blocks)"))
         }
     }
 
-    if (!found) result.add(skipFinding("application/, infrastructure/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no application/, infrastructure/ Kotlin files"))
     return result
 }

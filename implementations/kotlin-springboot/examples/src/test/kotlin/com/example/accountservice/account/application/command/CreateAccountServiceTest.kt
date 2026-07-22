@@ -11,7 +11,7 @@ class CreateAccountServiceTest {
     private val service = CreateAccountService(accountRepository)
 
     @Test
-    fun `계좌 생성 시 저장되고 결과에 초기 잔액 0이 담긴다`() {
+    fun `creating an account saves it and the result carries an initial balance of 0`() {
         val result = service.create(CreateAccountCommand("owner-1", "KRW", "owner-1@example.com"))
 
         assertThat(result.ownerId).isEqualTo("owner-1")

@@ -11,7 +11,7 @@ class AccountSuspendedEventHandler {
         try {
             sendEmail()
         } catch (e: Exception) {
-            logger.error("정지 알림 발송 실패", e)
+            logger.error("failed to send suspension notification", e)
         }
     }
 

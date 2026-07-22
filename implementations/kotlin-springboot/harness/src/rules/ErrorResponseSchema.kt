@@ -21,8 +21,8 @@ private val REQUIRED_FIELDS =
     )
 
 /**
- * 중첩 괄호를 고려해 openParenIndex 위치의 '('에 대응하는 ')'까지의 내부 텍스트를 반환한다.
- * RepositoryNaming.kt의 extractBalancedBody와 동일한 취지이나 괄호 쌍을 대상으로 한다.
+ * Accounting for nested parentheses, returns the inner text up to the ')' matching the '(' at
+ * openParenIndex. Same purpose as extractBalancedBody in RepositoryNaming.kt, but targets a paren pair.
  */
 private fun extractBalancedParens(code: String, openParenIndex: Int): String? {
     if (code.getOrNull(openParenIndex) != '(') return null
@@ -40,11 +40,12 @@ private fun extractBalancedParens(code: String, openParenIndex: Int): String? {
 }
 
 /**
- * [S2] error-response-schema — 전역 예외 처리기(GlobalExceptionHandler 등)가 구성하는 에러 응답
- * data class가 root가 요구하는 정확히 4필드(statusCode: number, code: string, message: string|array,
- * error: string)를 갖는지 확인한다(error-handling.md). 필드명은 JSON 직렬화 이름과 그대로 매핑되므로
- * 대소문자까지 정확히 일치해야 한다. `interfaces/` 안에서 도메인 이름과 무관하게 `*ErrorResponse`로
- * 끝나는 data class를 전부 검사한다 — Account 도메인 하나에 하드코딩하지 않는다.
+ * [S2] error-response-schema — checks that the error-response data class constructed by the global
+ * exception handler(GlobalExceptionHandler, etc.) has exactly the 4 fields the root requires
+ * (statusCode: number, code: string, message: string|array, error: string)(error-handling.md). Field
+ * names map directly to JSON serialization names, so even the casing must match exactly. Checks every
+ * data class ending in `*ErrorResponse` inside `interfaces/`, regardless of domain name — not
+ * hardcoded to the single Account domain.
  */
 fun checkErrorResponseSchema(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -69,9 +70,9 @@ fun checkErrorResponseSchema(rootPath: String): RuleResult {
             if (missing.isNotEmpty() || extra.isNotEmpty()) {
                 val reason =
                     buildString {
-                        if (missing.isNotEmpty()) append("누락된 필드: ${missing.joinToString()}. ")
-                        if (extra.isNotEmpty()) append("허용되지 않는 필드: ${extra.joinToString()}. ")
-                        append("정확히 statusCode/code/message/error 4필드여야 함 (error-handling.md)")
+                        if (missing.isNotEmpty()) append("missing fields: ${missing.joinToString()}. ")
+                        if (extra.isNotEmpty()) append("disallowed fields: ${extra.joinToString()}. ")
+                        append("must have exactly the 4 fields statusCode/code/message/error (error-handling.md)")
                     }
                 result.add(failFinding("$rel ($className)", reason))
                 continue
@@ -87,7 +88,7 @@ fun checkErrorResponseSchema(rootPath: String): RuleResult {
                 result.add(
                     failFinding(
                         "$rel ($className)",
-                        "필드 타입이 예상과 다름(${typeMismatches.joinToString()}) — statusCode는 숫자, code/error는 String, message는 String(또는 배열) (error-handling.md)",
+                        "field types don't match expectations(${typeMismatches.joinToString()}) — statusCode must be numeric, code/error must be String, message must be String(or an array) (error-handling.md)",
                     ),
                 )
             } else {
@@ -96,6 +97,6 @@ fun checkErrorResponseSchema(rootPath: String): RuleResult {
         }
     }
 
-    if (!found) result.add(skipFinding("*ErrorResponse data class 없음"))
+    if (!found) result.add(skipFinding("no *ErrorResponse data class"))
     return result
 }

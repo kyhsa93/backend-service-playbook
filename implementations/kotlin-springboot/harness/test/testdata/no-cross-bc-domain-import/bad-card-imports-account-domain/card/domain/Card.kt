@@ -1,7 +1,7 @@
 package com.example.accountservice.card.domain
 
-// 위반 — 다른 BC(account)의 domain/ 패키지를 직접 import. accountId: String 같은 ID 참조만
-// 허용된다(tactical-ddd.md).
+// Violation — directly imports another BC's(account) domain/ package. Only ID references like
+// accountId: String are allowed(tactical-ddd.md).
 import com.example.accountservice.account.domain.Account
 
 class Card private constructor() {

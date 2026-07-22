@@ -13,7 +13,8 @@ class IssueCardService(
     private val accountAdapter: AccountAdapter,
 ) {
     fun issue(command: IssueCardCommand): IssueCardResult {
-        // 동기 Adapter(ACL)로 연결 계좌를 조회 — 응답(발급 가부)에 필요하므로 동기 호출.
+        // Query the linked account via the synchronous Adapter (ACL) — a synchronous call is needed
+        // because the response (whether issuance is allowed) depends on it.
         val account =
             accountAdapter.findAccount(command.accountId, command.requesterId)
                 ?: throw LinkedAccountNotFoundException()

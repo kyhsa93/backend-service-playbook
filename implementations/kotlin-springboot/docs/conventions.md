@@ -1,83 +1,83 @@
-# 코딩 컨벤션 — Kotlin Spring Boot
+# Coding Conventions — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙(REST 설계, 커밋/브랜치 컨벤션 등)은 [루트 conventions.md](../../../docs/conventions.md) 참조. 이 문서는 Kotlin/Spring Boot 구현 상세에 집중한다.
+> For the framework-agnostic principles (REST design, commit/branch conventions, etc), see [root conventions.md](../../../docs/conventions.md). This document focuses on Kotlin/Spring Boot implementation details.
 
-## 1. 파일 네이밍 규칙
+## 1. File naming rules
 
-Kotlin/Java 생태계는 root의 kebab-case 파일명 규칙을 따르지 않는다. **파일명 = 최상위 public 클래스명(PascalCase)**이 표준이다 — `kotlinc`/IntelliJ 모두 이를 전제로 한다. harness의 `file-naming` 검사(`^[A-Z][A-Za-z0-9]*$`)가 이를 강제한다.
+The Kotlin/Java ecosystem doesn't follow the root's kebab-case filename rule. **filename = the top-level public class name (PascalCase)** is the standard — both `kotlinc`/IntelliJ assume this. The harness's `file-naming` check (`^[A-Z][A-Za-z0-9]*$`) enforces it.
 
-| 종류 | 위치 | 파일명 패턴 | 예시 |
+| Kind | Location | Filename pattern | Example |
 |------|------|------------|------|
 | Aggregate Root | `domain/` | `<AggregateRoot>.kt` | `Order.kt` |
-| 하위 Entity | `domain/` | `<Entity>.kt` | `OrderItem.kt` (Entity로 승격한 경우) |
+| Child Entity | `domain/` | `<Entity>.kt` | `OrderItem.kt` (if promoted to an Entity) |
 | Value Object | `domain/` | `<ValueObject>.kt` | `Money.kt` |
 | enum class | `domain/` | `<Concept>.kt` | `OrderStatus.kt` |
-| Domain Event | `domain/` | `<PascalCase 과거형>Event.kt` | `OrderCancelledEvent.kt` |
-| 예외 계층 | `domain/` | `<Domain>Exception.kt` (sealed class + 하위 클래스 한 파일) | `OrderException.kt` |
-| 에러 코드 | `domain/` | `<Domain>ErrorCode.kt` | `OrderErrorCode.kt` |
-| Repository 인터페이스 | `domain/` | `<Aggregate>Repository.kt` | `OrderRepository.kt` |
-| Repository 구현체 | `infrastructure/persistence/` | `<Aggregate>RepositoryImpl.kt` | `OrderRepositoryImpl.kt` |
+| Domain Event | `domain/` | `<PascalCase past tense>Event.kt` | `OrderCancelledEvent.kt` |
+| Exception hierarchy | `domain/` | `<Domain>Exception.kt` (a sealed class + its subclasses in one file) | `OrderException.kt` |
+| Error code | `domain/` | `<Domain>ErrorCode.kt` | `OrderErrorCode.kt` |
+| Repository interface | `domain/` | `<Aggregate>Repository.kt` | `OrderRepository.kt` |
+| Repository implementation | `infrastructure/persistence/` | `<Aggregate>RepositoryImpl.kt` | `OrderRepositoryImpl.kt` |
 | Spring Data JPA Repository | `infrastructure/persistence/` | `<Entity>JpaRepository.kt` | `OrderJpaRepository.kt` |
 | Command Service | `application/command/` | `<Verb><Noun>Service.kt` | `CreateOrderService.kt` |
 | Command | `application/command/` | `<Verb><Noun>Command.kt` | `CreateOrderCommand.kt` |
 | Query Service | `application/query/` | `<Verb><Noun>Service.kt` | `GetOrderService.kt` |
-| Query 인터페이스 (읽기 최적화 분리 시) | `application/query/` | `<Aggregate>Query.kt` | `OrderQuery.kt` |
+| Query interface (when split out for read optimization) | `application/query/` | `<Aggregate>Query.kt` | `OrderQuery.kt` |
 | Result | `application/{command,query}/` | `<Verb><Noun>Result.kt` | `GetOrderResult.kt` |
-| Adapter 인터페이스 | `application/adapter/` | `<ExternalDomain>Adapter.kt` | `UserAdapter.kt` |
-| Adapter 구현체 | `infrastructure/` | `<ExternalDomain>AdapterImpl.kt` | `UserAdapterImpl.kt` |
-| 기술 인프라 Service 인터페이스 | `application/service/` | `<Concern>Service.kt` | `CryptoService.kt` |
-| 기술 인프라 Service 구현체 | `infrastructure/` | `<Concern>ServiceImpl.kt` | `CryptoServiceImpl.kt` |
-| Event Listener/Handler | `application/event/` | `<Domain><의미>Handler.kt` 또는 `<Domain>EventHandler.kt` | `OrderNotificationHandler.kt` |
+| Adapter interface | `application/adapter/` | `<ExternalDomain>Adapter.kt` | `UserAdapter.kt` |
+| Adapter implementation | `infrastructure/` | `<ExternalDomain>AdapterImpl.kt` | `UserAdapterImpl.kt` |
+| Technical-infrastructure Service interface | `application/service/` | `<Concern>Service.kt` | `CryptoService.kt` |
+| Technical-infrastructure Service implementation | `infrastructure/` | `<Concern>ServiceImpl.kt` | `CryptoServiceImpl.kt` |
+| Event Listener/Handler | `application/event/` | `<Domain><meaning>Handler.kt` or `<Domain>EventHandler.kt` | `OrderNotificationHandler.kt` |
 | HTTP Controller | `interfaces/rest/` | `<Domain>Controller.kt` | `OrderController.kt` |
-| Request/Response DTO 모음 | `interfaces/rest/` | `Schemas.kt` 또는 `<Domain>Schemas.kt` | `Schemas.kt` |
+| The Request/Response DTO collection | `interfaces/rest/` | `Schemas.kt` or `<Domain>Schemas.kt` | `Schemas.kt` |
 | `@ConfigurationProperties` | `config/` | `<Concern>Properties.kt` | `DatabaseProperties.kt` |
-| `@Configuration` (Bean 팩토리) | `infrastructure/` | `<Concern>Config.kt` | `SesConfig.kt` |
-| Scheduler | `infrastructure/` 또는 공유 `outbox/`/`scheduling/` | `<Concern>Poller.kt`/`<Concern>Scheduler.kt` | `OutboxPoller.kt` |
+| `@Configuration` (a Bean factory) | `infrastructure/` | `<Concern>Config.kt` | `SesConfig.kt` |
+| Scheduler | `infrastructure/` or the shared `outbox/`/`scheduling/` | `<Concern>Poller.kt`/`<Concern>Scheduler.kt` | `OutboxPoller.kt` |
 
-**주의**: root(TypeScript)/harness는 이 저장소의 관례로 kebab-case가 아니라 PascalCase 파일명을 정답으로 채택한다는 점을 다른 언어 구현체와 혼동하지 않는다 — [directory-structure.md](architecture/directory-structure.md) "파일 네이밍 규칙 — Kotlin/Java 관례" 절 참조.
+**Note**: don't confuse this repository's convention — PascalCase, not kebab-case, is the correct filename here — with the root (TypeScript)/harness of other language implementations. See the "File naming rules — Kotlin/Java convention" section of [directory-structure.md](architecture/directory-structure.md).
 
-**주의**: `Schemas.kt`는 도메인에 Request/Response DTO가 둘 이상일 때의 관례다. DTO가 정확히 하나뿐인 모듈은 ktlint `standard:filename` 룰(파일에 top-level 선언이 하나뿐이면 파일명이 그 선언과 같아야 한다)과 충돌하므로, 그 DTO 클래스명을 그대로 파일명으로 쓴다 (예: `IssueCardRequest.kt`). DTO가 추가되어 둘 이상이 되면 `Schemas.kt`(또는 `<Domain>Schemas.kt`)로 합친다.
+**Note**: `Schemas.kt` is the convention for when a domain has two or more Request/Response DTOs. A module with exactly one DTO conflicts with ktlint's `standard:filename` rule (if a file has only one top-level declaration, the filename must match that declaration), so that DTO class's name is used as the filename directly (e.g. `IssueCardRequest.kt`). Once a second DTO is added, they're merged into `Schemas.kt` (or `<Domain>Schemas.kt`).
 
-REST 엔드포인트의 URL 경로 자체는 root 원칙대로 여전히 kebab-case를 사용한다(`/order-items`) — 이것은 파일명이 아니라 HTTP 경로 규칙이다. 8절 참조.
+The REST endpoint's URL path itself still uses kebab-case per the root principle (`/order-items`) — this is an HTTP path rule, not a filename rule. See section 8.
 
 ---
 
-## 2. 클래스 네이밍 규칙
+## 2. Class naming rules
 
-- Aggregate Root: 도메인 명사, `Order`, `Account`
-- Value Object: 도메인 개념, `Money`, `OrderItem`
-- Domain Event: 과거형 + `Event` 접미사, `OrderCreatedEvent`, `OrderCancelledEvent`
-- 예외 계층: `sealed class <Domain>Exception`, 하위 클래스는 `<PascalCase 상황>Exception` — `OrderNotFoundException`, `OrderAlreadyCancelledException`
-- 에러 코드 enum: `<Domain>ErrorCode`, 값은 `SCREAMING_SNAKE_CASE` — `ORDER_NOT_FOUND`
-- Repository 인터페이스: `<Aggregate>Repository` (Kotlin `interface`, `abstract class` 아님)
-- Repository 구현체: `<Aggregate>RepositoryImpl`
-- Command Service: `<Verb><Noun>Service` — `CreateOrderService`, `CancelOrderService` (유스케이스 1개 = 클래스 1개)
+- Aggregate Root: a domain noun, `Order`, `Account`
+- Value Object: a domain concept, `Money`, `OrderItem`
+- Domain Event: past tense + the `Event` suffix, `OrderCreatedEvent`, `OrderCancelledEvent`
+- Exception hierarchy: `sealed class <Domain>Exception`, subclasses are `<PascalCase situation>Exception` — `OrderNotFoundException`, `OrderAlreadyCancelledException`
+- Error code enum: `<Domain>ErrorCode`, values are `SCREAMING_SNAKE_CASE` — `ORDER_NOT_FOUND`
+- Repository interface: `<Aggregate>Repository` (a Kotlin `interface`, not an `abstract class`)
+- Repository implementation: `<Aggregate>RepositoryImpl`
+- Command Service: `<Verb><Noun>Service` — `CreateOrderService`, `CancelOrderService` (one class per use case)
 - Query Service: `<Verb><Noun>Service` — `GetOrderService`, `GetOrdersService`
-- Query 인터페이스(분리 시): `<Aggregate>Query`
+- Query interface (when split out): `<Aggregate>Query`
 - Command: `<Verb><Noun>Command` — `CancelOrderCommand`
 - Result: `<Verb><Noun>Result` — `GetOrderResult`, `CreateOrderResult`
-- Adapter 인터페이스: `<ExternalDomain>Adapter` — `UserAdapter`
-- Adapter 구현체: `<ExternalDomain>AdapterImpl`
-- 기술 인프라 Service 인터페이스: `<Concern>Service` — `CryptoService`, `NotificationService`, `StorageService`
-- 기술 인프라 Service 구현체: `<Concern>ServiceImpl`
+- Adapter interface: `<ExternalDomain>Adapter` — `UserAdapter`
+- Adapter implementation: `<ExternalDomain>AdapterImpl`
+- Technical-infrastructure Service interface: `<Concern>Service` — `CryptoService`, `NotificationService`, `StorageService`
+- Technical-infrastructure Service implementation: `<Concern>ServiceImpl`
 - Controller: `<Domain>Controller`
 - `@ConfigurationProperties` data class: `<Concern>Properties` — `DatabaseProperties`, `JwtProperties`
 
-각 유스케이스마다 별도 Service 클래스를 두는 것([cqrs-pattern.md](architecture/cqrs-pattern.md))이 Java의 `OrderService.create()/cancel()/...`처럼 한 클래스에 여러 유스케이스를 모으는 방식보다 이 저장소의 관례에 맞는다 — Kotlin의 생성자 주입 한 줄 선언 덕분에 클래스 수 증가 비용이 작다.
+Giving each use case its own Service class ([cqrs-pattern.md](architecture/cqrs-pattern.md)) fits this repository's convention better than grouping multiple use cases into one class, like Java's `OrderService.create()/cancel()/...` — thanks to Kotlin's one-line constructor-injection declaration, the cost of the class count growing is small.
 
 ---
 
-## 3. enum / 상수 배치
+## 3. enum / constant placement
 
-Kotlin은 root(TypeScript)의 "enum/상수를 별도 파일로 분리해 모듈 루트에 둔다"는 규칙을 그대로 따르되, 파일 하나에 반드시 톱레벨 선언 하나만 두어야 하는 것은 아니다 — 다만 이 저장소는 **레이어 성격이 다른 개념(도메인 상태 enum, 예외 계층, 에러 코드)을 각각 별도 `.kt` 파일로 분리**하는 것을 원칙으로 한다.
+Kotlin follows the root's (TypeScript's) rule of "split an enum/constant into a separate file, at the module root" as-is, though a single file isn't strictly required to hold only one top-level declaration — however, this repository's principle is to **split concepts with different layer characteristics (a domain-state enum, an exception hierarchy, an error code) into their own separate `.kt` files**.
 
 ```kotlin
-// domain/OrderStatus.kt — 도메인 상태값은 enum class로, 별도 파일
+// domain/OrderStatus.kt — a domain status value as an enum class, in its own file
 enum class OrderStatus { PENDING, PAID, CANCELLED }
 ```
 
 ```kotlin
-// domain/OrderConstants.kt — 도메인 상수는 top-level const val 또는 object로 그룹화
+// domain/OrderConstants.kt — domain constants grouped as top-level const val or an object
 const val MAX_ORDER_AMOUNT = 9_999_999L
 
 object OrderPolicy {
@@ -85,15 +85,15 @@ object OrderPolicy {
 }
 ```
 
-Kotlin은 최상위 함수/상수 선언(top-level declaration)을 지원하므로, TypeScript처럼 `export const`를 흩뿌리는 대신 파일 하나가 곧 논리적 모듈이 된다 — `object`로 감싸는 것은 관련 상수를 이름공간으로 묶고 싶을 때만 사용한다.
+Since Kotlin supports top-level function/constant declarations, a single file is itself a logical module, instead of scattering `export const` like TypeScript — wrapping things in an `object` is only used when you want to group related constants into a namespace.
 
-Application 레이어(Command/Result/Query)에서 사용하는 enum도 동일하게 `domain/`에 정의하고 import해서 사용한다 — enum이 도메인 상태를 표현하는 한 domain/ 밖에 두지 않는다.
+An enum used in the Application layer (Command/Result/Query) is likewise defined in `domain/` and imported for use — as long as an enum represents domain state, it's never placed outside domain/.
 
 ---
 
-## 4. Kotlin 타이핑 패턴
+## 4. Kotlin typing patterns
 
-### Aggregate/Entity — `private set` + `protected constructor()` + `companion object` 팩토리
+### Aggregate/Entity — `private set` + `protected constructor()` + a `companion object` factory
 
 ```kotlin
 @Entity
@@ -127,9 +127,9 @@ class Order protected constructor() {
 }
 ```
 
-상세 근거는 [tactical-ddd.md](architecture/tactical-ddd.md) 참조. **모든 프로퍼티는 `private set`**이며 외부에서 직접 대입할 방법이 없다 — 상태 변경은 도메인 메서드(`cancel()` 등)를 통해서만 이루어진다.
+See [tactical-ddd.md](architecture/tactical-ddd.md) for the detailed rationale. **Every property is `private set`**, with no way to assign to it directly from outside — a state change only happens through a domain method (`cancel()`, etc).
 
-### Value Object — `data class` (`equals()` 수동 구현 불필요)
+### Value Object — `data class` (no need to hand-implement `equals()`)
 
 ```kotlin
 @Embeddable
@@ -141,33 +141,33 @@ data class Money(val amount: Long, val currency: String) {
 }
 ```
 
-root(TypeScript/Java)가 요구하는 "속성 기반 동등성 비교(`equals()`)"를 `data class` 키워드가 자동 생성한다 — 별도 구현 불필요. `init` 블록에서 불변식을 즉시 검증한다.
+The `data class` keyword auto-generates the "attribute-based equality comparison (`equals()`)" the root (TypeScript/Java) requires — no separate implementation needed. Invariants are validated immediately in the `init` block.
 
-### Null-safety — `Optional<T>`/`T | undefined` 대신 `T?`
+### Null-safety — `T?` instead of `Optional<T>`/`T | undefined`
 
 ```kotlin
-// 올바른 방식 — nullable 타입 + 엘비스 연산자
+// correct — a nullable type + the Elvis operator
 fun findByOrderId(orderId: String): Order? = jpaRepository.findByOrderId(orderId)
 
 val order = orderRepository.findByOrderId(orderId) ?: throw OrderNotFoundException(orderId)
-// 이후 order는 스마트 캐스트로 non-null Order 타입
+// from here on, order is smart-cast to the non-null Order type
 ```
 
-Kotlin은 "DB nullable 필드는 `string | null`, optional 파라미터는 `?`" 같은 root(TypeScript)의 이원화된 표현이 필요 없다 — **모든 "값이 없을 수 있음"은 `T?` 하나로 통일**한다. 이 타입 하나가 "찾지 못함"(Repository 반환), "선택적 파라미터"(함수 인자 기본값 `= null`), "DB nullable 컬럼"(엔티티 프로퍼티) 세 가지 경우 모두를 표현하며, Java의 `Optional<T>` 래핑이나 TypeScript의 `| undefined` 구분이 필요 없다. `?:` 없이 nullable 값을 그대로 사용하려 하면 컴파일이 되지 않으므로 null 체크 누락이 원천 차단된다.
+Kotlin doesn't need the root's (TypeScript's) two-track representation, like "a nullable DB field is `string | null`, an optional parameter is `?`" — **every "may have no value" case is unified into a single `T?`**. This one type expresses all three cases — "not found" (a Repository return), "an optional parameter" (a function argument's default value, `= null`), and "a nullable DB column" (an entity property) — with no need for Java's `Optional<T>` wrapping or TypeScript's `| undefined` distinction. Trying to use a nullable value as-is without `?:` simply doesn't compile, so a missing null check is blocked at the source.
 
 ```kotlin
-// 선택적 파라미터 — 기본값 null
+// an optional parameter — defaults to null
 fun getOrders(status: List<OrderStatus>? = null, page: Int = 0, take: Int = 20)
 
-// DB nullable 컬럼
+// a nullable DB column
 @Column
 var completedAt: LocalDateTime? = null
     private set
 ```
 
-`any` 사용 금지(root와 동일 원칙)에 대응하는 Kotlin 규칙은 **`Any`/`Any?` 타입을 도메인·Application 레이어의 공개 시그니처에 사용하지 않는다** — Domain Event를 담는 내부 컬렉션(`MutableList<Any>`)처럼 부득이한 경우가 아니라면, [domain-events.md](architecture/domain-events.md)가 권장하는 `sealed interface`로 구체 타입을 만든다.
+The Kotlin rule corresponding to "never use `any`" (the same principle as the root) is: **never use the `Any`/`Any?` type in a domain/Application layer's public signature** — unless there's an unavoidable case, like an internal collection holding Domain Events (`MutableList<Any>`), create a concrete type via `sealed interface`, as [domain-events.md](architecture/domain-events.md) recommends.
 
-### sealed class/interface — exhaustive `when`
+### sealed class/interface — an exhaustive `when`
 
 ```kotlin
 sealed class OrderException(message: String, val code: OrderErrorCode, val httpStatus: HttpStatus) : RuntimeException(message)
@@ -176,13 +176,13 @@ class OrderNotFoundException(orderId: String) :
     OrderException("order not found: $orderId", OrderErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND)
 ```
 
-같은 파일 내 상속만 허용되므로 컴파일러가 하위 타입 전체를 알고, `when (exception) { ... }` 분기에서 새 예외 추가 시 처리 누락을 컴파일 타임에 잡는다. 상세는 [error-handling.md](architecture/error-handling.md).
+Since only subclassing within the same file is allowed, the compiler knows every subtype, and catches a missed-handling case at compile time when a new exception is added to a `when (exception) { ... }` branch. See [error-handling.md](architecture/error-handling.md) for details.
 
-### 시간 값 — `LocalDateTime`, 타임존 변환 불필요
+### Time values — `LocalDateTime`, no timezone conversion needed
 
-root(TypeScript)는 UTC ↔ KST 수동 변환 규칙을 규정하지만, Spring Boot는 `spring.jackson.time-zone` / DB 커넥션 타임존 설정으로 이 문제를 프레임워크 차원에서 해결한다 — 애플리케이션 코드에서 `LocalDateTime.now()` 이후 별도 변환 함수를 호출하지 않는다. 서버/DB 타임존 설정 자체를 변경하지 않는다는 원칙은 root와 동일하게 유지한다.
+The root (TypeScript) specifies a manual UTC ↔ KST conversion rule, but Spring Boot solves this at the framework level via `spring.jackson.time-zone` / the DB connection's timezone setting — application code never calls a separate conversion function after `LocalDateTime.now()`. The principle of never changing the server/DB timezone setting itself is kept the same as the root.
 
-### 복잡한 타입 — nested `data class`
+### Complex types — nested `data class`
 
 ```kotlin
 data class GetOrdersResult(val orders: List<OrderSummary>, val count: Long) {
@@ -190,13 +190,13 @@ data class GetOrdersResult(val orders: List<OrderSummary>, val count: Long) {
 }
 ```
 
-root의 `type OrderWithItems = Order & { items: OrderItem[] }` 같은 교차 타입 대신, Kotlin은 **nested data class**로 응답 스키마를 계층적으로 표현한다 — 별도 파일이나 static inner class + Lombok 없이 한 파일에서 완결된다.
+Instead of an intersection type like the root's `type OrderWithItems = Order & { items: OrderItem[] }`, Kotlin expresses the response schema hierarchically with a **nested data class** — it's self-contained in one file, with no separate file or static inner class + Lombok needed.
 
 ---
 
-## 5. REST API 엔드포인트 설계 규칙
+## 5. REST API endpoint design rules
 
-URL 구조, HTTP 메서드/응답 코드, 비 CRUD 행위 표현, 중첩 리소스, kebab-case 규칙은 [루트 conventions.md](../../../docs/conventions.md) 1절과 동일하다 — 언어 무관 원칙이므로 반복하지 않는다. 이 절은 Kotlin/Spring MVC 구현 방식만 다룬다.
+The URL structure, HTTP methods/response codes, non-CRUD action expression, resource nesting, and kebab-case rules are the same as section 1 of [root conventions.md](../../../docs/conventions.md) — since these are language-agnostic principles, they aren't repeated here. This section covers only the Kotlin/Spring MVC implementation.
 
 ```kotlin
 @RestController
@@ -225,26 +225,26 @@ class OrderController(
 }
 ```
 
-- `@ResponseStatus`(클래스 반환) 또는 `ResponseEntity<T>`(상태 코드를 동적으로 결정해야 할 때) 중 하나를 사용한다 — 정적으로 하나의 상태 코드만 반환하면 `@ResponseStatus`가 더 간결하다.
-- 페이지네이션은 `@RequestParam(defaultValue = "0") page`, `@RequestParam(defaultValue = "20") take`로 표현한다 — 상세는 [api-response.md](architecture/api-response.md).
-- 목록 응답의 키 이름은 도메인 객체 복수형(`orders`)이어야 한다 — `result`/`data`/`items` 금지.
+- Use either `@ResponseStatus` (a class return) or `ResponseEntity<T>` (when the status code must be determined dynamically) — `@ResponseStatus` is more concise when only a single, static status code is ever returned.
+- Pagination is expressed with `@RequestParam(defaultValue = "0") page`, `@RequestParam(defaultValue = "20") take` — see [api-response.md](architecture/api-response.md) for details.
+- The list response's key name must be the plural of the domain object (`orders`) — `result`/`data`/`items` are forbidden.
 
 ---
 
-## 6. 메서드 네이밍 및 구성
+## 6. Method naming and organization
 
-### Controller 메서드
+### Controller methods
 
-- `create`, `get`, `find`, `cancel`, `close` 등 동사 사용, Spring MVC 애노테이션(`@PostMapping` 등)이 HTTP 메서드/경로를 결정하므로 메서드명 자체는 자유롭지만 root와의 일관성을 위해 동사 규칙을 유지한다.
-- **`suspend fun`을 사용하지 않는다** — 이 저장소는 Spring MVC(블로킹) + Spring Data JPA(블로킹 드라이버) 조합이며 코루틴을 도입하지 않기로 결정했다([scheduling.md](architecture/scheduling.md) "코루틴 미사용 이유" 참조). 새 코드에 `suspend fun`을 도입하지 않는다.
-- 반환 타입을 명시한다(공개 API 함수는 타입 추론에 맡기지 않는다) — `fun getOrder(...): GetOrderResult`.
+- Use verbs like `create`, `get`, `find`, `cancel`, `close` — since the Spring MVC annotation (`@PostMapping`, etc) determines the HTTP method/path, the method name itself is free, but the verb convention is kept for consistency with the root.
+- **Never use `suspend fun`** — this repository is a Spring MVC (blocking) + Spring Data JPA (a blocking driver) combination, and has decided not to adopt coroutines (see the "Why coroutines aren't used" section of [scheduling.md](architecture/scheduling.md)). Don't introduce `suspend fun` in new code.
+- Specify the return type explicitly (never leave a public API function to type inference) — `fun getOrder(...): GetOrderResult`.
 
-### Service 클래스 구성 순서
+### Service class organization order
 
-1. 주 생성자 파라미터(Repository, 다른 Service 등 — `private val`로 선언과 동시에 필드가 된다)
-2. `companion object`(있다면 — 상수, 정적 팩토리 등)
-3. public 비즈니스 메서드
-4. private 헬퍼 메서드
+1. Primary constructor parameters (Repository, other Services, etc — declared with `private val`, becoming a field at the same time)
+2. `companion object` (if any — constants, static factories, etc)
+3. Public business methods
+4. Private helper methods
 
 ```kotlin
 @Service
@@ -264,32 +264,32 @@ class CancelOrderService(
 }
 ```
 
-### `open` 관련 — 컴파일러 플러그인이 자동 처리
+### About `open` — handled automatically by the compiler plugin
 
-Kotlin 클래스는 기본 `final`이지만 `kotlin("plugin.spring")` 컴파일러 플러그인이 `@Component` 계열(`@Service`/`@Repository`/`@Configuration`) 애노테이션이 붙은 클래스를 자동으로 `open` 처리한다 — 소스에 `open` 키워드를 직접 쓰지 않는다([module-pattern.md](architecture/module-pattern.md) 참조).
+A Kotlin class is `final` by default, but the `kotlin("plugin.spring")` compiler plugin automatically makes a class annotated with a `@Component`-family annotation (`@Service`/`@Repository`/`@Configuration`) `open` — the `open` keyword is never written directly in the source (see [module-pattern.md](architecture/module-pattern.md)).
 
-### private 환경 분기 헬퍼
+### A private environment-branching helper
 
 ```kotlin
 private fun paymentApiUrl(): String =
     if (activeProfile == "prod") "https://payment.api.example.com" else "https://payment.dev.api.example.com"
 ```
 
-환경 분기가 필요한 값은 가능하면 `@ConfigurationProperties`로 옮기는 것이 우선이다([config.md](architecture/config.md)) — private 헬퍼 메서드는 설정으로 옮기기 애매한 경량 로직에만 사용한다.
+Wherever possible, a value that needs environment branching should be moved into `@ConfigurationProperties` first ([config.md](architecture/config.md)) — a private helper method should only be used for lightweight logic that's awkward to move into configuration.
 
 ---
 
-## 7. import 구성 패턴
+## 7. Import organization pattern
 
-Kotlin/JVM 패키지는 항상 완전한 경로(fully-qualified)이므로 root(TypeScript)의 "상대경로 금지, `@/` alias 사용" 규칙 자체가 적용되지 않는다 — Kotlin에는 상대 import라는 개념이 없다. 대신 아래 규칙을 따른다.
+Since a Kotlin/JVM package is always a fully-qualified path, the root's (TypeScript's) "no relative paths, use the `@/` alias" rule doesn't even apply here — Kotlin has no concept of a relative import. Instead, follow the rules below.
 
-- **와일드카드 import(`import com.example.orderservice.*`) 금지** — 클래스별로 개별 import한다. IntelliJ 기본 설정(`Settings > Editor > Code Style > Kotlin > Imports`)에서 "Use single name import"를 활성화해 자동 강제한다.
-- **import 순서는 알파벳 순** — 표준 라이브러리(`kotlin.*`, `java.*`), 서드파티(`org.springframework.*`, `jakarta.*` 등), 프로젝트 내부 순으로 그룹을 나누되, ktlint/IntelliJ 기본 정렬(완전한 알파벳 순, 그룹 구분 없음)을 따라도 무방하다 — 이 저장소는 그룹 구분보다 **정렬 자동화 도구(ktlint)의 기본값을 그대로 신뢰**하는 것을 원칙으로 한다(수동으로 그룹을 맞추지 않는다).
-- **사용하지 않는 import 제거** — IntelliJ의 "Optimize Imports" 또는 ktlint의 `no-unused-imports` 규칙으로 자동 정리한다.
-- **`as` 별칭은 이름 충돌 시에만** — 같은 이름의 클래스가 다른 패키지에 있을 때(예: 여러 BC의 `Order` 클래스)만 `import com.example.userservice.Order as UserOrder`처럼 사용한다.
+- **Wildcard imports (`import com.example.orderservice.*`) are forbidden** — import each class individually. Enable "Use single name import" in IntelliJ's default settings (`Settings > Editor > Code Style > Kotlin > Imports`) to enforce this automatically.
+- **Import order is alphabetical** — it's fine to split into groups in the order standard library (`kotlin.*`, `java.*`), third-party (`org.springframework.*`, `jakarta.*`, etc), then internal project imports, but it's also fine to just follow ktlint/IntelliJ's default sort (fully alphabetical, no group distinction) — this repository's principle is to **just trust the sorting-automation tool's (ktlint's) default** over manual group alignment (never manually align groups yourself).
+- **Remove unused imports** — clean these up automatically with IntelliJ's "Optimize Imports" or ktlint's `no-unused-imports` rule.
+- **Use an `as` alias only on a name conflict** — only use something like `import com.example.userservice.Order as UserOrder` when a same-named class exists in a different package (e.g. multiple BCs each having an `Order` class).
 
 ```kotlin
-// 올바른 방식
+// correct
 import jakarta.persistence.Entity
 import jakarta.validation.constraints.NotBlank
 import org.springframework.stereotype.Service
@@ -299,19 +299,19 @@ class CreateOrderService(/* ... */)
 ```
 
 ```kotlin
-// 잘못된 방식 — 와일드카드
+// incorrect — a wildcard
 import jakarta.persistence.*
 ```
 
 ---
 
-## 8. API 문서화 패턴 — springdoc-openapi
+## 8. API documentation pattern — springdoc-openapi
 
-NestJS의 `@ApiProperty`/`@ApiOperation`(`@nestjs/swagger`)에 대응하는 것은 **springdoc-openapi**의 `@Schema`/`@Operation`이다.
+The equivalent of NestJS's `@ApiProperty`/`@ApiOperation` (`@nestjs/swagger`) is **springdoc-openapi**'s `@Schema`/`@Operation`.
 
 ```kotlin
-@Operation(operationId = "createOrder", summary = "주문 생성")
-@ApiResponse(responseCode = "201", description = "생성됨")
+@Operation(operationId = "createOrder", summary = "Create an order")
+@ApiResponse(responseCode = "201", description = "Created")
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 fun createOrder(@Valid @RequestBody request: CreateOrderRequest): CreateOrderResult
@@ -319,13 +319,13 @@ fun createOrder(@Valid @RequestBody request: CreateOrderRequest): CreateOrderRes
 
 ```kotlin
 data class CreateOrderRequest(
-    @field:Schema(description = "주문 항목 목록", required = true)
+    @field:Schema(description = "The list of order items", required = true)
     @field:Size(min = 1)
     val items: List<OrderItemRequest>,
 )
 ```
 
-### `@field:` 사용 지정자 — Kotlin data class + Bean Validation 필수 조합
+### The `@field:` use-site target — a required combination with a Kotlin data class + Bean Validation
 
 ```kotlin
 data class CreateAccountRequest(
@@ -335,127 +335,127 @@ data class CreateAccountRequest(
 )
 ```
 
-Kotlin은 생성자 파라미터의 애노테이션을 기본적으로 **파라미터 자체**에 붙이지만, Jakarta Bean Validation은 **필드**에 붙은 애노테이션만 검사한다 — `@field:` 사용 지정자(use-site target)를 빠뜨리면 컴파일 에러 없이 검증이 조용히 동작하지 않는다. 이 조합에서 가장 흔한 실수이므로 새 DTO를 작성할 때마다 확인한다([cross-cutting-concerns.md](architecture/cross-cutting-concerns.md) 참조).
+Kotlin attaches a constructor parameter's annotation to the **parameter itself** by default, but Jakarta Bean Validation only inspects an annotation attached to the **field** — omitting the `@field:` use-site target makes validation silently not work with no compile error. This is the most common mistake in this combination, so check for it every time a new DTO is written (see [cross-cutting-concerns.md](architecture/cross-cutting-concerns.md)).
 
-### Deprecated 엔드포인트
+### A deprecated endpoint
 
 ```kotlin
 @Operation(operationId = "createOrderLegacy", deprecated = true)
 ```
 
-root와 동일하게 즉시 삭제하지 않고 `deprecated = true`로 표시해 마이그레이션 기간을 확보한다.
+Just like the root, it's never deleted immediately — it's marked `deprecated = true` to allow a migration window.
 
 ---
 
-## 9. 로거 패턴
+## 9. Logger pattern
 
-### `kotlin-logging` 권장 (신규 코드)
+### `kotlin-logging` is recommended (for new code)
 
 ```kotlin
 private val logger = KotlinLogging.logger {}
 
-logger.info { "주문 생성 완료: orderId=$orderId" }   // 람다 지연 평가
+logger.info { "Order creation complete: orderId=$orderId" }   // lazy lambda evaluation
 ```
 
-`LoggerFactory.getLogger(Foo::class.java)`(SLF4J 직접 사용)도 여전히 동작하지만, 신규 코드는 `kotlin-logging`을 사용한다 — `::class.java` 보일러플레이트 제거, 람다 지연 평가로 비활성 로그 레벨의 문자열 조합 비용을 없앤다. 상세 비교는 [observability.md](architecture/observability.md) 참조.
+`LoggerFactory.getLogger(Foo::class.java)` (direct SLF4J usage) still works too, but new code should use `kotlin-logging` — it removes the `::class.java` boilerplate, and lazy lambda evaluation eliminates the cost of string concatenation when the log level is disabled. See [observability.md](architecture/observability.md) for a detailed comparison.
 
-### 구조화된 로그 — snake_case 필드
+### Structured logs — snake_case fields
 
 ```kotlin
 logger.atInfo()
     .addKeyValue("order_id", orderId)
     .addKeyValue("total_amount", totalAmount)
-    .log("주문 생성 완료")
+    .log("Order creation complete")
 ```
 
-Kotlin 프로퍼티명은 camelCase(`orderId`)이지만 로그 필드명은 모니터링 플랫폼 관례에 맞춰 **snake_case**(`order_id`)를 사용한다 — root 원칙과 동일.
+A Kotlin property name is camelCase (`orderId`), but a log field name follows monitoring-platform convention and uses **snake_case** (`order_id`) — the same principle as the root.
 
-### Domain 레이어 로깅 금지
+### Logging is forbidden in the Domain layer
 
-`Order`, `Money` 등 `domain/` 클래스는 로거를 import하지 않는다 — 로깅은 Application 레이어 이상에서만 수행한다.
+A `domain/` class like `Order`, `Money`, etc never imports a logger — logging is only performed at the Application layer or above.
 
 ---
 
-## 10. 주석 스타일
+## 10. Comment style
 
-- 비즈니스 도메인 설명은 한글 인라인 주석(`//`)으로 작성한다.
-- **KDoc(`/** ... */`)은 공개 라이브러리성 API가 아니면 사용하지 않는다** — root의 "JSDoc 사용 안 함" 원칙과 동일하게, 애플리케이션 코드는 `//` 스타일만 사용한다.
-- 긴 Service 메서드는 섹션 주석으로 논리적 구분을 표시한다.
+- Write business-domain explanations as inline (`//`) comments.
+- **Never use KDoc (`/** ... */`) unless it's a public, library-facing API** — matching the root's "no JSDoc" principle, application code uses only `//`-style comments.
+- Use section comments to mark logical divisions in a long Service method.
 
 ```kotlin
 fun cancel(command: CancelOrderCommand) {
-    // 주문 조회 및 존재 검증
+    // Look up the order and verify it exists
     val order = findOrderOrThrow(command.orderId)
 
-    // 도메인 규칙 검증 및 상태 전이
+    // Validate the domain rule and transition state
     order.cancel(command.reason)
 
-    // 영속화 (Outbox 포함)
+    // Persist (including the Outbox)
     orderRepository.saveOrder(order)
 }
 ```
 
 ---
 
-## 11. 커밋 메시지 컨벤션
+## 11. Commit message convention
 
-[루트 conventions.md](../../../docs/conventions.md) 2절의 Conventional Commits 규칙을 그대로 따른다 — 언어별로 다른 컨벤션을 만들지 않는다. scope에는 Kotlin 도메인 패키지명(`order`, `account` 등)을 사용한다.
+Follows the Conventional Commits rules in section 2 of [root conventions.md](../../../docs/conventions.md) as-is — no per-language convention is invented. Use the Kotlin domain package name (`order`, `account`, etc) as the scope.
 
 ```
-feat(order): 주문 취소 기능 추가
-fix(order): 계좌 잔액 조회 시 soft-delete된 거래가 포함되는 현상 수정
-refactor(order): Repository 메서드명을 find/save/delete<Noun> 패턴으로 통일
-test(order): Order 불변식 단위 테스트 추가
+feat(order): add order cancellation
+fix(order): fix soft-deleted transactions being included in the account balance query
+refactor(order): unify Repository method names into the find/save/delete<Noun> pattern
+test(order): add unit tests for Order invariants
 ```
 
 ---
 
-## 12. 브랜치 및 PR 컨벤션
+## 12. Branch and PR conventions
 
-[루트 conventions.md](../../../docs/conventions.md) 3절과 동일하다 — `<type>/<scope>-<description>`, 모든 단어 kebab-case, `main`에서 분기, `main` 직접 push 금지, Squash and merge.
+Same as section 3 of [root conventions.md](../../../docs/conventions.md) — `<type>/<scope>-<description>`, every word in kebab-case, branched from `main`, direct pushes to `main` forbidden, Squash and merge.
 
 ---
 
-## 13. 테스트 패턴
+## 13. Test patterns
 
-상세 근거와 전체 예시는 [testing.md](architecture/testing.md) 참조. 이 절은 컨벤션만 요약한다.
+See [testing.md](architecture/testing.md) for the detailed rationale and full examples. This section only summarizes the conventions.
 
-### 프레임워크 — JUnit 5 + MockK + AssertJ + Testcontainers
+### Framework — JUnit 5 + MockK + AssertJ + Testcontainers
 
 ```kotlin
 // build.gradle.kts
 testImplementation("io.mockk:mockk:1.13.13")
 ```
 
-Mockito 대신 **MockK**를 사용한다 — Kotlin `final` 클래스와 자연스럽게 맞물리고(`interface` Repository는 어느 쪽이든 mock 가능하지만, 이 저장소는 Kotlin 관용 통일을 위해 MockK로 고정한다), `every {}`/`verify {}` DSL이 `data class` Command/Result와 자연스럽게 어우러진다.
+Use **MockK** instead of Mockito — it naturally meshes with Kotlin `final` classes (an `interface` Repository can be mocked with either library, but this repository standardizes on MockK for Kotlin-idiom consistency), and the `every {}`/`verify {}` DSL naturally meshes with `data class` Command/Result objects.
 
-### 3계층 테스트 — Domain(순수) → Application(MockK) → E2E(Testcontainers)
+### The 3 test layers — Domain (plain) → Application (MockK) → E2E (Testcontainers)
 
 ```kotlin
-// Domain 단위 테스트 — 프레임워크 없이 순수 Kotlin
+// A Domain unit test — plain Kotlin, no framework
 class OrderTest {
     @Test
-    fun `주문 항목이 비어있으면 생성 시 예외를 던진다`() {
+    fun `creating an order with no items throws an exception`() {
         assertThrows<OrderItemsEmptyException> { Order.create("user-1", emptyList()) }
     }
 }
 ```
 
 ```kotlin
-// Application 단위 테스트 — MockK로 Repository 대체
+// An Application unit test — replacing the Repository with MockK
 class CancelOrderServiceTest {
     private val orderRepository = mockk<OrderRepository>(relaxed = true)
     private val service = CancelOrderService(orderRepository)
 
     @Test
-    fun `존재하지 않는 주문을 취소하면 예외를 던진다`() {
+    fun `cancelling a nonexistent order throws an exception`() {
         every { orderRepository.findOrders(any()) } returns (emptyList<Order>() to 0L)
-        assertThrows<OrderNotFoundException> { service.cancel(CancelOrderCommand("no-such-id", "변심")) }
+        assertThrows<OrderNotFoundException> { service.cancel(CancelOrderCommand("no-such-id", "changed my mind")) }
     }
 }
 ```
 
-### 테스트 파일 배치 — Gradle 표준 소스셋 레이아웃
+### Test file placement — Gradle's standard source-set layout
 
 ```
 src/main/kotlin/.../order/domain/Order.kt
@@ -464,18 +464,18 @@ src/test/kotlin/.../order/application/command/CancelOrderServiceTest.kt
 src/test/kotlin/.../order/interfaces/rest/OrderControllerE2ETest.kt
 ```
 
-NestJS/Jest처럼 소스 파일 바로 옆에 `.spec.ts`를 두지 않는다 — `src/main`과 `src/test`를 분리하고 동일한 패키지 구조를 미러링하는 것이 Gradle/Maven의 표준 관례다.
+Unlike NestJS/Jest's convention of placing a `.spec.ts` right next to the source file, Gradle/Maven's standard convention is to separate `src/main` and `src/test`, mirroring the same package structure inside each.
 
-### 테스트 네이밍 — 한글 backtick 함수명
+### Test naming — natural-language backtick function names
 
 ```kotlin
 @Test
-fun `이미 취소된 주문을 다시 취소하면 예외를 던진다`() { /* ... */ }
+fun `cancelling an already-cancelled order throws an exception`() { /* ... */ }
 ```
 
-root의 `{도메인행위}_when_{조건}_then_{기대결과}` 스네이크 케이스 대신, Kotlin은 백틱으로 감싼 **완전한 한글 문장**으로 테스트 의도를 표현한다 — 이 저장소가 이미 채택한 관례([testing.md](architecture/testing.md))이며 새 테스트도 이를 따른다.
+Instead of the root's `{domain_action}_when_{condition}_then_{expected_result}` snake_case, Kotlin expresses test intent as a **complete natural-language sentence** wrapped in backticks — a convention this repository has already adopted ([testing.md](architecture/testing.md)), and new tests follow it too.
 
-### E2E — Testcontainers, in-memory DB 금지
+### E2E — Testcontainers, in-memory DBs forbidden
 
 ```kotlin
 @Testcontainers
@@ -488,4 +488,4 @@ class OrderControllerE2ETest {
 }
 ```
 
-H2 in-memory 같은 대체 DB 대신 **Testcontainers로 실제 Postgres**를 띄운다 — SQL 방언 차이로 인한 거짓 양성/음성을 피한다.
+Instead of a substitute DB like H2 in-memory, spin up **a real Postgres via Testcontainers** — this avoids false positives/negatives caused by SQL dialect differences.

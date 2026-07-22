@@ -5,13 +5,14 @@ import com.example.accountservice.notification.application.service.NotificationS
 import org.springframework.stereotype.Component
 
 /**
- * AccountCreatedEvent가 Outbox를 통해 전달되면 계좌 개설 알림 이메일을 발송한다.
+ * Sends an account-creation notification email when AccountCreatedEvent is delivered via the Outbox.
  *
- * 예외를 잡지 않고 그대로 던진다 — [com.example.accountservice.outbox.OutboxConsumer]가 이를 잡아
- * 로그를 남기고 Outbox 행을 processed=false로 남겨 다음 호출에서 재시도한다(at-least-once 전달).
+ * Exceptions are not caught and are thrown as-is — [com.example.accountservice.outbox.OutboxConsumer]
+ * catches them, logs, and leaves the Outbox row as processed=false so the next call retries it
+ * (at-least-once delivery).
  *
- * [eventId]는 이 이벤트가 저장된 Outbox 행의 `eventId`다 — [NotificationService]가 이를 키로
- * Level 2(Ledger) 중복 발송 방지를 적용한다.
+ * [eventId] is the `eventId` of the Outbox row this event was stored in — [NotificationService] uses it
+ * as the key to apply Level 2 (Ledger) duplicate-send prevention.
  */
 @Component
 class AccountCreatedEventHandler(
@@ -26,8 +27,8 @@ class AccountCreatedEventHandler(
             eventType = "AccountCreated",
             sourceEventId = eventId,
             recipient = event.email,
-            subject = "[Account] 계좌가 개설되었습니다",
-            body = "계좌(${event.accountId})가 개설되었습니다. 통화: ${event.currency}",
+            subject = "[Account] Your account has been opened",
+            body = "Account (${event.accountId}) has been opened. Currency: ${event.currency}",
         )
     }
 }

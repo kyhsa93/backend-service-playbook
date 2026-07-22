@@ -4,7 +4,7 @@ class Payment private constructor() {
     var paymentId: String = ""
         private set
 
-    // 위반 — 다른 Aggregate(Refund)를 필드로 직접 보유. paymentId 같은 ID 참조만 허용된다.
+    // Violation — directly holds another Aggregate(Refund) as a field. Only ID references like paymentId are allowed.
     var refund: Refund? = null
         private set
 

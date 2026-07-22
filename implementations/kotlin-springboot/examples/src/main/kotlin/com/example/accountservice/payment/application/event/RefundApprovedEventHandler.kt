@@ -7,9 +7,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * 내부 Domain Event(RefundApprovedEvent)를 수신해 외부 BC용 Integration Event
- * (refund.approved.v1)로 변환해 Outbox에 적재한다. Account BC가 이를 구독해 환불 크레딧
- * (deposit)을 실행한다.
+ * Receives the internal Domain Event (RefundApprovedEvent), converts it into the Integration Event
+ * for external BCs (refund.approved.v1), and loads it into the Outbox. Account BC subscribes to this
+ * and executes the refund credit (deposit).
  */
 @Component
 class RefundApprovedEventHandler(
@@ -23,7 +23,7 @@ class RefundApprovedEventHandler(
             .addKeyValue("refund_id", event.refundId)
             .addKeyValue("payment_id", event.paymentId)
             .addKeyValue("account_id", event.accountId)
-            .log("환불 승인됨")
+            .log("Refund approved")
 
         outboxWriter.saveAll(
             listOf(

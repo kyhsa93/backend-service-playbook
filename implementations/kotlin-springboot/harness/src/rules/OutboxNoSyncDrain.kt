@@ -4,17 +4,18 @@ import harness.*
 import java.io.File
 
 /**
- * [12] Outbox 동기 드레인 금지 — Command Service는 OutboxRelay/OutboxPoller/OutboxConsumer를
- * 참조하거나 드레인 메서드를 호출하면 안 된다 (domain-events.md).
+ * [12] No synchronous Outbox drain — a Command Service must not reference OutboxRelay/OutboxPoller/
+ * OutboxConsumer or call a drain method (domain-events.md).
  *
- * Outbox → 큐 발행(`OutboxPoller`)과 큐 → 핸들러 실행(`OutboxConsumer`)은 독립적으로 주기
- * 실행되는 별도 컴포넌트다 — Command Service는 저장 후 곧바로 반환해야 하며 드레인 메서드를
- * 직접 호출하면 안 된다. 동기 드레인을 다시 추가해도 이 규칙 하나가 없으면 어떤 다른 규칙도
- * 잡아내지 못한다.
+ * Outbox → queue publishing(`OutboxPoller`) and queue → handler execution(`OutboxConsumer`) are
+ * separate components that run independently on their own periodic schedule — a Command Service must
+ * return immediately after persisting and must not directly call a drain method. If a synchronous
+ * drain were reintroduced, no other rule besides this one would catch it.
  */
-// 주석 안에서 "OutboxRelay"/"processPending" 같은 단어를 설명 목적으로 언급하는 것까지 위반으로
-// 오탐하지 않기 위해 아주 단순한 주석 제거를 거친다 — 이 harness의 다른 정규식 기반 규칙들도
-// 이미 비슷한 수준의 근사치를 쓴다(문자열 리터럴 안의 "//" 같은 극단적 엣지 케이스는 감수한다).
+// A very simple comment strip is applied so that merely mentioning words like "OutboxRelay"/
+// "processPending" for explanatory purposes inside a comment isn't falsely flagged as a violation —
+// this harness's other regex-based rules already use a similar level of approximation(extreme edge
+// cases like "//" inside a string literal are accepted as a tradeoff).
 private fun stripComments(content: String): String =
     content.replace(Regex("""/\*[\s\S]*?\*/"""), "").replace(Regex("""//.*"""), "")
 
@@ -35,15 +36,15 @@ fun checkOutboxNoSyncDrain(rootPath: String): RuleResult {
             result.add(
                 failFinding(
                     rel,
-                    "Command Service가 OutboxRelay/OutboxPoller/OutboxConsumer를 참조하거나 드레인 메서드" +
-                        "(processPending/poll/drainOnce)를 호출함 — Outbox → 큐 발행/수신은 독립적으로 주기 " +
-                        "실행되는 Poller/Consumer만의 책임이다(동기 드레인 금지, domain-events.md)",
+                    "the Command Service references OutboxRelay/OutboxPoller/OutboxConsumer or calls a drain method" +
+                        "(processPending/poll/drainOnce) — publishing/consuming from the Outbox → queue is " +
+                        "solely the responsibility of an independently periodic-run Poller/Consumer(no synchronous drain allowed, domain-events.md)",
                 ),
             )
         } else {
             result.add(passFinding(rel))
         }
     }
-    if (!found) result.add(skipFinding("application/command/ 아래 파일 없음"))
+    if (!found) result.add(skipFinding("no files under application/command/"))
     return result
 }

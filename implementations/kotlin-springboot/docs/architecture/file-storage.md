@@ -1,14 +1,14 @@
-# 파일 스토리지 — Kotlin Spring Boot
+# File Storage — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root file-storage.md](../../../../docs/architecture/file-storage.md) 참조.
+> For the framework-agnostic principles, see [root file-storage.md](../../../../docs/architecture/file-storage.md).
 
-## 현재 상태
+## Current state
 
-`examples/`에는 파일 업로드/다운로드 기능이 없다 — Account 도메인에 첨부파일 개념 자체가 없다. 아래는 이 저장소에 이미 있는 **Technical Service 패턴**(`notification/` 모듈, [directory-structure.md](directory-structure.md) 참조)을 그대로 재사용해 `StorageService`를 추가하는 방법이다. `NotificationService`/`NotificationServiceImpl` 쌍을 템플릿으로 삼는다.
+`examples/` has no file upload/download feature — the Account domain has no concept of an attachment at all. Below is how to add a `StorageService` by reusing the **Technical Service pattern** already present in this repository (the `notification/` module, see [directory-structure.md](directory-structure.md)) as-is. The `NotificationService`/`NotificationServiceImpl` pair is used as the template.
 
 ---
 
-## StorageService — 인터페이스 (Application 레이어)
+## StorageService — the interface (Application layer)
 
 ```kotlin
 // storage/application/service/StorageService.kt
@@ -20,7 +20,7 @@ interface StorageService {
 }
 ```
 
-`NotificationService`와 동일하게 Spring 무의존 `interface`다 — Application 레이어의 호출자(예: 첨부파일 Command Service)는 AWS SDK를 전혀 알지 못한다.
+Just like `NotificationService`, this is an `interface` with no Spring dependency — the Application layer's caller (e.g. an attachment Command Service) doesn't know the AWS SDK exists at all.
 
 ---
 
@@ -66,7 +66,7 @@ class StorageServiceImpl(
 }
 ```
 
-`S3Presigner`는 `SesClient`(→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/notification/infrastructure/SesConfig.kt))와 동일한 방식으로 `@Configuration` 클래스에서 Bean 등록하고, `AWS_ENDPOINT_URL`이 설정되어 있으면 LocalStack으로 분기한다.
+`S3Presigner` is registered as a Bean in a `@Configuration` class the same way as `SesClient` (→ [SesConfig.kt](../../examples/src/main/kotlin/com/example/accountservice/notification/infrastructure/SesConfig.kt)), and branches to LocalStack if `AWS_ENDPOINT_URL` is set.
 
 ```kotlin
 // storage/infrastructure/StorageConfig.kt
@@ -89,18 +89,18 @@ class StorageConfig {
 }
 ```
 
-`build.gradle.kts`에 추가해야 할 의존성 (`examples/`에는 아직 없음):
+Dependency to add to `build.gradle.kts` (not yet in `examples/`):
 
 ```kotlin
-implementation("software.amazon.awssdk:s3:2.29.52")   // SES와 같은 SDK v2 버전
+implementation("software.amazon.awssdk:s3:2.29.52")   // same SDK v2 version as SES
 ```
 
 ---
 
-## Entity에는 메타데이터만 저장
+## The Entity stores only metadata
 
 ```kotlin
-// account/domain/AccountAttachment.kt — 예시 (Account 도메인에 첨부파일 개념을 추가한다면)
+// account/domain/AccountAttachment.kt — example (if adding an attachment concept to the Account domain)
 @Entity
 @Table(name = "account_attachments")
 class AccountAttachment protected constructor() {
@@ -109,7 +109,7 @@ class AccountAttachment protected constructor() {
         private set
 
     @Column(nullable = false, unique = true)
-    var fileKey: String = ""       // 스토리지 내 파일 식별자 — generateId() 사용 (하이픈 제거, aggregate-id.md 참조)
+    var fileKey: String = ""       // the file's identifier within storage — use generateId() (hyphens removed, see aggregate-id.md)
         private set
 
     @Column(nullable = false)
@@ -131,14 +131,14 @@ class AccountAttachment protected constructor() {
 }
 ```
 
-파일 바이너리 자체는 절대 DB나 애플리케이션 메모리에 두지 않는다 — `fileKey`/`extension`만 저장하고, Presigned URL로 클라이언트가 S3와 직접 통신한다.
+The file binary itself is never kept in the DB or in application memory — only `fileKey`/`extension` are stored, and the client communicates directly with S3 via the presigned URL.
 
 ---
 
-## Application Service에서 사용
+## Usage in an Application Service
 
 ```kotlin
-// account/application/command/CreateAttachmentService.kt — 예시
+// account/application/command/CreateAttachmentService.kt — example
 @Service
 @Transactional
 class CreateAttachmentService(
@@ -156,36 +156,36 @@ class CreateAttachmentService(
 
 ---
 
-## 로컬 개발 — LocalStack에 S3 추가
+## Local development — adding S3 to LocalStack
 
-현재 `examples/docker-compose.yml`은 `SERVICES: ses`만 활성화한다. S3를 추가하려면:
+Currently `examples/docker-compose.yml` only enables `SERVICES: ses`. To add S3:
 
 ```yaml
 # docker-compose.yml
 localstack:
   environment:
-    SERVICES: ses,s3   # 쉼표로 나열
+    SERVICES: ses,s3   # comma-separated list
 ```
 
 ```bash
-# localstack/init-s3.sh — init-ses.sh와 같은 방식으로 추가
+# localstack/init-s3.sh — add it the same way as init-ses.sh
 #!/bin/sh
 set -e
 awslocal s3 mb s3://account-attachments
 ```
 
-상세는 [local-dev.md](local-dev.md) 참조.
+See [local-dev.md](local-dev.md) for details.
 
 ---
 
-## 원칙
+## Principles
 
-- **서버는 파일 바이너리를 처리하지 않는다**: `S3Presigner`로 URL만 발급.
-- **Technical Service 패턴 재사용**: `StorageService` 인터페이스(Application) + `StorageServiceImpl`(Infrastructure) — `NotificationService`와 동일한 구조.
-- **Entity는 메타데이터만**: `fileKey`(하이픈 없는 32자리 hex), `extension`.
+- **The server never handles the file binary**: `S3Presigner` only issues URLs.
+- **Reuse the Technical Service pattern**: a `StorageService` interface (Application) + `StorageServiceImpl` (Infrastructure) — the same structure as `NotificationService`.
+- **The Entity holds only metadata**: `fileKey` (a 32-character hex string with no hyphens), `extension`.
 
-### 관련 문서
+### Related documents
 
-- [directory-structure.md](directory-structure.md) — Technical Service 패턴 배치 (notification 모듈 예시)
-- [aggregate-id.md](aggregate-id.md) — `fileKey` 생성 규칙
-- [local-dev.md](local-dev.md) — LocalStack S3 구성
+- [directory-structure.md](directory-structure.md) — Technical Service pattern placement (the notification module example)
+- [aggregate-id.md](aggregate-id.md) — the `fileKey` generation rule
+- [local-dev.md](local-dev.md) — the LocalStack S3 setup

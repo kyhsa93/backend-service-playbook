@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
 
-// 위반 — Controller가 전용 Result data class 대신 raw Account Aggregate를 그대로 반환한다.
+// Violation — the Controller returns the raw Account Aggregate as-is instead of a dedicated Result data class.
 @RestController
 class AccountController(
     private val getAccountService: GetAccountService,

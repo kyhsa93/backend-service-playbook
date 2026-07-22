@@ -6,11 +6,12 @@ import com.example.accountservice.card.domain.CardStatus
 import org.springframework.stereotype.Service
 
 /**
- * Account BC의 `account.closed.v1` Integration Event에 대한 반응 유스케이스.
+ * The reaction use case for the Account BC's `account.closed.v1` Integration Event.
  *
- * 아직 해지되지 않은 카드(ACTIVE·SUSPENDED)만 해지하므로 재수신에 멱등하다. 이 Service 자신은
- * 트랜잭션 경계를 갖지 않는다 — outbox 드레인 루프를 감싼 상위 트랜잭션 안에서 호출된다
- * (domain-events.md, persistence.md의 트랜잭션 경계 규칙 참조).
+ * Only cards that are not yet cancelled (ACTIVE, SUSPENDED) are cancelled, so it is idempotent under
+ * redelivery. This Service itself has no transaction boundary — it is called from within a
+ * higher-level transaction that wraps the outbox drain loop (see domain-events.md and
+ * persistence.md's transaction boundary rules).
  */
 @Service
 class CancelCardsByAccountService(

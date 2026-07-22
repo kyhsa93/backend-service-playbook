@@ -7,11 +7,11 @@ private val BUILD_ARTIFACT_EXCLUDE = Regex("""(?m)^\s*(build/?|\.gradle/?|\*\.ja
 private val GIT_EXCLUDE = Regex("""(?m)^\s*\.git/?\s*$""")
 
 /**
- * [R11] dockerfile-conventions — examples/Dockerfile을 순수 텍스트로 파싱해 (a) 멀티스테이지
- * 빌드(FROM 2개 이상), (b) HEALTHCHECK 인스트럭션 존재, (c) USER 인스트럭션 존재(non-root
- * 실행), (d) 합리적인 제외 목록을 갖춘 .dockerignore 존재를 확인한다 (container.md).
- * Dockerfile은 Kotlin 소스가 아니므로 다른 규칙과 달리 collectKtFiles를 쓰지 않고 rootPath
- * 바로 아래 파일을 직접 찾는다.
+ * [R11] dockerfile-conventions — parses examples/Dockerfile as plain text to check for (a) a
+ * multi-stage build(2+ FROM instructions), (b) the presence of a HEALTHCHECK instruction, (c) the
+ * presence of a USER instruction(non-root execution), (d) the presence of a .dockerignore with a
+ * reasonable exclusion list(container.md). Since a Dockerfile isn't Kotlin source, unlike other rules
+ * this doesn't use collectKtFiles and instead looks directly for the file right under rootPath.
  */
 fun checkDockerfileConventions(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -19,7 +19,7 @@ fun checkDockerfileConventions(rootPath: String): RuleResult {
 
     val dockerfile = File(root, "Dockerfile")
     if (!dockerfile.isFile) {
-        result.add(skipFinding("Dockerfile 없음"))
+        result.add(skipFinding("no Dockerfile"))
         return result
     }
 
@@ -27,36 +27,36 @@ fun checkDockerfileConventions(rootPath: String): RuleResult {
 
     val fromCount = lines.count { it.trim().startsWith("FROM ", ignoreCase = true) }
     if (fromCount >= 2) {
-        result.add(passFinding("Dockerfile (멀티스테이지 빌드, FROM ${fromCount}개)"))
+        result.add(passFinding("Dockerfile (multi-stage build, $fromCount FROM instructions)"))
     } else {
-        result.add(failFinding("Dockerfile", "멀티스테이지 빌드가 아님 — FROM 인스트럭션이 ${fromCount}개뿐, 2개 이상이어야 함 (container.md)"))
+        result.add(failFinding("Dockerfile", "not a multi-stage build — only $fromCount FROM instruction(s), must have 2 or more (container.md)"))
     }
 
     val hasHealthcheck = lines.any { it.trim().startsWith("HEALTHCHECK", ignoreCase = true) }
     if (hasHealthcheck) {
-        result.add(passFinding("Dockerfile (HEALTHCHECK 존재)"))
+        result.add(passFinding("Dockerfile (HEALTHCHECK present)"))
     } else {
-        result.add(failFinding("Dockerfile", "HEALTHCHECK 인스트럭션 없음 (container.md)"))
+        result.add(failFinding("Dockerfile", "no HEALTHCHECK instruction (container.md)"))
     }
 
     val hasUser = lines.any { it.trim().startsWith("USER ", ignoreCase = true) }
     if (hasUser) {
-        result.add(passFinding("Dockerfile (non-root USER 존재)"))
+        result.add(passFinding("Dockerfile (non-root USER present)"))
     } else {
-        result.add(failFinding("Dockerfile", "USER 인스트럭션 없음 — 컨테이너가 root로 실행됨 (container.md)"))
+        result.add(failFinding("Dockerfile", "no USER instruction — the container runs as root (container.md)"))
     }
 
     val dockerignore = File(root, ".dockerignore")
     if (!dockerignore.isFile) {
-        result.add(failFinding(".dockerignore", ".dockerignore 파일 없음 (container.md)"))
+        result.add(failFinding(".dockerignore", "no .dockerignore file (container.md)"))
     } else {
         val content = dockerignore.readText()
         val hasBuildExclude = BUILD_ARTIFACT_EXCLUDE.containsMatchIn(content)
         val hasGitExclude = GIT_EXCLUDE.containsMatchIn(content)
         if (hasBuildExclude && hasGitExclude) {
-            result.add(passFinding(".dockerignore (빌드 산출물/.git 제외 확인)"))
+            result.add(passFinding(".dockerignore (confirmed build-artifact/.git exclusion)"))
         } else {
-            result.add(failFinding(".dockerignore", "빌드 산출물(build/, .gradle/ 등) 또는 .git 제외 패턴 없음 (container.md)"))
+            result.add(failFinding(".dockerignore", "no exclusion pattern for build artifacts(build/, .gradle/, etc.) or .git (container.md)"))
         }
     }
 

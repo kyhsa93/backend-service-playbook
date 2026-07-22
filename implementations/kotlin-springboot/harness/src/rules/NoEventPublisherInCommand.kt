@@ -6,8 +6,8 @@ import java.io.File
 private val EVENT_PUBLISHER = Regex("ApplicationEventPublisher|@EventListener|\\.publishEvent\\(")
 
 /**
- * [10] Command Service는 Outbox 경유만 허용 — ApplicationEventPublisher/@EventListener/
- * publishEvent() 직접 사용 금지 (domain-events.md)
+ * [10] A Command Service must go only through the Outbox — direct use of
+ * ApplicationEventPublisher/@EventListener/publishEvent() is forbidden (domain-events.md)
  */
 fun checkNoEventPublisherInCommand(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -19,11 +19,11 @@ fun checkNoEventPublisherInCommand(rootPath: String): RuleResult {
         val rel = f.relTo(root)
         val content = f.readText()
         if (EVENT_PUBLISHER.containsMatchIn(content)) {
-            result.add(failFinding(rel, "Command Service는 ApplicationEventPublisher/@EventListener/publishEvent()를 쓰지 않아야 함 — Outbox 경유(domain-events.md)"))
+            result.add(failFinding(rel, "a Command Service must not use ApplicationEventPublisher/@EventListener/publishEvent() — must go through the Outbox(domain-events.md)"))
         } else {
-            result.add(passFinding("$rel (Outbox 경유 확인)"))
+            result.add(passFinding("$rel (confirmed it goes through the Outbox)"))
         }
     }
-    if (!found) result.add(skipFinding("Command Service 없음"))
+    if (!found) result.add(skipFinding("no Command Service"))
     return result
 }

@@ -4,10 +4,10 @@ import com.example.accountservice.common.generateId
 import java.time.LocalDateTime
 
 /**
- * Credential Aggregate Root — 로그인 자격증명(아이디+비밀번호 해시)을 표현한다.
- * 평문 비밀번호는 domain/application 어디에도 보관하지 않는다 — passwordHash만 갖는다.
- * 영속성 매핑은 infrastructure/persistence/CredentialJpaEntity + CredentialMapper가 전담한다
- * (account/card와 동일한 domain/JPA 분리 구조).
+ * Credential Aggregate Root — represents login credentials (user ID + password hash).
+ * The plaintext password is never stored anywhere in the domain/application layers — only passwordHash
+ * is kept. Persistence mapping is handled entirely by infrastructure/persistence/CredentialJpaEntity +
+ * CredentialMapper (the same domain/JPA separation structure as account/card).
  */
 class Credential private constructor() {
     var credentialId: String = ""
@@ -23,7 +23,7 @@ class Credential private constructor() {
         private set
 
     companion object {
-        /** 회원가입 시 새 Credential을 발급한다. 비밀번호는 이미 해싱된 값을 받는다. */
+        /** Issues a new Credential at sign-up. The password is received as an already-hashed value. */
         fun create(
             userId: String,
             passwordHash: String,
@@ -35,7 +35,7 @@ class Credential private constructor() {
                 this.createdAt = LocalDateTime.now()
             }
 
-        /** Repository 구현체가 영속 데이터로부터 Credential을 복원할 때 사용한다. */
+        /** Used by the Repository implementation to reconstitute a Credential from persisted data. */
         fun reconstitute(
             credentialId: String,
             userId: String,

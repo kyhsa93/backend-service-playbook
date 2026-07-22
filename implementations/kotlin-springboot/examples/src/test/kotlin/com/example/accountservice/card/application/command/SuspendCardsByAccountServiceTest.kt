@@ -29,7 +29,7 @@ class SuspendCardsByAccountServiceTest {
         CardFindQuery(page = 0, take = 1000, accountId = "account-1", status = listOf(CardStatus.ACTIVE))
 
     @Test
-    fun `계좌의 ACTIVE 카드를 모두 정지하고 저장한다`() {
+    fun `suspends and saves all ACTIVE cards for the account`() {
         val cards = listOf(activeCard("card-1"), activeCard("card-2"))
         every { cardRepository.findCards(findQuery) } returns (cards to cards.size.toLong())
 
@@ -40,7 +40,7 @@ class SuspendCardsByAccountServiceTest {
     }
 
     @Test
-    fun `ACTIVE 카드가 없으면 아무 것도 저장하지 않는다 (멱등)`() {
+    fun `saves nothing when there are no ACTIVE cards (idempotent)`() {
         every { cardRepository.findCards(findQuery) } returns (emptyList<Card>() to 0L)
 
         service.suspend("account-1")

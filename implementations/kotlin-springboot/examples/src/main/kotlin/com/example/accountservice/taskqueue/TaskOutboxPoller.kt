@@ -10,10 +10,10 @@ import software.amazon.awssdk.services.sqs.model.MessageAttributeValue
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest
 
 /**
- * `task_outbox` → SQS(FIFO Task Queue) 발행만 담당한다 — [com.example.accountservice.outbox.OutboxPoller]와
- * 완전히 같은 모양이다(같은 SqsClient 빈을 공유하지만 대상 큐가 다르다). MessageGroupId/
- * MessageDeduplicationId를 함께 보내는 것이 Domain Event Queue(표준 큐)와의 유일한 차이다 — FIFO
- * 큐는 이 두 속성이 필수다.
+ * Handles only publishing `task_outbox` -> SQS (FIFO Task Queue) — it has exactly the same shape as
+ * [com.example.accountservice.outbox.OutboxPoller] (they share the same SqsClient bean but target a
+ * different queue). Sending MessageGroupId/MessageDeduplicationId along with it is the only difference
+ * from the Domain Event Queue (a standard queue) — a FIFO queue requires both of these attributes.
  */
 @Component
 class TaskOutboxPoller(
@@ -34,7 +34,7 @@ class TaskOutboxPoller(
         try {
             drainOnce()
         } catch (e: Exception) {
-            logger.error("Task Outbox 폴링 실패", e)
+            logger.error("Task Outbox polling failed", e)
         } finally {
             polling = false
         }
@@ -75,7 +75,7 @@ class TaskOutboxPoller(
                         .addKeyValue("task_type", row.taskType)
                         .addKeyValue("task_id", row.taskId)
                         .setCause(it)
-                        .log("Task Queue(SQS FIFO) 발행 실패")
+                        .log("Failed to publish to Task Queue (SQS FIFO)")
                 }
         }
     }

@@ -12,12 +12,13 @@ import jakarta.persistence.Table
 import java.time.LocalDateTime
 
 /**
- * card/domain/Card.kt의 JPA 매핑 전용 대응물.
- * Domain Aggregate(Card)는 이 클래스를 전혀 알지 못한다 — 변환은 CardMapper가 전담한다
- * (account/infrastructure/persistence/AccountJpaEntity와 동일한 구조).
+ * The JPA-mapping-only counterpart to card/domain/Card.kt.
+ * The Domain Aggregate (Card) knows nothing of this class — conversion is handled exclusively by
+ * CardMapper (the same structure as account/infrastructure/persistence/AccountJpaEntity).
  *
- * 프로퍼티를 `var` + 기본값으로 선언해 Hibernate가 요구하는 기본 생성자를 kotlin-jpa 플러그인이
- * 생성하게 하고, 갱신 시 CardMapper가 기존 행(PK 보존)의 가변 필드를 그대로 덮어쓸 수 있게 한다.
+ * Properties are declared as `var` with defaults so the kotlin-jpa plugin can generate the no-arg
+ * constructor Hibernate requires, and so CardMapper can directly overwrite the mutable fields of an
+ * existing row (PK preserved) on update.
  */
 @Entity
 @Table(name = "cards")

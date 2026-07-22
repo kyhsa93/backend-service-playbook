@@ -7,7 +7,7 @@ interface AccountRepository {
 
     fun deleteAccount(accountId: String)
 
-    // hasTransactionWithReference처럼 find/save/delete/count로 시작하지 않는 도메인 질의 메서드는
-    // blocklist에 걸리지 않아야 한다 (오탐 방지 확인용).
+    // A domain query method that doesn't start with find/save/delete/count, like
+    // hasTransactionWithReference, must not trip the blocklist (verifies false-positive avoidance).
     fun hasTransactionWithReference(referenceId: String): Boolean
 }

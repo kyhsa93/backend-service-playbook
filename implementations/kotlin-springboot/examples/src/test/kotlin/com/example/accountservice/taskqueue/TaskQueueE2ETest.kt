@@ -35,11 +35,11 @@ import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 import java.time.Duration
 
 /**
- * scheduling.md가 규정하는 전체 경로(Scheduler → task_outbox → TaskOutboxPoller → SQS FIFO →
- * TaskQueueConsumer → TaskHandlerRegistry → TaskController → CommandService)를 실제로 태워보는
- * e2e 테스트다. 실제 Cron tick(최대 하루/한 달)을 기다리지 않고, Scheduler의 enqueue 메서드를
- * 직접 호출한다 — [com.example.accountservice.account.notification.NotificationE2ETest]가 Outbox
- * 경로를 검증하는 것과 같은 방식으로 Task Queue 경로를 검증한다.
+ * An e2e test that actually exercises the full path prescribed by scheduling.md (Scheduler →
+ * task_outbox → TaskOutboxPoller → SQS FIFO → TaskQueueConsumer → TaskHandlerRegistry →
+ * TaskController → CommandService). Instead of waiting for a real Cron tick (up to a day/month),
+ * it directly calls the Scheduler's enqueue method — verifying the Task Queue path the same way
+ * [com.example.accountservice.account.notification.NotificationE2ETest] verifies the Outbox path.
  */
 @Testcontainers
 @SpringBootTest(
@@ -75,14 +75,15 @@ class TaskQueueE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createQueue("domain-events", fifo = false) }
             registry.add("SQS_TASK_QUEUE_URL") { createQueue("task-queue.fifo", fifo = true) }
-            // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
-            // rate limiting 자체가 아니라 Task Queue 경로를 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+            // The test calls the write API more times in a short span than the default
+            // limit-for-period (10), so for tests only we loosen it generously so we're verifying
+            // the Task Queue path rather than rate limiting itself.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
-        // 컨테이너는 이미 떠 있는 상태이므로(정적 @Container 필드), Spring 컨텍스트가 SqsProperties를
-        // 바인딩하기 전에 큐를 직접 만들어 그 URL을 반환한다 — DLQ/RedrivePolicy는 테스트 목적상
-        // 생략한다(재시도 관찰이 필요 없다).
+        // Since the container is already up (a static @Container field), we create the queue
+        // directly and return its URL before the Spring context binds SqsProperties — DLQ/
+        // RedrivePolicy are omitted for testing purposes (retry observation isn't needed).
         private fun createQueue(
             name: String,
             fifo: Boolean,
@@ -179,11 +180,11 @@ class TaskQueueE2ETest {
     }
 
     @Test
-    fun `정기 이자 지급 Task를 enqueue하면 잔액에 이자가 반영되고 같은 날짜로 재실행해도 중복 지급되지 않는다`() {
+    fun `enqueueing the recurring interest-payment task applies interest, and re-running it same-day does not pay twice`() {
         val ownerId = "interest-owner-1"
         val email = "interest-owner-1@example.com"
         val accountId = createAccount(ownerId, email)
-        // 이자율 0.01%에서 정수 이자가 나오도록 충분히 큰 잔액을 입금한다: 10,000,000 * 0.0001 = 1,000
+        // Deposit a balance large enough that a 0.01% interest rate produces an integer amount: 10,000,000 * 0.0001 = 1,000
         post("/accounts/$accountId/deposit", ownerId, mapOf("amount" to 10_000_000))
 
         interestPaymentScheduler.enqueueDailyInterestPayment()
@@ -202,9 +203,9 @@ class TaskQueueE2ETest {
         val list = transactions["transactions"] as List<Map<String, Any>>
         assertThat(list.count { it["type"] == "INTEREST" }).isEqualTo(1)
 
-        // 같은 날짜로 다시 enqueue해도(at-least-once 재전달을 흉내) task_outbox의 deduplicationId
-        // UNIQUE 제약이 중복 적재를 막고, 설령 처리되더라도 Account.payInterest()가 멱등하므로 이자가
-        // 두 번 지급되지 않는다.
+        // Even when enqueued again on the same date (mimicking at-least-once redelivery), the
+        // task_outbox deduplicationId UNIQUE constraint prevents duplicate insertion, and even if it
+        // were processed, Account.payInterest() is idempotent so interest isn't paid twice.
         interestPaymentScheduler.enqueueDailyInterestPayment()
 
         Thread.sleep(3000)
@@ -217,13 +218,13 @@ class TaskQueueE2ETest {
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(300)).untilAsserted {
             val interestEmail =
                 sentEmailJpaRepository.findByAccountId(accountId).firstOrNull { it.eventType == "InterestPaid" }
-                    ?: throw AssertionError("InterestPaid 발송 기록이 저장되지 않았습니다: accountId=$accountId")
+                    ?: throw AssertionError("The InterestPaid send record was not saved: accountId=$accountId")
             assertThat(interestEmail.recipient).isEqualTo(email)
         }
     }
 
     @Test
-    fun `매월 카드 사용내역 발송 Task를 enqueue하면 결제 요약 알림이 발송되고 이번 달에 재실행해도 중복 발송되지 않는다`() {
+    fun `enqueueing the monthly card-statement task sends the summary, and re-running it same-month does not send it twice`() {
         val ownerId = "statement-owner-1"
         val email = "statement-owner-1@example.com"
         val accountId = createAccount(ownerId, email)
@@ -241,12 +242,12 @@ class TaskQueueE2ETest {
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(300)).untilAsserted {
             val statementEmail =
                 sentEmailJpaRepository.findByAccountId(accountId).firstOrNull { it.eventType == "CardStatement" }
-                    ?: throw AssertionError("CardStatement 발송 기록이 저장되지 않았습니다: accountId=$accountId")
+                    ?: throw AssertionError("The CardStatement send record was not saved: accountId=$accountId")
             assertThat(statementEmail.recipient).isEqualTo(email)
         }
 
-        // 같은 달에 다시 enqueue해도 Card.lastStatementSentMonth(Level 1) + task_outbox
-        // deduplicationId(다중 인스턴스 안전성)가 중복 발송을 막는다.
+        // Even when enqueued again in the same month, Card.lastStatementSentMonth (Level 1) +
+        // task_outbox deduplicationId (multi-instance safety) prevent duplicate sending.
         cardStatementScheduler.enqueueMonthlyCardStatement()
 
         Thread.sleep(3000)

@@ -3,7 +3,7 @@ package harness.rules
 import harness.*
 import java.io.File
 
-/** [7] 패키지 구조 검사 (4레이어 + CQRS) */
+/** [7] Package structure check (4-layer + CQRS) */
 fun checkPackageStructure(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("package-structure")
@@ -15,7 +15,7 @@ fun checkPackageStructure(rootPath: String): RuleResult {
         .toList()
 
     if (domainDirs.isEmpty()) {
-        result.add(skipFinding("domain/ 디렉토리 없음"))
+        result.add(skipFinding("no domain/ directory"))
         return result
     }
 
@@ -27,7 +27,7 @@ fun checkPackageStructure(rootPath: String): RuleResult {
             if (dir.isDirectory) {
                 result.add(passFinding("$relParent/$layer/"))
             } else {
-                result.add(failFinding("$relParent/$layer/", "디렉토리 없음"))
+                result.add(failFinding("$relParent/$layer/", "directory missing"))
             }
         }
         for (sub in listOf("command", "query")) {
@@ -35,7 +35,7 @@ fun checkPackageStructure(rootPath: String): RuleResult {
             if (dir.isDirectory) {
                 result.add(passFinding("$relParent/application/$sub/"))
             } else {
-                result.add(failFinding("$relParent/application/$sub/", "CQRS 디렉토리 없음"))
+                result.add(failFinding("$relParent/application/$sub/", "CQRS directory missing"))
             }
         }
     }

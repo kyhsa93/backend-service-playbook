@@ -4,17 +4,19 @@ import com.example.accountservice.card.domain.Card
 import com.example.accountservice.card.domain.CardFindQuery
 
 /**
- * 읽기 전용 포트 — Query Service가 의존하는 좁은 인터페이스.
+ * Read-only port — the narrow interface the Query Service depends on.
  *
- * root `cqrs-pattern.md`가 규정하는 `<Domain>Query` 네이밍·배치(application/query/)를 따른다
- * (#168에서 Account에 정리한 규칙을 Card도 처음부터 준수 — `CardQueryRepository` 같은 이름을 쓰지 않는다).
- * 쓰기 모델([com.example.accountservice.card.domain.CardRepository])과 분리해, Query Service가
- * saveCard 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제한다. 실제 구현체(CardRepositoryImpl)는
- * 두 인터페이스를 모두 구현하지만, 각 Service는 자신에게 필요한 인터페이스 타입으로만 주입받는다.
+ * Follows the `<Domain>Query` naming/placement (application/query/) prescribed by the root
+ * `cqrs-pattern.md` (Card follows the same rule established for Account from the start — it does not
+ * use a name like `CardQueryRepository`). Kept separate from the write model
+ * ([com.example.accountservice.card.domain.CardRepository]), this enforces at compile time that the
+ * Query Service cannot access write methods like saveCard. The actual implementation
+ * (CardRepositoryImpl) implements both interfaces, but each Service is injected only with the
+ * interface type it needs.
  *
- * `findCards`는 CardRepository(쓰기 모델)와 정확히 같은 시그니처를 재사용한다(AccountQuery/PaymentQuery와
- * 동일한 패턴) — 단건 조회는 `CardFindQuery(take = 1, ...)` + `.firstOrNull()`로 처리한다
- * (`GetCardService` 참고).
+ * `findCards` reuses the exact same signature as CardRepository (the write model) (the same pattern as
+ * AccountQuery/PaymentQuery) — single lookups are handled via `CardFindQuery(take = 1, ...)` +
+ * `.firstOrNull()` (see `GetCardService`).
  */
 interface CardQuery {
     fun findCards(query: CardFindQuery): Pair<List<Card>, Long>

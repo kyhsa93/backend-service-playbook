@@ -4,7 +4,7 @@ class Account private constructor() {
     var accountId: String = ""
         private set
 
-    // 공개 setter — 외부에서 account.status = "CLOSED" 처럼 도메인 메서드를 우회해 직접 대입 가능
+    // Public setter — allows external code to assign directly, bypassing domain methods, e.g. account.status = "CLOSED"
     var status: String = "ACTIVE"
 
     companion object {

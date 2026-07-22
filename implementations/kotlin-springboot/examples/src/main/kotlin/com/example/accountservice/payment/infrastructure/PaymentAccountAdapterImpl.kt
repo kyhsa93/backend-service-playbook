@@ -8,14 +8,16 @@ import com.example.accountservice.payment.application.adapter.AccountView
 import org.springframework.stereotype.Component
 
 /**
- * [AccountAdapter]의 구현체(ACL). Account BC가 공개한 읽기 포트([AccountQuery])를 주입받아 호출하고,
- * Account BC의 모델을 Payment BC가 쓰는 최소 형태([AccountView])로 번역한다 — 잔액(balanceAmount)까지
- * 포함해 "결제 가능 여부" 판단에 필요한 형태로 옮긴다.
+ * The implementation of [AccountAdapter] (ACL). Injects and calls the read port ([AccountQuery])
+ * exposed by Account BC, and translates Account BC's model into the minimal shape Payment BC uses
+ * ([AccountView]) — including the balance (balanceAmount), moving it into the shape needed to judge
+ * "whether payment is possible."
  *
- * 클래스명에 `Payment` 접두어를 붙인 이유: Card BC에도 동일한 역할의
- * [com.example.accountservice.card.infrastructure.AccountAdapterImpl]이 이미 존재하는데, Spring의
- * 기본 빈 이름 생성은 (패키지가 달라도) 단순 클래스명만 보므로 두 `AccountAdapterImpl`이
- * `ConflictingBeanDefinitionException`을 일으킨다 — 실제로 이 충돌을 겪고 나서 접두어로 고쳤다.
+ * Why the class name carries a `Payment` prefix: Card BC already has
+ * [com.example.accountservice.card.infrastructure.AccountAdapterImpl] playing the same role, and
+ * Spring's default bean-name generation looks only at the simple class name (even across different
+ * packages), so two `AccountAdapterImpl` classes trigger a `ConflictingBeanDefinitionException` — this
+ * naming convention exists specifically to avoid that collision.
  */
 @Component
 class PaymentAccountAdapterImpl(

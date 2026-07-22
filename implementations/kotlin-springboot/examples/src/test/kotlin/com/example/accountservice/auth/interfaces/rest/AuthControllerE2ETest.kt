@@ -24,17 +24,18 @@ import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 
 /**
- * Auth BC E2E 테스트.
+ * Auth BC E2E tests.
  *
- * sign-up으로 Credential을 저장하고, sign-in이 저장된 해시와 실제로 비교하는지,
- * 아이디 미존재/비밀번호 불일치가 동일한 응답(401 INVALID_CREDENTIALS)으로 통일되는지
- * (user enumeration 방지), 아이디 중복 가입과 비밀번호 길이 검증이 동작하는지 확인한다.
+ * Verifies that sign-up stores a Credential, that sign-in actually compares against the stored
+ * hash, that a nonexistent user ID and a mismatched password are unified into the same response
+ * (401 INVALID_CREDENTIALS, to prevent user enumeration), and that duplicate sign-up rejection and
+ * password-length validation work.
  *
- * Auth BC 자체는 Outbox/Task Queue/SQS와 무관하지만, `SqsProperties.domainEventQueueUrl`/
- * `taskQueueUrl` 모두 fail-fast(`@NotBlank`)로 검증되므로 전체 앱 컨텍스트를 띄우는 이 테스트도
- * LocalStack SQS에 두 큐(도메인 이벤트 표준 큐 + Task Queue FIFO 큐)를 구성해야 한다 — 그렇지
- * 않으면 `OutboxPoller`/`OutboxConsumer`/`TaskOutboxPoller`/`TaskQueueConsumer` 빈 생성 전에
- * 컨텍스트 자체가 뜨지 못한다.
+ * The Auth BC itself has nothing to do with Outbox/Task Queue/SQS, but since both
+ * `SqsProperties.domainEventQueueUrl` and `taskQueueUrl` are fail-fast validated (`@NotBlank`), this
+ * test — which boots the whole app context — must also set up both queues (the standard domain-event
+ * queue and the Task Queue FIFO queue) in LocalStack SQS; otherwise the context itself cannot come up
+ * before the `OutboxPoller`/`OutboxConsumer`/`TaskOutboxPoller`/`TaskQueueConsumer` beans are created.
  */
 @Testcontainers
 @SpringBootTest(
@@ -67,8 +68,9 @@ class AuthControllerE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SQS).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
-            // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 많이 호출하므로
-            // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+            // The test calls the write API more times in a short span than the default
+            // limit-for-period (10), so for tests only we loosen it generously so we're verifying
+            // each endpoint's logic rather than rate limiting itself.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
@@ -86,9 +88,9 @@ class AuthControllerE2ETest {
             return queueUrl
         }
 
-        // SqsProperties.taskQueueUrl도 @NotBlank(config.md fail-fast)이므로, Task Queue 경로를
-        // 실제로 쓰지 않는 이 테스트도 컨텍스트 기동을 위해 FIFO 큐를 만들어 둔다(TaskQueueE2ETest와
-        // 동일한 방식).
+        // Since SqsProperties.taskQueueUrl is also @NotBlank (config.md fail-fast), this test — which
+        // doesn't actually use the Task Queue path — also creates a FIFO queue just to boot the
+        // context (the same approach as TaskQueueE2ETest).
         private fun createTaskQueue(): String {
             val sqsClient =
                 SqsClient
@@ -117,10 +119,11 @@ class AuthControllerE2ETest {
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
 
-    // JDK 기본 HttpURLConnection 기반 클라이언트는 POST 후 401 응답을 받으면 "cannot retry due to
-    // server authentication, in streaming mode" IOException을 던진다(JDK 자체 동작, 이 앱의 버그
-    // 아님 — TestRestTemplate이 기본으로 쓰는 SimpleClientHttpRequestFactory가 이 문제에 노출된다).
-    // 이 제약이 없는 Apache HttpClient5로 요청 팩토리를 교체한다.
+    // The JDK's default HttpURLConnection-based client throws a "cannot retry due to server
+    // authentication, in streaming mode" IOException when it gets a 401 response after a POST (this
+    // is JDK behavior itself, not a bug in this app — SimpleClientHttpRequestFactory, which
+    // TestRestTemplate uses by default, is exposed to this issue). We swap in Apache HttpClient5 as
+    // the request factory, which doesn't have this limitation.
     @BeforeEach
     fun useHttpComponentsClient() {
         restTemplate.restTemplate.requestFactory = HttpComponentsClientHttpRequestFactory()
@@ -137,7 +140,7 @@ class AuthControllerE2ETest {
     ) = restTemplate.postForEntity("/auth/sign-in", mapOf("userId" to userId, "password" to password), Map::class.java)
 
     @Test
-    fun `sign-up 후 sign-in하면 200과 액세스 토큰을 반환한다`() {
+    fun `signing in after sign-up returns 200 and an access token`() {
         val signUpResponse = signUp("auth-owner-1")
         assertThat(signUpResponse.statusCode).isEqualTo(HttpStatus.CREATED)
 
@@ -148,7 +151,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    fun `비밀번호가 틀리면 401과 INVALID_CREDENTIALS를 반환한다`() {
+    fun `returns 401 and INVALID_CREDENTIALS when the password is wrong`() {
         signUp("auth-owner-2")
 
         val response = signIn("auth-owner-2", "wrong-password")
@@ -158,7 +161,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    fun `존재하지 않는 아이디로 로그인하면 401과 INVALID_CREDENTIALS를 반환한다`() {
+    fun `returns 401 and INVALID_CREDENTIALS when logging in with a nonexistent user ID`() {
         val response = signIn("no-such-user", PASSWORD)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
@@ -166,7 +169,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    fun `존재하지 않는 아이디와 틀린 비밀번호는 동일한 응답을 반환한다 (user enumeration 방지)`() {
+    fun `a nonexistent user ID and a wrong password return the same response (prevents user enumeration)`() {
         signUp("auth-owner-3")
 
         val wrongPassword = signIn("auth-owner-3", "wrong-password")
@@ -178,7 +181,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    fun `이미 사용 중인 아이디로 가입하면 400과 USER_ID_ALREADY_EXISTS를 반환한다`() {
+    fun `returns 400 and USER_ID_ALREADY_EXISTS when signing up with a user ID already in use`() {
         signUp("auth-owner-4")
 
         val response = signUp("auth-owner-4", "another-password")
@@ -188,7 +191,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    fun `비밀번호가 8자 미만이면 400과 VALIDATION_FAILED를 반환한다`() {
+    fun `returns 400 and VALIDATION_FAILED when the password is under 8 characters`() {
         val response = signUp("auth-owner-5", "short")
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)

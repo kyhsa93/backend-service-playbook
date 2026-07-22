@@ -5,7 +5,7 @@ import java.io.File
 
 private val REST_CONTROLLER = Regex("@RestController\\b")
 
-/** [5] @RestController — interfaces/ 에만 허용 */
+/** [5] @RestController — allowed only in interfaces/ */
 fun checkControllerPlacement(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("controller-placement")
@@ -18,9 +18,9 @@ fun checkControllerPlacement(rootPath: String): RuleResult {
         if (f.pathContains("/interfaces/")) {
             result.add(passFinding("$rel (@RestController)"))
         } else {
-            result.add(failFinding(rel, "@RestController는 interfaces/ 패키지 안에 있어야 함"))
+            result.add(failFinding(rel, "@RestController must be inside the interfaces/ package"))
         }
     }
-    if (!found) result.add(skipFinding("@RestController 없음"))
+    if (!found) result.add(skipFinding("no @RestController"))
     return result
 }

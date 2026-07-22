@@ -1,9 +1,10 @@
-// 규칙별 회귀 테스트 — testdata/<rule>/good|bad-*/ 를 대상으로 실행한다.
+// Per-rule regression tests — run against testdata/<rule>/good|bad-*/.
 //
-// JUnit 등 외부 테스트 프레임워크를 새로 끌어오지 않고, 실패 시 AssertionError를 던지는
-// 자체 assert 함수 하나만으로 작성된 가벼운 러너다(nestjs harness의 run-fixtures.ts와
-// 같은 취지 — kotlin.test 아티팩트조차 별도 의존성이라 끌어오지 않는다). `test/`
-// 디렉토리에서 실행한다고 가정하고 "testdata/..." 상대경로를 그대로 쓴다.
+// A lightweight runner written using only a single self-contained assert function that throws
+// AssertionError on failure, without pulling in an external test framework like JUnit(the same
+// rationale as the nestjs harness's run-fixtures.ts — even the kotlin.test artifact is skipped since
+// it's a separate dependency). Assumes execution from the `test/` directory and uses the
+// "testdata/..." relative path as-is.
 package harness.test
 
 import harness.Kind

@@ -10,8 +10,9 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * Credential 쓰기 모델([CredentialRepository])과 읽기 모델([CredentialQuery])을 함께 구현하는 구현체.
- * SignInService는 CredentialQuery 타입으로만 주입받으므로 saveCredential에는 접근할 수 없다.
+ * The implementation that provides both the Credential write model ([CredentialRepository]) and read
+ * model ([CredentialQuery]). SignInService is only injected with the CredentialQuery type, so it cannot
+ * access saveCredential.
  */
 @Repository
 class CredentialRepositoryImpl(

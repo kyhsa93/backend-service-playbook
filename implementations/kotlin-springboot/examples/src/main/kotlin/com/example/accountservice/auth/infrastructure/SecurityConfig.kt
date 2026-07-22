@@ -21,11 +21,11 @@ class SecurityConfig(
                 authorize("/auth/sign-in", permitAll)
                 authorize("/auth/sign-up", permitAll)
                 authorize("/actuator/health/**", permitAll)
-                // STATELESS 세션 + OncePerRequestFilter 조합에서는 요청 처리 중 발생한 예외가
-                // 컨테이너의 /error 재전달(forward)로 이어지는데, JwtAuthenticationFilter는
-                // 기본적으로 error dispatch에서 재실행되지 않아 SecurityContext가 비어 401/400
-                // 대신 403으로 응답이 뒤바뀐다 — /error도 permitAll로 열어 원래 상태 코드가 그대로
-                // 전달되게 한다.
+                // With the STATELESS session + OncePerRequestFilter combination, an exception raised
+                // while handling a request leads to the container's /error forward. JwtAuthenticationFilter
+                // doesn't re-run on the error dispatch by default, so SecurityContext ends up empty and
+                // the response gets swapped from 401/400 to 403 — opening /error to permitAll as well
+                // lets the original status code pass through unchanged.
                 authorize("/error", permitAll)
                 authorize(anyRequest, authenticated)
             }

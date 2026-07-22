@@ -3,7 +3,7 @@ package harness.rules
 import harness.*
 import java.io.File
 
-/** [3] @Service — application/ 에만 허용 */
+/** [3] @Service — allowed only in application/ */
 fun checkServiceAnnotation(rootPath: String): RuleResult {
     val root = File(rootPath)
     val result = RuleResult("service-annotation")
@@ -16,9 +16,9 @@ fun checkServiceAnnotation(rootPath: String): RuleResult {
         if (f.pathContains("/application/")) {
             result.add(passFinding("$rel (@Service)"))
         } else {
-            result.add(failFinding(rel, "@Service는 application/ 패키지 안에 있어야 함"))
+            result.add(failFinding(rel, "@Service must be inside the application/ package"))
         }
     }
-    if (!found) result.add(skipFinding("@Service 없음"))
+    if (!found) result.add(skipFinding("no @Service"))
     return result
 }

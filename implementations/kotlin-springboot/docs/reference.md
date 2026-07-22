@@ -1,40 +1,40 @@
-# 실전 구현 템플릿 — Kotlin Spring Boot
+# Practical Implementation Template — Kotlin Spring Boot
 
-전체 도메인 하나(`Order`)를 이 아키텍처의 **올바른 목표 상태**로 구현한 템플릿이다. 새 도메인을 추가할 때 이 템플릿을 복사해서 시작한다(도메인명만 변경).
+A template that implements one complete domain (`Order`) as this architecture's **correct target state**. When adding a new domain, copy this template as a starting point (only changing the domain name).
 
-> **`examples/`(Account 도메인)와의 관계**: 이 템플릿은 `examples/`의 현재 코드를 그대로 옮긴 것이 아니다. `examples/`는 `docs/architecture/*.md` 각 문서가 명시하는 "알려진 갭"(Aggregate ID 하이픈, Outbox 미적용, 에러 응답 형식, 인증 미구현, Repository 메서드 네이밍 등)을 아직 반영하지 않은 상태다. 이 템플릿은 그 갭이 모두 해소된 **정답 코드**를 보여준다 — 각 절 끝에 근거가 되는 `architecture/*.md` 링크를 단다.
+> **Relationship with `examples/` (the Account domain)**: this template is not a direct copy of `examples/`'s current code. `examples/` hasn't yet reflected every "known gap" each `docs/architecture/*.md` document specifies (Aggregate ID hyphens, the Outbox not yet applied, the error response format, authentication not yet implemented, Repository method naming, etc). This template shows the **correct code** with all those gaps closed — each section ends with a link to the `architecture/*.md` document that justifies it.
 
 ---
 
-## 디렉토리 구조
+## Directory structure
 
 ```
 com.example.orderservice/
-  OrderServiceApplication.kt          ← @SpringBootApplication 진입점 (bootstrap.md)
+  OrderServiceApplication.kt          ← the @SpringBootApplication entry point (bootstrap.md)
 
-  common/                             ← 프로젝트 공통 인프라 (shared-modules.md)
-    GenerateId.kt                       ← 최상위 함수, Aggregate ID 생성 (aggregate-id.md)
+  common/                             ← project-common infrastructure (shared-modules.md)
+    GenerateId.kt                       ← a top-level function, Aggregate ID generation (aggregate-id.md)
     GlobalExceptionHandler.kt           ← @RestControllerAdvice (error-handling.md)
     CorrelationIdFilter.kt              ← Filter, MDC (cross-cutting-concerns.md)
     RequestLoggingInterceptor.kt        ← HandlerInterceptor
-    WebConfig.kt                        ← @Configuration, Interceptor/CORS 등록
+    WebConfig.kt                        ← @Configuration, registers the Interceptor/CORS
 
-  config/                             ← @ConfigurationProperties 모음 (config.md)
+  config/                             ← the @ConfigurationProperties collection (config.md)
     DatabaseProperties.kt
     JwtProperties.kt
 
-  auth/                               ← 인증 공유 모듈 (authentication.md)
-    AuthService.kt                      ← JWT 발급
-    JwtAuthenticationFilter.kt          ← Bearer 토큰 검증
+  auth/                               ← the shared authentication module (authentication.md)
+    AuthService.kt                      ← token issuance
+    JwtAuthenticationFilter.kt          ← Bearer token verification
     SecurityConfig.kt                   ← @Configuration, SecurityFilterChain
 
-  outbox/                             ← Domain Event 전파 인프라 (domain-events.md)
+  outbox/                             ← Domain Event propagation infrastructure (domain-events.md)
     OutboxEvent.kt                      ← @Entity
     OutboxEventJpaRepository.kt
-    OutboxWriter.kt                      ← Repository.save() 트랜잭션 안에서 Outbox 행 적재
-    OutboxPoller.kt                      ← @Scheduled 폴링 → 메시지 큐 발행
-    OutboxConsumer.kt                    ← 메시지 큐 long polling → EventHandlerRegistry로 라우팅
-    EventHandlerRegistry.kt              ← eventType → 핸들러 Map(생성자 주입)
+    OutboxWriter.kt                      ← writes an Outbox row inside Repository.save()'s transaction
+    OutboxPoller.kt                      ← polls via @Scheduled → publishes to the message queue
+    OutboxConsumer.kt                    ← message-queue long polling → routes to EventHandlerRegistry
+    EventHandlerRegistry.kt              ← eventType → handler Map (constructor-injected)
 
   order/                              ← Bounded Context
     domain/
@@ -42,42 +42,42 @@ com.example.orderservice/
       OrderItem.kt                      ← Value Object (@Embeddable data class)
       OrderStatus.kt                    ← enum class
       OrderDomainEvent.kt                ← sealed interface
-      OrderCreatedEvent.kt / OrderCancelledEvent.kt  ← data class (OrderDomainEvent 구현)
-      OrderException.kt                 ← sealed class 예외 계층
+      OrderCreatedEvent.kt / OrderCancelledEvent.kt  ← data class (implements OrderDomainEvent)
+      OrderException.kt                 ← the sealed class exception hierarchy
       OrderErrorCode.kt                 ← enum class
-      OrderRepository.kt                ← Repository 인터페이스 (interface)
-      PaymentRepository.kt              ← Repository 인터페이스 (interface)
+      OrderRepository.kt                ← the Repository interface (interface)
+      PaymentRepository.kt              ← the Repository interface (interface)
 
     application/
       adapter/
-        UserAdapter.kt                    ← 외부 BC 호출 인터페이스 (interface)
+        UserAdapter.kt                    ← an interface for calling an external BC (interface)
       service/
-        CryptoService.kt                  ← 기술 인프라 인터페이스 (interface)
+        CryptoService.kt                  ← a technical-infrastructure interface (interface)
       command/
         CreateOrderCommand.kt / CreateOrderResult.kt / CreateOrderService.kt
         CancelOrderCommand.kt / CancelOrderService.kt
         DeleteOrderCommand.kt / DeleteOrderService.kt
       query/
-        OrderQuery.kt                     ← 읽기 전용 Query 인터페이스 (interface)
+        OrderQuery.kt                     ← the read-only Query interface (interface)
         GetOrderResult.kt / GetOrderService.kt
         GetOrdersQuery.kt / GetOrdersResult.kt / GetOrdersService.kt
       event/
-        OrderNotificationHandler.kt       ← application/event/, 큐 Consumer가 호출
+        OrderNotificationHandler.kt       ← application/event/, called by the queue Consumer
 
     infrastructure/
       persistence/
-        OrderJpaRepository.kt             ← Spring Data JpaRepository
-        OrderRepositoryImpl.kt            ← @Repository, OrderRepository 구현체
+        OrderJpaRepository.kt             ← Spring Data's JpaRepository
+        OrderRepositoryImpl.kt            ← @Repository, the OrderRepository implementation
         PaymentRepositoryImpl.kt
-        OrderQueryImpl.kt                 ← @Component, OrderQuery 구현체 (EntityManager 기반 읽기 전용 쿼리)
+        OrderQueryImpl.kt                 ← @Component, the OrderQuery implementation (an EntityManager-based read-only query)
       UserAdapterImpl.kt                  ← @Component
       CryptoServiceImpl.kt                ← @Component
-      OrderCleanupScheduler.kt            ← @Component, @Scheduled (선택 — 배치가 필요할 때)
+      OrderCleanupScheduler.kt            ← @Component, @Scheduled (optional — when a batch job is needed)
 
     interfaces/
       rest/
         OrderController.kt                ← @RestController
-        Schemas.kt                        ← Request/Response data class 모음
+        Schemas.kt                        ← the collection of Request/Response data classes
 
   src/main/resources/
     application.yml
@@ -85,11 +85,11 @@ com.example.orderservice/
       V1__create_orders.sql               ← Flyway (persistence.md)
 ```
 
-이 트리는 [directory-structure.md](architecture/directory-structure.md)의 실제 Account 패키지 구조와 [shared-modules.md](architecture/shared-modules.md)가 제안하는 공유 패키지 배치를 합친 것이다. `interfaces/`(복수형)를 최상위 interface 레이어 패키지명으로 쓰는 것이 이 저장소의 관례다 — root 문서의 `interface/`(단수)와 다르다.
+This tree combines the actual Account package structure from [directory-structure.md](architecture/directory-structure.md) with the shared-package placement [shared-modules.md](architecture/shared-modules.md) proposes. Using `interfaces/` (plural) as the top-level interface-layer package name is this repository's convention — it differs from the root document's `interface/` (singular).
 
 ---
 
-## Domain 레이어
+## The Domain layer
 
 ### Aggregate Root
 
@@ -162,11 +162,11 @@ class Order protected constructor() {
 }
 ```
 
-- `protected constructor()` + `companion object.create()`: 유일한 공개 생성 경로가 "주문 항목은 최소 1개 이상"이라는 불변식을 강제하고, 생성 즉시 `OrderCreatedEvent`를 수집한다.
-- 모든 프로퍼티가 `private set`: 외부에서 `order.status = OrderStatus.CANCELLED`처럼 직접 대입할 수 없다. 상태 변경은 `cancel()` 같은 도메인 메서드로만 이루어진다.
-- `id: Long?`(JPA surrogate key)와 `orderId: String`(도메인 식별자)이 분리되어 있다 — Controller/Command/Result 어디에도 `id: Long`을 노출하지 않는다.
+- `protected constructor()` + `companion object.create()`: the sole public creation path enforces the invariant "an order must have at least 1 item," and collects `OrderCreatedEvent` right at creation.
+- Every property is `private set`: it can't be assigned directly from outside like `order.status = OrderStatus.CANCELLED`. A state change only happens through a domain method like `cancel()`.
+- `id: Long?` (the JPA surrogate key) is separated from `orderId: String` (the domain identifier) — `id: Long` is never exposed anywhere in the Controller/Command/Result.
 
-근거: [tactical-ddd.md](architecture/tactical-ddd.md), [aggregate-id.md](architecture/aggregate-id.md).
+Rationale: [tactical-ddd.md](architecture/tactical-ddd.md), [aggregate-id.md](architecture/aggregate-id.md).
 
 ### Value Object
 
@@ -190,7 +190,7 @@ data class OrderItem(
 }
 ```
 
-`data class`가 `equals()`/`hashCode()`/`copy()`를 자동 생성한다 — root(TypeScript/Java)에서 수동으로 작성해야 했던 속성 기반 동등성 비교가 필요 없다. `init` 블록이 생성 시점에 불변식을 검증한다. 근거: [tactical-ddd.md](architecture/tactical-ddd.md).
+`data class` auto-generates `equals()`/`hashCode()`/`copy()` — there's no need for the attribute-based equality comparison you'd have to hand-write in the root (TypeScript/Java). The `init` block validates invariants at creation time. Rationale: [tactical-ddd.md](architecture/tactical-ddd.md).
 
 ### enum class
 
@@ -201,7 +201,7 @@ package com.example.orderservice.order.domain
 enum class OrderStatus { PENDING, PAID, CANCELLED }
 ```
 
-### Domain Event — `sealed interface`로 계층화
+### Domain Event — layered via `sealed interface`
 
 ```kotlin
 // order/domain/OrderDomainEvent.kt
@@ -227,9 +227,9 @@ data class OrderCancelledEvent(
 ) : OrderDomainEvent
 ```
 
-`sealed interface`로 이벤트 타입을 묶으면, 이후 EventHandler에서 `when (event) { ... }` 분기의 완전성(exhaustiveness)을 컴파일러가 검사한다 — 새 이벤트 타입 추가 시 처리 누락을 컴파일 타임에 잡는다. 근거: [domain-events.md](architecture/domain-events.md).
+Grouping event types under a `sealed interface` means the compiler checks the exhaustiveness of any subsequent `when (event) { ... }` branch in an EventHandler — a missed-handling case is caught at compile time when a new event type is added. Rationale: [domain-events.md](architecture/domain-events.md).
 
-### 예외 계층 — `sealed class` + 에러 코드
+### The exception hierarchy — `sealed class` + error codes
 
 ```kotlin
 // order/domain/OrderErrorCode.kt
@@ -259,30 +259,30 @@ sealed class OrderException(
 ) : RuntimeException(message)
 
 class OrderNotFoundException(orderId: String) :
-    OrderException("주문을 찾을 수 없습니다: $orderId", OrderErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND)
+    OrderException("Order not found: $orderId", OrderErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND)
 
 class OrderItemsEmptyException :
-    OrderException("주문 항목은 최소 1개 이상이어야 합니다.", OrderErrorCode.ORDER_ITEMS_EMPTY, HttpStatus.BAD_REQUEST)
+    OrderException("An order must have at least 1 item.", OrderErrorCode.ORDER_ITEMS_EMPTY, HttpStatus.BAD_REQUEST)
 
 class InvalidPriceException :
-    OrderException("상품 가격은 0보다 커야 합니다.", OrderErrorCode.INVALID_PRICE, HttpStatus.BAD_REQUEST)
+    OrderException("The item price must be greater than 0.", OrderErrorCode.INVALID_PRICE, HttpStatus.BAD_REQUEST)
 
 class InvalidQuantityException :
-    OrderException("수량은 0보다 커야 합니다.", OrderErrorCode.INVALID_QUANTITY, HttpStatus.BAD_REQUEST)
+    OrderException("The quantity must be greater than 0.", OrderErrorCode.INVALID_QUANTITY, HttpStatus.BAD_REQUEST)
 
 class OrderAlreadyCancelledException(orderId: String) :
-    OrderException("이미 취소된 주문입니다: $orderId", OrderErrorCode.ORDER_ALREADY_CANCELLED, HttpStatus.CONFLICT)
+    OrderException("This order is already cancelled: $orderId", OrderErrorCode.ORDER_ALREADY_CANCELLED, HttpStatus.CONFLICT)
 
 class OrderPaidNotCancellableException(orderId: String) :
-    OrderException("결제 완료된 주문은 취소할 수 없습니다: $orderId", OrderErrorCode.ORDER_PAID_NOT_CANCELLABLE, HttpStatus.CONFLICT)
+    OrderException("A paid order cannot be cancelled: $orderId", OrderErrorCode.ORDER_PAID_NOT_CANCELLABLE, HttpStatus.CONFLICT)
 
 class PaymentNotFoundException(orderId: String) :
-    OrderException("결제 정보를 찾을 수 없습니다: $orderId", OrderErrorCode.PAYMENT_NOT_FOUND, HttpStatus.NOT_FOUND)
+    OrderException("Payment info not found: $orderId", OrderErrorCode.PAYMENT_NOT_FOUND, HttpStatus.NOT_FOUND)
 ```
 
-`sealed class`는 같은 파일 내 상속만 허용하므로, `GlobalExceptionHandler`가 `OrderException` 하나만 잡아도 모든 하위 타입이 커버된다 — 새 예외 추가 시 핸들러 수정이 필요 없다. 근거: [error-handling.md](architecture/error-handling.md).
+Since `sealed class` only allows subclassing within the same file, `GlobalExceptionHandler` covers every subtype just by catching `OrderException` alone — no handler changes are needed when adding a new exception. Rationale: [error-handling.md](architecture/error-handling.md).
 
-### Repository 인터페이스 — Kotlin `interface`
+### The Repository interface — a Kotlin `interface`
 
 ```kotlin
 // order/domain/OrderRepository.kt
@@ -315,11 +315,11 @@ interface PaymentRepository {
 data class PaymentFindQuery(val page: Int, val take: Int, val orderId: String? = null)
 ```
 
-`abstract class`가 아니라 `interface`다 — Spring은 클래스패스에서 이 인터페이스의 유일한 `@Repository` 구현체를 찾아 자동 주입하므로, NestJS가 필요로 하는 `abstract class` 우회가 필요 없다. 근거: [repository-pattern.md](architecture/repository-pattern.md).
+It's an `interface`, not an `abstract class` — Spring finds this interface's sole `@Repository` implementation on the classpath and auto-injects it, so there's no need for the `abstract class` workaround NestJS requires. Rationale: [repository-pattern.md](architecture/repository-pattern.md).
 
 ---
 
-## Application 레이어
+## The Application layer
 
 ### Command Service
 
@@ -396,18 +396,18 @@ class CancelOrderService(
         val (orders, _) = orderRepository.findOrders(OrderFindQuery(page = 0, take = 1, orderId = command.orderId))
         val order = orders.firstOrNull() ?: throw OrderNotFoundException(command.orderId)
 
-        // 비즈니스 규칙은 Aggregate 내부에서 검증
+        // The business rule is validated inside the Aggregate
         order.cancel(command.reason)
 
         paymentRepository.deletePaymentMethods(order.orderId)
-        orderRepository.saveOrder(order)   // save 내부에서 Aggregate + Outbox를 함께 저장
+        orderRepository.saveOrder(order)   // save() saves the Aggregate + the Outbox together internally
     }
 }
 ```
 
-`findOrders(take = 1)` + `.firstOrNull()`이 root의 `.then((r) => r.orders.pop())` 패턴에 대응하는 Kotlin 관용구다 — 전용 `findOne`/`findById` 메서드를 만들지 않는다. 근거: [repository-pattern.md](architecture/repository-pattern.md), [cqrs-pattern.md](architecture/cqrs-pattern.md).
+`findOrders(take = 1)` + `.firstOrNull()` is the Kotlin idiom corresponding to the root's `.then((r) => r.orders.pop())` pattern — a dedicated `findOne`/`findById` method is never created. Rationale: [repository-pattern.md](architecture/repository-pattern.md), [cqrs-pattern.md](architecture/cqrs-pattern.md).
 
-### Query 인터페이스 — 읽기 전용 분리
+### The Query interface — split out as read-only
 
 ```kotlin
 // order/application/query/OrderQuery.kt
@@ -462,9 +462,9 @@ class GetOrderService(private val orderQuery: OrderQuery) {
 }
 ```
 
-Query Service는 `Repository`가 아니라 별도의 `OrderQuery` 인터페이스에 의존한다 — Aggregate 복원 비용 없이 읽기 최적화 쿼리(EntityManager/JPQL 프로젝션)를 실행하기 위해서다. `@Transactional(readOnly = true)`가 Hibernate의 dirty checking을 생략해 읽기 성능을 최적화한다. 근거: [cqrs-pattern.md](architecture/cqrs-pattern.md), [layer-architecture.md](architecture/layer-architecture.md).
+The Query Service depends on a separate `OrderQuery` interface, not `Repository` — this is to run read-optimized queries (an EntityManager/JPQL projection) without the cost of reconstituting the Aggregate. `@Transactional(readOnly = true)` optimizes read performance by skipping Hibernate's dirty checking. Rationale: [cqrs-pattern.md](architecture/cqrs-pattern.md), [layer-architecture.md](architecture/layer-architecture.md).
 
-### Adapter — 크로스 도메인 호출
+### Adapter — a cross-domain call
 
 ```kotlin
 // order/application/adapter/UserAdapter.kt
@@ -477,9 +477,9 @@ interface UserAdapter {
 data class UserSummary(val userId: String, val displayName: String, val email: String)
 ```
 
-`UserSummary?`(nullable)가 "찾지 못함"을 표현한다 — 호출자는 `?:` 없이는 컴파일이 안 된다. 근거: [cross-domain.md](architecture/cross-domain.md).
+`UserSummary?` (nullable) expresses "not found" — the caller can't compile without `?:`. Rationale: [cross-domain.md](architecture/cross-domain.md).
 
-### 기술 인프라 Service
+### A technical-infrastructure Service
 
 ```kotlin
 // order/application/service/CryptoService.kt
@@ -491,9 +491,9 @@ interface CryptoService {
 }
 ```
 
-Application Service는 `CryptoService` 인터페이스에만 의존하며, 실제 알고리즘(AES/KMS 등)은 `infrastructure/`의 구현체만 안다.
+The Application Service depends only on the `CryptoService` interface; only the implementation in `infrastructure/` knows the actual algorithm (AES/KMS, etc).
 
-### Event Handler — Outbox Consumer가 호출
+### Event Handler — called by the Outbox Consumer
 
 ```kotlin
 // order/application/event/OrderNotificationHandler.kt
@@ -510,21 +510,21 @@ class OrderNotificationHandler {
     fun handle(event: OrderDomainEvent) = when (event) {
         is OrderCreatedEvent -> handleCreated(event)
         is OrderCancelledEvent -> handleCancelled(event)
-        // 새 이벤트 타입 추가 시 분기 누락하면 컴파일 에러 (exhaustive when)
+        // a missed branch when a new event type is added is a compile error (exhaustive when)
     }
 
-    private fun handleCreated(event: OrderCreatedEvent) { /* 알림 발송 등 */ }
-    private fun handleCancelled(event: OrderCancelledEvent) { /* 알림 발송 등 */ }
+    private fun handleCreated(event: OrderCreatedEvent) { /* send a notification, etc */ }
+    private fun handleCancelled(event: OrderCancelledEvent) { /* send a notification, etc */ }
 }
 ```
 
-이 Handler는 **동기 `@EventListener`가 아니라 `outbox/OutboxConsumer`가 메시지 큐에서 수신한 메시지를 `outbox/EventHandlerRegistry`로 라우팅**해 호출한다 — Command Service의 트랜잭션과 분리된, at-least-once 전달을 전제로 한 비동기 경로다. 근거: [domain-events.md](architecture/domain-events.md).
+This Handler is called not by a synchronous `@EventListener`, but by **`outbox/OutboxConsumer` routing a message it received from the message queue to `outbox/EventHandlerRegistry`** — an asynchronous path, separate from the Command Service's transaction, that assumes at-least-once delivery. Rationale: [domain-events.md](architecture/domain-events.md).
 
 ---
 
-## Infrastructure 레이어
+## The Infrastructure layer
 
-### Repository 구현체 — Outbox와 같은 트랜잭션으로 저장
+### The Repository implementation — saved in the same transaction as the Outbox
 
 ```kotlin
 // order/infrastructure/persistence/OrderRepositoryImpl.kt
@@ -566,7 +566,7 @@ class OrderRepositoryImpl(
     @Transactional
     override fun saveOrder(order: Order) {
         jpaRepository.save(order)
-        // 도메인 이벤트가 있으면 Outbox에 함께 저장 — 같은 트랜잭션, 원자적 커밋/롤백
+        // If there are domain events, save them together in the Outbox — same transaction, atomic commit/rollback
         val events = order.pullDomainEvents()
         if (events.isNotEmpty()) {
             outboxJpaRepository.saveAll(events.map { OutboxEvent.from(it, objectMapper) })
@@ -598,9 +598,9 @@ class OrderRepositoryImpl(
 }
 ```
 
-`saveOrder()`가 Aggregate 저장과 Outbox 저장을 하나의 `@Transactional`로 묶는다 — Command Service는 더 이상 `ApplicationEventPublisher.publishEvent()`를 호출하지 않는다. `deleteOrder()`는 soft delete(`markDeleted()`)이며 `manager.delete()` 같은 hard delete를 쓰지 않는다. 값이 있을 때만 조건을 추가하는 동적 JPQL 조립은 이미 이 저장소의 확립된 관례다. 근거: [domain-events.md](architecture/domain-events.md), [persistence.md](architecture/persistence.md), [repository-pattern.md](architecture/repository-pattern.md).
+`saveOrder()` ties saving the Aggregate and saving to the Outbox together into a single `@Transactional` — the Command Service no longer calls `ApplicationEventPublisher.publishEvent()`. `deleteOrder()` is a soft delete (`markDeleted()`) and never uses a hard delete like `manager.delete()`. Assembling dynamic JPQL that only adds a condition when a value is present is already this repository's established convention. Rationale: [domain-events.md](architecture/domain-events.md), [persistence.md](architecture/persistence.md), [repository-pattern.md](architecture/repository-pattern.md).
 
-### Query 구현체 — 읽기 전용 프로젝션
+### The Query implementation — a read-only projection
 
 ```kotlin
 // order/infrastructure/persistence/OrderQueryImpl.kt
@@ -614,7 +614,7 @@ import org.springframework.stereotype.Component
 class OrderQueryImpl(private val em: EntityManager) : OrderQuery {
 
     override fun getOrders(query: GetOrdersQuery): GetOrdersResult {
-        // 읽기 전용 DTO 프로젝션 — Aggregate 전체를 복원하지 않는다
+        // A read-only DTO projection — never reconstitutes the full Aggregate
         val rows = em.createQuery(
             "SELECT o.orderId, o.status, o.items FROM Order o WHERE o.userId = :userId ORDER BY o.orderId DESC",
             Array<Any>::class.java,
@@ -623,7 +623,7 @@ class OrderQueryImpl(private val em: EntityManager) : OrderQuery {
             .setMaxResults(query.take)
             .resultList
 
-        val summaries = rows.map { /* row → OrderSummary 매핑 */ GetOrdersResult.OrderSummary("", "", 0) }
+        val summaries = rows.map { /* map a row → OrderSummary */ GetOrdersResult.OrderSummary("", "", 0) }
         return GetOrdersResult(summaries, summaries.size.toLong())
     }
 
@@ -638,7 +638,7 @@ class OrderQueryImpl(private val em: EntityManager) : OrderQuery {
 }
 ```
 
-### Adapter 구현체
+### The Adapter implementation
 
 ```kotlin
 // order/infrastructure/UserAdapterImpl.kt
@@ -658,7 +658,7 @@ class UserAdapterImpl(private val userService: UserService) : UserAdapter {
 
 ---
 
-## Interfaces 레이어
+## The Interfaces layer
 
 ### Controller
 
@@ -711,10 +711,10 @@ class OrderController(
 }
 ```
 
-- Controller는 `Authentication`에서 인증된 사용자 ID(`authentication.name`, JWT subject)만 꺼내 Command/Query에 포함한다 — 클라이언트가 보낸 헤더를 검증 없이 신뢰하지 않는다. 근거: [authentication.md](architecture/authentication.md).
-- 에러 변환용 `@ExceptionHandler`가 Controller에 없다 — 전역 `common/GlobalExceptionHandler.kt`(`@RestControllerAdvice`)가 `OrderException` 계층 전체를 한 번에 처리한다.
+- The Controller only pulls the authenticated user ID (`authentication.name`, the JWT subject) out of `Authentication` to include in a Command/Query — it never trusts a client-sent header without verification. Rationale: [authentication.md](architecture/authentication.md).
+- The Controller has no `@ExceptionHandler` for error conversion — the global `common/GlobalExceptionHandler.kt` (`@RestControllerAdvice`) handles the entire `OrderException` hierarchy at once.
 
-### Request/Response DTO
+### Request/Response DTOs
 
 ```kotlin
 // order/interfaces/rest/Schemas.kt
@@ -726,8 +726,8 @@ import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 
 data class CreateOrderRequest(
-    @field:Schema(description = "주문 항목", required = true)
-    @field:Size(min = 1, message = "주문 항목은 최소 1개 이상이어야 합니다.")
+    @field:Schema(description = "The order items", required = true)
+    @field:Size(min = 1, message = "An order must have at least 1 item.")
     val items: List<OrderItemRequest>,
 ) {
     data class OrderItemRequest(
@@ -740,14 +740,14 @@ data class CreateOrderRequest(
 
 data class CancelOrderRequest(
     @field:NotBlank
-    @field:Schema(description = "취소 사유")
+    @field:Schema(description = "The cancellation reason")
     val reason: String,
 )
 ```
 
-`@field:` 사용 지정자를 반드시 붙인다 — 빠뜨리면 컴파일 에러 없이 Bean Validation이 조용히 동작하지 않는다. 근거: [cross-cutting-concerns.md](architecture/cross-cutting-concerns.md).
+The `@field:` use-site target must always be attached — omitting it makes Bean Validation silently not work with no compile error. Rationale: [cross-cutting-concerns.md](architecture/cross-cutting-concerns.md).
 
-### 전역 에러 핸들러 (공유, `common/`에 위치)
+### The global error handler (shared, located in `common/`)
 
 ```kotlin
 // common/GlobalExceptionHandler.kt
@@ -783,32 +783,32 @@ class GlobalExceptionHandler {
     @ExceptionHandler(Exception::class)
     fun handleUnknown(e: Exception): ResponseEntity<ErrorResponse> =
         ResponseEntity.internalServerError().body(
-            ErrorResponse(500, "INTERNAL_SERVER_ERROR", "예상치 못한 오류가 발생했습니다.", "Internal Server Error"),
+            ErrorResponse(500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred.", "Internal Server Error"),
         )
 }
 ```
 
-새 도메인(`Order` 외 다른 BC)을 추가해도 각 BC의 `sealed class <Domain>Exception`을 이 핸들러에 `@ExceptionHandler` 하나씩만 추가하면 된다 — Controller마다 반복하지 않는다. 근거: [error-handling.md](architecture/error-handling.md).
+Even when a new domain (a BC other than `Order`) is added, you only need to add one `@ExceptionHandler` for that BC's `sealed class <Domain>Exception` to this handler — it's never repeated per Controller. Rationale: [error-handling.md](architecture/error-handling.md).
 
 ---
 
-## 컴포넌트 스캔 — 별도 모듈 등록 파일이 없다
+## Component scanning — there's no separate module-registration file
 
-NestJS는 `OrderModule`의 `providers`/`controllers` 배열에 모든 클래스를 명시적으로 등록해야 한다. Kotlin/Spring Boot는 이런 등록 파일 자체가 없다 — `@SpringBootApplication`(`OrderServiceApplication.kt`)이 이미 `com.example.orderservice` 하위 전체를 컴포넌트 스캔 대상으로 삼으므로, 위에서 만든 모든 `@Service`/`@Repository`/`@Component`/`@RestController`/`@Configuration` 클래스가 **패키지 안에 있고 올바른 애노테이션이 붙어 있기만 하면 자동으로 빈으로 등록되고 자동으로 주입된다.**
+NestJS requires explicitly registering every class in `OrderModule`'s `providers`/`controllers` arrays. Kotlin/Spring Boot has no such registration file at all — `@SpringBootApplication` (`OrderServiceApplication.kt`) already targets the entire `com.example.orderservice` subtree for component scanning, so every `@Service`/`@Repository`/`@Component`/`@RestController`/`@Configuration` class created above **is automatically registered as a bean and automatically injected, as long as it's inside the package and has the correct annotation attached.**
 
-| NestJS `OrderModule` | Kotlin/Spring Boot 대응 |
+| NestJS `OrderModule` | Kotlin/Spring Boot equivalent |
 |---|---|
-| `providers: [OrderCommandService, ...]` | `@Service`/`@Component` + 컴포넌트 스캔 (등록 파일 없음) |
-| `{ provide: OrderRepository, useClass: OrderRepositoryImpl }` | `interface OrderRepository` + `@Repository class OrderRepositoryImpl : OrderRepository` (자동 바인딩) |
-| `controllers: [OrderController]` | `@RestController` (컴포넌트 스캔으로 충분, 별도 배열 없음) |
-| `imports: [TypeOrmModule.forFeature([...])]` | Spring Data JPA `interface OrderJpaRepository : JpaRepository<Order, Long>` — 프록시를 Spring Data가 자동 생성 |
-| `exports: [OrderCommandService]` | 없음 — 컴포넌트 스캔 루트 하위라면 어떤 패키지의 빈이든 주입 가능 (외부 공개 제어는 팀 컨벤션 + harness로 대체) |
+| `providers: [OrderCommandService, ...]` | `@Service`/`@Component` + component scanning (no registration file) |
+| `{ provide: OrderRepository, useClass: OrderRepositoryImpl }` | `interface OrderRepository` + `@Repository class OrderRepositoryImpl : OrderRepository` (auto-bound) |
+| `controllers: [OrderController]` | `@RestController` (component scanning is enough, no separate array) |
+| `imports: [TypeOrmModule.forFeature([...])]` | Spring Data JPA's `interface OrderJpaRepository : JpaRepository<Order, Long>` — Spring Data auto-generates the proxy |
+| `exports: [OrderCommandService]` | none — as long as it's under the component-scan root, any package's bean can be injected (controlling external exposure is replaced by team convention + the harness) |
 
-새 도메인을 추가할 때 "어디에 등록해야 하는가"를 고민할 필요가 없다 — 올바른 패키지에 올바른 스테레오타입 애노테이션을 붙이는 것이 전부다. 근거: [module-pattern.md](architecture/module-pattern.md).
+When adding a new domain, there's no need to think about "where do I register this" — attaching the correct stereotype annotation in the correct package is all there is to it. Rationale: [module-pattern.md](architecture/module-pattern.md).
 
 ---
 
-## 마이그레이션
+## Migrations
 
 ```sql
 -- src/main/resources/db/migration/V1__create_orders.sql
@@ -830,12 +830,12 @@ CREATE TABLE order_items (
 );
 ```
 
-프로덕션 프로파일은 `spring.jpa.hibernate.ddl-auto: validate`로 설정하고, 스키마 변경은 항상 새 Flyway 마이그레이션 파일로 반영한다 — `ddl-auto: update`는 로컬 전용이다. 근거: [persistence.md](architecture/persistence.md).
+The production profile sets `spring.jpa.hibernate.ddl-auto: validate`, and schema changes are always reflected via a new Flyway migration file — `ddl-auto: update` is local-only. Rationale: [persistence.md](architecture/persistence.md).
 
 ---
 
-## 관련 문서
+## Related documents
 
-- [checklist.md](checklist.md) — 이 템플릿으로 작업한 뒤 수행할 자기 검토 체크리스트
-- [conventions.md](conventions.md) — 네이밍/타이핑/import/테스트 컨벤션 전체
-- [architecture/](architecture/) — 각 절의 근거가 되는 상세 설계 문서 전체
+- [checklist.md](checklist.md) — the self-review checklist to run after working from this template
+- [conventions.md](conventions.md) — the full naming/typing/import/test conventions
+- [architecture/](architecture/) — the full set of detailed design documents each section is justified by

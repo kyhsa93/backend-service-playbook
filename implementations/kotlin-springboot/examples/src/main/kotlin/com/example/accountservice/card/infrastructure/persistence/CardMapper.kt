@@ -3,8 +3,8 @@ package com.example.accountservice.card.infrastructure.persistence
 import com.example.accountservice.card.domain.Card
 
 /**
- * Card(순수 도메인) ↔ CardJpaEntity(JPA 매핑) 변환 전담 오브젝트.
- * CardRepositoryImpl 내부에서만 사용된다 — Domain/Application 레이어는 이 오브젝트를 알지 못한다.
+ * Object dedicated to converting between Card (pure domain) and CardJpaEntity (JPA mapping).
+ * Used only inside CardRepositoryImpl — the Domain/Application layers know nothing of this object.
  */
 internal object CardMapper {
     fun toDomain(entity: CardJpaEntity): Card =
@@ -18,7 +18,7 @@ internal object CardMapper {
             lastStatementSentMonth = entity.lastStatementSentMonth,
         )
 
-    /** 신규 Card를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
+    /** Creates a new entity for a new Card (no PK, subject to insert). */
     fun toNewEntity(card: Card): CardJpaEntity =
         CardJpaEntity(
             id = null,
@@ -31,7 +31,7 @@ internal object CardMapper {
             lastStatementSentMonth = card.lastStatementSentMonth,
         )
 
-    /** 기존 엔티티(PK 보존)에 도메인 Card의 최신 상태(status/lastStatementSentMonth)를 반영한다 — update 대상. */
+    /** Applies the domain Card's latest state (status/lastStatementSentMonth) onto an existing entity (PK preserved) — subject to update. */
     fun updateEntity(
         entity: CardJpaEntity,
         card: Card,

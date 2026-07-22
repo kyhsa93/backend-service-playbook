@@ -8,16 +8,17 @@ import org.springframework.stereotype.Component
 import java.time.LocalDate
 
 /**
- * 정기 이자 지급 Scheduler — Infrastructure 레이어(scheduling.md "Scheduler는 Infrastructure
- * 레이어에 배치"). 비즈니스 로직을 직접 실행하지 않고 Task를 [TaskQueue]에 적재(enqueue)만 한다 —
- * 실제 이자 계산/적립은 `account.pay-interest` Task를 수신하는
- * [com.example.accountservice.account.interfaces.task.PayInterestTaskController] →
- * `PayInterestService`가 담당한다.
+ * The recurring interest-payment Scheduler — placed in the Infrastructure layer (scheduling.md, "A
+ * Scheduler is placed in the Infrastructure layer"). It does not execute business logic directly; it
+ * only enqueues a Task onto the [TaskQueue] — the actual interest calculation/crediting is handled by
+ * `PayInterestService`, via [com.example.accountservice.account.interfaces.task.PayInterestTaskController],
+ * which receives the `account.pay-interest` Task.
  *
- * [payDate]를 enqueue 시점에 확정해 payload로 넘긴다 — Task 처리(Consumer)가 지연되더라도(예: 자정
- * 근처) "몇 월 며칠자 이자인가"가 재계산되지 않고 enqueue 시점 그대로 유지된다. 이 값이 그대로
- * `Account.payInterest(payDate)`의 멱등성 키([com.example.accountservice.account.domain.Account.lastInterestPaidAt]
- * 비교 대상)로 쓰인다.
+ * [payDate] is fixed at enqueue time and passed as the payload — even if Task processing (the Consumer)
+ * is delayed (e.g. around midnight), "which date's interest this is" is not recalculated and stays
+ * exactly what it was at enqueue time. This same value is used as the idempotency key for
+ * `Account.payInterest(payDate)` (compared against
+ * [com.example.accountservice.account.domain.Account.lastInterestPaidAt]).
  */
 @Component
 class InterestPaymentScheduler(
@@ -26,15 +27,16 @@ class InterestPaymentScheduler(
 ) {
     private val logger = LoggerFactory.getLogger(InterestPaymentScheduler::class.java)
 
-    @Scheduled(cron = "0 0 3 * * *") // 매일 03:00
+    @Scheduled(cron = "0 0 3 * * *") // every day at 03:00
     fun enqueueDailyInterestPayment() {
         val payDate = LocalDate.now()
         val dedupId = "$TASK_TYPE-$payDate"
-        // Cron 핸들러에서 발생한 예외를 스케줄링 프레임워크가 조용히 삼키지 않도록 명시적으로 잡아
-        // 로깅한다(scheduling.md "Cron 예외는 명시적으로 로깅한다"). enqueue 자체가 실패하면(DB
-        // 장애 등) 오늘자 Task는 유실된다 — 다음 tick은 내일 날짜로 enqueue하므로 오늘을 자동으로
-        // 재시도하지 않는다. 이 저장소 범위에서는 이 로그(ERROR 레벨)를 알람으로 감시해 필요 시
-        // 수동으로 재실행하는 것으로 충분하다고 본다.
+        // Exceptions from the Cron handler are caught explicitly and logged so the scheduling framework
+        // does not silently swallow them (scheduling.md, "Cron exceptions are logged explicitly"). If
+        // the enqueue itself fails (e.g. a DB outage), today's Task is lost — the next tick enqueues
+        // with tomorrow's date, so today is not automatically retried. Within this repository's scope,
+        // monitoring this log (ERROR level) with an alert and re-running manually when needed is
+        // considered sufficient.
         runCatching {
             taskQueue.enqueue(
                 taskType = TASK_TYPE,
@@ -47,7 +49,7 @@ class InterestPaymentScheduler(
                 .atError()
                 .addKeyValue("pay_date", payDate.toString())
                 .setCause(it)
-                .log("일일 이자 지급 Task 적재 실패")
+                .log("Failed to enqueue the daily interest-payment Task")
         }
     }
 

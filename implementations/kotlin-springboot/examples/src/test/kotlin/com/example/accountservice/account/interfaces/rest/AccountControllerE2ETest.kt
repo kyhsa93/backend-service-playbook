@@ -70,13 +70,14 @@ class AccountControllerE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
-            // 테스트는 짧은 시간 안에 write API를 기본 limit-for-period(10)보다 훨씬 많이 호출하므로
-            // rate limiting 자체가 아니라 각 엔드포인트 로직을 검증할 수 있도록 테스트 한정으로 넉넉하게 푼다.
+            // The test calls the write API far more times in a short span than the default
+            // limit-for-period (10), so for tests only we loosen it generously so we're verifying
+            // each endpoint's logic rather than rate limiting itself.
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
-        // 컨테이너는 이미 떠 있는 상태이므로(정적 @Container 필드), Spring 컨텍스트가 SqsProperties를
-        // 바인딩하기 전에 큐를 직접 만들어 그 URL을 반환한다.
+        // Since the container is already up (a static @Container field), we create the queue
+        // directly and return its URL before the Spring context binds SqsProperties.
         private fun createDomainEventQueue(): String {
             val sqsClient =
                 SqsClient
@@ -91,9 +92,9 @@ class AccountControllerE2ETest {
             return queueUrl
         }
 
-        // SqsProperties.taskQueueUrl도 @NotBlank(config.md fail-fast)이므로, Task Queue 경로를
-        // 실제로 쓰지 않는 이 테스트도 컨텍스트 기동을 위해 FIFO 큐를 만들어 둔다(TaskQueueE2ETest와
-        // 동일한 방식).
+        // Since SqsProperties.taskQueueUrl is also @NotBlank (config.md fail-fast), this test — which
+        // doesn't actually use the Task Queue path — also creates a FIFO queue just to boot the
+        // context (the same approach as TaskQueueE2ETest).
         private fun createTaskQueue(): String {
             val sqsClient =
                 SqsClient
@@ -119,8 +120,8 @@ class AccountControllerE2ETest {
         @BeforeAll
         @JvmStatic
         fun verifySesSender() {
-            // LocalStack의 SES 에뮬레이터도 실제 SES처럼 발신자 신원 검증을 강제하므로,
-            // 테스트에서 이메일을 보내기 전에 발신 주소를 미리 인증해 둔다.
+            // LocalStack's SES emulator enforces sender-identity verification just like real SES,
+            // so we verify the sender address up front before the test sends any email.
             val sesClient =
                 SesClient
                     .builder()
@@ -205,7 +206,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `생성 요청이 유효하면 201과 계좌 정보를 반환한다`() {
+    fun `returns 201 and the account info when the creation request is valid`() {
         val response = post("/accounts", OWNER_ID, mapOf("currency" to "KRW", "email" to "$OWNER_ID@example.com"))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
@@ -222,20 +223,21 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `이메일 형식이 올바르지 않으면 400을 반환한다`() {
+    fun `returns 400 when the email format is invalid`() {
         val response = post("/accounts", OWNER_ID, mapOf("currency" to "KRW", "email" to "not-an-email"))
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
 
     @Test
-    fun `계좌를 생성하면 알림 이메일이 발송되고 발송 기록이 저장된다`() {
+    fun `creating an account sends a notification email and saves a send record`() {
         val email = "notify-created@example.com"
 
         val account = createAccount(OWNER_ID, "KRW", email)
         val accountId = account["accountId"] as String
 
-        // Outbox → SQS(OutboxPoller) → OutboxConsumer → EventHandler 경로를 거쳐 비동기로 처리되므로,
-        // 응답이 돌아온 시점에는 아직 이메일이 발송되지 않았을 수 있다 — 넉넉한 타임아웃으로 폴링한다.
+        // Processing goes through the Outbox → SQS (OutboxPoller) → OutboxConsumer → EventHandler
+        // path asynchronously, so the email may not have been sent yet by the time the response
+        // comes back — poll with a generous timeout.
         await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
             val messages = fetchSesMessages()
             val matched =
@@ -260,7 +262,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `입금하면 알림 이메일이 발송되고 발송 기록이 저장된다`() {
+    fun `depositing sends a notification email and saves a send record`() {
         val email = "notify-deposit@example.com"
         val account = createAccount(OWNER_ID, "KRW", email)
         val accountId = account["accountId"] as String
@@ -278,7 +280,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `입금 요청이 유효하면 201과 거래 내역을 반환한다`() {
+    fun `returns 201 and the transaction record when the deposit request is valid`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
@@ -291,13 +293,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `입금 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when depositing to a nonexistent account`() {
         val response = post("/accounts/non-existent/deposit", OWNER_ID, mapOf("amount" to 10000))
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `입금 시 다른 소유자의 계좌면 404를 반환한다`() {
+    fun `returns 404 when depositing to another owner's account`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/deposit", OTHER_OWNER_ID, mapOf("amount" to 10000))
@@ -306,7 +308,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `입금 금액이 0 이하이면 400을 반환한다`() {
+    fun `returns 400 when the deposit amount is 0 or less`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 0))
@@ -315,7 +317,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `정지된 계좌에 입금하면 400을 반환한다`() {
+    fun `returns 400 when depositing to a suspended account`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
 
@@ -325,7 +327,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `출금 요청이 유효하면 201과 거래 내역을 반환한다`() {
+    fun `returns 201 and the transaction record when the withdrawal request is valid`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
 
@@ -336,13 +338,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `출금 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when withdrawing from a nonexistent account`() {
         val response = post("/accounts/non-existent/withdraw", OWNER_ID, mapOf("amount" to 1000))
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `잔액보다 큰 금액을 출금하면 400을 반환한다`() {
+    fun `returns 400 when withdrawing more than the balance`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/withdraw", OWNER_ID, mapOf("amount" to 1000))
@@ -351,7 +353,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `정지된 계좌에서 출금하면 400을 반환한다`() {
+    fun `returns 400 when withdrawing from a suspended account`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
 
@@ -361,7 +363,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `송금 요청이 유효하면 201과 출금 입금 거래 내역을 반환한다`() {
+    fun `returns 201 and the withdrawal and deposit transaction records when the transfer request is valid`() {
         val source = createAccount(OWNER_ID, "KRW")
         post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
         val target = createAccount(OTHER_OWNER_ID, "KRW")
@@ -398,7 +400,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `타인 소유 계좌로도 송금할 수 있다`() {
+    fun `can transfer to an account owned by someone else`() {
         val source = createAccount(OWNER_ID, "KRW")
         post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
         val target = createAccount(OTHER_OWNER_ID, "KRW")
@@ -414,7 +416,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `송금 시 출금 계좌를 찾을 수 없으면 404를 반환한다`() {
+    fun `returns 404 when the withdrawal account cannot be found during a transfer`() {
         val target = createAccount(OTHER_OWNER_ID, "KRW")
 
         val response =
@@ -429,7 +431,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `송금 시 입금 계좌를 찾을 수 없으면 404를 반환한다`() {
+    fun `returns 404 when the deposit account cannot be found during a transfer`() {
         val source = createAccount(OWNER_ID, "KRW")
         post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
 
@@ -445,7 +447,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `출금 계좌와 입금 계좌가 같으면 400과 TRANSFER_SAME_ACCOUNT를 반환한다`() {
+    fun `returns 400 and TRANSFER_SAME_ACCOUNT when the withdrawal and deposit accounts are the same`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
 
@@ -461,7 +463,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `잔액보다 큰 금액을 송금하면 400과 INSUFFICIENT_BALANCE를 반환한다`() {
+    fun `returns 400 and INSUFFICIENT_BALANCE when transferring more than the balance`() {
         val source = createAccount(OWNER_ID, "KRW")
         val target = createAccount(OTHER_OWNER_ID, "KRW")
 
@@ -477,7 +479,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `출금 계좌가 정지 상태면 400과 WITHDRAW_REQUIRES_ACTIVE_ACCOUNT를 반환한다`() {
+    fun `returns 400 and WITHDRAW_REQUIRES_ACTIVE_ACCOUNT when the withdrawal account is suspended`() {
         val source = createAccount(OWNER_ID, "KRW")
         post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
         post("/accounts/${source["accountId"]}/suspend", OWNER_ID, emptyMap())
@@ -495,7 +497,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `입금 계좌가 정지 상태면 400과 DEPOSIT_REQUIRES_ACTIVE_ACCOUNT를 반환한다`() {
+    fun `returns 400 and DEPOSIT_REQUIRES_ACTIVE_ACCOUNT when the deposit account is suspended`() {
         val source = createAccount(OWNER_ID, "KRW")
         post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
         val target = createAccount(OTHER_OWNER_ID, "KRW")
@@ -513,7 +515,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `통화가 일치하지 않으면 400과 CURRENCY_MISMATCH를 반환한다`() {
+    fun `returns 400 and CURRENCY_MISMATCH when the currencies do not match`() {
         val source = createAccount(OWNER_ID, "KRW")
         post("/accounts/${source["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
         val target = createAccount(OTHER_OWNER_ID, "USD")
@@ -530,7 +532,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `정상 계좌를 정지하면 204를 반환한다`() {
+    fun `returns 204 when suspending a normal account`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
@@ -541,13 +543,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `정지 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when suspending a nonexistent account`() {
         val response = post("/accounts/non-existent/suspend", OWNER_ID, emptyMap())
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `이미 정지된 계좌를 정지하면 400을 반환한다`() {
+    fun `returns 400 when suspending an already-suspended account`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
 
@@ -557,7 +559,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `정지된 계좌를 재개하면 204를 반환한다`() {
+    fun `returns 204 when reactivating a suspended account`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/suspend", OWNER_ID, emptyMap())
 
@@ -569,13 +571,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `재개 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when reactivating a nonexistent account`() {
         val response = post("/accounts/non-existent/reactivate", OWNER_ID, emptyMap())
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `활성 계좌를 재개하면 400을 반환한다`() {
+    fun `returns 400 when reactivating an active account`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/reactivate", OWNER_ID, emptyMap())
@@ -584,7 +586,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `잔액이 0인 계좌를 종료하면 204를 반환한다`() {
+    fun `returns 204 when closing an account with a 0 balance`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = post("/accounts/${account["accountId"]}/close", OWNER_ID, emptyMap())
@@ -595,13 +597,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `종료 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when closing a nonexistent account`() {
         val response = post("/accounts/non-existent/close", OWNER_ID, emptyMap())
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `잔액이 0이 아니면 400을 반환한다`() {
+    fun `returns 400 when the balance is not 0`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 5000))
 
@@ -611,7 +613,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `이미 종료된 계좌를 종료하면 400을 반환한다`() {
+    fun `returns 400 when closing an already-closed account`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/close", OWNER_ID, emptyMap())
 
@@ -621,7 +623,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `종료된 계좌를 삭제하면 204를 반환하고 이후 조회 시 404를 반환한다`() {
+    fun `deleting a closed account returns 204, and a subsequent lookup returns 404`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/close", OWNER_ID, emptyMap())
 
@@ -633,13 +635,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `삭제 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when deleting a nonexistent account`() {
         val response = delete("/accounts/non-existent", OWNER_ID)
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `종료되지 않은 계좌를 삭제하면 400을 반환한다`() {
+    fun `returns 400 when deleting an account that is not closed`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = delete("/accounts/${account["accountId"]}", OWNER_ID)
@@ -648,7 +650,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `존재하는 계좌를 조회하면 200과 계좌 정보를 반환한다`() {
+    fun `returns 200 and the account info when looking up an existing account`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = get("/accounts/${account["accountId"]}", OWNER_ID)
@@ -661,13 +663,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `조회 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when looking up a nonexistent account`() {
         val response = get("/accounts/non-existent", OWNER_ID)
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `다른 소유자가 조회하면 404를 반환한다`() {
+    fun `returns 404 when looked up by a different owner`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = get("/accounts/${account["accountId"]}", OTHER_OWNER_ID)
@@ -676,7 +678,7 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `거래 내역을 페이지네이션과 함께 반환한다`() {
+    fun `returns the transaction history with pagination`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
         post("/accounts/${account["accountId"]}/withdraw", OWNER_ID, mapOf("amount" to 3000))
@@ -690,13 +692,13 @@ class AccountControllerE2ETest {
     }
 
     @Test
-    fun `거래 내역 조회 시 존재하지 않는 계좌면 404를 반환한다`() {
+    fun `returns 404 when looking up transaction history for a nonexistent account`() {
         val response = get("/accounts/non-existent/transactions", OWNER_ID)
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     @Test
-    fun `take를 초과한 페이지 조회는 빈 배열을 반환한다`() {
+    fun `looking up a page beyond the available data returns an empty array`() {
         val account = createAccount(OWNER_ID, "KRW")
 
         val response = get("/accounts/${account["accountId"]}/transactions?page=5&take=20", OWNER_ID)

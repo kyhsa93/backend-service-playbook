@@ -37,7 +37,7 @@ class CancelCardsByAccountServiceTest {
         )
 
     @Test
-    fun `계좌의 ACTIVE SUSPENDED 카드를 모두 해지하고 저장한다`() {
+    fun `cancels and saves all ACTIVE and SUSPENDED cards for the account`() {
         val cards = listOf(card("card-1", CardStatus.ACTIVE), card("card-2", CardStatus.SUSPENDED))
         every { cardRepository.findCards(findQuery) } returns (cards to cards.size.toLong())
 
@@ -48,7 +48,7 @@ class CancelCardsByAccountServiceTest {
     }
 
     @Test
-    fun `해지 대상 카드가 없으면 아무 것도 저장하지 않는다 (멱등)`() {
+    fun `saves nothing when there are no cards to cancel (idempotent)`() {
         every { cardRepository.findCards(findQuery) } returns (emptyList<Card>() to 0L)
 
         service.cancel("account-1")

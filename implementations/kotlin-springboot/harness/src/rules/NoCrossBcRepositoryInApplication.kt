@@ -9,17 +9,18 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// import com.example.accountservice.<도메인>.domain.<Name>Repository 또는 <Name>Query
+// import com.example.accountservice.<domain>.domain.<Name>Repository or <Name>Query
 private val REPOSITORY_OR_QUERY_IMPORT =
     Regex("""^import\s+com\.example\.accountservice\.(\w+)\.domain\.(\w*(?:Repository|Query))\b""", RegexOption.MULTILINE)
 
 /**
- * [R7] no-cross-bc-repository-in-application — application/ 파일은 자신이 속한 도메인이 아닌
- * 다른 도메인의 domain/ 안 *Repository, *Query 인터페이스를 직접 import할 수 없다. 크로스 도메인
- * 읽기는 Adapter(호출하는 쪽의 application/adapter/ 인터페이스 + infrastructure/ 의 *AdapterImpl
- * 구현체, 예: card/application/adapter/AccountAdapter + card/infrastructure/AccountAdapterImpl)를
- * 거쳐야 한다 (cross-domain-communication.md). 같은 도메인 안의 import(예: AccountRepository를 쓰는
- * account/application/의 Command Service)는 정상 패턴이므로 대상이 아니다.
+ * [R7] no-cross-bc-repository-in-application — a file in application/ may not directly import a
+ * *Repository, *Query interface under domain/ from a domain other than its own. Cross-domain reads
+ * must go through an Adapter(the calling side's application/adapter/ interface +
+ * infrastructure/'s *AdapterImpl implementation, e.g. card/application/adapter/AccountAdapter +
+ * card/infrastructure/AccountAdapterImpl) (cross-domain-communication.md). An import within the same
+ * domain(e.g. account/application/'s Command Service using AccountRepository) is a normal pattern and
+ * not targeted.
  */
 fun checkNoCrossBcRepositoryInApplication(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -42,14 +43,14 @@ fun checkNoCrossBcRepositoryInApplication(rootPath: String): RuleResult {
                 result.add(
                     failFinding(
                         rel,
-                        "다른 도메인($importedDomain)의 domain/$importedType 를 application/에서 직접 import 금지 — Adapter(application/adapter/ + infrastructure/*AdapterImpl)를 거쳐야 함 (cross-domain-communication.md)",
+                        "may not directly import domain/$importedType from another domain($importedDomain) inside application/ — must go through an Adapter(application/adapter/ + infrastructure/*AdapterImpl) (cross-domain-communication.md)",
                     ),
                 )
             }
         }
-        if (!fileHasFailure) result.add(passFinding("$rel (크로스 도메인 Repository/Query 직접 참조 없음)"))
+        if (!fileHasFailure) result.add(passFinding("$rel (no direct cross-domain Repository/Query reference)"))
     }
 
-    if (!found) result.add(skipFinding("application/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no application/ Kotlin files"))
     return result
 }

@@ -10,11 +10,13 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * Card 쓰기 모델([CardRepository])과 읽기 모델([CardQuery])을 함께 구현하는 구현체.
- * 각 Service는 자신에게 필요한 인터페이스 타입으로만 주입받으므로, Query Service는 saveCard에 접근할 수 없다.
+ * Implementation that implements both the Card write model ([CardRepository]) and the read model
+ * ([CardQuery]) together. Each Service is injected only with the interface type it needs, so the
+ * Query Service has no access to saveCard.
  *
- * `findCards`는 두 인터페이스가 정확히 같은 시그니처로 선언하므로 하나의 override가 동시에 만족시킨다
- * (account/infrastructure/persistence/AccountRepositoryImpl과 동일한 구조).
+ * `findCards` is declared with the exact same signature in both interfaces, so a single override
+ * satisfies both at once (the same structure as
+ * account/infrastructure/persistence/AccountRepositoryImpl).
  */
 @Repository
 class CardRepositoryImpl(

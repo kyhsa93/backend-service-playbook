@@ -6,9 +6,9 @@ import java.io.File
 private val ENV_ACCESS = Regex("""System\.getenv\(""")
 
 /**
- * [R6] no-direct-env-access-outside-config — domain/, application/ 은 System.getenv(...)를 직접
- * 호출할 수 없다. 환경 변수는 config/의 @ConfigurationProperties 클래스로만 바인딩하고,
- * infrastructure/에서 그 프로퍼티 객체를 주입받아 사용해야 한다 (config.md).
+ * [R6] no-direct-env-access-outside-config — domain/, application/ may not directly call
+ * System.getenv(...). Environment variables must only be bound through a @ConfigurationProperties
+ * class in config/, and infrastructure/ must inject and use that property object (config.md).
  */
 fun checkNoDirectEnvAccessOutsideConfig(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -24,14 +24,14 @@ fun checkNoDirectEnvAccessOutsideConfig(rootPath: String): RuleResult {
             result.add(
                 failFinding(
                     rel,
-                    "domain/, application/ 에서 System.getenv() 직접 호출 금지 — config/(@ConfigurationProperties) 또는 infrastructure/만 환경 변수에 접근 가능 (config.md)",
+                    "directly calling System.getenv() in domain/, application/ is forbidden — only config/(@ConfigurationProperties) or infrastructure/ may access environment variables (config.md)",
                 ),
             )
         } else {
-            result.add(passFinding("$rel (환경 변수 직접 접근 없음)"))
+            result.add(passFinding("$rel (no direct environment-variable access)"))
         }
     }
 
-    if (!found) result.add(skipFinding("domain/, application/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no domain/, application/ Kotlin files"))
     return result
 }

@@ -16,7 +16,7 @@ class GetCardServiceTest {
     private val service = GetCardService(cardQuery)
 
     @Test
-    fun `카드가 존재하면 조회 결과를 반환한다`() {
+    fun `returns the lookup result when the card exists`() {
         val card =
             Card.reconstitute(
                 cardId = "card-1",
@@ -36,7 +36,7 @@ class GetCardServiceTest {
     }
 
     @Test
-    fun `카드가 없으면 예외를 던진다`() {
+    fun `throws an exception when the card does not exist`() {
         val findQuery = CardFindQuery(page = 0, take = 1, cardId = "card-1", ownerId = "owner-1")
         every { cardQuery.findCards(findQuery) } returns (emptyList<Card>() to 0L)
 

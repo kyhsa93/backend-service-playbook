@@ -3,8 +3,8 @@ package com.example.accountservice.payment.infrastructure.persistence
 import com.example.accountservice.payment.domain.Payment
 
 /**
- * Payment(순수 도메인) ↔ PaymentJpaEntity(JPA 매핑) 변환 전담 오브젝트.
- * PaymentRepositoryImpl 내부에서만 사용된다 — Domain/Application 레이어는 이 오브젝트를 알지 못한다.
+ * The object dedicated to converting between Payment (pure domain) and PaymentJpaEntity (JPA mapping).
+ * Used only inside PaymentRepositoryImpl — the Domain/Application layers know nothing about this object.
  */
 internal object PaymentMapper {
     fun toDomain(entity: PaymentJpaEntity): Payment =
@@ -18,7 +18,7 @@ internal object PaymentMapper {
             createdAt = entity.createdAt,
         )
 
-    /** 신규 Payment를 위한 새 엔티티(PK 없음, insert 대상)를 생성한다. */
+    /** Creates a new entity (no PK, an insert target) for a new Payment. */
     fun toNewEntity(payment: Payment): PaymentJpaEntity =
         PaymentJpaEntity(
             id = null,
@@ -31,7 +31,7 @@ internal object PaymentMapper {
             createdAt = payment.createdAt,
         )
 
-    /** 기존 엔티티(PK 보존)에 도메인 Payment의 최신 상태(status)를 반영한다 — update 대상. */
+    /** Reflects the domain Payment's latest state (status) onto the existing entity (preserving the PK) — an update target. */
     fun updateEntity(
         entity: PaymentJpaEntity,
         payment: Payment,

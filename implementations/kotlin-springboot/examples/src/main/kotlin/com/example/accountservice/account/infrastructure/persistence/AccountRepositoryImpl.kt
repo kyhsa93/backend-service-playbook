@@ -22,7 +22,8 @@ class AccountRepositoryImpl(
     private val em: EntityManager,
 ) : AccountRepository,
     AccountQuery {
-    // AccountRepository(쓰기 모델) — findAccounts 하나로 목록/단건(take=1)/count를 모두 처리한다.
+    // AccountRepository (write model) — a single findAccounts handles list/single-record (take=1)/count
+    // all together.
     override fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long> {
         val jpql = buildJpql(query, count = false)
         val accounts =
@@ -48,9 +49,10 @@ class AccountRepositoryImpl(
     }
 
     /**
-     * source/target 두 Account 저장을 하나의 물리 트랜잭션으로 묶는다 — Transfer(계좌 간 송금)가
-     * 첫 사용처다. 출금 계좌 저장과 입금 계좌 저장이 각자 별도 트랜잭션으로 커밋되면 "출금은
-     * 반영됐는데 입금은 유실됨" 실패 모드가 생긴다.
+     * Bundles the source/target Account saves into a single physical transaction — Transfer (an
+     * inter-account funds transfer) is the first use of this. If the withdrawal-account save and the
+     * deposit-account save were each committed in their own separate transaction, a failure mode would
+     * arise where "the withdrawal is applied but the deposit is lost."
      */
     @Transactional
     override fun saveAccounts(
@@ -70,8 +72,9 @@ class AccountRepositoryImpl(
         jpaRepository.save(entity)
         val pending = account.pullPendingTransactions()
         if (pending.isNotEmpty()) transactionJpaRepository.saveAll(pending.map(TransactionMapper::toNewEntity))
-        // Aggregate 상태(account/transaction 행)와 Outbox 행을 같은 트랜잭션에 커밋한다 — 이벤트가
-        // Aggregate 상태 없이 저장되거나(dual-write), 반대로 유실되는 경우가 생기지 않는다.
+        // Commits the Aggregate state (account/transaction rows) and the Outbox row in the same
+        // transaction — this prevents cases where the event is saved without the Aggregate state
+        // (dual-write), or conversely gets lost.
         outboxWriter.saveAll(account.pullDomainEvents())
     }
 
@@ -79,7 +82,7 @@ class AccountRepositoryImpl(
     override fun deleteAccount(accountId: String) {
         val entity = jpaRepository.findByAccountIdAndDeletedAtIsNull(accountId) ?: return
         val account = AccountMapper.toDomain(entity)
-        account.markDeleted() // 도메인 메서드로 불변식(CLOSED 상태만 삭제 가능) 검증 후 deletedAt 설정
+        account.markDeleted() // Validates the invariant (only a CLOSED account may be deleted) via the domain method, then sets deletedAt
         AccountMapper.updateEntity(entity, account)
         jpaRepository.save(entity)
     }
@@ -93,9 +96,9 @@ class AccountRepositoryImpl(
         return transactions to count
     }
 
-    // AccountQuery(읽기 전용 포트)는 findAccounts/findTransactions를 AccountRepository와 정확히 같은
-    // 시그니처로 선언하므로(cqrs-pattern.md), 위의 두 override가 두 인터페이스를 동시에 만족시킨다 —
-    // 별도 오버로드가 필요 없다.
+    // Because AccountQuery (the read-only port) declares findAccounts/findTransactions with exactly the
+    // same signatures as AccountRepository (cqrs-pattern.md), the two overrides above satisfy both
+    // interfaces at once — no separate overload is needed.
 
     override fun hasTransactionWithReference(
         referenceId: String,

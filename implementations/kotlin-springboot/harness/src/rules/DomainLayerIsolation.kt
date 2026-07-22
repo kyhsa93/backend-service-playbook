@@ -3,23 +3,25 @@ package harness.rules
 import harness.*
 import java.io.File
 
-// 주석 안의 언급까지 잡으면 오탐이 되므로, 실제 import 선언만 보도록 라인/블록 주석을 먼저 제거한다.
+// Catching a mention inside a comment would be a false positive, so line/block comments are stripped
+// first to look only at real import declarations.
 private val BLOCK_COMMENT = Regex("""/\*[\s\S]*?\*/""")
 private val LINE_COMMENT = Regex("""//[^\n]*""")
 
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// 도메인 이름을 하드코딩하지 않는 구조적(경로 기반) 검사 — com.example.accountservice.<아무 BC>.
-// (application|infrastructure|interfaces) 형태의 import는 그 BC가 domain/ 자신이 속한 BC든
-// 다른(형제) BC든 전부 금지다. domain-purity 규칙(프레임워크 애노테이션/JPA import 블록리스트)보다
-// 넓은 범위 — 어떤 상위 레이어 코드도 domain/이 몰라야 한다는 의존 방향 자체를 강제한다.
+// A structural(path-based) check that doesn't hardcode domain names — an import of the form
+// com.example.accountservice.<any BC>.(application|infrastructure|interfaces) is forbidden regardless
+// of whether that BC is domain/'s own BC or a different(sibling) one. Broader in scope than the
+// domain-purity rule(a blocklist of framework annotations/JPA imports) — this enforces the dependency
+// direction itself, that domain/ must know about no higher-layer code at all.
 private val FORBIDDEN_LAYER_IMPORT =
     Regex("""^import\s+com\.example\.accountservice\.\w+\.(application|infrastructure|interfaces)\b""", RegexOption.MULTILINE)
 
 /**
- * [R1] domain-layer-isolation — domain/ 파일은 (자신이 속한 BC든 형제 BC든) application/,
- * infrastructure/, interfaces/ 패키지를 import할 수 없다 (layer-architecture.md).
+ * [R1] domain-layer-isolation — a domain/ file may not import the application/, infrastructure/,
+ * interfaces/ package(whether its own BC or a sibling BC) (layer-architecture.md).
  */
 fun checkDomainLayerIsolation(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -36,14 +38,14 @@ fun checkDomainLayerIsolation(rootPath: String): RuleResult {
             result.add(
                 failFinding(
                     rel,
-                    "domain/ 은 application/·infrastructure/·interfaces/(자신 또는 다른 도메인 포함) import 금지 — '${violation.value.trim()}' (layer-architecture.md)",
+                    "domain/ may not import application/·infrastructure/·interfaces/(including its own or another domain) — '${violation.value.trim()}' (layer-architecture.md)",
                 ),
             )
         } else {
-            result.add(passFinding("$rel (domain 레이어 격리)"))
+            result.add(passFinding("$rel (domain layer isolated)"))
         }
     }
 
-    if (!found) result.add(skipFinding("domain/ Kotlin 파일 없음"))
+    if (!found) result.add(skipFinding("no domain/ Kotlin files"))
     return result
 }

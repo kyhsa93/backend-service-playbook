@@ -4,14 +4,15 @@ import com.example.accountservice.common.generateId
 import java.time.LocalDateTime
 
 /**
- * Payment Aggregate Root — 어떤 프레임워크/ORM에도 의존하지 않는 순수 Kotlin 객체
- * (account/domain/Account.kt, card/domain/Card.kt와 동일한 domain/JPA 분리 구조).
+ * Payment Aggregate Root — a pure Kotlin object with no dependency on any framework/ORM
+ * (the same domain/JPA separation structure as account/domain/Account.kt, card/domain/Card.kt).
  *
- * `cardId`/`accountId`로 어느 카드·계좌가 관련되었는지 참조만 한다(BC 경계를 넘는 FK 없음).
- * 카드가 활성 상태인지, 연결 계좌 잔액이 충분한지는 Payment 스스로 판단할 수 없다 — Application
- * 레이어가 [com.example.accountservice.payment.application.adapter.CardAdapter]/
- * [com.example.accountservice.payment.application.adapter.AccountAdapter](ACL)로 동기 조회해 이미
- * 판정을 끝낸 뒤 [create]를 호출한다.
+ * It only references which card/account is involved via `cardId`/`accountId` (no FK crossing the BC
+ * boundary). Payment cannot decide for itself whether the card is active or whether the linked
+ * account has sufficient balance — the Application layer synchronously queries
+ * [com.example.accountservice.payment.application.adapter.CardAdapter]/
+ * [com.example.accountservice.payment.application.adapter.AccountAdapter] (ACL) and finishes that
+ * judgment before calling [create].
  */
 class Payment private constructor() {
     var paymentId: String = ""
@@ -39,8 +40,9 @@ class Payment private constructor() {
 
     companion object {
         /**
-         * 카드 활성 여부·계좌 잔액 충분 여부는 이미 Application 레이어의 동기 Adapter 호출로 판정이
-         * 끝난 뒤 호출되는 순수 생성 팩토리다 — PENDING으로만 만들고 이벤트는 없다.
+         * A pure creation factory called after the Application layer's synchronous Adapter call has
+         * already finished judging whether the card is active and whether the account balance is
+         * sufficient — it only creates in the PENDING state and raises no event.
          */
         fun create(
             cardId: String,
@@ -59,8 +61,8 @@ class Payment private constructor() {
             }
 
         /**
-         * Repository 구현체가 영속 데이터(JPA 엔티티 등)로부터 Payment를 복원할 때 사용한다.
-         * create()와 달리 도메인 이벤트를 생성하지 않는다.
+         * Used by the Repository implementation to restore a Payment from persisted data (e.g. a JPA
+         * entity). Unlike create(), it does not raise a domain event.
          */
         fun reconstitute(
             paymentId: String,
@@ -89,20 +91,21 @@ class Payment private constructor() {
     }
 
     /**
-     * 현재 [com.example.accountservice.payment.application.command.CreatePaymentService]는 결제
-     * 가능 여부를 Payment 생성 전에 동기 Adapter로 판정하므로, PENDING으로 만들어진 뒤 실패하는
-     * 경로는 없다. 다만 향후 결제 게이트웨이 콜백처럼 비동기로 실패가 도착하는 시나리오를 대비해
-     * 상태 전이 자체는 Aggregate가 갖고 있는다(Domain 단위 테스트로 검증) — 아직 어떤 Command도
-     * 호출하지 않는다.
+     * [com.example.accountservice.payment.application.command.CreatePaymentService] judges whether
+     * payment is possible via a synchronous Adapter call before the Payment is created, so there is
+     * no path where a Payment is created as PENDING and then fails. Nonetheless, the Aggregate itself
+     * owns this state transition (verified by a Domain unit test) to prepare for a future scenario
+     * where failure arrives asynchronously, such as a payment gateway callback — no Command calls it
+     * yet.
      */
     fun fail(reason: String) {
         if (status != PaymentStatus.PENDING) throw PaymentFailRequiresPendingPaymentException()
         status = PaymentStatus.FAILED
-        // reason은 현재 Payment 상태에 별도로 보관하지 않는다(nestjs 레퍼런스와 동일) — 상태 전이
-        // 자체가 목적인 미연결 도메인 메서드다.
+        // reason is not separately stored on the current Payment state (same as the nestjs reference)
+        // — this is an unwired domain method whose purpose is the state transition itself.
     }
 
-    /** 결제취소는 이미 확정된(COMPLETED) 결제를 되돌리는 것이므로 COMPLETED에서만 가능하다. */
+    /** Cancelling a payment reverts an already-confirmed (COMPLETED) payment, so it is only possible from COMPLETED. */
     fun cancel(reason: String) {
         if (status != PaymentStatus.COMPLETED) throw PaymentCancelRequiresCompletedPaymentException()
         status = PaymentStatus.CANCELLED

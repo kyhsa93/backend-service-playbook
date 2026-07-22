@@ -5,8 +5,9 @@ import java.io.File
 private val EXCLUDED_DIRS = setOf("test", ".git", "build")
 
 /**
- * root 아래 모든 .kt 파일을 찾는다 — test/, .git/, build/ 디렉토리는(깊이 무관하게)
- * 통째로 제외한다. 원본 bash 버전(find로 test/.git/build 경로를 -not -path로 제외하던 것)과 동일한 동작.
+ * Finds every .kt file under root — the test/, .git/, build/ directories are excluded
+ * entirely (regardless of depth). Behaves the same as the original bash version (which excluded
+ * test/.git/build paths via find's -not -path).
  */
 fun collectKtFiles(root: File): List<File> {
     if (!root.exists()) return emptyList()
@@ -17,18 +18,19 @@ fun collectKtFiles(root: File): List<File> {
         .toList()
 }
 
-/** root 기준 상대경로를 슬래시(`/`) 구분자로 정규화해서 돌려준다. */
+/** Returns the path relative to root, normalized with slash(`/`) separators. */
 fun File.relTo(root: File): String =
     this.relativeTo(root).path.replace(File.separatorChar, '/')
 
-/** 경로 문자열이 슬래시로 정규화된 형태에서 특정 세그먼트(예: "/domain/")를 포함하는지. */
+/** Whether the path string, once normalized with slashes, contains a specific segment (e.g. "/domain/"). */
 fun File.pathContains(segment: String): Boolean =
     this.path.replace(File.separatorChar, '/').contains(segment)
 
 /**
- * 경로에서 특정 레이어 디렉토리명(예: "application") 바로 앞 세그먼트를 반환한다 — 이 저장소의
- * `<domain>/{domain,application,infrastructure,interfaces}/` 구조에서 "이 파일이 어느 도메인/BC에
- * 속하는가"를 경로만으로 판단할 때 쓴다. 레이어 세그먼트가 없으면(또는 맨 앞이면) null.
+ * Returns the segment immediately preceding a given layer directory name (e.g. "application") in the
+ * path — used to determine "which domain/BC does this file belong to" from the path alone, in this
+ * repository's `<domain>/{domain,application,infrastructure,interfaces}/` structure. Returns null if
+ * there is no layer segment (or if it's the first segment).
  */
 fun File.segmentBefore(layer: String): String? {
     val parts = this.path.replace(File.separatorChar, '/').split('/')

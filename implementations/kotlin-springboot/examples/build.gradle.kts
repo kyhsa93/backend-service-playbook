@@ -25,12 +25,12 @@ dependencyManagement {
         mavenBom("org.testcontainers:testcontainers-bom:2.0.5")
     }
     dependencies {
-        // software.amazon.awssdk:ses는 2.48.3부터 기본 동기 HTTP 클라이언트로
-        // apache5-client(httpclient5 기반)를 함께 끌어온다. 이 apache5-client가 요구하는
-        // httpclient5/httpcore5 버전(5.6.2/5.4.3)이 Spring Boot 3.3.5 BOM이 관리하는 버전
-        // (5.3.1/5.2.5)보다 높아서, BOM이 낮은 버전으로 다운그레이드해버리면 AWS SDK의
-        // Apache5HttpClient가 런타임에 NoClassDefFoundError를 던진다. BOM보다 우선하도록
-        // 명시적으로 버전을 고정한다.
+        // Since 2.48.3, software.amazon.awssdk:ses pulls in apache5-client (based on
+        // httpclient5) as its default synchronous HTTP client. The httpclient5/httpcore5
+        // versions apache5-client requires (5.6.2/5.4.3) are newer than the versions managed
+        // by the Spring Boot 3.3.5 BOM (5.3.1/5.2.5), so if the BOM downgrades them to its
+        // lower versions, the AWS SDK's Apache5HttpClient throws a NoClassDefFoundError at
+        // runtime. Pin the versions explicitly so they take precedence over the BOM.
         dependency("org.apache.httpcomponents.client5:httpclient5:5.6.2")
         dependency("org.apache.httpcomponents.core5:httpcore5:5.4.3")
         dependency("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3")
@@ -58,10 +58,11 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    // JDK 기본 HttpURLConnection 기반 클라이언트는 POST 후 401 응답을 받으면 "cannot retry due to
-    // server authentication, in streaming mode" IOException을 던지는 알려진 제약이 있다(JDK 자체
-    // 동작). Auth E2E 테스트가 실제 401(INVALID_CREDENTIALS)을 검증해야 하므로, 이 제약이 없는
-    // Apache HttpClient5로 TestRestTemplate의 요청 팩토리를 교체한다.
+    // The JDK's default HttpURLConnection-based client has a known limitation where it throws
+    // a "cannot retry due to server authentication, in streaming mode" IOException when it
+    // receives a 401 response after a POST (this is JDK's own behavior). Since the Auth E2E
+    // tests need to verify an actual 401 (INVALID_CREDENTIALS), replace TestRestTemplate's
+    // request factory with Apache HttpClient5, which doesn't have this limitation.
     testImplementation("org.apache.httpcomponents.client5:httpclient5")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
@@ -80,9 +81,9 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-// 코드 스타일 lint. 포맷 위반은 `./gradlew ktlintFormat`으로 자동 수정하고,
-// CI에서는 `ktlintCheck`(build에 연동)로 검증만 한다. 최대 엄격도가 아니라
-// 기본 룰셋 + 표준 라이브러리 import 정렬 정도의 온건한 설정을 유지한다.
+// Code style lint. Format violations are auto-fixed with `./gradlew ktlintFormat`;
+// CI only verifies via `ktlintCheck` (wired into build). Rather than maximum strictness,
+// keep a moderate configuration — the default ruleset plus standard-library import sorting.
 ktlint {
     version.set("1.3.1")
     verbose.set(true)

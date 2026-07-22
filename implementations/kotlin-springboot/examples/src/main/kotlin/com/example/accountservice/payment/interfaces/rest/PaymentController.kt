@@ -27,12 +27,14 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * `GET /payments`는 인증된 요청자 ID(`authentication.name`)만 쓴다 — 클라이언트가 넘긴 ownerId를
- * 신뢰하는 엔드포인트는 이 저장소에 없다(AccountController/CardController와 동일한 원칙).
+ * `GET /payments` uses only the authenticated requester ID (`authentication.name`) — this repository
+ * has no endpoint that trusts a client-supplied ownerId (the same principle as
+ * AccountController/CardController).
  *
- * 환불 요청이 [RefundEligibilityService]에 의해 거부(REJECTED)되어도 이 Controller는 여전히
- * 201(Created)로 응답한다 — 환불 "요청"은 성공적으로 평가되었고, 그 결과가 거부였을 뿐이다.
- * `status`/`decisionNote` 필드로 거부 사유를 전달한다(4xx로 표현하지 않는다).
+ * Even when a refund request is rejected (REJECTED) by [RefundEligibilityService], this Controller
+ * still responds with 201 (Created) — the refund "request" was evaluated successfully; it just so
+ * happened that the result was a rejection. The rejection reason is conveyed via the
+ * `status`/`decisionNote` fields (not expressed as a 4xx).
  */
 @RestController
 @RequestMapping("/payments")

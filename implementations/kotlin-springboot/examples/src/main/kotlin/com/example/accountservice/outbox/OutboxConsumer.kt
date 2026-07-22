@@ -10,24 +10,27 @@ import software.amazon.awssdk.services.sqs.model.Message
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest
 
 /**
- * SQS를 long polling(`ReceiveMessageRequest.waitTimeSeconds`)으로 수신 대기하다가 메시지를 받으면
- * eventType(`MessageAttributes`)으로 [EventHandlerRegistry]에서 핸들러를 찾아 호출한다.
+ * Waits on SQS via long polling (`ReceiveMessageRequest.waitTimeSeconds`), and when a message arrives,
+ * looks up the handler in [EventHandlerRegistry] by eventType (`MessageAttributes`) and invokes it.
  *
- * 이 저장소는 코루틴을 쓰지 않는다(scheduling.md — Spring MVC + JPA 블로킹 스택과 자연스럽게
- * 맞물리는 전통적인 스레드 기반 실행을 쓴다). `@Scheduled`로 표현하지 않은 이유는 `@Scheduled`가
- * "일정 주기로 짧게 실행하고 반환"하는 작업(예: [OutboxPoller])에 맞는 추상화인 반면, 이 Consumer는
- * `waitTimeSeconds(5)` 동안 블로킹하며 무한히 반복하는 하나의 긴 루프이기 때문이다 — 전용 스레드가
- * 이 루프의 의도(앱 부트스트랩 시 단 한 번 시작되는 백그라운드 워커)를 더 직접적으로 표현한다.
+ * This repository doesn't use coroutines here (scheduling.md — it uses traditional thread-based
+ * execution, which fits naturally with the Spring MVC + JPA blocking stack). The reason it isn't
+ * expressed with `@Scheduled` is that `@Scheduled` is the right abstraction for work that "runs briefly
+ * on a fixed period and returns" (e.g. [OutboxPoller]), whereas this Consumer is a single infinite loop
+ * that blocks for `waitTimeSeconds(5)` on each iteration — a dedicated thread more directly expresses
+ * this loop's intent (a background worker started exactly once at app bootstrap).
  *
- * 핸들러 성공 → 메시지 삭제(ack). 핸들러 실패(또는 등록된 핸들러가 없음) → 삭제하지 않는다 —
- * SQS의 visibility timeout이 지나면 자동 재전달된다(at-least-once). 이 저장소가 요구하는
- * EventHandler 멱등성(domain-events.md)이 바로 이 재전달을 전제한다.
+ * Handler succeeds -> delete the message (ack). Handler fails (or no handler is registered) -> don't
+ * delete it — SQS automatically redelivers it once the visibility timeout passes (at-least-once). The
+ * EventHandler idempotency this repository requires (domain-events.md) is built on exactly this
+ * redelivery guarantee.
  *
- * 시작/종료는 Spring 프레임워크 리스너 애노테이션 + `DisposableBean` 조합이 아니라
- * [SmartLifecycle] 하나로 표현한다 — 그 리스너 애노테이션은 이 저장소에서 Domain Event Handler를
- * 뜻하는 표식(harness의 event-placement 규칙이 `application/event/` 배치를 강제)이므로, 프레임워크
- * 생명주기 콜백에 같은 애노테이션을 쓰면 의미가 겹친다. `SmartLifecycle.start()`는 컨텍스트가 뜬
- * 직후, `stop()`은 Graceful Shutdown 시 호출된다.
+ * Start/stop is expressed with a single [SmartLifecycle], not the combination of Spring's framework
+ * listener annotations + `DisposableBean` — in this repository, those listener annotations are the
+ * marker for a Domain Event Handler (the harness's event-placement rule enforces `application/event/`
+ * placement for them), so using the same annotation for a framework lifecycle callback would overload
+ * its meaning. `SmartLifecycle.start()` is called right after the context comes up, and `stop()` is
+ * called during Graceful Shutdown.
  */
 @Component
 class OutboxConsumer(
@@ -41,8 +44,8 @@ class OutboxConsumer(
     private var running = false
     private var workerThread: Thread? = null
 
-    // 앱 부트스트랩이 끝난 뒤 단 한 번 시작되는 싱글턴 백그라운드 루프다 — 요청마다 새로 만들어지지
-    // 않는다.
+    // This is a singleton background loop started exactly once after app bootstrap finishes — it is
+    // not created anew per request.
     override fun start() {
         running = true
         workerThread =
@@ -52,10 +55,10 @@ class OutboxConsumer(
             }
     }
 
-    // Graceful Shutdown 시(Spring이 컨텍스트를 닫으며 SmartLifecycle.stop()을 호출하는 시점) 루프를
-    // 멈춘다. 진행 중인 ReceiveMessageRequest(최대 waitTimeSeconds)는 끝까지 기다린 뒤 종료한다 —
-    // graceful-shutdown.md의 "Scheduler는 종료 대기를 명시적으로 설정한다" 원칙을 전용 스레드에
-    // 적용한 것이다.
+    // Stops the loop during Graceful Shutdown (when Spring closes the context and calls
+    // SmartLifecycle.stop()). It waits for any in-flight ReceiveMessageRequest (up to waitTimeSeconds)
+    // to finish before exiting — this applies graceful-shutdown.md's "the Scheduler explicitly sets a
+    // shutdown wait" principle to a dedicated thread.
     override fun stop() {
         running = false
         workerThread?.join(SHUTDOWN_JOIN_TIMEOUT_MS)
@@ -79,7 +82,7 @@ class OutboxConsumer(
                 result.messages().forEach { handle(it) }
             } catch (e: Exception) {
                 if (running) {
-                    logger.error("SQS 수신 실패", e)
+                    logger.error("Failed to receive from SQS", e)
                     Thread.sleep(1000)
                 }
             }
@@ -90,7 +93,7 @@ class OutboxConsumer(
         val eventType = message.messageAttributes()["eventType"]?.stringValue()
         val eventId = message.messageAttributes()["eventId"]?.stringValue() ?: ""
         try {
-            if (eventType == null) throw IllegalStateException("eventType 메시지 속성이 없습니다.")
+            if (eventType == null) throw IllegalStateException("Missing eventType message attribute.")
             registry.dispatch(eventType, eventId, message.body())
             sqsClient.deleteMessage(
                 DeleteMessageRequest
@@ -100,12 +103,13 @@ class OutboxConsumer(
                     .build(),
             )
         } catch (e: Exception) {
-            // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다.
+            // Don't delete it — it will be received again and retried once the visibility timeout
+            // passes.
             logger
                 .atError()
                 .addKeyValue("event_type", eventType)
                 .setCause(e)
-                .log("이벤트 처리 실패")
+                .log("Failed to process event")
         }
     }
 

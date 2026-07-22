@@ -13,9 +13,10 @@ import jakarta.persistence.Table
 import java.time.LocalDateTime
 
 /**
- * account/domain/Transaction.kt의 JPA 매핑 전용 대응물.
- * Domain 하위 Entity(Transaction)는 이 클래스를 전혀 알지 못한다 — 변환은 TransactionMapper가 전담한다.
- * Transaction은 생성 후 불변이므로 갱신용 가변 메서드 없이 insert 전용으로만 쓰인다.
+ * The JPA-mapping counterpart of account/domain/Transaction.kt.
+ * The domain child Entity (Transaction) has no awareness of this class whatsoever — conversion is
+ * handled exclusively by TransactionMapper. Because a Transaction is immutable once created, it is used
+ * only for inserts, with no mutable update methods.
  */
 @Entity
 @Table(name = "transactions")

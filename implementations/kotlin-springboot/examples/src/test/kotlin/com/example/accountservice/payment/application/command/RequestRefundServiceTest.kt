@@ -14,10 +14,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 /**
- * RequestRefundService는 두 Aggregate(Payment/Refund)를 로드해
- * RefundEligibilityService(Domain Service)에 판단을 위임한다 — 이 테스트는 그 조율 결과가
- * Refund.approve()/reject()로 올바르게 이어지는지 Application 레이어 관점에서 검증한다
- * (판단 로직 자체의 단위 테스트는 RefundEligibilityServiceTest가 전담).
+ * RequestRefundService loads two Aggregates (Payment/Refund) and delegates the decision to
+ * RefundEligibilityService (a Domain Service) — this test verifies, from the Application layer's
+ * perspective, that the coordinated outcome correctly leads to Refund.approve()/reject() (the unit
+ * test for the decision logic itself is handled by RefundEligibilityServiceTest).
  */
 class RequestRefundServiceTest {
     private val paymentRepository = mockk<PaymentRepository>(relaxed = true)
@@ -31,14 +31,19 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    fun `완료된 결제에 대해 금액 이하로 환불을 요청하면 승인되고 저장된다`() {
+    fun `requesting a refund at or under the amount for a completed payment is approved and saved`() {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         payment.complete()
         stubPayment(payment)
 
         val result =
             service.requestRefund(
-                RequestRefundCommand(paymentId = payment.paymentId, amount = 500, reason = "단순 변심", requesterId = "owner-1"),
+                RequestRefundCommand(
+                    paymentId = payment.paymentId,
+                    amount = 500,
+                    reason = "Simple change of mind",
+                    requesterId = "owner-1",
+                ),
             )
 
         assertThat(result.status).isEqualTo(RefundStatus.APPROVED.name)
@@ -46,44 +51,54 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    fun `완료되지 않은 결제에 환불을 요청하면 거부되어 저장되지만 예외는 던지지 않는다`() {
+    fun `requesting a refund for a payment that is not completed is rejected and saved, but does not throw an exception`() {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         stubPayment(payment)
 
         val result =
             service.requestRefund(
-                RequestRefundCommand(paymentId = payment.paymentId, amount = 500, reason = "단순 변심", requesterId = "owner-1"),
+                RequestRefundCommand(
+                    paymentId = payment.paymentId,
+                    amount = 500,
+                    reason = "Simple change of mind",
+                    requesterId = "owner-1",
+                ),
             )
 
         assertThat(result.status).isEqualTo(RefundStatus.REJECTED.name)
-        assertThat(result.decisionNote).isEqualTo("완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+        assertThat(result.decisionNote).isEqualTo("A refund can only be requested for a completed payment.")
         verify(exactly = 1) { refundRepository.saveRefund(any()) }
     }
 
     @Test
-    fun `환불 금액이 결제 금액을 초과하면 거부되어 저장된다`() {
+    fun `a refund amount exceeding the payment amount is rejected and saved`() {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         payment.complete()
         stubPayment(payment)
 
         val result =
             service.requestRefund(
-                RequestRefundCommand(paymentId = payment.paymentId, amount = 1500, reason = "단순 변심", requesterId = "owner-1"),
+                RequestRefundCommand(
+                    paymentId = payment.paymentId,
+                    amount = 1500,
+                    reason = "Simple change of mind",
+                    requesterId = "owner-1",
+                ),
             )
 
         assertThat(result.status).isEqualTo(RefundStatus.REJECTED.name)
-        assertThat(result.decisionNote).isEqualTo("환불 금액은 결제 금액을 초과할 수 없습니다.")
+        assertThat(result.decisionNote).isEqualTo("The refund amount cannot exceed the payment amount.")
     }
 
     @Test
-    fun `결제를 찾을 수 없으면 예외를 던진다`() {
+    fun `throws an exception when the payment cannot be found`() {
         every {
             paymentRepository.findPayments(PaymentFindQuery(page = 0, take = 1, paymentId = "non-existent", ownerId = "owner-1"))
         } returns (emptyList<Payment>() to 0L)
 
         assertThrows<PaymentNotFoundException> {
             service.requestRefund(
-                RequestRefundCommand(paymentId = "non-existent", amount = 500, reason = "단순 변심", requesterId = "owner-1"),
+                RequestRefundCommand(paymentId = "non-existent", amount = 500, reason = "Simple change of mind", requesterId = "owner-1"),
             )
         }
         verify(exactly = 0) { refundRepository.saveRefund(any()) }

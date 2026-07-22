@@ -9,15 +9,16 @@ private val LINE_COMMENT = Regex("""//[^\n]*""")
 private fun stripComments(content: String): String =
     content.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
-// 이 저장소의 Aggregate/Entity 관용구: `class X private constructor()` + companion object 팩토리
-// (create/reconstitute) + 모든 var 프로퍼티는 private set (tactical-ddd.md). Value Object는
-// `data class` + `val`(불변)이라 애초에 var가 없어 대상이 아니다 — 이 클래스 선언 패턴에 매치되는
-// 것만 검사 대상으로 좁혀서 data class/enum/sealed class 등을 오탐하지 않는다.
+// This repository's Aggregate/Entity idiom: `class X private constructor()` + a companion object
+// factory (create/reconstitute) + every var property is private set (tactical-ddd.md). A Value Object
+// is a `data class` + `val`(immutable), so it has no var to begin with and is not targeted — scoping
+// the check to only this class-declaration pattern avoids false positives on data class/enum/sealed
+// class etc.
 private val AGGREGATE_CLASS_DECL = Regex("""\bclass\s+(\w+)\s+private\s+constructor\s*\([^)]*\)\s*\{""")
 
-// 클래스 바디 최상단에 나열된 프로퍼티 선언(`var NAME: Type`)만 잡는다 — 줄 맨 앞(공백 제외)에
-// var가 와야 하므로, `private val ...` 처럼 다른 접근제어자가 이미 붙은 줄이나 함수 안의 로컬 코드는
-// 매치되지 않는다.
+// Only catches property declarations(`var NAME: Type`) listed at the top level of the class body — var
+// must come at the very start of the line(ignoring whitespace), so a line already carrying a different
+// access modifier like `private val ...`, or local code inside a function, won't match.
 private val VAR_PROPERTY_LINE = Regex("""^\s*var\s+(\w+)\s*:""")
 
 private fun extractBalancedBody(code: String, openBraceIndex: Int): String? {
@@ -36,10 +37,11 @@ private fun extractBalancedBody(code: String, openBraceIndex: Int): String? {
 }
 
 /**
- * 프로퍼티 선언부만 스캔 대상으로 좁히기 위해 `companion object` 또는 첫 `fun` 선언 이전까지만
- * 잘라낸다 — 이 저장소의 모든 Aggregate/Entity(Account/Payment/Refund/Card/Credential/Transaction)가
- * "프로퍼티 나열 → companion object → 도메인 메서드" 순서를 동일하게 따르므로, 도메인 메서드 내부의
- * 지역 변수를 프로퍼티로 오탐하지 않는다.
+ * Truncates the body to just before `companion object` or the first `fun` declaration, to narrow
+ * scanning to only the property-declaration section — since every Aggregate/Entity in this repository
+ * (Account/Payment/Refund/Card/Credential/Transaction) follows the same
+ * "properties listed → companion object → domain methods" order, this avoids falsely treating a local
+ * variable inside a domain method as a property.
  */
 private fun propertyZone(body: String): String {
     val companionIdx = body.indexOf("companion object").let { if (it == -1) body.length else it }
@@ -49,10 +51,10 @@ private fun propertyZone(body: String): String {
 }
 
 /**
- * [R4] aggregate-no-public-setters — domain/의 Aggregate/Entity(`class X private constructor()`
- * 관용구)는 모든 `var` 프로퍼티가 `private set`이어야 한다. 공개 setter가 있으면 외부에서
- * `account.status = ...`처럼 도메인 메서드를 우회해 직접 대입할 수 있게 되어, "상태 변경은 반드시
- * 도메인 메서드를 통해서만"이라는 원칙(tactical-ddd.md)이 깨진다.
+ * [R4] aggregate-no-public-setters — an Aggregate/Entity in domain/(the `class X private
+ * constructor()` idiom) must have every `var` property as `private set`. A public setter would allow
+ * external code to assign directly, bypassing domain methods, like `account.status = ...` — breaking
+ * the principle that "state changes must only ever go through a domain method"(tactical-ddd.md).
  */
 fun checkAggregateNoPublicSetters(rootPath: String): RuleResult {
     val root = File(rootPath)
@@ -80,7 +82,7 @@ fun checkAggregateNoPublicSetters(rootPath: String): RuleResult {
                     result.add(
                         failFinding(
                             "$rel ($className.$propName)",
-                            "Aggregate/Entity의 var 프로퍼티는 private set이어야 함 — 공개 setter로 도메인 메서드를 우회할 수 없어야 함 (tactical-ddd.md)",
+                            "an Aggregate/Entity's var property must be private set — a public setter must not be able to bypass domain methods (tactical-ddd.md)",
                         ),
                     )
                 }
@@ -89,6 +91,6 @@ fun checkAggregateNoPublicSetters(rootPath: String): RuleResult {
         }
     }
 
-    if (!found) result.add(skipFinding("domain/ 안의 'class X private constructor()' Aggregate/Entity 없음"))
+    if (!found) result.add(skipFinding("no 'class X private constructor()' Aggregate/Entity under domain/"))
     return result
 }

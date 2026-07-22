@@ -11,9 +11,9 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * Refund 쓰기 모델([RefundRepository])과 읽기 모델([RefundQuery])을 함께 구현하는 구현체.
- * `findRefunds`는 두 인터페이스가 정확히 같은 시그니처로 선언하므로 하나의 override가 동시에
- * 만족시킨다(PaymentRepositoryImpl과 동일한 구조).
+ * The implementation that implements both the Refund write model ([RefundRepository]) and read model
+ * ([RefundQuery]) together. Both interfaces declare `findRefunds` with exactly the same signature, so
+ * a single override satisfies both at once (the same structure as PaymentRepositoryImpl).
  */
 @Repository
 class RefundRepositoryImpl(

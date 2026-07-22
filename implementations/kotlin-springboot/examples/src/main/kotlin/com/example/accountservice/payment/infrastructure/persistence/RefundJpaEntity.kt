@@ -12,7 +12,7 @@ import jakarta.persistence.Table
 import java.time.LocalDateTime
 
 /**
- * payment/domain/Refund.kt의 JPA 매핑 전용 대응물.
+ * The JPA-mapping-only counterpart of payment/domain/Refund.kt.
  */
 @Entity
 @Table(name = "refunds")

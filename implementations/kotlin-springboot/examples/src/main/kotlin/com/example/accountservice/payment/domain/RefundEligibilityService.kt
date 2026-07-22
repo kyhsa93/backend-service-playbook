@@ -1,16 +1,19 @@
 package com.example.accountservice.payment.domain
 
 /**
- * Domain Service — 프레임워크 어노테이션이 없는 순수 클래스(Spring DI 컨테이너에도 등록하지 않는다.
- * Application 레이어가 필요할 때 직접 `RefundEligibilityService()`로 인스턴스화해 쓴다).
+ * Domain Service — a plain class with no framework annotations (it isn't registered in the Spring DI
+ * container either. The Application layer instantiates it directly with `RefundEligibilityService()`
+ * whenever it's needed).
  *
- * "원 결제가 COMPLETED 상태여야 하고, 환불 금액이 결제 금액을 넘을 수 없다"는 판단은 [Payment]
- * 혼자서도, [Refund] 혼자서도 내릴 수 없다. Payment는 자신에 대한 환불 시도를 모르고(환불은 Refund
- * Aggregate로만 존재), Refund는 원 결제의 금액·상태를 모른다(`paymentId`로 참조만 한다). 이 판단을
- * 내리려면 두 Aggregate를 모두 로드해 같은 자리에서 비교해야 하므로, 이 조율 로직은 어느 한쪽
- * Aggregate의 메서드로 넣을 수 없고(넣는다면 다른 쪽 Aggregate 전체를 파라미터로 받아야 해 경계가
- * 무너진다) 별도의 Domain Service에 위치한다 (root `docs/architecture/domain-service.md`,
- * `docs/architecture/domain-service.md`의 Kotlin 전용 상세 참고).
+ * The judgment that "the original payment must be in the COMPLETED state, and the refund amount
+ * cannot exceed the payment amount" can't be made by [Payment] alone, nor by [Refund] alone. Payment
+ * doesn't know about refund attempts against itself (a refund only exists as a Refund Aggregate), and
+ * Refund doesn't know the original payment's amount/status (it only references it by `paymentId`).
+ * Making this judgment requires loading both Aggregates and comparing them side by side, so this
+ * coordination logic can't be placed as a method on either Aggregate (doing so would require passing
+ * the entire other Aggregate as a parameter, breaking the boundary) — it lives in a separate Domain
+ * Service instead (see root `docs/architecture/domain-service.md`, and the Kotlin-specific details in
+ * `docs/architecture/domain-service.md`).
  */
 class RefundEligibilityService {
     fun evaluate(
@@ -18,10 +21,10 @@ class RefundEligibilityService {
         refund: Refund,
     ): RefundDecision {
         if (payment.status != PaymentStatus.COMPLETED) {
-            return RefundDecision(approved = false, reason = "완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+            return RefundDecision(approved = false, reason = "A refund can only be requested for a completed payment.")
         }
         if (refund.amount > payment.amount) {
-            return RefundDecision(approved = false, reason = "환불 금액은 결제 금액을 초과할 수 없습니다.")
+            return RefundDecision(approved = false, reason = "The refund amount cannot exceed the payment amount.")
         }
         return RefundDecision(approved = true)
     }

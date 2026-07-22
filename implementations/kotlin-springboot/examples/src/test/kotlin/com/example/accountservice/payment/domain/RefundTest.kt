@@ -5,10 +5,11 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class RefundTest {
-    private fun createRefund(amount: Long = 500): Refund = Refund.create(paymentId = "payment-1", amount = amount, reason = "단순 변심")
+    private fun createRefund(amount: Long = 500): Refund =
+        Refund.create(paymentId = "payment-1", amount = amount, reason = "Simple change of mind")
 
     @Test
-    fun `create 하면 REQUESTED 상태의 환불이 생성된다`() {
+    fun `create produces a refund in the REQUESTED state`() {
         val refund = createRefund()
 
         assertThat(refund.status).isEqualTo(RefundStatus.REQUESTED)
@@ -18,20 +19,20 @@ class RefundTest {
     }
 
     @Test
-    fun `환불 ID는 하이픈 없는 32자리 hex 문자열이다`() {
+    fun `the refund ID is a 32-character hex string without hyphens`() {
         val refund = createRefund()
 
         assertThat(refund.refundId).matches("^[0-9a-f]{32}$")
     }
 
     @Test
-    fun `approve 하면 APPROVED 상태가 되고 RefundApprovedEvent가 수집된다`() {
+    fun `approve transitions to APPROVED and collects a RefundApprovedEvent`() {
         val refund = createRefund()
 
         refund.approve("account-1", "owner-1")
 
         assertThat(refund.status).isEqualTo(RefundStatus.APPROVED)
-        assertThat(refund.decisionNote).isEqualTo("환불이 승인되었습니다.")
+        assertThat(refund.decisionNote).isEqualTo("The refund was approved.")
         val events = refund.pullDomainEvents()
         assertThat(events).hasSize(1)
         val event = events.first() as RefundApprovedEvent
@@ -41,7 +42,7 @@ class RefundTest {
     }
 
     @Test
-    fun `REQUESTED가 아닌 환불을 approve 하면 예외를 던진다`() {
+    fun `approving a refund that is not REQUESTED throws an exception`() {
         val refund = createRefund()
         refund.approve("account-1", "owner-1")
 
@@ -49,26 +50,26 @@ class RefundTest {
     }
 
     @Test
-    fun `reject 하면 REJECTED 상태가 되고 사유가 decisionNote에 저장된다`() {
+    fun `reject transitions to REJECTED and stores the reason in decisionNote`() {
         val refund = createRefund()
 
-        refund.reject("완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+        refund.reject("A refund can only be requested for a completed payment.")
 
         assertThat(refund.status).isEqualTo(RefundStatus.REJECTED)
-        assertThat(refund.decisionNote).isEqualTo("완료된 결제에 대해서만 환불을 요청할 수 있습니다.")
+        assertThat(refund.decisionNote).isEqualTo("A refund can only be requested for a completed payment.")
         assertThat(refund.pullDomainEvents()).isEmpty()
     }
 
     @Test
-    fun `REQUESTED가 아닌 환불을 reject 하면 예외를 던진다`() {
+    fun `rejecting a refund that is not REQUESTED throws an exception`() {
         val refund = createRefund()
-        refund.reject("사유")
+        refund.reject("Reason")
 
-        assertThrows<RefundRejectRequiresRequestedRefundException> { refund.reject("사유") }
+        assertThrows<RefundRejectRequiresRequestedRefundException> { refund.reject("Reason") }
     }
 
     @Test
-    fun `APPROVED 환불을 complete 하면 COMPLETED 상태가 된다`() {
+    fun `completing an APPROVED refund transitions to COMPLETED`() {
         val refund = createRefund()
         refund.approve("account-1", "owner-1")
 
@@ -78,7 +79,7 @@ class RefundTest {
     }
 
     @Test
-    fun `APPROVED가 아닌 환불을 complete 하면 예외를 던진다`() {
+    fun `completing a refund that is not APPROVED throws an exception`() {
         val refund = createRefund()
 
         assertThrows<RefundCompleteRequiresApprovedRefundException> { refund.complete() }

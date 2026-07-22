@@ -17,7 +17,7 @@ class DepositServiceTest {
     private val service = DepositService(accountRepository)
 
     @Test
-    fun `계좌가 존재하면 잔액이 증가하고 저장이 일어난다`() {
+    fun `when the account exists, the balance increases and a save occurs`() {
         val account = Account.create("owner-1", "KRW", "owner-1@example.com")
         every {
             accountRepository.findAccounts(AccountFindQuery(page = 0, take = 1, accountId = account.accountId, ownerId = "owner-1"))
@@ -31,7 +31,7 @@ class DepositServiceTest {
     }
 
     @Test
-    fun `계좌가 존재하지 않으면 예외를 던진다`() {
+    fun `throws an exception when the account does not exist`() {
         every {
             accountRepository.findAccounts(AccountFindQuery(page = 0, take = 1, accountId = "non-existent", ownerId = "owner-1"))
         } returns (emptyList<Account>() to 0L)
@@ -42,7 +42,7 @@ class DepositServiceTest {
     }
 
     @Test
-    fun `정지된 계좌면 예외를 던지고 저장하지 않는다`() {
+    fun `throws an exception and does not save when the account is suspended`() {
         val account = Account.create("owner-1", "KRW", "owner-1@example.com")
         account.suspend()
         every {

@@ -7,6 +7,7 @@ interface SentEmailJpaRepository : JpaRepository<SentEmail, Long> {
 
     fun findBySesMessageId(sesMessageId: String): SentEmail?
 
-    /** Level 2(Ledger) 멱등성 체크 — 이 Outbox 이벤트가 이미 이메일 발송으로 이어졌는지 확인한다. */
+    /** Level 2 (Ledger) idempotency check — verifies whether this Outbox event has already resulted in
+     * an email being sent. */
     fun existsBySourceEventId(sourceEventId: String): Boolean
 }

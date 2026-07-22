@@ -7,7 +7,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
-// RateLimiterRegistry를 주입만 받고 실제로 permission을 확인하는 호출이 없다 — 아무것도 제한하지 않는 스텁.
+// Only injects RateLimiterRegistry with no actual call checking permission — a stub that limits nothing.
 @Component
 class RateLimitingFilter(
     private val rateLimiterRegistry: RateLimiterRegistry,

@@ -1,7 +1,8 @@
 package com.example.accountservice.card.application.adapter
 
-// 다른 도메인(account)의 domain/*Repository·*Query를 직접 import하지 않고, 자기 BC 안에 정의한
-// Adapter 인터페이스만 노출한다 — 구현체(infrastructure/AccountAdapterImpl)가 실제 조회를 담당한다.
+// Does not directly import another domain's(account) domain/*Repository·*Query, and exposes only an
+// Adapter interface defined inside its own BC — the implementation(infrastructure/AccountAdapterImpl)
+// handles the actual lookup.
 interface AccountAdapter {
     fun findAccount(accountId: String): AccountView?
 }

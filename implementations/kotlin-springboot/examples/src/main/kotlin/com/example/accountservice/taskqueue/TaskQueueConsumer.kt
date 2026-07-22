@@ -10,16 +10,16 @@ import software.amazon.awssdk.services.sqs.model.Message
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest
 
 /**
- * Task Queue(SQS FIFO) 전용 Consumer — [com.example.accountservice.outbox.OutboxConsumer](Domain/
- * Integration Event Queue 전용)와 의도적으로 별개의 컴포넌트다. 두 Consumer는 서로 다른 큐를
- * 구독하고 서로 다른 레지스트리([TaskHandlerRegistry] vs
- * [com.example.accountservice.outbox.EventHandlerRegistry])로 라우팅한다 — root
- * scheduling.md/domain-events.md가 규정하는 "Task Queue(명령)와 Domain Event(사실)는 의미 단위가
- * 다르다"는 구분을 컴포넌트 단위로도 유지한다(하나의 Consumer가 두 큐를 다 처리하도록 합치지
- * 않는다).
+ * The Consumer dedicated to the Task Queue (SQS FIFO) — intentionally a separate component from
+ * [com.example.accountservice.outbox.OutboxConsumer] (dedicated to the Domain/Integration Event Queue).
+ * The two Consumers subscribe to different queues and route through different registries
+ * ([TaskHandlerRegistry] vs [com.example.accountservice.outbox.EventHandlerRegistry]) — this keeps the
+ * distinction that root scheduling.md/domain-events.md prescribes ("Task Queue (command) and Domain
+ * Event (fact) are different units of meaning") at the component level too (a single Consumer is never
+ * merged to handle both queues).
  *
- * 나머지 구조(전용 스레드로 표현하는 이유, 핸들러 성공=ack/실패=재전달)는 OutboxConsumer와 동일하다
- * — 그 클래스의 KDoc을 참고한다.
+ * The rest of the structure (why it's expressed with a dedicated thread, handler success = ack /
+ * failure = redelivery) is the same as OutboxConsumer — see that class's KDoc.
  */
 @Component
 class TaskQueueConsumer(
@@ -65,7 +65,7 @@ class TaskQueueConsumer(
                 result.messages().forEach { handle(it) }
             } catch (e: Exception) {
                 if (running) {
-                    logger.error("Task Queue(SQS) 수신 실패", e)
+                    logger.error("Failed to receive from Task Queue (SQS)", e)
                     Thread.sleep(1000)
                 }
             }
@@ -76,7 +76,7 @@ class TaskQueueConsumer(
         val taskType = message.messageAttributes()["taskType"]?.stringValue()
         val taskId = message.messageAttributes()["taskId"]?.stringValue() ?: ""
         try {
-            if (taskType == null) throw IllegalStateException("taskType 메시지 속성이 없습니다.")
+            if (taskType == null) throw IllegalStateException("Missing taskType message attribute.")
             registry.dispatch(taskType, message.body())
             sqsClient.deleteMessage(
                 DeleteMessageRequest
@@ -86,14 +86,15 @@ class TaskQueueConsumer(
                     .build(),
             )
         } catch (e: Exception) {
-            // 삭제하지 않는다 — visibility timeout 이후 재수신되어 재시도된다(at-least-once).
-            // maxReceiveCount(3)를 넘기면 SQS가 자동으로 DLQ로 이동시킨다(scheduling.md DLQ 절).
+            // Don't delete it — it will be received again and retried once the visibility timeout
+            // passes (at-least-once). Once maxReceiveCount (3) is exceeded, SQS automatically moves it
+            // to the DLQ (scheduling.md's DLQ section).
             logger
                 .atError()
                 .addKeyValue("task_type", taskType)
                 .addKeyValue("task_id", taskId)
                 .setCause(e)
-                .log("Task 처리 실패")
+                .log("Failed to process task")
         }
     }
 

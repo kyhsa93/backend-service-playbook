@@ -1,45 +1,45 @@
-# CQRS 패턴 — Kotlin Spring Boot
+# CQRS Pattern — Kotlin Spring Boot
 
-> 프레임워크 무관 원칙은 [root cqrs-pattern.md](../../../../docs/architecture/cqrs-pattern.md) 참조.
+> For the framework-agnostic principles, see [root cqrs-pattern.md](../../../../docs/architecture/cqrs-pattern.md).
 
-## 현재 적용 수준 — 기본 아키텍처(Service 분리)
+## Current level of adoption — the basic architecture (Service separation)
 
-root 문서가 말하는 두 단계 중, 이 저장소의 `examples/`는 **기본 아키텍처**(Command Service / Query Service 분리)만 구현한다. root가 상세히 다루는 **Handler 기반 CQRS**(CommandBus/QueryBus, 독립 Handler 클래스)는 아직 없다 — 아래에서 둘 다 다룬다.
+Of the two stages the root document describes, this repository's `examples/` implements only the **basic architecture** (Command Service / Query Service separation). The **Handler-based CQRS** the root covers in detail (CommandBus/QueryBus, standalone Handler classes) doesn't exist yet — both are covered below.
 
 ```
 account/application/
   command/
-    CreateAccountService.kt   ← @Service — 쓰기
+    CreateAccountService.kt   ← @Service — write
     DepositService.kt
     WithdrawService.kt
     SuspendAccountService.kt
     ReactivateAccountService.kt
     CloseAccountService.kt
   query/
-    GetAccountService.kt      ← @Service(readOnly) — 읽기
+    GetAccountService.kt      ← @Service(readOnly) — read
     GetTransactionsService.kt
 ```
 
-각 Command Service는 유스케이스 하나당 클래스 하나다 (NestJS의 CommandHandler와 동일한 세분화 수준). `CreateAccountService.create()`처럼 메서드 하나만 갖는 것이 Kotlin/Spring 관용이다 — Java였다면 `OrderService.create()/cancel()/...`처럼 유스케이스를 한 클래스에 모으는 선택지도 있지만, 이 저장소는 root의 "유스케이스 단위로 분리"를 그대로 따른다.
+Each Command Service is one class per use case (the same granularity as NestJS's CommandHandler). Having just one method, like `CreateAccountService.create()`, is the Kotlin/Spring idiom — in Java there'd also be the option of grouping use cases into one class like `OrderService.create()/cancel()/...`, but this repository follows the root's "separate by use case" as-is.
 
 ```kotlin
-// application/command/CreateAccountService.kt — 실제 코드
+// application/command/CreateAccountService.kt — actual code
 @Service
 class CreateAccountService(
     private val accountRepository: AccountRepository,
 ) {
     fun create(command: CreateAccountCommand): CreateAccountResult {
         val account = Account.create(command.requesterId, command.currency, command.email)
-        accountRepository.saveAccount(account)   // @Transactional — Account 저장 + Outbox 적재, 한 트랜잭션
+        accountRepository.saveAccount(account)   // @Transactional — saving the Account + writing to the Outbox, one transaction
         return CreateAccountResult(/* ... */)
-        // 여기서 끝난다 — Outbox 드레인(OutboxPoller/OutboxConsumer)은 별도 컴포넌트가 독립적으로
-        // 수행한다. domain-events.md 참고
+        // Ends here — draining the Outbox (OutboxPoller/OutboxConsumer) is performed independently
+        // by a separate component. See domain-events.md
     }
 }
 ```
 
 ```kotlin
-// application/query/GetAccountService.kt — 실제 코드
+// application/query/GetAccountService.kt — actual code
 @Service
 @Transactional(readOnly = true)
 class GetAccountService(private val accountQuery: AccountQuery) {
@@ -51,62 +51,63 @@ class GetAccountService(private val accountQuery: AccountQuery) {
 }
 ```
 
-`@Transactional(readOnly = true)`는 Query Service에서만 붙인다 — Hibernate가 dirty checking을 생략하고 읽기 전용 커넥션을 사용해 최적화한다. Kotlin 문법 자체는 Command/Query 어느 쪽이든 동일하며, Query Service는 `AccountRepository`(쓰기 모델)가 아니라 별도의 읽기 전용 `AccountQuery` 인터페이스에 의존한다(아래 참고).
+`@Transactional(readOnly = true)` is only attached on Query Services — Hibernate skips dirty checking and uses a read-only connection to optimize. The Kotlin syntax itself is the same whether it's Command or Query; a Query Service depends on a separate read-only `AccountQuery` interface rather than `AccountRepository` (the write model) (see below).
 
 ---
 
-## 별도 Query 인터페이스 — `AccountQuery`
+## A separate Query interface — `AccountQuery`
 
-root(및 NestJS 구현)는 Query Service가 Repository가 아닌 별도의 읽기 전용 `<Domain>Query` 인터페이스를 사용하도록 명시한다 — Query Service가 `saveAccount`/`deleteAccount` 같은 쓰기 메서드에 접근하지 못하도록 컴파일 타임에 강제하기 위해서다. 이 인터페이스는 root 컨벤션대로 `application/query/`에 `AccountQuery`라는 이름으로 둔다(쓰기용 `AccountRepository`는 `domain/`에 그대로 유지).
+The root (and the NestJS implementation) specify that a Query Service should use a separate read-only `<Domain>Query` interface rather than the Repository — this compile-time-enforces that a Query Service can never access write methods like `saveAccount`/`deleteAccount`. Following the root convention, this interface lives in `application/query/` under the name `AccountQuery` (the write-side `AccountRepository` stays as-is in `domain/`).
 
 ```kotlin
-// application/query/AccountQuery.kt — 실제 코드
+// application/query/AccountQuery.kt — actual code
 interface AccountQuery {
     fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
     fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long>
 }
 ```
 
-`GetAccountService`/`GetTransactionsService`는 `AccountRepository`가 아니라 `AccountQuery`를 생성자로 주입받는다. 구현체는 하나뿐이다 — `AccountRepositoryImpl`이 두 인터페이스를 모두 구현한다. `AccountQuery`는 `AccountRepository`(쓰기 모델)의 `findAccounts`/`findTransactions`와 **정확히 같은 시그니처**를 재사용한다(root `repository-pattern.md`의 `find<Noun>s` 통일 규칙이 Query 포트에도 그대로 적용된다) — `saveAccount`/`deleteAccount`만 빠져 있을 뿐이다.
+`GetAccountService`/`GetTransactionsService` constructor-inject `AccountQuery`, not `AccountRepository`. There is only one implementation — `AccountRepositoryImpl` implements both interfaces. `AccountQuery` reuses **exactly the same signatures** as `AccountRepository`'s (the write model's) `findAccounts`/`findTransactions` (the root `repository-pattern.md`'s `find<Noun>s` unification rule applies to the Query port too) — only `saveAccount`/`deleteAccount` are missing.
 
 ```kotlin
-// infrastructure/persistence/AccountRepositoryImpl.kt — 실제 코드
+// infrastructure/persistence/AccountRepositoryImpl.kt — actual code
 @Repository
 class AccountRepositoryImpl(/* ... */) : AccountRepository, AccountQuery {
-    // findAccounts/findTransactions(query)는 AccountRepository와 AccountQuery가 동일한 시그니처로
-    // 선언하므로 이 두 override가 두 인터페이스를 동시에 만족시킨다. saveAccount/deleteAccount는
-    // AccountRepository(쓰기 모델)에만 있어 Query Service에서는 컴파일 타임에 접근할 수 없다.
+    // Since AccountRepository and AccountQuery declare findAccounts/findTransactions(query) with the
+    // identical signature, these two overrides satisfy both interfaces at once. saveAccount/
+    // deleteAccount only exist on AccountRepository (the write model), so a Query Service cannot
+    // access them at compile time.
 }
 ```
 
-Card(`CardRepository`/`CardQuery`의 `findCards`)와 Payment/Refund(`PaymentRepository`/`PaymentQuery`의 `findPayments`, `RefundRepository`/`RefundQuery`의 `findRefunds`)도 모두 같은 패턴이다.
+Card (`CardRepository`/`CardQuery`'s `findCards`) and Payment/Refund (`PaymentRepository`/`PaymentQuery`'s `findPayments`, `RefundRepository`/`RefundQuery`'s `findRefunds`) all follow the same pattern.
 
-Command Service(`CreateAccountService` 등)는 여전히 `AccountRepository`(쓰기 모델, `saveAccount`/`deleteAccount` 포함)를 주입받는다 — 물리적으로는 같은 구현체·같은 테이블이지만, 인터페이스 분리로 각 Service가 자신에게 필요한 메서드에만 접근할 수 있다. Aggregate 복원 없이 프로젝션 전용 쿼리를 실행하는 수준의 완전한 CQRS(별도 읽기 모델/저장소)까지는 아니지만, root가 요구하는 "Query Service는 Repository가 아닌 읽기 전용 인터페이스에 의존"이라는 핵심 원칙은 충족한다.
+Command Services (`CreateAccountService`, etc.) still inject `AccountRepository` (the write model, including `saveAccount`/`deleteAccount`) — physically it's the same implementation and the same table, but the interface split lets each Service access only the methods it needs. This isn't full CQRS (a separate read model/store, running projection-only queries without reconstituting the Aggregate), but it does satisfy the root's core principle that "a Query Service depends on a read-only interface, not the Repository."
 
 ---
 
-## 언제 Handler 기반 CQRS로 전환하는가
+## When to switch to Handler-based CQRS
 
-| 상황 | 권장 |
+| Situation | Recommendation |
 |---|---|
-| 유스케이스가 많아 Service 클래스가 계속 늘어날 때 | 현재처럼 유스케이스당 Service 클래스 유지 — 이미 Handler 수준으로 세분화됨 |
-| Command/Query를 완전히 다른 저장소로 분리할 때 (CQRS 프로젝션 DB 등) | Query 전용 인터페이스 + 구현체 도입 |
-| 이벤트 소싱, Saga 등 복잡한 워크플로가 필요할 때 | Axon Framework 등 전용 CQRS 프레임워크 검토 |
+| Service classes keep growing as use cases increase | Keep one Service class per use case as now — already broken down to Handler-level granularity |
+| Splitting Command/Query into entirely different stores (a CQRS projection DB, etc.) | Introduce a dedicated Query interface + implementation |
+| Complex workflows like event sourcing, Sagas, etc. are needed | Consider a dedicated CQRS framework like Axon Framework |
 
-Spring은 NestJS의 `@nestjs/cqrs` 같은 CommandBus/QueryBus를 기본 제공하지 않는다. 대안:
+Spring doesn't provide a CommandBus/QueryBus out of the box the way NestJS's `@nestjs/cqrs` does. Alternatives:
 
-1. **현재 방식 유지** — `@Service` 클래스를 Controller가 직접 호출. 유스케이스 수가 수십 개 수준일 때까지는 이것으로 충분하며, Kotlin의 간결한 클래스 선언(생성자 주입 한 줄) 덕분에 클래스 수가 늘어나는 비용이 Java보다 작다.
-2. **Axon Framework** 도입 — `@CommandHandler`/`@QueryHandler` 애노테이션과 실제 CommandBus/QueryBus, Event Sourcing까지 제공한다. Kotlin과 100% 호환되지만 인프라(Axon Server 또는 내장 모드) 학습 비용이 있다.
-3. **직접 구현** — `Map<KClass<*>, CommandHandler<*>>` 기반의 경량 CommandBus를 Kotlin으로 직접 작성. 프레임워크 의존을 늘리고 싶지 않을 때의 선택지.
+1. **Keep the current approach** — the Controller directly calls `@Service` classes. This is sufficient until the use-case count reaches the dozens, and thanks to Kotlin's concise class declarations (a one-line constructor injection), the cost of adding more classes is lower than in Java.
+2. **Adopt Axon Framework** — provides `@CommandHandler`/`@QueryHandler` annotations plus an actual CommandBus/QueryBus, and even Event Sourcing. 100% compatible with Kotlin, but there's a learning cost for the infrastructure (Axon Server or embedded mode).
+3. **Implement it yourself** — write a lightweight CommandBus in Kotlin based on `Map<KClass<*>, CommandHandler<*>>`. An option if you don't want to add more framework dependencies.
 
-이 저장소는 Account 도메인의 유스케이스 규모(6개 커맨드, 2개 쿼리)에서는 1번으로 충분하다고 판단해 Handler 기반 CQRS를 도입하지 않았다.
+This repository judged that option 1 is sufficient at the Account domain's use-case scale (6 commands, 2 queries), so it hasn't introduced Handler-based CQRS.
 
 ---
 
-## Interface 레이어 — Controller가 Service 직접 호출
+## Interface layer — the Controller calls the Service directly
 
 ```kotlin
-// interfaces/rest/AccountController.kt — 실제 코드
+// interfaces/rest/AccountController.kt — actual code
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 fun createAccount(
@@ -116,18 +117,18 @@ fun createAccount(
     createAccountService.create(CreateAccountCommand(requesterId, request.currency, request.email))
 ```
 
-Command/Query Bus가 없으므로 Controller가 Service를 생성자로 주입받아 직접 호출한다. 에러 변환은 Controller가 아니라 전역 `@RestControllerAdvice`(`common/GlobalExceptionHandler.kt`, → [error-handling.md](error-handling.md))가 담당한다.
+Since there's no Command/Query Bus, the Controller constructor-injects the Service and calls it directly. Error conversion is handled by the global `@RestControllerAdvice` (`common/GlobalExceptionHandler.kt`, → [error-handling.md](error-handling.md)), not by the Controller.
 
 ---
 
-## Domain Event와의 경계
+## The boundary with Domain Events
 
-Aggregate가 수집한 이벤트는 Command Service가 아니라 Repository의 `save()`가 꺼내 Outbox 테이블에 저장한다 — Command Service는 저장 직후 `outboxRelay.processPending()`만 호출한다. root가 규정하는 Outbox 기반 발행을 그대로 구현한 것이다 — 상세는 [domain-events.md](domain-events.md) 참조.
+The events the Aggregate collects are pulled out and saved to the Outbox table by the Repository's `save()`, not by the Command Service — the Command Service only calls `outboxRelay.processPending()` right after saving. This implements the root's Outbox-based publishing as-is — see [domain-events.md](domain-events.md) for details.
 
 ---
 
-### 관련 문서
+### Related documents
 
-- [layer-architecture.md](layer-architecture.md) — 레이어 의존 방향, Command/Query Service 역할
-- [domain-events.md](domain-events.md) — 이벤트 발행 메커니즘, Outbox 패턴
-- [repository-pattern.md](repository-pattern.md) — Repository 메서드 설계
+- [layer-architecture.md](layer-architecture.md) — layer dependency direction, Command/Query Service roles
+- [domain-events.md](domain-events.md) — the event-publishing mechanism, the Outbox pattern
+- [repository-pattern.md](repository-pattern.md) — Repository method design

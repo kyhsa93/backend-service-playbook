@@ -14,7 +14,8 @@ class SignInService(
     private val authService: AuthService,
 ) {
     fun signIn(command: SignInCommand): String {
-        // 아이디 미존재/비밀번호 불일치를 동일한 예외로 응답 — 존재하는 아이디를 추측 가능하게 만들지 않기 위함.
+        // Responds with the same exception whether the user ID doesn't exist or the password doesn't
+        // match — this prevents an attacker from being able to infer which user IDs exist.
         val credential =
             credentialQuery
                 .findCredentials(CredentialFindQuery(page = 0, take = 1, userId = command.userId))

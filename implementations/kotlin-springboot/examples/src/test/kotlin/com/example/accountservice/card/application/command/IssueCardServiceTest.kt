@@ -19,7 +19,7 @@ class IssueCardServiceTest {
     private val service = IssueCardService(cardRepository, accountAdapter)
 
     @Test
-    fun `계좌가 활성 상태면 카드를 발급하고 저장한다`() {
+    fun `issues and saves a card when the account is active`() {
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
             AccountView(accountId = "account-1", active = true, email = "owner-1@example.com")
 
@@ -32,7 +32,7 @@ class IssueCardServiceTest {
     }
 
     @Test
-    fun `연결 계좌를 찾을 수 없으면 예외를 던진다`() {
+    fun `throws an exception when the linked account cannot be found`() {
         every { accountAdapter.findAccount("account-1", "owner-1") } returns null
 
         assertThrows<LinkedAccountNotFoundException> {
@@ -42,7 +42,7 @@ class IssueCardServiceTest {
     }
 
     @Test
-    fun `연결 계좌가 비활성 상태면 예외를 던진다`() {
+    fun `throws an exception when the linked account is inactive`() {
         every { accountAdapter.findAccount("account-1", "owner-1") } returns
             AccountView(accountId = "account-1", active = false, email = "owner-1@example.com")
 
