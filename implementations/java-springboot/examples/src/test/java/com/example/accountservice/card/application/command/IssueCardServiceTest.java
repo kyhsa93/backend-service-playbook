@@ -32,7 +32,7 @@ class IssueCardServiceTest {
     }
 
     @Test
-    void 연결_계좌가_활성이면_카드를_발급하고_저장한다() {
+    void issues_and_saves_a_card_when_linked_account_is_active() {
         when(accountAdapter.findAccount("account-1", "owner-1"))
                 .thenReturn(
                         Optional.of(
@@ -50,7 +50,7 @@ class IssueCardServiceTest {
     }
 
     @Test
-    void 연결_계좌를_찾을_수_없으면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_linked_account_is_not_found() {
         when(accountAdapter.findAccount("account-1", "owner-1")).thenReturn(Optional.empty());
 
         assertThatThrownBy(
@@ -62,7 +62,7 @@ class IssueCardServiceTest {
     }
 
     @Test
-    void 연결_계좌가_비활성이면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_linked_account_is_inactive() {
         when(accountAdapter.findAccount("account-1", "owner-1"))
                 .thenReturn(
                         Optional.of(

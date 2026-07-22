@@ -39,7 +39,7 @@ class SignInServiceTest {
     }
 
     @Test
-    void 아이디와_비밀번호가_일치하면_액세스_토큰을_발급한다() {
+    void issues_access_token_when_id_and_password_match() {
         Credential credential = Credential.create("owner-1", "hashed-password");
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "owner-1")))
                 .thenReturn(new CredentialsWithCount(List.of(credential), 1));
@@ -59,7 +59,7 @@ class SignInServiceTest {
     }
 
     @Test
-    void 존재하지_않는_아이디면_예외를_던진다() {
+    void throws_exception_when_id_does_not_exist() {
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "no-such-user")))
                 .thenReturn(new CredentialsWithCount(List.of(), 0));
 
@@ -71,7 +71,7 @@ class SignInServiceTest {
     }
 
     @Test
-    void 비밀번호가_틀리면_예외를_던진다() {
+    void throws_exception_when_password_is_wrong() {
         Credential credential = Credential.create("owner-1", "hashed-password");
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "owner-1")))
                 .thenReturn(new CredentialsWithCount(List.of(credential), 1));

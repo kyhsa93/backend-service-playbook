@@ -189,7 +189,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 비활성_카드로_결제하면_400과_PAYMENT_REQUIRES_ACTIVE_CARD를_반환한다() {
+    void returns_400_and_PAYMENT_REQUIRES_ACTIVE_CARD_when_paying_with_an_inactive_card() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -209,7 +209,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 잔액이_부족하면_400과_INSUFFICIENT_BALANCE를_반환한다() {
+    void returns_400_and_INSUFFICIENT_BALANCE_when_balance_is_insufficient() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 1000, OWNER_ID);
@@ -222,7 +222,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 존재하지_않는_카드면_404와_LINKED_CARD_NOT_FOUND를_반환한다() {
+    void returns_404_and_LINKED_CARD_NOT_FOUND_for_a_nonexistent_card() {
         ResponseEntity<Map> response = createPayment("non-existent-card", 1000, OWNER_ID);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -230,7 +230,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 다른_소유자의_카드로_결제하면_404를_반환한다() {
+    void returns_404_when_paying_with_another_owners_card() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -244,7 +244,8 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 활성_카드와_충분한_잔액이면_201과_COMPLETED_결제를_반환하고_계좌_잔액이_차감된다() {
+    void
+            returns_201_and_a_COMPLETED_payment_and_debits_the_account_balance_with_an_active_card_and_sufficient_balance() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -266,7 +267,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 완료된_결제를_취소하면_204를_반환하고_계좌_잔액이_복구된다() {
+    void returns_204_and_restores_the_account_balance_when_cancelling_a_completed_payment() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -288,7 +289,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 존재하지_않는_결제를_취소하면_404를_반환한다() {
+    void returns_404_when_cancelling_a_nonexistent_payment() {
         ResponseEntity<Map> response =
                 post("/payments/non-existent/cancel", OWNER_ID, Map.of("reason", "reason"));
 
@@ -297,7 +298,8 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 이미_취소된_결제를_다시_취소하면_400과_PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT를_반환한다() {
+    void
+            returns_400_and_PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT_when_cancelling_an_already_cancelled_payment_again() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -321,7 +323,8 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 환불_금액이_결제_금액을_초과하면_201과_REJECTED_상태를_반환하고_계좌는_크레딧되지_않는다() {
+    void
+            returns_201_and_REJECTED_status_without_crediting_the_account_when_refund_amount_exceeds_the_payment_amount() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -345,7 +348,8 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 완료되지_않은_취소된_결제에_환불을_요청하면_201과_REJECTED_상태를_반환한다() {
+    void
+            returns_201_and_REJECTED_status_when_requesting_a_refund_on_a_cancelled_not_completed_payment() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -371,7 +375,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 유효한_환불_요청이면_201과_APPROVED_상태를_반환하고_계좌가_크레딧된다() {
+    void returns_201_and_APPROVED_status_and_credits_the_account_for_a_valid_refund_request() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -398,7 +402,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 존재하지_않는_결제에_환불을_요청하면_404를_반환한다() {
+    void returns_404_when_requesting_a_refund_on_a_nonexistent_payment() {
         ResponseEntity<Map> response =
                 post(
                         "/payments/non-existent/refunds",
@@ -410,7 +414,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 내_결제_내역을_페이지네이션과_함께_반환한다() {
+    void returns_my_payment_history_with_pagination() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);
@@ -430,7 +434,7 @@ class PaymentControllerE2ETest {
     }
 
     @Test
-    void 다른_소유자의_결제를_조회하면_404를_반환한다() {
+    void returns_404_when_fetching_another_owners_payment() {
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
         deposit(accountId, 50000, OWNER_ID);

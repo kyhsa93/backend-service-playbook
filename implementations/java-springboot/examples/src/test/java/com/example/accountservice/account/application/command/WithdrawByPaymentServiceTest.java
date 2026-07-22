@@ -31,7 +31,7 @@ class WithdrawByPaymentServiceTest {
     }
 
     @Test
-    void 처리되지_않은_결제완료_이벤트면_출금하고_저장이_일어난다() {
+    void withdraws_and_saves_for_an_unprocessed_payment_completed_event() {
         Account account = Account.create("owner-1", "owner-1@example.com", "KRW");
         account.deposit(5000);
         when(accountRepository.hasTransactionWithReference("payment-1", TransactionType.WITHDRAWAL))
@@ -47,7 +47,7 @@ class WithdrawByPaymentServiceTest {
     }
 
     @Test
-    void 이미_처리된_referenceId면_조용히_무시한다_멱등성() {
+    void silently_ignores_an_already_processed_referenceId_idempotency() {
         when(accountRepository.hasTransactionWithReference("payment-1", TransactionType.WITHDRAWAL))
                 .thenReturn(true);
 
@@ -58,7 +58,7 @@ class WithdrawByPaymentServiceTest {
     }
 
     @Test
-    void 대상_계좌가_없으면_조용히_무시한다() {
+    void silently_ignores_when_the_target_account_does_not_exist() {
         when(accountRepository.hasTransactionWithReference("payment-1", TransactionType.WITHDRAWAL))
                 .thenReturn(false);
         when(accountRepository.findAccounts(new AccountFindQuery(0, 1, "account-1", null, null)))

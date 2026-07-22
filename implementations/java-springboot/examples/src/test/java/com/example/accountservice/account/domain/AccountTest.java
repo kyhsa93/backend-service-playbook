@@ -13,7 +13,7 @@ class AccountTest {
     }
 
     @Test
-    void 계좌_생성_시_잔액은_0이고_ACTIVE_상태다() {
+    void creating_account_starts_with_zero_balance_and_ACTIVE_status() {
         Account account = createAccount();
 
         assertThat(account.getBalance().amount()).isEqualTo(0);
@@ -25,14 +25,14 @@ class AccountTest {
     }
 
     @Test
-    void 계좌_ID는_하이픈_없는_32자리_hex_문자열이다() {
+    void account_id_is_a_32_character_hex_string_with_no_hyphens() {
         Account account = createAccount();
 
         assertThat(account.getAccountId()).matches("^[0-9a-f]{32}$");
     }
 
     @Test
-    void 정지된_계좌에_입금하면_예외를_던진다() {
+    void throws_exception_when_depositing_to_a_suspended_account() {
         Account account = createAccount();
         account.suspend();
 
@@ -43,7 +43,7 @@ class AccountTest {
     }
 
     @Test
-    void 입금_금액이_0이하면_예외를_던진다() {
+    void throws_exception_when_deposit_amount_is_zero_or_less() {
         Account account = createAccount();
 
         assertThatThrownBy(() -> account.deposit(0))
@@ -53,7 +53,7 @@ class AccountTest {
     }
 
     @Test
-    void 입금하면_MoneyDepositedEvent가_수집된다() {
+    void collects_MoneyDepositedEvent_on_deposit() {
         Account account = createAccount();
         account.pullDomainEvents();
 
@@ -68,7 +68,7 @@ class AccountTest {
     }
 
     @Test
-    void 정지된_계좌에서_출금하면_예외를_던진다() {
+    void throws_exception_when_withdrawing_from_a_suspended_account() {
         Account account = createAccount();
         account.suspend();
 
@@ -79,7 +79,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액보다_큰_금액을_출금하면_예외를_던진다() {
+    void throws_exception_when_withdrawing_more_than_the_balance() {
         Account account = createAccount();
         account.deposit(1000);
 
@@ -90,7 +90,7 @@ class AccountTest {
     }
 
     @Test
-    void 출금하면_MoneyWithdrawnEvent가_수집된다() {
+    void collects_MoneyWithdrawnEvent_on_withdrawal() {
         Account account = createAccount();
         account.deposit(1000);
         account.pullDomainEvents();
@@ -104,7 +104,7 @@ class AccountTest {
     }
 
     @Test
-    void 정지하면_SUSPENDED_상태가_되고_AccountSuspendedEvent가_수집된다() {
+    void suspending_moves_to_SUSPENDED_status_and_collects_AccountSuspendedEvent() {
         Account account = createAccount();
         account.pullDomainEvents();
 
@@ -118,7 +118,7 @@ class AccountTest {
     }
 
     @Test
-    void 이미_정지된_계좌를_정지하면_예외를_던진다() {
+    void throws_exception_when_suspending_an_already_suspended_account() {
         Account account = createAccount();
         account.suspend();
 
@@ -129,7 +129,8 @@ class AccountTest {
     }
 
     @Test
-    void 정지된_계좌를_재개하면_ACTIVE_상태가_되고_AccountReactivatedEvent가_수집된다() {
+    void
+            reactivating_a_suspended_account_moves_to_ACTIVE_status_and_collects_AccountReactivatedEvent() {
         Account account = createAccount();
         account.suspend();
         account.pullDomainEvents();
@@ -144,7 +145,7 @@ class AccountTest {
     }
 
     @Test
-    void 활성_계좌를_재개하면_예외를_던진다() {
+    void throws_exception_when_reactivating_an_active_account() {
         Account account = createAccount();
 
         assertThatThrownBy(account::reactivate)
@@ -154,7 +155,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액이_0이_아닌_계좌를_종료하면_예외를_던진다() {
+    void throws_exception_when_closing_an_account_with_non_zero_balance() {
         Account account = createAccount();
         account.deposit(1000);
 
@@ -165,7 +166,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액이_0인_계좌를_종료하면_CLOSED_상태가_되고_AccountClosedEvent가_수집된다() {
+    void closing_a_zero_balance_account_moves_to_CLOSED_status_and_collects_AccountClosedEvent() {
         Account account = createAccount();
         account.pullDomainEvents();
 
@@ -179,7 +180,7 @@ class AccountTest {
     }
 
     @Test
-    void 이미_종료된_계좌를_종료하면_예외를_던진다() {
+    void throws_exception_when_closing_an_already_closed_account() {
         Account account = createAccount();
         account.close();
 
@@ -190,7 +191,7 @@ class AccountTest {
     }
 
     @Test
-    void pullPendingTransactions_호출하면_대기중인_거래가_반환되고_비워진다() {
+    void calling_pullPendingTransactions_returns_and_clears_pending_transactions() {
         Account account = createAccount();
         account.deposit(1000);
 
@@ -201,7 +202,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액이_충분하면_이자를_지급하고_INTEREST_거래를_남긴다() {
+    void pays_interest_and_leaves_an_INTEREST_transaction_when_balance_is_sufficient() {
         Account account = createAccount();
         account.deposit(1_000_000);
         account.pullPendingTransactions();
@@ -217,7 +218,7 @@ class AccountTest {
     }
 
     @Test
-    void 같은_날_이자를_두번_지급하면_두번째는_아무_일도_하지_않는다() {
+    void paying_interest_twice_on_the_same_day_does_nothing_the_second_time() {
         Account account = createAccount();
         account.deposit(1_000_000);
         LocalDate today = LocalDate.of(2026, 7, 21);
@@ -230,7 +231,7 @@ class AccountTest {
     }
 
     @Test
-    void 잔액이_작아서_이자가_0으로_계산되면_거래를_남기지_않는다() {
+    void leaves_no_transaction_when_computed_interest_is_zero_due_to_small_balance() {
         Account account = createAccount();
         account.deposit(50); // 50 / 10_000 = 0
 
@@ -242,7 +243,7 @@ class AccountTest {
     }
 
     @Test
-    void 정지된_계좌는_이자를_지급받지_않는다() {
+    void a_suspended_account_does_not_receive_interest() {
         Account account = createAccount();
         account.deposit(1_000_000);
         account.suspend();
@@ -254,7 +255,7 @@ class AccountTest {
     }
 
     @Test
-    void 다음날에는_다시_이자를_지급받을_수_있다() {
+    void can_receive_interest_again_on_the_next_day() {
         Account account = createAccount();
         account.deposit(1_000_000);
         account.payInterest(LocalDate.of(2026, 7, 21));

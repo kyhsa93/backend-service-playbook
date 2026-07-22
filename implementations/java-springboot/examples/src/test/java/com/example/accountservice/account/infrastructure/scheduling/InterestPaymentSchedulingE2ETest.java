@@ -164,7 +164,8 @@ class InterestPaymentSchedulingE2ETest {
     // dedup window could suppress the enqueue of a second test targeting a different account. We
     // avoid that race entirely by enqueuing twice against the same account.
     @Test
-    void 이자_지급_배치를_적재하면_잔액에_반영되고_같은_날_다시_적재해도_한번만_반영된다() {
+    void
+            enqueueing_the_interest_payment_batch_updates_balance_and_re_enqueueing_the_same_day_applies_only_once() {
         String accountId = createAccountWithBalance(OWNER_ID, 1_000_000);
 
         interestPaymentScheduler.enqueueDailyInterestPayment();

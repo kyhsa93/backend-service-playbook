@@ -31,7 +31,7 @@ class DepositByPaymentServiceTest {
     }
 
     @Test
-    void 처리되지_않은_보상크레딧_이벤트면_입금하고_저장이_일어난다() {
+    void deposits_and_saves_for_an_unprocessed_compensating_credit_event() {
         Account account = Account.create("owner-1", "owner-1@example.com", "KRW");
         when(accountRepository.hasTransactionWithReference("payment-1", TransactionType.DEPOSIT))
                 .thenReturn(false);
@@ -46,7 +46,8 @@ class DepositByPaymentServiceTest {
     }
 
     @Test
-    void 결제완료_출금과_같은_paymentId를_참조해도_type이_다르면_중복처리로_판단하지_않는다() {
+    void
+            does_not_treat_as_duplicate_when_type_differs_despite_referencing_the_same_paymentId_as_the_completed_withdrawal() {
         // A completed payment (WITHDRAWAL) and its cancellation compensation credit (DEPOSIT) share
         // the same paymentId as referenceId, but they are different transactions —
         // hasTransactionWithReference checks the (referenceId, type) combination, so whether a
@@ -66,7 +67,7 @@ class DepositByPaymentServiceTest {
     }
 
     @Test
-    void 이미_처리된_referenceId면_조용히_무시한다_멱등성() {
+    void silently_ignores_an_already_processed_referenceId_idempotency() {
         when(accountRepository.hasTransactionWithReference("payment-1", TransactionType.DEPOSIT))
                 .thenReturn(true);
 

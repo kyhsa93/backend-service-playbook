@@ -39,7 +39,7 @@ class SignUpServiceTest {
     }
 
     @Test
-    void 신규_아이디면_비밀번호를_해싱해서_저장한다() {
+    void hashes_and_saves_password_for_new_id() {
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "owner-1")))
                 .thenReturn(new CredentialsWithCount(List.of(), 0));
         when(passwordHasher.hash("plain-password")).thenReturn("hashed-password");
@@ -53,7 +53,7 @@ class SignUpServiceTest {
     }
 
     @Test
-    void 이미_존재하는_아이디면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_id_already_exists() {
         Credential existing = Credential.create("owner-1", "existing-hash");
         when(credentialQuery.findCredentials(new CredentialFindQuery(0, 1, "owner-1")))
                 .thenReturn(new CredentialsWithCount(List.of(existing), 1));

@@ -41,7 +41,7 @@ class PayInterestServiceTest {
     }
 
     @Test
-    void 활성_계좌에_이자를_지급하고_저장한다() {
+    void pays_interest_to_an_active_account_and_saves_it() {
         Account account = activeAccountWithBalance(1_000_000);
         when(accountRepository.findAccounts(
                         new AccountFindQuery(
@@ -55,7 +55,7 @@ class PayInterestServiceTest {
     }
 
     @Test
-    void 이자가_0인_계좌는_저장하지_않는다_멱등성() {
+    void does_not_save_an_account_whose_interest_is_zero_idempotency() {
         Account account = activeAccountWithBalance(10); // 10 / 10_000 = 0
         when(accountRepository.findAccounts(
                         new AccountFindQuery(
@@ -68,7 +68,7 @@ class PayInterestServiceTest {
     }
 
     @Test
-    void 대상_계좌가_없으면_아무_것도_하지_않는다() {
+    void does_nothing_when_there_are_no_target_accounts() {
         when(accountRepository.findAccounts(
                         new AccountFindQuery(
                                 0, 100, null, null, List.of(AccountStatus.ACTIVE.name()))))

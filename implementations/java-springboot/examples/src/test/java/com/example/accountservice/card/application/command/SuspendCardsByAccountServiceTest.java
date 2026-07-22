@@ -31,7 +31,7 @@ class SuspendCardsByAccountServiceTest {
     }
 
     @Test
-    void 계좌의_ACTIVE_카드를_전부_정지하고_저장한다() {
+    void suspends_and_saves_all_of_the_accounts_ACTIVE_cards() {
         Card card1 = Card.issue("account-1", "owner-1", "VISA");
         Card card2 = Card.issue("account-1", "owner-1", "MASTER");
         when(cardRepository.findCards(
@@ -50,7 +50,7 @@ class SuspendCardsByAccountServiceTest {
     }
 
     @Test
-    void ACTIVE_카드가_없으면_아무_것도_저장하지_않는다_멱등성() {
+    void saves_nothing_when_there_are_no_ACTIVE_cards_idempotency() {
         when(cardRepository.findCards(
                         eq(
                                 new CardFindQuery(

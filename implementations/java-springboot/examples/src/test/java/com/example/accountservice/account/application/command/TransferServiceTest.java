@@ -35,7 +35,7 @@ class TransferServiceTest {
     }
 
     @Test
-    void 승인되면_두_계좌를_하나의_트랜잭션으로_저장한다() {
+    void saves_both_accounts_in_one_transaction_when_approved() {
         Account source = Account.create("owner-1", "owner-1@example.com", "KRW");
         source.deposit(10000);
         Account target = Account.create("owner-2", "owner-2@example.com", "KRW");
@@ -59,7 +59,7 @@ class TransferServiceTest {
     }
 
     @Test
-    void 출금_계좌를_찾을_수_없으면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_source_account_is_not_found() {
         when(accountRepository.findAccounts(new AccountFindQuery(0, 1, "missing", "owner-1", null)))
                 .thenReturn(new AccountsWithCount(List.of(), 0));
 
@@ -77,7 +77,7 @@ class TransferServiceTest {
     }
 
     @Test
-    void 잔액이_부족하면_예외를_던지고_저장하지_않는다() {
+    void throws_exception_and_does_not_save_when_balance_is_insufficient() {
         Account source = Account.create("owner-1", "owner-1@example.com", "KRW");
         source.deposit(1000);
         Account target = Account.create("owner-2", "owner-2@example.com", "KRW");

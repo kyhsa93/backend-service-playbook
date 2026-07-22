@@ -71,7 +71,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    void sign_up_후_sign_in하면_201과_액세스_토큰을_반환한다() {
+    void returns_201_and_access_token_after_sign_up_then_sign_in() {
         ResponseEntity<Map> signUpResponse = signUp("owner-1", PASSWORD);
         assertThat(signUpResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
@@ -81,7 +81,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    void sign_in_시_비밀번호가_틀리면_401과_INVALID_CREDENTIALS를_반환한다() {
+    void returns_401_and_INVALID_CREDENTIALS_when_sign_in_password_is_wrong() {
         signUp("owner-2", PASSWORD);
 
         ResponseEntity<Map> response = signIn("owner-2", "wrong-password");
@@ -91,7 +91,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    void sign_in_시_존재하지_않는_아이디면_401과_INVALID_CREDENTIALS를_반환한다() {
+    void returns_401_and_INVALID_CREDENTIALS_when_sign_in_id_does_not_exist() {
         ResponseEntity<Map> response = signIn("no-such-user", PASSWORD);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -99,7 +99,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    void sign_up_시_이미_사용_중인_아이디면_400과_USER_ID_ALREADY_EXISTS를_반환한다() {
+    void returns_400_and_USER_ID_ALREADY_EXISTS_when_sign_up_id_already_in_use() {
         signUp("owner-3", PASSWORD);
 
         ResponseEntity<Map> response = signUp("owner-3", "another-password1");
@@ -109,7 +109,7 @@ class AuthControllerE2ETest {
     }
 
     @Test
-    void sign_up_시_비밀번호가_8자_미만이면_400을_반환한다() {
+    void returns_400_when_sign_up_password_is_under_8_characters() {
         ResponseEntity<Map> response = signUp("owner-4", "short");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
