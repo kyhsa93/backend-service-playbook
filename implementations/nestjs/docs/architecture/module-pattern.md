@@ -189,7 +189,7 @@ export class OrderModule {}
 
 > **Note**: if a circular dependency between modules occurs (A → B → A), reconsider the design. A circular dependency can be a sign that the Bounded Context boundaries are set up incorrectly. Rather than working around it with `forwardRef()`, re-adjust the domain boundaries or switch to event-based communication.
 
-### Technical Infrastructure Service — Separating Interfaces for Encryption/Decryption, External API Clients, etc.
+### Technical Infrastructure Service — Separating Interfaces for Encryption/Decryption, External API Clients, and Similar Concerns
 
 For the principles and detailed examples of the technical infrastructure Service pattern (splitting encryption/decryption, external API clients, etc. into an Application-layer interface + Infrastructure-layer implementation), see the "Technical Service" section of the root [domain-service.md](../../../../docs/architecture/domain-service.md). The file-storage (Presigned URL) example is covered separately in [file-storage.md](file-storage.md).
 
