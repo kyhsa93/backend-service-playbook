@@ -478,31 +478,32 @@ class SqlAlchemy{n.Domain}Repository({n.Domain}Repository):
     # ---- interface/rest/ ----
     files[f"{n.domain}/interface/rest/schemas.py"] = f"""from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Create{n.Domain}Response(BaseModel):
-    {n.domain}_id: str
-    owner_id: str
-    status: str
-    created_at: datetime
+    {n.domain}_id: str = Field(description="The unique identifier of the newly created {n.domain}.")
+    owner_id: str = Field(description="The `user_id` of the authenticated requester who owns this {n.domain}.")
+    status: str = Field(description="The {n.domain}'s lifecycle status (`PENDING`, `ACTIVE`, or `CANCELLED`).")
+    created_at: datetime = Field(description="When the {n.domain} was created, in UTC.")
 
 
 class Cancel{n.Domain}Request(BaseModel):
-    reason: str
+    reason: str = Field(description="A human-readable reason the {n.domain} is being cancelled.")
 
 
 class Get{n.Domain}Response(BaseModel):
-    {n.domain}_id: str
-    owner_id: str
-    status: str
-    created_at: datetime
+    {n.domain}_id: str = Field(description="The unique identifier of the {n.domain}.")
+    owner_id: str = Field(description="The `user_id` of the authenticated requester who owns this {n.domain}.")
+    status: str = Field(description="The {n.domain}'s lifecycle status (`PENDING`, `ACTIVE`, or `CANCELLED`).")
+    created_at: datetime = Field(description="When the {n.domain} was created, in UTC.")
 """
 
     files[f"{n.domain}/interface/rest/{n.domain}_router.py"] = f'''from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
+from ....common.error_response import ErrorResponse
 from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
 from ...application.command.cancel_{n.domain}_handler import Cancel{n.Domain}Command, Cancel{n.Domain}Handler
@@ -512,7 +513,20 @@ from ...domain.repository import {n.Domain}Query
 from ...infrastructure.persistence.{n.domain}_repository import SqlAlchemy{n.Domain}Repository
 from .schemas import Cancel{n.Domain}Request, Create{n.Domain}Response, Get{n.Domain}Response
 
-router = APIRouter(prefix="/{n.domains_kebab}", tags=["{n.Domain}"], dependencies=[Depends(get_current_user)])
+# A router-level `responses=` is merged into every route on this router by FastAPI — every
+# route below requires get_current_user, so 401 applies uniformly without repeating it
+# per-route (api-response.md "Machine-readable API documentation (OpenAPI)").
+router = APIRouter(
+    prefix="/{n.domains_kebab}",
+    tags=["{n.Domain}"],
+    dependencies=[Depends(get_current_user)],
+    responses={{
+        401: {{
+            "model": ErrorResponse,
+            "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`).",
+        }}
+    }},
+)
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemy{n.Domain}Repository:
@@ -523,7 +537,13 @@ def _query_repo(session: AsyncSession = Depends(get_session)) -> {n.Domain}Query
     return SqlAlchemy{n.Domain}Repository(session)
 
 
-@router.post("", status_code=201, response_model=Create{n.Domain}Response)
+@router.post(
+    "",
+    status_code=201,
+    response_model=Create{n.Domain}Response,
+    summary="Create a new {n.Domain}",
+    description="Creates a new {n.Domain} owned by the authenticated requester, starting in `PENDING` status.",
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def create_{n.domain}(
     request: Request,
@@ -541,7 +561,27 @@ async def create_{n.domain}(
     )
 
 
-@router.post("/{{{n.domain}_id}}/cancel", status_code=204)
+@router.post(
+    "/{{{n.domain}_id}}/cancel",
+    status_code=204,
+    summary="Cancel a {n.Domain}",
+    description="Cancels a {n.Domain} that isn't already cancelled.",
+    responses={{
+        400: {{
+            "model": ErrorResponse,
+            "description": (
+                "The {n.Domain} is already cancelled (`{n.DOMAIN_SCREAM}_ALREADY_CANCELLED`)."
+            ),
+        }},
+        404: {{
+            "model": ErrorResponse,
+            "description": (
+                "No {n.Domain} exists with the given `{n.domain}_id` for this requester "
+                "(`{n.DOMAIN_SCREAM}_NOT_FOUND`)."
+            ),
+        }},
+    }},
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def cancel_{n.domain}(
     request: Request,
@@ -555,7 +595,21 @@ async def cancel_{n.domain}(
     )
 
 
-@router.get("/{{{n.domain}_id}}", response_model=Get{n.Domain}Response)
+@router.get(
+    "/{{{n.domain}_id}}",
+    response_model=Get{n.Domain}Response,
+    summary="Look up a {n.Domain}",
+    description="Returns the {n.Domain} only if it belongs to the authenticated requester.",
+    responses={{
+        404: {{
+            "model": ErrorResponse,
+            "description": (
+                "No {n.Domain} exists with the given `{n.domain}_id` for this requester "
+                "(`{n.DOMAIN_SCREAM}_NOT_FOUND`)."
+            ),
+        }}
+    }},
+)
 async def get_{n.domain}(
     {n.domain}_id: str,
     current_user: CurrentUser = Depends(get_current_user),
