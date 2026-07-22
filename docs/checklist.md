@@ -153,6 +153,10 @@ Check each item, and if a violation is found, fix it immediately before moving t
 [ ] Is the list-response key the domain object's name, pluralized?
     → correct example: { orders: [...], count: 10 } / wrong example: { data: [...] }
 [ ] Does the URL have no trailing slash (/) and no file extension (.json)?
+[ ] Does every endpoint have machine-readable API documentation (OpenAPI/Swagger) with a summary/description?
+    → wrong example: an operation with only an operationId/route registered and no summary or description
+[ ] Is every non-2xx response the endpoint can actually produce documented (not just the success response)?
+    → cross-check against the endpoint's own error-mapping table — an undocumented 404/409/etc. is a gap, not a style nit
 ```
 
 ---

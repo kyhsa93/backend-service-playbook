@@ -54,6 +54,7 @@ It follows the 4-layer structure `src/<domain>/{domain,application,interface,inf
 |---------------|----------|
 | REST endpoints, Controller, DTO | `docs/architecture/module-pattern.md` |
 | Swagger documentation, @ApiProperty, @ApiOperation, @ApiTags | `docs/architecture/module-pattern.md` |
+| API documentation completeness (summary/description/error responses), what the harness checks | `../../docs/architecture/api-response.md` (root shared document) |
 | Pagination, common response format, page/take | `docs/architecture/api-response.md` |
 | Rate Limiting, Throttler | `docs/architecture/rate-limiting.md` |
 | Authentication, authorization, Auth Guard, JWT, Bearer token | `docs/architecture/authentication.md` |

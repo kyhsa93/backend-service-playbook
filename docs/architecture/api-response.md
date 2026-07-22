@@ -136,8 +136,22 @@ export class GetOrderResult {
 
 ---
 
+### Machine-readable API documentation (OpenAPI)
+
+Every REST endpoint must be documented in a machine-readable OpenAPI schema, generated from the same annotations/type hints the framework already uses for request/response validation — not maintained as a separate hand-written document that can drift from the real routes.
+
+**Minimum bar for "documented" (checked mechanically, not just present):**
+- Every operation has a `summary` and a `description` — an operation ID alone (or a bare route with no metadata) is not sufficient.
+- Every non-2xx status code the handler can actually return is declared, with a description of what causes it — cross-check against the handler's own error-mapping table (see [error-handling.md](error-handling.md)). Only documenting the success response is the most common way this rots: it looks complete because the page renders, but a client has no way to know what a 404 or 409 looks like.
+- Every request/response field has a `description` — a bare property with no explanation forces the reader to guess from the field name alone.
+
+**Why this is a repo-wide convention and not a per-implementation nicety:** documentation that "looks done" (the endpoint appears in the docs UI at all) is easy to mistake for actually being useful, so the completeness bar above is deliberately explicit rather than left to judgment — see `docs/checklist.md`'s REST API endpoints section and each language's own harness rule enforcing it.
+
+---
+
 ### Related docs
 
 - [repository-pattern.md](repository-pattern.md) — Repository method design
 - [layer-architecture.md](layer-architecture.md) — the Query Service, Result objects
 - [conventions.md](../conventions.md) — REST API URL design principles
+- [error-handling.md](error-handling.md) — the error-response schema every non-2xx response should reference

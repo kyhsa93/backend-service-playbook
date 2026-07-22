@@ -124,6 +124,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 | `query-handler-no-raw-aggregate` | Fails if the Aggregate type name dynamically extracted from a `save<Noun>(param: Type)` signature is returned as-is as the Query interface/QueryHandler/Controller's `Promise<X>` return type or as the R in `IQueryHandler<Q, R>` — enforces a dedicated Result/DTO | 15 *(auto-gated)* |
 | `no-cross-bc-domain-import` | Fails if `src/<bc>/domain/*.ts` directly imports another BC's `domain/*` — other Aggregates may only be referenced by ID (no object references); extends to crossing BC boundaries too | 15 *(auto-gated)* |
 | `no-orm-autosync-in-prod-config` | Fails if `synchronize` in `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})` is the literal `true`, or evaluates to true when `NODE_ENV === 'production'` | 10 *(auto-gated)* |
+| `api-documentation` | Fails per-endpoint if `@ApiOperation` is missing a `summary`/`description`, or if no non-2xx response (`@ApiNotFoundResponse` etc., class-level ones included) is documented alongside the success response | 30 |
 
 *auto-gated*: excluded from the aggregate score with `maxScore=0` if there's no code using that feature.
 *opt-in*: only runs when the environment variable is explicitly set.

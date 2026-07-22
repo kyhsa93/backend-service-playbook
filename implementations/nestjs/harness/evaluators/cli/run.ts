@@ -45,6 +45,7 @@ import { evaluateNoGenericResponseKeys } from '../rules/no-generic-response-keys
 import { evaluateQueryHandlerNoRawAggregate } from '../rules/query-handler-no-raw-aggregate.evaluator'
 import { evaluateNoCrossBcDomainImport } from '../rules/no-cross-bc-domain-import.evaluator'
 import { evaluateNoOrmAutosyncInProdConfig } from '../rules/no-orm-autosync-in-prod-config.evaluator'
+import { evaluateApiDocumentation } from '../rules/api-documentation.evaluator'
 import { aggregate } from '../shared/score'
 import type { EvaluatorResult } from '../shared/types'
 
@@ -92,7 +93,8 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'no-generic-response-keys': evaluateNoGenericResponseKeys,
   'query-handler-no-raw-aggregate': evaluateQueryHandlerNoRawAggregate,
   'no-cross-bc-domain-import': evaluateNoCrossBcDomainImport,
-  'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig
+  'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig,
+  'api-documentation': evaluateApiDocumentation
 }
 
 interface CliArgs {
