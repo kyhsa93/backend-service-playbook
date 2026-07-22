@@ -239,7 +239,7 @@ The Interface layer (`auth_handler.go`) maps `credential.ErrInvalidCredentials` 
 
 ## AuthMiddleware — verifying the Bearer token via `net/http` middleware
 
-Go middleware is a function with the signature `func(http.Handler) http.Handler`. Authenticated user info is carried in `context.Context` to the next handler — the same role NestJS's `request.user` assignment plays is performed here via `context.WithValue`.
+Go middleware is a function with the signature `func(http.Handler) http.Handler`. Authenticated user info is carried in `context.Context` to the next handler via `context.WithValue` — never assigned onto the request object. This is already the request-scoped-storage principle described in the root [authentication.md](../../../../docs/architecture/authentication.md): a Handler reads it via `middleware.UserIDFromContext(r.Context())`, not by reaching into the request directly.
 
 ```go
 // internal/interface/http/middleware/auth_middleware.go
