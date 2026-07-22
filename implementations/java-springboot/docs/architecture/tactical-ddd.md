@@ -151,7 +151,7 @@ public record Money(long amount, String currency) {
 
 ---
 
-## Domain Event — `MoneyDepositedEvent`, etc.
+## Domain Event — e.g. `MoneyDepositedEvent`
 
 Expressed as an immutable record with a past-tense name.
 
