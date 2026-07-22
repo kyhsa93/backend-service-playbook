@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....account.domain.repository import AccountQuery
 from ....account.infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
+from ....common.error_response import ErrorResponse
 from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
 from ...application.adapter.account_adapter import AccountAdapter
@@ -14,7 +15,19 @@ from ...infrastructure.account_adapter_impl import AccountAdapterImpl
 from ...infrastructure.persistence.card_repository import SqlAlchemyCardRepository
 from .schemas import GetCardResponse, IssueCardRequest, IssueCardResponse
 
-router = APIRouter(prefix="/cards", tags=["Card"], dependencies=[Depends(get_current_user)])
+# See account_router.py's comment on the router-level `responses={401: ...}` — every route
+# on this router requires `get_current_user`, so it applies uniformly here too.
+router = APIRouter(
+    prefix="/cards",
+    tags=["Card"],
+    dependencies=[Depends(get_current_user)],
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`).",
+        }
+    },
+)
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> CardRepository:
@@ -33,7 +46,28 @@ def _account_adapter(account_query: AccountQuery = Depends(_account_query)) -> A
     return AccountAdapterImpl(account_query)
 
 
-@router.post("", status_code=201, response_model=IssueCardResponse)
+@router.post(
+    "",
+    status_code=201,
+    response_model=IssueCardResponse,
+    summary="Issue a card",
+    description="Issues a new card linked to an active account owned by the authenticated requester.",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: the linked account is not active (`CARD_ISSUE_REQUIRES_ACTIVE_ACCOUNT`), or "
+                "request validation failed (`VALIDATION_FAILED`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "No account exists with the given `account_id` for this requester (`LINKED_ACCOUNT_NOT_FOUND`)."
+            ),
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def issue_card(
     request: Request,
@@ -55,7 +89,18 @@ async def issue_card(
     )
 
 
-@router.get("/{card_id}", response_model=GetCardResponse)
+@router.get(
+    "/{card_id}",
+    response_model=GetCardResponse,
+    summary="Look up a card",
+    description="Returns the card only if it belongs to the authenticated requester.",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No card exists with the given `card_id` for this requester (`CARD_NOT_FOUND`).",
+        }
+    },
+)
 async def get_card(
     card_id: str,
     current_user: CurrentUser = Depends(get_current_user),

@@ -1,13 +1,19 @@
 from .error_codes import AuthErrorCode
 
 
-class InvalidTokenError(Exception):
-    def __init__(self) -> None:
-        super().__init__("Invalid or expired token.")
-
-
 class AuthError(Exception):
     code: AuthErrorCode
+
+
+class InvalidTokenError(AuthError):
+    code = AuthErrorCode.INVALID_TOKEN
+
+    def __init__(self) -> None:
+        # Also raised (via dependencies.py's Bearer-scheme wrapper) when the
+        # `Authorization` header is missing or malformed, not only for a signature/
+        # expiration failure — every "the client isn't authenticated" case funnels into
+        # this one exception so the API always responds with the same 401 shape.
+        super().__init__("Invalid or expired token.")
 
 
 class InvalidCredentialsError(AuthError):

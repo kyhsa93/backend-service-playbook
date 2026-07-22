@@ -18,6 +18,7 @@ if HARNESS_DIR not in sys.path:
 from rules import (  # noqa: E402
     aggregate_id_format,
     aggregate_no_public_setters,
+    api_documentation,
     cqrs_pattern,
     directory_structure,
     dockerfile_conventions,
@@ -99,6 +100,7 @@ def assert_has_failure(result) -> None:
         (query_handler_no_raw_aggregate, "query-handler-no-raw-aggregate/good"),
         (no_cross_bc_domain_import, "no-cross-bc-domain-import/good"),
         (no_orm_autosync_in_prod_config, "no-orm-autosync-in-prod-config/good"),
+        (api_documentation, "api-documentation/good"),
     ],
 )
 def test_good_fixture_has_no_failures(rule_module, fixture):
@@ -152,6 +154,8 @@ def test_good_fixture_has_no_failures(rule_module, fixture):
         (query_handler_no_raw_aggregate, "query-handler-no-raw-aggregate/bad-returns-raw-aggregate"),
         (no_cross_bc_domain_import, "no-cross-bc-domain-import/bad-imports-other-bc-domain"),
         (no_orm_autosync_in_prod_config, "no-orm-autosync-in-prod-config/bad-create-all-in-main"),
+        (api_documentation, "api-documentation/bad-missing-summary"),
+        (api_documentation, "api-documentation/bad-no-error-response"),
     ],
 )
 def test_bad_fixture_has_failure(rule_module, fixture):

@@ -19,7 +19,11 @@ from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
 from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa: E402
 from src.account.infrastructure.scheduling.interest_scheduler import start_interest_scheduler  # noqa: E402
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
-from src.auth.domain.errors import InvalidCredentialsError, UserIdAlreadyExistsError  # noqa: E402
+from src.auth.domain.errors import (  # noqa: E402
+    InvalidCredentialsError,
+    InvalidTokenError,
+    UserIdAlreadyExistsError,
+)
 from src.auth.infrastructure.jwt_auth_service import set_jwt_secret  # noqa: E402
 from src.auth.interface.rest.auth_router import router as auth_router  # noqa: E402
 from src.card.domain.errors import CardError, CardNotFoundError, LinkedAccountNotFoundError  # noqa: E402
@@ -112,7 +116,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # The schema is applied via `alembic upgrade head` in the deployment pipeline — this code
 # does not call Base.metadata.create_all here (see docs/architecture/persistence.md).
-app = FastAPI(title="Account Service", lifespan=lifespan)
+app = FastAPI(
+    title="Account Service",
+    description="API documentation for the DDD-based Account/Card/Payment/Auth domain example service",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -213,6 +222,11 @@ async def payment_error_handler(request: Request, exc: PaymentError) -> JSONResp
 
 @app.exception_handler(InvalidCredentialsError)
 async def invalid_credentials_handler(request: Request, exc: InvalidCredentialsError) -> JSONResponse:
+    return JSONResponse(status_code=401, content=build_error_response(401, exc.code.value, str(exc)))
+
+
+@app.exception_handler(InvalidTokenError)
+async def invalid_token_handler(request: Request, exc: InvalidTokenError) -> JSONResponse:
     return JSONResponse(status_code=401, content=build_error_response(401, exc.code.value, str(exc)))
 
 

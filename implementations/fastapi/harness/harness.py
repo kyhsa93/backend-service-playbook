@@ -14,6 +14,7 @@ import sys
 from rules import (
     aggregate_id_format,
     aggregate_no_public_setters,
+    api_documentation,
     cqrs_pattern,
     directory_structure,
     dockerfile_conventions,
@@ -76,6 +77,7 @@ RULES = [
     query_handler_no_raw_aggregate,
     no_cross_bc_domain_import,
     no_orm_autosync_in_prod_config,
+    api_documentation,
 ]
 
 

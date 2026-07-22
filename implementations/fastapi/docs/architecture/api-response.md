@@ -175,6 +175,81 @@ Putting a `None`/empty value into a condition unconditionally can unintentionall
 
 ---
 
+## Machine-readable API documentation (OpenAPI)
+
+> Root principle + completeness bar: [../../../../docs/architecture/api-response.md](../../../../docs/architecture/api-response.md#machine-readable-api-documentation-openapi)
+
+FastAPI auto-generates an OpenAPI schema from `FastAPI(...)`, route decorators, and Pydantic
+models with no extra setup (see [bootstrap.md](bootstrap.md)) — but that auto-generated
+skeleton is not the same thing as it being *documented*. A bare `@router.post(...)` with no
+`summary=`/`description=`/`responses=` still renders a page at `/docs`, just with nothing
+useful on it. This repository closes that gap explicitly:
+
+```python
+# main.py — actual code
+app = FastAPI(
+    title="Account Service",
+    description="API documentation for the DDD-based Account/Card/Payment/Auth domain example service",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+```
+
+```python
+# src/account/interface/rest/account_router.py — actual code
+router = APIRouter(
+    prefix="/accounts",
+    tags=["Account"],
+    dependencies=[Depends(get_current_user)],
+    # A router-level `responses=` is merged into every route on this router by FastAPI —
+    # since every route here requires get_current_user, 401 applies uniformly without
+    # repeating it per-route (the same effect as nestjs's class-level `@ApiUnauthorizedResponse`).
+    responses={401: {"model": ErrorResponse, "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`)."}},
+)
+
+
+@router.post(
+    "/{account_id}/deposit",
+    status_code=201,
+    response_model=TransactionResponse,
+    summary="Deposit money into an account",
+    description="Credits the given amount to the account and records a `DEPOSIT` transaction.",
+    responses={
+        400: {"model": ErrorResponse, "description": "One of: the amount is not a positive integer (`INVALID_AMOUNT`), or the account is not active (`DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`)."},
+        404: {"model": ErrorResponse, "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`)."},
+        422: {"model": ErrorResponse, "description": "Request validation failed (`VALIDATION_FAILED`)."},
+    },
+)
+@limiter.limit(rate_limit_config.write_limit)
+async def deposit(...):
+    ...
+```
+
+`summary=`/`description=` and `responses={...}` are declared explicitly as keyword arguments
+on every route decorator (not pulled from the function's docstring) — this repository has no
+prior docstring convention for routes, and keeping error status codes structured as dict keys
+rather than parsed out of prose is easier to check mechanically (see the harness rule below).
+Every non-2xx `responses=` entry is cross-checked against that specific handler's real
+error-mapping (its `domain/errors.py` exceptions and the `@app.exception_handler`s registered
+in `main.py`, see [error-handling.md](error-handling.md)) — not guessed generically. The
+shared `ErrorResponse` Pydantic model (`src/common/error_response.py`) is referenced via
+`"model": ErrorResponse` in every entry, and each of the 4 fields on it carries its own
+`Field(description=...)`.
+
+Every request/response Pydantic model field also has a `Field(description=...)` — see
+`src/account/interface/rest/schemas.py`, `src/card/.../schemas.py`,
+`src/payment/.../schemas.py`, `src/auth/.../schemas.py`. A bare `field: str` with no
+description forces a reader of `/docs` to guess its meaning from the field name alone.
+
+**The harness's `api-documentation` rule** (`../../harness/rules/api_documentation.py`)
+fails a route if its decorator's keywords don't include both `summary=` and `description=`, or
+if no non-2xx status appears in `responses={...}` (checked as the union of the route's own
+`responses=` and the router-level `responses=` on `APIRouter(...)`). It doesn't know which
+status codes are "correct" for a given handler — that cross-check is a human-review
+responsibility — only that *some* failure path is documented, not just the success response.
+
+---
+
 ### Related documents
 
 - [repository-pattern.md](repository-pattern.md) — Repository method design, the `find<Noun>s` unification principle

@@ -116,3 +116,48 @@ async def test_sign_up_with_password_under_8_chars_returns_422_and_validation_fa
     assert body["statusCode"] == 422
     assert body["code"] == "VALIDATION_FAILED"
     assert body["error"] == "Unprocessable Entity"
+
+
+@pytest.mark.asyncio
+async def test_protected_endpoint_with_no_authorization_header_returns_401_and_invalid_token(
+    client: AsyncClient,
+) -> None:
+    # No Authorization header at all — HTTPBearer's own auto_error case, normalized by the
+    # _Bearer wrapper (dependencies.py) into this repository's standard error shape rather
+    # than FastAPI's default {"detail": "Not authenticated"} body.
+    response = await client.get("/accounts/some-account-id")
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["statusCode"] == 401
+    assert body["code"] == "INVALID_TOKEN"
+    assert body["error"] == "Unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_protected_endpoint_with_malformed_bearer_token_returns_401_and_invalid_token(
+    client: AsyncClient,
+) -> None:
+    # A syntactically-present but garbage JWT — JwtAuthService.verify_token() raises
+    # InvalidTokenError, which main.py maps to 401 (previously this was an unhandled
+    # exception that surfaced as a 500).
+    response = await client.get("/accounts/some-account-id", headers={"Authorization": "Bearer not-a-real-jwt"})
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["statusCode"] == 401
+    assert body["code"] == "INVALID_TOKEN"
+    assert body["error"] == "Unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_protected_endpoint_with_wrong_auth_scheme_returns_401_and_invalid_token(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/accounts/some-account-id", headers={"Authorization": "Basic dXNlcjpwYXNz"})
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["statusCode"] == 401
+    assert body["code"] == "INVALID_TOKEN"
+    assert body["error"] == "Unauthorized"

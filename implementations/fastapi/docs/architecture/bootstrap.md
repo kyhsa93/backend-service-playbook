@@ -40,7 +40,12 @@ async def lifespan(app: FastAPI):
 
 # The schema is applied via `alembic upgrade head` in the deployment pipeline — this code
 # does not call Base.metadata.create_all here (see docs/architecture/persistence.md).
-app = FastAPI(title="Account Service", lifespan=lifespan)
+app = FastAPI(
+    title="Account Service",
+    description="API documentation for the DDD-based Account/Card/Payment/Auth domain example service",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 app.include_router(auth_router)
 app.include_router(account_router)
@@ -87,7 +92,7 @@ The key difference from NestJS is that this code ends with just module-top-level
 |------|------|
 | `validate_env()` (top of the module) | fail-fast: validates required environment variables (`DatabaseConfig`), calls `sys.exit(1)` on failure. Details: [config.md](config.md) |
 | `configure_logging()` | Configures structured JSON logging. Details: [observability.md](observability.md) |
-| `FastAPI(title=..., lifespan=lifespan)` | Creates the app instance. `title` becomes the title of the auto-generated OpenAPI docs |
+| `FastAPI(title=..., description=..., version=..., lifespan=lifespan)` | Creates the app instance. `title`/`description`/`version` become the corresponding fields of the auto-generated OpenAPI docs (`/docs`, `/openapi.json`) |
 | `lifespan` (`@asynccontextmanager`) | Startup/shutdown hook — before `yield` is startup, after it is shutdown. Currently it only fetches the JWT secret from Secrets Manager in production, and the shutdown block is empty. Details: [graceful-shutdown.md](graceful-shutdown.md) |
 | `app.include_router(auth_router)`, `app.include_router(account_router)` | Registers an `APIRouter` — one router per Bounded Context/shared module. Details: [module-pattern.md](module-pattern.md) |
 | `correlation_id_middleware` (`@app.middleware("http")`) | Injects a Correlation ID into every request + request logging. Details: [cross-cutting-concerns.md](cross-cutting-concerns.md) |
@@ -126,7 +131,16 @@ NestJS requires explicitly assembling `DocumentBuilder`/`SwaggerModule.setup()` 
 | `/redoc` | ReDoc |
 | `/openapi.json` | The raw OpenAPI schema |
 
-This repository doesn't customize `version` or `description` beyond `title="Account Service"`. JWT authentication (`get_current_user` based on `HTTPBearer` in `src/auth/interface/rest/dependencies.py` — see [authentication.md](authentication.md)) is implemented, and FastAPI automatically adds an "Authorize" button to Swagger UI just by seeing the `Depends(HTTPBearer())` signature on a route function — there's no need, as in NestJS, to attach `@ApiBearerAuth('token')` to every controller or call `DocumentBuilder.addBearerAuth()`.
+**This ease is also a trap — an auto-generated skeleton is not the same thing as being
+*documented*.** A bare route with no `summary=`/`description=`/`responses=` still renders a
+page at `/docs`, so it "looks done" with nothing catching the gap. This repository closes
+it explicitly: `FastAPI(title=..., description=..., version=...)` at the app level, and
+`summary=`/`description=`/`responses={...}` (covering the non-2xx statuses too, not just
+success) on every route — see the "Machine-readable API documentation (OpenAPI)" section of
+[api-response.md](api-response.md), and the `api-documentation` harness rule that enforces
+it mechanically.
+
+JWT authentication (`get_current_user` based on `HTTPBearer` in `src/auth/interface/rest/dependencies.py` — see [authentication.md](authentication.md)) is implemented, and FastAPI automatically adds an "Authorize" button to Swagger UI just by seeing the `Depends(HTTPBearer())` signature on a route function — there's no need, as in NestJS, to attach `@ApiBearerAuth('token')` to every controller or call `DocumentBuilder.addBearerAuth()`.
 
 ---
 

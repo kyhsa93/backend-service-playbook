@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
+from ....common.error_response import ErrorResponse
 from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
 from ...application.command.close_account_handler import CloseAccountCommand, CloseAccountHandler
@@ -33,7 +34,21 @@ from .schemas import (
 # handler) is handled by `build_event_handlers()` in `src/outbox/event_handlers.py` — this
 # router focuses only on Account's own routes (see domain-events.md).
 
-router = APIRouter(prefix="/accounts", tags=["Account"], dependencies=[Depends(get_current_user)])
+# `responses={401: ...}` applies to every route on this router (FastAPI merges a router-level
+# `responses` dict into each operation's own `responses=`) — every route below requires
+# `get_current_user`, so 401 is a possible response everywhere without repeating it per-route
+# (mirrors nestjs's class-level `@ApiUnauthorizedResponse`, see api-response.md).
+router = APIRouter(
+    prefix="/accounts",
+    tags=["Account"],
+    dependencies=[Depends(get_current_user)],
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`).",
+        }
+    },
+)
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
@@ -44,7 +59,21 @@ def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
     return SqlAlchemyAccountRepository(session)
 
 
-@router.post("", status_code=201, response_model=CreateAccountResponse)
+@router.post(
+    "",
+    status_code=201,
+    response_model=CreateAccountResponse,
+    summary="Open a new account",
+    description="Opens a new account for the authenticated requester with a 0 balance in the given currency.",
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": (
+                "Request validation failed (`VALIDATION_FAILED`) — e.g. an invalid email or missing currency."
+            ),
+        }
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def create_account(
     request: Request,
@@ -65,7 +94,27 @@ async def create_account(
     )
 
 
-@router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
+@router.post(
+    "/{account_id}/deposit",
+    status_code=201,
+    response_model=TransactionResponse,
+    summary="Deposit money into an account",
+    description="Credits the given amount to the account and records a `DEPOSIT` transaction.",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: the amount is not a positive integer (`INVALID_AMOUNT`), or the account is not "
+                "active (`DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+        422: {"model": ErrorResponse, "description": "Request validation failed (`VALIDATION_FAILED`)."},
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def deposit(
     request: Request,
@@ -86,7 +135,27 @@ async def deposit(
     )
 
 
-@router.post("/{account_id}/withdraw", status_code=201, response_model=TransactionResponse)
+@router.post(
+    "/{account_id}/withdraw",
+    status_code=201,
+    response_model=TransactionResponse,
+    summary="Withdraw money from an account",
+    description="Debits the given amount from the account and records a `WITHDRAWAL` transaction.",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: the amount is not a positive integer (`INVALID_AMOUNT`), the account is not active "
+                "(`WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`), or the balance is insufficient (`INSUFFICIENT_BALANCE`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+        422: {"model": ErrorResponse, "description": "Request validation failed (`VALIDATION_FAILED`)."},
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def withdraw(
     request: Request,
@@ -107,7 +176,32 @@ async def withdraw(
     )
 
 
-@router.post("/{account_id}/transfer", status_code=201, response_model=TransferResponse)
+@router.post(
+    "/{account_id}/transfer",
+    status_code=201,
+    response_model=TransferResponse,
+    summary="Transfer money to another account",
+    description=(
+        "Atomically debits the source account and credits the target account with the given amount, "
+        "recording one `WITHDRAWAL` and one `DEPOSIT` transaction."
+    ),
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: the amount is not a positive integer (`INVALID_AMOUNT`), the source and target "
+                "accounts are the same (`TRANSFER_SAME_ACCOUNT`), either account is not active "
+                "(`WITHDRAW_REQUIRES_ACTIVE_ACCOUNT`/`DEPOSIT_REQUIRES_ACTIVE_ACCOUNT`), the currencies do "
+                "not match (`CURRENCY_MISMATCH`), or the balance is insufficient (`INSUFFICIENT_BALANCE`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given source or target `account_id` (`ACCOUNT_NOT_FOUND`).",
+        },
+        422: {"model": ErrorResponse, "description": "Request validation failed (`VALIDATION_FAILED`)."},
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def transfer(
     request: Request,
@@ -149,7 +243,24 @@ async def transfer(
     )
 
 
-@router.post("/{account_id}/suspend", status_code=204)
+@router.post(
+    "/{account_id}/suspend",
+    status_code=204,
+    summary="Suspend an account",
+    description=(
+        "Suspends an active account, blocking further deposits/withdrawals/transfers until it is reactivated."
+    ),
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Only an active account can be suspended (`SUSPEND_REQUIRES_ACTIVE_ACCOUNT`).",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def suspend_account(
     request: Request,
@@ -162,7 +273,24 @@ async def suspend_account(
     )
 
 
-@router.post("/{account_id}/reactivate", status_code=204)
+@router.post(
+    "/{account_id}/reactivate",
+    status_code=204,
+    summary="Reactivate a suspended account",
+    description=(
+        "Moves a suspended account back to active, restoring its ability to accept deposits/withdrawals/transfers."
+    ),
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": ("Only a suspended account can be reactivated (`REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT`)."),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def reactivate_account(
     request: Request,
@@ -175,7 +303,28 @@ async def reactivate_account(
     )
 
 
-@router.post("/{account_id}/close", status_code=204)
+@router.post(
+    "/{account_id}/close",
+    status_code=204,
+    summary="Close an account",
+    description=(
+        "Permanently closes an account. The balance must be exactly 0 first (withdraw or transfer out "
+        "any remaining funds)."
+    ),
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: the account is already closed (`ACCOUNT_ALREADY_CLOSED`), or the balance is not 0 "
+                "(`ACCOUNT_BALANCE_NOT_ZERO`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def close_account(
     request: Request,
@@ -188,7 +337,18 @@ async def close_account(
     )
 
 
-@router.get("/{account_id}", response_model=GetAccountResponse)
+@router.get(
+    "/{account_id}",
+    response_model=GetAccountResponse,
+    summary="Look up an account",
+    description="Returns the account only if it belongs to the authenticated requester.",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        }
+    },
+)
 async def get_account(
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -208,7 +368,24 @@ async def get_account(
     )
 
 
-@router.get("/{account_id}/transactions", response_model=GetTransactionsResponse)
+@router.get(
+    "/{account_id}/transactions",
+    response_model=GetTransactionsResponse,
+    summary="List an account's transaction history",
+    description=(
+        "Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with `page`/`take`."
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. a non-integer `page`/`take`.",
+        },
+    },
+)
 async def get_transactions(
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),

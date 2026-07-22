@@ -41,6 +41,7 @@ It follows the four-layer structure `src/<domain>/{domain,application,interface,
 |---------------|----------|
 | REST endpoints, `APIRouter`, Pydantic request/response models | `docs/architecture/directory-structure.md` |
 | API response structure, pagination, Result object, list/single-item response shape | `docs/architecture/api-response.md` |
+| API documentation, OpenAPI/Swagger completeness (`summary`/`description`/`responses=`, `Field(description=...)`), what the `api-documentation` harness rule checks | `docs/architecture/api-response.md` (see also `../../docs/architecture/api-response.md`, the root shared document) |
 | Authentication, JWT, Bearer token, `Depends(get_current_user)` | `docs/architecture/authentication.md` |
 | Middleware, Correlation ID, request pipeline | `docs/architecture/cross-cutting-concerns.md` |
 | Error handling, `domain/errors.py`, `@app.exception_handler`, error response shape | `docs/architecture/error-handling.md` |

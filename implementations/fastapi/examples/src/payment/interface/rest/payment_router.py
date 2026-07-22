@@ -6,6 +6,7 @@ from ....account.infrastructure.persistence.account_repository import SqlAlchemy
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 from ....card.domain.repository import CardQuery
 from ....card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
+from ....common.error_response import ErrorResponse
 from ....common.rate_limit import limiter, rate_limit_config
 from ....database import get_session
 from ...application.adapter.account_adapter import AccountAdapter
@@ -32,7 +33,19 @@ from .schemas import (
     RequestRefundRequest,
 )
 
-router = APIRouter(prefix="/payments", tags=["Payment"], dependencies=[Depends(get_current_user)])
+# See account_router.py's comment on the router-level `responses={401: ...}` — every route
+# on this router requires `get_current_user`, so it applies uniformly here too.
+router = APIRouter(
+    prefix="/payments",
+    tags=["Payment"],
+    dependencies=[Depends(get_current_user)],
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`).",
+        }
+    },
+)
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> PaymentRepository:
@@ -67,7 +80,33 @@ def _account_adapter(account_query: AccountQuery = Depends(_account_query)) -> A
     return AccountAdapterImpl(account_query)
 
 
-@router.post("", status_code=201, response_model=PaymentResponse)
+@router.post(
+    "",
+    status_code=201,
+    response_model=PaymentResponse,
+    summary="Create a payment",
+    description=(
+        "Charges an active card linked to an active account with sufficient balance. The account "
+        "balance is debited asynchronously once the payment completes."
+    ),
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: the card is not active (`PAYMENT_REQUIRES_ACTIVE_CARD`), the linked account is "
+                "not active (`PAYMENT_REQUIRES_ACTIVE_ACCOUNT`), the account balance is insufficient "
+                "(`INSUFFICIENT_BALANCE`), or request validation failed (`VALIDATION_FAILED`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: no card exists with the given `card_id` (`LINKED_CARD_NOT_FOUND`), or the card's "
+                "linked account could not be found (`LINKED_ACCOUNT_NOT_FOUND`)."
+            ),
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def create_payment(
     request: Request,
@@ -91,7 +130,26 @@ async def create_payment(
     )
 
 
-@router.post("/{payment_id}/cancel", status_code=204)
+@router.post(
+    "/{payment_id}/cancel",
+    status_code=204,
+    summary="Cancel a payment",
+    description="Cancels a completed payment before it is refunded.",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "One of: only a completed payment can be cancelled "
+                "(`PAYMENT_CANCEL_REQUIRES_COMPLETED_PAYMENT`), or request validation failed "
+                "(`VALIDATION_FAILED`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No payment exists with the given `payment_id` (`PAYMENT_NOT_FOUND`).",
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def cancel_payment(
     request: Request,
@@ -105,7 +163,18 @@ async def cancel_payment(
     )
 
 
-@router.get("/{payment_id}", response_model=PaymentResponse)
+@router.get(
+    "/{payment_id}",
+    response_model=PaymentResponse,
+    summary="Look up a payment",
+    description="Returns the payment only if it belongs to the authenticated requester.",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": ("No payment exists with the given `payment_id` for this requester (`PAYMENT_NOT_FOUND`)."),
+        }
+    },
+)
 async def get_payment(
     payment_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -125,7 +194,18 @@ async def get_payment(
     )
 
 
-@router.get("", response_model=GetPaymentsResponse)
+@router.get(
+    "",
+    response_model=GetPaymentsResponse,
+    summary="List the requester's payments",
+    description="Returns the authenticated requester's payments, newest first, paginated with `page`/`take`.",
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. a non-integer `page`/`take`.",
+        }
+    },
+)
 async def get_payments(
     current_user: CurrentUser = Depends(get_current_user),
     page: int = 0,
@@ -154,7 +234,28 @@ async def get_payments(
     )
 
 
-@router.post("/{payment_id}/refunds", status_code=201, response_model=RefundResponse)
+@router.post(
+    "/{payment_id}/refunds",
+    status_code=201,
+    response_model=RefundResponse,
+    summary="Request a refund",
+    description=(
+        "Requests a refund for a payment. Eligibility is judged synchronously "
+        "(`APPROVED`/`REJECTED`); an approved refund is credited back to the account asynchronously."
+    ),
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": (
+                "Request validation failed (`VALIDATION_FAILED`) — e.g. a non-positive amount or missing reason."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No payment exists with the given `payment_id` (`PAYMENT_NOT_FOUND`).",
+        },
+    },
+)
 @limiter.limit(rate_limit_config.write_limit)
 async def request_refund(
     request: Request,
@@ -184,7 +285,22 @@ async def request_refund(
     )
 
 
-@router.get("/{payment_id}/refunds", response_model=GetRefundsResponse)
+@router.get(
+    "/{payment_id}/refunds",
+    response_model=GetRefundsResponse,
+    summary="List a payment's refunds",
+    description="Returns the refunds requested against a payment, newest first, paginated with `page`/`take`.",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No payment exists with the given `payment_id` (`PAYMENT_NOT_FOUND`).",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. a non-integer `page`/`take`.",
+        },
+    },
+)
 async def get_refunds(
     payment_id: str,
     current_user: CurrentUser = Depends(get_current_user),

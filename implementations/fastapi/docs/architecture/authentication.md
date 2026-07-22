@@ -258,7 +258,7 @@ class SignInHandler:
         return self._auth_service.issue_token(credential.user_id)
 ```
 
-`InvalidCredentialsError` is mapped to 401 in `main.py`'s `@app.exception_handler`, and `UserIdAlreadyExistsError` to 400 (both carry `AuthErrorCode` in their `code` field, following the 4-field error-response shape — see [error-handling.md](error-handling.md)).
+`InvalidCredentialsError` is mapped to 401 in `main.py`'s `@app.exception_handler`, `UserIdAlreadyExistsError` to 400, and `InvalidTokenError` (raised by `_Bearer`/`JwtAuthService.verify_token()` above) likewise to 401 (all three carry `AuthErrorCode` in their `code` field, following the 4-field error-response shape — see [error-handling.md](error-handling.md)).
 
 ### Directory structure
 
@@ -298,12 +298,28 @@ src/auth/
 # src/auth/interface/rest/dependencies.py
 from dataclasses import dataclass
 
-from fastapi import Depends
+from fastapi import Depends, Request
+from fastapi.exceptions import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from ...domain.errors import InvalidTokenError
 from ...infrastructure.jwt_auth_service import JwtAuthService
 
-_bearer_scheme = HTTPBearer()
+
+class _Bearer(HTTPBearer):
+    # HTTPBearer's own auto_error=True behavior for a missing header/wrong scheme raises a
+    # plain HTTPException(401, "Not authenticated") — its body is {"detail": ...}, not this
+    # repository's 4-field error-response shape. Re-raising it as InvalidTokenError routes
+    # that case through the same @app.exception_handler(InvalidTokenError) (main.py) as an
+    # invalid/expired token, so every "not authenticated" case gets one consistent 401 body.
+    async def __call__(self, request: Request) -> HTTPAuthorizationCredentials:
+        try:
+            return await super().__call__(request)
+        except HTTPException as exc:
+            raise InvalidTokenError() from exc
+
+
+_bearer_scheme = _Bearer()
 
 
 @dataclass(frozen=True)
@@ -319,7 +335,7 @@ def get_current_user(
     return CurrentUser(user_id=user_id)
 ```
 
-`fastapi.security.HTTPBearer` handles parsing the `Authorization: Bearer <token>` header and the "header itself is missing" case (401) on our behalf. `get_current_user` only verifies the signature/expiration on top of that.
+`fastapi.security.HTTPBearer` parses the `Authorization: Bearer <token>` header and, with `auto_error=True` (the default), already raises 401 itself when the header is missing or uses the wrong scheme — but as a plain `HTTPException` whose body doesn't follow this repository's 4-field error-response shape. The `_Bearer` subclass above catches that and re-raises it as `InvalidTokenError`, the same typed exception `JwtAuthService.verify_token()` raises for a bad signature/expired token, mapped to 401 by a single `@app.exception_handler(InvalidTokenError)` in `main.py` (`error_codes.py`'s `AuthErrorCode.INVALID_TOKEN`). This way a missing header, the wrong scheme, and a truly invalid/expired token all produce the exact same 401 body.
 
 ### Applied to the router
 
