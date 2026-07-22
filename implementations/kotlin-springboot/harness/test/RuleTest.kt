@@ -30,6 +30,7 @@ import harness.rules.checkNoLoggingInDomain
 import harness.rules.checkNoOrmAutosyncInProdConfig
 import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
+import harness.rules.checkOpenApiOperationDocumented
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkQueryHandlerNoRawAggregate
@@ -184,7 +185,13 @@ val TESTS: List<TestCase> = listOf(
 
     TestCase("no-orm-autosync-in-prod-config/good") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/good").assertNoFailures() },
     TestCase("no-orm-autosync-in-prod-config/bad-ddl-auto-update") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/bad-ddl-auto-update").assertHasFailure() },
-    TestCase("no-orm-autosync-in-prod-config/bad-ddl-auto-create-drop") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/bad-ddl-auto-create-drop").assertHasFailure() }
+    TestCase("no-orm-autosync-in-prod-config/bad-ddl-auto-create-drop") { checkNoOrmAutosyncInProdConfig("testdata/no-orm-autosync-in-prod-config/bad-ddl-auto-create-drop").assertHasFailure() },
+
+    TestCase("openapi-operation-documented/good") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/good").assertNoFailures() },
+    TestCase("openapi-operation-documented/good-class-level-error-response") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/good-class-level-error-response").assertNoFailures() },
+    TestCase("openapi-operation-documented/bad-missing-operation") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-missing-operation").assertHasFailure() },
+    TestCase("openapi-operation-documented/bad-missing-summary") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-missing-summary").assertHasFailure() },
+    TestCase("openapi-operation-documented/bad-no-error-response") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-no-error-response").assertHasFailure() }
 )
 
 fun main() {

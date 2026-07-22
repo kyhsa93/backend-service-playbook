@@ -228,6 +228,39 @@ class AccountControllerE2ETest {
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
 
+    // Without a custom AuthenticationEntryPoint (RestAuthenticationEntryPoint), a missing/invalid
+    // bearer token never reaches GlobalExceptionHandler at all — Spring Security's
+    // ExceptionTranslationFilter intercepts it earlier and falls back to the framework default
+    // (403 Forbidden with a generic {timestamp, status, error, path} body), silently breaking the
+    // {statusCode, code, message, error} contract every @ApiResponse(401) documents. Only an actual
+    // unauthenticated HTTP request — not annotations or a mocked Authentication — catches this.
+    @Test
+    fun `returns 401 and UNAUTHORIZED when no bearer token is provided`() {
+        val response = restTemplate.getForEntity("/accounts/anyaccountid00000000000000000000", Map::class.java)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        val body = response.body!!
+        assertThat(body["statusCode"]).isEqualTo(401)
+        assertThat(body["code"]).isEqualTo("UNAUTHORIZED")
+        assertThat(body["error"]).isEqualTo("Unauthorized")
+    }
+
+    @Test
+    fun `returns 401 and UNAUTHORIZED when the bearer token is malformed`() {
+        val headers = HttpHeaders()
+        headers.setBearerAuth("garbage.invalid.token")
+        val response =
+            restTemplate.exchange(
+                "/accounts/anyaccountid00000000000000000000",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                Map::class.java,
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(response.body!!["code"]).isEqualTo("UNAUTHORIZED")
+    }
+
     @Test
     fun `creating an account sends a notification email and saves a send record`() {
         val email = "notify-created@example.com"

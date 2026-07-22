@@ -333,12 +333,17 @@ data class Create{D}Command(
 
     files[f"{p}/application/command/Create{D}Result.kt"] = f"""package com.example.accountservice.{p}.application.command
 
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDateTime
 
 data class Create{D}Result(
+    @field:Schema(description = "The newly created {d}'s ID (32-character hex, no hyphens).")
     val {d}Id: String,
+    @field:Schema(description = "The userId of the {d} owner.")
     val ownerId: String,
+    @field:Schema(description = "The {d}'s lifecycle status. Always `PENDING` right after creation.", example = "PENDING")
     val status: String,
+    @field:Schema(description = "When the {d} was created.")
     val createdAt: LocalDateTime,
 )
 """
@@ -429,12 +434,17 @@ interface {D}Query {{
 
     files[f"{p}/application/query/Get{D}Result.kt"] = f"""package com.example.accountservice.{p}.application.query
 
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDateTime
 
 data class Get{D}Result(
+    @field:Schema(description = "The {d}'s ID (32-character hex, no hyphens).")
     val {d}Id: String,
+    @field:Schema(description = "The userId of the {d} owner.")
     val ownerId: String,
+    @field:Schema(description = "The {d}'s lifecycle status.", example = "PENDING")
     val status: String,
+    @field:Schema(description = "When the {d} was created.")
     val createdAt: LocalDateTime,
 )
 """
@@ -643,16 +653,19 @@ class {D}RepositoryImpl(
     # ---- interfaces/rest/ ----
     files[f"{p}/interfaces/rest/Cancel{D}Request.kt"] = f"""package com.example.accountservice.{p}.interfaces.rest
 
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 
 data class Cancel{D}Request(
     @field:NotBlank
+    @field:Schema(description = "Why the {d} is being cancelled.")
     val reason: String,
 )
 """
 
     files[f"{p}/interfaces/rest/{D}Controller.kt"] = f"""package com.example.accountservice.{p}.interfaces.rest
 
+import com.example.accountservice.account.interfaces.rest.ErrorResponse
 import com.example.accountservice.{p}.application.command.Cancel{D}Command
 import com.example.accountservice.{p}.application.command.Cancel{D}Service
 import com.example.accountservice.{p}.application.command.Create{D}Command
@@ -660,6 +673,13 @@ import com.example.accountservice.{p}.application.command.Create{D}Result
 import com.example.accountservice.{p}.application.command.Create{D}Service
 import com.example.accountservice.{p}.application.query.Get{D}Result
 import com.example.accountservice.{p}.application.query.Get{D}Service
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
@@ -673,6 +693,11 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/{n.domains_kebab}")
+@Tag(name = "{D}")
+@SecurityRequirement(name = "bearerAuth")
+@ApiResponses(
+    ApiResponse(responseCode = "401", description = "The bearer token is missing, malformed, or invalid.", content = [Content(schema = Schema(implementation = ErrorResponse::class))]),
+)
 class {D}Controller(
     private val create{D}Service: Create{D}Service,
     private val cancel{D}Service: Cancel{D}Service,
@@ -680,11 +705,29 @@ class {D}Controller(
 ) {{
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    // TODO: fill in a summary/description that describes this domain's actual create use case.
+    @Operation(summary = "Create a {d}", description = "Creates a new {d} for the authenticated requester, starting in PENDING status.")
+    @ApiResponse(responseCode = "201", description = "The {d} was created.")
     fun create{D}(authentication: Authentication): Create{D}Result =
         create{D}Service.create(Create{D}Command(authentication.name))
 
     @PostMapping("/{{{d}Id}}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    // TODO: fill in a summary/description that describes this domain's actual cancel use case.
+    @Operation(summary = "Cancel a {d}", description = "Cancels the {d}. Only a {d} that is not already cancelled may be cancelled.")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "The {d} was cancelled."),
+        ApiResponse(
+            responseCode = "400",
+            description = "This {d} has already been cancelled (`{n.domain_scream}_ALREADY_CANCELLED`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "404",
+            description = "No {d} exists with the given `{d}Id` for this requester (`{n.domain_scream}_NOT_FOUND`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
     fun cancel{D}(
         authentication: Authentication,
         @PathVariable {d}Id: String,
@@ -694,6 +737,14 @@ class {D}Controller(
     }}
 
     @GetMapping("/{{{d}Id}}")
+    // TODO: fill in a summary/description that describes this domain's actual lookup use case.
+    @Operation(summary = "Look up a {d}", description = "Returns the {d} only if it belongs to the authenticated requester.")
+    @ApiResponse(responseCode = "200", description = "The {d} was found.")
+    @ApiResponse(
+        responseCode = "404",
+        description = "No {d} exists with the given `{d}Id` for this requester (`{n.domain_scream}_NOT_FOUND`).",
+        content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+    )
     fun get{D}(
         authentication: Authentication,
         @PathVariable {d}Id: String,

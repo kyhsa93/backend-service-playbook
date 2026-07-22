@@ -38,6 +38,7 @@ It follows the 4-layer structure `<domain>/{domain,application,infrastructure,in
 |---------------|----------|
 | REST endpoints, `@RestController`, DTOs (`data class`) | `docs/architecture/layer-architecture.md` |
 | API response format, pagination, `page`/`take` | `docs/architecture/api-response.md` |
+| API documentation, Swagger/OpenAPI, `springdoc-openapi`, `@Operation`/`@Schema` | `docs/architecture/bootstrap.md` ("OpenAPI/Swagger" section), `docs/conventions.md` (section 8) |
 | Authentication, JWT, Bearer token, Spring Security Filter | `docs/architecture/authentication.md` |
 | Filter / HandlerInterceptor, Correlation ID | `docs/architecture/cross-cutting-concerns.md` |
 | Error handling, `sealed class` exception hierarchy, `@RestControllerAdvice`, error response format | `docs/architecture/error-handling.md` |

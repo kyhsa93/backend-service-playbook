@@ -339,7 +339,16 @@ data class CreateOrderCommand(
 // order/application/command/CreateOrderResult.kt
 package com.example.orderservice.order.application.command
 
-data class CreateOrderResult(val orderId: String, val status: String, val totalAmount: Long)
+import io.swagger.v3.oas.annotations.media.Schema
+
+data class CreateOrderResult(
+    @field:Schema(description = "The newly created order's ID.")
+    val orderId: String,
+    @field:Schema(description = "The order's lifecycle status. Always `PENDING` right after creation.", example = "PENDING")
+    val status: String,
+    @field:Schema(description = "The order total, summed across every line item.")
+    val totalAmount: Long,
+)
 ```
 
 ```kotlin
@@ -430,8 +439,22 @@ data class GetOrdersQuery(val userId: String, val status: List<String>? = null, 
 // order/application/query/GetOrdersResult.kt
 package com.example.orderservice.order.application.query
 
-data class GetOrdersResult(val orders: List<OrderSummary>, val count: Long) {
-    data class OrderSummary(val orderId: String, val status: String, val totalAmount: Long)
+import io.swagger.v3.oas.annotations.media.Schema
+
+data class GetOrdersResult(
+    @field:Schema(description = "The requester's orders, newest first.")
+    val orders: List<OrderSummary>,
+    @field:Schema(description = "The total number of orders for this requester (not just the current page).")
+    val count: Long,
+) {
+    data class OrderSummary(
+        @field:Schema(description = "The order's ID.")
+        val orderId: String,
+        @field:Schema(description = "The order's lifecycle status.", example = "PENDING")
+        val status: String,
+        @field:Schema(description = "The order total, summed across every line item.")
+        val totalAmount: Long,
+    )
 }
 ```
 
@@ -439,7 +462,18 @@ data class GetOrdersResult(val orders: List<OrderSummary>, val count: Long) {
 // order/application/query/GetOrderResult.kt
 package com.example.orderservice.order.application.query
 
-data class GetOrderResult(val orderId: String, val status: String, val totalAmount: Long, val itemCount: Int)
+import io.swagger.v3.oas.annotations.media.Schema
+
+data class GetOrderResult(
+    @field:Schema(description = "The order's ID.")
+    val orderId: String,
+    @field:Schema(description = "The order's lifecycle status.", example = "PENDING")
+    val status: String,
+    @field:Schema(description = "The order total, summed across every line item.")
+    val totalAmount: Long,
+    @field:Schema(description = "The number of distinct line items on this order.")
+    val itemCount: Int,
+)
 ```
 
 ```kotlin
@@ -666,9 +700,14 @@ class UserAdapterImpl(private val userService: UserService) : UserAdapter {
 // order/interfaces/rest/OrderController.kt
 package com.example.orderservice.order.interfaces.rest
 
+import com.example.orderservice.common.ErrorResponse
 import com.example.orderservice.order.application.command.*
 import com.example.orderservice.order.application.query.*
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
@@ -683,7 +722,8 @@ class OrderController(
     private val getOrderService: GetOrderService,
 ) {
     @GetMapping
-    @Operation(operationId = "getOrders")
+    @Operation(summary = "List the requester's orders", description = "Returns the requester's orders, optionally filtered by status, paginated with `page`/`take`.")
+    @ApiResponse(responseCode = "200", description = "The order list was found.")
     fun getOrders(
         authentication: Authentication,
         @RequestParam(required = false) status: List<String>?,
@@ -692,19 +732,50 @@ class OrderController(
     ): GetOrdersResult = getOrdersService.getOrders(GetOrdersQuery(authentication.name, status, page, take))
 
     @GetMapping("/{orderId}")
-    @Operation(operationId = "getOrder")
+    @Operation(summary = "Look up an order", description = "Returns the order only if it belongs to the authenticated requester.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "The order was found."),
+        ApiResponse(
+            responseCode = "404",
+            description = "No order exists with the given `orderId` (`ORDER_NOT_FOUND`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
     fun getOrder(authentication: Authentication, @PathVariable orderId: String): GetOrderResult =
         getOrderService.getOrder(orderId, authentication.name)
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(operationId = "createOrder")
+    @Operation(summary = "Create an order", description = "Creates a new order from the given line items.")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "The order was created."),
+        ApiResponse(
+            responseCode = "400",
+            description = "One of: the item list is empty (`ORDER_ITEMS_EMPTY`), a price/quantity is not positive " +
+                "(`INVALID_PRICE`/`INVALID_QUANTITY`), or request validation failed (`VALIDATION_FAILED`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
     fun createOrder(authentication: Authentication, @Valid @RequestBody request: CreateOrderRequest): CreateOrderResult =
         createOrderService.create(CreateOrderCommand(authentication.name, request.items))
 
     @PostMapping("/{orderId}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(operationId = "cancelOrder")
+    @Operation(summary = "Cancel an order", description = "Cancels an order that has not yet been paid.")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "The order was cancelled."),
+        ApiResponse(
+            responseCode = "404",
+            description = "No order exists with the given `orderId` (`ORDER_NOT_FOUND`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "409",
+            description = "One of: the order is already cancelled (`ORDER_ALREADY_CANCELLED`), or a paid order " +
+                "cannot be cancelled (`ORDER_PAID_NOT_CANCELLABLE`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
     fun cancelOrder(@PathVariable orderId: String, @Valid @RequestBody request: CancelOrderRequest) {
         cancelOrderService.cancel(CancelOrderCommand(orderId, request.reason))
     }
@@ -713,6 +784,7 @@ class OrderController(
 
 - The Controller only pulls the authenticated user ID (`authentication.name`, the JWT subject) out of `Authentication` to include in a Command/Query — it never trusts a client-sent header without verification. Rationale: [authentication.md](architecture/authentication.md).
 - The Controller has no `@ExceptionHandler` for error conversion — the global `common/GlobalExceptionHandler.kt` (`@RestControllerAdvice`) handles the entire `OrderException` hierarchy at once.
+- Each documented `@ApiResponse` status code is cross-checked against the exception's own `httpStatus` field (see the exception hierarchy above) — `OrderAlreadyCancelledException`/`OrderPaidNotCancellableException` carry `HttpStatus.CONFLICT`, so they're documented as `409`, not guessed as a generic `400`. See [api-response.md](architecture/api-response.md)'s "Machine-readable API documentation (OpenAPI)" section for the exact completeness bar (every operation needs summary+description; every non-2xx status must be documented), and `harness/README.md`'s `openapi-operation-documented` rule for how this is mechanically enforced.
 
 ### Request/Response DTOs
 
@@ -731,10 +803,17 @@ data class CreateOrderRequest(
     val items: List<OrderItemRequest>,
 ) {
     data class OrderItemRequest(
+        @field:Schema(description = "The catalog item's ID.")
         val itemId: Long,
-        @field:NotBlank val name: String,
-        @field:Positive val price: Long,
-        @field:Positive val quantity: Int,
+        @field:NotBlank
+        @field:Schema(description = "The item's display name, snapshotted at order time.")
+        val name: String,
+        @field:Positive
+        @field:Schema(description = "The unit price. Must be greater than 0.")
+        val price: Long,
+        @field:Positive
+        @field:Schema(description = "The quantity ordered. Must be greater than 0.")
+        val quantity: Int,
     )
 }
 

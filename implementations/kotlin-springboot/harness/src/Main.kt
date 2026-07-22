@@ -28,6 +28,7 @@ import harness.rules.checkNoLoggingInDomain
 import harness.rules.checkNoOrmAutosyncInProdConfig
 import harness.rules.checkNoSilentCatch
 import harness.rules.checkNotificationE2eTest
+import harness.rules.checkOpenApiOperationDocumented
 import harness.rules.checkOutboxNoSyncDrain
 import harness.rules.checkPackageStructure
 import harness.rules.checkQueryHandlerNoRawAggregate
@@ -77,7 +78,8 @@ val RULES: List<Rule> = listOf(
     ::checkNoGenericResponseKeys,
     ::checkQueryHandlerNoRawAggregate,
     ::checkNoCrossBcDomainImport,
-    ::checkNoOrmAutosyncInProdConfig
+    ::checkNoOrmAutosyncInProdConfig,
+    ::checkOpenApiOperationDocumented
 )
 
 fun main(args: Array<String>) {

@@ -237,13 +237,16 @@ Check each item, and if a violation is found, fix it immediately before moving t
 **Related documents**: [conventions.md](./conventions.md) section 8 · [architecture/bootstrap.md](./architecture/bootstrap.md)
 
 ```
-[ ] Does every Controller method have @Operation(operationId = "...")?
-[ ] Does an endpoint that needs a response schema have @ApiResponse(responseCode, description)?
+[ ] Does every Controller method have @Operation with a non-empty summary AND description?
+    → an operationId alone (or a bare route with no metadata) is not sufficient
+[ ] Is every non-2xx status the method can actually return documented with @ApiResponse/@ApiResponses(responseCode, description)?
+    → cross-check against the method's own exception-mapping (GlobalExceptionHandler) — an undocumented 404/409/etc is a gap, not a style nit. Only documenting the success response is the most common way this rots
 [ ] Does the Request DTO's (data class's) Bean Validation annotation have the @field: use-site target attached?
     → Omitting it makes validation silently not work with no compile error (the most common mistake)
-[ ] Does a Request/Response DTO field have @Schema(description = "...")?
+[ ] Does every Request/Response DTO field have @Schema(description = "...")?
 [ ] Is @Operation(deprecated = true) marked on an endpoint scheduled for deprecation?
-[ ] Is the springdoc-openapi dependency added to build.gradle.kts? (if @Operation/@Schema are used)
+[ ] Is the springdoc-openapi dependency added to build.gradle.kts?
+[ ] Does `harness/README.md`'s openapi-operation-documented rule pass? (bash harness.sh <projectRoot>)
 ```
 
 ---

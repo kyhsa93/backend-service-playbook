@@ -44,6 +44,7 @@ harness/
       SoftDeleteFilter.kt
       TypedErrorsOnly.kt
       RateLimitWired.kt
+      OpenApiOperationDocumented.kt
   test/
     RuleTest.kt                   self-contained fixture test runner (no external framework dependency)
     testdata/<rule>/good/         minimal fixture that must pass the rule
@@ -100,6 +101,7 @@ If `kotlinc` is not on PATH, specify it via the environment variable, e.g. `KOTL
 | `query-handler-no-raw-aggregate` | `QueryHandlerNoRawAggregate.kt` | fails if the return type of a function in a `@Service` Query Service in `application/query/` or a `@RestController` Controller exposes the raw Domain Aggregate/Entity of its own BC(`class X private constructor()`) as-is — a dedicated Result/DTO must be returned (api-response.md). A `*Query` read-only port interface(no `@Service`) used only inside the Query Service is not targeted |
 | `no-cross-bc-domain-import` | `NoCrossBcDomainImport.kt` | fails if a file in `<bc>/domain/` directly imports another BC's `domain/` package — checks that the principle that other Aggregates may only be referenced by ID (tactical-ddd.md) applies not just within the same BC(`no-cross-aggregate-reference`) but also between BCs. Separately from `domain-layer-isolation`(no referencing higher layers), this also blocks sibling BCs' `domain/` from directly referencing each other |
 | `no-orm-autosync-in-prod-config` | `NoOrmAutosyncInProdConfig.kt` | in `src/main/resources/application*.yml`(base + per-profile overrides, the actual production config), if `spring.jpa.hibernate.ddl-auto` is specified, only `validate`/`none` are allowed — `update`/`create`/`create-drop` are forbidden (persistence.md). Schema changes must be made only through Flyway migrations. Test `@DynamicPropertySource` config(`create-drop`) is unaffected since only `src/main/resources/`, not `src/test/`, is scanned |
+| `openapi-operation-documented` | `OpenApiOperationDocumented.kt` | for every `@RestController` method mapped with `@GetMapping`/`@PostMapping`/`@PutMapping`/`@PatchMapping`/`@DeleteMapping`, fails if it has no `@Operation` with a non-empty `summary`+`description`, or if no non-2xx `@ApiResponse`/`@ApiResponses` `responseCode` is documented for it (either on the method itself or shared via a class-level `@ApiResponses`) (api-response.md "Machine-readable API documentation (OpenAPI)"). A structural/mechanical annotation-presence check — it does not judge whether the documented codes are the *correct* ones for the domain's business rules |
 
 ## Regression tests
 

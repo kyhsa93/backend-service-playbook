@@ -41,6 +41,12 @@ sqs:
   domain-event-queue-url: ${SQS_DOMAIN_EVENT_QUEUE_URL:}
   task-queue-url: ${SQS_TASK_QUEUE_URL:}
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
 resilience4j:
   ratelimiter:
     instances:

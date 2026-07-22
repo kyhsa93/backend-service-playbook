@@ -77,19 +77,24 @@ class GlobalExceptionHandler {
 
 `AccountServiceApplication.kt` doesn't even need to know this class exists — being in the package and annotated with `@RestControllerAdvice` is enough. `examples/` is likewise consolidated into this single global handler, and `AccountController` has no `@ExceptionHandler` methods of its own — see [error-handling.md](error-handling.md) for details.
 
-## OpenAPI/Swagger — not currently introduced
+## OpenAPI/Swagger — `springdoc-openapi`
 
-Checking `examples/build.gradle.kts` shows there is no `springdoc-openapi` dependency. That means there is no code in this repository corresponding to the `SwaggerModule.setup('api', app, document)` shown in NestJS's `bootstrap.md`. If it were added:
+`examples/build.gradle.kts` declares `org.springdoc:springdoc-openapi-starter-webmvc-ui`. Unlike NestJS's `SwaggerModule.setup('api', app, document)` (an imperative call inside `bootstrap()`), springdoc doesn't assemble the document from a bootstrap function — the equivalent of NestJS's `DocumentBuilder` call is `config/OpenApiConfig.kt`, a `@Configuration` class with an `@Bean fun openApi(): OpenAPI` factory method that sets the title/description/version and registers the `bearerAuth` security scheme:
 
 ```kotlin
-// build.gradle.kts — would need to be added (not currently present)
-dependencies {
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+// config/OpenApiConfig.kt — excerpt of the actual code
+@Configuration
+class OpenApiConfig {
+    @Bean
+    fun openApi(): OpenAPI =
+        OpenAPI()
+            .info(Info().title("Account Service API").description("...").version("0.1.0"))
+            .components(Components().addSecuritySchemes("bearerAuth", SecurityScheme()./* ... */))
 }
 ```
 
 ```yaml
-# application.yml — would need to be added (not currently present)
+# application.yml — actual code
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -97,7 +102,7 @@ springdoc:
     path: /swagger-ui.html
 ```
 
-`springdoc-openapi` doesn't assemble the document with a `DocumentBuilder` inside a bootstrap function like NestJS does — adding the dependency and attaching `@Operation`/`@Tag` annotations to controllers is enough for `/v3/api-docs` and `/swagger-ui.html` to be **registered automatically**. This is, again, Spring Boot's consistent pattern of "classpath scanning + annotations do the assembly, not a bootstrap function."
+Being a `@Configuration`/`@Bean` pair is enough for component scanning to register it — `AccountServiceApplication.kt`'s `main()` doesn't reference `OpenApiConfig` at all, the same "classpath scanning + annotations do the assembly, not a bootstrap function" pattern as every other cross-cutting concern in this document. Every Controller method is annotated with `@Operation`(summary/description) + `@ApiResponse`/`@ApiResponses`(one per non-2xx status it can actually return), and every request/response DTO field carries `@Schema(description = ...)` — see [api-response.md](../../../docs/architecture/api-response.md)'s "Machine-readable API documentation (OpenAPI)" section for the exact completeness bar, and `harness/README.md`'s `openapi-operation-documented` rule for how it's mechanically enforced. `SecurityConfig` also `permitAll`s `/v3/api-docs/**`/`/swagger-ui.html`/`/swagger-ui/**` — the generated docs are not a protected resource.
 
 ## CORS — not currently configured
 
@@ -128,7 +133,7 @@ class WebConfig(private val requestLoggingInterceptor: RequestLoggingInterceptor
 | Registration approach | imperative calls inside the `bootstrap()` function | annotations + component scan (declarative) |
 | Global validation | `app.useGlobalPipes(new ValidationPipe(...))` | `@Valid` + Bean Validation ([cross-cutting-concerns.md](cross-cutting-concerns.md)) |
 | Global error handling | `app.useGlobalFilters(...)` | `@RestControllerAdvice` (auto-scanned, [error-handling.md](error-handling.md)) |
-| API docs | `SwaggerModule.setup(...)` (assembled in bootstrap) | just add the springdoc-openapi dependency and it's auto-registered (not currently introduced) |
+| API docs | `SwaggerModule.setup(...)` (assembled in bootstrap) | `OpenApiConfig`'s `@Bean fun openApi()` + `@Operation`/`@Schema` annotations on Controllers/DTOs — auto-registered by component scanning |
 | Graceful shutdown | `app.enableShutdownHooks()` (must be called explicitly) | `SpringApplication.run()` already registers a shutdown hook ([graceful-shutdown.md](graceful-shutdown.md)) |
 | Entry point | the `bootstrap()` function itself | `main()` — effectively a single call to `runApplication` |
 
