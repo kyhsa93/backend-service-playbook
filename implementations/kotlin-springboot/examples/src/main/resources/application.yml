@@ -42,8 +42,8 @@ sqs:
   task-queue-url: ${SQS_TASK_QUEUE_URL:}
 
 llm:
-  api-key: ${ANTHROPIC_API_KEY:}
-  model: ${REFUND_CLASSIFIER_MODEL:claude-opus-4-8}
+  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${REFUND_CLASSIFIER_MODEL:qwen2.5:1.5b}
 
 springdoc:
   api-docs:

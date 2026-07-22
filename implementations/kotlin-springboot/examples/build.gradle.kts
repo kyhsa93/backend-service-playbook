@@ -50,7 +50,6 @@ dependencies {
     implementation("software.amazon.awssdk:ses:2.48.3")
     implementation("software.amazon.awssdk:secretsmanager:2.29.52")
     implementation("software.amazon.awssdk:sqs:2.29.52")
-    implementation("com.anthropic:anthropic-java:2.34.0")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
     implementation("io.github.resilience4j:resilience4j-spring-boot3:2.4.0")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
