@@ -80,7 +80,7 @@ def iter_files() -> list[Path]:
             continue
         if path.suffix not in INCLUDE_SUFFIXES:
             continue
-        if any(part in EXCLUDE_DIR_NAMES for part in path.parts):
+        if any(part in EXCLUDE_DIR_NAMES for part in path.relative_to(REPO_ROOT).parts):
             continue
         files.append(path)
     return files

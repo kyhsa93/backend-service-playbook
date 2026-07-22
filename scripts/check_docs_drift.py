@@ -107,7 +107,7 @@ def iter_doc_files() -> list[Path]:
     seen: set[Path] = set()
     for pattern in DOC_GLOBS:
         for p in REPO_ROOT.glob(pattern):
-            if p.is_file() and not any(part in EXCLUDE_DIR_NAMES for part in p.parts):
+            if p.is_file() and not any(part in EXCLUDE_DIR_NAMES for part in p.relative_to(REPO_ROOT).parts):
                 seen.add(p)
     return sorted(seen)
 
