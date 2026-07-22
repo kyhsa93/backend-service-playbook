@@ -68,6 +68,7 @@ export function aggregate(results: EvaluatorResult[]): AggregateReport {
         || r.name.includes('soft-delete-filter')
         || r.name.includes('query-handler-no-raw-aggregate')
         || r.name.includes('no-cross-bc-domain-import')
+        || r.name === 'user-context-store'
       ) return 'architecture'
       if (r.name === 'build' || r.name === 'test-run' || r.name === 'secret-manager' || r.name === 'dockerfile' || r.name === 'local-dev' || r.name === 'no-orm-autosync-in-prod-config') return 'runtime'
       if (r.name.includes('test') || r.name === 'e2e-quality') return 'testing'

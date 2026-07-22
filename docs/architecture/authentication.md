@@ -13,7 +13,7 @@ Client → POST /auth/sign-in (credentials)
 [An authenticated request]
 Client → includes an Authorization: Bearer <access_token> header
           → Interface layer (Guard/Filter): extracts the token from the header → verifies it
-          → assigns the user info to request.user → passes it to the Handler
+          → stores the user info in a request-scoped storage (not the raw request object) → the Handler reads it from that storage
 ```
 
 ---
@@ -23,7 +23,7 @@ Client → includes an Authorization: Bearer <access_token> header
 **Authentication is handled only in the Interface layer.** The Domain and Application layers never depend on the authentication context.
 
 ```
-Interface layer: extracts the token → verifies it → assigns request.user
+Interface layer: extracts the token → verifies it → stores the user info in request-scoped storage
 Application layer: a command/query only includes what it needs, like the userId
 Domain layer: no concept of authentication. Pure business logic
 ```
@@ -38,15 +38,29 @@ public async cancelOrder(token: string, command: CancelOrderCommand) {
 }
 ```
 
-The correct pattern — the Interface layer extracts only the userId and passes it along:
+Also a wrong pattern — even within the Interface layer, reading the user info directly off the request object:
 
 ```typescript
-// Interface layer: extract the userId from the token and include it in the Command
+// avoid — reads the user info directly off the request object
 public async cancelOrder(
   @Req() req: { user: { userId: string } },
   @Body() body: CancelOrderRequestBody
 ): Promise<void> {
   return this.commandService.cancelOrder({ ...body, userId: req.user.userId })
+}
+```
+
+**Why this is discouraged, not just a style preference**: the same reasoning as [cross-cutting-concerns.md](cross-cutting-concerns.md)'s Correlation ID section — reading straight off the request object couples the Handler (and anything it calls) to "there is an HTTP request happening right now," rather than a plain value it was handed. This matters more than it looks for a field like the authenticated user, which is usually needed *everywhere* — inside the Handler, sometimes inside an Application-layer Service, and again in the logging/observability interceptor. Passing `req` everywhere those needs go, or grabbing a global "current request," both defeat the point of the Interface layer converting HTTP mechanics into plain application calls in the first place.
+
+The correct pattern — the Interface layer stores only the userId in request-scoped storage, and the Handler reads it from there:
+
+```typescript
+// Interface layer: read the userId from request-scoped storage, not the request object
+public async cancelOrder(
+  @Body() body: CancelOrderRequestBody
+): Promise<void> {
+  const userId = userContextStorage.getRequesterId()
+  return this.commandService.cancelOrder({ ...body, userId })
 }
 ```
 
@@ -68,7 +82,10 @@ export class AuthService {
 ### Verifying a token
 
 ```typescript
-// interface layer (conceptual)
+// interface layer (conceptual) — populating request-scoped storage, not the request object,
+// is a two-part story in most frameworks (a Guard/equivalent alone usually has no "wrap the
+// rest of the pipeline" callback) — see each language's own authentication.md for the concrete
+// mechanism (e.g. nestjs pairs a Guard with a companion Interceptor for exactly this reason).
 export class AuthGuard {
   public async canActivate(request: Request): Promise<boolean> {
     const authorization = request.headers['authorization']
@@ -77,7 +94,7 @@ export class AuthGuard {
     const token = authorization.replace('Bearer ', '')
     try {
       const payload = jwt.verify(token, jwtSecret) as { userId: string }
-      request.user = payload
+      userContextStorage.run(payload, () => { /* the rest of the request pipeline runs here */ })
       return true
     } catch {
       return false

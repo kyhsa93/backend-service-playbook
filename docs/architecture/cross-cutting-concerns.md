@@ -41,19 +41,23 @@ function correlationIdMiddleware(req, res, next) {
 
 ### Authentication (Guard stage)
 
-Token verification and extracting user info are handled before entering the Handler. The Handler (a Controller method) just pulls the already-authenticated user info off the request object.
+Token verification and extracting user info are handled before entering the Handler. The Handler (a Controller method) never reads the user info off the raw request object — it reads it from the same kind of request-scoped storage the Correlation ID uses above.
 
 ```typescript
 // Guard (conceptual)
 function authGuard(req): boolean {
   const token = req.headers['authorization']?.replace('Bearer ', '')
   if (!token) return false
-  req.user = jwt.verify(token, secret)
+  userContextStorage.run(jwt.verify(token, secret), () => { /* handled by whatever wraps the rest of the pipeline */ })
   return true
 }
 ```
 
+→ **Why not just assign `req.user = payload`?** It's tempting since it's simpler, but it re-introduces the same problem Correlation ID injection avoids: any code that needs the authenticated user now has to have the request object threaded into it (or reach for a framework-specific "current request" global), coupling business logic to the HTTP layer instead of receiving a plain value. Reading from request-scoped storage keeps the Handler's dependency on "the current user" exactly as explicit as its dependency on the Correlation ID.
+
 → Apply the Guard at the Controller class level. Applying it per-method risks missing one.
+
+→ **A framework detail worth calling out**: unlike Middleware, a Guard typically has no "wrap the rest of the pipeline" callback of its own (it just returns allow/deny) — so populating a `run()`-based store from inside a Guard usually needs a companion stage (an Interceptor, or equivalent) positioned right after it to actually open the storage scope. See each language's own authentication.md for how it solves this concretely.
 
 ### Input validation (Pipe stage)
 

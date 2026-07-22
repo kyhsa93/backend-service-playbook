@@ -1,16 +1,17 @@
 import {
   BadRequestException, Body, Controller, Get, HttpCode,
-  Logger, NotFoundException, Param, Post, Query, Req, UseGuards
+  Logger, NotFoundException, Param, Post, Query
 } from '@nestjs/common'
 import {
   ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
   ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
 } from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
-import { Request } from 'express'
 
+import { Authenticated } from '@/auth/authenticated.decorator'
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
+import { UserContextStore } from '@/common/user-context-store'
 import { CloseAccountCommand } from '@/account/application/command/close-account-command'
 import { CreateAccountCommand } from '@/account/application/command/create-account-command'
 import { DepositCommand } from '@/account/application/command/deposit-command'
@@ -38,15 +39,12 @@ import { WithdrawRequestBody } from '@/account/interface/dto/withdraw-request-bo
 import { WithdrawResponseBody } from '@/account/interface/dto/withdraw-response-body'
 import { AccountErrorCode as ErrorCode } from '@/account/account-error-code'
 import { AccountErrorMessage } from '@/account/account-error-message'
-import { AuthGuard } from '@/auth/auth.guard'
-
-type AuthenticatedRequest = Request & { user: { userId: string } }
 
 @Controller()
 @ApiTags('Account')
 @ApiBearerAuth('token')
 @ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
-@UseGuards(AuthGuard)
+@Authenticated()
 export class AccountController {
   private readonly logger = new Logger(AccountController.name)
 
@@ -64,10 +62,9 @@ export class AccountController {
   @ApiCreatedResponse({ description: 'The account was created.', type: CreateAccountResponseBody })
   @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. an invalid email or missing currency.', type: ErrorResponseBody })
   public async createAccount(
-    @Req() req: AuthenticatedRequest,
     @Body() body: CreateAccountRequestBody
   ): Promise<CreateAccountResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<CreateAccountCommand, Account>(new CreateAccountCommand({ ...body, requesterId }))
       .then((account) => ({
         accountId: account.accountId,
@@ -96,11 +93,10 @@ export class AccountController {
   })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async deposit(
-    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
     @Body() body: DepositRequestBody
   ): Promise<DepositResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<DepositCommand, Transaction>(new DepositCommand({ ...body, accountId, requesterId }))
       .then((transaction) => ({
         transactionId: transaction.transactionId,
@@ -132,11 +128,10 @@ export class AccountController {
   })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async withdraw(
-    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
     @Body() body: WithdrawRequestBody
   ): Promise<WithdrawResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<WithdrawCommand, Transaction>(new WithdrawCommand({ ...body, accountId, requesterId }))
       .then((transaction) => ({
         transactionId: transaction.transactionId,
@@ -169,11 +164,10 @@ export class AccountController {
   })
   @ApiNotFoundResponse({ description: 'No account exists with the given source or target `accountId` (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async transfer(
-    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string,
     @Body() body: TransferRequestBody
   ): Promise<TransferResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<TransferCommand, TransferResult>(
       new TransferCommand({ sourceAccountId: accountId, targetAccountId: body.targetAccountId, amount: body.amount, requesterId })
     )
@@ -219,10 +213,9 @@ export class AccountController {
   @ApiBadRequestResponse({ description: 'Only an active account can be suspended (`SUSPEND_REQUIRES_ACTIVE_ACCOUNT`).', type: ErrorResponseBody })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async suspendAccount(
-    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
   ): Promise<void> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute(new SuspendAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -244,10 +237,9 @@ export class AccountController {
   @ApiBadRequestResponse({ description: 'Only a suspended account can be reactivated (`REACTIVATE_REQUIRES_SUSPENDED_ACCOUNT`).', type: ErrorResponseBody })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async reactivateAccount(
-    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
   ): Promise<void> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute(new ReactivateAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -272,10 +264,9 @@ export class AccountController {
   })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async closeAccount(
-    @Req() req: AuthenticatedRequest,
     @Param('accountId') accountId: string
   ): Promise<void> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute(new CloseAccountCommand({ accountId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -296,10 +287,9 @@ export class AccountController {
   @ApiOkResponse({ description: 'The account was found.', type: GetAccountResponseBody })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getAccount(
-    @Req() req: AuthenticatedRequest,
     @Param() param: GetAccountRequestParam
   ): Promise<GetAccountResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute(new GetAccountQuery({ accountId: param.accountId, requesterId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
@@ -318,11 +308,10 @@ export class AccountController {
   @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `page`/`take` out of range.', type: ErrorResponseBody })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getTransactions(
-    @Req() req: AuthenticatedRequest,
     @Param() param: GetTransactionsRequestParam,
     @Query() querystring: GetTransactionsRequestQuerystring
   ): Promise<GetTransactionsResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute(
       new GetTransactionsQuery({ ...querystring, accountId: param.accountId, requesterId })
     ).catch((error) => {

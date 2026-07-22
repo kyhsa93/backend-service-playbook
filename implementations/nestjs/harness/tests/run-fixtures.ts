@@ -42,6 +42,7 @@ import { evaluateQueryHandlerNoRawAggregate } from '../evaluators/rules/query-ha
 import { evaluateNoCrossBcDomainImport } from '../evaluators/rules/no-cross-bc-domain-import.evaluator'
 import { evaluateNoOrmAutosyncInProdConfig } from '../evaluators/rules/no-orm-autosync-in-prod-config.evaluator'
 import { evaluateApiDocumentation } from '../evaluators/rules/api-documentation.evaluator'
+import { evaluateUserContextStore } from '../evaluators/rules/user-context-store.evaluator'
 import type { EvaluatorResult } from '../evaluators/shared/types'
 
 type EvaluatorFn = (root: string) => EvaluatorResult
@@ -74,7 +75,8 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'query-handler-no-raw-aggregate': evaluateQueryHandlerNoRawAggregate,
   'no-cross-bc-domain-import': evaluateNoCrossBcDomainImport,
   'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig,
-  'api-documentation': evaluateApiDocumentation
+  'api-documentation': evaluateApiDocumentation,
+  'user-context-store': evaluateUserContextStore
 }
 
 interface Expected {

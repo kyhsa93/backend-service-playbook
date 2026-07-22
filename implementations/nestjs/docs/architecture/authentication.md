@@ -7,7 +7,8 @@
 1. Client: calls the API with an Authorization: Bearer <access_token> header
 2. AuthGuard: extracts the token from the header → verifies via AuthService.verify()
 3. AuthService: decodes the token → returns user information
-4. AuthGuard: assigns the user information to request.user → passes it to the Controller
+4. AuthGuard: hands the user information to UserContextInterceptor (an internal handoff — never read directly by a Controller)
+5. UserContextInterceptor: stores it in UserContextStore (AsyncLocalStorage) for the rest of the request → the Controller reads it via UserContextStore.getRequesterId()
 
 [Sign-up]
 1. Client → server: POST /auth/sign-up { userId, password }
@@ -31,6 +32,7 @@ src/
     auth-module.ts
     auth-service.ts                        ← issues/verifies tokens (JWT, a Technical Service)
     auth.guard.ts                          ← the Guard that extracts and verifies the Bearer token
+    authenticated.decorator.ts             ← @Authenticated() — applies AuthGuard + UserContextInterceptor together
     public.decorator.ts                    ← @Public() — marks a route as not requiring authentication
     domain/
       credential.ts                        ← the Credential Aggregate (credentialId, userId, passwordHash)
@@ -59,7 +61,7 @@ Password hashing follows the same Technical Service pattern as email sending (`N
 
 ### AuthGuard — Extracting and Verifying the Bearer Token
 
-Applied at the class level on every Controller that requires authentication. Extracts the `Bearer` token from the `Authorization` header, verifies it via `AuthService.verify()`, and assigns the user information to `request.user`.
+Applied (always together with `UserContextInterceptor`, via the `@Authenticated()` decorator — see below) on every Controller that requires authentication. Extracts the `Bearer` token from the `Authorization` header and verifies it via `AuthService.verify()`.
 
 ```typescript
 // src/auth/auth.guard.ts
@@ -80,10 +82,82 @@ export class AuthGuard implements CanActivate {
     const user = await this.authService.verify(token)
     if (!user) throw new UnauthorizedException()
 
-    request.user = user
+    // A Guard's canActivate() only returns true/false — it has no callback of its own to wrap
+    // the rest of the pipeline, so it can't open UserContextStore's AsyncLocalStorage scope
+    // itself. This field is an internal-only handoff to UserContextInterceptor (always applied
+    // together, via @Authenticated()) — a Controller must never read it directly.
+    request.__verifiedUser = user
     return true
   }
 }
+```
+
+### UserContextStore / UserContextInterceptor — Request-Scoped Storage for the Authenticated User
+
+A Controller reads the authenticated user's info via `UserContextStore`, never via `@Req()`/the request object — the same principle `CorrelationIdStore` already applies for the Correlation ID (see [observability.md](observability.md)). `UserContextStore` itself is a thin `AsyncLocalStorage` wrapper:
+
+```typescript
+// src/common/user-context-store.ts
+import { AsyncLocalStorage } from 'async_hooks'
+
+export interface UserContext {
+  userId: string
+}
+
+const storage = new AsyncLocalStorage<UserContext>()
+
+export const UserContextStore = {
+  run: (user: UserContext, fn: () => void) => storage.run(user, fn),
+  getUser: (): UserContext | undefined => storage.getStore(),
+  getRequesterId: (): string => {
+    const user = storage.getStore()
+    if (!user) throw new Error('UserContextStore.getRequesterId() called outside an authenticated request context.')
+    return user.userId
+  }
+}
+```
+
+Unlike Correlation ID injection, which a single piece of Middleware can both populate *and* wrap (`correlationIdStorage.run(id, () => next())`), authentication needs two cooperating stages: `AuthGuard` verifies the token but — as a Guard — has no "wrap the rest of the pipeline" callback to open the storage scope with. `UserContextInterceptor` is the piece that does have one (`next.handle()`), so it picks up what the Guard verified and opens the scope around everything downstream of it:
+
+```typescript
+// src/common/user-context.interceptor.ts
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common'
+import { Observable } from 'rxjs'
+
+import { UserContextStore } from '@/common/user-context-store'
+
+@Injectable()
+export class UserContextInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest()
+    const user = request.__verifiedUser
+
+    if (!user) return next.handle()
+
+    return new Observable((subscriber) => {
+      UserContextStore.run(user, () => {
+        next.handle().subscribe(subscriber)
+      })
+    })
+  }
+}
+```
+
+### @Authenticated() — Applying Both Together
+
+`AuthGuard` and `UserContextInterceptor` must never be applied separately (the interceptor depends on the guard having already run and set `request.__verifiedUser`), so a composite decorator applies both in one call — this also keeps every protected Controller's class-level decorator list exactly as short as it was before this pattern existed.
+
+```typescript
+// src/auth/authenticated.decorator.ts
+import { applyDecorators, UseGuards, UseInterceptors } from '@nestjs/common'
+
+import { AuthGuard } from '@/auth/auth.guard'
+import { UserContextInterceptor } from '@/common/user-context.interceptor'
+
+export const Authenticated = (): ReturnType<typeof applyDecorators> => applyDecorators(
+  UseGuards(AuthGuard),
+  UseInterceptors(UserContextInterceptor)
+)
 ```
 
 ### AuthService — Issuing and Verifying Tokens
@@ -208,17 +282,18 @@ export class AuthModule {}
 ### Usage in a Controller
 
 ```typescript
-// a Controller requiring authentication — AuthGuard applied at the class level
+// a Controller requiring authentication — @Authenticated() applied at the class level
 @Controller()
 @ApiBearerAuth('token')
 @ApiTags('Order')
-@UseGuards(AuthGuard)
+@Authenticated()
 export class OrderController {
-  // access the authenticated user's information via request.user
+  // access the authenticated user's info via UserContextStore, never @Req()
   @Get('/orders')
-  public async getOrders(
-    @Req() req: Request & { user: { userId: string } }
-  ): Promise<GetOrdersResponseBody> { ... }
+  public async getOrders(): Promise<GetOrdersResponseBody> {
+    const requesterId = UserContextStore.getRequesterId()
+    ...
+  }
 }
 ```
 
@@ -246,7 +321,7 @@ export class AuthController {
 }
 ```
 
-`@Public()` only marks the route via `SetMetadata`, and `AuthGuard` reads it via `Reflector` to skip token verification — `AuthController` already works without `@Public()` since `@UseGuards(AuthGuard)` was never applied to it in the first place, but marking it explicitly means it won't accidentally get blocked later if authentication switches to a global Guard (`APP_GUARD`). Public endpoints like `GET /health/*` are likewise annotated with `@Public()`.
+`@Public()` only marks the route via `SetMetadata`, and `AuthGuard` reads it via `Reflector` to skip token verification — `AuthController` already works without `@Public()` since `@Authenticated()` was never applied to it in the first place, but marking it explicitly means it won't accidentally get blocked later if authentication switches to a global Guard (`APP_GUARD`). Public endpoints like `GET /health/*` are likewise annotated with `@Public()`.
 
 ### Swagger Authentication Configuration
 

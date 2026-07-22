@@ -23,7 +23,12 @@ export class AuthGuard implements CanActivate {
     const user = await this.authService.verify(token)
     if (!user) throw new UnauthorizedException()
 
-    request.user = user
+    // A Guard has no callback to wrap the rest of the pipeline (unlike Middleware/Interceptors),
+    // so it cannot itself open the AsyncLocalStorage-based UserContextStore. This field is an
+    // internal-only handoff to UserContextInterceptor (always applied together via
+    // @Authenticated(), see authenticated.decorator.ts) — Controllers must never read it
+    // directly; they read UserContextStore.getRequesterId() instead.
+    request.__verifiedUser = user
     return true
   }
 }

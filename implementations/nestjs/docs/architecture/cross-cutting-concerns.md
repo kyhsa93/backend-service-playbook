@@ -79,7 +79,10 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest()
     const token = request.headers.authorization?.replace('Bearer ', '')
     if (!token) return false
-    request.user = await this.authService.verify(token)
+    // A Guard has no callback to wrap the rest of the pipeline, so it can't itself populate
+    // UserContextStore — this field is an internal handoff to UserContextInterceptor, which
+    // always runs alongside it via @Authenticated(). See authentication.md.
+    request.__verifiedUser = await this.authService.verify(token)
     return true
   }
 }
@@ -87,17 +90,17 @@ export class AuthGuard implements CanActivate {
 
 ### Application
 
-Apply it at the Controller **class level**. Avoid method-level application.
+Apply `@Authenticated()` (which bundles `AuthGuard` + `UserContextInterceptor`) at the Controller **class level**. Avoid method-level application.
 
 ```typescript
-@UseGuards(AuthGuard)
+@Authenticated()
 @Controller('orders')
 export class OrderController { /* ... */ }
 ```
 
 ### Layer placement
 
-Placed in `src/auth/`. See [authentication.md](authentication.md) for the detailed pattern.
+Placed in `src/auth/` (`AuthGuard`, `@Authenticated()`) and `src/common/` (`UserContextStore`, `UserContextInterceptor` — shared, not auth-specific). See [authentication.md](authentication.md) for the detailed pattern.
 
 ## Interceptor
 
@@ -195,14 +198,14 @@ Apply Guard and Interceptor at the **class level**. Avoid method-level applicati
 
 ```typescript
 // Correct — class level
-@UseGuards(AuthGuard)
+@Authenticated()
 @UseInterceptors(LoggingInterceptor)
 @Controller('orders')
 export class OrderController { /* ... */ }
 
 // Avoid — method level (only when there's a specific reason)
 @Get(':orderId')
-@UseGuards(AuthGuard)
+@Authenticated()
 getOrder() { /* ... */ }
 ```
 

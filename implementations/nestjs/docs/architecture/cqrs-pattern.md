@@ -198,7 +198,7 @@ import { CommandBus, QueryBus } from '@nestjs/cqrs'
 @Controller()
 @ApiBearerAuth('token')
 @ApiTags('Order')
-@UseGuards(AuthGuard)
+@Authenticated()
 @UseInterceptors(LoggingInterceptor)
 export class OrderController {
   private readonly logger = new Logger(OrderController.name)

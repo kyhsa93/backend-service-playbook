@@ -239,7 +239,7 @@ export class OrderModule {}
 @Controller('route-prefix')
 @ApiTags('TagName')
 @ApiBearerAuth('token')
-@UseGuards(AuthGuard)
+@Authenticated()
 @UseInterceptors(LoggingInterceptor)
 export class OrderController {
   private readonly logger = new Logger(OrderController.name)
@@ -252,6 +252,7 @@ export class OrderController {
 
 - `@ApiTags()`: always used for Swagger grouping
 - `@ApiBearerAuth('token')`: always used on a Controller requiring authentication
+- `@Authenticated()`: applies `AuthGuard` + `UserContextInterceptor` together (see [authentication.md](authentication.md)) — never apply `@UseGuards(AuthGuard)` alone, since the Controller then has no way to read the authenticated user
 - `@ApiOperation({ operationId: 'methodName' })`: supports code generation
 - `@ApiOperation({ deprecated: true })`: marks an endpoint slated for removal (don't delete immediately — allows a migration period)
 - Guards/Interceptors: applied at the class level, not the method level

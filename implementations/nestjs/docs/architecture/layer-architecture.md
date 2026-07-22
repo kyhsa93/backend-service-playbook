@@ -314,7 +314,7 @@ see [graceful-shutdown.md](graceful-shutdown.md)), isn't a target.
 @Controller()
 @ApiBearerAuth('token')
 @ApiTags('Order')
-@UseGuards(AuthGuard)
+@Authenticated()
 @UseInterceptors(LoggingInterceptor)
 export class OrderController {
   private readonly logger = new Logger(OrderController.name)

@@ -1,16 +1,17 @@
 import {
   BadRequestException, Body, Controller, Get,
-  Logger, NotFoundException, Param, Post, Req, UseGuards
+  Logger, NotFoundException, Param, Post
 } from '@nestjs/common'
 import {
   ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse,
   ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
 } from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
-import { Request } from 'express'
 
+import { Authenticated } from '@/auth/authenticated.decorator'
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
+import { UserContextStore } from '@/common/user-context-store'
 import { IssueCardCommand } from '@/card/application/command/issue-card-command'
 import { Card } from '@/card/domain/card'
 import { GetCardQuery } from '@/card/application/query/get-card-query'
@@ -21,15 +22,12 @@ import { GetCardRequestParam } from '@/card/interface/dto/get-card-request-param
 import { GetCardResponseBody } from '@/card/interface/dto/get-card-response-body'
 import { CardErrorCode as ErrorCode } from '@/card/card-error-code'
 import { CardErrorMessage } from '@/card/card-error-message'
-import { AuthGuard } from '@/auth/auth.guard'
-
-type AuthenticatedRequest = Request & { user: { userId: string } }
 
 @Controller()
 @ApiTags('Card')
 @ApiBearerAuth('token')
 @ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
-@UseGuards(AuthGuard)
+@Authenticated()
 export class CardController {
   private readonly logger = new Logger(CardController.name)
 
@@ -51,10 +49,9 @@ export class CardController {
   })
   @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`LINKED_ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
   public async issueCard(
-    @Req() req: AuthenticatedRequest,
     @Body() body: IssueCardRequestBody
   ): Promise<IssueCardResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<IssueCardCommand, Card>(new IssueCardCommand({ ...body, requesterId }))
       .then((card) => ({
         cardId: card.cardId,
@@ -82,10 +79,9 @@ export class CardController {
   @ApiOkResponse({ description: 'The card was found.', type: GetCardResponseBody })
   @ApiNotFoundResponse({ description: 'No card exists with the given `cardId` for this requester (`CARD_NOT_FOUND`).', type: ErrorResponseBody })
   public async getCard(
-    @Req() req: AuthenticatedRequest,
     @Param() param: GetCardRequestParam
   ): Promise<GetCardResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute<GetCardQuery, GetCardResult>(
       new GetCardQuery({ cardId: param.cardId, requesterId })
     ).catch((error) => {

@@ -353,10 +353,10 @@ Check each item, and if a violation is found, fix it immediately before moving t
 
 ```
 [ ] Does the Controller class have @ApiTags()?
-[ ] Is @UseGuards(AuthGuard) + @ApiBearerAuth('token') applied at the class level on Controllers that require authentication?
-[ ] Is AuthGuard NOT applied to Controllers that don't require authentication (e.g. AuthController)?
+[ ] Is @Authenticated() + @ApiBearerAuth('token') applied at the class level on Controllers that require authentication?
+[ ] Is @Authenticated() NOT applied to Controllers that don't require authentication (e.g. AuthController)?
 [ ] Does AuthGuard extract the Bearer token from the Authorization header and verify it via AuthService.verify()?
-[ ] Is user information assigned to request.user on successful authentication?
+[ ] Is user information stored in UserContextStore (via UserContextInterceptor) rather than assigned to request.user, on successful authentication?
 [ ] Is the Guard/Interceptor applied at the class level rather than the method level?
 [ ] Does the Controller class have private readonly logger = new Logger(XxxController.name)?
 [ ] Is Logger NOT used in the Domain layer?

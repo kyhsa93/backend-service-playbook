@@ -572,14 +572,14 @@ export class OrderRepositoryImpl extends OrderRepository {
 // interface/order-controller.ts
 import {
   BadRequestException, Body, Controller, Delete, Get, HttpCode, Logger,
-  NotFoundException, Param, Post, Query, UseGuards, UseInterceptors
+  NotFoundException, Param, Post, Query, UseInterceptors
 } from '@nestjs/common'
 import {
   ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
   ApiOkResponse, ApiOperation, ApiTags
 } from '@nestjs/swagger'
 
-import { AuthGuard } from '@/auth/auth.guard'
+import { Authenticated } from '@/auth/authenticated.decorator'
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { LoggingInterceptor } from '@/common/logging.interceptor'
 import { OrderCommandService } from '@/order/application/command/order-command-service'
@@ -599,7 +599,7 @@ import { OrderErrorMessage } from '@/order/order-error-message'
 @Controller()
 @ApiBearerAuth('token')
 @ApiTags('Order')
-@UseGuards(AuthGuard)
+@Authenticated()
 @UseInterceptors(LoggingInterceptor)
 export class OrderController {
   private readonly logger = new Logger(OrderController.name)

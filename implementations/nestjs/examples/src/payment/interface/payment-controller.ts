@@ -1,16 +1,17 @@
 import {
   BadRequestException, Body, Controller, Get, HttpCode,
-  Logger, NotFoundException, Param, Post, Query, Req, UseGuards
+  Logger, NotFoundException, Param, Post, Query
 } from '@nestjs/common'
 import {
   ApiBadRequestResponse, ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
   ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse
 } from '@nestjs/swagger'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
-import { Request } from 'express'
 
+import { Authenticated } from '@/auth/authenticated.decorator'
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
+import { UserContextStore } from '@/common/user-context-store'
 import { CancelPaymentCommand } from '@/payment/application/command/cancel-payment-command'
 import { CreatePaymentCommand } from '@/payment/application/command/create-payment-command'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
@@ -35,15 +36,12 @@ import { RequestRefundRequestBody } from '@/payment/interface/dto/request-refund
 import { RequestRefundResponseBody } from '@/payment/interface/dto/request-refund-response-body'
 import { PaymentErrorCode as ErrorCode } from '@/payment/payment-error-code'
 import { PaymentErrorMessage } from '@/payment/payment-error-message'
-import { AuthGuard } from '@/auth/auth.guard'
-
-type AuthenticatedRequest = Request & { user: { userId: string } }
 
 @Controller()
 @ApiTags('Payment')
 @ApiBearerAuth('token')
 @ApiUnauthorizedResponse({ description: 'The bearer token is missing, malformed, or invalid.', type: ErrorResponseBody })
-@UseGuards(AuthGuard)
+@Authenticated()
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name)
 
@@ -68,10 +66,9 @@ export class PaymentController {
     type: ErrorResponseBody
   })
   public async createPayment(
-    @Req() req: AuthenticatedRequest,
     @Body() body: CreatePaymentRequestBody
   ): Promise<CreatePaymentResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<CreatePaymentCommand, Payment>(new CreatePaymentCommand({ ...body, requesterId }))
       .then((payment) => this.toPaymentResponse(payment))
       .catch((error) => {
@@ -100,11 +97,10 @@ export class PaymentController {
   })
   @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async cancelPayment(
-    @Req() req: AuthenticatedRequest,
     @Param('paymentId') paymentId: string,
     @Body() body: CancelPaymentRequestBody
   ): Promise<void> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute(new CancelPaymentCommand({ ...body, paymentId, requesterId }))
       .catch((error) => {
         this.logger.error(error)
@@ -124,10 +120,9 @@ export class PaymentController {
   @ApiOkResponse({ description: 'The payment was found.', type: GetPaymentResponseBody })
   @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` for this requester (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getPayment(
-    @Req() req: AuthenticatedRequest,
     @Param() param: GetPaymentRequestParam
   ): Promise<GetPaymentResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute<GetPaymentQuery, GetPaymentResult>(
       new GetPaymentQuery({ paymentId: param.paymentId, requesterId })
     ).catch((error) => {
@@ -147,10 +142,9 @@ export class PaymentController {
   @ApiOkResponse({ description: 'The payment list was found.', type: GetPaymentsResponseBody })
   @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `page`/`take` out of range.', type: ErrorResponseBody })
   public async getPayments(
-    @Req() req: AuthenticatedRequest,
     @Query() querystring: GetPaymentsRequestQuerystring
   ): Promise<GetPaymentsResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute<GetPaymentsQuery, GetPaymentsResult>(
       new GetPaymentsQuery({ ...querystring, requesterId })
     )
@@ -166,11 +160,10 @@ export class PaymentController {
   @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. a non-positive amount or missing reason.', type: ErrorResponseBody })
   @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async requestRefund(
-    @Req() req: AuthenticatedRequest,
     @Param('paymentId') paymentId: string,
     @Body() body: RequestRefundRequestBody
   ): Promise<RequestRefundResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.commandBus.execute<RequestRefundCommand, Refund>(
       new RequestRefundCommand({ ...body, paymentId, requesterId })
     )
@@ -201,11 +194,10 @@ export class PaymentController {
   @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `page`/`take` out of range.', type: ErrorResponseBody })
   @ApiNotFoundResponse({ description: 'No payment exists with the given `paymentId` (`PAYMENT_NOT_FOUND`).', type: ErrorResponseBody })
   public async getRefunds(
-    @Req() req: AuthenticatedRequest,
     @Param() param: GetRefundsRequestParam,
     @Query() querystring: GetRefundsRequestQuerystring
   ): Promise<GetRefundsResponseBody> {
-    const requesterId = req.user.userId
+    const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute<GetRefundsQuery, GetRefundsResult>(
       new GetRefundsQuery({ ...querystring, paymentId: param.paymentId, requesterId })
     ).catch((error) => {

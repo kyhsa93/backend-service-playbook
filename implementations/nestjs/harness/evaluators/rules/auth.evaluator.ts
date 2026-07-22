@@ -4,7 +4,8 @@
 // Applicability: runs if a *-controller.ts file exists (maxScore = 20).
 //
 // Rules:
-// - a Controller class or route method must have @UseGuards or a public-intent marker like @Public.
+// - a Controller class or route method must have @UseGuards (or a composite decorator wrapping
+//   it, like this repo's own @Authenticated()) or a public-intent marker like @Public.
 // - if there are no Auth/Jwt/Guard-related files at all, it's treated as missing JWT/Bearer authentication setup.
 
 import * as fs from 'node:fs'
@@ -14,7 +15,10 @@ import { EvaluatorFailure, EvaluatorResult } from '../shared/types'
 
 const DOC_REF = 'docs/architecture/authentication.md'
 const METHOD_PATTERN = /@(Get|Post|Put|Patch|Delete)\s*\([^)]*\)[\s\S]*?(?:async\s+)?([A-Za-z0-9_]+)\s*\(/g
-const PROTECTED_OR_PUBLIC_PATTERN = /@UseGuards\s*\(|@Public\s*\(|@SkipAuth\s*\(|@AllowAnonymous\s*\(/
+// @Authenticated() is this repo's own composite decorator (applyDecorators(UseGuards(AuthGuard),
+// UseInterceptors(...))) — recognized here as equivalent intent to a bare @UseGuards(...), since
+// requiring the verbose form everywhere would undo the point of having a composite decorator.
+const PROTECTED_OR_PUBLIC_PATTERN = /@UseGuards\s*\(|@Authenticated\s*\(|@Public\s*\(|@SkipAuth\s*\(|@AllowAnonymous\s*\(/
 const AUTH_FILE_PATTERN = /(auth|jwt|guard|strategy)/i
 
 function walkFiles(root: string): string[] {
@@ -68,7 +72,7 @@ export function evaluateAuth(root: string): EvaluatorResult {
 
   for (const file of controllerFiles) {
     const content = fs.readFileSync(file, 'utf-8')
-    const classHasIntent = /@UseGuards\s*\(|@Public\s*\(/.test(content.slice(0, content.indexOf('export class') > -1 ? content.indexOf('export class') : content.length))
+    const classHasIntent = PROTECTED_OR_PUBLIC_PATTERN.test(content.slice(0, content.indexOf('export class') > -1 ? content.indexOf('export class') : content.length))
 
     METHOD_PATTERN.lastIndex = 0
     let methodMatch: RegExpExecArray | null
@@ -82,17 +86,17 @@ export function evaluateAuth(root: string): EvaluatorResult {
       failures.push({
         ruleId: 'auth.route-intent-required',
         severity: 'medium',
-        message: `${rel(file)}:${lineOf(content, methodMatch.index)} the ${methodMatch[2]} route has no @UseGuards or @Public intent marker`,
+        message: `${rel(file)}:${lineOf(content, methodMatch.index)} the ${methodMatch[2]} route has no @UseGuards, @Authenticated, or @Public intent marker`,
         docRef: DOC_REF
       })
       score -= 2
     }
 
-    if (methodCount > 0 && !/@UseGuards\s*\(|@Public\s*\(|@SkipAuth\s*\(|@AllowAnonymous\s*\(/.test(content)) {
+    if (methodCount > 0 && !PROTECTED_OR_PUBLIC_PATTERN.test(content)) {
       failures.push({
         ruleId: 'auth.controller-intent-required',
         severity: 'medium',
-        message: `${rel(file)} has no protection/public intent marker at all (@UseGuards or @Public)`,
+        message: `${rel(file)} has no protection/public intent marker at all (@UseGuards, @Authenticated, or @Public)`,
         docRef: DOC_REF
       })
       score -= 2
