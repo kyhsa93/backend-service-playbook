@@ -31,8 +31,8 @@ jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 
 refund-classifier:
-  anthropic-api-key: ${ANTHROPIC_API_KEY:dev-anthropic-key}
-  model: ${REFUND_CLASSIFIER_MODEL:claude-opus-4-8}
+  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${REFUND_CLASSIFIER_MODEL:qwen2.5:1.5b}
 ```
 
 (For `ddl-auto`/migration status, see [persistence.md](persistence.md) — migrations are managed by Flyway.)
