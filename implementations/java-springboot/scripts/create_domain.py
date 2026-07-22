@@ -329,10 +329,14 @@ public record Create__Domain__Command(String ownerId) {}
 
 TEMPLATES["application/command/Create__Domain__Result.java"] = """package __basepkg__.__pkg__.application.command;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 public record Create__Domain__Result(
-        String __domain__Id, String ownerId, String status, LocalDateTime createdAt) {}
+        @Schema(description = "The generated __Domain__ ID.") String __domain__Id,
+        @Schema(description = "The userId of the __Domain__'s owner.") String ownerId,
+        @Schema(description = "The __Domain__'s status.", example = "PENDING") String status,
+        @Schema(description = "When the __Domain__ was created.") LocalDateTime createdAt) {}
 """
 
 TEMPLATES["application/command/Create__Domain__Service.java"] = """package __basepkg__.__pkg__.application.command;
@@ -459,10 +463,14 @@ public interface __Domain__Query {
 
 TEMPLATES["application/query/Get__Domain__Result.java"] = """package __basepkg__.__pkg__.application.query;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 public record Get__Domain__Result(
-        String __domain__Id, String ownerId, String status, LocalDateTime createdAt) {}
+        @Schema(description = "The __Domain__ ID.") String __domain__Id,
+        @Schema(description = "The userId of the __Domain__'s owner.") String ownerId,
+        @Schema(description = "The __Domain__'s status.", example = "PENDING") String status,
+        @Schema(description = "When the __Domain__ was created.") LocalDateTime createdAt) {}
 """
 
 TEMPLATES["application/query/Get__Domain__Service.java"] = """package __basepkg__.__pkg__.application.query;
@@ -770,9 +778,13 @@ public class __Domain__RepositoryImpl implements __Domain__Repository, __Domain_
 
 TEMPLATES["interfaces/rest/Cancel__Domain__Request.java"] = """package __basepkg__.__pkg__.interfaces.rest;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-public record Cancel__Domain__Request(@NotBlank String reason) {}
+public record Cancel__Domain__Request(
+        @Schema(description = "Why the __Domain__ is being cancelled.", example = "No longer needed.")
+                @NotBlank
+                String reason) {}
 """
 
 TEMPLATES["interfaces/rest/__Domain__Controller.java"] = """package __basepkg__.__pkg__.interfaces.rest;
@@ -790,6 +802,12 @@ import __basepkg__.__pkg__.application.command.Create__Domain__Service;
 import __basepkg__.__pkg__.application.query.Get__Domain__Result;
 import __basepkg__.__pkg__.application.query.Get__Domain__Service;
 import __basepkg__.__pkg__.domain.__Domain__Exception;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -809,6 +827,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/__domains_kebab__")
 @RequiredArgsConstructor
+@Tag(name = "__Domain__")
+@SecurityRequirement(name = "bearer-jwt")
+@ApiResponse(
+        responseCode = "401",
+        description = "The bearer token is missing, malformed, or invalid.",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
 public class __Domain__Controller {
 
     private static final Logger log = LoggerFactory.getLogger(__Domain__Controller.class);
@@ -820,6 +844,13 @@ public class __Domain__Controller {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+            summary = "Create a new __Domain__",
+            description = "Creates a new __Domain__ owned by the authenticated requester, starting in `PENDING` status.")
+    @ApiResponse(
+            responseCode = "201",
+            description = "The __Domain__ was created.",
+            content = @Content(schema = @Schema(implementation = Create__Domain__Result.class)))
     public Create__Domain__Result create__Domain__(Authentication authentication) {
         String ownerId = authentication.getName();
         return create__Domain__Service.create(new Create__Domain__Command(ownerId));
@@ -827,6 +858,18 @@ public class __Domain__Controller {
 
     @PostMapping("/{__domain__Id}/activate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Activate a __Domain__",
+            description = "Moves a pending __Domain__ to `ACTIVE` status.")
+    @ApiResponse(responseCode = "204", description = "The __Domain__ was activated.")
+    @ApiResponse(
+            responseCode = "400",
+            description = "Only a pending __Domain__ can be activated (`__ERR_ACTIVATION_REQUIRES_PENDING__`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description = "No __Domain__ exists with the given `__domain__Id` for this requester (`__ERR_NOT_FOUND__`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public void activate__Domain__(Authentication authentication, @PathVariable String __domain__Id) {
         activate__Domain__Service.activate(
                 new Activate__Domain__Command(__domain__Id, authentication.getName()));
@@ -834,6 +877,20 @@ public class __Domain__Controller {
 
     @PostMapping("/{__domain__Id}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Cancel a __Domain__",
+            description = "Permanently cancels a __Domain__, unless it is already cancelled.")
+    @ApiResponse(responseCode = "204", description = "The __Domain__ was cancelled.")
+    @ApiResponse(
+            responseCode = "400",
+            description =
+                    "One of: the __Domain__ is already cancelled (`__ERR_ALREADY_CANCELLED__`), or"
+                            + " request validation failed (`VALIDATION_FAILED`) — e.g. a missing reason.",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description = "No __Domain__ exists with the given `__domain__Id` for this requester (`__ERR_NOT_FOUND__`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public void cancel__Domain__(
             Authentication authentication,
             @PathVariable String __domain__Id,
@@ -843,6 +900,17 @@ public class __Domain__Controller {
     }
 
     @GetMapping("/{__domain__Id}")
+    @Operation(
+            summary = "Look up a __Domain__",
+            description = "Returns the __Domain__ only if it belongs to the authenticated requester.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "The __Domain__ was found.",
+            content = @Content(schema = @Schema(implementation = Get__Domain__Result.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description = "No __Domain__ exists with the given `__domain__Id` for this requester (`__ERR_NOT_FOUND__`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public Get__Domain__Result get__Domain__(
             Authentication authentication, @PathVariable String __domain__Id) {
         return get__Domain__Service.get__Domain__(__domain__Id, authentication.getName());

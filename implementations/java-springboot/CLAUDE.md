@@ -103,7 +103,9 @@ This is a script that builds the "practical implementation template" defined by 
 Account (Repository/Outbox pattern), then generalizes it into a reusable form by parameterizing only the domain name. In one run it generates a single `status` field (PENDING/ACTIVE/CANCELLED) +
 a `create()`/`activate()`/`cancel(reason)` Aggregate + Command/Query "Service" (CQRS, plain `@Service`
 classes — not CommandBus/Handler) + one domain event + an `OutboxEventHandler` implementation +
-Repository + JPA Entity/Mapper + REST Controller/DTO + Flyway migration.
+Repository + JPA Entity/Mapper + REST Controller/DTO (with `@Operation`/`@ApiResponse`/`@Schema`
+already filled in, cross-checked against the generated Aggregate's own error codes — see
+`docs/architecture/api-response.md`) + Flyway migration.
 
 It's written as a Python script so it doesn't need to build the Java/Gradle toolchain (runs instantly without Java compilation).
 
