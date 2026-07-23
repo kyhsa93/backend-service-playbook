@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -8,6 +9,9 @@ import pytest_asyncio
 from conftest import create_domain_event_queue, start_outbox_background_tasks, stop_outbox_background_tasks, wait_until
 from httpx import ASGITransport, AsyncClient
 from main import app
+from opentelemetry import trace
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.localstack import LocalStackContainer
@@ -223,3 +227,65 @@ async def test_deposit_sends_ses_email_and_records_it(notification_env: dict) ->
     ses_messages = await _fetch_ses_messages(notification_env["ses_endpoint"])
     matched = next((m for m in ses_messages if m["Id"] == sent_email.ses_message_id), None)
     assert matched is not None
+
+
+@pytest.mark.asyncio
+async def test_traceparent_propagates_from_http_request_through_outbox_to_event_processing(
+    notification_env: dict,
+) -> None:
+    """Verifies observability.md's "one trace end-to-end" claim for real, not just that a
+    string gets copied around. `main.py` already called `configure_tracing()` at import time
+    (module-level, before this fixture even runs), so there's a real global `TracerProvider`
+    to attach an in-memory exporter to — this test captures every span the process emits
+    for this one request/event round trip and asserts the span FastAPIInstrumentor created
+    for `POST /accounts` and the `outbox.process_event` span OutboxConsumer starts while
+    replaying the resulting AccountCreated event from SQS share the same trace_id. That's
+    the actual claim: an HTTP request and its async Outbox-driven event processing landing
+    in one trace, not two disconnected ones.
+    """
+    client: AsyncClient = notification_env["client"]
+
+    exporter = InMemorySpanExporter()
+    trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(exporter))
+
+    response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    assert response.status_code == 201
+    account_id = response.json()["account_id"]
+
+    await _wait_for_sent_email(notification_env["session_factory"], account_id, "AccountCreated")
+
+    async def _fetch_outbox_row() -> OutboxModel | None:
+        async with notification_env["session_factory"]() as session:
+            stmt = select(OutboxModel).where(
+                OutboxModel.event_type == "AccountCreated", OutboxModel.payload.contains(account_id)
+            )
+            return (await session.execute(stmt)).scalars().first()
+
+    async def _outbox_row_has_trace_parent() -> bool:
+        row = await _fetch_outbox_row()
+        return row is not None and bool(row.trace_parent)
+
+    # Same generous timeout as _wait_for_sent_email — the outbox row itself is written
+    # synchronously with the API response, but this only checks it's been written *and*
+    # carries a trace_parent (i.e. the request really was inside an active span).
+    await wait_until(_outbox_row_has_trace_parent)
+    outbox_row = await _fetch_outbox_row()
+    assert outbox_row is not None
+    assert re.match(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$", outbox_row.trace_parent)
+    outbox_row_trace_id = outbox_row.trace_parent.split("-")[1]
+
+    finished_spans = exporter.get_finished_spans()
+    http_span = next(
+        (s for s in finished_spans if s.attributes.get("http.method") == "POST" and s.parent is None),
+        None,
+    )
+    outbox_span = next((s for s in finished_spans if s.name == "outbox.process_event"), None)
+
+    assert http_span is not None, "FastAPIInstrumentor should have emitted a root span for POST /accounts"
+    assert outbox_span is not None, "OutboxConsumer should have started an outbox.process_event span"
+    assert format(http_span.context.trace_id, "032x") == outbox_row_trace_id
+    assert http_span.context.trace_id == outbox_span.context.trace_id, (
+        "the Outbox hop must land in the same trace as the HTTP request that produced it"
+    )

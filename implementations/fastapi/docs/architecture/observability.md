@@ -131,12 +131,75 @@ In production, `DEBUG` is turned off via `configure_logging(level="INFO")`. In d
 
 ---
 
-## Metrics and tracing (directional notes)
+## Metrics — `GET /metrics` via `prometheus-fastapi-instrumentator`
 
-This repository doesn't mandate a specific stack, but recommends the following for production adoption.
+`main.py` wires up the request-count/duration metrics right after every router is registered:
 
-- **Metrics**: auto-expose `GET /metrics` with `prometheus-fastapi-instrumentator`. Key alerts: HTTP 5xx rate, p99 response time, DB connection-pool saturation.
-- **Tracing**: auto-collect HTTP/DB spans with `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-sqlalchemy`. Including `trace_id` in log records enables jumping between a trace and its logs.
+```python
+# main.py — actual code
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
+
+Instrumentator().add(metrics.requests()).add(metrics.latency()).instrument(app).expose(
+    app, endpoint="/metrics", include_in_schema=False
+)
+```
+
+This exposes `http_requests_total` (a counter) and `http_request_duration_seconds` (a histogram), both labeled by `method`/`handler`/`status` — exactly the "request count + duration histogram" combination `docs/architecture/observability.md` (root) asks for. `include_in_schema=False` keeps this purely operational endpoint out of the Swagger doc. Verified for real: `curl http://localhost:8000/metrics` after a couple of requests returns lines like `http_requests_total{handler="/health/live",method="GET",status="2xx"} 2.0` in Prometheus text-exposition format — no scrape config is required for the endpoint itself to work.
+
+---
+
+## Tracing — OpenTelemetry auto-instrumentation + Outbox propagation
+
+`src/common/tracing.py`'s `configure_tracing(app)` is called once at startup (`main.py`, right after routers are registered) and does two things: builds a global `TracerProvider`, and calls `FastAPIInstrumentor.instrument_app(app)` so every route gets a span automatically — no manual `tracer.start_span()` calls needed in route functions.
+
+```python
+# src/common/tracing.py — actual code (abbreviated)
+def configure_tracing(app: FastAPI) -> None:
+    config = TracingConfig()  # type: ignore[call-arg]
+    resource = Resource.create({SERVICE_NAME: config.service_name})
+    provider = TracerProvider(resource=resource)
+    if config.exporter_otlp_endpoint:
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=config.exporter_otlp_endpoint)))
+    trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+```
+
+**Sane dev default, real value required in production** — the same split `config.md` already documents for `JWT_SECRET`/`AwsConfig`. `TracingConfig` (`src/config/tracing_config.py`) reads `OTEL_EXPORTER_OTLP_ENDPOINT`; when it's unset (the local/test default — nothing in `.env.example`/`conftest.py` sets it), no `SpanProcessor` is attached at all, so spans are still created (trace_id/traceparent keep flowing) but exported nowhere — no collector needs to be running for the app, or the test suite, to work. Set the env var to a real OTLP/HTTP collector endpoint (e.g. `http://otel-collector:4318`) in staging/production to actually ship spans.
+
+### `trace_id` in every log record
+
+`src/common/correlation.py`'s `get_trace_id()` reads the current span's trace_id (formatted the same way as in a W3C `traceparent` — 32-char lowercase hex), and `JsonFormatter` (`logging_config.py`) includes it whenever one is active:
+
+```python
+# src/common/correlation.py — actual code
+def get_trace_id() -> str | None:
+    span_context = trace.get_current_span().get_span_context()
+    if not span_context.is_valid:
+        return None
+    return format(span_context.trace_id, "032x")
+```
+
+A request handled through `FastAPIInstrumentor` always has an active span, so its log lines carry `trace_id` — verified for real: `{"level": "info", "message": "GET /health/live", ..., "trace_id": "14a21a20b2e2ee2826be099326f8817d", ...}`. A background task tick with nothing currently traced (e.g. an `OutboxPoller` failure with no span open) simply omits the field.
+
+### Carrying `traceparent` across the Outbox's async boundary
+
+The Outbox already carries `eventType`/`event_id` (an at-least-once dedup key) across the DB → SQS → handler hop (see [domain-events.md](domain-events.md)) — `traceparent` rides along the same way, added as a third field, so an HTTP request and the async event processing it produces land in **one trace**, not two disconnected ones:
+
+1. **`OutboxWriter.save_all()`** (`src/outbox/outbox_writer.py`) captures whatever span is active right now (the HTTP request that ran the Command, in practice) via `opentelemetry.propagate.inject()` and stores it in a new `trace_parent` column on the `outbox` table (nullable — a row written outside any active span just carries no trace link).
+2. **`OutboxPoller`** (`src/outbox/outbox_poller.py`) forwards `row.trace_parent`, when present, as an SQS `MessageAttributes["traceparent"]` entry — exactly parallel to how it already forwards `eventType`.
+3. **`OutboxConsumer`** (`src/outbox/outbox_consumer.py`) requests the `traceparent` attribute in `receive_message()`, re-hydrates it via `opentelemetry.propagate.extract()`, and processes the event inside a child span (`outbox.process_event`) of that re-hydrated context — falling back to a new, unlinked trace when no `traceparent` is present (no OTLP configured when the row was written, or a row written outside any request).
+
+```python
+# src/outbox/outbox_consumer.py — actual code (abbreviated)
+context = extract({"traceparent": trace_parent}) if trace_parent else None
+with tracer.start_as_current_span("outbox.process_event", context=context):
+    ...
+    await handler(payload)
+```
+
+Verified end-to-end with an e2e test (`tests/test_notification_e2e.py::test_traceparent_propagates_from_http_request_through_outbox_to_event_processing`): it attaches an `InMemorySpanExporter` to the real `TracerProvider` `configure_tracing()` already set up, sends `POST /accounts`, waits for `OutboxConsumer` to process the resulting `AccountCreated` event, and asserts the root span FastAPIInstrumentor created for the HTTP request and the `outbox.process_event` span share the same `trace_id` — not just that a string got copied into a column.
+
+**Migration**: `migrations/versions/c1d9a3f7e2b4_add_trace_parent_to_outbox.py` adds the nullable `trace_parent` column to `outbox`.
 
 ---
 
@@ -147,11 +210,15 @@ This repository doesn't mandate a specific stack, but recommends the following f
 - **Errors must always be logged before being propagated**: where an exception is swallowed after `logger.exception()` (`notify()`), this is compensated for by the Outbox in [domain-events.md](domain-events.md). The harness's `no-silent-except` rule catches the `except ...: pass` pattern (silently swallowing without logging or re-raising) in `application/`/`infrastructure/`.
 - **Trace requests with a Correlation ID**: `contextvars`-based, automatically included on every log line.
 - **Disable DEBUG in production**: configure log level per environment.
+- **No collector required for local dev/tests**: metrics/tracing must degrade gracefully to "collected but not shipped" when unconfigured — never a hard dependency at startup.
+- **Carry trace context across every async boundary, not only within a request**: `traceparent` rides the Outbox the same way `eventType`/`event_id` already do (domain-events.md), so async event processing isn't a separate, disconnected trace.
 
 ---
 
 ### Related documents
 
-- [cross-cutting-concerns.md](cross-cutting-concerns.md) — the Correlation ID injection middleware
+- [cross-cutting-concerns.md](cross-cutting-concerns.md) — the Correlation ID injection middleware and the security-headers middleware
 - [layer-architecture.md](layer-architecture.md) — separation of responsibilities per layer
+- [domain-events.md](domain-events.md) — the Outbox pattern `traceparent` propagation rides on
+- [config.md](config.md) — the sane-dev-default / real-value-required-in-production split `TracingConfig` follows
 - [config.md](config.md) — per-environment log level configuration

@@ -4,7 +4,7 @@
 
 ## Correlation ID middleware and JWT `Depends` authentication
 
-`main.py` has `correlation_id_middleware` (Correlation ID injection + request logging) registered via `@app.middleware("http")`, and also handles error conversion via `@app.exception_handler`. Authentication doesn't trust an `X-User-Id` via `Header(...)` — it validates a JWT via `Depends(get_current_user)` — see [authentication.md](authentication.md). Below are the details of how this pipeline is assembled using FastAPI's middleware/`Depends` mechanisms.
+`main.py` has `correlation_id_middleware` (Correlation ID injection + request logging) registered via `@app.middleware("http")`, and also handles error conversion via `@app.exception_handler`. Authentication doesn't trust an `X-User-Id` via `Header(...)` — it validates a JWT via `Depends(get_current_user)` — see [authentication.md](authentication.md). `security_headers_middleware` (below) sets baseline security response headers on every request, including ones `SlowAPIMiddleware` rejects with 429. Below are the details of how this pipeline is assembled using FastAPI's middleware/`Depends` mechanisms.
 
 ---
 
@@ -13,12 +13,14 @@
 FastAPI has no separate layers like NestJS's Guard/Pipe/Interceptor. Instead, the same responsibilities are split between **`Middleware`** (common pre/post-processing for every request) and **`Depends`** (per-route dependency injection — authentication, validation).
 
 ```
-Request → [1. Middleware] → [2. Depends(auth)] → [3. Pydantic request-model validation] → [4. Route function] → [5. Middleware post-processing] → Response
+Request → [0. Security headers] → [0.5 Rate limiting] → [1. Middleware] → [2. Depends(auth)] → [3. Pydantic request-model validation] → [4. Route function] → [5. Middleware post-processing] → Response
 ```
 
 | Stage | FastAPI mechanism | Role |
 |------|-----------------|------|
-| 1. Pre-processing | `@app.middleware("http")` | Injects a Correlation ID into every request |
+| 0. Outermost pre/post-processing | `security_headers_middleware` (`@app.middleware("http")`, registered last — see "Position in the middleware chain" below) | Sets `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/(conditionally) `Strict-Transport-Security` on every response, including a 429 from rate limiting |
+| 0.5 Rate limiting | `SlowAPIMiddleware` | Rejects with 429 before the Correlation ID is even assigned — see [rate-limiting.md](rate-limiting.md) |
+| 1. Pre-processing | `@app.middleware("http")` (`correlation_id_middleware`) | Injects a Correlation ID into every request |
 | 2. Authentication | `Depends(get_current_user)` | Validates the token, extracts user info |
 | 3. Input validation | Pydantic request model (automatic) | Validates types/required values — FastAPI returns 422 automatically |
 | 4. Route function | `interface/rest/*_router.py` | Calls the Handler, propagates errors |
@@ -86,6 +88,37 @@ Because `contextvars.ContextVar` keeps an independent context per `asyncio` task
 
 ---
 
+## Security headers middleware
+
+`src/common/security_headers.py`'s `apply_security_headers()` sets four baseline response headers, and `main.py`'s `security_headers_middleware` (also a plain `@app.middleware("http")` function, like `correlation_id_middleware`) calls it after every request:
+
+```python
+# src/common/security_headers.py — actual code
+def apply_security_headers(request: Request, response: Response) -> None:
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
+    if is_https:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+```
+
+```python
+# main.py — actual code, registered after app.add_middleware(SlowAPIMiddleware)
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    apply_security_headers(request, response)
+    return response
+```
+
+**`Strict-Transport-Security` is conditional, the other three are not.** HSTS only makes sense once the client actually reached this response over HTTPS — locally/in tests the app is served over plain HTTP directly and `request.url.scheme` reflects that correctly, so no header is added and no test needs to special-case it. In production this process sits behind a TLS-terminating load balancer (see [container.md](container.md)), so the connection FastAPI itself sees is plain HTTP even for an HTTPS client — the LB is trusted to set `X-Forwarded-Proto: https` on the request it forwards downstream, the same reverse-proxy trust boundary `APP_ENV=production` already assumes for Secrets Manager (`main.py`'s `lifespan`, see [secret-manager.md](secret-manager.md)).
+
+**Position in the middleware chain**: registered *last* in `main.py`, after `app.add_middleware(SlowAPIMiddleware)` — by the last-registered-is-outermost rule (see [rate-limiting.md](rate-limiting.md)), this makes it the true outermost layer, so the headers land on literally every response this process sends, including a 429 from rate limiting. Unlike authentication/rate limiting, there's no per-route opt-out — these headers are cheap and safe on every response, including `/health/*`, `/docs`, and `/metrics`.
+
+---
+
 ## Authentication — `Depends` serves as the Guard
 
 The principle that authentication is handled only in the Interface layer, with Application/Domain unaware of the auth context, holds the same way in FastAPI. The equivalent of NestJS's class-level `@UseGuards(AuthGuard)` is hanging a shared `Depends` on the entire router.
@@ -150,6 +183,7 @@ class Account:
 - **Pre-processing runs first, in the middleware**: Correlation ID injection must run before everything else.
 - **Keep route functions pure**: they are only responsible for calling the Handler and converting the response. Never write logging/authentication logic directly inside a route function.
 - **Shared dependencies at the router level**: hang them via `APIRouter(dependencies=[...])` to prevent them being missed on an individual route.
+- **Security headers apply unconditionally, with no per-route opt-out**: register `security_headers_middleware` last so it wraps every other middleware, including rate limiting's 429.
 
 ---
 

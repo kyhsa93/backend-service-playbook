@@ -12,6 +12,7 @@ validate_env()  # on failure, the process exits right here — no code after thi
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
+from prometheus_fastapi_instrumentator import Instrumentator, metrics  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
@@ -34,6 +35,8 @@ from src.common.correlation import generate_correlation_id, set_correlation_id  
 from src.common.error_response import build_error_response  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
 from src.common.rate_limit import limiter  # noqa: E402
+from src.common.security_headers import apply_security_headers  # noqa: E402
+from src.common.tracing import configure_tracing, shutdown_tracing  # noqa: E402
 from src.database import SessionLocal, engine  # noqa: E402
 from src.outbox.outbox_consumer import OutboxConsumer  # noqa: E402
 from src.outbox.outbox_poller import OutboxPoller  # noqa: E402
@@ -111,6 +114,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("shutdown_cleanup_failed")  # don't re-raise even if cleanup fails
 
+    shutdown_tracing()  # flushes any buffered spans (a no-op when no OTLP endpoint is set)
+
     logger.info("app_stopped")
 
 
@@ -129,6 +134,17 @@ app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(card_router)
 app.include_router(payment_router)
+
+# OpenTelemetry auto-instrumentation — must run after every router is registered so
+# FastAPIInstrumentor can see the final route table (observability.md).
+configure_tracing(app)
+
+# Prometheus — GET /metrics (request count + a duration histogram, both labeled by
+# method/handler/status; observability.md). `include_in_schema=False` keeps this purely
+# operational endpoint out of the Swagger doc.
+Instrumentator().add(metrics.requests()).add(metrics.latency()).instrument(app).expose(
+    app, endpoint="/metrics", include_in_schema=False
+)
 
 
 @app.get("/health/live")
@@ -171,6 +187,17 @@ async def correlation_id_middleware(request: Request, call_next):
 # so a request that exceeds the limit is blocked early with 429 before the Correlation ID
 # is even assigned (see "Position in the middleware chain" in rate-limiting.md).
 app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    # Registered last, so — by the same last-registered-is-outermost rule as above — this
+    # wraps every other middleware, including SlowAPIMiddleware's 429 response. That way the
+    # security headers land on literally every response this process ever sends, not only the
+    # ones that make it past rate limiting.
+    response = await call_next(request)
+    apply_security_headers(request, response)
+    return response
 
 
 @app.exception_handler(AccountNotFoundError)

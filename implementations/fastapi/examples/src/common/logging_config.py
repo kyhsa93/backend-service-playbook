@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
-from .correlation import get_correlation_id
+from .correlation import get_correlation_id, get_trace_id
 
 _BASE_RECORD_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
@@ -16,6 +16,12 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "correlation_id": get_correlation_id(),
         }
+        # Present only while a span is active (an HTTP request via FastAPIInstrumentor, or an
+        # Outbox event replaying the propagated traceparent — see observability.md) — lets a
+        # log line be jumped to from its trace in whatever backend collects OTLP spans.
+        trace_id = get_trace_id()
+        if trace_id:
+            payload["trace_id"] = trace_id
         for key, value in record.__dict__.items():
             if key not in _BASE_RECORD_KEYS and key != "message":
                 payload[key] = value

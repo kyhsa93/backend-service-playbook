@@ -109,6 +109,7 @@ class OutboxModel(Base):
     payload: Mapped[str]                    # JSON-serialized
     processed: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    trace_parent: Mapped[str | None] = mapped_column(default=None)  # W3C traceparent — see observability.md
 ```
 
 `Base` is imported and reused as-is from where it's defined in `src/account/infrastructure/persistence/account_repository.py` — in production, an Alembic migration creates the `outbox` table, and the local/test-only `Base.metadata.create_all` (each e2e test's testcontainers fixture) creates the same table too (see `persistence.md` — `main.py`'s `lifespan` never calls `create_all`).
@@ -185,6 +186,8 @@ class OutboxPoller:
 
 `outbox_event_id` is embedded into the payload by `OutboxPoller` **at publish time**. `OutboxConsumer` passes this value straight through to the handler, so each EventHandler's code only needs to read `payload["outbox_event_id"]`.
 
+The actual code also forwards a `traceparent` MessageAttribute the same way, whenever `row.trace_parent` is set — see [observability.md](observability.md) ("Carrying `traceparent` across the Outbox's async boundary") for the full HTTP-request-to-event-processing trace-propagation detail; omitted from the excerpt above to keep this section focused on the idempotency mechanism.
+
 ### Step 3: `OutboxConsumer` — receiving SQS → EventHandler (actual code)
 
 `src/outbox/outbox_consumer.py` — likewise started exactly once at app startup by `main.py`'s `lifespan`. It long-polls via `receive_message`'s `WaitTimeSeconds`, and once it receives a message, looks up the handler in the dict `build_event_handlers()` assembled by `eventType` (MessageAttributes) and calls it.
@@ -226,6 +229,8 @@ class OutboxConsumer:
 ```
 
 Handler success → deleted (ack) via `delete_message`. Handler failure (or no registered handler) → not deleted → SQS automatically redelivers it after the visibility timeout (at-least-once) — the EventHandler idempotency this repository requires is premised exactly on this redelivery.
+
+The actual code also requests the `traceparent` attribute alongside `eventType` and, when present, processes the handler call inside a child span re-hydrated from it (`outbox.process_event`) — again omitted here for focus; see [observability.md](observability.md) for the full detail and the e2e test that verifies it.
 
 **A new `AsyncSession` is opened per message** — `_handle_message()` opens a fresh session each time via `async with self._session_factory() as session:` and calls `build_event_handlers(session)` right there to assemble the Repository/Service instances. The reason a session isn't created once at Consumer construction and reused continuously is the "one session per unit of work" principle from `persistence.md` — sharing a single session across multiple messages would blur the transaction boundary and risk a failed message's changes leaking into the next message.
 

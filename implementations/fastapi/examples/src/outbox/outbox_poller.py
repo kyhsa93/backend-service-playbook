@@ -81,10 +81,18 @@ class OutboxPoller:
                         # "Event Handler Idempotency" in domain-events.md).
                         body = json.loads(row.payload)
                         body["outbox_event_id"] = row.event_id
+                        message_attributes = {"eventType": {"DataType": "String", "StringValue": row.event_type}}
+                        # Forwarded the same way eventType already is — present only when the
+                        # row was written from inside an active span (observability.md).
+                        if row.trace_parent:
+                            message_attributes["traceparent"] = {
+                                "DataType": "String",
+                                "StringValue": row.trace_parent,
+                            }
                         await sqs_client.send_message(
                             QueueUrl=queue_url,
                             MessageBody=json.dumps(body),
-                            MessageAttributes={"eventType": {"DataType": "String", "StringValue": row.event_type}},
+                            MessageAttributes=message_attributes,
                         )
                         row.processed = True
                     except Exception:  # noqa: BLE001 - a row that fails to publish is retried on the next tick

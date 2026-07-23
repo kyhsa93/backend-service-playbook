@@ -5,6 +5,8 @@ import json
 import logging
 
 import aioboto3
+from opentelemetry import trace
+from opentelemetry.propagate import extract
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..config.aws_config import AwsConfig
@@ -12,6 +14,7 @@ from ..config.sqs_config import SqsConfig
 from .event_handlers import build_event_handlers
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 class OutboxConsumer:
@@ -44,7 +47,7 @@ class OutboxConsumer:
                     result = await sqs_client.receive_message(
                         QueueUrl=queue_url,
                         MaxNumberOfMessages=10,
-                        MessageAttributeNames=["eventType"],
+                        MessageAttributeNames=["eventType", "traceparent"],
                         WaitTimeSeconds=5,
                     )
                 except asyncio.CancelledError:
@@ -58,18 +61,28 @@ class OutboxConsumer:
                     await self._handle_message(sqs_client, queue_url, message)
 
     async def _handle_message(self, sqs_client, queue_url: str, message: dict) -> None:
-        event_type = message.get("MessageAttributes", {}).get("eventType", {}).get("StringValue")
+        attributes = message.get("MessageAttributes", {})
+        event_type = attributes.get("eventType", {}).get("StringValue")
+        trace_parent = attributes.get("traceparent", {}).get("StringValue")
         try:
             if not event_type:
                 raise ValueError("The eventType message attribute is missing.")
 
-            payload = json.loads(message.get("Body", "{}"))
-            async with self._session_factory() as session:
-                handler = build_event_handlers(session).get(event_type)
-                if handler is None:
-                    raise ValueError(f"No registered handler: {event_type}")
-                await handler(payload)
-                await session.commit()
+            # Re-hydrates the originating HTTP request's trace context (set by
+            # OutboxWriter, forwarded by OutboxPoller) and processes the event as a child
+            # span of it — absent a traceparent (e.g. no OTLP configured when the row was
+            # written, or a row written outside any request), `extract({})` just yields the
+            # current (empty) context, and a new, unlinked trace is started instead
+            # (observability.md).
+            context = extract({"traceparent": trace_parent}) if trace_parent else None
+            with tracer.start_as_current_span("outbox.process_event", context=context):
+                payload = json.loads(message.get("Body", "{}"))
+                async with self._session_factory() as session:
+                    handler = build_event_handlers(session).get(event_type)
+                    if handler is None:
+                        raise ValueError(f"No registered handler: {event_type}")
+                    await handler(payload)
+                    await session.commit()
 
             await sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
         except asyncio.CancelledError:
