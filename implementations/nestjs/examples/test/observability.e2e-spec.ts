@@ -16,8 +16,15 @@
 // the outbox row (src/outbox/trace-context.ts), OutboxPoller forwards it as a real SQS message
 // attribute, and OutboxConsumer re-hydrates it before invoking a Handler — a real round trip
 // through LocalStack SQS, not a mock.
-import '@/tracing'
+//
+// Because this is the only spec that actually starts the real NodeSDK, it's also the only one
+// that must explicitly tear it down: the live TracerProvider/exporter sdk.start() sets up has
+// no other trigger to shut down before a Jest run ends (there's no SIGTERM here, and Jest
+// itself never calls shutdownTracing() for you), so afterAll calls it explicitly — otherwise
+// the process never becomes idle and Jest hangs after printing its results instead of exiting.
+import { shutdownTracing } from '@/tracing'
 
+import { INestApplication } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { ScheduleModule } from '@nestjs/schedule'
 import { Test } from '@nestjs/testing'
@@ -41,6 +48,7 @@ const EVENT_TYPE = 'ObservabilityTraceparentTest'
 describe('traceparent propagation across the Outbox hop (e2e)', () => {
   let postgres: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
+  let app: INestApplication
   let dataSource: DataSource
   let outboxWriter: OutboxWriter
   let transactionManager: TransactionManager
@@ -74,7 +82,7 @@ describe('traceparent propagation across the Outbox hop (e2e)', () => {
       ]
     }).compile()
 
-    const app = moduleRef.createNestApplication()
+    app = moduleRef.createNestApplication()
     await app.init()
     dataSource = moduleRef.get(DataSource)
     outboxWriter = moduleRef.get(OutboxWriter)
@@ -91,8 +99,20 @@ describe('traceparent propagation across the Outbox hop (e2e)', () => {
     delete process.env.AWS_ACCESS_KEY_ID
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
+    // app.close() first (same order as every other *.e2e-spec.ts, e.g. account.e2e-spec.ts) —
+    // this runs OutboxModule's OnModuleDestroy hooks, which is what actually stops
+    // OutboxConsumer's background poll loop (onModuleDestroy() sets running = false). Skipping
+    // this and only stopping the containers leaves that loop retrying against a
+    // no-longer-running Postgres/LocalStack forever, which never self-resolves and hangs Jest
+    // indefinitely — this is not a cleanup nicety, it's required for the process to exit at all.
+    await app?.close()
     await postgres?.stop()
     await localstack?.stop()
+    // Tears down the TracerProvider this spec's `import '@/tracing'` started — without this,
+    // the live span processor/exporter has nothing else to stop it before the test process
+    // needs to exit, and Jest hangs indefinitely after printing its results instead of
+    // returning control (see the top-of-file comment).
+    await shutdownTracing()
   })
 
   async function waitForProcessedOutboxRow(): Promise<OutboxEntity | null> {

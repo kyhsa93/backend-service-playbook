@@ -33,6 +33,17 @@ const sdk = new NodeSDK({
 
 sdk.start()
 
+// shutdownTracing() tears down the TracerProvider (span processor, exporter, etc.) that
+// sdk.start() set up above. Exported so a test that imports this module for real (as opposed
+// to every other *.e2e-spec.ts, which never initializes OpenTelemetry at all — see
+// observability.e2e-spec.ts) can call it in its own afterAll and let the process exit
+// naturally; without an explicit shutdown, the live SpanProcessor/exporter this starts has no
+// other trigger to tear itself down before the normal SIGTERM/SIGINT path below, which a Jest
+// run never sends.
+export function shutdownTracing(): Promise<void> {
+  return sdk.shutdown()
+}
+
 // Flushes any buffered spans before the process exits. Registered directly on `process` rather
 // than as a Nest OnApplicationShutdown provider — this module runs (and the SDK starts)
 // before Nest's DI container even exists, so it can't participate in
