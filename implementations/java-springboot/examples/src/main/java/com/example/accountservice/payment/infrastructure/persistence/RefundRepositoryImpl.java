@@ -5,9 +5,11 @@ import com.example.accountservice.payment.application.query.RefundQuery;
 import com.example.accountservice.payment.domain.Refund;
 import com.example.accountservice.payment.domain.RefundFindQuery;
 import com.example.accountservice.payment.domain.RefundRepository;
+import com.example.accountservice.payment.domain.RefundStatus;
 import com.example.accountservice.payment.domain.RefundsWithCount;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -55,6 +57,31 @@ public class RefundRepositoryImpl implements RefundRepository, RefundQuery {
                         .orElseGet(() -> RefundMapper.toNewEntity(refund));
         jpaRepository.save(entity);
         outboxWriter.saveAll(refund.pullDomainEvents());
+    }
+
+    @Override
+    public long summarizeRefundsByOwner(
+            String ownerId, LocalDateTime createdAtFrom, RefundStatus status) {
+        // RefundJpaEntity carries no ownerId of its own (only paymentId) — a theta-join against
+        // PaymentJpaEntity via paymentId is required to filter by owner (the same reason this
+        // method exists at all; see RefundRepository#summarizeRefundsByOwner).
+        StringBuilder jpql =
+                new StringBuilder(
+                        "SELECT COUNT(r) FROM RefundJpaEntity r, PaymentJpaEntity p "
+                                + "WHERE p.paymentId = r.paymentId AND p.ownerId = :ownerId "
+                                + "AND r.createdAt >= :createdAtFrom");
+        if (status != null) {
+            jpql.append(" AND r.status = :status");
+        }
+
+        var countQuery =
+                em.createQuery(jpql.toString(), Long.class)
+                        .setParameter("ownerId", ownerId)
+                        .setParameter("createdAtFrom", createdAtFrom);
+        if (status != null) {
+            countQuery.setParameter("status", status);
+        }
+        return countQuery.getSingleResult();
     }
 
     private String buildJpql(RefundFindQuery query, boolean count) {

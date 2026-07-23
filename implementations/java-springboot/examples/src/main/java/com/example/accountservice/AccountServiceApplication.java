@@ -1,6 +1,7 @@
 package com.example.accountservice;
 
 import com.example.accountservice.config.AwsProperties;
+import com.example.accountservice.config.FraudScorerProperties;
 import com.example.accountservice.config.JwtProperties;
 import com.example.accountservice.config.RefundClassifierProperties;
 import com.example.accountservice.config.SesProperties;
@@ -18,7 +19,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     SesProperties.class,
     JwtProperties.class,
     SqsProperties.class,
-    RefundClassifierProperties.class
+    RefundClassifierProperties.class,
+    FraudScorerProperties.class
 })
 public class AccountServiceApplication {
 
