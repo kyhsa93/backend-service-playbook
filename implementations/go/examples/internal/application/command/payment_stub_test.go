@@ -12,10 +12,11 @@ import (
 // infrastructure/persistence/payment_repository.go, which satisfies all four
 // interfaces with a single struct).
 type stubPaymentStore struct {
-	findPaymentsFn func(ctx context.Context, q payment.FindQuery) ([]*payment.Payment, int, error)
-	saveFn         func(ctx context.Context, p *payment.Payment) error
-	findRefundsFn  func(ctx context.Context, q payment.RefundFindQuery) ([]*payment.Refund, int, error)
-	saveRefundFn   func(ctx context.Context, r *payment.Refund) error
+	findPaymentsFn            func(ctx context.Context, q payment.FindQuery) ([]*payment.Payment, int, error)
+	saveFn                    func(ctx context.Context, p *payment.Payment) error
+	findRefundsFn             func(ctx context.Context, q payment.RefundFindQuery) ([]*payment.Refund, int, error)
+	saveRefundFn              func(ctx context.Context, r *payment.Refund) error
+	summarizeRefundsByOwnerFn func(ctx context.Context, q payment.RefundSummaryQuery) (payment.RefundSummary, error)
 }
 
 func (s *stubPaymentStore) FindPayments(ctx context.Context, q payment.FindQuery) ([]*payment.Payment, int, error) {
@@ -44,6 +45,13 @@ func (s *stubPaymentStore) SaveRefund(ctx context.Context, r *payment.Refund) er
 		return nil
 	}
 	return s.saveRefundFn(ctx, r)
+}
+
+func (s *stubPaymentStore) SummarizeRefundsByOwner(ctx context.Context, q payment.RefundSummaryQuery) (payment.RefundSummary, error) {
+	if s.summarizeRefundsByOwnerFn == nil {
+		return payment.RefundSummary{}, nil
+	}
+	return s.summarizeRefundsByOwnerFn(ctx, q)
 }
 
 // stubPaymentCardAdapter is a mock that substitutes the command.PaymentCardAdapter port with function fields.
@@ -76,4 +84,19 @@ func (s *stubRefundReasonClassifier) Classify(ctx context.Context, reason string
 		return payment.RefundReasonClassification{Category: payment.RefundReasonOther, FraudRiskScore: 0}
 	}
 	return s.classifyFn(ctx, reason)
+}
+
+// stubRefundFraudRiskScorer is a mock that substitutes the
+// command.RefundFraudRiskScorer Technical Service port — tests never call a
+// real ML model (per its own contract, Score has no error return, so this
+// stub can't fail either).
+type stubRefundFraudRiskScorer struct {
+	scoreFn func(ctx context.Context, features payment.RefundRiskFeatures) float64
+}
+
+func (s *stubRefundFraudRiskScorer) Score(ctx context.Context, features payment.RefundRiskFeatures) float64 {
+	if s.scoreFn == nil {
+		return 0
+	}
+	return s.scoreFn(ctx, features)
 }

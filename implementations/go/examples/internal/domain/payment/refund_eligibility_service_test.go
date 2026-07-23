@@ -24,12 +24,13 @@ func TestEvaluateRefundEligibility(t *testing.T) {
 	neutralClassification := payment.RefundReasonClassification{Category: payment.RefundReasonOther, FraudRiskScore: 0}
 
 	tests := []struct {
-		name           string
-		payment        *payment.Payment
-		refundAmount   int64
-		classification payment.RefundReasonClassification
-		wantApproved   bool
-		wantReason     error
+		name             string
+		payment          *payment.Payment
+		refundAmount     int64
+		classification   payment.RefundReasonClassification
+		mlFraudRiskScore float64
+		wantApproved     bool
+		wantReason       error
 	}{
 		{
 			name:           "refund_up_to_the_payment_amount_on_a_completed_payment_is_approved",
@@ -83,12 +84,29 @@ func TestEvaluateRefundEligibility(t *testing.T) {
 			classification: payment.RefundReasonClassification{Category: payment.RefundReasonChangedMind, FraudRiskScore: 0.99},
 			wantApproved:   true,
 		},
+		{
+			name:             "evaluate_when_ml_fraud_risk_score_is_at_or_above_the_threshold_then_rejects_and_returns_a_reason",
+			payment:          completedPayment(1000),
+			refundAmount:     500,
+			classification:   neutralClassification,
+			mlFraudRiskScore: 0.8,
+			wantApproved:     false,
+			wantReason:       payment.ErrRefundPatternFlaggedHighRisk,
+		},
+		{
+			name:             "evaluate_when_ml_fraud_risk_score_is_below_the_threshold_then_still_approves",
+			payment:          completedPayment(1000),
+			refundAmount:     500,
+			classification:   neutralClassification,
+			mlFraudRiskScore: 0.79,
+			wantApproved:     true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := payment.NewRefund(tt.payment.PaymentID, tt.refundAmount, "reason")
-			decision := payment.EvaluateRefundEligibility(tt.payment, r, tt.classification)
+			decision := payment.EvaluateRefundEligibility(tt.payment, r, tt.classification, tt.mlFraudRiskScore)
 
 			if decision.Approved != tt.wantApproved {
 				t.Fatalf("Approved = %v, want %v", decision.Approved, tt.wantApproved)

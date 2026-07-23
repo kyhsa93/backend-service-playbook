@@ -246,6 +246,35 @@ func (r *PaymentRepository) SaveRefund(ctx context.Context, ref *payment.Refund)
 	return nil
 }
 
+// SummarizeRefundsByOwner powers RefundFraudRiskScorer's feature assembly
+// (RequestRefundHandler) with an aggregate count rather than a raw
+// findRefunds page. Refund carries no owner_id column (only payment_id), so
+// this joins against payments to filter by owner.
+func (r *PaymentRepository) SummarizeRefundsByOwner(ctx context.Context, q payment.RefundSummaryQuery) (payment.RefundSummary, error) {
+	args := []any{q.OwnerID, q.CreatedFrom}
+	where := []string{"p.owner_id = $1", "rf.created_at >= $2"}
+	i := 3
+
+	if len(q.Status) > 0 {
+		placeholders := make([]string, len(q.Status))
+		for j, s := range q.Status {
+			placeholders[j] = fmt.Sprintf("$%d", i)
+			args = append(args, string(s))
+			i++
+		}
+		where = append(where, fmt.Sprintf("rf.status IN (%s)", strings.Join(placeholders, ",")))
+	}
+
+	var count int
+	if err := r.db.QueryRowContext(ctx,
+		fmt.Sprintf(`SELECT COUNT(*) FROM refunds rf JOIN payments p ON p.id = rf.payment_id WHERE %s`, strings.Join(where, " AND ")),
+		args...,
+	).Scan(&count); err != nil {
+		return payment.RefundSummary{}, fmt.Errorf("summarize refunds by owner: %w", err)
+	}
+	return payment.RefundSummary{Count: count}, nil
+}
+
 // insertOutboxEvents is the direct Outbox-loading helper shared by the
 // Payment/Refund Aggregates (it consolidates the Save/SaveRefund workaround
 // pattern in one place to reduce duplication).

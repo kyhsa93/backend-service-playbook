@@ -2,9 +2,16 @@ package command
 
 import (
 	"context"
+	"math"
+	"time"
 
 	"github.com/example/account-service/internal/domain/payment"
 )
+
+// riskHistoryWindowDays is the lookback window used to assemble
+// payment.RefundRiskFeatures.RefundCountLast30Days /
+// RejectedRefundCountLast30Days — matched by the field names themselves.
+const riskHistoryWindowDays = 30
 
 type RequestRefundCommand struct {
 	PaymentID   string
@@ -27,14 +34,16 @@ type RequestRefundHandler struct {
 	payments   payment.Repository
 	refunds    payment.RefundRepository
 	classifier RefundReasonClassifier
+	scorer     RefundFraudRiskScorer
 }
 
 func NewRequestRefundHandler(
 	payments payment.Repository,
 	refunds payment.RefundRepository,
 	classifier RefundReasonClassifier,
+	scorer RefundFraudRiskScorer,
 ) *RequestRefundHandler {
-	return &RequestRefundHandler{payments: payments, refunds: refunds, classifier: classifier}
+	return &RequestRefundHandler{payments: payments, refunds: refunds, classifier: classifier, scorer: scorer}
 }
 
 func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundCommand) (*payment.Refund, error) {
@@ -50,7 +59,35 @@ func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundComm
 	// input alongside the two Aggregates.
 	classification := h.classifier.Classify(ctx, cmd.Reason)
 
-	decision := payment.EvaluateRefundEligibility(p, r, classification)
+	// scorer is a second, independent Technical Service (command.RefundFraudRiskScorer) — scores
+	// the requester's refund *history pattern* rather than the free-text reason classifier
+	// handles. The two history-count queries below can't be answered by either Aggregate alone
+	// (Refund carries no OwnerID, only PaymentID), so they're assembled here from
+	// h.refunds.SummarizeRefundsByOwner (an aggregate query, not a raw findRefunds page).
+	historyWindowStart := time.Now().Add(-riskHistoryWindowDays * 24 * time.Hour)
+	refundSummary, err := h.refunds.SummarizeRefundsByOwner(ctx, payment.RefundSummaryQuery{
+		OwnerID:     p.OwnerID,
+		CreatedFrom: historyWindowStart,
+	})
+	if err != nil {
+		return nil, err
+	}
+	rejectedRefundSummary, err := h.refunds.SummarizeRefundsByOwner(ctx, payment.RefundSummaryQuery{
+		OwnerID:     p.OwnerID,
+		CreatedFrom: historyWindowStart,
+		Status:      []payment.RefundStatus{payment.RefundStatusRejected},
+	})
+	if err != nil {
+		return nil, err
+	}
+	mlFraudRiskScore := h.scorer.Score(ctx, payment.RefundRiskFeatures{
+		RefundCountLast30Days:         refundSummary.Count,
+		RejectedRefundCountLast30Days: rejectedRefundSummary.Count,
+		RefundToPaymentAmountRatio:    float64(r.Amount) / float64(p.Amount),
+		MinutesSincePayment:           math.Max(0, time.Since(p.CreatedAt).Minutes()),
+	})
+
+	decision := payment.EvaluateRefundEligibility(p, r, classification, mlFraudRiskScore)
 	if decision.Approved {
 		if err := r.Approve(p.AccountID, p.OwnerID); err != nil {
 			return nil, err
