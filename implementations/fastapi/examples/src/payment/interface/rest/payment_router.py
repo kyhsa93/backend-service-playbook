@@ -8,6 +8,7 @@ from ....card.domain.repository import CardQuery
 from ....card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
 from ....common.error_response import ErrorResponse
 from ....common.rate_limit import limiter, rate_limit_config
+from ....config.fraud_risk_config import get_fraud_scorer_mode
 from ....database import get_session
 from ...application.adapter.account_adapter import AccountAdapter
 from ...application.adapter.card_adapter import CardAdapter
@@ -17,6 +18,7 @@ from ...application.command.request_refund_handler import RequestRefundCommand, 
 from ...application.query.get_payment_handler import GetPaymentHandler, GetPaymentQuery
 from ...application.query.get_payments_handler import GetPaymentsHandler, GetPaymentsQuery
 from ...application.query.get_refunds_handler import GetRefundsHandler, GetRefundsQuery
+from ...application.service.refund_fraud_risk_scorer import RefundFraudRiskScorer
 from ...application.service.refund_reason_classifier import RefundReasonClassifier
 from ...domain.payment_repository import PaymentQuery, PaymentRepository
 from ...domain.refund_repository import RefundQuery, RefundRepository
@@ -24,6 +26,8 @@ from ...infrastructure.account_adapter_impl import AccountAdapterImpl
 from ...infrastructure.card_adapter_impl import CardAdapterImpl
 from ...infrastructure.persistence.payment_repository import SqlAlchemyPaymentRepository
 from ...infrastructure.persistence.refund_repository import SqlAlchemyRefundRepository
+from ...infrastructure.refund_fraud_risk_scorer_http_impl import RefundFraudRiskScorerHttpImpl
+from ...infrastructure.refund_fraud_risk_scorer_native_impl import RefundFraudRiskScorerNativeImpl
 from ...infrastructure.refund_reason_classifier_impl import RefundReasonClassifierImpl
 from .schemas import (
     CancelPaymentRequest,
@@ -84,6 +88,18 @@ def _account_adapter(account_query: AccountQuery = Depends(_account_query)) -> A
 
 def _refund_reason_classifier() -> RefundReasonClassifier:
     return RefundReasonClassifierImpl()
+
+
+# Both concrete implementations satisfy the same RefundFraudRiskScorer interface — which one
+# actually gets constructed is decided purely by FRAUD_SCORER_MODE (see
+# config/fraud_risk_config.py), the same "config chooses the binding" role NestJS's useFactory
+# provider plays for this same choice. RefundFraudRiskScorerNativeImpl trains its model once at
+# module import time (see its module-level `_model` singleton), so constructing a new instance
+# here per request is cheap.
+def _refund_fraud_risk_scorer() -> RefundFraudRiskScorer:
+    if get_fraud_scorer_mode() == "http":
+        return RefundFraudRiskScorerHttpImpl()
+    return RefundFraudRiskScorerNativeImpl()
 
 
 @router.post(
@@ -271,12 +287,15 @@ async def request_refund(
     payment_repo: PaymentRepository = Depends(_repo),
     refund_repo: RefundRepository = Depends(_refund_repo),
     refund_reason_classifier: RefundReasonClassifier = Depends(_refund_reason_classifier),
+    refund_fraud_risk_scorer: RefundFraudRiskScorer = Depends(_refund_fraud_risk_scorer),
 ) -> RefundResponse:
     # A refund rejection is a valid state transition from a domain point of view —
     # RequestRefundHandler never throws an exception even on rejection, returning a Refund
     # with REJECTED status instead, so this endpoint responds with 201 + a status field for
     # both approval and rejection (never a 4xx).
-    refund = await RequestRefundHandler(payment_repo, refund_repo, refund_reason_classifier).execute(
+    refund = await RequestRefundHandler(
+        payment_repo, refund_repo, refund_reason_classifier, refund_fraud_risk_scorer
+    ).execute(
         RequestRefundCommand(
             requester_id=current_user.user_id, payment_id=payment_id, amount=body.amount, reason=body.reason
         )

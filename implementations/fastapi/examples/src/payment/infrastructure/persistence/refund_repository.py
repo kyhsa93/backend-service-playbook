@@ -8,6 +8,7 @@ from ....account.infrastructure.persistence.account_repository import Base
 from ...domain.refund import Refund
 from ...domain.refund_repository import RefundRepository
 from ...domain.refund_status import RefundStatus
+from .payment_repository import PaymentModel
 
 
 class RefundModel(Base):
@@ -85,6 +86,25 @@ class SqlAlchemyRefundRepository(RefundRepository):
             await self._outbox_writer.save_all(events)
 
         await self._session.flush()
+
+    async def summarize_refunds_by_owner(
+        self,
+        owner_id: str,
+        created_at_from: datetime,
+        status: list[str] | None = None,
+    ) -> int:
+        # Refund carries no owner_id of its own (only payment_id) — join against Payment to
+        # filter by the original payment's owner.
+        stmt = (
+            select(func.count())
+            .select_from(RefundModel)
+            .join(PaymentModel, PaymentModel.id == RefundModel.payment_id)
+            .where(PaymentModel.owner_id == owner_id, RefundModel.created_at >= created_at_from)
+        )
+        if status:
+            stmt = stmt.where(RefundModel.status.in_(status))
+
+        return (await self._session.execute(stmt)).scalar_one()
 
     def _to_domain(self, row: RefundModel) -> Refund:
         return Refund(
