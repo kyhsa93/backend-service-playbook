@@ -360,24 +360,35 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
     })
 
     it('when_the_refund_request_is_valid_then_returns_201_and_an_APPROVED_status_and_asynchronously_credits_the_account', async () => {
-      const account = await createAccount()
-      await deposit(account.accountId, 50000)
-      const card = await issueCard(account.accountId)
-      const payment = (await createPayment(card.cardId, 10000)).body as { paymentId: string }
-      await waitForBalance(account.accountId, 40000)
+      // A dedicated owner, not the shared OWNER_ID — RefundFraudRiskScorer's features are
+      // computed from the owner's refund history (refund-fraud-risk-scorer-native-impl.ts via
+      // request-refund-command-handler.ts's summarizeRefundsByOwner), and this describe block's
+      // earlier tests intentionally rack up REJECTED refunds against OWNER_ID. Reusing it here
+      // would carry that rejected-refund history into this request's score and could push a
+      // genuinely valid refund over the risk threshold. Same isolation fix already applied on
+      // the java-springboot port (PaymentControllerE2ETest's "payment-owner-valid-refund").
+      const validRefundOwnerId = 'owner-valid-refund'
+      await signUp(validRefundOwnerId)
+      tokens[validRefundOwnerId] = await signIn(validRefundOwnerId)
+
+      const account = await createAccount(validRefundOwnerId)
+      await deposit(account.accountId, 50000, validRefundOwnerId)
+      const card = await issueCard(account.accountId, validRefundOwnerId)
+      const payment = (await createPayment(card.cardId, 10000, validRefundOwnerId)).body as { paymentId: string }
+      await waitForBalance(account.accountId, 40000, validRefundOwnerId)
 
       const response = await request(app.getHttpServer())
         .post(`/payments/${payment.paymentId}/refunds`)
-        .set('Authorization', authHeader(OWNER_ID))
+        .set('Authorization', authHeader(validRefundOwnerId))
         .send({ amount: 4000, reason: 'Partial refund' })
 
       expect(response.status).toBe(201)
       expect(response.body.status).toBe('APPROVED')
-      expect(await waitForBalance(account.accountId, 44000)).toBe(44000)
+      expect(await waitForBalance(account.accountId, 44000, validRefundOwnerId)).toBe(44000)
 
       const listResponse = await request(app.getHttpServer())
         .get(`/payments/${payment.paymentId}/refunds`)
-        .set('Authorization', authHeader(OWNER_ID))
+        .set('Authorization', authHeader(validRefundOwnerId))
       expect(listResponse.body.count).toBe(1)
       expect(listResponse.body.refunds[0].status).toBe('APPROVED')
     })
