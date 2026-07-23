@@ -25,7 +25,7 @@ class RefundEligibilityServiceTest {
         val payment = completedPayment(1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, notFraud)
+        val decision = service.evaluate(payment, refund, notFraud, 0.0)
 
         assertThat(decision.approved).isTrue()
         assertThat(decision.reason).isNull()
@@ -36,7 +36,7 @@ class RefundEligibilityServiceTest {
         val payment = completedPayment(1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 1000, reason = "Full refund")
 
-        val decision = service.evaluate(payment, refund, notFraud)
+        val decision = service.evaluate(payment, refund, notFraud, 0.0)
 
         assertThat(decision.approved).isTrue()
     }
@@ -46,7 +46,7 @@ class RefundEligibilityServiceTest {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, notFraud)
+        val decision = service.evaluate(payment, refund, notFraud, 0.0)
 
         assertThat(decision.approved).isFalse()
         assertThat(decision.reason).isEqualTo("A refund can only be requested for a completed payment.")
@@ -58,7 +58,7 @@ class RefundEligibilityServiceTest {
         payment.cancel("Customer request")
         val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, notFraud)
+        val decision = service.evaluate(payment, refund, notFraud, 0.0)
 
         assertThat(decision.approved).isFalse()
         assertThat(decision.reason).isEqualTo("A refund can only be requested for a completed payment.")
@@ -69,7 +69,7 @@ class RefundEligibilityServiceTest {
         val payment = completedPayment(1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 1001, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, notFraud)
+        val decision = service.evaluate(payment, refund, notFraud, 0.0)
 
         assertThat(decision.approved).isFalse()
         assertThat(decision.reason).isEqualTo("The refund amount cannot exceed the payment amount.")
@@ -85,6 +85,7 @@ class RefundEligibilityServiceTest {
                 payment,
                 refund,
                 RefundReasonClassification(category = RefundReasonCategory.FRAUD_SUSPECTED, fraudRiskScore = 0.9),
+                0.0,
             )
 
         assertThat(decision.approved).isFalse()
@@ -101,6 +102,7 @@ class RefundEligibilityServiceTest {
                 payment,
                 refund,
                 RefundReasonClassification(category = RefundReasonCategory.FRAUD_SUSPECTED, fraudRiskScore = 0.5),
+                0.0,
             )
 
         assertThat(decision.approved).isTrue()
@@ -116,7 +118,30 @@ class RefundEligibilityServiceTest {
                 payment,
                 refund,
                 RefundReasonClassification(category = RefundReasonCategory.OTHER, fraudRiskScore = 0.95),
+                0.0,
             )
+
+        assertThat(decision.approved).isTrue()
+    }
+
+    @Test
+    fun `is rejected when the ML fraud-risk score is at or above its own threshold, independent of the LLM classification`() {
+        val payment = completedPayment(1000)
+        val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
+
+        val decision = service.evaluate(payment, refund, notFraud, 0.8)
+
+        assertThat(decision.approved).isFalse()
+        assertThat(decision.reason)
+            .isEqualTo("This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.")
+    }
+
+    @Test
+    fun `is still approved when the ML fraud-risk score is below its own threshold`() {
+        val payment = completedPayment(1000)
+        val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
+
+        val decision = service.evaluate(payment, refund, notFraud, 0.79)
 
         assertThat(decision.approved).isTrue()
     }

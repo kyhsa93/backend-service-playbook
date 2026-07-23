@@ -5,6 +5,8 @@ import com.example.accountservice.payment.application.query.RefundQuery
 import com.example.accountservice.payment.domain.Refund
 import com.example.accountservice.payment.domain.RefundFindQuery
 import com.example.accountservice.payment.domain.RefundRepository
+import com.example.accountservice.payment.domain.RefundSummary
+import com.example.accountservice.payment.domain.RefundSummaryQuery
 import jakarta.persistence.EntityManager
 import jakarta.persistence.Query
 import org.springframework.stereotype.Repository
@@ -50,6 +52,27 @@ class RefundRepositoryImpl(
                 ?: RefundMapper.toNewEntity(refund)
         jpaRepository.save(entity)
         outboxWriter.saveAll(refund.pullDomainEvents())
+    }
+
+    /**
+     * [Refund] carries no `ownerId` of its own (only `paymentId`), so this joins against
+     * `PaymentJpaEntity` in JPQL to filter by the original payment's owner — the same reasoning
+     * `PaymentAdapter.summarizePayments` documents for Card BC's cross-BC aggregate query, just
+     * within Payment BC's own two Aggregates instead of across a BC boundary.
+     */
+    override fun summarizeRefundsByOwner(query: RefundSummaryQuery): RefundSummary {
+        val jpql = StringBuilder("SELECT COUNT(r) FROM RefundJpaEntity r, PaymentJpaEntity p")
+        jpql.append(" WHERE r.paymentId = p.paymentId AND p.ownerId = :ownerId AND r.createdAt >= :createdAtFrom")
+        if (!query.status.isNullOrEmpty()) jpql.append(" AND r.status IN :status")
+
+        val q =
+            em
+                .createQuery(jpql.toString(), Long::class.java)
+                .setParameter("ownerId", query.ownerId)
+                .setParameter("createdAtFrom", query.createdAtFrom)
+        if (!query.status.isNullOrEmpty()) q.setParameter("status", query.status)
+
+        return RefundSummary(count = q.singleResult)
     }
 
     private fun buildJpql(
