@@ -32,6 +32,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
 	"github.com/example/account-service/internal/infrastructure/llm"
+	"github.com/example/account-service/internal/infrastructure/ml"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -258,6 +259,12 @@ func runTests(m *testing.M) int {
 	// assertions never depend on a live LLM call.
 	testRefundReasonClassifier := llm.NewRefundReasonClassifierImpl("http://localhost:1", "qwen2.5:1.5b")
 
+	// Same idiom as testRefundReasonClassifier above — a placeholder, unreachable base URL means
+	// RefundFraudRiskScorerHTTPImpl always falls back to a deterministic neutral score (0) rather
+	// than depending on the native model's arbitrary trained output for whatever payment/refund
+	// amounts a given test uses, so refund e2e assertions never depend on live model inference.
+	testFraudRiskScorer := ml.NewRefundFraudRiskScorerHTTPImpl("http://localhost:1")
+
 	// e2e tests send dozens of requests in a short time within the same
 	// process — using the production default (100/second, burst 20) as-is
 	// would let the rate limiter return 429 mid-test, causing unrelated
@@ -266,7 +273,7 @@ func runTests(m *testing.M) int {
 	// here only.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testRefundReasonClassifier, testLimiter, database.NewManager(db))
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testRefundReasonClassifier, testFraudRiskScorer, testLimiter, database.NewManager(db))
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 

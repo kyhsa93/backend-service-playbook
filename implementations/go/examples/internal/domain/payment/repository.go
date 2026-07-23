@@ -60,9 +60,38 @@ type RefundFindQuery struct {
 	Status    []RefundStatus
 }
 
+// RefundSummaryQuery narrows the aggregate count query for
+// RefundFraudRiskScorer's feature assembly (see
+// application/command/refund_fraud_risk_scorer.go and
+// request_refund_handler.go), the same reason
+// command.PaymentQueryAdapter.SummarizeCardPayments exists on the Card BC's
+// cross-BC ACL side — counting an owner's refund history via FindRefunds and
+// counting matches in the Application layer wouldn't scale once history
+// grows past a single page. Refund itself carries no OwnerID (only
+// PaymentID), so implementations must join against Payment to filter by
+// owner.
+type RefundSummaryQuery struct {
+	OwnerID     string
+	CreatedFrom time.Time
+	Status      []RefundStatus
+}
+
+// RefundSummary is the aggregate result of SummarizeRefundsByOwner.
+type RefundSummary struct {
+	Count int
+}
+
 // RefundQuery is Refund's read-only lookup interface.
 type RefundQuery interface {
 	FindRefunds(ctx context.Context, q RefundFindQuery) ([]*Refund, int, error)
+
+	// SummarizeRefundsByOwner is deliberately not named in the find<Noun>s
+	// form — like PaymentQueryAdapter.SummarizeCardPayments, it returns an
+	// aggregate count rather than a page of Refund records, so it doesn't
+	// fit the list-lookup shape find<Noun>s is for (repository-pattern.md;
+	// harness/repository_naming.go's blocklist doesn't flag this shape
+	// either, only FindBy*/FindAll/Count*/bare Save|Delete/Update*).
+	SummarizeRefundsByOwner(ctx context.Context, q RefundSummaryQuery) (RefundSummary, error)
 }
 
 // RefundRepository is a Command-only interface that adds a write method (SaveRefund) on top of RefundQuery.

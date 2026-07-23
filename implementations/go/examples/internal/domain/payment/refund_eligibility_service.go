@@ -16,6 +16,16 @@ type RefundDecision struct {
 // approve/reject judgment.
 const fraudRiskRejectionThreshold = 0.7
 
+// mlFraudRiskRejectionThreshold — a second, independent signal, produced
+// upstream by command.RefundFraudRiskScorer (a Technical Service trained on
+// refund/payment history, see infrastructure/ml/refund_fraud_risk_scorer_native.go
+// / refund_fraud_risk_scorer_http.go). Kept as its own plain float64 with its
+// own threshold rather than merged into RefundReasonClassification, since
+// it's computed from an entirely different input (structured history, not
+// the free-text reason) and can fire independently of the LLM's
+// category/score.
+const mlFraudRiskRejectionThreshold = 0.8
+
 // EvaluateRefundEligibility is a concrete example of "pure domain logic
 // that coordinates multiple Aggregates," as defined by the root
 // docs/architecture/domain-service.md — expressed as a plain package
@@ -40,8 +50,12 @@ const fraudRiskRejectionThreshold = 0.7
 // classification is a plain value already computed upstream by
 // command.RefundReasonClassifier (a Technical Service) — this function never
 // calls an LLM itself and never imports the Application-layer interface that
-// produces the value; it only reads the already-computed fields.
-func EvaluateRefundEligibility(p *Payment, r *Refund, classification RefundReasonClassification) RefundDecision {
+// produces the value; it only reads the already-computed fields. Likewise,
+// mlFraudRiskScore is a plain float64 already computed upstream by
+// command.RefundFraudRiskScorer (also a Technical Service) — this function
+// never calls a model itself either; it only weighs the number against its
+// own threshold.
+func EvaluateRefundEligibility(p *Payment, r *Refund, classification RefundReasonClassification, mlFraudRiskScore float64) RefundDecision {
 	if p.Status != StatusCompleted {
 		return RefundDecision{Approved: false, Reason: ErrRefundRequiresCompletedPayment.Error()}
 	}
@@ -50,6 +64,9 @@ func EvaluateRefundEligibility(p *Payment, r *Refund, classification RefundReaso
 	}
 	if classification.Category == RefundReasonFraudSuspected && classification.FraudRiskScore >= fraudRiskRejectionThreshold {
 		return RefundDecision{Approved: false, Reason: ErrRefundFlaggedHighFraudRisk.Error()}
+	}
+	if mlFraudRiskScore >= mlFraudRiskRejectionThreshold {
+		return RefundDecision{Approved: false, Reason: ErrRefundPatternFlaggedHighRisk.Error()}
 	}
 	return RefundDecision{Approved: true}
 }

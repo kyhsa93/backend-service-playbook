@@ -30,6 +30,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/database"
 	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/logging"
+	"github.com/example/account-service/internal/infrastructure/ml"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -236,10 +237,22 @@ func main() {
 	// above there's no Secrets Manager lookup needed, just a plain base URL.
 	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(config.OllamaBaseURL(), config.RefundClassifierModel())
 
+	// RefundFraudRiskScorer (a second, independent Technical Service, domain-service.md) — two
+	// concrete implementations are always constructed, but only the one config.FraudScorerMode()
+	// selects is ever wired into the router below. "native" trains in-process at construction
+	// (here) and needs no extra service; "http" calls the shared services/fraud-risk-scorer
+	// microservice (config.FraudScorerBaseURL()).
+	var fraudRiskScorer command.RefundFraudRiskScorer
+	if config.FraudScorerMode() == "http" {
+		fraudRiskScorer = ml.NewRefundFraudRiskScorerHTTPImpl(config.FraudScorerBaseURL())
+	} else {
+		fraudRiskScorer = ml.NewRefundFraudRiskScorerNativeImpl()
+	}
+
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, refundReasonClassifier, limiter, dbManager)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, refundReasonClassifier, fraudRiskScorer, limiter, dbManager)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
