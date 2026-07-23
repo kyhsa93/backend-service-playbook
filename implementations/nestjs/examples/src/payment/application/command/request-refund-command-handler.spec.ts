@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing'
 
 import { RequestRefundCommandHandler } from '@/payment/application/command/request-refund-command-handler'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
+import { RefundFraudRiskScorer } from '@/payment/application/service/refund-fraud-risk-scorer'
 import { RefundReasonClassifier } from '@/payment/application/service/refund-reason-classifier'
 import { Payment } from '@/payment/domain/payment'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
@@ -12,24 +13,30 @@ import { TransactionManager } from '@/database/transaction-manager'
 
 // RefundEligibilityService (a Domain Service) is a plain class, so it isn't mocked — this
 // spec verifies the flow where the Application layer loads both Repositories, classifies the
-// reason via the (mocked) RefundReasonClassifier Technical Service, delegates to the real
-// judgment logic, and approves/rejects and saves the Refund based on the result. Mocking the
-// Technical Service interface — rather than hitting the real LLM — is exactly the benefit
+// reason via the (mocked) RefundReasonClassifier Technical Service, scores the refund pattern
+// via the (mocked) RefundFraudRiskScorer Technical Service, delegates to the real judgment
+// logic, and approves/rejects and saves the Refund based on the result. Mocking the Technical
+// Service interfaces — rather than hitting the real LLM/model — is exactly the benefit
 // described in domain-service.md: no external dependency, no non-determinism, in this test.
 describe('RequestRefundCommandHandler', () => {
   let handler: RequestRefundCommandHandler
   let paymentRepository: jest.Mocked<PaymentRepository>
   let refundRepository: jest.Mocked<RefundRepository>
   let refundReasonClassifier: jest.Mocked<RefundReasonClassifier>
+  let refundFraudRiskScorer: jest.Mocked<RefundFraudRiskScorer>
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       providers: [
         RequestRefundCommandHandler,
         { provide: PaymentRepository, useValue: { findPayments: jest.fn(), savePayment: jest.fn() } },
-        { provide: RefundRepository, useValue: { findRefunds: jest.fn(), saveRefund: jest.fn() } },
+        {
+          provide: RefundRepository,
+          useValue: { findRefunds: jest.fn(), saveRefund: jest.fn(), summarizeRefundsByOwner: jest.fn() }
+        },
         { provide: TransactionManager, useValue: { run: jest.fn((fn) => fn()), getManager: jest.fn() } },
-        { provide: RefundReasonClassifier, useValue: { classify: jest.fn() } }
+        { provide: RefundReasonClassifier, useValue: { classify: jest.fn() } },
+        { provide: RefundFraudRiskScorer, useValue: { score: jest.fn() } }
       ]
     }).compile()
 
@@ -37,7 +44,10 @@ describe('RequestRefundCommandHandler', () => {
     paymentRepository = module.get(PaymentRepository)
     refundRepository = module.get(RefundRepository)
     refundReasonClassifier = module.get(RefundReasonClassifier)
+    refundFraudRiskScorer = module.get(RefundFraudRiskScorer)
     refundReasonClassifier.classify.mockResolvedValue({ category: 'defective_product', fraudRiskScore: 0.1 })
+    refundRepository.summarizeRefundsByOwner.mockResolvedValue({ count: 0 })
+    refundFraudRiskScorer.score.mockResolvedValue(0.1)
   })
 
   const createPayment = (status: PaymentStatus, amount = 10000): Payment => new Payment({
@@ -89,6 +99,20 @@ describe('RequestRefundCommandHandler', () => {
 
     expect(refund.status).toBe(RefundStatus.REJECTED)
     expect(refund.decisionNote).toBe(PaymentErrorMessage['This refund reason was flagged as high fraud risk and requires manual review.'])
+    expect(refundRepository.saveRefund).toHaveBeenCalledWith(refund)
+  })
+
+  it('execute_when_the_fraud_risk_scorer_flags_a_high_risk_pattern_then_rejects_and_saves', async () => {
+    paymentRepository.findPayments.mockResolvedValue({ payments: [createPayment(PaymentStatus.COMPLETED, 10000)], count: 1 })
+    refundFraudRiskScorer.score.mockResolvedValue(0.9)
+
+    const refund = await handler.execute(
+      new RequestRefundCommand({ paymentId: 'payment-1', amount: 5000, reason: 'Defective product', requesterId: 'owner-1' })
+    )
+
+    expect(refund.status).toBe(RefundStatus.REJECTED)
+    expect(refund.decisionNote)
+      .toBe(PaymentErrorMessage['This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.'])
     expect(refundRepository.saveRefund).toHaveBeenCalledWith(refund)
   })
 

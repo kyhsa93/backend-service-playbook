@@ -77,6 +77,8 @@ volumes:
 
 `ollama` (the open-source LLM server, for `payment/infrastructure/refund-reason-classifier-impl.ts`) and `ollama-init` (a one-shot container that runs `ollama pull qwen2.5:1.5b` once against it, the same role LocalStack's init scripts play) are omitted above for brevity — see the actual `docker-compose.yml` for their full definitions.
 
+`fraud-risk-scorer` (the shared ML microservice behind `refund-fraud-risk-scorer-http-impl.ts` — see `docs/architecture/domain-service.md`'s second RefundFraudRiskScorer example) sits under its own `profiles: [ml]` and isn't in `app`'s `depends_on`, since the default `FRAUD_SCORER_MODE=native` needs no extra service. Bring it up alongside `app` with `docker compose --profile app --profile ml up -d` after setting `FRAUD_SCORER_MODE=http`.
+
 Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the two values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`) — no separate `.env.docker` file is created.
 
 ### Service Composition
@@ -87,6 +89,7 @@ Since `environment:` takes precedence over `env_file:`, keep local values in `.e
 | `localstack` | `localstack/localstack:3.0` | Replaces AWS services (SES, Secrets Manager, SQS) | 4566 |
 | `ollama` | `ollama/ollama:latest` | Serves the open-source refund-reason-classification model locally | 11434 |
 | `ollama-init` | `ollama/ollama:latest` | One-shot: pulls `qwen2.5:1.5b` into `ollama-data`, then exits | — |
+| `fraud-risk-scorer` | Built from `services/fraud-risk-scorer/` | Shared ML fraud-risk scoring (optional, `profiles: [ml]`) | 8000 |
 | `app` | The project build | The NestJS app (optional, `profiles: [app]`) | 3000 |
 
 ### Health Check
@@ -144,6 +147,9 @@ JWT_EXPIRES_IN=1h
 
 OLLAMA_BASE_URL=http://localhost:11434
 REFUND_CLASSIFIER_MODEL=qwen2.5:1.5b
+
+FRAUD_SCORER_MODE=native
+FRAUD_SCORER_BASE_URL=http://localhost:8000
 
 PORT=3000
 NODE_ENV=development

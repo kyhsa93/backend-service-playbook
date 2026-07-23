@@ -33,32 +33,32 @@ describe('RefundEligibilityService', () => {
   })
 
   it('evaluate_when_payment_is_COMPLETED_and_refund_amount_is_within_the_payment_amount_then_approves', () => {
-    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(5000), NOT_FRAUD)
+    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(5000), NOT_FRAUD, 0)
 
     expect(decision.approved).toBe(true)
   })
 
   it('evaluate_when_refund_amount_equals_the_payment_amount_then_approves', () => {
-    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(10000), NOT_FRAUD)
+    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(10000), NOT_FRAUD, 0)
 
     expect(decision.approved).toBe(true)
   })
 
   it('evaluate_when_payment_is_not_COMPLETED_then_rejects_and_returns_a_reason', () => {
-    const decision = service.evaluate(createPayment(PaymentStatus.PENDING, 10000), createRefund(5000), NOT_FRAUD)
+    const decision = service.evaluate(createPayment(PaymentStatus.PENDING, 10000), createRefund(5000), NOT_FRAUD, 0)
 
     expect(decision.approved).toBe(false)
     expect(decision.reason).toBe('A refund can only be requested for a completed payment.')
   })
 
   it('evaluate_when_payment_is_CANCELLED_then_rejects', () => {
-    const decision = service.evaluate(createPayment(PaymentStatus.CANCELLED, 10000), createRefund(5000), NOT_FRAUD)
+    const decision = service.evaluate(createPayment(PaymentStatus.CANCELLED, 10000), createRefund(5000), NOT_FRAUD, 0)
 
     expect(decision.approved).toBe(false)
   })
 
   it('evaluate_when_refund_amount_exceeds_the_payment_amount_then_rejects_and_returns_a_reason', () => {
-    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(10001), NOT_FRAUD)
+    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(10001), NOT_FRAUD, 0)
 
     expect(decision.approved).toBe(false)
     expect(decision.reason).toBe('The refund amount cannot exceed the payment amount.')
@@ -68,7 +68,8 @@ describe('RefundEligibilityService', () => {
     const decision = service.evaluate(
       createPayment(PaymentStatus.COMPLETED, 10000),
       createRefund(5000),
-      { category: 'fraud_suspected', fraudRiskScore: 0.9 }
+      { category: 'fraud_suspected', fraudRiskScore: 0.9 },
+      0
     )
 
     expect(decision.approved).toBe(false)
@@ -79,7 +80,8 @@ describe('RefundEligibilityService', () => {
     const decision = service.evaluate(
       createPayment(PaymentStatus.COMPLETED, 10000),
       createRefund(5000),
-      { category: 'fraud_suspected', fraudRiskScore: 0.5 }
+      { category: 'fraud_suspected', fraudRiskScore: 0.5 },
+      0
     )
 
     expect(decision.approved).toBe(true)
@@ -89,8 +91,22 @@ describe('RefundEligibilityService', () => {
     const decision = service.evaluate(
       createPayment(PaymentStatus.COMPLETED, 10000),
       createRefund(5000),
-      { category: 'other', fraudRiskScore: 0.95 }
+      { category: 'other', fraudRiskScore: 0.95 },
+      0
     )
+
+    expect(decision.approved).toBe(true)
+  })
+
+  it('evaluate_when_ml_fraud_risk_score_is_at_or_above_the_threshold_then_rejects_and_returns_a_reason', () => {
+    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(5000), NOT_FRAUD, 0.8)
+
+    expect(decision.approved).toBe(false)
+    expect(decision.reason).toBe('This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.')
+  })
+
+  it('evaluate_when_ml_fraud_risk_score_is_below_the_threshold_then_still_approves', () => {
+    const decision = service.evaluate(createPayment(PaymentStatus.COMPLETED, 10000), createRefund(5000), NOT_FRAUD, 0.79)
 
     expect(decision.approved).toBe(true)
   })

@@ -16,6 +16,14 @@ export interface RefundDecision {
 // still owns the actual approve/reject judgment.
 const FRAUD_RISK_REJECTION_THRESHOLD = 0.7
 
+// A second, independent signal — produced upstream by RefundFraudRiskScorer (a Technical
+// Service trained on refund/payment history, see refund-fraud-risk-scorer-native-impl.ts /
+// refund-fraud-risk-scorer-http-impl.ts). Kept as its own plain number with its own threshold
+// rather than merged into RefundReasonClassification, since it's computed from an entirely
+// different input (structured history, not the free-text reason) and can fire independently
+// of the LLM's category/score.
+const ML_FRAUD_RISK_REJECTION_THRESHOLD = 0.8
+
 // A Domain Service — a plain class with no framework decorators (it's not registered in the
 // NestJS DI container either. The Application layer creates it directly with `new` when needed).
 //
@@ -28,7 +36,12 @@ const FRAUD_RISK_REJECTION_THRESHOLD = 0.7
 // require receiving the entire other Aggregate as a parameter, collapsing the boundary) — it
 // belongs here, in a separate Domain Service. (See the root docs/architecture/domain-service.md.)
 export class RefundEligibilityService {
-  public evaluate(payment: Payment, refund: Refund, classification: RefundReasonClassification): RefundDecision {
+  public evaluate(
+    payment: Payment,
+    refund: Refund,
+    classification: RefundReasonClassification,
+    mlFraudRiskScore: number
+  ): RefundDecision {
     if (payment.status !== PaymentStatus.COMPLETED) {
       return { approved: false, reason: PaymentErrorMessage['A refund can only be requested for a completed payment.'] }
     }
@@ -37,6 +50,9 @@ export class RefundEligibilityService {
     }
     if (classification.category === 'fraud_suspected' && classification.fraudRiskScore >= FRAUD_RISK_REJECTION_THRESHOLD) {
       return { approved: false, reason: PaymentErrorMessage['This refund reason was flagged as high fraud risk and requires manual review.'] }
+    }
+    if (mlFraudRiskScore >= ML_FRAUD_RISK_REJECTION_THRESHOLD) {
+      return { approved: false, reason: PaymentErrorMessage['This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.'] }
     }
     return { approved: true }
   }

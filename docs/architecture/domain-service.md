@@ -236,6 +236,24 @@ export abstract class RefundReasonClassifier {
 
 The implementation (`infrastructure/refund-reason-classifier-impl.ts`) calls a self-hosted, open-source LLM (Ollama, running the lightweight `qwen2.5:1.5b` model — see `docker-compose.yml`'s `ollama`/`ollama-init` services) with a JSON-schema-constrained response, and falls back to a neutral, non-blocking result (`{ category: 'other', fraudRiskScore: 0 }`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Because this interface is defined "in the shape the Domain Service needs" rather than around a specific vendor's API, swapping it for Ollama (from a cloud LLM API in an earlier iteration) required no change to the Domain Service, the Application-layer interface, or any of their tests — exactly the point of the pattern. Full code: `implementations/nestjs/examples/src/payment/application/service/refund-reason-classifier.ts`, `infrastructure/refund-reason-classifier-impl.ts`.
 
+**A second real, working example — RefundFraudRiskScorer (two swappable ML implementations trained on user data).** Where `RefundReasonClassifier` classifies the refund's free-text *reason*, `RefundFraudRiskScorer` scores the requester's refund *history pattern* (refund frequency, refund/payment amount ratio, time since payment — see `RefundRiskFeatures`) with a small model trained on that data, feeding `RefundEligibilityService` a second, independent signal with its own threshold:
+
+```typescript
+// application/service/refund-fraud-risk-scorer.ts — the interface
+export abstract class RefundFraudRiskScorer {
+  abstract score(features: RefundRiskFeatures): Promise<number>
+}
+```
+
+Two implementations of this same interface exist side by side, selected by a config value (`FRAUD_SCORER_MODE=native|http`) rather than one replacing the other — demonstrating the swap the RefundReasonClassifier example above only shows historically (Claude API → Ollama), as something a deployment can toggle at will:
+
+- **`RefundFraudRiskScorerNativeImpl`** (default) — trains a small logistic regression in-process at startup (plain gradient descent, no external ML library) against a synthetic seed dataset standing in for real historical fraud-review outcomes. Self-contained; no extra service needed.
+- **`RefundFraudRiskScorerHttpImpl`** — calls a shared microservice (`services/fraud-risk-scorer/`, Python + scikit-learn, trained on an equivalent synthetic dataset) over HTTP, the same "external technical concern behind a domain-shaped interface" role Ollama plays for `RefundReasonClassifier`.
+
+This is a deliberate exception to the "placement principle" above: `services/fraud-risk-scorer/` is shared **across languages**, not across domains within one language (the case the YAGNI guidance is about). Each language's `docker-compose.yml` still builds and runs its own instance of this service (the same duplication convention `ollama`/`ollama-init` already follow) — the code is shared and reused, but no language's stack depends on another language's running container.
+
+Full code: `implementations/nestjs/examples/src/payment/application/service/refund-fraud-risk-scorer.ts`, `infrastructure/refund-fraud-risk-scorer-native-impl.ts`, `infrastructure/refund-fraud-risk-scorer-http-impl.ts`, `services/fraud-risk-scorer/`.
+
 ---
 
 ### A misuse of Domain Service

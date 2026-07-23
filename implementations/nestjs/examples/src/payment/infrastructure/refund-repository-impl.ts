@@ -7,12 +7,14 @@ import { OutboxWriter } from '@/outbox/outbox-writer'
 import { Refund } from '@/payment/domain/refund'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { RefundStatus } from '@/payment/payment-enum'
+import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
 import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
 
 @Injectable()
 export class RefundRepositoryImpl extends RefundRepository {
   constructor(
     @InjectRepository(RefundEntity) private readonly refundRepo: Repository<RefundEntity>,
+    @InjectRepository(PaymentEntity) private readonly paymentRepo: Repository<PaymentEntity>,
     private readonly transactionManager: TransactionManager,
     private readonly outboxWriter: OutboxWriter
   ) {
@@ -67,5 +69,22 @@ export class RefundRepositoryImpl extends RefundRepository {
       await this.outboxWriter.saveAll(refund.domainEvents)
       refund.clearEvents()
     }
+  }
+
+  public async summarizeRefundsByOwner(query: {
+    readonly ownerId: string
+    readonly createdAtFrom: Date
+    readonly status?: RefundStatus[]
+  }): Promise<{ count: number }> {
+    const qb = this.refundRepo.createQueryBuilder('refund')
+      .innerJoin(PaymentEntity, 'payment', 'payment.paymentId = refund.paymentId')
+      .select('COUNT(*)', 'count')
+      .where('payment.ownerId = :ownerId', { ownerId: query.ownerId })
+      .andWhere('refund.createdAt >= :createdAtFrom', { createdAtFrom: query.createdAtFrom })
+
+    if (query.status?.length) qb.andWhere('refund.status IN (:...status)', { status: query.status })
+
+    const row = await qb.getRawOne<{ count: string }>()
+    return { count: Number(row?.count ?? 0) }
   }
 }
