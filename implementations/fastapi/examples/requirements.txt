@@ -11,6 +11,8 @@ alembic
 slowapi
 apscheduler
 httpx
+scikit-learn
+numpy
 
 pytest
 pytest-asyncio

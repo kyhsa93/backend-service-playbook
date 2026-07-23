@@ -70,6 +70,21 @@ services:
       ollama:
         condition: service_healthy
 
+  # Optional — only needed when FRAUD_SCORER_MODE=http (default is 'native', which needs no
+  # extra service). Not in `app`'s depends_on since it lives under a separate profile: bring it
+  # up alongside `app` with `docker compose --profile app --profile ml up -d` after setting
+  # FRAUD_SCORER_MODE=http. See config/fraud_risk_config.py.
+  fraud-risk-scorer:
+    build: ../../../services/fraud-risk-scorer
+    ports: ['8001:8000']
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - ml
+
   app:
     build: .
     ports: ['8000:8000']
@@ -82,6 +97,7 @@ services:
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
       SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/tasks.fifo
       OLLAMA_BASE_URL: http://ollama:11434
+      FRAUD_SCORER_BASE_URL: http://fraud-risk-scorer:8000
     depends_on:
       database:
         condition: service_healthy
@@ -98,6 +114,8 @@ volumes:
 ```
 
 `ollama` (the open-source LLM server, for `payment/infrastructure/refund_reason_classifier_impl.py`) serves the model over its native `/api/chat` HTTP endpoint; `ollama-init` (the one-shot pull container above) runs once and exits.
+
+`fraud-risk-scorer` (the shared ML microservice behind `payment/infrastructure/refund_fraud_risk_scorer_http_impl.py` — see `docs/architecture/domain-service.md`'s (root) second RefundFraudRiskScorer example) sits under its own `profiles: [ml]` and isn't in `app`'s `depends_on`, since the default `FRAUD_SCORER_MODE=native` needs no extra service. Its host port is mapped to `8001` (not `8000`) since `app` already binds the host's `8000` — inside the Compose network it's still reachable at `http://fraud-risk-scorer:8000`.
 
 ```bash
 # localstack/init-ses.sh
@@ -178,6 +196,9 @@ APP_ENV=development
 
 OLLAMA_BASE_URL=http://localhost:11434
 REFUND_CLASSIFIER_MODEL=qwen2.5:1.5b
+
+FRAUD_SCORER_MODE=native
+FRAUD_SCORER_BASE_URL=http://localhost:8000
 ```
 
 With `APP_ENV=development` (or unset), `main.py`'s `lifespan` doesn't call Secrets Manager and uses the `JWT_SECRET` environment variable as-is — only when `APP_ENV=production` does it look up the `app/jwt` secret created by `localstack/init-secrets.sh` (see [secret-manager.md](secret-manager.md)).
