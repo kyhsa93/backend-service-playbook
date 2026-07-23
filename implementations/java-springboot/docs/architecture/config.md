@@ -33,6 +33,10 @@ jwt:
 refund-classifier:
   ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
   model: ${REFUND_CLASSIFIER_MODEL:qwen2.5:1.5b}
+
+fraud-scorer:
+  mode: ${FRAUD_SCORER_MODE:native}
+  base-url: ${FRAUD_SCORER_BASE_URL:http://localhost:8000}
 ```
 
 (For `ddl-auto`/migration status, see [persistence.md](persistence.md) — migrations are managed by Flyway.)

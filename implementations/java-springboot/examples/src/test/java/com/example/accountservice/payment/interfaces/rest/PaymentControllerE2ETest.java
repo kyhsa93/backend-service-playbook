@@ -86,6 +86,18 @@ class PaymentControllerE2ETest {
         registry.add("aws.access-key-id", () -> localstack.getAccessKey());
         registry.add("aws.secret-access-key", () -> localstack.getSecretKey());
         registry.add("sqs.domain-event-queue-url", PaymentControllerE2ETest::domainEventQueueUrl);
+
+        // OWNER_ID below is shared across every test method in this class, and the Testcontainers
+        // Postgres instance persists refund history across them (no per-test reset) — so
+        // RefundFraudRiskScorerNativeImpl (the default) would see accumulating refund history
+        // across unrelated test methods and could legitimately reject a later test's refund based
+        // on an earlier, unrelated test's rejected refunds. Force the http impl against an
+        // unreachable address instead, so scoring deterministically falls back to 0 for every
+        // call in this suite — the same idiom already used for testRefundReasonClassifier-style
+        // determinism, and the same fix applied in the Go port (see
+        // RefundFraudRiskScorerHttpImpl.java's fallback-on-failure behavior).
+        registry.add("fraud-scorer.mode", () -> "http");
+        registry.add("fraud-scorer.base-url", () -> "http://localhost:1");
     }
 
     @Autowired private TestRestTemplate restTemplate;
@@ -376,26 +388,32 @@ class PaymentControllerE2ETest {
 
     @Test
     void returns_201_and_APPROVED_status_and_credits_the_account_for_a_valid_refund_request() {
-        Map<String, Object> account = createAccount(OWNER_ID);
+        // A dedicated owner id (not the shared OWNER_ID) — RefundFraudRiskScorer's native
+        // implementation weighs this owner's actual refund history (see
+        // RefundRepository.summarizeRefundsByOwner), and OWNER_ID accumulates refunds/rejections
+        // across the other tests in this class (no per-test cleanup). Reusing it here would make
+        // this test's ML fraud-risk score depend on execution order/what ran before it.
+        String ownerId = "payment-owner-valid-refund";
+        Map<String, Object> account = createAccount(ownerId);
         String accountId = (String) account.get("accountId");
-        deposit(accountId, 50000, OWNER_ID);
-        Map<String, Object> card = issueCard(OWNER_ID, accountId);
+        deposit(accountId, 50000, ownerId);
+        Map<String, Object> card = issueCard(ownerId, accountId);
         Map<String, Object> payment =
-                createPayment((String) card.get("cardId"), 10000, OWNER_ID).getBody();
-        waitForBalance(accountId, 40000);
+                createPayment((String) card.get("cardId"), 10000, ownerId).getBody();
+        waitForBalance(accountId, 40000, ownerId);
 
         ResponseEntity<Map> response =
                 post(
                         "/payments/" + payment.get("paymentId") + "/refunds",
-                        OWNER_ID,
+                        ownerId,
                         Map.of("amount", 4000, "reason", "partial refund"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().get("status")).isEqualTo("APPROVED");
-        waitForBalance(accountId, 44000);
+        waitForBalance(accountId, 44000, ownerId);
 
         Map<String, Object> listBody =
-                get("/payments/" + payment.get("paymentId") + "/refunds", OWNER_ID).getBody();
+                get("/payments/" + payment.get("paymentId") + "/refunds", ownerId).getBody();
         assertThat(((Number) listBody.get("count")).intValue()).isEqualTo(1);
         var refunds = (java.util.List<Map<String, Object>>) listBody.get("refunds");
         assertThat(refunds.get(0).get("status")).isEqualTo("APPROVED");
