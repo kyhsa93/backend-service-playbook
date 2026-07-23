@@ -1,10 +1,17 @@
+// Must be the very first import in this file — see src/tracing.ts for why (it patches Node's
+// http module in place, and only requests made after it runs get instrumented).
+import '@/tracing'
+
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { NextFunction, Request, Response } from 'express'
+import helmet from 'helmet'
 
 import { AppModule } from '@/app-module'
 import { HttpExceptionFilter } from '@/common/http-exception.filter'
 import { LoggingInterceptor } from '@/common/logging.interceptor'
+import { MetricsInterceptor } from '@/common/metrics.interceptor'
 import { getCorsOrigins, getPort, isProduction } from '@/config/app.config'
 
 async function bootstrap(): Promise<void> {
@@ -12,6 +19,18 @@ async function bootstrap(): Promise<void> {
     logger: isProduction()
       ? ['error', 'warn', 'log']
       : ['error', 'warn', 'log', 'debug', 'verbose']
+  })
+
+  // Security headers (X-Content-Type-Options, X-Frame-Options, HSTS, etc), applied as early as
+  // possible in the pipeline. helmet's default Content-Security-Policy blocks Swagger UI's
+  // inline scripts/styles, so /docs gets its own helmet instance with CSP turned off (keeping
+  // every other header) rather than relaxing CSP for the whole app.
+  const defaultHelmet = helmet()
+  const docsHelmet = helmet({ contentSecurityPolicy: false })
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isSwaggerPath = req.path === '/docs' || req.path.startsWith('/docs/') || req.path === '/docs-json'
+    const middleware = isSwaggerPath ? docsHelmet : defaultHelmet
+    middleware(req, res, next)
   })
 
   // The global ValidationPipe — auto-applies class-validator, constructs a response with a code on failure
@@ -24,8 +43,10 @@ async function bootstrap(): Promise<void> {
     }
   }))
 
-  // The request-logging interceptor
-  app.useGlobalInterceptors(new LoggingInterceptor())
+  // The request-logging interceptor, plus the Prometheus HTTP-metrics interceptor alongside it
+  // — both read the same (method, route, status, duration) facts off the request/response, for
+  // two different consumers (structured logs vs. a /metrics scrape).
+  app.useGlobalInterceptors(new LoggingInterceptor(), new MetricsInterceptor())
 
   // The global exception filter — converts even unhandled exceptions that aren't an HttpException into the standard error response format
   app.useGlobalFilters(new HttpExceptionFilter())

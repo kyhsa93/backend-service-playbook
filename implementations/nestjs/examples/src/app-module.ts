@@ -11,6 +11,7 @@ import { CardModule } from '@/card/card-module'
 import { CommonModule } from '@/common/common-module'
 import { CorrelationIdMiddleware } from '@/common/correlation-id.middleware'
 import { HealthController } from '@/common/interface/health-controller'
+import { MetricsController } from '@/common/interface/metrics-controller'
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
 import { validateConfig } from '@/config/validation.config'
 import { jwtConfig } from '@/config/jwt.config'
@@ -38,7 +39,7 @@ import { TaskQueueModule } from '@/task-queue/task-queue-module'
     CardModule,
     PaymentModule
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, MetricsController],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     ShutdownState

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { Interval } from '@nestjs/schedule'
-import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs'
+import { MessageAttributeValue, SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs'
 
 import { getDomainEventQueueUrl } from '@/config/aws.config'
 import { TransactionManager } from '@/database/transaction-manager'
@@ -55,12 +55,19 @@ export class OutboxPoller {
     const queueUrl = getDomainEventQueueUrl()
     for (const row of rows) {
       try {
+        const messageAttributes: Record<string, MessageAttributeValue> = {
+          eventType: { DataType: 'String', StringValue: row.eventType }
+        }
+        // Only set when the row that produced this event carried an active span
+        // (OutboxWriter/trace-context.ts) — a Task Queue batch job, for instance, has nothing
+        // to propagate. OutboxConsumer re-hydrates this on the receiving end.
+        if (row.traceParent) {
+          messageAttributes.traceparent = { DataType: 'String', StringValue: row.traceParent }
+        }
         await this.sqs.send(new SendMessageCommand({
           QueueUrl: queueUrl,
           MessageBody: row.payload,
-          MessageAttributes: {
-            eventType: { DataType: 'String', StringValue: row.eventType }
-          }
+          MessageAttributes: messageAttributes
         }))
         await manager.update(OutboxEntity, { eventId: row.eventId }, { processed: true })
       } catch (error) {

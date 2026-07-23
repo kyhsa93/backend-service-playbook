@@ -19,7 +19,8 @@ export class LoggingInterceptor implements NestInterceptor {
         method,
         url,
         duration_ms: Date.now() - now,
-        correlation_id: CorrelationIdStore.getId()
+        correlation_id: CorrelationIdStore.getId(),
+        trace_id: CorrelationIdStore.getTraceId()
       }))
     )
   }

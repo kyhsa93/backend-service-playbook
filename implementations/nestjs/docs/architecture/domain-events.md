@@ -160,6 +160,10 @@ export class OutboxEntity {
   processed: boolean   // becomes true once OutboxPoller finishes publishing to SQS. Whether the
                         // handler actually finished processing is known not by this column but by SQS (ack/redelivery).
 
+  @Column({ type: 'varchar', nullable: true })
+  traceParent: string | null   // the W3C traceparent captured when the row was written — see
+                                // observability.md's "traceparent across the Outbox hop"
+
   @CreateDateColumn()
   createdAt: Date
 }
@@ -177,11 +181,15 @@ export class OutboxWriter {
 
   public async saveAll(events: object[]): Promise<void> {
     const manager = this.transactionManager.getManager()
+    // captured once per call — every event in one saveAll() batch shares the same
+    // originating request/trace (see outbox/trace-context.ts, observability.md)
+    const traceParent = traceParentFromContext() ?? null
     await manager.insert(OutboxEntity, events.map((event) => ({
       eventId: generateId(),
       eventType: (event as { eventName?: string }).eventName ?? event.constructor.name,
       payload: JSON.stringify(event),
-      processed: false
+      processed: false,
+      traceParent
     })))
   }
 }
@@ -223,10 +231,15 @@ export class OutboxPoller {
     })
     for (const row of rows) {
       try {
+        const messageAttributes: Record<string, MessageAttributeValue> = {
+          eventType: { DataType: 'String', StringValue: row.eventType }
+        }
+        // forwarded the same way as eventType, only when the row actually carries one
+        if (row.traceParent) messageAttributes.traceparent = { DataType: 'String', StringValue: row.traceParent }
         await this.sqs.send(new SendMessageCommand({
           QueueUrl: getDomainEventQueueUrl(),
           MessageBody: row.payload,
-          MessageAttributes: { eventType: { DataType: 'String', StringValue: row.eventType } }
+          MessageAttributes: messageAttributes
         }))
         await manager.update(OutboxEntity, { eventId: row.eventId }, { processed: true })
       } catch (error) {
@@ -268,7 +281,7 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
     while (this.running) {
       const result = await this.sqs.send(new ReceiveMessageCommand({
         QueueUrl: queueUrl, MaxNumberOfMessages: 10,
-        MessageAttributeNames: ['eventType'], WaitTimeSeconds: 5
+        MessageAttributeNames: ['eventType', 'traceparent'], WaitTimeSeconds: 5
       }))
       for (const message of result.Messages ?? []) {
         await this.handleMessage(queueUrl, message)
@@ -278,14 +291,26 @@ export class OutboxConsumer implements OnModuleInit, OnModuleDestroy {
 
   private async handleMessage(queueUrl: string, message: Message): Promise<void> {
     const eventType = message.MessageAttributes?.eventType?.StringValue
-    try {
-      if (!eventType) throw new Error('The eventType message attribute is missing.')
-      await this.registry.handle(eventType, JSON.parse(message.Body ?? '{}'))
-      await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
-    } catch (error) {
-      this.logger.error({ message: 'Failed to process event', event_type: eventType, error })
-      // don't delete — it gets re-received and retried after the visibility timeout.
-    }
+    // re-hydrates the trace OutboxPoller forwarded, so any span/log the Handler produces links
+    // back into the trace that originally wrote this row (observability.md)
+    const traceParent = message.MessageAttributes?.traceparent?.StringValue
+    await otelContext.with(contextWithTraceParent(traceParent), () =>
+      tracer.startActiveSpan(`outbox.consume ${eventType ?? 'unknown'}`, async (span) => {
+        const traceId = span.spanContext().traceId
+        try {
+          await CorrelationIdStore.run({ correlationId: generateId(), traceId }, async () => {
+            if (!eventType) throw new Error('The eventType message attribute is missing.')
+            await this.registry.handle(eventType, JSON.parse(message.Body ?? '{}'))
+            await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
+          })
+        } catch (error) {
+          this.logger.error({ message: 'Failed to process event', event_type: eventType, trace_id: traceId, error })
+          // don't delete — it gets re-received and retried after the visibility timeout.
+        } finally {
+          span.end()
+        }
+      })
+    )
   }
 }
 ```

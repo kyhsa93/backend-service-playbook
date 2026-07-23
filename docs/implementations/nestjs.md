@@ -27,7 +27,7 @@ The concrete guide and runnable examples implementing this playbook's principles
 | [authentication.md](../architecture/authentication.md) | `implementations/nestjs/docs/architecture/authentication.md` — JWT, AuthGuard |
 | [cross-cutting-concerns.md](../architecture/cross-cutting-concerns.md) | `implementations/nestjs/docs/architecture/cross-cutting-concerns.md` — Middleware, Guard, Interceptor, Pipe |
 | [scheduling.md](../architecture/scheduling.md) | `implementations/nestjs/docs/architecture/scheduling.md` — @Cron, SQS Task Queue, idempotency |
-| [observability.md](../architecture/observability.md) | `implementations/nestjs/docs/architecture/observability.md` — structured log, Correlation ID |
+| [observability.md](../architecture/observability.md) | `implementations/nestjs/docs/architecture/observability.md` — structured log, Correlation ID, Prometheus `/metrics` (prom-client), OpenTelemetry HTTP tracing + traceparent across the Outbox hop, helmet security headers |
 | [graceful-shutdown.md](../architecture/graceful-shutdown.md) | `implementations/nestjs/docs/architecture/graceful-shutdown.md` — enableShutdownHooks |
 | [container.md](../architecture/container.md) | `implementations/nestjs/docs/architecture/container.md` — multi-stage build |
 | [config.md](../architecture/config.md) | `implementations/nestjs/docs/architecture/config.md` — ConfigModule, class-validator env-var validation |

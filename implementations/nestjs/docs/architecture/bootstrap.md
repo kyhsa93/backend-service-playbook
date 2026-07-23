@@ -4,13 +4,18 @@
 
 ```typescript
 // src/main.ts — actual code
+import '@/tracing'  // must be the first import — see observability.md
+
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { NextFunction, Request, Response } from 'express'
+import helmet from 'helmet'
 
 import { AppModule } from '@/app-module'
 import { HttpExceptionFilter } from '@/common/http-exception.filter'
 import { LoggingInterceptor } from '@/common/logging.interceptor'
+import { MetricsInterceptor } from '@/common/metrics.interceptor'
 import { getCorsOrigins, getPort, isProduction } from '@/config/app.config'
 
 async function bootstrap(): Promise<void> {
@@ -18,6 +23,16 @@ async function bootstrap(): Promise<void> {
     logger: isProduction()
       ? ['error', 'warn', 'log']
       : ['error', 'warn', 'log', 'debug', 'verbose']
+  })
+
+  // security headers, applied as early as possible — see observability.md for why /docs gets
+  // its own helmet instance
+  const defaultHelmet = helmet()
+  const docsHelmet = helmet({ contentSecurityPolicy: false })
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isSwaggerPath = req.path === '/docs' || req.path.startsWith('/docs/') || req.path === '/docs-json'
+    const middleware = isSwaggerPath ? docsHelmet : defaultHelmet
+    middleware(req, res, next)
   })
 
   // the global ValidationPipe — auto-applies class-validator, constructs a response with a code on failure
@@ -30,8 +45,8 @@ async function bootstrap(): Promise<void> {
     }
   }))
 
-  // the request-logging interceptor
-  app.useGlobalInterceptors(new LoggingInterceptor())
+  // the request-logging interceptor, plus the Prometheus HTTP-metrics interceptor
+  app.useGlobalInterceptors(new LoggingInterceptor(), new MetricsInterceptor())
 
   // the global exception filter — converts even unhandled exceptions that aren't an HttpException into the standard error response format
   app.useGlobalFilters(new HttpExceptionFilter())
@@ -66,9 +81,12 @@ bootstrap()
 
 | Setting | Role |
 |------|------|
+| `import '@/tracing'` | OpenTelemetry bootstrap — must be the first import (see [observability.md](observability.md)) |
 | the `logger` option | excludes debug/verbose logs when `isProduction()` |
+| `helmet` (two instances) | security headers everywhere; CSP relaxed only under `/docs` so Swagger UI keeps working (see [observability.md](observability.md)) |
 | `ValidationPipe` | auto-applies class-validator decorators; `exceptionFactory` constructs a response with the `VALIDATION_FAILED` code (see [error-handling.md](error-handling.md)) |
 | `LoggingInterceptor` | logs the request method/path/processing time |
+| `MetricsInterceptor` | records `http_requests_total`/`http_request_duration_seconds` for `GET /metrics` (see [observability.md](observability.md)) |
 | `HttpExceptionFilter` | the global exception filter. Serializes an `HttpException` in the standard format, and also converts any other unhandled exception (a plain `Error`, etc.) into `{ statusCode: 500, code: 'INTERNAL_ERROR', message, error }` instead of exposing the raw stack trace (see [error-handling.md](error-handling.md)) |
 | `enableCors(...)` | `config/app.config.ts`'s `getCorsOrigins()` restricts allowed origins via the `CORS_ORIGIN` environment variable (comma-separated) in production (`isProduction()`), and returns allow-all (`true`) in every other environment |
 | `DocumentBuilder` + `SwaggerModule` | exposes the OpenAPI document at the `/docs` path. `addBearerAuth(..., 'token')` uses a name paired with the controller's `@ApiBearerAuth('token')` |

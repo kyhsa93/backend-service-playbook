@@ -83,6 +83,7 @@ When a single request passes through multiple services in a distributed environm
 import { Injectable, NestMiddleware } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
 import { randomUUID } from 'crypto'
+import { trace } from '@opentelemetry/api'
 
 import { CorrelationIdStore } from '@/common/correlation-id-store'
 
@@ -90,7 +91,10 @@ import { CorrelationIdStore } from '@/common/correlation-id-store'
 export class CorrelationIdMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     const correlationId = (req.headers['x-correlation-id'] as string) ?? randomUUID()
-    CorrelationIdStore.run(correlationId, () => {
+    // @opentelemetry/instrumentation-http (src/tracing.ts) already started a span for this
+    // request by the time middleware runs, so its trace ID is available here too.
+    const traceId = trace.getActiveSpan()?.spanContext().traceId
+    CorrelationIdStore.run({ correlationId, traceId }, () => {
       res.setHeader('x-correlation-id', correlationId)
       next()
     })
@@ -104,11 +108,17 @@ export class CorrelationIdMiddleware implements NestMiddleware {
 // src/common/correlation-id-store.ts
 import { AsyncLocalStorage } from 'async_hooks'
 
-const storage = new AsyncLocalStorage<string>()
+interface Store {
+  correlationId: string
+  traceId?: string  // see "Tracing" below — folded into the same store, not a parallel one
+}
+
+const storage = new AsyncLocalStorage<Store>()
 
 export const CorrelationIdStore = {
-  run: (id: string, fn: () => void) => storage.run(id, fn),
-  getId: () => storage.getStore()
+  run: <T>(store: Store, fn: () => T): T => storage.run(store, fn),
+  getId: () => storage.getStore()?.correlationId,
+  getTraceId: () => storage.getStore()?.traceId
 }
 ```
 
@@ -136,6 +146,7 @@ import { CorrelationIdStore } from '@/common/correlation-id-store'
 this.logger.log({
   message: 'Order created',
   correlation_id: CorrelationIdStore.getId(),
+  trace_id: CorrelationIdStore.getTraceId(),
   order_id: orderId
 })
 ```
@@ -167,14 +178,15 @@ export class LoggingInterceptor implements NestInterceptor {
         method,
         url,
         duration_ms: Date.now() - now,
-        correlation_id: CorrelationIdStore.getId()
+        correlation_id: CorrelationIdStore.getId(),
+        trace_id: CorrelationIdStore.getTraceId()
       }))
     )
   }
 }
 ```
 
-Apply it globally by registering `app.useGlobalInterceptors(new LoggingInterceptor())` in [bootstrap.md](bootstrap.md), or at the Controller class level via `@UseInterceptors(LoggingInterceptor)`.
+Apply it globally by registering `app.useGlobalInterceptors(new LoggingInterceptor(), new MetricsInterceptor())` in [bootstrap.md](bootstrap.md), or at the Controller class level via `@UseInterceptors(LoggingInterceptor)`.
 
 ## Principles
 
@@ -185,13 +197,109 @@ Apply it globally by registering `app.useGlobalInterceptors(new LoggingIntercept
 - **Disable debug/verbose in production**: configure per-environment log levels to block unnecessary logs.
 - **Trace requests with a Correlation ID**: in a distributed environment, include a Correlation ID in every log.
 
-## Metrics / Tracing (Notes)
+## Metrics
 
-This guide doesn't mandate a specific observability stack. Consider the following in production.
+`GET /metrics` (`src/common/interface/metrics-controller.ts`) exposes Prometheus text-exposition
+format via `prom-client`. `src/common/metrics-registry.ts` builds one explicit `Registry` (rather
+than reaching for prom-client's implicit global `register`), registers `collectDefaultMetrics()`
+(event-loop lag, heap/RSS, GC pauses — default Node.js process metrics), and defines two
+HTTP-specific metrics:
 
-- **Metrics**: typically Prometheus (a `/metrics` endpoint + scraping). In NestJS, integrate via a package like `@willsoto/nestjs-prometheus`.
-- **Tracing**: use OpenTelemetry auto-instrumentation to automatically collect HTTP/TypeORM/SQS spans. When using a Task Queue, carrying `traceparent` in `task_outbox` and propagating the context at the Task boundary binds the HTTP request → Task processing into a single trace.
-- **Top alerting priorities**: DLQ depth > 0, SQS `ApproximateAgeOfOldestMessage`, HTTP 5xx rate, p99 latency, DB connection pool saturation.
-- **Log ↔ trace correlation**: include `trace_id` in log records to enable jumping from a trace to its logs.
+- `http_requests_total` — a `Counter` labeled `method`, `route`, `status_code`
+- `http_request_duration_seconds` — a `Histogram` with the same labels
 
-Follow each stack's official documentation and your team's conventions for the concrete implementation.
+`src/common/metrics.interceptor.ts` (`MetricsInterceptor`) records both on every request,
+registered globally alongside `LoggingInterceptor`:
+
+```typescript
+// src/main.ts
+app.useGlobalInterceptors(new LoggingInterceptor(), new MetricsInterceptor())
+```
+
+It reads `req.route.path` (not the raw URL) for the `route` label, keeping cardinality bounded
+regardless of how many distinct IDs get requested (e.g. `/accounts/:accountId`, not
+`/accounts/abc123...`).
+
+`MetricsController` follows the same "non-domain-bearing common Controller" exception as
+`HealthController` (`@SkipThrottle()`, `@Public()`, no Bounded Context of its own).
+
+## Tracing
+
+`src/tracing.ts` bootstraps a `NodeSDK` with `@opentelemetry/instrumentation-http` (HTTP
+auto-instrumentation) — it must be the very first import in `main.ts`, before `@nestjs/core` or
+anything that transitively pulls in `express`/`http`, since the instrumentation patches Node's
+`http` module in place and only requests made after `NodeSDK#start()` runs get instrumented.
+
+```typescript
+// src/main.ts
+import '@/tracing'  // must be the first import
+
+import { NestFactory } from '@nestjs/core'
+// ...
+```
+
+The trace exporter follows this repo's "sane dev default, real value required in prod" config
+shape (`src/config/tracing.config.ts`, the same shape as `JWT_SECRET`/`AWS_ENDPOINT_URL`): with
+no `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans print to the console, so nothing ever needs a real
+collector running for local dev or the test suite. Setting `OTEL_EXPORTER_OTLP_ENDPOINT` switches
+to a real OTLP/HTTP exporter (Jaeger, Tempo, a Datadog agent, etc.) in staging/production.
+`NodeSDK` also registers a W3C `TraceContext` propagator and an `AsyncLocalStorage`-based context
+manager as the process-wide defaults.
+
+### `trace_id` in logs
+
+Rather than a parallel `AsyncLocalStorage`, `trace_id` is folded into the same
+`CorrelationIdStore` the Correlation ID already uses — see the "AsyncLocalStorage-Based Store"
+section above. `CorrelationIdMiddleware` captures `trace.getActiveSpan()?.spanContext().traceId`
+once per request; `LoggingInterceptor` (and any other call site) reads it back with
+`CorrelationIdStore.getTraceId()`.
+
+### traceparent across the Outbox hop
+
+An HTTP request and the async event processing it triggers (OutboxWriter → OutboxPoller → SQS →
+OutboxConsumer, see [domain-events.md](domain-events.md)) show up as one trace:
+
+- `src/outbox/trace-context.ts` — `traceParentFromContext()`/`contextWithTraceParent()` wrap
+  `@opentelemetry/api`'s `propagation.inject`/`propagation.extract` around the process-wide W3C
+  propagator `src/tracing.ts` registers.
+- `OutboxWriter.saveAll()` captures `traceParentFromContext()` onto the `outbox` table's
+  `traceParent` column when the row is written (once per batch — every event in one `saveAll()`
+  call shares the same originating request/trace).
+- `OutboxPoller` forwards a non-null `traceParent` as an SQS message attribute, the same way it
+  already forwards `eventType`.
+- `OutboxConsumer` reads the `traceparent` message attribute, re-hydrates it via
+  `contextWithTraceParent()`, and runs the registered Handler inside
+  `tracer.startActiveSpan('outbox.consume <eventType>', ...)` — so any span or log the Handler
+  produces links back into the original trace. It also seeds a fresh `CorrelationIdStore` entry
+  (`{ correlationId: generateId(), traceId }`) for the duration of that Handler call, since only
+  the trace — not the original request's Correlation ID scope — crosses the Outbox hop.
+
+A row with no `traceParent` (e.g. one written by a Task Queue batch job with nothing to trace)
+leaves the Consumer's active context unchanged — `startActiveSpan` still works, it just starts a
+new, disconnected trace rather than erroring.
+
+## Alerting priorities
+
+Top alerting items to wire up against these metrics/traces in production: DLQ depth > 0, SQS
+`ApproximateAgeOfOldestMessage`, HTTP 5xx rate (`http_requests_total`), p99 latency
+(`http_request_duration_seconds`), DB connection pool saturation.
+
+## Security headers
+
+`helmet` (`src/main.ts`) applies standard security headers (`X-Content-Type-Options`,
+`X-Frame-Options`, `Strict-Transport-Security`, etc.) as the first middleware in the pipeline.
+helmet's default Content-Security-Policy blocks Swagger UI's inline scripts/styles, so `/docs`
+(and its static assets, `/docs/*`, plus `/docs-json`) gets a second `helmet` instance with
+`contentSecurityPolicy: false` — every other header still applies there, only CSP is relaxed, and
+only for that one path:
+
+```typescript
+// src/main.ts
+const defaultHelmet = helmet()
+const docsHelmet = helmet({ contentSecurityPolicy: false })
+app.use((req, res, next) => {
+  const isSwaggerPath = req.path === '/docs' || req.path.startsWith('/docs/') || req.path === '/docs-json'
+  const middleware = isSwaggerPath ? docsHelmet : defaultHelmet
+  middleware(req, res, next)
+})
+```
