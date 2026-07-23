@@ -3,6 +3,7 @@ package com.example.accountservice.outbox;
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 import com.example.accountservice.config.SqsProperties;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -62,13 +63,7 @@ public class OutboxPoller {
                         SendMessageRequest.builder()
                                 .queueUrl(sqsProperties.domainEventQueueUrl())
                                 .messageBody(event.getPayload())
-                                .messageAttributes(
-                                        Map.of(
-                                                "eventType",
-                                                MessageAttributeValue.builder()
-                                                        .dataType("String")
-                                                        .stringValue(event.getEventType())
-                                                        .build()))
+                                .messageAttributes(messageAttributesFor(event))
                                 .build());
                 // Mark processed=true as soon as publishing succeeds — a row whose publish failed
                 // is left as processed=false and retried on the next tick.
@@ -82,5 +77,21 @@ public class OutboxPoller {
                         e);
             }
         }
+    }
+
+    // eventType travels as an SQS message attribute rather than in the JSON body so OutboxConsumer
+    // can dispatch/log without deserializing the payload first — traceparent (observability.md)
+    // rides along the same way, and is simply omitted when the row has none.
+    private Map<String, MessageAttributeValue> messageAttributesFor(OutboxEvent event) {
+        Map<String, MessageAttributeValue> attributes = new HashMap<>();
+        attributes.put("eventType", stringAttribute(event.getEventType()));
+        if (event.getTraceparent() != null) {
+            attributes.put("traceparent", stringAttribute(event.getTraceparent()));
+        }
+        return attributes;
+    }
+
+    private MessageAttributeValue stringAttribute(String value) {
+        return MessageAttributeValue.builder().dataType("String").stringValue(value).build();
     }
 }

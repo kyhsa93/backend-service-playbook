@@ -1,7 +1,10 @@
 <configuration>
     <springProfile name="!prod">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder><pattern>%d{HH:mm:ss} %-5level %logger{36} - %msg%n</pattern></encoder>
+            <!-- traceId/spanId are populated into MDC automatically by Micrometer Tracing's OTel
+                 bridge for the lifetime of the current span (see observability.md) — no application
+                 code sets these. -->
+            <encoder><pattern>%d{HH:mm:ss} [%X{correlation_id}] [%X{traceId:-},%X{spanId:-}] %-5level %logger{36} - %msg%n</pattern></encoder>
         </appender>
         <root level="INFO"><appender-ref ref="CONSOLE"/></root>
     </springProfile>
@@ -10,6 +13,10 @@
         <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeMdcKeyName>correlation_id</includeMdcKeyName>
+                <!-- Populated automatically by Micrometer Tracing's OTel bridge (no app code sets
+                     these) for the lifetime of the current span — see observability.md. -->
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
             </encoder>
         </appender>
         <root level="INFO"><appender-ref ref="JSON"/></root>

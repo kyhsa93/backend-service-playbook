@@ -37,6 +37,20 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-jackson2'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+    // Spring Boot 4 extracted OTel-tracing autoconfiguration out of
+    // spring-boot-actuator-autoconfigure into its own module (there is no "starter" artifact for
+    // it, unlike metrics' spring-boot-starter-micrometer-metrics — this is the module itself) —
+    // same pattern as the Flyway/Jackson2 module splits above. Without it, the
+    // io.micrometer.tracing.Tracer bean is never registered even with the bridge/OTLP exporter
+    // jars on the classpath (confirmed live: NoSuchBeanDefinitionException for Tracer at context
+    // startup, every E2E test failing on ApplicationContext load).
+    implementation 'org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry'
+    // Micrometer's OTel bridge (the io.micrometer.tracing.otel.bridge classes the module above
+    // wires up) — populates traceId/spanId into MDC automatically (picked up by
+    // logback-spring.xml's LogstashEncoder). opentelemetry-exporter-otlp is what actually exports
+    // spans via management.otlp.tracing.endpoint (application.yml).
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'

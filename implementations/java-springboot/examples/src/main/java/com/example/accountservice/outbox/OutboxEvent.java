@@ -35,15 +35,23 @@ public class OutboxEvent {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // The W3C traceparent of the span active at write time (observability.md), so OutboxPoller/
+    // OutboxConsumer can carry the trace context across the async queue boundary the same way
+    // eventType already does (as an SQS message attribute). Null when no span is active (e.g. a
+    // background write with no request/consumer scope).
+    @Column(length = 64, updatable = false)
+    private String traceparent;
+
     protected OutboxEvent() {}
 
-    public static OutboxEvent create(String eventType, String payload) {
+    public static OutboxEvent create(String eventType, String payload, String traceparent) {
         OutboxEvent outboxEvent = new OutboxEvent();
         outboxEvent.eventId = UUID.randomUUID().toString().replace("-", "");
         outboxEvent.eventType = eventType;
         outboxEvent.payload = payload;
         outboxEvent.processed = false;
         outboxEvent.createdAt = LocalDateTime.now();
+        outboxEvent.traceparent = traceparent;
         return outboxEvent;
     }
 
@@ -69,5 +77,9 @@ public class OutboxEvent {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public String getTraceparent() {
+        return traceparent;
     }
 }

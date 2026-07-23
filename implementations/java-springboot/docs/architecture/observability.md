@@ -107,14 +107,22 @@ String correlationId = MDC.get("correlation_id");
 
 ---
 
-## Metrics and tracing — Spring Boot Actuator + Micrometer
+## Metrics and tracing — Spring Boot Actuator + Micrometer + OpenTelemetry
 
-`build.gradle` has both `spring-boot-starter-actuator` (for exposing health probes — see [graceful-shutdown.md](graceful-shutdown.md)) and a Micrometer registry for Prometheus scraping:
+`build.gradle` has `spring-boot-starter-actuator` (for exposing health probes — see [graceful-shutdown.md](graceful-shutdown.md)), a Micrometer registry for Prometheus scraping, and Micrometer Tracing's OpenTelemetry bridge:
 
 ```groovy
 // build.gradle — actual code
 implementation 'org.springframework.boot:spring-boot-starter-actuator'
 implementation 'io.micrometer:micrometer-registry-prometheus'
+// Spring Boot 4 extracted OTel-tracing autoconfiguration out of
+// spring-boot-actuator-autoconfigure into its own module (no "starter" artifact exists for it,
+// unlike metrics' spring-boot-starter-micrometer-metrics) — same module-split pattern as the
+// Flyway/Jackson2 workarounds elsewhere in this file. Without it, io.micrometer.tracing.Tracer
+// never gets a bean definition even with the bridge/OTLP exporter jars below on the classpath.
+implementation 'org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry'
+implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 ```
 
 ```yaml
@@ -127,11 +135,74 @@ management:
   metrics:
     tags:
       application: account-service
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: W3C
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 ```
 
-`GET /actuator/prometheus` exposes the Prometheus scrape endpoint. HTTP request count/latency (`http.server.requests`), JVM memory, and DB connection pool (HikariCP) metrics are all collected automatically with no separate instrumentation code — Spring Boot Actuator supports the root's "metrics stack is unspecified, but Prometheus is recommended" direction at the framework level by default.
+`GET /actuator/prometheus` exposes the Prometheus scrape endpoint (`SecurityConfig` permits it the same way as `/actuator/health/**`, since a scraper never carries an app-issued JWT). HTTP request count/latency (`http.server.requests`), JVM memory, and DB connection pool (HikariCP) metrics are all collected automatically with no separate instrumentation code — Spring Boot Actuator supports the root's "metrics stack is unspecified, but Prometheus is recommended" direction at the framework level by default.
 
-Tracing can be integrated with OpenTelemetry via `spring-boot-starter-actuator` + Micrometer Tracing (`micrometer-tracing-bridge-otel`) — this repository has not adopted it yet.
+For tracing, `management.otlp.tracing.endpoint` follows this repository's usual "env var override, sane local-dev default" pattern (the same shape as `jwt.secret`/the `aws.*` properties) — the default points at an OTLP collector on `localhost:4318`, but nothing needs to actually be listening there for the app (or its tests) to run: the OTel SDK exports spans on a background batch-processor thread, so an unreachable endpoint only logs an export warning, it never fails a request. `management.tracing.propagation.type: W3C` pins the propagation format to the W3C `traceparent` header this doc's Outbox section relies on.
+
+Once the bridge is on the classpath, Spring Boot auto-registers MDC population of `traceId`/`spanId` for the lifetime of the current span — **no application code sets these**. `logback-spring.xml` only needed one addition to pick them up:
+
+```xml
+<!-- logback-spring.xml — actual code -->
+<encoder class="net.logstash.logback.encoder.LogstashEncoder">
+    <includeMdcKeyName>correlation_id</includeMdcKeyName>
+    <includeMdcKeyName>traceId</includeMdcKeyName>
+    <includeMdcKeyName>spanId</includeMdcKeyName>
+</encoder>
+```
+
+(`includeMdcKeyName` switches `LogstashEncoder` into allow-list mode — before this change, `traceId`/`spanId` were already in MDC but silently dropped from the JSON output because only `correlation_id` was listed. Note `traceId`/`spanId` are hardcoded MDC key names set by the Micrometer Tracing bridge itself — they stay camelCase even though this repo's own field-naming rule elsewhere calls for snake_case.)
+
+### Carrying the trace across the Outbox's async boundary
+
+The root doc's tracing note — "at an asynchronous boundary, including `traceparent` in the outbox payload propagates the trace context" — is implemented via the exact same mechanism `eventType` already uses to cross that boundary: an SQS **message attribute**, not the JSON payload body.
+
+```java
+// outbox/OutboxWriter.java — actual code: reads the traceparent off the currently active span (the
+// HTTP request span, or the span OutboxConsumer started if this write happens from inside an
+// OutboxEventHandler) and stores it on the OutboxEvent row
+private String currentTraceparent() {
+    Span span = tracer.currentSpan();
+    if (span == null) {
+        return null;
+    }
+    Map<String, String> carrier = new HashMap<>();
+    propagator.inject(span.context(), carrier, (c, k, v) -> { if (c != null) c.put(k, v); });
+    return carrier.get("traceparent");
+}
+```
+
+```java
+// outbox/OutboxPoller.java — actual code: forwarded as a message attribute alongside eventType
+if (event.getTraceparent() != null) {
+    attributes.put("traceparent", stringAttribute(event.getTraceparent()));
+}
+```
+
+```java
+// outbox/OutboxConsumer.java — actual code: extracts it back into a real (continued) Span before
+// dispatching to the OutboxEventHandler, so the handler's logs — and any Outbox row it writes in
+// turn — carry the same traceId as the original HTTP request
+private Span startSpan(String traceparent) {
+    Span.Builder builder = traceparent != null
+            ? propagator.extract(Map.of("traceparent", traceparent), (carrier, key) -> carrier.get(key))
+            : tracer.spanBuilder();
+    return builder.name("outbox.consume").start();
+}
+```
+
+`handleMessage()` wraps the dispatch in `tracer.withSpan(span)` and ends the span in a `finally` block. `OutboxEvent.traceparent` is a nullable column (`db/migration/V11__add_traceparent_to_outbox.sql`) — a row written with no active span (tracing disabled, or a write with no request/consumer context) simply carries none, and the Consumer falls back to starting a fresh root span, same as the very first event in a trace.
+
+Note this repository has no prior `correlation_id`-through-Outbox precedent to copy — `CorrelationIdFilter`'s MDC value never previously survived the Outbox hop. The message-attribute mechanism above is the one genuinely reusable piece of existing plumbing (already used for `eventType`), so `traceparent` was threaded through the same way rather than inventing a new channel.
 
 ---
 

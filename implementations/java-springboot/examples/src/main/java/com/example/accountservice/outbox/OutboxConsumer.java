@@ -3,6 +3,9 @@ package com.example.accountservice.outbox;
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 import com.example.accountservice.config.SqsProperties;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -50,10 +53,13 @@ public class OutboxConsumer implements SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxConsumer.class);
     private static final String EVENT_TYPE_ATTRIBUTE = "eventType";
+    private static final String TRACEPARENT_ATTRIBUTE = "traceparent";
 
     private final SqsClient sqsClient;
     private final SqsProperties sqsProperties;
     private final Map<String, OutboxEventHandler> handlers;
+    private final Tracer tracer;
+    private final Propagator propagator;
     private final ExecutorService executor =
             Executors.newSingleThreadExecutor(r -> new Thread(r, "outbox-consumer"));
 
@@ -62,7 +68,9 @@ public class OutboxConsumer implements SmartLifecycle {
     public OutboxConsumer(
             SqsClient sqsClient,
             SqsProperties sqsProperties,
-            List<OutboxEventHandler> eventHandlers) {
+            List<OutboxEventHandler> eventHandlers,
+            Tracer tracer,
+            Propagator propagator) {
         this.sqsClient = sqsClient;
         this.sqsProperties = sqsProperties;
         this.handlers =
@@ -70,6 +78,8 @@ public class OutboxConsumer implements SmartLifecycle {
                         .collect(
                                 Collectors.toMap(
                                         OutboxEventHandler::eventType, Function.identity()));
+        this.tracer = tracer;
+        this.propagator = propagator;
     }
 
     // A singleton background loop started exactly once when app bootstrap (ApplicationContext
@@ -111,7 +121,8 @@ public class OutboxConsumer implements SmartLifecycle {
                                 ReceiveMessageRequest.builder()
                                         .queueUrl(queueUrl)
                                         .maxNumberOfMessages(10)
-                                        .messageAttributeNames(EVENT_TYPE_ATTRIBUTE)
+                                        .messageAttributeNames(
+                                                EVENT_TYPE_ATTRIBUTE, TRACEPARENT_ATTRIBUTE)
                                         .waitTimeSeconds(5)
                                         .build());
                 for (Message message : response.messages()) {
@@ -129,6 +140,16 @@ public class OutboxConsumer implements SmartLifecycle {
     private void handleMessage(String queueUrl, Message message) {
         MessageAttributeValue attribute = message.messageAttributes().get(EVENT_TYPE_ATTRIBUTE);
         String eventType = attribute != null ? attribute.stringValue() : null;
+        MessageAttributeValue traceparentAttribute =
+                message.messageAttributes().get(TRACEPARENT_ATTRIBUTE);
+        String traceparent =
+                traceparentAttribute != null ? traceparentAttribute.stringValue() : null;
+        // Continues the same trace the HTTP request that produced this event started
+        // (observability.md) — Micrometer Tracing then populates traceId/spanId into MDC for the
+        // scope below automatically, so every log line the handler emits (and any further Outbox
+        // row it writes) carries it too.
+        Span span = startSpan(traceparent);
+        Tracer.SpanInScope scope = tracer.withSpan(span);
         try {
             if (eventType == null) {
                 throw new IllegalStateException("Missing eventType message attribute.");
@@ -146,7 +167,20 @@ public class OutboxConsumer implements SmartLifecycle {
         } catch (Exception e) {
             log.error("Failed to process event", kv("event_type", eventType), e);
             // Do not delete — it will be received again and retried after the visibility timeout.
+        } finally {
+            scope.close();
+            span.end();
         }
+    }
+
+    private Span startSpan(String traceparent) {
+        Span.Builder builder =
+                traceparent != null
+                        ? propagator.extract(
+                                Map.of("traceparent", traceparent),
+                                (carrier, key) -> carrier.get(key))
+                        : tracer.spanBuilder();
+        return builder.name("outbox.consume").start();
     }
 
     private void sleepBeforeRetry() {

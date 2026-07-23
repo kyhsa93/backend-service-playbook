@@ -39,6 +39,10 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 "/health/**",
                                                 "/actuator/health/**",
+                                                // A Prometheus scraper hits this endpoint directly
+                                                // (no app-issued JWT) — same rationale as the
+                                                // health probes above (observability.md).
+                                                "/actuator/prometheus",
                                                 "/error",
                                                 "/auth/sign-in",
                                                 "/auth/sign-up",

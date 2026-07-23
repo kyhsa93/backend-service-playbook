@@ -2,7 +2,12 @@ package com.example.accountservice.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -18,12 +23,16 @@ public class OutboxWriter {
 
     private final OutboxEventJpaRepository outboxJpaRepository;
     private final ObjectMapper objectMapper;
+    private final Tracer tracer;
+    private final Propagator propagator;
 
     public void saveAll(List<Object> events) {
         if (events.isEmpty()) {
             return;
         }
-        List<OutboxEvent> outboxEvents = events.stream().map(this::toOutboxEvent).toList();
+        String traceparent = currentTraceparent();
+        List<OutboxEvent> outboxEvents =
+                events.stream().map(event -> toOutboxEvent(event, traceparent)).toList();
         outboxJpaRepository.saveAll(outboxEvents);
     }
 
@@ -37,19 +46,45 @@ public class OutboxWriter {
     public void save(String eventType, Object payload) {
         try {
             outboxJpaRepository.save(
-                    OutboxEvent.create(eventType, objectMapper.writeValueAsString(payload)));
+                    OutboxEvent.create(
+                            eventType,
+                            objectMapper.writeValueAsString(payload),
+                            currentTraceparent()));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize event: " + eventType, e);
         }
     }
 
-    private OutboxEvent toOutboxEvent(Object event) {
+    private OutboxEvent toOutboxEvent(Object event, String traceparent) {
         try {
             return OutboxEvent.create(
-                    event.getClass().getSimpleName(), objectMapper.writeValueAsString(event));
+                    event.getClass().getSimpleName(),
+                    objectMapper.writeValueAsString(event),
+                    traceparent);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(
                     "Failed to serialize event: " + event.getClass().getSimpleName(), e);
         }
+    }
+
+    // Reads the W3C traceparent off whatever span is currently active (the HTTP request span, or —
+    // when this write happens from inside an OutboxEventHandler reacting to a prior event — the
+    // span OutboxConsumer started for that event), so the trace context survives this async
+    // boundary too (observability.md, "Metrics and tracing"). Null when there's no active span.
+    private String currentTraceparent() {
+        Span span = tracer.currentSpan();
+        if (span == null) {
+            return null;
+        }
+        Map<String, String> carrier = new HashMap<>();
+        propagator.inject(
+                span.context(),
+                carrier,
+                (c, k, v) -> {
+                    if (c != null) {
+                        c.put(k, v);
+                    }
+                });
+        return carrier.get("traceparent");
     }
 }
