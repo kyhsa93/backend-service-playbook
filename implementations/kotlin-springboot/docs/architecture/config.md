@@ -94,7 +94,21 @@ data class JwtProperties(
 )
 ```
 
-**The namespaces are `aws`/`ses`/`jwt`, not `app.*`** — this repository doesn't use a shared namespace prefix like the `app.database`/`app.jwt` the root gives as an example; it uses the concern's name directly as the top-level prefix. There's also no `DatabaseProperties` class — DB connection info is sufficiently handled by Spring Boot's standard `spring.datasource.*` properties (relaxed binding), so it wasn't wrapped in a separate `data class`.
+Two more namespaces follow the same per-concern shape but deliberately opt out of `@Validated`
+fail-fast: `llm` (`LlmProperties` — `ollama-base-url`/`model`, for
+`payment/infrastructure/RefundReasonClassifierImpl.kt`) and `fraud-scorer` (`FraudScorerProperties`
+— `mode`/`base-url`, for `payment/infrastructure/RefundFraudRiskScorerNativeImpl.kt`/
+`RefundFraudRiskScorerHttpImpl.kt`). Both already have sane defaults (`http://localhost:11434`/
+`qwen2.5:1.5b`, `native`/`http://localhost:8000`), and a missing/blank value must never fail
+application startup — an LLM classification or ML scoring outage is tolerated at runtime as a
+non-blocking fallback (see each impl's `catch`/fallback-score handling), not a fail-fast condition
+the way `aws`/`ses`/`jwt` are. `fraud-scorer.mode` additionally drives bean selection: each of
+`RefundFraudRiskScorerNativeImpl`/`RefundFraudRiskScorerHttpImpl` is `@Component` +
+`@ConditionalOnProperty(prefix = "fraud-scorer", name = ["mode"], havingValue = "native"|"http", ...)`,
+so only the implementation `FRAUD_SCORER_MODE` selects is ever registered as the
+`RefundFraudRiskScorer` bean.
+
+**The namespaces are `aws`/`ses`/`jwt`/`llm`/`fraud-scorer`, not `app.*`** — this repository doesn't use a shared namespace prefix like the `app.database`/`app.jwt` the root gives as an example; it uses the concern's name directly as the top-level prefix. There's also no `DatabaseProperties` class — DB connection info is sufficiently handled by Spring Boot's standard `spring.datasource.*` properties (relaxed binding), so it wasn't wrapped in a separate `data class`.
 
 If a `data class` constructor parameter annotated with `@field:NotBlank` has an empty value, Spring Boot throws a **binding failure exception** at bind time — that's fail-fast right there. `AwsProperties.region`, `SesProperties.senderEmail`, and `JwtProperties.secret` are all actually subject to this validation.
 

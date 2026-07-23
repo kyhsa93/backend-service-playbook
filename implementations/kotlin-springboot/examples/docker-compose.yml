@@ -49,6 +49,21 @@ services:
       ollama:
         condition: service_healthy
 
+  # Optional — only needed when FRAUD_SCORER_MODE=http (default is 'native', which needs no extra
+  # service). Not in `app`'s depends_on since it lives under a separate profile: bring it up
+  # alongside `app` with `docker compose --profile app --profile ml up`. See
+  # config/FraudScorerProperties.kt and services/fraud-risk-scorer/README.md.
+  fraud-risk-scorer:
+    build: ../../../services/fraud-risk-scorer
+    ports: ['8000:8000']
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - ml
+
   app:
     build: .
     ports: ['8080:8080']
@@ -61,6 +76,7 @@ services:
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
       SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/task-queue.fifo
       OLLAMA_BASE_URL: http://ollama:11434
+      FRAUD_SCORER_BASE_URL: http://fraud-risk-scorer:8000
     depends_on:
       database:
         condition: service_healthy

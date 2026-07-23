@@ -79,6 +79,25 @@ convention in [domain-events.md](domain-events.md), [scheduling.md](scheduling.m
 
 ---
 
+## Refund fraud-risk scoring — the optional `fraud-risk-scorer` service
+
+`fraud-risk-scorer` (the shared ML microservice behind
+`payment/infrastructure/RefundFraudRiskScorerHttpImpl.kt` — see root `docs/architecture/domain-service.md`'s
+second `RefundFraudRiskScorer` example) is built from `../../../services/fraud-risk-scorer` (Python +
+FastAPI + scikit-learn) and sits under its own `profiles: [ml]`, so it's not brought up by a plain
+`docker compose up -d` and isn't in `app`'s `depends_on` — the default `FRAUD_SCORER_MODE=native`
+(`payment/infrastructure/RefundFraudRiskScorerNativeImpl.kt`, an in-process hand-rolled logistic
+regression) needs no extra service at all. Bring it up alongside `app` once you've set
+`FRAUD_SCORER_MODE=http`:
+
+```bash
+docker compose --profile app --profile ml up -d --build
+```
+
+It listens on port 8000 inside the Compose network (no remap needed — `app` itself binds host
+`8080`, not `8000`), and `app`'s `FRAUD_SCORER_BASE_URL` is set to `http://fraud-risk-scorer:8000` to
+reach it by service name.
+
 ## The `app` service and `.env.*` files
 
 `docker-compose.yml` has an `app` service too, not just `database`/`localstack`, but it's excluded from the default startup via `profiles: [app]` — the default `docker compose up -d` only brings up the infrastructure (Postgres, LocalStack); to run the app itself as a container too, use `docker compose --profile app up -d --build`:
