@@ -59,22 +59,8 @@ class OutboxPoller(
                         .builder()
                         .queueUrl(sqsProperties.domainEventQueueUrl)
                         .messageBody(row.payload)
-                        .messageAttributes(
-                            mapOf(
-                                "eventType" to
-                                    MessageAttributeValue
-                                        .builder()
-                                        .dataType("String")
-                                        .stringValue(row.eventType)
-                                        .build(),
-                                "eventId" to
-                                    MessageAttributeValue
-                                        .builder()
-                                        .dataType("String")
-                                        .stringValue(row.eventId)
-                                        .build(),
-                            ),
-                        ).build(),
+                        .messageAttributes(messageAttributesFor(row))
+                        .build(),
                 )
             }.onSuccess { row.markProcessed() }
                 .onFailure {
@@ -89,4 +75,21 @@ class OutboxPoller(
                 }
         }
     }
+
+    // eventType/eventId travel as SQS message attributes rather than in the JSON body so
+    // OutboxConsumer can dispatch/log without deserializing the payload first — traceparent
+    // (observability.md) rides along the same way, and is simply omitted when the row has none.
+    private fun messageAttributesFor(row: OutboxEvent): Map<String, MessageAttributeValue> =
+        buildMap {
+            put("eventType", stringAttribute(row.eventType))
+            put("eventId", stringAttribute(row.eventId))
+            row.traceparent?.let { put("traceparent", stringAttribute(it)) }
+        }
+
+    private fun stringAttribute(value: String): MessageAttributeValue =
+        MessageAttributeValue
+            .builder()
+            .dataType("String")
+            .stringValue(value)
+            .build()
 }

@@ -30,6 +30,9 @@ class SecurityConfig(
                 authorize("/auth/sign-in", permitAll)
                 authorize("/auth/sign-up", permitAll)
                 authorize("/actuator/health/**", permitAll)
+                // A Prometheus scraper hits this endpoint directly (no app-issued JWT) — same
+                // rationale as the health probes above (observability.md).
+                authorize("/actuator/prometheus", permitAll)
                 // The generated OpenAPI document + its UI are documentation, not a protected resource —
                 // requiring a bearer token just to view API docs would be self-defeating.
                 authorize("/v3/api-docs/**", permitAll)

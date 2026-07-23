@@ -233,6 +233,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
                 authorize("/auth/sign-in", permitAll)
                 authorize("/auth/sign-up", permitAll)
                 authorize("/actuator/health/**", permitAll)
+                authorize("/actuator/prometheus", permitAll)   // a Prometheus scraper never carries an app-issued JWT (observability.md)
                 // With the STATELESS session + OncePerRequestFilter combination, an exception raised
                 // while handling a request leads to a container /error forward, and
                 // JwtAuthenticationFilter is not re-run on the error dispatch by default, so the

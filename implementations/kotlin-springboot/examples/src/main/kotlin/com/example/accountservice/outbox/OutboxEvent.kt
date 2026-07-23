@@ -47,10 +47,19 @@ class OutboxEvent protected constructor() {
     var createdAt: LocalDateTime = LocalDateTime.now()
         private set
 
+    // The W3C traceparent of the span active at write time (observability.md), so OutboxPoller/
+    // OutboxConsumer can carry the trace context across the async queue boundary the same way
+    // eventType/eventId already do (as an SQS message attribute). Null when no span is active
+    // (e.g. a background write with no request/consumer scope).
+    @Column
+    var traceparent: String? = null
+        private set
+
     companion object {
         fun from(
             event: Any,
             objectMapper: ObjectMapper,
+            traceparent: String?,
         ): OutboxEvent =
             OutboxEvent().apply {
                 this.eventId = UUID.randomUUID().toString().replace("-", "")
@@ -60,6 +69,7 @@ class OutboxEvent protected constructor() {
                 this.eventType = (event as? IntegrationEventContract)?.eventName ?: (event::class.simpleName ?: "Unknown")
                 this.payload = objectMapper.writeValueAsString(event)
                 this.createdAt = LocalDateTime.now()
+                this.traceparent = traceparent
             }
     }
 

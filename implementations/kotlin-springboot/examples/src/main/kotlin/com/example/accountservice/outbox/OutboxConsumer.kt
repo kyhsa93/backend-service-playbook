@@ -1,6 +1,9 @@
 package com.example.accountservice.outbox
 
 import com.example.accountservice.config.SqsProperties
+import io.micrometer.tracing.Span
+import io.micrometer.tracing.Tracer
+import io.micrometer.tracing.propagation.Propagator
 import org.slf4j.LoggerFactory
 import org.springframework.context.SmartLifecycle
 import org.springframework.stereotype.Component
@@ -37,6 +40,8 @@ class OutboxConsumer(
     private val sqsClient: SqsClient,
     private val registry: EventHandlerRegistry,
     private val sqsProperties: SqsProperties,
+    private val tracer: Tracer,
+    private val propagator: Propagator,
 ) : SmartLifecycle {
     private val logger = LoggerFactory.getLogger(OutboxConsumer::class.java)
 
@@ -75,7 +80,7 @@ class OutboxConsumer(
                             .builder()
                             .queueUrl(sqsProperties.domainEventQueueUrl)
                             .maxNumberOfMessages(10)
-                            .messageAttributeNames("eventType", "eventId")
+                            .messageAttributeNames("eventType", "eventId", "traceparent")
                             .waitTimeSeconds(5)
                             .build(),
                     )
@@ -92,6 +97,12 @@ class OutboxConsumer(
     private fun handle(message: Message) {
         val eventType = message.messageAttributes()["eventType"]?.stringValue()
         val eventId = message.messageAttributes()["eventId"]?.stringValue() ?: ""
+        val traceparent = message.messageAttributes()["traceparent"]?.stringValue()
+        // Continues the same trace the HTTP request that produced this event started (observability.md)
+        // — Micrometer Tracing then populates traceId/spanId into MDC for the scope below automatically,
+        // so every log line the handler emits (and any further Outbox row it writes) carries it too.
+        val span = startSpan(traceparent)
+        val scope = tracer.withSpan(span)
         try {
             if (eventType == null) throw IllegalStateException("Missing eventType message attribute.")
             registry.dispatch(eventType, eventId, message.body())
@@ -110,7 +121,20 @@ class OutboxConsumer(
                 .addKeyValue("event_type", eventType)
                 .setCause(e)
                 .log("Failed to process event")
+        } finally {
+            scope.close()
+            span.end()
         }
+    }
+
+    private fun startSpan(traceparent: String?): Span {
+        val builder =
+            if (traceparent != null) {
+                propagator.extract(mapOf("traceparent" to traceparent)) { carrier, key -> carrier[key] }
+            } else {
+                tracer.spanBuilder()
+            }
+        return builder.name("outbox.consume").start()
     }
 
     companion object {
