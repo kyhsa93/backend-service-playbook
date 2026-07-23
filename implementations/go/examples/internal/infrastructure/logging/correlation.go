@@ -7,6 +7,8 @@ import (
 	"context"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/example/account-service/internal/common"
 )
 
@@ -16,6 +18,13 @@ import (
 // (slog.InfoContext(ctx, ...), etc.) doesn't need to pass
 // "correlation_id", middleware.CorrelationIDFromContext(ctx) every time
 // (see observability.md).
+//
+// It also adds a "trace_id" field whenever ctx carries an active OpenTelemetry
+// span — otelhttp.NewHandler (router.go) starts that span for every incoming
+// request, and outbox.Consumer starts one for every async event it processes,
+// so this one handler covers both without a second, parallel mechanism
+// ("Including trace_id in log records lets you jump from a trace to its
+// logs," observability.md).
 type CorrelationHandler struct {
 	slog.Handler
 }
@@ -25,10 +34,13 @@ func NewCorrelationHandler(next slog.Handler) *CorrelationHandler {
 	return &CorrelationHandler{Handler: next}
 }
 
-// Handle adds the field to the record if ctx has a correlation ID, then delegates to the inner Handler.
+// Handle adds the fields to the record if ctx carries them, then delegates to the inner Handler.
 func (h *CorrelationHandler) Handle(ctx context.Context, record slog.Record) error {
 	if correlationID := common.CorrelationIDFromContext(ctx); correlationID != "" {
 		record.AddAttrs(slog.String("correlation_id", correlationID))
+	}
+	if spanContext := trace.SpanContextFromContext(ctx); spanContext.IsValid() {
+		record.AddAttrs(slog.String("trace_id", spanContext.TraceID().String()))
 	}
 	return h.Handler.Handle(ctx, record)
 }

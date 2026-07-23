@@ -7,21 +7,26 @@ The principle follows the root [cross-cutting-concerns.md](../../../../docs/arch
 ## Request pipeline
 
 ```
-Request → [1. Correlation ID middleware] → [2. Logging middleware] → [3. Rate limit] → [4. Auth middleware] → [5. Input validation] → [6. Handler] → Response
+Request → [0. otelhttp span] → [1. Correlation ID] → [2. Logging] → [3. Security headers] → [4. Metrics] → [5. Rate limit] → [6. Auth] → [7. Input validation] → [8. Handler] → Response
 ```
 
 Go middleware works by chaining functions that wrap `http.Handler` in composition. Each middleware is split so it handles exactly one concern.
 
 | Stage | Role | Go implementation location |
 |------|------|------|
+| 0. Tracing span | Starts (or continues, if the caller sent a `traceparent` header) an OpenTelemetry span for the whole request | `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp`, wired in `router.go` ([observability.md](observability.md)) |
 | 1. Correlation ID | Injects a tracing ID into every request | `interface/http/middleware/correlation_id_middleware.go` |
 | 2. Response logging | Logs the request method/path/status code/duration | `interface/http/middleware/logging_middleware.go` (`RequestLogging`) |
-| 3. Rate limit | Limits requests per second | `interface/http/middleware/rate_limit_middleware.go` ([rate-limiting.md](rate-limiting.md)) |
-| 4. Authentication | Allows/rejects the request, injects user info into `context` | `interface/http/middleware/auth_middleware.go` ([authentication.md](authentication.md)) |
-| 5. Input validation | JSON decoding, required-field checks | The entry point of the Handler (Go has no separate Pipe layer — see below) |
-| 6. Handler | Calls the Command/Query Handler | `interface/http/account_handler.go` |
+| 3. Security headers | Sets `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/(conditionally) `Strict-Transport-Security` on every response | `interface/http/middleware/security_headers_middleware.go` (`SecurityHeaders`) |
+| 4. Metrics | Records `http_requests_total`/`http_request_duration_seconds` per request | `interface/http/middleware/metrics_middleware.go` (`Metrics`, [observability.md](observability.md)) |
+| 5. Rate limit | Limits requests per second | `interface/http/middleware/rate_limit_middleware.go` ([rate-limiting.md](rate-limiting.md)) |
+| 6. Authentication | Allows/rejects the request, injects user info into `context` | `interface/http/middleware/auth_middleware.go` ([authentication.md](authentication.md)) |
+| 7. Input validation | JSON decoding, required-field checks | The entry point of the Handler (Go has no separate Pipe layer — see below) |
+| 8. Handler | Calls the Command/Query Handler | `interface/http/account_handler.go` |
 
-The reason `RequestLogging` sits outside (runs before) `RateLimit` is that even a request rejected with 429 needs to be logged — the actual chain in `router.go` is `CorrelationID(RequestLogging(mux))`, and `mux` in turn routes through `RateLimit(limiter)(limited)`.
+The reason `RequestLogging` sits outside (runs before) `RateLimit` is that even a request rejected with 429 needs to be logged — the actual chain in `router.go` is `otelhttp.NewHandler(CorrelationID(RequestLogging(SecurityHeaders(Metrics(mux)))), ...)`, and `mux` in turn routes through `RateLimit(limiter)(limited)`.
+
+`Metrics` specifically has to sit directly around `mux` (not further out) — see its doc comment in `metrics_middleware.go` for why net/http's own request-pattern mutation requires that exact placement to label metrics by route rather than raw, unbounded-cardinality URL path.
 
 ---
 
@@ -32,14 +37,20 @@ The Go standard library has no middleware-chaining helper. This repository doesn
 ```go
 // internal/interface/http/router.go — actual code (summarized)
 limited := http.NewServeMux()
-limited.Handle("/accounts", middleware.RequireAuth(jwtService)(protected)) // 4. authentication
+limited.Handle("/accounts", middleware.RequireAuth(jwtService)(protected)) // 6. authentication
 limited.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)                  // no authentication needed
 
 mux := http.NewServeMux()
-mux.Handle("/", middleware.RateLimit(limiter)(limited)) // 3. rate limit
+mux.Handle("/", middleware.RateLimit(limiter)(limited)) // 5. rate limit
 mux.HandleFunc("GET /health/live", healthHandler.Live)  // neither rate limit nor auth applied
+mux.Handle("GET /metrics", promhttp.Handler())          // Prometheus scrape target — also unauthenticated/unlimited
 
-return middleware.CorrelationID(middleware.RequestLogging(mux)), healthHandler // 1, 2. preprocessing (outermost)
+// 3, 4. security headers + metrics sit directly around mux.
+instrumented := middleware.CorrelationID(middleware.RequestLogging(middleware.SecurityHeaders(middleware.Metrics(mux))))
+
+// 0. otelhttp wraps everything, outermost, so every inner stage's ctx
+// already carries an active span.
+return otelhttp.NewHandler(instrumented, "account-service"), healthHandler
 ```
 
 With only a handful of middleware, this amount of nesting reads fine — if the count grows, introducing a composition helper in the form `Chain(h, A, B, C)` should be considered.
@@ -87,6 +98,27 @@ The role Node.js's `AsyncLocalStorage` used to play is replaced in Go by **`cont
 ## Authentication (middleware stage)
 
 Token verification and user-info extraction finish before the Handler is reached. See [authentication.md](authentication.md) for the detailed implementation.
+
+---
+
+## Security headers (preprocessing stage)
+
+```go
+// internal/interface/http/middleware/security_headers_middleware.go — actual code (summarized)
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+```
+
+Unlike `RequireAuth`/`RateLimit`, there's no per-route opt-out — these headers are cheap and safe on every response, including health checks and the Swagger UI. `Strict-Transport-Security` is the one exception: it's only meaningful (and only set) once the request has actually reached the app over TLS — either `r.TLS != nil` (Go's own `net/http` server terminating TLS directly) or the `X-Forwarded-Proto: https` header a TLS-terminating reverse proxy/load balancer sets on the plain-HTTP request it forwards downstream (this app's assumed production deployment shape — see [container.md](container.md)/[graceful-shutdown.md](graceful-shutdown.md)).
 
 ---
 
@@ -160,7 +192,7 @@ func RequestLogging(next http.Handler) http.Handler {
 }
 ```
 
-The reason the `correlation_id` field isn't passed explicitly here is that `internal/infrastructure/logging.CorrelationHandler`, which `main.go` wraps around `slog`'s default logger, automatically adds whatever value is carried on `ctx` to every log record (see [observability.md](observability.md)) — `RequestLogging` must be registered inside (running later than) `CorrelationID` to inherit that ctx (`CorrelationID(RequestLogging(mux))` in `router.go`).
+The reason the `correlation_id` field isn't passed explicitly here is that `internal/infrastructure/logging.CorrelationHandler`, which `main.go` wraps around `slog`'s default logger, automatically adds whatever value is carried on `ctx` to every log record (see [observability.md](observability.md)) — `RequestLogging` must be registered inside (running later than) `CorrelationID` to inherit that ctx (`middleware.CorrelationID(middleware.RequestLogging(middleware.SecurityHeaders(middleware.Metrics(mux))))` in `router.go`).
 
 The request log is never written individually inside a Handler — logging is done consistently for every route by a single middleware. See [observability.md](observability.md) for structured logging details.
 

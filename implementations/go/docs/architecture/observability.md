@@ -183,9 +183,112 @@ From then on, even without passing `correlation_id` explicitly as in `slog.InfoC
 
 ---
 
-## Metrics and tracing
+## Metrics — Prometheus
 
-Just like the root document, this document doesn't mandate a specific stack either. In the Go ecosystem, `prometheus/client_golang` (metrics) and `go.opentelemetry.io/otel` (tracing) are the de facto standard — looking at `go.mod`, packages from the `go.opentelemetry.io/otel` family are already present as an indirect dependency of testcontainers-go, but the application code itself isn't instrumented yet.
+`prometheus/client_golang` is the Go ecosystem's de facto standard, and is now a direct dependency (it used to be pulled in only transitively). `internal/interface/http/middleware/metrics_middleware.go` defines two package-level, `promauto`-registered collectors and a `Metrics` middleware that records both on every request:
+
+```go
+// internal/interface/http/middleware/metrics_middleware.go — actual code (summarized)
+var (
+	httpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_total",
+	}, []string{"method", "path", "status"})
+
+	httpRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_request_duration_seconds",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"method", "path", "status"})
+)
+
+func Metrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+
+		path := r.Pattern // net/http's Go 1.22+ matched-route pattern, not the raw URL path
+		if path == "" {
+			path = r.URL.Path
+		}
+		httpRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(rec.status)).Inc()
+		httpRequestDuration.WithLabelValues(r.Method, path, strconv.Itoa(rec.status)).Observe(time.Since(start).Seconds())
+	})
+}
+```
+
+The `path` label uses `r.Pattern` (the route pattern net/http's Go 1.22+ `ServeMux` matched, e.g. `"POST /accounts/{id}/deposit"`) rather than the raw URL path, so a path parameter like an account ID never blows up label cardinality. `Metrics` has to sit directly around the outermost `*http.ServeMux` (see `router.go`) for this to work — `RequireAuth` (`auth_middleware.go`) calls `r.WithContext`, which hands the rest of the chain a *copy* of the request, so anything wrapping further out than that copy point wouldn't see net/http's own `r.Pattern` mutation.
+
+`router.go` serves the counters via the standard `promhttp.Handler()` on `GET /metrics` — unauthenticated and not rate-limited, the same treatment as the health-check routes, on the assumption (typical of most Prometheus deployments) that the scraper reaches this endpoint over a trusted, non-public network path.
+
+---
+
+## Tracing — OpenTelemetry
+
+`go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` (already an indirect dependency pulled in transitively by testcontainers-go; now promoted to direct) wraps the whole router:
+
+```go
+// internal/interface/http/router.go — actual code (summarized)
+instrumented := middleware.CorrelationID(middleware.RequestLogging(middleware.SecurityHeaders(middleware.Metrics(mux))))
+return otelhttp.NewHandler(instrumented, "account-service"), healthHandler
+```
+
+Wrapping outermost means every inner stage's `ctx` already carries an active span by the time it runs. `otelhttp.NewHandler` also, by default, extracts an incoming `traceparent` header (if the caller sent one) via the process-wide propagator, so a span it starts continues the caller's trace rather than starting a disconnected one.
+
+### TracerProvider setup — stdout by default, OTLP in prod
+
+`internal/infrastructure/tracing/provider.go`'s `NewTracerProvider` registers the process-wide `TracerProvider` + W3C `tracecontext` propagator once at startup (`main.go`), mirroring `config.LoadJWTSecret`'s "sane dev default, real value required in prod" shape (see [config.md](config.md)):
+
+```go
+// internal/infrastructure/tracing/provider.go — actual code (summarized)
+func NewTracerProvider(ctx context.Context, otlpEndpoint string) (shutdown func(context.Context) error, err error) {
+	exporter, err := newExporter(ctx, otlpEndpoint)
+	// ...
+	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter), sdktrace.WithResource(res))
+	otel.SetTracerProvider(provider)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	return provider.Shutdown, nil
+}
+
+func newExporter(ctx context.Context, otlpEndpoint string) (sdktrace.SpanExporter, error) {
+	if otlpEndpoint == "" {
+		return stdouttrace.New(stdouttrace.WithPrettyPrint()) // local dev — no real collector required
+	}
+	return otlptracehttp.New(ctx, otlptracehttp.WithEndpoint(otlpEndpoint)) // a real collector in staging/prod
+}
+```
+
+`otlpEndpoint` comes from `config.OTLPEndpoint()`, which reads the standard `OTEL_EXPORTER_OTLP_ENDPOINT` env var (reused as-is rather than inventing a repo-specific name) — empty by default, so `go run`/`docker compose up` never needs a real OTLP collector running; set it to point at a real one (Jaeger/Tempo/a Datadog agent, etc.) in staging/production.
+
+### `trace_id` in every log record
+
+`infrastructure/logging.CorrelationHandler` (above) does double duty — besides `correlation_id`, it also adds `trace_id` whenever `ctx` carries an active span:
+
+```go
+// internal/infrastructure/logging/correlation.go — actual code (excerpt)
+func (h *CorrelationHandler) Handle(ctx context.Context, record slog.Record) error {
+	if correlationID := common.CorrelationIDFromContext(ctx); correlationID != "" {
+		record.AddAttrs(slog.String("correlation_id", correlationID))
+	}
+	if spanContext := trace.SpanContextFromContext(ctx); spanContext.IsValid() {
+		record.AddAttrs(slog.String("trace_id", spanContext.TraceID().String()))
+	}
+	return h.Handler.Handle(ctx, record)
+}
+```
+
+This is the **same handler** that already injects `correlation_id` — there's deliberately no second, parallel mechanism for trace IDs.
+
+### `traceparent` across the Outbox — one trace, HTTP request → async event processing
+
+`internal/infrastructure/outbox/trace_context.go` extracts/re-hydrates the current span as a W3C `traceparent` string, the same idiom `docs/architecture/domain-events.md` and `scheduling.md` describe for the Outbox pattern generally:
+
+- **`Writer.SaveAll`/`Publisher.Publish`** (writing a row): call `traceParentFromContext(ctx)` and store the result in a new `outbox.trace_parent` column (migration `0008_add_outbox_trace_parent.sql`).
+- **`Poller.publish`**: forwards a non-empty `trace_parent` as the `"traceparent"` SQS message attribute — the same idiom already used for `"eventType"`.
+- **`Consumer.handleMessage`**: reads the `"traceparent"` message attribute back out, re-hydrates it into `ctx` via `contextWithTraceParent`, then starts a new span (`tracer.Start(ctx, "outbox.consume "+eventType)`) as its child before invoking the registered `Handler`.
+
+The result: an HTTP request that ends up writing (say) an `AccountCreated` row, and the Poller/Consumer round-trip that later processes it asynchronously, all show up under the same trace ID — and if that Handler in turn publishes a further Integration Event (e.g. `AccountSuspended` → `account.suspended.v1`), `Publisher.Publish` reads the same re-hydrated span back out of `ctx`, so the chain keeps extending across further async hops too.
+
+This is scoped to the Domain/Integration Event Outbox specifically — the Task Queue (`internal/infrastructure/task-queue/`, see [scheduling.md](scheduling.md)) is driven by a Cron scheduler with no originating HTTP request to link to, so it isn't wired the same way.
 
 ---
 

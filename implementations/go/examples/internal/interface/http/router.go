@@ -3,7 +3,9 @@ package http
 import (
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/time/rate"
 
 	"github.com/example/account-service/internal/application/command"
@@ -147,6 +149,25 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	// serves index.html/doc.json/the swagger-ui asset bundle all under this
 	// one prefix.
 	mux.Handle("GET /docs/", httpSwagger.WrapHandler)
+	// Prometheus scrape target — like health/docs, not rate-limited, and
+	// deliberately not behind RequireAuth either: a scraper is assumed to
+	// reach this endpoint over a trusted, non-public network path, the same
+	// assumption most Prometheus deployments make (observability.md).
+	mux.Handle("GET /metrics", promhttp.Handler())
 
-	return middleware.CorrelationID(middleware.RequestLogging(mux)), healthHandler
+	// middleware.Metrics must sit directly around mux (not further out) to
+	// read net/http's own r.Pattern mutation — see its doc comment.
+	// middleware.SecurityHeaders has no such constraint and could go
+	// anywhere in this chain; it's placed next to Metrics/RequestLogging
+	// since all three are per-request cross-cutting concerns applied to
+	// every response (cross-cutting-concerns.md).
+	instrumented := middleware.CorrelationID(middleware.RequestLogging(middleware.SecurityHeaders(middleware.Metrics(mux))))
+
+	// otelhttp.NewHandler wraps everything, outermost — it starts (or
+	// continues, if the caller sent a W3C traceparent header) a span for the
+	// whole request before CorrelationID/RequestLogging/the actual handler
+	// ever run, so their ctx already carries an active span
+	// (infrastructure/logging.CorrelationHandler reads it back out as
+	// trace_id — observability.md).
+	return otelhttp.NewHandler(instrumented, "account-service"), healthHandler
 }

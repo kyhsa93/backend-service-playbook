@@ -25,14 +25,18 @@ func NewWriter() *Writer {
 // transaction. The caller (Repository) is responsible for committing/
 // rolling back the transaction — this method does not commit.
 func (w *Writer) SaveAll(ctx context.Context, tx *sql.Tx, events []account.DomainEvent) error {
+	// Captured once per call (not per event) — every event in this batch
+	// belongs to the same Repository.Save transaction, hence the same
+	// originating request/trace.
+	traceParent := traceParentFromContext(ctx)
 	for _, event := range events {
 		payload, err := json.Marshal(event)
 		if err != nil {
 			return fmt.Errorf("marshal domain event: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)`,
-			common.NewID(), eventTypeName(event), payload,
+			`INSERT INTO outbox (event_id, event_type, payload, trace_parent) VALUES ($1, $2, $3, $4)`,
+			common.NewID(), eventTypeName(event), payload, traceParent,
 		); err != nil {
 			return fmt.Errorf("save outbox event: %w", err)
 		}

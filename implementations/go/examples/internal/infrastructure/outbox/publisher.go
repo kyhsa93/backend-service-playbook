@@ -35,9 +35,15 @@ func (p *Publisher) Publish(ctx context.Context, eventName string, payload any) 
 	if err != nil {
 		return fmt.Errorf("marshal integration event %s: %w", eventName, err)
 	}
+	// ctx here is whatever outbox.Consumer.handleMessage passed to the
+	// EventHandler that in turn called Publish — since Consumer already
+	// re-hydrated the originating trace into ctx (contextWithTraceParent in
+	// trace_context.go), this new row continues that same trace across a
+	// second async hop (e.g. account.suspended.v1 published while reacting
+	// to AccountSuspended).
 	if _, err := p.db.ExecContext(ctx,
-		`INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)`,
-		common.NewID(), eventName, body,
+		`INSERT INTO outbox (event_id, event_type, payload, trace_parent) VALUES ($1, $2, $3, $4)`,
+		common.NewID(), eventName, body, traceParentFromContext(ctx),
 	); err != nil {
 		return fmt.Errorf("publish integration event %s: %w", eventName, err)
 	}

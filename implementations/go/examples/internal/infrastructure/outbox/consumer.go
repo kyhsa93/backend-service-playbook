@@ -8,7 +8,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"go.opentelemetry.io/otel"
 )
+
+// tracer names every span this package starts "outbox" (matching net/http's
+// otelhttp instrumentation, which likewise names its spans after its own
+// package) — see handleMessage.
+var tracer = otel.Tracer("outbox")
 
 // Handler is a function that processes a single event_type. payload is
 // passed through exactly as the raw JSON that Writer.SaveAll/
@@ -48,7 +54,7 @@ func (c *Consumer) Run(ctx context.Context) {
 		result, err := c.sqs.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 			QueueUrl:              aws.String(c.queueURL),
 			MaxNumberOfMessages:   10,
-			MessageAttributeNames: []string{"eventType"},
+			MessageAttributeNames: []string{"eventType", "traceparent"},
 			WaitTimeSeconds:       5,
 		})
 		if err != nil {
@@ -70,6 +76,19 @@ func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
 	if attr, ok := message.MessageAttributes["eventType"]; ok && attr.StringValue != nil {
 		eventType = *attr.StringValue
 	}
+
+	// Re-hydrates the span context Poller forwarded as the "traceparent"
+	// message attribute (trace_context.go), then starts a new span as its
+	// child — this is what makes the event-processing side show up in the
+	// same trace as the HTTP request that originally wrote the outbox row
+	// (observability.md). A row with no traceparent (e.g. a Task Queue-driven
+	// event) leaves ctx unchanged, and tracer.Start still works — it just
+	// starts a new, disconnected trace rather than erroring.
+	if attr, ok := message.MessageAttributes["traceparent"]; ok && attr.StringValue != nil {
+		ctx = contextWithTraceParent(ctx, *attr.StringValue)
+	}
+	ctx, span := tracer.Start(ctx, "outbox.consume "+eventType)
+	defer span.End()
 
 	handler, ok := c.handlers[eventType]
 	if !ok {

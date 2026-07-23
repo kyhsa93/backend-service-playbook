@@ -38,9 +38,10 @@ func NewPoller(db *sql.DB, sqsClient *sqs.Client, queueURL string) *Poller {
 }
 
 type outboxRow struct {
-	eventID   string
-	eventType string
-	payload   []byte
+	eventID     string
+	eventType   string
+	payload     []byte
+	traceParent sql.NullString
 }
 
 // Run repeatedly runs drainOnce every 1 second (same as nestjs's
@@ -89,7 +90,7 @@ func (p *Poller) drainOnce(ctx context.Context) error {
 
 func (p *Poller) fetchPending(ctx context.Context) ([]outboxRow, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT event_id, event_type, payload FROM outbox WHERE processed = false ORDER BY created_at LIMIT 100`)
+		`SELECT event_id, event_type, payload, trace_parent FROM outbox WHERE processed = false ORDER BY created_at LIMIT 100`)
 	if err != nil {
 		return nil, fmt.Errorf("query pending outbox rows: %w", err)
 	}
@@ -98,7 +99,7 @@ func (p *Poller) fetchPending(ctx context.Context) ([]outboxRow, error) {
 	var pending []outboxRow
 	for rows.Next() {
 		var row outboxRow
-		if err := rows.Scan(&row.eventID, &row.eventType, &row.payload); err != nil {
+		if err := rows.Scan(&row.eventID, &row.eventType, &row.payload, &row.traceParent); err != nil {
 			return nil, fmt.Errorf("scan outbox row: %w", err)
 		}
 		pending = append(pending, row)
@@ -110,12 +111,19 @@ func (p *Poller) fetchPending(ctx context.Context) ([]outboxRow, error) {
 }
 
 func (p *Poller) publish(ctx context.Context, row outboxRow) error {
+	attributes := map[string]types.MessageAttributeValue{
+		"eventType": {DataType: aws.String("String"), StringValue: aws.String(row.eventType)},
+	}
+	// Only set when the row that produced this event carried an active
+	// span (traceParentFromContext in trace_context.go) — a Task Queue
+	// batch job, for instance, has nothing to propagate.
+	if row.traceParent.Valid {
+		attributes["traceparent"] = types.MessageAttributeValue{DataType: aws.String("String"), StringValue: aws.String(row.traceParent.String)}
+	}
 	if _, err := p.sqs.SendMessage(ctx, &sqs.SendMessageInput{
-		QueueUrl:    aws.String(p.queueURL),
-		MessageBody: aws.String(string(row.payload)),
-		MessageAttributes: map[string]types.MessageAttributeValue{
-			"eventType": {DataType: aws.String("String"), StringValue: aws.String(row.eventType)},
-		},
+		QueueUrl:          aws.String(p.queueURL),
+		MessageBody:       aws.String(string(row.payload)),
+		MessageAttributes: attributes,
 	}); err != nil {
 		return fmt.Errorf("send sqs message: %w", err)
 	}

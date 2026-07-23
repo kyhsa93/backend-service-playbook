@@ -37,6 +37,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/scheduling"
 	"github.com/example/account-service/internal/infrastructure/secret"
 	taskqueue "github.com/example/account-service/internal/infrastructure/task-queue"
+	"github.com/example/account-service/internal/infrastructure/tracing"
 	httphandler "github.com/example/account-service/internal/interface/http"
 	taskinterface "github.com/example/account-service/internal/interface/task"
 )
@@ -56,6 +57,19 @@ func main() {
 	// (observability.md).
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 	slog.SetDefault(slog.New(logging.NewCorrelationHandler(jsonHandler)))
+
+	// Registers the process-wide TracerProvider + W3C traceparent propagator
+	// (observability.md) — must happen before httphandler.NewRouter builds
+	// the otelhttp-wrapped handler below, since otelhttp reads both via
+	// otel.GetTracerProvider()/otel.GetTextMapPropagator() at handler-creation
+	// time. OTLPEndpoint() is empty in local dev (no real collector needed —
+	// NewTracerProvider falls back to a stdout exporter), and is set to a
+	// real collector's address in staging/production.
+	shutdownTracing, err := tracing.NewTracerProvider(context.Background(), config.OTLPEndpoint())
+	if err != nil {
+		slog.Error("failed to set up tracing", "error", err)
+		os.Exit(1)
+	}
 
 	dbConfig, err := config.LoadDatabaseConfig()
 	if err != nil {
@@ -304,6 +318,14 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
 	}
+
+	// Flushes any spans still buffered in the TracerProvider's batcher — must
+	// run after srv.Shutdown (no more spans will be created past that point)
+	// but before the process exits, or the last batch is lost.
+	if err := shutdownTracing(shutdownCtx); err != nil {
+		slog.Error("tracer provider shutdown failed", "error", err)
+	}
+
 	slog.Info("server stopped")
 	// defer db.Close() runs after this point — DB connections are cleaned up
 	// only after the HTTP server is fully closed

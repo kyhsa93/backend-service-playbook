@@ -38,6 +38,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/persistence"
 	"github.com/example/account-service/internal/infrastructure/scheduling"
 	taskqueue "github.com/example/account-service/internal/infrastructure/task-queue"
+	"github.com/example/account-service/internal/infrastructure/tracing"
 	httphandler "github.com/example/account-service/internal/interface/http"
 	taskinterface "github.com/example/account-service/internal/interface/task"
 )
@@ -66,6 +67,16 @@ func TestMain(m *testing.M) {
 
 func runTests(m *testing.M) int {
 	ctx := context.Background()
+
+	// Reproduces main.go's tracing setup — otelhttp.NewHandler (built inside
+	// httphandler.NewRouter below) reads the process-wide TracerProvider/
+	// propagator via otel.GetTracerProvider()/otel.GetTextMapPropagator() at
+	// construction time, so without this call those stay the SDK's built-in
+	// no-ops for the whole test process, and a traceparent header would
+	// silently fail to propagate (observability_e2e_test.go).
+	if _, err := tracing.NewTracerProvider(ctx, ""); err != nil {
+		panic(fmt.Sprintf("failed to set up tracing: %v", err))
+	}
 
 	pgContainer, err := postgres.Run(ctx, "postgres:16-alpine",
 		postgres.WithDatabase("account_test"),
@@ -96,7 +107,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
