@@ -4,10 +4,10 @@ go 1.25.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.43.0
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.29
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.43.1
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.30
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/ses v1.37.0
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.45.1
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.46.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3

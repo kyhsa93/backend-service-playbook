@@ -23,7 +23,7 @@ export class MetricsController {
     description: 'Exposes HTTP request count/duration plus default Node.js process metrics in Prometheus text-exposition format, for a Prometheus server to scrape.'
   })
   @ApiOkResponse({ description: 'Metrics in Prometheus text-exposition format.' })
-  metrics(): string {
+  metrics(): Promise<string> {
     return metricsRegistry.metrics()
   }
 }
