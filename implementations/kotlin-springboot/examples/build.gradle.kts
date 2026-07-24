@@ -69,6 +69,9 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // Gradle 9 stopped auto-adding this to the test runtime classpath — without it, `test`
+    // fails immediately with "Failed to load JUnit Platform" before any test class runs.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // The JDK's default HttpURLConnection-based client has a known limitation where it throws
     // a "cannot retry due to server authentication, in streaming mode" IOException when it
     // receives a 401 response after a POST (this is JDK's own behavior). Since the Auth E2E
