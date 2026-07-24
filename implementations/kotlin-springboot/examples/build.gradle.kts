@@ -23,6 +23,10 @@ repositories {
 dependencyManagement {
     imports {
         mavenBom("org.testcontainers:testcontainers-bom:2.0.5")
+        // Keeps ses/secretsmanager/sqs on a single, mutually-compatible version — pinning them
+        // individually let a dependabot bump land on just one module and skew the shared
+        // AWS SDK core/auth modules out of alignment, breaking at runtime with AbstractMethodError.
+        mavenBom("software.amazon.awssdk:bom:2.49.2")
     }
     dependencies {
         // Since 2.48.3, software.amazon.awssdk:ses pulls in apache5-client (based on
@@ -53,9 +57,9 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("software.amazon.awssdk:ses:2.48.3")
-    implementation("software.amazon.awssdk:secretsmanager:2.29.52")
-    implementation("software.amazon.awssdk:sqs:2.29.52")
+    implementation("software.amazon.awssdk:ses")
+    implementation("software.amazon.awssdk:secretsmanager")
+    implementation("software.amazon.awssdk:sqs")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
     implementation("io.github.resilience4j:resilience4j-spring-boot3:2.4.0")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
