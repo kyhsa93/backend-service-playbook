@@ -107,7 +107,7 @@ dependencies {
     // Since the Outbox is processed asynchronously to SQS via OutboxPoller/OutboxConsumer, a
     // polling timeout is needed even after the command response, until the cross-BC reaction
     // (Card status transition, Account balance change, etc) completes.
-    testImplementation 'org.awaitility:awaitility:4.2.2'
+    testImplementation 'org.awaitility:awaitility:4.3.0'
 }
 
 tasks.named('test') {
