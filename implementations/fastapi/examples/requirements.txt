@@ -22,4 +22,4 @@ opentelemetry-exporter-otlp-proto-http
 pytest
 pytest-asyncio
 testcontainers[localstack]
-ruff
+ruff==0.15.22
