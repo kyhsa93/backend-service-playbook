@@ -21,7 +21,6 @@ import { GetRefundsQueryHandler } from '@/payment/application/query/get-refunds-
 import { PaymentQuery } from '@/payment/application/query/payment-query'
 import { RefundQuery } from '@/payment/application/query/refund-query'
 import { CardStatementNotificationService } from '@/payment/application/service/card-statement-notification-service'
-import { RefundFraudRiskScorer } from '@/payment/application/service/refund-fraud-risk-scorer'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
@@ -34,13 +33,10 @@ import { PaymentSesClientProvider } from '@/payment/infrastructure/notification/
 import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
 import { PaymentQueryImpl } from '@/payment/infrastructure/payment-query-impl'
 import { PaymentRepositoryImpl } from '@/payment/infrastructure/payment-repository-impl'
-import { RefundFraudRiskScorerHttpImpl } from '@/payment/infrastructure/refund-fraud-risk-scorer-http-impl'
-import { RefundFraudRiskScorerNativeImpl } from '@/payment/infrastructure/refund-fraud-risk-scorer-native-impl'
 import { RefundQueryImpl } from '@/payment/infrastructure/refund-query-impl'
 import { RefundRepositoryImpl } from '@/payment/infrastructure/refund-repository-impl'
 import { PaymentController } from '@/payment/interface/payment-controller'
 import { PaymentTaskController } from '@/payment/interface/payment-task-controller'
-import { getFraudScorerMode } from '@/config/fraud-risk.config'
 
 // Payment BC is the 3rd domain, reusing Card BC's application/adapter/·
 // infrastructure/*-adapter-impl.ts·interface/integration-event/ structure as a template.
@@ -86,17 +82,6 @@ import { getFraudScorerMode } from '@/config/fraud-risk.config'
     { provide: AccountAdapter, useClass: AccountAdapterImpl },
     // A Technical Service — SES card-statement sending (Payment-only, separate from Account's NotificationService)
     { provide: CardStatementNotificationService, useClass: CardStatementNotificationServiceImpl },
-    // A Technical Service — ML-based refund fraud-risk scoring (see refund-eligibility-service.ts).
-    // Both concrete implementations are registered so the factory below can pick either one at
-    // runtime; only the one FRAUD_SCORER_MODE selects is ever actually called.
-    RefundFraudRiskScorerNativeImpl,
-    RefundFraudRiskScorerHttpImpl,
-    {
-      provide: RefundFraudRiskScorer,
-      useFactory: (native: RefundFraudRiskScorerNativeImpl, http: RefundFraudRiskScorerHttpImpl) =>
-        getFraudScorerMode() === 'http' ? http : native,
-      inject: [RefundFraudRiskScorerNativeImpl, RefundFraudRiskScorerHttpImpl]
-    },
     PaymentSesClientProvider
   ]
 })

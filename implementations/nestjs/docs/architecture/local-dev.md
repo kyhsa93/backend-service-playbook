@@ -71,8 +71,6 @@ volumes:
   db-data:
 ```
 
-`fraud-risk-scorer` (the shared ML microservice behind `refund-fraud-risk-scorer-http-impl.ts` — see `docs/architecture/domain-service.md`'s second RefundFraudRiskScorer example) sits under its own `profiles: [ml]` and isn't in `app`'s `depends_on`, since the default `FRAUD_SCORER_MODE=native` needs no extra service. Bring it up alongside `app` with `docker compose --profile app --profile ml up -d` after setting `FRAUD_SCORER_MODE=http`.
-
 Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the two values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`) — no separate `.env.docker` file is created.
 
 ### Service Composition
@@ -81,7 +79,6 @@ Since `environment:` takes precedence over `env_file:`, keep local values in `.e
 |--------|--------|------|------|
 | `database` | `postgres:16-alpine` | The PostgreSQL DB | 5432 |
 | `localstack` | `localstack/localstack:3.0` | Replaces AWS services (SES, Secrets Manager, SQS) | 4566 |
-| `fraud-risk-scorer` | Built from `services/fraud-risk-scorer/` | Shared ML fraud-risk scoring (optional, `profiles: [ml]`) | 8000 |
 | `app` | The project build | The NestJS app (optional, `profiles: [app]`) | 3000 |
 
 ### Health Check
@@ -136,9 +133,6 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret
 JWT_EXPIRES_IN=1h
-
-FRAUD_SCORER_MODE=native
-FRAUD_SCORER_BASE_URL=http://localhost:8000
 
 PORT=3000
 NODE_ENV=development

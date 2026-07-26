@@ -9,7 +9,6 @@ src/
     aws.config.ts          # AWS_REGION, AWS_ENDPOINT_URL, credentials
     database.config.ts     # DATABASE_URL
     jwt.config.ts          # JWT-related config (includes the Secrets Manager branch)
-    fraud-risk.config.ts   # FRAUD_SCORER_MODE, FRAUD_SCORER_BASE_URL
     notification.config.ts # SES_SENDER_EMAIL
     throttle.config.ts     # THROTTLE_{SHORT,MEDIUM,LONG}_{TTL_MS,LIMIT} — see rate-limiting.md
     validation.config.ts   # the environment variable validation function
