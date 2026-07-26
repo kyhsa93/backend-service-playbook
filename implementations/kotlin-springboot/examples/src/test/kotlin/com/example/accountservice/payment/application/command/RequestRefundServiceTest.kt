@@ -1,13 +1,11 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.payment.application.service.RefundFraudRiskScorer
 import com.example.accountservice.payment.domain.Payment
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import com.example.accountservice.payment.domain.PaymentRepository
 import com.example.accountservice.payment.domain.RefundRepository
 import com.example.accountservice.payment.domain.RefundStatus
-import com.example.accountservice.payment.domain.RefundSummary
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -16,25 +14,15 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 /**
- * RequestRefundService loads two Aggregates (Payment/Refund), scores the refund's history pattern
- * via the (mocked) RefundFraudRiskScorer Technical Service, and delegates the decision to
+ * RequestRefundService loads two Aggregates (Payment/Refund) and delegates the decision to
  * RefundEligibilityService (a Domain Service) — this test verifies, from the Application layer's
  * perspective, that the coordinated outcome correctly leads to Refund.approve()/reject() (the unit
- * test for the decision logic itself is handled by RefundEligibilityServiceTest). Mocking the
- * Technical Service interface — rather than hitting a real ML model — is exactly the benefit
- * described in domain-service.md: no external dependency, no non-determinism, in this test.
+ * test for the decision logic itself is handled by RefundEligibilityServiceTest).
  */
 class RequestRefundServiceTest {
     private val paymentRepository = mockk<PaymentRepository>(relaxed = true)
     private val refundRepository = mockk<RefundRepository>(relaxed = true)
-    private val refundFraudRiskScorer = mockk<RefundFraudRiskScorer>()
-    private val service =
-        RequestRefundService(paymentRepository, refundRepository, refundFraudRiskScorer)
-
-    init {
-        every { refundRepository.summarizeRefundsByOwner(any()) } returns RefundSummary(count = 0)
-        every { refundFraudRiskScorer.score(any()) } returns 0.1
-    }
+    private val service = RequestRefundService(paymentRepository, refundRepository)
 
     private fun stubPayment(payment: Payment) {
         every {
@@ -100,61 +88,6 @@ class RequestRefundServiceTest {
 
         assertThat(result.status).isEqualTo(RefundStatus.REJECTED.name)
         assertThat(result.decisionNote).isEqualTo("The refund amount cannot exceed the payment amount.")
-    }
-
-    @Test
-    fun `a refund flagged as high risk by the ML fraud-risk scorer is rejected and saved`() {
-        val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
-        payment.complete()
-        stubPayment(payment)
-        every { refundFraudRiskScorer.score(any()) } returns 0.8
-
-        val result =
-            service.requestRefund(
-                RequestRefundCommand(
-                    paymentId = payment.paymentId,
-                    amount = 500,
-                    reason = "Simple change of mind",
-                    requesterId = "owner-1",
-                ),
-            )
-
-        assertThat(result.status).isEqualTo(RefundStatus.REJECTED.name)
-        assertThat(result.decisionNote)
-            .isEqualTo("This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.")
-        verify(exactly = 1) { refundRepository.saveRefund(any()) }
-    }
-
-    @Test
-    fun `assembles the risk features from the refund history summary and the payment-refund pair before scoring`() {
-        val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
-        payment.complete()
-        stubPayment(payment)
-        every {
-            refundRepository.summarizeRefundsByOwner(match { it.ownerId == "owner-1" && it.status == null })
-        } returns RefundSummary(count = 4)
-        every {
-            refundRepository.summarizeRefundsByOwner(match { it.status != null })
-        } returns RefundSummary(count = 2)
-
-        service.requestRefund(
-            RequestRefundCommand(
-                paymentId = payment.paymentId,
-                amount = 500,
-                reason = "Simple change of mind",
-                requesterId = "owner-1",
-            ),
-        )
-
-        verify(exactly = 1) {
-            refundFraudRiskScorer.score(
-                match {
-                    it.refundCountLast30Days == 4 &&
-                        it.rejectedRefundCountLast30Days == 2 &&
-                        it.refundToPaymentAmountRatio == 0.5
-                },
-            )
-        }
     }
 
     @Test

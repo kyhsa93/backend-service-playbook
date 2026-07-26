@@ -6,8 +6,8 @@ import org.junit.jupiter.api.Test
 /**
  * Unit tests for RefundEligibilityService (a Domain Service) — this class is instantiated directly
  * as `RefundEligibilityService()` without going through the Application layer, to verify only the
- * decision logic (see domain-service.md's "a real working example"). No model call — the
- * ML fraud-risk score is always passed in as a plain value.
+ * decision logic (see domain-service.md's "a real working example"). No fraud-risk signal of any
+ * kind factors into this decision — only the payment status and refund amount.
  */
 class RefundEligibilityServiceTest {
     private val service = RefundEligibilityService()
@@ -23,7 +23,7 @@ class RefundEligibilityServiceTest {
         val payment = completedPayment(1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, 0.0)
+        val decision = service.evaluate(payment, refund)
 
         assertThat(decision.approved).isTrue()
         assertThat(decision.reason).isNull()
@@ -34,7 +34,7 @@ class RefundEligibilityServiceTest {
         val payment = completedPayment(1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 1000, reason = "Full refund")
 
-        val decision = service.evaluate(payment, refund, 0.0)
+        val decision = service.evaluate(payment, refund)
 
         assertThat(decision.approved).isTrue()
     }
@@ -44,7 +44,7 @@ class RefundEligibilityServiceTest {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, 0.0)
+        val decision = service.evaluate(payment, refund)
 
         assertThat(decision.approved).isFalse()
         assertThat(decision.reason).isEqualTo("A refund can only be requested for a completed payment.")
@@ -56,7 +56,7 @@ class RefundEligibilityServiceTest {
         payment.cancel("Customer request")
         val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, 0.0)
+        val decision = service.evaluate(payment, refund)
 
         assertThat(decision.approved).isFalse()
         assertThat(decision.reason).isEqualTo("A refund can only be requested for a completed payment.")
@@ -67,31 +67,9 @@ class RefundEligibilityServiceTest {
         val payment = completedPayment(1000)
         val refund = Refund.create(paymentId = payment.paymentId, amount = 1001, reason = "Simple change of mind")
 
-        val decision = service.evaluate(payment, refund, 0.0)
+        val decision = service.evaluate(payment, refund)
 
         assertThat(decision.approved).isFalse()
         assertThat(decision.reason).isEqualTo("The refund amount cannot exceed the payment amount.")
-    }
-
-    @Test
-    fun `is rejected when the ML fraud-risk score is at or above its own threshold`() {
-        val payment = completedPayment(1000)
-        val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
-
-        val decision = service.evaluate(payment, refund, 0.8)
-
-        assertThat(decision.approved).isFalse()
-        assertThat(decision.reason)
-            .isEqualTo("This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.")
-    }
-
-    @Test
-    fun `is still approved when the ML fraud-risk score is below its own threshold`() {
-        val payment = completedPayment(1000)
-        val refund = Refund.create(paymentId = payment.paymentId, amount = 500, reason = "Simple change of mind")
-
-        val decision = service.evaluate(payment, refund, 0.79)
-
-        assertThat(decision.approved).isTrue()
     }
 }

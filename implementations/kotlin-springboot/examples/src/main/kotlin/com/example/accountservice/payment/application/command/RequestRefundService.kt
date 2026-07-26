@@ -1,39 +1,26 @@
 package com.example.accountservice.payment.application.command
 
-import com.example.accountservice.payment.application.service.RefundFraudRiskScorer
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import com.example.accountservice.payment.domain.PaymentRepository
 import com.example.accountservice.payment.domain.Refund
 import com.example.accountservice.payment.domain.RefundEligibilityService
 import com.example.accountservice.payment.domain.RefundRepository
-import com.example.accountservice.payment.domain.RefundRiskFeatures
-import com.example.accountservice.payment.domain.RefundStatus
-import com.example.accountservice.payment.domain.RefundSummaryQuery
 import org.springframework.stereotype.Service
-import java.time.Duration
-import java.time.LocalDateTime
-
-private const val RISK_HISTORY_WINDOW_DAYS = 30L
 
 /**
- * A judgment that neither Aggregate can make alone (comparing the original payment's status + the
- * refund amount + the ML-scored history pattern) is delegated to [RefundEligibilityService] (a
- * Domain Service) and coordinated by this Application layer, which loads both the Payment and
- * Refund Aggregates together and scores the refund's history pattern via the
- * [RefundFraudRiskScorer] Technical Service.
+ * A judgment that neither Aggregate can make alone (comparing the original payment's status against
+ * the refund amount) is delegated to [RefundEligibilityService] (a Domain Service) and coordinated by
+ * this Application layer, which loads both the Payment and Refund Aggregates together.
  *
  * [refundEligibilityService] is a stateless, pure Domain Service, so instead of registering it as a
  * Spring bean, this Service holds it by instantiating it directly (a constructor call in Kotlin) —
- * the same reasoning as the nestjs reference. [refundFraudRiskScorer], unlike
- * [refundEligibilityService], wraps external I/O (an ML scoring call), so it's constructor-injected
- * rather than instantiated directly.
+ * the same reasoning as the nestjs reference.
  */
 @Service
 class RequestRefundService(
     private val paymentRepository: PaymentRepository,
     private val refundRepository: RefundRepository,
-    private val refundFraudRiskScorer: RefundFraudRiskScorer,
 ) {
     private val refundEligibilityService = RefundEligibilityService()
 
@@ -46,35 +33,7 @@ class RequestRefundService(
 
         val refund = Refund.create(paymentId = payment.paymentId, amount = command.amount, reason = command.reason)
 
-        val historyWindowStart = LocalDateTime.now().minusDays(RISK_HISTORY_WINDOW_DAYS)
-        val refundSummary =
-            refundRepository.summarizeRefundsByOwner(
-                RefundSummaryQuery(ownerId = payment.ownerId, createdAtFrom = historyWindowStart),
-            )
-        val rejectedRefundSummary =
-            refundRepository.summarizeRefundsByOwner(
-                RefundSummaryQuery(
-                    ownerId = payment.ownerId,
-                    createdAtFrom = historyWindowStart,
-                    status = listOf(RefundStatus.REJECTED),
-                ),
-            )
-        val mlFraudRiskScore =
-            refundFraudRiskScorer.score(
-                RefundRiskFeatures(
-                    refundCountLast30Days = refundSummary.count.toInt(),
-                    rejectedRefundCountLast30Days = rejectedRefundSummary.count.toInt(),
-                    refundToPaymentAmountRatio = refund.amount.toDouble() / payment.amount.toDouble(),
-                    minutesSincePayment =
-                        Duration
-                            .between(payment.createdAt, LocalDateTime.now())
-                            .toMinutes()
-                            .coerceAtLeast(0)
-                            .toDouble(),
-                ),
-            )
-
-        val decision = refundEligibilityService.evaluate(payment, refund, mlFraudRiskScore)
+        val decision = refundEligibilityService.evaluate(payment, refund)
         if (decision.approved) {
             refund.approve(payment.accountId, payment.ownerId)
         } else {
