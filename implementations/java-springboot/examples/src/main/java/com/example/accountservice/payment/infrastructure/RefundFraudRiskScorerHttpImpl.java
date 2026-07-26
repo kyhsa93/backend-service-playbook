@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  * implementations calls this same service; see {@code FraudScorerProperties} for how {@code
  * fraud-scorer.mode=http} selects this impl over the in-process native one. Falls back to a neutral
  * 0 on any failure (unreachable, non-2xx, malformed body) — a scoring outage must never block a
- * refund request, the same fallback stance as {@code RefundReasonClassifierImpl}.
+ * refund request.
  */
 @Component
 @ConditionalOnProperty(prefix = "fraud-scorer", name = "mode", havingValue = "http")

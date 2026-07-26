@@ -7,8 +7,8 @@
 `examples/` has two kinds of examples.
 
 - **Technical Service**: `account/application/service/NotificationService.java` (interface) + `account/infrastructure/notification/NotificationServiceImpl.java` (implementation, SES). This abstracts technical infrastructure (sending email), but is not domain judgment logic that coordinates multiple Aggregates.
-- **Domain Service (genuine cross-Aggregate coordination)**: `payment/domain/RefundEligibilityService.java`. It coordinates a judgment ("the original payment must be in COMPLETED status, the refund amount cannot exceed the payment amount, and the reason's LLM-classified fraud-risk signal must not cross a threshold") that can only be made by loading both the `Payment` and `Refund` Aggregates together — a real, working example of the "logic that must read multiple Aggregates to reach a judgment" the root document defines.
-- **Technical Service (LLM call)**: `payment/application/service/RefundReasonClassifier.java` (interface) + `payment/infrastructure/RefundReasonClassifierImpl.java` (implementation, Claude API) — see the dedicated section below.
+- **Domain Service (genuine cross-Aggregate coordination)**: `payment/domain/RefundEligibilityService.java`. It coordinates a judgment ("the original payment must be in COMPLETED status, the refund amount cannot exceed the payment amount, and an ML-scored fraud-risk signal must not cross a threshold") that can only be made by loading both the `Payment` and `Refund` Aggregates together — a real, working example of the "logic that must read multiple Aggregates to reach a judgment" the root document defines.
+- **Technical Service (ML model call)**: `payment/application/service/RefundFraudRiskScorer.java` (interface) + `payment/infrastructure/RefundFraudRiskScorerNativeImpl.java`/`RefundFraudRiskScorerHttpImpl.java` (implementations) — see the dedicated section below.
 
 Since the Account and Card BCs each have only a single Aggregate, this pattern couldn't be demonstrated there — the Payment BC (with its two Aggregates, Payment/Refund) is what actually shows it working.
 
@@ -24,13 +24,14 @@ The `Payment` Aggregate knows nothing about refund attempts against it (a refund
 // payment/domain/RefundEligibilityService.java — actual code
 public class RefundEligibilityService {
 
-    // classification is a plain value already computed upstream by RefundReasonClassifier (a
-    // Technical Service wrapping an LLM call — see the Technical Service section below). This
-    // method never calls it and doesn't know an LLM produced the value; it only weighs the
-    // fraud-risk signal alongside its other checks and still owns the actual judgment.
-    private static final double FRAUD_RISK_REJECTION_THRESHOLD = 0.7;
+    // mlFraudRiskScore is a plain value already computed upstream by RefundFraudRiskScorer (a
+    // Technical Service trained on the requester's refund/payment history — see the Technical
+    // Service section below). This method never calls it and doesn't know an ML model produced
+    // the value; it only weighs the fraud-risk signal alongside its other checks and still owns
+    // the actual judgment.
+    private static final double ML_FRAUD_RISK_REJECTION_THRESHOLD = 0.8;
 
-    public RefundDecision evaluate(Payment payment, Refund refund, RefundReasonClassification classification) {
+    public RefundDecision evaluate(Payment payment, Refund refund, double mlFraudRiskScore) {
         if (payment.getStatus() != PaymentStatus.COMPLETED) {
             return RefundDecision.rejected(
                     PaymentException.ErrorCode.REFUND_REQUIRES_COMPLETED_PAYMENT,
@@ -41,11 +42,10 @@ public class RefundEligibilityService {
                     PaymentException.ErrorCode.REFUND_AMOUNT_EXCEEDS_PAYMENT,
                     "The refund amount cannot exceed the payment amount.");
         }
-        if (classification.category() == RefundReasonCategory.FRAUD_SUSPECTED
-                && classification.fraudRiskScore() >= FRAUD_RISK_REJECTION_THRESHOLD) {
+        if (mlFraudRiskScore >= ML_FRAUD_RISK_REJECTION_THRESHOLD) {
             return RefundDecision.rejected(
-                    PaymentException.ErrorCode.REFUND_REASON_HIGH_FRAUD_RISK,
-                    "This refund reason was flagged as high fraud risk and requires manual review.");
+                    PaymentException.ErrorCode.REFUND_PATTERN_FLAGGED_HIGH_RISK,
+                    "This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.");
         }
         return RefundDecision.approve();
     }
@@ -78,17 +78,17 @@ public class RequestRefundService {
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
 
-    // RefundReasonClassifier is a Technical Service (DI-bound to its real LLM-backed
-    // implementation) — unlike RefundEligibilityService above, it wraps external I/O, so it's
-    // injected rather than `new`'d directly.
-    private final RefundReasonClassifier refundReasonClassifier;
+    // RefundFraudRiskScorer is a Technical Service (DI-bound to its real implementation) — unlike
+    // RefundEligibilityService above, it wraps external I/O (an ML model), so it's injected rather
+    // than `new`'d directly.
+    private final RefundFraudRiskScorer refundFraudRiskScorer;
 
     public GetRefundResult request(RequestRefundCommand command) {
         Payment payment = /* loaded via paymentRepository.findPayments(...) after verifying ownership */;
         Refund refund = Refund.create(payment.getPaymentId(), command.amount(), command.reason());
-        RefundReasonClassification classification = refundReasonClassifier.classify(command.reason());
+        double mlFraudRiskScore = refundFraudRiskScorer.score(/* refund/payment history features, see RefundRiskFeatures */);
 
-        RefundDecision decision = refundEligibilityService.evaluate(payment, refund, classification);
+        RefundDecision decision = refundEligibilityService.evaluate(payment, refund, mlFraudRiskScore);
         if (decision.approved()) {
             refund.approve(payment.getAccountId(), payment.getOwnerId());
         } else {
@@ -110,9 +110,9 @@ This repository's [error-handling.md](error-handling.md) requires "1 guard condi
 
 ### Related code
 
-- `payment/domain/Payment.java`, `Refund.java`, `RefundEligibilityService.java`, `RefundDecision.java`, `PaymentException.java`, `RefundReasonCategory.java`, `RefundReasonClassification.java`
+- `payment/domain/Payment.java`, `Refund.java`, `RefundEligibilityService.java`, `RefundDecision.java`, `PaymentException.java`
 - `payment/application/command/RequestRefundService.java` — the call site of the Domain Service
-- `payment/domain/RefundEligibilityServiceTest.java` — a unit test that instantiates it directly with `new`, without a Spring context, verifying only the judgment logic (no LLM call — classification is always passed in as a plain value)
+- `payment/domain/RefundEligibilityServiceTest.java` — a unit test that instantiates it directly with `new`, without a Spring context, verifying only the judgment logic (no ML call — the score is always passed in as a plain value)
 - `payment/interfaces/rest/PaymentControllerE2ETest.java` — verifies both the refund-approval and refund-rejection paths via the actual HTTP API
 
 ---
@@ -123,26 +123,26 @@ The Technical Service placement principle (domain-internal by default, per YAGNI
 
 ---
 
-## Technical Service — RefundReasonClassifier (an LLM call)
+## Technical Service — RefundFraudRiskScorer (an ML model)
 
-A real, working example of the Technical Service pattern for an external LLM call. The interface is defined in the shape the Domain Service needs (a category plus a fraud-risk score, see `RefundReasonClassification` above), and the implementation is free to swap providers/models without the Application or Domain layer ever changing:
+A real, working example of the Technical Service pattern for an ML model call. The interface is defined in the shape the Domain Service needs (a single `double` score), and the implementation is free to swap between an in-process model and a shared microservice without the Application or Domain layer ever changing:
 
 ```java
-// payment/application/service/RefundReasonClassifier.java — the interface
-public interface RefundReasonClassifier {
-    RefundReasonClassification classify(String reason);
+// payment/application/service/RefundFraudRiskScorer.java — the interface
+public interface RefundFraudRiskScorer {
+    double score(RefundRiskFeatures features);
 }
 ```
 
-The implementation (`payment/infrastructure/RefundReasonClassifierImpl.java`) calls a self-hosted, open-source LLM (Ollama, running the lightweight `qwen2.5:1.5b` model — see `docker-compose.yml`'s `ollama`/`ollama-init` services) over plain HTTP (`java.net.http.HttpClient` — Ollama has no official Java SDK) with a JSON-schema-constrained response, and falls back to a neutral, non-blocking result (`RefundReasonCategory.OTHER`, `fraudRiskScore: 0`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Its unit test (`RequestRefundServiceTest`) mocks the interface rather than hitting the real LLM — no external dependency, no non-determinism, in the test.
+Two implementations exist side by side, selected by `config/FraudScorerProperties` (`fraud-scorer.mode`, `native`/`http`): `payment/infrastructure/RefundFraudRiskScorerNativeImpl.java` trains a small model in-process at startup from the requester's refund/payment history (refund count, rejection count, amount ratio, minutes since payment — see `RefundRiskFeatures`), and `payment/infrastructure/RefundFraudRiskScorerHttpImpl.java` calls the shared `services/fraud-risk-scorer` microservice over HTTP instead. Both fall back to a neutral score (`0`) on any failure — a scoring outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Its unit test (`RequestRefundServiceTest`) mocks the interface rather than hitting a real model — no external dependency, no non-determinism, in the test.
 
-Because this interface is defined in the shape the Domain Service needs rather than around a specific vendor's API, this implementation originally called the Claude API and was swapped to Ollama with no change to the Domain Service, the Application-layer interface, or any of their tests — exactly the point of the pattern. Ollama is self-hosted, so unlike the API key it replaced, its base URL isn't a secret — it's a plain `@ConfigurationProperties` value (`config/RefundClassifierProperties.java`), not a `Profiles.of("prod")`-gated `SecretService` lookup (see [secret-manager.md](secret-manager.md)).
+Because the interface is defined in the shape the Domain Service needs rather than around a specific model's API, which implementation is wired up is purely a config choice, never a Domain concern. Neither implementation depends on user-supplied free text — every input feature is a structured fact drawn from the requester's own refund/payment history, which the requester cannot simply type something different to fake.
 
 ### Related code
 
-- `payment/application/service/RefundReasonClassifier.java`, `payment/infrastructure/RefundReasonClassifierImpl.java`
-- `config/RefundClassifierProperties.java` — the Ollama base URL + model, via `@ConfigurationProperties`
-- `payment/application/command/RequestRefundServiceTest.java` — mocks `RefundReasonClassifier`
+- `payment/application/service/RefundFraudRiskScorer.java`, `payment/infrastructure/RefundFraudRiskScorerNativeImpl.java`, `payment/infrastructure/RefundFraudRiskScorerHttpImpl.java`
+- `config/FraudScorerProperties.java` — the `native`/`http` mode switch, via `@ConfigurationProperties`
+- `payment/application/command/RequestRefundServiceTest.java` — mocks `RefundFraudRiskScorer`
 
 ---
 

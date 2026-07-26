@@ -69,7 +69,7 @@ public class SecretServiceImpl implements SecretService {
 
 - **A TTL cache via `ConcurrentHashMap`**: since Spring manages this bean as a singleton, multiple request threads can call `getSecret()` concurrently — a `ConcurrentHashMap` rather than a plain `HashMap` is needed for thread safety. Switching to a dedicated cache library like Caffeine (`com.github.ben-manes.caffeine:caffeine`) would allow finer control over the expiration policy (size-based eviction, etc.).
 - **Reuses `AwsProperties` as-is**: rather than individual `@Value`s, `region`/`endpointUrl` lookups are handled by injecting the `AwsProperties` bean (`@ConfigurationProperties`) defined in [config.md](config.md) via the constructor — the same "LocalStack if endpoint-url is present, real AWS if not" pattern that `SesConfig` uses (see [local-dev.md](local-dev.md)).
-- **One call site so far**: `SecretsEnvironmentPostProcessor` below builds its own `SecretsManagerClient` directly (it runs before the `ApplicationContext` — and therefore DI — exists, so it can't inject this bean) to resolve the JWT secret eagerly at startup. `payment/infrastructure/RefundReasonClassifierImpl` (the `RefundReasonClassifier` Technical Service — see [domain-service.md](domain-service.md)) does **not** use `SecretService`: it calls a self-hosted Ollama instance, and a base URL isn't a secret — see `config/RefundClassifierProperties.java` (a plain `@ConfigurationProperties` value, no Secrets Manager lookup).
+- **One call site so far**: `SecretsEnvironmentPostProcessor` below builds its own `SecretsManagerClient` directly (it runs before the `ApplicationContext` — and therefore DI — exists, so it can't inject this bean) to resolve the JWT secret eagerly at startup.
 
 ---
 
@@ -92,7 +92,7 @@ String password = dbSecret.get("password").asText();
 
 ## Connecting with `@ConfigurationProperties` — looked up only once at startup
 
-To integrate the Secrets Manager lookup value into the `@ConfigurationProperties` + `@Validated` system described by [config.md](config.md), Spring's `EnvironmentPostProcessor` is used to inject Secrets Manager values into the `Environment` before `ApplicationContext` is prepared. The JWT signing key (`app/jwt`) is the only secret resolved this way — DB connection info hasn't been moved to Secrets Manager (Postgres is configured only via `SPRING_DATASOURCE_*` environment variables, see [local-dev.md](local-dev.md)), and the refund classifier's Ollama base URL isn't a secret at all (see [domain-service.md](domain-service.md) → "Technical Service — RefundReasonClassifier").
+To integrate the Secrets Manager lookup value into the `@ConfigurationProperties` + `@Validated` system described by [config.md](config.md), Spring's `EnvironmentPostProcessor` is used to inject Secrets Manager values into the `Environment` before `ApplicationContext` is prepared. The JWT signing key (`app/jwt`) is the only secret resolved this way — DB connection info hasn't been moved to Secrets Manager (Postgres is configured only via `SPRING_DATASOURCE_*` environment variables, see [local-dev.md](local-dev.md)).
 
 ```java
 // common/config/SecretsEnvironmentPostProcessor.java — actual code
@@ -135,21 +135,6 @@ org.springframework.boot.env.EnvironmentPostProcessor=com.example.accountservice
 **A cross-language difference — the gating mechanism itself differs**: this repository gates via a Spring **profile** (`Profiles.of("prod")`), not an environment variable — `logback-spring.xml` (see [observability.md](observability.md)) is also unified under the same `prod`/`!prod` profiles. kotlin-springboot uses the same mechanism (`Profiles.of("prod")`). nestjs (`NODE_ENV !== 'production'`), go (`APP_ENV != "production"`), and fastapi (`APP_ENV == "production"`) gate via an environment-variable value, and of these, fastapi has the opposite polarity from the other two. Never assume the name and polarity map directly across other languages' documentation.
 
 If you want to move DB connection info (`spring.datasource.username`/`password`) to Secrets Manager, extend this class's pattern directly — just change `secretId` to `account-service/database` and add `spring.datasource.*` keys to `props`. This is not currently adopted.
-
----
-
-## A non-consumer, by design — `RefundReasonClassifierImpl`
-
-`payment/infrastructure/RefundReasonClassifierImpl.java` (the `RefundReasonClassifier` Technical Service — see [domain-service.md](domain-service.md)) does not inject `SecretService` at all, in production or otherwise. It calls a self-hosted Ollama instance (`docker-compose.yml`'s `ollama`/`ollama-init` services) over plain HTTP, and the only configuration it needs — the base URL and model name — is a plain, non-sensitive value bound via `@ConfigurationProperties` (`config/RefundClassifierProperties.java`), exactly like `AwsProperties.region` or `SesProperties.senderEmail`:
-
-```java
-// config/RefundClassifierProperties.java — actual code
-@ConfigurationProperties(prefix = "refund-classifier")
-@Validated
-public record RefundClassifierProperties(@NotBlank String ollamaBaseUrl, @NotBlank String model) {}
-```
-
-An earlier iteration of this Technical Service called the Claude API and needed an API key, which — being a genuine secret — was looked up from Secrets Manager in production via a lazily-injected `SecretService` (the same "gate on `Profiles.of("prod")`, resolve on first use inside a DI-managed `@Component`" pattern `SecretsEnvironmentPostProcessor` uses eagerly for the JWT secret above). Swapping the backend to a self-hosted model removed that secret entirely — there's nothing left in this Technical Service for `SecretService`/Secrets Manager to protect. This is one concrete illustration of why `RefundReasonClassifier`'s interface is defined in the shape the Domain Service needs, not around a specific vendor's API: the backend swap required no change above the Infrastructure layer, including whether a secret is involved at all.
 
 ---
 

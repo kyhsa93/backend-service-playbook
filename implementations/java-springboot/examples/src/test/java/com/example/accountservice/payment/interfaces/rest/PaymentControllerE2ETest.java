@@ -93,8 +93,7 @@ class PaymentControllerE2ETest {
         // across unrelated test methods and could legitimately reject a later test's refund based
         // on an earlier, unrelated test's rejected refunds. Force the http impl against an
         // unreachable address instead, so scoring deterministically falls back to 0 for every
-        // call in this suite — the same idiom already used for testRefundReasonClassifier-style
-        // determinism, and the same fix applied in the Go port (see
+        // call in this suite — the same fix applied in the Go port (see
         // RefundFraudRiskScorerHttpImpl.java's fallback-on-failure behavior).
         registry.add("fraud-scorer.mode", () -> "http");
         registry.add("fraud-scorer.base-url", () -> "http://localhost:1");

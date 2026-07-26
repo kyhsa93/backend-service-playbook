@@ -30,10 +30,6 @@ ses:
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 
-refund-classifier:
-  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${REFUND_CLASSIFIER_MODEL:qwen2.5:1.5b}
-
 fraud-scorer:
   mode: ${FRAUD_SCORER_MODE:native}
   base-url: ${FRAUD_SCORER_BASE_URL:http://localhost:8000}

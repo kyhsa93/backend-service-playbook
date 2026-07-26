@@ -59,12 +59,6 @@ sqs:
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
 
-# Refund reason classification (see payment/infrastructure/RefundReasonClassifierImpl.java) —
-# served locally by Ollama (docker-compose.yml). No API key: it's a self-hosted open-source model.
-refund-classifier:
-  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${REFUND_CLASSIFIER_MODEL:qwen2.5:1.5b}
-
 # Refund fraud-risk scoring (see payment/application/service/RefundFraudRiskScorer.java) — 'native'
 # (default) trains a small model in-process at startup, no extra service needed. Set to 'http' to
 # call the shared services/fraud-risk-scorer microservice (docker-compose.yml) instead.
