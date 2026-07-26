@@ -35,21 +35,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # Optional — only needed when FRAUD_SCORER_MODE=http (default is 'native', which needs no
-  # extra service). Not in `app`'s depends_on since it lives under a separate profile: bring it
-  # up alongside `app` with `docker compose --profile app --profile ml up`. See
-  # internal/config/fraud_risk.go and services/fraud-risk-scorer/README.md.
-  fraud-risk-scorer:
-    build: ../../../services/fraud-risk-scorer
-    ports: ['8000:8000']
-    healthcheck:
-      test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    profiles:
-      - ml
-
   app:
     build: .
     ports: ['8080:8080']
@@ -60,7 +45,6 @@ services:
       DATABASE_URL: postgres://dev:dev@database:5432/app?sslmode=disable
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
-      FRAUD_SCORER_BASE_URL: http://fraud-risk-scorer:8000
     depends_on:
       database:
         condition: service_healthy
@@ -72,8 +56,6 @@ services:
 volumes:
   db-data:
 ```
-
-`fraud-risk-scorer` is a Technical Service dependency — a shared microservice (`services/fraud-risk-scorer/`, Python + scikit-learn) every one of the 5 language implementations can call over HTTP instead of training a model natively in-process (see [domain-service.md](../../../../docs/architecture/domain-service.md)). It's kept under its own `profiles: [ml]` rather than `app`'s `depends_on`, since the default `FRAUD_SCORER_MODE=native` (`internal/config/fraud_risk.go`) trains a small logistic regression in-process at startup (`internal/infrastructure/ml/refund_fraud_risk_scorer_native.go`) and needs no extra service at all — `http` mode (`internal/infrastructure/ml/refund_fraud_risk_scorer_http.go`) is what actually calls this container, opted into via `FRAUD_SCORER_MODE=http` alongside `docker compose --profile app --profile ml up`.
 
 Compared against the root principle:
 - **The LocalStack image version is pinned** — `localstack/localstack:3.0` (not `:latest`). This directly reflects the reason the root document states: "the `latest` tag can change behavior without notice."
@@ -165,8 +147,6 @@ SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 JWT_SECRET=local-dev-secret
 APP_ENV=development
-FRAUD_SCORER_MODE=native
-FRAUD_SCORER_BASE_URL=http://localhost:8000
 ```
 
 There's `.env.example` (committed) and `.env.development` (included in `.gitignore`, created by copying `.env.example`). The Go standard library doesn't automatically read `.env` files, so load it into the shell — e.g. `export $(cat .env.development | xargs) && go run ./cmd/server` — or use a tool like direnv.

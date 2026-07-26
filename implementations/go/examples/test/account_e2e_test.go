@@ -31,7 +31,6 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
-	"github.com/example/account-service/internal/infrastructure/ml"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -263,13 +262,6 @@ func runTests(m *testing.M) int {
 	testJWTService = auth.NewJWTService("test-secret", time.Hour)
 	testPasswordHasher := auth.NewBcryptPasswordHasher()
 
-	// A placeholder, unreachable base URL, same idiom as "test-secret" above — pointing at no
-	// real model service means RefundFraudRiskScorerHTTPImpl always falls back to a
-	// deterministic neutral score (0) rather than depending on the native model's arbitrary
-	// trained output for whatever payment/refund amounts a given test uses, so refund e2e
-	// assertions never depend on live model inference.
-	testFraudRiskScorer := ml.NewRefundFraudRiskScorerHTTPImpl("http://localhost:1")
-
 	// e2e tests send dozens of requests in a short time within the same
 	// process — using the production default (100/second, burst 20) as-is
 	// would let the rate limiter return 429 mid-test, causing unrelated
@@ -278,7 +270,7 @@ func runTests(m *testing.M) int {
 	// here only.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testFraudRiskScorer, testLimiter, database.NewManager(db))
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter, database.NewManager(db))
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 

@@ -9,8 +9,8 @@ import "os"
 // repo-specific one, so this app behaves like any other OTel-instrumented
 // service for whoever operates it).
 //
-// Same "sane dev default, real value required in prod" shape as
-// FraudScorerBaseURL (fraud_risk.go): empty means "no collector configured,"
+// Follows the same "sane dev default, real value required in prod" shape
+// used elsewhere in this package: empty means "no collector configured,"
 // and NewTracerProvider falls back to a stdout exporter so local development
 // never needs a real collector running.
 func OTLPEndpoint() string {

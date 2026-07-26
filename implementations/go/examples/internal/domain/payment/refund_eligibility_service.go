@@ -7,18 +7,6 @@ type RefundDecision struct {
 	Reason   string
 }
 
-// mlFraudRiskRejectionThreshold — the fraud-risk score is produced upstream
-// by command.RefundFraudRiskScorer (a Technical Service trained on the
-// requester's own refund/payment history — refund count, rejection count,
-// amount ratio, minutes since payment — see
-// infrastructure/ml/refund_fraud_risk_scorer_native.go /
-// refund_fraud_risk_scorer_http.go). This Domain Service never calls the
-// model itself and doesn't know how the score was computed; it only receives
-// the already-computed float64 as one more plain input alongside
-// Payment/Refund, and applies its own fixed threshold. The scorer supplies a
-// signal; this function still owns the actual approve/reject judgment.
-const mlFraudRiskRejectionThreshold = 0.8
-
 // EvaluateRefundEligibility is a concrete example of "pure domain logic
 // that coordinates multiple Aggregates," as defined by the root
 // docs/architecture/domain-service.md — expressed as a plain package
@@ -40,20 +28,17 @@ const mlFraudRiskRejectionThreshold = 0.8
 // function, and then calls refund.Approve(...) if approved or
 // refund.Reject(...) if rejected.
 //
-// mlFraudRiskScore is a plain float64 already computed upstream by
-// command.RefundFraudRiskScorer (a Technical Service) — this function never
-// calls a model itself and never imports the Application-layer interface
-// that produces the value; it only weighs the number against its own fixed
-// threshold.
-func EvaluateRefundEligibility(p *Payment, r *Refund, mlFraudRiskScore float64) RefundDecision {
+// This function makes no fraud-risk judgment of any kind — it is pure
+// structural business-rule logic (payment status + amount comparison) and
+// nothing else. It remains a Domain Service purely because the judgment
+// requires coordinating two Aggregates, not because of any risk-scoring
+// responsibility.
+func EvaluateRefundEligibility(p *Payment, r *Refund) RefundDecision {
 	if p.Status != StatusCompleted {
 		return RefundDecision{Approved: false, Reason: ErrRefundRequiresCompletedPayment.Error()}
 	}
 	if r.Amount > p.Amount {
 		return RefundDecision{Approved: false, Reason: ErrRefundAmountExceedsPayment.Error()}
-	}
-	if mlFraudRiskScore >= mlFraudRiskRejectionThreshold {
-		return RefundDecision{Approved: false, Reason: ErrRefundPatternFlaggedHighRisk.Error()}
 	}
 	return RefundDecision{Approved: true}
 }
