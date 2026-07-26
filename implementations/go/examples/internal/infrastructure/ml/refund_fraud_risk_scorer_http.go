@@ -14,7 +14,7 @@ import (
 // fallbackScore is used whenever the score can't be trusted (the shared
 // scorer unreachable, malformed output). A neutral 0 never blocks the refund
 // flow on its own — payment.EvaluateRefundEligibility's other checks still
-// run against it, the same fallback stance as RefundReasonClassifierImpl's.
+// run against it.
 const fallbackScore = 0.0
 
 type scoreRequest struct {

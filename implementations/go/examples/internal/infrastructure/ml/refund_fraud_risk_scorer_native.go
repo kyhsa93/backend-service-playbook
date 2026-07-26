@@ -2,9 +2,8 @@
 // command.RefundFraudRiskScorer — a native in-process logistic regression
 // (this file) and an HTTP call to the shared services/fraud-risk-scorer
 // microservice (refund_fraud_risk_scorer_http.go). Selected by
-// config.FraudScorerMode() at composition-root time (cmd/server/main.go) —
-// the same "swap via config" role internal/infrastructure/llm plays for
-// RefundReasonClassifier (see docs/architecture/domain-service.md).
+// config.FraudScorerMode() at composition-root time (cmd/server/main.go)
+// (see docs/architecture/domain-service.md).
 package ml
 
 import (

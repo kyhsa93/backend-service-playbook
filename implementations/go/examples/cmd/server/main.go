@@ -28,7 +28,6 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
-	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/logging"
 	"github.com/example/account-service/internal/infrastructure/ml"
 	"github.com/example/account-service/internal/infrastructure/notification"
@@ -246,16 +245,11 @@ func main() {
 	jwtService := auth.NewJWTService(jwtSecret, time.Hour)
 	passwordHasher := auth.NewBcryptPasswordHasher()
 
-	// RefundReasonClassifier (a Technical Service, domain-service.md) — talks to a self-hosted
-	// Ollama instance (docker-compose.yml's ollama/ollama-init services), so unlike jwtSecret
-	// above there's no Secrets Manager lookup needed, just a plain base URL.
-	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(config.OllamaBaseURL(), config.RefundClassifierModel())
-
-	// RefundFraudRiskScorer (a second, independent Technical Service, domain-service.md) — two
-	// concrete implementations are always constructed, but only the one config.FraudScorerMode()
-	// selects is ever wired into the router below. "native" trains in-process at construction
-	// (here) and needs no extra service; "http" calls the shared services/fraud-risk-scorer
-	// microservice (config.FraudScorerBaseURL()).
+	// RefundFraudRiskScorer (a Technical Service, domain-service.md) — two concrete
+	// implementations are always constructed, but only the one config.FraudScorerMode() selects
+	// is ever wired into the router below. "native" trains in-process at construction (here) and
+	// needs no extra service; "http" calls the shared services/fraud-risk-scorer microservice
+	// (config.FraudScorerBaseURL()).
 	var fraudRiskScorer command.RefundFraudRiskScorer
 	if config.FraudScorerMode() == "http" {
 		fraudRiskScorer = ml.NewRefundFraudRiskScorerHTTPImpl(config.FraudScorerBaseURL())
@@ -266,7 +260,7 @@ func main() {
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, refundReasonClassifier, fraudRiskScorer, limiter, dbManager)
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, fraudRiskScorer, limiter, dbManager)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 

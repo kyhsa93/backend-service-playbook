@@ -7,23 +7,16 @@ type RefundDecision struct {
 	Reason   string
 }
 
-// fraudRiskRejectionThreshold — the fraud-risk score is produced upstream by
-// command.RefundReasonClassifier (a Technical Service wrapping an LLM call)
-// — this Domain Service never calls it and doesn't know an LLM produced it.
-// It only receives the already-computed RefundReasonClassification as one
-// more plain input alongside Payment/Refund, and applies its own fixed
-// threshold. The LLM supplies a signal; this function still owns the actual
-// approve/reject judgment.
-const fraudRiskRejectionThreshold = 0.7
-
-// mlFraudRiskRejectionThreshold — a second, independent signal, produced
-// upstream by command.RefundFraudRiskScorer (a Technical Service trained on
-// refund/payment history, see infrastructure/ml/refund_fraud_risk_scorer_native.go
-// / refund_fraud_risk_scorer_http.go). Kept as its own plain float64 with its
-// own threshold rather than merged into RefundReasonClassification, since
-// it's computed from an entirely different input (structured history, not
-// the free-text reason) and can fire independently of the LLM's
-// category/score.
+// mlFraudRiskRejectionThreshold — the fraud-risk score is produced upstream
+// by command.RefundFraudRiskScorer (a Technical Service trained on the
+// requester's own refund/payment history — refund count, rejection count,
+// amount ratio, minutes since payment — see
+// infrastructure/ml/refund_fraud_risk_scorer_native.go /
+// refund_fraud_risk_scorer_http.go). This Domain Service never calls the
+// model itself and doesn't know how the score was computed; it only receives
+// the already-computed float64 as one more plain input alongside
+// Payment/Refund, and applies its own fixed threshold. The scorer supplies a
+// signal; this function still owns the actual approve/reject judgment.
 const mlFraudRiskRejectionThreshold = 0.8
 
 // EvaluateRefundEligibility is a concrete example of "pure domain logic
@@ -47,23 +40,17 @@ const mlFraudRiskRejectionThreshold = 0.8
 // function, and then calls refund.Approve(...) if approved or
 // refund.Reject(...) if rejected.
 //
-// classification is a plain value already computed upstream by
-// command.RefundReasonClassifier (a Technical Service) — this function never
-// calls an LLM itself and never imports the Application-layer interface that
-// produces the value; it only reads the already-computed fields. Likewise,
 // mlFraudRiskScore is a plain float64 already computed upstream by
-// command.RefundFraudRiskScorer (also a Technical Service) — this function
-// never calls a model itself either; it only weighs the number against its
-// own threshold.
-func EvaluateRefundEligibility(p *Payment, r *Refund, classification RefundReasonClassification, mlFraudRiskScore float64) RefundDecision {
+// command.RefundFraudRiskScorer (a Technical Service) — this function never
+// calls a model itself and never imports the Application-layer interface
+// that produces the value; it only weighs the number against its own fixed
+// threshold.
+func EvaluateRefundEligibility(p *Payment, r *Refund, mlFraudRiskScore float64) RefundDecision {
 	if p.Status != StatusCompleted {
 		return RefundDecision{Approved: false, Reason: ErrRefundRequiresCompletedPayment.Error()}
 	}
 	if r.Amount > p.Amount {
 		return RefundDecision{Approved: false, Reason: ErrRefundAmountExceedsPayment.Error()}
-	}
-	if classification.Category == RefundReasonFraudSuspected && classification.FraudRiskScore >= fraudRiskRejectionThreshold {
-		return RefundDecision{Approved: false, Reason: ErrRefundFlaggedHighFraudRisk.Error()}
 	}
 	if mlFraudRiskScore >= mlFraudRiskRejectionThreshold {
 		return RefundDecision{Approved: false, Reason: ErrRefundPatternFlaggedHighRisk.Error()}

@@ -10,9 +10,9 @@ import "os"
 // service for whoever operates it).
 //
 // Same "sane dev default, real value required in prod" shape as
-// OllamaBaseURL/FraudScorerBaseURL (llm.go/fraud_risk.go): empty means "no
-// collector configured," and NewTracerProvider falls back to a stdout
-// exporter so local development never needs a real collector running.
+// FraudScorerBaseURL (fraud_risk.go): empty means "no collector configured,"
+// and NewTracerProvider falls back to a stdout exporter so local development
+// never needs a real collector running.
 func OTLPEndpoint() string {
 	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 }

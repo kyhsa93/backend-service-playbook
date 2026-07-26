@@ -72,20 +72,6 @@ func (s *stubPaymentAccountAdapter) FindAccount(ctx context.Context, accountID, 
 	return s.findAccountFn(ctx, accountID, ownerID)
 }
 
-// stubRefundReasonClassifier is a mock that substitutes the command.RefundReasonClassifier
-// Technical Service port — tests never call a real LLM (per its own contract, Classify has no
-// error return, so this stub can't fail either).
-type stubRefundReasonClassifier struct {
-	classifyFn func(ctx context.Context, reason string) payment.RefundReasonClassification
-}
-
-func (s *stubRefundReasonClassifier) Classify(ctx context.Context, reason string) payment.RefundReasonClassification {
-	if s.classifyFn == nil {
-		return payment.RefundReasonClassification{Category: payment.RefundReasonOther, FraudRiskScore: 0}
-	}
-	return s.classifyFn(ctx, reason)
-}
-
 // stubRefundFraudRiskScorer is a mock that substitutes the
 // command.RefundFraudRiskScorer Technical Service port — tests never call a
 // real ML model (per its own contract, Score has no error return, so this

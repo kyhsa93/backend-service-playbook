@@ -31,19 +31,17 @@ type RequestRefundCommand struct {
 // saved with REJECTED status as-is. The Interface layer responds to this
 // not as an error but as 201 + status:REJECTED.
 type RequestRefundHandler struct {
-	payments   payment.Repository
-	refunds    payment.RefundRepository
-	classifier RefundReasonClassifier
-	scorer     RefundFraudRiskScorer
+	payments payment.Repository
+	refunds  payment.RefundRepository
+	scorer   RefundFraudRiskScorer
 }
 
 func NewRequestRefundHandler(
 	payments payment.Repository,
 	refunds payment.RefundRepository,
-	classifier RefundReasonClassifier,
 	scorer RefundFraudRiskScorer,
 ) *RequestRefundHandler {
-	return &RequestRefundHandler{payments: payments, refunds: refunds, classifier: classifier, scorer: scorer}
+	return &RequestRefundHandler{payments: payments, refunds: refunds, scorer: scorer}
 }
 
 func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundCommand) (*payment.Refund, error) {
@@ -54,14 +52,9 @@ func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundComm
 
 	r := payment.NewRefund(p.PaymentID, cmd.Amount, cmd.Reason)
 
-	// classifier is a Technical Service (command.RefundReasonClassifier) — this Handler calls it
-	// before delegating to the Domain Service below, and passes its result in as one more plain
-	// input alongside the two Aggregates.
-	classification := h.classifier.Classify(ctx, cmd.Reason)
-
-	// scorer is a second, independent Technical Service (command.RefundFraudRiskScorer) — scores
-	// the requester's refund *history pattern* rather than the free-text reason classifier
-	// handles. The two history-count queries below can't be answered by either Aggregate alone
+	// scorer is a Technical Service (command.RefundFraudRiskScorer) — scores the requester's
+	// refund *history pattern* (structured facts the requester cannot fake, unlike free-text
+	// input). The two history-count queries below can't be answered by either Aggregate alone
 	// (Refund carries no OwnerID, only PaymentID), so they're assembled here from
 	// h.refunds.SummarizeRefundsByOwner (an aggregate query, not a raw findRefunds page).
 	historyWindowStart := time.Now().Add(-riskHistoryWindowDays * 24 * time.Hour)
@@ -87,7 +80,7 @@ func (h *RequestRefundHandler) Handle(ctx context.Context, cmd RequestRefundComm
 		MinutesSincePayment:           math.Max(0, time.Since(p.CreatedAt).Minutes()),
 	})
 
-	decision := payment.EvaluateRefundEligibility(p, r, classification, mlFraudRiskScore)
+	decision := payment.EvaluateRefundEligibility(p, r, mlFraudRiskScore)
 	if decision.Approved {
 		if err := r.Approve(p.AccountID, p.OwnerID); err != nil {
 			return nil, err
