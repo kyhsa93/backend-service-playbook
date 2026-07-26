@@ -1,13 +1,10 @@
 package com.example.accountservice.payment.application.command
 
 import com.example.accountservice.payment.application.service.RefundFraudRiskScorer
-import com.example.accountservice.payment.application.service.RefundReasonClassifier
 import com.example.accountservice.payment.domain.Payment
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import com.example.accountservice.payment.domain.PaymentRepository
-import com.example.accountservice.payment.domain.RefundReasonCategory
-import com.example.accountservice.payment.domain.RefundReasonClassification
 import com.example.accountservice.payment.domain.RefundRepository
 import com.example.accountservice.payment.domain.RefundStatus
 import com.example.accountservice.payment.domain.RefundSummary
@@ -19,26 +16,22 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 /**
- * RequestRefundService loads two Aggregates (Payment/Refund), classifies the reason via the (mocked)
- * RefundReasonClassifier Technical Service, scores the refund's history pattern via the (mocked)
- * RefundFraudRiskScorer Technical Service, and delegates the decision to RefundEligibilityService (a
- * Domain Service) — this test verifies, from the Application layer's perspective, that the coordinated
- * outcome correctly leads to Refund.approve()/reject() (the unit test for the decision logic itself is
- * handled by RefundEligibilityServiceTest). Mocking both Technical Service interfaces — rather than
- * hitting a real LLM/ML model — is exactly the benefit described in domain-service.md: no external
- * dependency, no non-determinism, in this test.
+ * RequestRefundService loads two Aggregates (Payment/Refund), scores the refund's history pattern
+ * via the (mocked) RefundFraudRiskScorer Technical Service, and delegates the decision to
+ * RefundEligibilityService (a Domain Service) — this test verifies, from the Application layer's
+ * perspective, that the coordinated outcome correctly leads to Refund.approve()/reject() (the unit
+ * test for the decision logic itself is handled by RefundEligibilityServiceTest). Mocking the
+ * Technical Service interface — rather than hitting a real ML model — is exactly the benefit
+ * described in domain-service.md: no external dependency, no non-determinism, in this test.
  */
 class RequestRefundServiceTest {
     private val paymentRepository = mockk<PaymentRepository>(relaxed = true)
     private val refundRepository = mockk<RefundRepository>(relaxed = true)
-    private val refundReasonClassifier = mockk<RefundReasonClassifier>()
     private val refundFraudRiskScorer = mockk<RefundFraudRiskScorer>()
     private val service =
-        RequestRefundService(paymentRepository, refundRepository, refundReasonClassifier, refundFraudRiskScorer)
+        RequestRefundService(paymentRepository, refundRepository, refundFraudRiskScorer)
 
     init {
-        every { refundReasonClassifier.classify(any()) } returns
-            RefundReasonClassification(category = RefundReasonCategory.DEFECTIVE_PRODUCT, fraudRiskScore = 0.1)
         every { refundRepository.summarizeRefundsByOwner(any()) } returns RefundSummary(count = 0)
         every { refundFraudRiskScorer.score(any()) } returns 0.1
     }
@@ -67,7 +60,6 @@ class RequestRefundServiceTest {
 
         assertThat(result.status).isEqualTo(RefundStatus.APPROVED.name)
         verify(exactly = 1) { refundRepository.saveRefund(any()) }
-        verify(exactly = 1) { refundReasonClassifier.classify("Simple change of mind") }
     }
 
     @Test
@@ -111,30 +103,7 @@ class RequestRefundServiceTest {
     }
 
     @Test
-    fun `a refund reason flagged as high fraud risk by the classifier is rejected and saved`() {
-        val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
-        payment.complete()
-        stubPayment(payment)
-        every { refundReasonClassifier.classify("suspicious reason") } returns
-            RefundReasonClassification(category = RefundReasonCategory.FRAUD_SUSPECTED, fraudRiskScore = 0.95)
-
-        val result =
-            service.requestRefund(
-                RequestRefundCommand(
-                    paymentId = payment.paymentId,
-                    amount = 500,
-                    reason = "suspicious reason",
-                    requesterId = "owner-1",
-                ),
-            )
-
-        assertThat(result.status).isEqualTo(RefundStatus.REJECTED.name)
-        assertThat(result.decisionNote).isEqualTo("This refund reason was flagged as high fraud risk and requires manual review.")
-        verify(exactly = 1) { refundRepository.saveRefund(any()) }
-    }
-
-    @Test
-    fun `a refund flagged as high risk by the ML fraud-risk scorer is rejected and saved, even with a low-risk LLM classification`() {
+    fun `a refund flagged as high risk by the ML fraud-risk scorer is rejected and saved`() {
         val payment = Payment.create(cardId = "card-1", accountId = "account-1", ownerId = "owner-1", amount = 1000)
         payment.complete()
         stubPayment(payment)

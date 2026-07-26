@@ -1,7 +1,6 @@
 package com.example.accountservice.payment.application.command
 
 import com.example.accountservice.payment.application.service.RefundFraudRiskScorer
-import com.example.accountservice.payment.application.service.RefundReasonClassifier
 import com.example.accountservice.payment.domain.PaymentFindQuery
 import com.example.accountservice.payment.domain.PaymentNotFoundException
 import com.example.accountservice.payment.domain.PaymentRepository
@@ -19,23 +18,21 @@ private const val RISK_HISTORY_WINDOW_DAYS = 30L
 
 /**
  * A judgment that neither Aggregate can make alone (comparing the original payment's status + the
- * refund amount + the LLM-classified reason's fraud-risk signal + the ML-scored history pattern) is
- * delegated to [RefundEligibilityService] (a Domain Service) and coordinated by this Application
- * layer, which loads both the Payment and Refund Aggregates together, classifies the reason via the
- * [RefundReasonClassifier] Technical Service, and scores the refund's history pattern via the
+ * refund amount + the ML-scored history pattern) is delegated to [RefundEligibilityService] (a
+ * Domain Service) and coordinated by this Application layer, which loads both the Payment and
+ * Refund Aggregates together and scores the refund's history pattern via the
  * [RefundFraudRiskScorer] Technical Service.
  *
  * [refundEligibilityService] is a stateless, pure Domain Service, so instead of registering it as a
  * Spring bean, this Service holds it by instantiating it directly (a constructor call in Kotlin) —
- * the same reasoning as the nestjs reference. [refundReasonClassifier]/[refundFraudRiskScorer], unlike
- * [refundEligibilityService], wrap external I/O (an LLM call, an ML scoring call), so they're
- * constructor-injected rather than instantiated directly.
+ * the same reasoning as the nestjs reference. [refundFraudRiskScorer], unlike
+ * [refundEligibilityService], wraps external I/O (an ML scoring call), so it's constructor-injected
+ * rather than instantiated directly.
  */
 @Service
 class RequestRefundService(
     private val paymentRepository: PaymentRepository,
     private val refundRepository: RefundRepository,
-    private val refundReasonClassifier: RefundReasonClassifier,
     private val refundFraudRiskScorer: RefundFraudRiskScorer,
 ) {
     private val refundEligibilityService = RefundEligibilityService()
@@ -48,7 +45,6 @@ class RequestRefundService(
         val payment = payments.firstOrNull() ?: throw PaymentNotFoundException(command.paymentId)
 
         val refund = Refund.create(paymentId = payment.paymentId, amount = command.amount, reason = command.reason)
-        val classification = refundReasonClassifier.classify(command.reason)
 
         val historyWindowStart = LocalDateTime.now().minusDays(RISK_HISTORY_WINDOW_DAYS)
         val refundSummary =
@@ -78,7 +74,7 @@ class RequestRefundService(
                 ),
             )
 
-        val decision = refundEligibilityService.evaluate(payment, refund, classification, mlFraudRiskScore)
+        val decision = refundEligibilityService.evaluate(payment, refund, mlFraudRiskScore)
         if (decision.approved) {
             refund.approve(payment.accountId, payment.ownerId)
         } else {

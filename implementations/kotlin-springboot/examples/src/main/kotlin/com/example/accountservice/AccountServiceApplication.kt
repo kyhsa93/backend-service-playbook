@@ -3,7 +3,6 @@ package com.example.accountservice
 import com.example.accountservice.config.AwsProperties
 import com.example.accountservice.config.FraudScorerProperties
 import com.example.accountservice.config.JwtProperties
-import com.example.accountservice.config.LlmProperties
 import com.example.accountservice.config.SesProperties
 import com.example.accountservice.config.SqsProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -17,7 +16,6 @@ import org.springframework.scheduling.annotation.EnableScheduling
     SesProperties::class,
     JwtProperties::class,
     SqsProperties::class,
-    LlmProperties::class,
     FraudScorerProperties::class,
 )
 @EnableScheduling // Enables OutboxPoller's @Scheduled(fixedDelay = 1000)

@@ -20,30 +20,28 @@ that the Application layer, having loaded both Aggregates, delegates to:
 ```kotlin
 // payment/domain/RefundEligibilityService.kt — actual code
 class RefundEligibilityService {
-    // classification is a plain value already computed upstream by RefundReasonClassifier (a
-    // Technical Service wrapping an LLM call — see the Technical Service section below). This
-    // method never calls it and doesn't know an LLM produced the value; it only weighs the
-    // fraud-risk signal alongside its other checks and still owns the actual judgment.
-    fun evaluate(payment: Payment, refund: Refund, classification: RefundReasonClassification): RefundDecision {
+    // mlFraudRiskScore is a plain value already computed upstream by RefundFraudRiskScorer (a
+    // Technical Service trained on the requester's own structured refund/payment history — see the
+    // Technical Service section below). This method never calls it and never trains a model itself;
+    // it only weighs the score alongside its other checks and still owns the actual judgment.
+    fun evaluate(payment: Payment, refund: Refund, mlFraudRiskScore: Double): RefundDecision {
         if (payment.status != PaymentStatus.COMPLETED) {
             return RefundDecision(approved = false, reason = "A refund can only be requested for a completed payment.")
         }
         if (refund.amount > payment.amount) {
             return RefundDecision(approved = false, reason = "The refund amount cannot exceed the payment amount.")
         }
-        if (classification.category == RefundReasonCategory.FRAUD_SUSPECTED &&
-            classification.fraudRiskScore >= FRAUD_RISK_REJECTION_THRESHOLD
-        ) {
+        if (mlFraudRiskScore >= ML_FRAUD_RISK_REJECTION_THRESHOLD) {
             return RefundDecision(
                 approved = false,
-                reason = "This refund reason was flagged as high fraud risk and requires manual review.",
+                reason = "This refund pattern was flagged as high risk by the fraud-risk model and requires manual review.",
             )
         }
         return RefundDecision(approved = true)
     }
 
     companion object {
-        private const val FRAUD_RISK_REJECTION_THRESHOLD = 0.7
+        private const val ML_FRAUD_RISK_REJECTION_THRESHOLD = 0.8
     }
 }
 
@@ -64,7 +62,7 @@ needed:
 class RequestRefundService(
     private val paymentRepository: PaymentRepository,
     private val refundRepository: RefundRepository,
-    private val refundReasonClassifier: RefundReasonClassifier, // a Technical Service, DI-injected
+    private val refundFraudRiskScorer: RefundFraudRiskScorer, // a Technical Service, DI-injected
 ) {
     private val refundEligibilityService = RefundEligibilityService()
 
@@ -75,9 +73,12 @@ class RequestRefundService(
         val payment = payments.firstOrNull() ?: throw PaymentNotFoundException(command.paymentId)
 
         val refund = Refund.create(paymentId = payment.paymentId, amount = command.amount, reason = command.reason)
-        val classification = refundReasonClassifier.classify(command.reason)
+        // Assembled from the owner's own refund/payment history (refund count, rejection count,
+        // amount ratio, minutes since payment) — see RefundRiskFeatures — not from the free-text
+        // reason above, which is stored on Refund purely as a record and never fed into scoring.
+        val mlFraudRiskScore = refundFraudRiskScorer.score(/* RefundRiskFeatures built from history */)
 
-        val decision = refundEligibilityService.evaluate(payment, refund, classification)
+        val decision = refundEligibilityService.evaluate(payment, refund, mlFraudRiskScore)
         if (decision.approved) {
             refund.approve(payment.accountId, payment.ownerId)
         } else {
@@ -107,16 +108,16 @@ conclusion just happened to be a rejection.
 The **unit test** instantiates `RefundEligibilityService()` directly, without going through the
 Application layer, and verifies only the judgment logic
 (`payment/domain/RefundEligibilityServiceTest.kt`) — it puts the Payment/Refund Aggregates into the
-desired state directly via `create()`/`complete()`/`cancel()`, passes in a plain
-`RefundReasonClassification` value (no LLM call, no mocking needed), then checks only the `evaluate()`
-result. No Repository/DB appears anywhere. `RefundReasonClassifier` — the Technical Service that
-produces that value from the refund's free-text reason via an LLM call — is a real, worked example of
-the Technical Service pattern; see root [domain-service.md](../../../../docs/architecture/domain-service.md).
+desired state directly via `create()`/`complete()`/`cancel()`, passes in a plain `Double` fraud-risk
+score (no model call, no mocking needed), then checks only the `evaluate()` result. No Repository/DB
+appears anywhere. `RefundFraudRiskScorer` — the Technical Service that produces that score from the
+requester's own structured refund/payment history — is a real, worked example of the Technical
+Service pattern; see root [domain-service.md](../../../../docs/architecture/domain-service.md).
 
 Full code: `examples/.../payment/domain/{Payment.kt, Refund.kt, RefundEligibilityService.kt,
-RefundReasonClassification.kt}`,
-`examples/.../payment/application/{command/RequestRefundService.kt, service/RefundReasonClassifier.kt}`,
-`examples/.../payment/infrastructure/RefundReasonClassifierImpl.kt`.
+RefundRiskFeatures.kt}`,
+`examples/.../payment/application/{command/RequestRefundService.kt, service/RefundFraudRiskScorer.kt}`,
+`examples/.../payment/infrastructure/{RefundFraudRiskScorerNativeImpl.kt, RefundFraudRiskScorerHttpImpl.kt}`.
 
 ### Related documents
 

@@ -9,10 +9,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * registered as the bean — `native` (the default; an in-process, hand-rolled logistic regression, see
  * `payment/infrastructure/RefundFraudRiskScorerNativeImpl.kt`) needs no extra service, `http` calls the
  * shared `services/fraud-risk-scorer` microservice (see
- * `payment/infrastructure/RefundFraudRiskScorerHttpImpl.kt`) via [baseUrl]. As with [LlmProperties],
- * neither field is `@field:NotBlank`: both already have sane defaults, and a missing/blank value must
- * never fail application startup — a scoring outage is tolerated at runtime as a non-blocking
- * fallback, not a fail-fast condition.
+ * `payment/infrastructure/RefundFraudRiskScorerHttpImpl.kt`) via [baseUrl]. Neither field is
+ * `@field:NotBlank`: both already have sane defaults, and a missing/blank value must never fail
+ * application startup — a scoring outage is tolerated at runtime as a non-blocking fallback, not a
+ * fail-fast condition.
  */
 @ConfigurationProperties(prefix = "fraud-scorer")
 data class FraudScorerProperties(

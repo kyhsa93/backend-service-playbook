@@ -15,7 +15,7 @@ import java.time.Duration
 
 // Used whenever the score can't be trusted (the shared scorer unreachable, non-2xx, malformed
 // output). A neutral 0 never blocks the refund flow on its own — RefundEligibilityService's other
-// checks still run against it, the same fallback stance as RefundReasonClassifierImpl's.
+// checks still run against it.
 private const val FALLBACK_SCORE = 0.0
 
 private data class ScoreRequest(
@@ -36,8 +36,7 @@ private data class ScoreResponse(
  * HTTP — the "one shared model" side of the pair; see
  * [com.example.accountservice.config.FraudScorerProperties] for how `fraud-scorer.mode`
  * (`FRAUD_SCORER_MODE`) selects this impl over the in-process native one. Talks to the service over
- * plain HTTP via the JDK's own [HttpClient], the same choice [RefundReasonClassifierImpl] makes for
- * calling Ollama.
+ * plain HTTP via the JDK's own [HttpClient].
  */
 @Component
 @ConditionalOnProperty(prefix = "fraud-scorer", name = ["mode"], havingValue = "http")

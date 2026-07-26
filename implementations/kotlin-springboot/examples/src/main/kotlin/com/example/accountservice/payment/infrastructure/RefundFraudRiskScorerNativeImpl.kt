@@ -109,12 +109,10 @@ private fun trainLogisticRegression(examples: List<TrainingExample>): LogisticMo
 /**
  * The default implementation of [RefundFraudRiskScorer] — trains a small logistic regression
  * in-process, once, at construction (Spring beans are singletons by default, so this happens exactly
- * once per process lifetime — the same "train once, cache the weights" role
- * [com.example.accountservice.payment.infrastructure.RefundReasonClassifierImpl]'s lazily-built
- * `httpClient` plays for a different kind of one-time setup) against the synthetic dataset above. A
- * real deployment would retrain periodically against actual refund history instead of training once
- * from a fixed synthetic set at startup. Selected when `fraud-scorer.mode` (`FRAUD_SCORER_MODE`) is
- * `native` or unset — see [com.example.accountservice.config.FraudScorerProperties].
+ * once per process lifetime) against the synthetic dataset above. A real deployment would retrain
+ * periodically against actual refund history instead of training once from a fixed synthetic set at
+ * startup. Selected when `fraud-scorer.mode` (`FRAUD_SCORER_MODE`) is `native` or unset — see
+ * [com.example.accountservice.config.FraudScorerProperties].
  */
 @Component
 @ConditionalOnProperty(prefix = "fraud-scorer", name = ["mode"], havingValue = "native", matchIfMissing = true)

@@ -59,10 +59,6 @@ sqs:
   domain-event-queue-url: ${SQS_DOMAIN_EVENT_QUEUE_URL:}
   task-queue-url: ${SQS_TASK_QUEUE_URL:}
 
-llm:
-  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${REFUND_CLASSIFIER_MODEL:qwen2.5:1.5b}
-
 fraud-scorer:
   mode: ${FRAUD_SCORER_MODE:native}
   base-url: ${FRAUD_SCORER_BASE_URL:http://localhost:8000}
