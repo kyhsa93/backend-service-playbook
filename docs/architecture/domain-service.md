@@ -77,20 +77,19 @@ export interface RefundDecision {
   readonly reason?: string
 }
 
+// Coordinating these two Aggregates is the entire reason this class exists — it carries no
+// fraud-risk judgment of any kind. (An earlier iteration fed it a fraud-risk signal from an
+// LLM call classifying the requester's free-text refund reason, and a second signal from an
+// ML model scoring the requester's refund history. Both were removed: the LLM signal trusted
+// user-submitted text a bad actor could simply fabricate, and the ML signal was cut in the
+// same pass for simplicity. What's left is pure business-rule logic.)
 export class RefundEligibilityService {
-  // classification is a plain value already computed upstream by RefundReasonClassifier (a
-  // Technical Service wrapping an LLM call — see the Technical Service section below). This
-  // method never calls it and doesn't know an LLM produced the value; it only weighs the
-  // fraud-risk signal alongside its other checks and still owns the actual judgment.
-  public evaluate(payment: Payment, refund: Refund, classification: RefundReasonClassification): RefundDecision {
+  public evaluate(payment: Payment, refund: Refund): RefundDecision {
     if (payment.status !== PaymentStatus.COMPLETED) {
       return { approved: false, reason: PaymentErrorMessage['A refund can only be requested for a completed payment.'] }
     }
     if (refund.amount > payment.amount) {
       return { approved: false, reason: PaymentErrorMessage['The refund amount cannot exceed the payment amount.'] }
-    }
-    if (classification.category === 'fraud_suspected' && classification.fraudRiskScore >= 0.7) {
-      return { approved: false, reason: PaymentErrorMessage['This refund reason was flagged as high fraud risk and requires manual review.'] }
     }
     return { approved: true }
   }
@@ -98,15 +97,13 @@ export class RefundEligibilityService {
 ```
 
 ```typescript
-// application/command/request-refund-command-handler.ts — loads both Repositories, classifies
-// the reason via the Technical Service, and delegates
+// application/command/request-refund-command-handler.ts — loads both Repositories and delegates
 export class RequestRefundCommandHandler {
   private readonly refundEligibilityService = new RefundEligibilityService()
 
   constructor(
     private readonly paymentRepository: PaymentRepository,
-    private readonly refundRepository: RefundRepository,
-    private readonly refundReasonClassifier: RefundReasonClassifier // a Technical Service, DI-injected
+    private readonly refundRepository: RefundRepository
   ) {}
 
   public async execute(command: RequestRefundCommand): Promise<Refund> {
@@ -116,9 +113,8 @@ export class RequestRefundCommandHandler {
     if (!payment) throw new Error(PaymentErrorMessage['Payment not found.'])
 
     const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
-    const classification = await this.refundReasonClassifier.classify(command.reason)
 
-    const decision = this.refundEligibilityService.evaluate(payment, refund, classification)
+    const decision = this.refundEligibilityService.evaluate(payment, refund)
     if (decision.approved) refund.approve({ accountId: payment.accountId, ownerId: payment.ownerId })
     else refund.reject(decision.reason ?? 'The refund request was rejected.')
 
@@ -128,7 +124,7 @@ export class RequestRefundCommandHandler {
 }
 ```
 
-`RefundEligibilityService` holds no state and is used by instantiating it directly with `new` — it's never registered in a DI container (staying true to the "never uses a framework decorator" principle from the "Placement and naming" section above). Its unit test also doesn't go through the Application layer — it `new`s this class directly, passes in a plain `RefundReasonClassification` value (no LLM call, no mocking needed), and verifies only the decision logic. `RefundReasonClassifier` — the Technical Service that produces that value from the refund's free-text reason via an LLM call — is a real, worked example of the Technical Service pattern in the section below.
+`RefundEligibilityService` holds no state and is used by instantiating it directly with `new` — it's never registered in a DI container (staying true to the "never uses a framework decorator" principle from the "Placement and naming" section above). Its unit test also doesn't go through the Application layer — it `new`s this class directly and verifies only the decision logic against plain `Payment`/`Refund` values.
 
 Full code: `implementations/nestjs/examples/src/payment/domain/refund-eligibility-service.ts`,
 `payment.ts`, `refund.ts`, `application/command/request-refund-command-handler.ts`.
@@ -224,35 +220,6 @@ class OrderCommandService {
 
 > **When to apply this**: don't split out a simple utility function (date formatting, string conversion, etc.) as a Technical Service. Apply it to a technical concern that involves integrating with an external system, or where the implementation technology might get swapped out.
 > Examples: encryption, file storage ([file-storage.md](file-storage.md)), Secrets Manager ([secret-manager.md](secret-manager.md)), a message-queue client, an external API client, sending email/SMS, etc.
-
-**A real, working example — RefundReasonClassifier (an LLM call as a Technical Service).** An external LLM call is a technical concern like any other in this pattern — the interface is defined in the shape the Domain Service needs (a category plus a fraud-risk score, see `RefundReasonClassification` above), and the implementation is free to swap providers/models without the Application or Domain layer ever changing:
-
-```typescript
-// application/service/refund-reason-classifier.ts — the interface
-export abstract class RefundReasonClassifier {
-  abstract classify(reason: string): Promise<RefundReasonClassification>
-}
-```
-
-The implementation (`infrastructure/refund-reason-classifier-impl.ts`) calls a self-hosted, open-source LLM (Ollama, running the lightweight `qwen2.5:1.5b` model — see `docker-compose.yml`'s `ollama`/`ollama-init` services) with a JSON-schema-constrained response, and falls back to a neutral, non-blocking result (`{ category: 'other', fraudRiskScore: 0 }`) on any failure — a classification outage must never block a refund request, so the failure is swallowed at this Infrastructure boundary rather than surfaced as a domain error. Because this interface is defined "in the shape the Domain Service needs" rather than around a specific vendor's API, swapping it for Ollama (from a cloud LLM API in an earlier iteration) required no change to the Domain Service, the Application-layer interface, or any of their tests — exactly the point of the pattern. Full code: `implementations/nestjs/examples/src/payment/application/service/refund-reason-classifier.ts`, `infrastructure/refund-reason-classifier-impl.ts`.
-
-**A second real, working example — RefundFraudRiskScorer (two swappable ML implementations trained on user data).** Where `RefundReasonClassifier` classifies the refund's free-text *reason*, `RefundFraudRiskScorer` scores the requester's refund *history pattern* (refund frequency, refund/payment amount ratio, time since payment — see `RefundRiskFeatures`) with a small model trained on that data, feeding `RefundEligibilityService` a second, independent signal with its own threshold:
-
-```typescript
-// application/service/refund-fraud-risk-scorer.ts — the interface
-export abstract class RefundFraudRiskScorer {
-  abstract score(features: RefundRiskFeatures): Promise<number>
-}
-```
-
-Two implementations of this same interface exist side by side, selected by a config value (`FRAUD_SCORER_MODE=native|http`) rather than one replacing the other — demonstrating the swap the RefundReasonClassifier example above only shows historically (Claude API → Ollama), as something a deployment can toggle at will:
-
-- **`RefundFraudRiskScorerNativeImpl`** (default) — trains a small logistic regression in-process at startup (plain gradient descent, no external ML library) against a synthetic seed dataset standing in for real historical fraud-review outcomes. Self-contained; no extra service needed.
-- **`RefundFraudRiskScorerHttpImpl`** — calls a shared microservice (`services/fraud-risk-scorer/`, Python + scikit-learn, trained on an equivalent synthetic dataset) over HTTP, the same "external technical concern behind a domain-shaped interface" role Ollama plays for `RefundReasonClassifier`.
-
-This is a deliberate exception to the "placement principle" above: `services/fraud-risk-scorer/` is shared **across languages**, not across domains within one language (the case the YAGNI guidance is about). Each language's `docker-compose.yml` still builds and runs its own instance of this service (the same duplication convention `ollama`/`ollama-init` already follow) — the code is shared and reused, but no language's stack depends on another language's running container.
-
-Full code: `implementations/nestjs/examples/src/payment/application/service/refund-fraud-risk-scorer.ts`, `infrastructure/refund-fraud-risk-scorer-native-impl.ts`, `infrastructure/refund-fraud-risk-scorer-http-impl.ts`, `services/fraud-risk-scorer/`.
 
 ---
 
