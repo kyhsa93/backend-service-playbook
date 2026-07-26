@@ -8,7 +8,7 @@ This is implemented to match the root document's criteria — `examples/docker-c
 
 ```
 implementations/fastapi/examples/
-  docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager, SQS) + Ollama + app(profiles: [app])
+  docker-compose.yml         ← Postgres + LocalStack(SES, Secrets Manager, SQS) + app(profiles: [app])
   .env.example                ← the committed template — copy this to create .env.development
   .gitignore                  ← excludes local-only values from commits via the .env* pattern
   localstack/
@@ -47,44 +47,6 @@ services:
       timeout: 3s
       retries: 5
 
-  ollama:
-    image: ollama/ollama:latest
-    ports: ['11434:11434']
-    volumes: ['ollama-data:/root/.ollama']
-    healthcheck:
-      test: ['CMD-SHELL', 'ollama list || exit 1']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  # A one-shot init container — pulls the classifier model into the shared ollama-data volume
-  # once, then exits. `app` depends on it completing (service_completed_successfully), the same
-  # role LocalStack's init/ready.d scripts play for AWS resources.
-  ollama-init:
-    image: ollama/ollama:latest
-    entrypoint: ['/bin/sh', '-c']
-    command: ['ollama pull qwen2.5:1.5b']
-    environment:
-      OLLAMA_HOST: ollama:11434
-    depends_on:
-      ollama:
-        condition: service_healthy
-
-  # Optional — only needed when FRAUD_SCORER_MODE=http (default is 'native', which needs no
-  # extra service). Not in `app`'s depends_on since it lives under a separate profile: bring it
-  # up alongside `app` with `docker compose --profile app --profile ml up -d` after setting
-  # FRAUD_SCORER_MODE=http. See config/fraud_risk_config.py.
-  fraud-risk-scorer:
-    build: ../../../services/fraud-risk-scorer
-    ports: ['8001:8000']
-    healthcheck:
-      test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    profiles:
-      - ml
-
   app:
     build: .
     ports: ['8000:8000']
@@ -96,26 +58,17 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
       SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/tasks.fifo
-      OLLAMA_BASE_URL: http://ollama:11434
-      FRAUD_SCORER_BASE_URL: http://fraud-risk-scorer:8000
     depends_on:
       database:
         condition: service_healthy
       localstack:
         condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
     profiles:
       - app
 
 volumes:
   db-data:
-  ollama-data:
 ```
-
-`ollama` (the open-source LLM server, for `payment/infrastructure/refund_reason_classifier_impl.py`) serves the model over its native `/api/chat` HTTP endpoint; `ollama-init` (the one-shot pull container above) runs once and exits.
-
-`fraud-risk-scorer` (the shared ML microservice behind `payment/infrastructure/refund_fraud_risk_scorer_http_impl.py` — see `docs/architecture/domain-service.md`'s (root) second RefundFraudRiskScorer example) sits under its own `profiles: [ml]` and isn't in `app`'s `depends_on`, since the default `FRAUD_SCORER_MODE=native` needs no extra service. Its host port is mapped to `8001` (not `8000`) since `app` already binds the host's `8000` — inside the Compose network it's still reachable at `http://fraud-risk-scorer:8000`.
 
 ```bash
 # localstack/init-ses.sh
@@ -193,12 +146,6 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret
 APP_ENV=development
-
-OLLAMA_BASE_URL=http://localhost:11434
-REFUND_CLASSIFIER_MODEL=qwen2.5:1.5b
-
-FRAUD_SCORER_MODE=native
-FRAUD_SCORER_BASE_URL=http://localhost:8000
 ```
 
 With `APP_ENV=development` (or unset), `main.py`'s `lifespan` doesn't call Secrets Manager and uses the `JWT_SECRET` environment variable as-is — only when `APP_ENV=production` does it look up the `app/jwt` secret created by `localstack/init-secrets.sh` (see [secret-manager.md](secret-manager.md)).

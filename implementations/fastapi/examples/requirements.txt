@@ -11,8 +11,6 @@ alembic
 slowapi
 apscheduler
 httpx
-scikit-learn
-numpy
 prometheus-fastapi-instrumentator
 opentelemetry-api
 opentelemetry-sdk

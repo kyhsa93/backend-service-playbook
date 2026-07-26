@@ -159,7 +159,7 @@ class DepositHandler:
 
 `src/account/infrastructure/notification/notification_service.py` and `src/common/aws_secret_service.py` each instantiate `AwsConfig()` and build their boto3 client via `client_kwargs()` — correctly placed (Infrastructure), and assembled through `AwsConfig` rather than calling `os.getenv` scattered around.
 
-Not every `config/` file needs to be a `BaseSettings` class — `config/llm_config.py` (`OLLAMA_BASE_URL`, `REFUND_CLASSIFIER_MODEL`) and `config/fraud_risk_config.py` (`FRAUD_SCORER_MODE`, `FRAUD_SCORER_BASE_URL`) are plain `os.getenv(...)`-with-a-default functions instead, since these values (which mode/host to talk to) are simple opt-in toggles with a safe default, not values that should halt startup if missing. `payment/infrastructure/refund_fraud_risk_scorer_native_impl.py` (in-process) and `payment/infrastructure/refund_fraud_risk_scorer_http_impl.py` (the shared `services/fraud-risk-scorer` microservice) are two implementations of `RefundFraudRiskScorer` selected via `get_fraud_scorer_mode()` — see `docs/architecture/domain-service.md` (root, shared across languages) for the pattern this demonstrates.
+Not every `config/` file needs to be a `BaseSettings` class — `config/rate_limit_config.py` (`RATE_LIMIT_DEFAULT`, `RATE_LIMIT_WRITE`) and `config/interest_config.py` (`ACCOUNT_INTEREST_DAILY_RATE`) instead just read `os.getenv(...)` with a default in their constructor, since these values are tunable operational parameters with a safe default, not values that should halt startup if missing.
 
 Whether `domain/`/`application/` call `os.environ`/`os.getenv` directly is checked by the harness's `no-direct-env-access-outside-config` rule.
 
