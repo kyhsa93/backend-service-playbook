@@ -19,10 +19,13 @@ import com.example.accountservice.account.application.command.TransferResult
 import com.example.accountservice.account.application.command.TransferService
 import com.example.accountservice.account.application.command.WithdrawCommand
 import com.example.accountservice.account.application.command.WithdrawService
+import com.example.accountservice.account.application.query.AskTransactionHistoryResult
+import com.example.accountservice.account.application.query.AskTransactionHistoryService
 import com.example.accountservice.account.application.query.GetAccountResult
 import com.example.accountservice.account.application.query.GetAccountService
 import com.example.accountservice.account.application.query.GetTransactionsResult
 import com.example.accountservice.account.application.query.GetTransactionsService
+import com.example.accountservice.account.domain.TransactionType
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -31,6 +34,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -42,6 +46,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
 @RestController
 @RequestMapping("/accounts")
@@ -65,6 +70,7 @@ class AccountController(
     private val deleteAccountService: DeleteAccountService,
     private val getAccountService: GetAccountService,
     private val getTransactionsService: GetTransactionsService,
+    private val askTransactionHistoryService: AskTransactionHistoryService,
 ) {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -291,7 +297,9 @@ class AccountController(
     @GetMapping("/{accountId}/transactions")
     @Operation(
         summary = "List an account's transaction history",
-        description = "Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with `page`/`take`.",
+        description =
+            "Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with `page`/`take`, " +
+                "optionally narrowed by `type`/`fromDate`/`toDate`.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "The transaction history was found."),
@@ -306,5 +314,35 @@ class AccountController(
         @PathVariable accountId: String,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") take: Int,
-    ): GetTransactionsResult = getTransactionsService.getTransactions(accountId, authentication.name, page, take)
+        @RequestParam(required = false) type: TransactionType?,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) fromDate: LocalDate?,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) toDate: LocalDate?,
+    ): GetTransactionsResult = getTransactionsService.getTransactions(accountId, authentication.name, page, take, type, fromDate, toDate)
+
+    @PostMapping("/{accountId}/transactions/ask")
+    @Operation(
+        summary = "Ask a natural-language question about an account's transaction history",
+        description =
+            "Answers a free-text question (e.g. \"How much did I deposit this month?\") using only the requester's own " +
+                "transactions — a structured-data RAG pipeline: the question is translated into a filter, matching " +
+                "transactions are retrieved, and the answer is generated grounded only in those records.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "An answer was generated."),
+        ApiResponse(
+            responseCode = "400",
+            description = "Request validation failed (`VALIDATION_FAILED`) — e.g. an empty or overly long `question`.",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "404",
+            description = "No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
+    fun askTransactionHistory(
+        authentication: Authentication,
+        @PathVariable accountId: String,
+        @Valid @RequestBody request: AskTransactionHistoryRequest,
+    ): AskTransactionHistoryResult = askTransactionHistoryService.ask(accountId, authentication.name, request.question)
 }

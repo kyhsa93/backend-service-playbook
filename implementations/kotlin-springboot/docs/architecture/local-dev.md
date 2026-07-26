@@ -40,6 +40,8 @@ volumes:
 
 Both infrastructure services — Postgres + LocalStack (SES/Secrets Manager/SQS) — have a `healthcheck` configured, following the root's "every infrastructure service must have a healthcheck" principle as-is. Calling an actual service API, like `awslocal ses list-identities` (rather than just checking that the process is alive), also matches the root's recommendation.
 
+`ollama` (the open-source LLM server, for `account/infrastructure/NlTransactionQueryTranslatorImpl.kt`/`NlTransactionAnswerComposerImpl.kt` — see [domain-service.md](domain-service.md)) and `ollama-init` (a one-shot container that runs `ollama pull qwen2.5:1.5b` once against it, the same role LocalStack's init scripts play) are omitted from the snippet above for brevity — see the actual `docker-compose.yml` for their full definitions. `app` depends on `ollama-init` completing (`service_completed_successfully`), not just `ollama` being healthy, so the app never starts against a model that hasn't finished downloading yet.
+
 ---
 
 ## LocalStack SES initialization — `init-ses.sh`
@@ -95,13 +97,15 @@ convention in [domain-events.md](domain-events.md), [scheduling.md](scheduling.m
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
+      OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database: { condition: service_healthy }
       localstack: { condition: service_healthy }
+      ollama-init: { condition: service_completed_successfully }
     profiles: ['app']
 ```
 
-`.env.example` (committed) and `.env.development` (in `.gitignore`, created by copying `.env.example`) also already exist — they hold `SPRING_DATASOURCE_URL`/`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`SES_SENDER_EMAIL`/`JWT_SECRET`. Since the Gradle/Kotlin build is heavy (compilation + daemon), the default workflow is to develop on the host with `./gradlew bootRun` + IDE incremental compilation/hot reload (Spring DevTools); the `app` service is used when you want to verify against the exact same container as the deployment environment.
+`.env.example` (committed) and `.env.development` (in `.gitignore`, created by copying `.env.example`) also already exist — they hold `SPRING_DATASOURCE_URL`/`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`SES_SENDER_EMAIL`/`JWT_SECRET`/`OLLAMA_BASE_URL`/`LLM_MODEL`. Since the Gradle/Kotlin build is heavy (compilation + daemon), the default workflow is to develop on the host with `./gradlew bootRun` + IDE incremental compilation/hot reload (Spring DevTools); the `app` service is used when you want to verify against the exact same container as the deployment environment.
 
 ---
 

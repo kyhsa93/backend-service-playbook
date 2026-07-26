@@ -739,4 +739,49 @@ class AccountControllerE2ETest {
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         assertThat(response.body!!["count"]).isEqualTo(0)
     }
+
+    // The LLM behind NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl (see
+    // account/infrastructure) isn't available in this e2e environment, so both calls fall back to
+    // their non-blocking defaults: an empty filter (all of the account's transactions) and a plain
+    // templated summary. This still exercises the real retrieval + response shape end to end
+    // without depending on a live Ollama.
+    @Test
+    fun `returns 200 with an answer grounded in the requesters own transactions when asked a question`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+
+        val response =
+            post("/accounts/${account["accountId"]}/transactions/ask", OWNER_ID, mapOf("question" to "How much have I deposited?"))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        val body = response.body!!
+        assertThat(body["answer"]).isInstanceOf(String::class.java)
+        assertThat((body["answer"] as String)).isNotEmpty()
+        assertThat(body["matchedCount"]).isEqualTo(1)
+    }
+
+    @Test
+    fun `returns 400 when the question is empty`() {
+        val account = createAccount(OWNER_ID, "KRW")
+
+        val response = post("/accounts/${account["accountId"]}/transactions/ask", OWNER_ID, mapOf("question" to ""))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
+    fun `returns 404 when asking about a nonexistent account`() {
+        val response = post("/accounts/non-existent/transactions/ask", OWNER_ID, mapOf("question" to "anything"))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+    }
+
+    @Test
+    fun `returns 404 when a different owner asks about this account`() {
+        val account = createAccount(OWNER_ID, "KRW")
+
+        val response = post("/accounts/${account["accountId"]}/transactions/ask", OTHER_OWNER_ID, mapOf("question" to "anything"))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+    }
 }

@@ -139,6 +139,24 @@ The `jwt.secret` property registered this way goes into a property source with h
 
 ---
 
+## A non-consumer, by design — NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl
+
+`account/infrastructure/NlTransactionQueryTranslatorImpl.kt`/`NlTransactionAnswerComposerImpl.kt` (the two LLM Technical Services behind the structured-data RAG pipeline — see [domain-service.md](domain-service.md)) do not inject `SecretService` at all, in production or otherwise. They call a self-hosted Ollama instance (`docker-compose.yml`'s `ollama`/`ollama-init` services) over plain HTTP, and the only configuration they need — the base URL and model name — is a plain, non-sensitive value bound via `@ConfigurationProperties` (`config/LlmProperties.kt`), exactly like `AwsProperties.region` or `SesProperties.senderEmail`:
+
+```kotlin
+// config/LlmProperties.kt — actual code
+@Validated
+@ConfigurationProperties(prefix = "llm")
+data class LlmProperties(
+    @field:NotBlank val ollamaBaseUrl: String,
+    @field:NotBlank val model: String,
+)
+```
+
+There's nothing in either Technical Service for `SecretService`/Secrets Manager to protect — since Ollama is self-hosted, there's no API key to guard. `HttpClient` (the client both implementations call Ollama's `/api/chat` endpoint with) is exposed as a shared bean (`config/LlmHttpClientConfig.kt`) rather than constructed internally, purely so a unit test can inject a mock instead of making a real network call — an orthogonal, testability-only reason, unrelated to secret handling.
+
+---
+
 ## Local development — LocalStack
 
 ```yaml

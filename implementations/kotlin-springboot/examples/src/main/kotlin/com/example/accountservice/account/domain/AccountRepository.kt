@@ -54,8 +54,18 @@ data class AccountFindQuery(
     val excludeInterestPaidDate: LocalDate? = null,
 )
 
+/**
+ * The query parameters for `findTransactions` — [type]/[fromDate]/[toDate] are optional narrowing
+ * filters (see `AskTransactionHistoryService` and the `GET /accounts/{accountId}/transactions`
+ * endpoint). Deliberately has no `ownerId` field: account ownership is always verified separately
+ * via `AccountQuery.findAccounts` before this query ever runs, scoped only by [accountId] (see
+ * repository-pattern.md).
+ */
 data class TransactionFindQuery(
     val accountId: String,
     val page: Int,
     val take: Int,
+    val type: TransactionType? = null,
+    val fromDate: LocalDate? = null,
+    val toDate: LocalDate? = null,
 )

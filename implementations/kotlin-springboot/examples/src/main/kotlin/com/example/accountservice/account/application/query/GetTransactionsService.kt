@@ -3,8 +3,10 @@ package com.example.accountservice.account.application.query
 import com.example.accountservice.account.domain.AccountFindQuery
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.domain.TransactionFindQuery
+import com.example.accountservice.account.domain.TransactionType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 
 @Service
 @Transactional(readOnly = true)
@@ -16,6 +18,9 @@ class GetTransactionsService(
         requesterId: String,
         page: Int,
         take: Int,
+        type: TransactionType? = null,
+        fromDate: LocalDate? = null,
+        toDate: LocalDate? = null,
     ): GetTransactionsResult {
         val (accounts, _) =
             accountQuery.findAccounts(
@@ -24,7 +29,9 @@ class GetTransactionsService(
         accounts.firstOrNull() ?: throw AccountNotFoundException(accountId)
 
         val (transactions, count) =
-            accountQuery.findTransactions(TransactionFindQuery(accountId = accountId, page = page, take = take))
+            accountQuery.findTransactions(
+                TransactionFindQuery(accountId = accountId, page = page, take = take, type = type, fromDate = fromDate, toDate = toDate),
+            )
 
         return GetTransactionsResult(
             transactions =

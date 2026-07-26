@@ -29,11 +29,15 @@ aws:
 
 ses:
   sender-email: ${SES_SENDER_EMAIL:no-reply@backend-service-playbook.example.com}
+
+llm:
+  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${LLM_MODEL:qwen2.5:1.5b}
 ```
 
 (For `ddl-auto`/migrations, see [persistence.md](persistence.md) — managed via Flyway.)
 
-The `aws`/`ses` namespaces have both per-concern separation and fail-fast validation via `@ConfigurationProperties` + `@Validated`. **`jwt.secret` follows the same pattern too** — it's wrapped in `JwtProperties(@field:NotBlank val secret: String)` + `@ConfigurationProperties(prefix = "jwt")`, and `AuthService`/`JwtAuthenticationFilter` constructor-inject this `JwtProperties` instead of using `@Value`. Below, all three namespaces are laid out with the actual code.
+The `aws`/`ses` namespaces have both per-concern separation and fail-fast validation via `@ConfigurationProperties` + `@Validated`. **`jwt.secret` follows the same pattern too** — it's wrapped in `JwtProperties(@field:NotBlank val secret: String)` + `@ConfigurationProperties(prefix = "jwt")`, and `AuthService`/`JwtAuthenticationFilter` constructor-inject this `JwtProperties` instead of using `@Value`. Below, all three namespaces are laid out with the actual code. `LlmProperties` (the self-hosted Ollama base URL/model used by `account/infrastructure/NlTransactionQueryTranslatorImpl.kt`/`NlTransactionAnswerComposerImpl.kt` — see [domain-service.md](domain-service.md)) is a plain, non-sensitive value like `SesProperties.senderEmail` — it needs no Secrets Manager lookup (see [secret-manager.md](secret-manager.md)).
 
 ---
 

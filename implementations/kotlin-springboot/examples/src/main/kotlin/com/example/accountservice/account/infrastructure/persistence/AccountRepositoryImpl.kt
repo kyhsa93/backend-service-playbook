@@ -10,7 +10,6 @@ import com.example.accountservice.account.domain.TransactionFindQuery
 import com.example.accountservice.account.domain.TransactionType
 import com.example.accountservice.outbox.OutboxWriter
 import jakarta.persistence.EntityManager
-import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
@@ -88,11 +87,21 @@ class AccountRepositoryImpl(
     }
 
     override fun findTransactions(query: TransactionFindQuery): Pair<List<Transaction>, Long> {
+        val jpql = buildTransactionJpql(query, count = false)
         val transactions =
-            transactionJpaRepository
-                .findByAccountIdOrderByCreatedAtDesc(query.accountId, PageRequest.of(query.page, query.take))
+            em
+                .createQuery(jpql, TransactionJpaEntity::class.java)
+                .setFirstResult(query.page * query.take)
+                .setMaxResults(query.take)
+                .apply { applyTransactionParams(this, query) }
+                .resultList
                 .map(TransactionMapper::toDomain)
-        val count = transactionJpaRepository.countByAccountId(query.accountId)
+        val countJpql = buildTransactionJpql(query, count = true)
+        val count =
+            em
+                .createQuery(countJpql, Long::class.java)
+                .apply { applyTransactionParams(this, query) }
+                .singleResult
         return transactions to count
     }
 
@@ -131,5 +140,28 @@ class AccountRepositoryImpl(
         if (!query.ownerId.isNullOrBlank()) q.setParameter("ownerId", query.ownerId)
         if (!query.status.isNullOrEmpty()) q.setParameter("status", query.status.map { AccountStatus.valueOf(it) })
         if (query.excludeInterestPaidDate != null) q.setParameter("excludeInterestPaidDate", query.excludeInterestPaidDate)
+    }
+
+    private fun buildTransactionJpql(
+        query: TransactionFindQuery,
+        count: Boolean,
+    ): String {
+        val select = if (count) "SELECT COUNT(t)" else "SELECT t"
+        val sb = StringBuilder("$select FROM TransactionJpaEntity t WHERE t.accountId = :accountId")
+        if (query.type != null) sb.append(" AND t.type = :type")
+        if (query.fromDate != null) sb.append(" AND t.createdAt >= :fromDate")
+        if (query.toDate != null) sb.append(" AND t.createdAt <= :toDate")
+        if (!count) sb.append(" ORDER BY t.createdAt DESC")
+        return sb.toString()
+    }
+
+    private fun applyTransactionParams(
+        q: jakarta.persistence.Query,
+        query: TransactionFindQuery,
+    ) {
+        q.setParameter("accountId", query.accountId)
+        if (query.type != null) q.setParameter("type", query.type)
+        if (query.fromDate != null) q.setParameter("fromDate", query.fromDate.atStartOfDay())
+        if (query.toDate != null) q.setParameter("toDate", query.toDate.atTime(23, 59, 59, 999_000_000))
     }
 }

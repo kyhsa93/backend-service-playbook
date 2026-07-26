@@ -3,6 +3,7 @@ package com.example.accountservice.account.interfaces.rest
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 
 data class CreateAccountRequest(
     @field:Schema(description = "The ISO 4217 currency code the account balance is denominated in.", example = "USD")
@@ -31,6 +32,16 @@ data class TransferRequest(
         example = "2500",
     )
     val amount: Long,
+)
+
+data class AskTransactionHistoryRequest(
+    @field:NotBlank
+    @field:Size(max = 500)
+    @field:Schema(
+        description = "A free-text question about this account's transaction history.",
+        example = "How much did I deposit this month?",
+    )
+    val question: String,
 )
 
 data class ErrorResponse(

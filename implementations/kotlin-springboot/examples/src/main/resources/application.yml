@@ -59,6 +59,14 @@ sqs:
   domain-event-queue-url: ${SQS_DOMAIN_EVENT_QUEUE_URL:}
   task-queue-url: ${SQS_TASK_QUEUE_URL:}
 
+# The self-hosted Ollama instance behind the two NL transaction-history Technical Services
+# (account/infrastructure/NlTransactionQueryTranslatorImpl.kt/NlTransactionAnswerComposerImpl.kt) —
+# see docker-compose.yml's ollama/ollama-init services. No API key: it's a self-hosted open-source
+# model, so ollama-base-url is a plain @ConfigurationProperties value, not a secret.
+llm:
+  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${LLM_MODEL:qwen2.5:1.5b}
+
 springdoc:
   api-docs:
     path: /v3/api-docs
