@@ -86,17 +86,6 @@ class PaymentControllerE2ETest {
         registry.add("aws.access-key-id", () -> localstack.getAccessKey());
         registry.add("aws.secret-access-key", () -> localstack.getSecretKey());
         registry.add("sqs.domain-event-queue-url", PaymentControllerE2ETest::domainEventQueueUrl);
-
-        // OWNER_ID below is shared across every test method in this class, and the Testcontainers
-        // Postgres instance persists refund history across them (no per-test reset) — so
-        // RefundFraudRiskScorerNativeImpl (the default) would see accumulating refund history
-        // across unrelated test methods and could legitimately reject a later test's refund based
-        // on an earlier, unrelated test's rejected refunds. Force the http impl against an
-        // unreachable address instead, so scoring deterministically falls back to 0 for every
-        // call in this suite — the same fix applied in the Go port (see
-        // RefundFraudRiskScorerHttpImpl.java's fallback-on-failure behavior).
-        registry.add("fraud-scorer.mode", () -> "http");
-        registry.add("fraud-scorer.base-url", () -> "http://localhost:1");
     }
 
     @Autowired private TestRestTemplate restTemplate;
@@ -387,11 +376,9 @@ class PaymentControllerE2ETest {
 
     @Test
     void returns_201_and_APPROVED_status_and_credits_the_account_for_a_valid_refund_request() {
-        // A dedicated owner id (not the shared OWNER_ID) — RefundFraudRiskScorer's native
-        // implementation weighs this owner's actual refund history (see
-        // RefundRepository.summarizeRefundsByOwner), and OWNER_ID accumulates refunds/rejections
-        // across the other tests in this class (no per-test cleanup). Reusing it here would make
-        // this test's ML fraud-risk score depend on execution order/what ran before it.
+        // A dedicated owner id (not the shared OWNER_ID, which accumulates refunds across the
+        // other tests in this class with no per-test cleanup) so this test's balance assertions
+        // stay independent of what ran before it.
         String ownerId = "payment-owner-valid-refund";
         Map<String, Object> account = createAccount(ownerId);
         String accountId = (String) account.get("accountId");

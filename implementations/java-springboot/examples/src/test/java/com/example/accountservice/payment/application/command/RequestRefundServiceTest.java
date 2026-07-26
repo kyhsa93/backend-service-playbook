@@ -3,23 +3,17 @@ package com.example.accountservice.payment.application.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.accountservice.payment.application.query.GetRefundResult;
-import com.example.accountservice.payment.application.service.RefundFraudRiskScorer;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
 import com.example.accountservice.payment.domain.PaymentRepository;
 import com.example.accountservice.payment.domain.PaymentsWithCount;
 import com.example.accountservice.payment.domain.RefundRepository;
-import com.example.accountservice.payment.domain.RefundStatus;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,12 +23,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * RefundEligibilityService (a Domain Service) is a plain class, so it isn't mocked — this spec
- * verifies the flow where the Application layer loads both Repositories, summarizes the requester's
- * refund history via RefundRepository#summarizeRefundsByOwner and scores it via the (mocked)
- * RefundFraudRiskScorer Technical Service, delegates to the real judgment logic, and
- * approves/rejects and saves the Refund based on the result. Mocking the Technical Service
- * interface — rather than hitting a real ML model — is exactly the benefit described in
- * domain-service.md: no external dependency, no non-determinism, in this test.
+ * verifies the flow where the Application layer loads both Repositories, delegates to the real
+ * judgment logic, and approves/rejects and saves the Refund based on the result.
  */
 @ExtendWith(MockitoExtension.class)
 class RequestRefundServiceTest {
@@ -43,20 +33,11 @@ class RequestRefundServiceTest {
 
     @Mock private RefundRepository refundRepository;
 
-    @Mock private RefundFraudRiskScorer refundFraudRiskScorer;
-
     private RequestRefundService service;
 
     @BeforeEach
     void setUp() {
-        service =
-                new RequestRefundService(
-                        paymentRepository, refundRepository, refundFraudRiskScorer);
-        // A safe default so tests not exercising the ML threshold branch aren't rejected by it.
-        lenient().when(refundFraudRiskScorer.score(any())).thenReturn(0.0);
-        lenient()
-                .when(refundRepository.summarizeRefundsByOwner(anyString(), any(), any()))
-                .thenReturn(0L);
+        service = new RequestRefundService(paymentRepository, refundRepository);
     }
 
     private Payment completedPayment(long amount) {
@@ -79,7 +60,6 @@ class RequestRefundServiceTest {
 
         assertThat(result.status()).isEqualTo("APPROVED");
         verify(refundRepository).saveRefund(any());
-        verify(refundFraudRiskScorer).score(any());
     }
 
     @Test
@@ -112,42 +92,6 @@ class RequestRefundServiceTest {
         assertThat(result.status()).isEqualTo("REJECTED");
         assertThat(result.decisionNote())
                 .isEqualTo("A refund can only be requested for a completed payment.");
-    }
-
-    @Test
-    void saves_as_REJECTED_without_throwing_when_the_ml_fraud_risk_scorer_flags_high_risk() {
-        Payment payment = completedPayment(1000);
-        when(refundFraudRiskScorer.score(any())).thenReturn(0.9);
-
-        GetRefundResult result =
-                service.request(
-                        new RequestRefundCommand(
-                                payment.getPaymentId(), 500, "change of mind", "owner-1"));
-
-        assertThat(result.status()).isEqualTo("REJECTED");
-        assertThat(result.decisionNote())
-                .isEqualTo(
-                        "This refund pattern was flagged as high risk by the fraud-risk model and"
-                                + " requires manual review.");
-        verify(refundRepository).saveRefund(any());
-    }
-
-    @Test
-    void summarizes_the_requesters_refund_history_by_owner_including_a_rejected_only_count() {
-        Payment payment = completedPayment(1000);
-        when(refundRepository.summarizeRefundsByOwner(eq("owner-1"), any(), isNull()))
-                .thenReturn(3L);
-        when(refundRepository.summarizeRefundsByOwner(
-                        eq("owner-1"), any(), eq(RefundStatus.REJECTED)))
-                .thenReturn(1L);
-
-        service.request(
-                new RequestRefundCommand(payment.getPaymentId(), 500, "change of mind", "owner-1"));
-
-        verify(refundRepository).summarizeRefundsByOwner(eq("owner-1"), any(), isNull());
-        verify(refundRepository)
-                .summarizeRefundsByOwner(eq("owner-1"), any(), eq(RefundStatus.REJECTED));
-        verify(refundFraudRiskScorer).score(any());
     }
 
     @Test

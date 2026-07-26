@@ -90,7 +90,6 @@ The DLQ is created first, then attached to the main queue via `RedrivePolicy` �
       # Inside the container network, connect via service name instead of localhost.
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
-      FRAUD_SCORER_BASE_URL: http://fraud-risk-scorer:8000
     depends_on:
       database: { condition: service_healthy }
       localstack: { condition: service_healthy }
@@ -98,8 +97,6 @@ The DLQ is created first, then attached to the main queue via `RedrivePolicy` �
 ```
 
 Since `environment:` takes precedence over `env_file:`, the same `.env.development` used for running directly on the host is reused as-is, while overriding only the values needed specifically inside the container network (`SPRING_DATASOURCE_URL`, `AWS_ENDPOINT_URL`).
-
-`fraud-risk-scorer` (the shared ML microservice behind `payment/infrastructure/RefundFraudRiskScorerHttpImpl.java` — see [domain-service.md](domain-service.md)'s second `RefundFraudRiskScorer` example) sits under its own `profiles: [ml]` and isn't in `app`'s `depends_on`, since the default `FRAUD_SCORER_MODE=native` needs no extra service (it trains an in-process model instead — see `RefundFraudRiskScorerNativeImpl.java`). Bring it up alongside `app` with `docker compose --profile app --profile ml up -d` after setting `FRAUD_SCORER_MODE=http`.
 
 Both `.env.example` (committed) and `.env.development` (in `.gitignore`, created by copying `.env.example`) already exist:
 
@@ -117,9 +114,6 @@ SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret-local-dev-secret
-
-FRAUD_SCORER_MODE=native
-FRAUD_SCORER_BASE_URL=http://localhost:8000
 ```
 
 Since Spring Boot doesn't automatically read `.env` files (there's no standard mechanism equivalent to Node's `dotenv`), you load it into the shell yourself — e.g. `export $(cat .env.development | xargs) && ./gradlew bootRun` — or use something like direnv. Since `application.yml` embeds defaults in the form `${AWS_ACCESS_KEY_ID:test}`, local startup is possible even without `.env.development` — `.env.development` is used when you want to manage those defaults explicitly.

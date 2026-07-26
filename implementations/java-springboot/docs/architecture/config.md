@@ -29,10 +29,6 @@ ses:
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
-
-fraud-scorer:
-  mode: ${FRAUD_SCORER_MODE:native}
-  base-url: ${FRAUD_SCORER_BASE_URL:http://localhost:8000}
 ```
 
 (For `ddl-auto`/migration status, see [persistence.md](persistence.md) — migrations are managed by Flyway.)

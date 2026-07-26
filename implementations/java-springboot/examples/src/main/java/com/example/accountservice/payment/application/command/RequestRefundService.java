@@ -1,7 +1,6 @@
 package com.example.accountservice.payment.application.command;
 
 import com.example.accountservice.payment.application.query.GetRefundResult;
-import com.example.accountservice.payment.application.service.RefundFraudRiskScorer;
 import com.example.accountservice.payment.domain.Payment;
 import com.example.accountservice.payment.domain.PaymentException;
 import com.example.accountservice.payment.domain.PaymentFindQuery;
@@ -10,21 +9,12 @@ import com.example.accountservice.payment.domain.Refund;
 import com.example.accountservice.payment.domain.RefundDecision;
 import com.example.accountservice.payment.domain.RefundEligibilityService;
 import com.example.accountservice.payment.domain.RefundRepository;
-import com.example.accountservice.payment.domain.RefundRiskFeatures;
-import com.example.accountservice.payment.domain.RefundStatus;
-import java.time.Duration;
-import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class RequestRefundService {
-
-    // How far back RefundFraudRiskScorer's feature assembly looks when summarizing the
-    // requester's refund history (see RefundRiskFeatures.refundCountLast30Days/
-    // rejectedRefundCountLast30Days).
-    private static final int RISK_HISTORY_WINDOW_DAYS = 30;
 
     // RefundEligibilityService is a pure Domain Service with no framework annotations.
     // It is instantiated directly instead of being registered as a Spring bean (it's stateless
@@ -34,11 +24,6 @@ public class RequestRefundService {
 
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
-
-    // RefundFraudRiskScorer is a Technical Service (DI-bound to its real implementation) — unlike
-    // RefundEligibilityService above, it wraps external I/O (an ML model), so it's injected rather
-    // than `new`'d directly.
-    private final RefundFraudRiskScorer refundFraudRiskScorer;
 
     public GetRefundResult request(RequestRefundCommand command) {
         Payment payment =
@@ -57,33 +42,11 @@ public class RequestRefundService {
 
         Refund refund = Refund.create(payment.getPaymentId(), command.amount(), command.reason());
 
-        LocalDateTime historyWindowStart = LocalDateTime.now().minusDays(RISK_HISTORY_WINDOW_DAYS);
-        long refundCountLast30Days =
-                refundRepository.summarizeRefundsByOwner(
-                        payment.getOwnerId(), historyWindowStart, null);
-        long rejectedRefundCountLast30Days =
-                refundRepository.summarizeRefundsByOwner(
-                        payment.getOwnerId(), historyWindowStart, RefundStatus.REJECTED);
-        double minutesSincePayment =
-                Math.max(
-                        0,
-                        Duration.between(payment.getCreatedAt(), LocalDateTime.now()).toSeconds()
-                                / 60.0);
-        double mlFraudRiskScore =
-                refundFraudRiskScorer.score(
-                        new RefundRiskFeatures(
-                                refundCountLast30Days,
-                                rejectedRefundCountLast30Days,
-                                (double) refund.getAmount() / payment.getAmount(),
-                                minutesSincePayment));
-
         // A judgment that no single Aggregate alone can make (comparing the original payment's
-        // state, the refund amount, and the fraud-risk signal scored above) is delegated to
-        // RefundEligibilityService (a Domain Service) by this Application layer, which has loaded
-        // both the Payment and Refund Aggregates together, and summarized+scored the refund
-        // history pattern via the Technical Service above to coordinate it.
-        RefundDecision decision =
-                refundEligibilityService.evaluate(payment, refund, mlFraudRiskScore);
+        // status against the refund amount) is delegated to RefundEligibilityService (a Domain
+        // Service) by this Application layer, which has loaded both the Payment and Refund
+        // Aggregates together to coordinate it.
+        RefundDecision decision = refundEligibilityService.evaluate(payment, refund);
         if (decision.approved()) {
             refund.approve(payment.getAccountId(), payment.getOwnerId());
         } else {
