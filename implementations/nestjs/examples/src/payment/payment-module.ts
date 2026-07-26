@@ -22,7 +22,6 @@ import { PaymentQuery } from '@/payment/application/query/payment-query'
 import { RefundQuery } from '@/payment/application/query/refund-query'
 import { CardStatementNotificationService } from '@/payment/application/service/card-statement-notification-service'
 import { RefundFraudRiskScorer } from '@/payment/application/service/refund-fraud-risk-scorer'
-import { RefundReasonClassifier } from '@/payment/application/service/refund-reason-classifier'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
@@ -38,7 +37,6 @@ import { PaymentRepositoryImpl } from '@/payment/infrastructure/payment-reposito
 import { RefundFraudRiskScorerHttpImpl } from '@/payment/infrastructure/refund-fraud-risk-scorer-http-impl'
 import { RefundFraudRiskScorerNativeImpl } from '@/payment/infrastructure/refund-fraud-risk-scorer-native-impl'
 import { RefundQueryImpl } from '@/payment/infrastructure/refund-query-impl'
-import { RefundReasonClassifierImpl } from '@/payment/infrastructure/refund-reason-classifier-impl'
 import { RefundRepositoryImpl } from '@/payment/infrastructure/refund-repository-impl'
 import { PaymentController } from '@/payment/interface/payment-controller'
 import { PaymentTaskController } from '@/payment/interface/payment-task-controller'
@@ -88,8 +86,6 @@ import { getFraudScorerMode } from '@/config/fraud-risk.config'
     { provide: AccountAdapter, useClass: AccountAdapterImpl },
     // A Technical Service — SES card-statement sending (Payment-only, separate from Account's NotificationService)
     { provide: CardStatementNotificationService, useClass: CardStatementNotificationServiceImpl },
-    // A Technical Service — LLM-based refund reason classification (see refund-eligibility-service.ts)
-    { provide: RefundReasonClassifier, useClass: RefundReasonClassifierImpl },
     // A Technical Service — ML-based refund fraud-risk scoring (see refund-eligibility-service.ts).
     // Both concrete implementations are registered so the factory below can pick either one at
     // runtime; only the one FRAUD_SCORER_MODE selects is ever actually called.

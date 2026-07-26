@@ -3,7 +3,6 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 import { TransactionManager } from '@/database/transaction-manager'
 import { RequestRefundCommand } from '@/payment/application/command/request-refund-command'
 import { RefundFraudRiskScorer } from '@/payment/application/service/refund-fraud-risk-scorer'
-import { RefundReasonClassifier } from '@/payment/application/service/refund-reason-classifier'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { Refund } from '@/payment/domain/refund'
 import { RefundEligibilityService } from '@/payment/domain/refund-eligibility-service'
@@ -24,10 +23,9 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
     private readonly paymentRepository: PaymentRepository,
     private readonly refundRepository: RefundRepository,
     private readonly transactionManager: TransactionManager,
-    // RefundReasonClassifier/RefundFraudRiskScorer are Technical Services (DI-bound to their
-    // real implementations) — unlike RefundEligibilityService above, they wrap external I/O, so
-    // they're injected rather than `new`'d directly.
-    private readonly refundReasonClassifier: RefundReasonClassifier,
+    // RefundFraudRiskScorer is a Technical Service (DI-bound to its real implementation) —
+    // unlike RefundEligibilityService above, it wraps external I/O, so it's injected rather
+    // than `new`'d directly.
     private readonly refundFraudRiskScorer: RefundFraudRiskScorer
   ) {}
 
@@ -38,7 +36,6 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
     if (!payment) throw new Error(ErrorMessage['Payment not found.'])
 
     const refund = Refund.create({ paymentId: payment.paymentId, amount: command.amount, reason: command.reason })
-    const classification = await this.refundReasonClassifier.classify(command.reason)
 
     const historyWindowStart = new Date(Date.now() - RISK_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000)
     const [{ count: refundCountLast30Days }, { count: rejectedRefundCountLast30Days }] = await Promise.all([
@@ -56,12 +53,12 @@ export class RequestRefundCommandHandler implements ICommandHandler<RequestRefun
       minutesSincePayment: Math.max(0, (Date.now() - payment.createdAt.getTime()) / 60000)
     })
 
-    // This Application layer, having loaded both the Payment and Refund Aggregates together,
-    // classified the refund reason and scored the refund's history pattern via the Technical
-    // Services above, delegates the judgment (comparing the original payment's status, the
-    // refund amount, and both fraud-risk signals) that neither Aggregate alone could make to
-    // RefundEligibilityService (a Domain Service) to coordinate.
-    const decision = this.refundEligibilityService.evaluate(payment, refund, classification, mlFraudRiskScore)
+    // This Application layer, having loaded both the Payment and Refund Aggregates together
+    // and scored the refund's history pattern via the Technical Service above, delegates the
+    // judgment (comparing the original payment's status, the refund amount, and the fraud-risk
+    // signal) that neither Aggregate alone could make to RefundEligibilityService (a Domain
+    // Service) to coordinate.
+    const decision = this.refundEligibilityService.evaluate(payment, refund, mlFraudRiskScore)
     if (decision.approved) {
       refund.approve({ accountId: payment.accountId, ownerId: payment.ownerId })
     } else {

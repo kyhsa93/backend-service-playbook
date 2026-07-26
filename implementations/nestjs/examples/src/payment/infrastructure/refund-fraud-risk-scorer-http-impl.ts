@@ -6,7 +6,7 @@ import { RefundRiskFeatures } from '@/payment/domain/refund-risk-features'
 
 // Used whenever the score can't be trusted (the shared scorer unreachable, malformed output).
 // A neutral 0 never blocks the refund flow on its own — RefundEligibilityService's other
-// checks still run against it, the same fallback stance as RefundReasonClassifierImpl's.
+// checks still run against it.
 const FALLBACK_SCORE = 0
 
 interface ScoreResponse {
