@@ -69,7 +69,7 @@ public class SecretServiceImpl implements SecretService {
 
 - **A TTL cache via `ConcurrentHashMap`**: since Spring manages this bean as a singleton, multiple request threads can call `getSecret()` concurrently — a `ConcurrentHashMap` rather than a plain `HashMap` is needed for thread safety. Switching to a dedicated cache library like Caffeine (`com.github.ben-manes.caffeine:caffeine`) would allow finer control over the expiration policy (size-based eviction, etc.).
 - **Reuses `AwsProperties` as-is**: rather than individual `@Value`s, `region`/`endpointUrl` lookups are handled by injecting the `AwsProperties` bean (`@ConfigurationProperties`) defined in [config.md](config.md) via the constructor — the same "LocalStack if endpoint-url is present, real AWS if not" pattern that `SesConfig` uses (see [local-dev.md](local-dev.md)).
-- **One call site so far**: `SecretsEnvironmentPostProcessor` below builds its own `SecretsManagerClient` directly (it runs before the `ApplicationContext` — and therefore DI — exists, so it can't inject this bean) to resolve the JWT secret eagerly at startup.
+- **One call site so far**: `SecretsEnvironmentPostProcessor` below builds its own `SecretsManagerClient` directly (it runs before the `ApplicationContext` — and therefore DI — exists, so it can't inject this bean) to resolve the JWT secret eagerly at startup. `account/infrastructure/NlTransactionQueryTranslatorImpl.java`/`NlTransactionAnswerComposerImpl.java` (the two LLM Technical Services — see [domain-service.md](domain-service.md)) do **not** use `SecretService`: they call a self-hosted Ollama instance, and a base URL isn't a secret — see `config/LlmProperties.java` (a plain `@ConfigurationProperties` value, no Secrets Manager lookup).
 
 ---
 
@@ -135,6 +135,21 @@ org.springframework.boot.env.EnvironmentPostProcessor=com.example.accountservice
 **A cross-language difference — the gating mechanism itself differs**: this repository gates via a Spring **profile** (`Profiles.of("prod")`), not an environment variable — `logback-spring.xml` (see [observability.md](observability.md)) is also unified under the same `prod`/`!prod` profiles. kotlin-springboot uses the same mechanism (`Profiles.of("prod")`). nestjs (`NODE_ENV !== 'production'`), go (`APP_ENV != "production"`), and fastapi (`APP_ENV == "production"`) gate via an environment-variable value, and of these, fastapi has the opposite polarity from the other two. Never assume the name and polarity map directly across other languages' documentation.
 
 If you want to move DB connection info (`spring.datasource.username`/`password`) to Secrets Manager, extend this class's pattern directly — just change `secretId` to `account-service/database` and add `spring.datasource.*` keys to `props`. This is not currently adopted.
+
+---
+
+## A non-consumer, by design — NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl
+
+`account/infrastructure/NlTransactionQueryTranslatorImpl.java`/`NlTransactionAnswerComposerImpl.java` (the two LLM Technical Services behind the structured-data RAG pipeline — see [domain-service.md](domain-service.md)) do not inject `SecretService` at all, in production or otherwise. They call a self-hosted Ollama instance (`docker-compose.yml`'s `ollama`/`ollama-init` services) over plain HTTP, and the only configuration they need — the base URL and model name — is a plain, non-sensitive value bound via `@ConfigurationProperties` (`config/LlmProperties.java`), exactly like `AwsProperties.region` or `SesProperties.senderEmail`:
+
+```java
+// config/LlmProperties.java — actual code
+@ConfigurationProperties(prefix = "llm")
+@Validated
+public record LlmProperties(@NotBlank String ollamaBaseUrl, @NotBlank String model) {}
+```
+
+There's nothing in either Technical Service for `SecretService`/Secrets Manager to protect — since Ollama is self-hosted, there's no API key to guard. `HttpClient` (the client both implementations call Ollama's `/api/chat` endpoint with) is exposed as a shared bean (`config/LlmHttpClientConfig.java`) rather than constructed internally, purely so a unit test can inject a mock instead of making a real network call — an orthogonal, testability-only reason, unrelated to secret handling.
 
 ---
 

@@ -2,6 +2,7 @@ package com.example.accountservice.account.application.query;
 
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.AccountsWithCount;
+import com.example.accountservice.account.domain.TransactionFindQuery;
 import com.example.accountservice.account.domain.TransactionsWithCount;
 
 /**
@@ -13,5 +14,5 @@ import com.example.accountservice.account.domain.TransactionsWithCount;
 public interface AccountQuery {
     AccountsWithCount findAccounts(AccountFindQuery query);
 
-    TransactionsWithCount findTransactions(String accountId, int page, int take);
+    TransactionsWithCount findTransactions(TransactionFindQuery query);
 }

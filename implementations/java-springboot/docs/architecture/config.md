@@ -29,11 +29,15 @@ ses:
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}
+
+llm:
+  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${LLM_MODEL:qwen2.5:1.5b}
 ```
 
 (For `ddl-auto`/migration status, see [persistence.md](persistence.md) — migrations are managed by Flyway.)
 
-Startup-time validation is genuinely enforced via `config/AwsProperties.java`/`config/SesProperties.java` (`@ConfigurationProperties` + `@Validated`), and `application-prod.yml` removes the default AWS credential values in the production profile to force fail-fast — the actual code is shown as-is below.
+Startup-time validation is genuinely enforced via `config/AwsProperties.java`/`config/SesProperties.java`/`config/LlmProperties.java` (`@ConfigurationProperties` + `@Validated`), and `application-prod.yml` removes the default AWS credential values in the production profile to force fail-fast — the actual code is shown as-is below. `LlmProperties` (the self-hosted Ollama base URL/model used by `account/infrastructure/NlTransactionQueryTranslatorImpl.java`/`NlTransactionAnswerComposerImpl.java` — see [domain-service.md](domain-service.md)) is a plain, non-sensitive value like `SesProperties.senderEmail` — it needs no Secrets Manager lookup (see [secret-manager.md](secret-manager.md)).
 
 - **`AwsProperties.accessKeyId`/`secretAccessKey` are also subject to `@NotBlank`**: like `region`, both fields carry Bean Validation annotations. The local default values (`test`/`test`) are non-blank, so they pass this validation without affecting local development convenience. `application-prod.yml` omitting the default for these placeholders (see below) and `@NotBlank` are a deliberate two-layer defense catching different failure conditions — if the environment variable itself is absent, a `PlaceholderResolutionException` is thrown (before property binding); if it's set to an empty string, `@NotBlank` catches it (during Bean Validation, after binding).
 - **Splitting config files by concern has settled on the current 2-file structure (`application.yml` + `application-prod.yml`)**: given this repository's small configuration surface (AWS credentials, SES sender, JWT secret), finer splits like `application-database.yml`/`application-aws.yml`/`application-jwt.yml`/`application-local.yml` were judged unnecessary complexity and are not adopted — see the "Splitting config files by concern" section below.

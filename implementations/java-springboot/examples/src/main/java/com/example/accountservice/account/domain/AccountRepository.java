@@ -16,7 +16,7 @@ public interface AccountRepository {
 
     void deleteAccount(String accountId);
 
-    TransactionsWithCount findTransactions(String accountId, int page, int take);
+    TransactionsWithCount findTransactions(TransactionFindQuery query);
 
     /**
      * An idempotency check ensuring that the Payment BC's Integration Event reactions

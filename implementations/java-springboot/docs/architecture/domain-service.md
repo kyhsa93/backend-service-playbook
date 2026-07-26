@@ -8,6 +8,7 @@
 
 - **Technical Service**: `account/application/service/NotificationService.java` (interface) + `account/infrastructure/notification/NotificationServiceImpl.java` (implementation, SES). This abstracts technical infrastructure (sending email), but is not domain judgment logic that coordinates multiple Aggregates.
 - **Domain Service (genuine cross-Aggregate coordination)**: `payment/domain/RefundEligibilityService.java`. It coordinates a judgment ("the original payment must be in COMPLETED status, and the refund amount cannot exceed the payment amount") that can only be made by loading both the `Payment` and `Refund` Aggregates together — a real, working example of the "logic that must read multiple Aggregates to reach a judgment" the root document defines. It carries no fraud-risk judgment of any kind — coordinating the two Aggregates for this amount/status check is the only reason this class exists, which is exactly the point: a Domain Service doesn't need an ML signal or any other extra complexity to be legitimate.
+- **Technical Service pair (LLM calls) + the Query Service orchestrating them**: `account/application/service/NlTransactionQueryTranslator.java`/`NlTransactionAnswerComposer.java` (interfaces) + `account/infrastructure/NlTransactionQueryTranslatorImpl.java`/`NlTransactionAnswerComposerImpl.java` (implementations, Ollama), orchestrated by `account/application/query/AskTransactionHistoryService.java` — a real, working structured-data RAG pipeline. See the dedicated section below.
 
 Since the Account and Card BCs each have only a single Aggregate, this pattern couldn't be demonstrated there — the Payment BC (with its two Aggregates, Payment/Refund) is what actually shows it working.
 
@@ -101,6 +102,81 @@ This repository's [error-handling.md](error-handling.md) requires "1 guard condi
 ## Technical Service — NotificationService
 
 The Technical Service placement principle (domain-internal by default, per YAGNI) and the `NotificationService`/`NotificationServiceImpl` code are already covered repeatedly by [file-storage.md](file-storage.md)/[secret-manager.md](secret-manager.md)/[directory-structure.md](directory-structure.md), so they aren't duplicated here.
+
+---
+
+## A real, working example — a structured-data RAG pipeline (two LLM Technical Services + a Query Service orchestrating them)
+
+`AskTransactionHistoryService` (Account BC) answers a free-text question about an account's transaction history — e.g. "How much did I deposit this month?" — using two LLM-backed Technical Services either side of an ordinary Repository read, following the Retrieve → Augment → Generate shape of RAG (here, "Retrieve" is a structured DB query, not a vector-embedding search — commonly called "structured-data RAG" or "RAG over a database" to distinguish it from the canonical vector-search form):
+
+1. **Retrieve-preparation** — `NlTransactionQueryTranslator` (a Technical Service, LLM call) turns the question into a structured filter (`type`/`fromDate`/`toDate`).
+2. **Retrieve** — `AccountQuery.findTransactions` runs that filter, scoped to the account (an ordinary Query, no LLM involved).
+3. **Generate** — `NlTransactionAnswerComposer` (a second Technical Service, LLM call) answers the question, grounded only in the retrieved records.
+
+```java
+// application/service/TransactionFilter.java — the interface's return shape
+public record TransactionFilter(TransactionType type, LocalDate fromDate, LocalDate toDate) {}
+
+// application/service/NlTransactionQueryTranslator.java — the interface
+public interface NlTransactionQueryTranslator {
+    TransactionFilter translate(String question);
+}
+
+// application/service/NlTransactionAnswerComposer.java — the interface
+public interface NlTransactionAnswerComposer {
+    String compose(String question, List<GetTransactionsResult.TransactionSummary> transactions);
+}
+```
+
+All orchestration lives in the Query Service (the Application layer) — never in the Controller, which only wraps the HTTP request into DTOs and dispatches here:
+
+```java
+// application/query/AskTransactionHistoryService.java — actual code (excerpt)
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class AskTransactionHistoryService {
+
+    private static final int MAX_TRANSACTIONS_FOR_ANSWER = 50;
+
+    private final AccountQuery accountQuery;
+    private final NlTransactionQueryTranslator translator;
+    private final NlTransactionAnswerComposer composer;
+
+    public AskTransactionHistoryResult ask(String accountId, String requesterId, String question) {
+        accountQuery.findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
+                .accounts().stream().findFirst()
+                .orElseThrow(() -> new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_FOUND, "Account not found."));
+
+        TransactionFilter filter = translator.translate(question);
+
+        TransactionsWithCount result = accountQuery.findTransactions(
+                new TransactionFindQuery(accountId, 0, MAX_TRANSACTIONS_FOR_ANSWER, filter.type(), filter.fromDate(), filter.toDate()));
+
+        // ... map result.transactions() to TransactionSummary, omitted for brevity ...
+        String answer = composer.compose(question, summaries);
+        return new AskTransactionHistoryResult(answer, result.count());
+    }
+}
+```
+
+**The guardrail that makes this safe to let an LLM touch at all:** the translated filter may only narrow *what* is returned (a type/date range) — it must never influence *who* it belongs to. Account ownership is verified up front via `accountQuery.findAccounts(accountId, requesterId)`, using `requesterId` — the authenticated caller, set by the Controller from Spring Security's `Authentication` — never a value derived from the LLM's output; `TransactionFilter` doesn't even have an `ownerId`/`accountId` field. Worst case on a bad translation is an inaccurate answer about the requester's own data — never someone else's data or unauthorized access.
+
+This is the deliberate opposite of a design mistake this repo made and later reversed: an earlier LLM feature let a model's read of user-submitted free text influence a security-relevant approve/reject judgment (a refund's fraud-risk signal, computed from the refund's own unverified `reason` text) — trivially gameable, since the same user supplying the text controlled the input the judgment was based on. The fix generalizes: **an LLM may narrow or shape what authorized data is shown, but must never be the thing that decides who is authorized, or approves/rejects a security- or money-relevant action, when its input is free text the affected party can influence.**
+
+Both Technical Service implementations fail non-blockingly (the translator falls back to `new TransactionFilter(null, null, null)` — no narrowing; the composer falls back to a plain templated summary) — a translation/generation outage must never prevent an answer, even a plain one, same principle as any other Technical Service call in this repo. Both talk to a self-hosted Ollama instance (`docker-compose.yml`'s `ollama`/`ollama-init` services, the `qwen2.5:1.5b` model) over plain HTTP via `java.net.http.HttpClient` (Ollama has no official Java SDK) — the base URL/model name come from `config/LlmProperties.java`, a plain `@ConfigurationProperties` value (no secret involved, see [secret-manager.md](secret-manager.md)). `HttpClient` itself is exposed as a shared bean (`config/LlmHttpClientConfig.java`) rather than constructed internally by each Impl, specifically so a unit test can inject a mock `HttpClient` instead of making a real network call.
+
+### Related code
+
+- `implementations/nestjs/examples/src/account/application/query/ask-transaction-history-query-handler.ts` — the nestjs reference this was ported from
+- `account/application/service/NlTransactionQueryTranslator.java`, `TransactionFilter.java`, `NlTransactionAnswerComposer.java`
+- `account/infrastructure/NlTransactionQueryTranslatorImpl.java`, `NlTransactionAnswerComposerImpl.java`
+- `account/application/query/AskTransactionHistoryService.java`, `AskTransactionHistoryResult.java`
+- `account/domain/TransactionFindQuery.java` — the extended `findTransactions` query shape (optional `type`/`fromDate`/`toDate`, no `ownerId`)
+- `config/LlmProperties.java`, `config/LlmHttpClientConfig.java`
+- `account/infrastructure/NlTransactionQueryTranslatorImplTest.java`, `NlTransactionAnswerComposerImplTest.java` — unit tests mocking the shared `HttpClient` bean (valid response parsed, invalid/malformed values dropped, network failure falls back)
+- `account/application/query/AskTransactionHistoryServiceTest.java` — mocks `AccountQuery`/`NlTransactionQueryTranslator`/`NlTransactionAnswerComposer`, pinning that the retrieval is always scoped by the authenticated requester regardless of what the mocked translator returns
+- `account/interfaces/rest/AccountControllerE2ETest.java` — the `POST /accounts/{accountId}/transactions/ask` cases (no real Ollama in this test environment, so both LLM calls fall back to their non-blocking defaults — the tests assert only on response shape/count, not exact wording)
 
 ---
 

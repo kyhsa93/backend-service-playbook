@@ -606,4 +606,68 @@ class AccountControllerE2ETest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().get("count")).isEqualTo(0);
     }
+
+    // The LLM behind NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl (see
+    // account/infrastructure) isn't available in this e2e environment, so both calls fall back to
+    // their non-blocking defaults: an empty filter (all of the account's transactions) and a plain
+    // templated summary. This still exercises the real retrieval + response shape end to end
+    // without depending on a live Ollama.
+    @Test
+    void
+            returns_200_with_an_answer_grounded_in_the_requesters_own_transactions_when_asked_a_question() {
+        Map<String, Object> account = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + account.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + account.get("accountId") + "/transactions/ask",
+                        OWNER_ID,
+                        Map.of("question", "How much have I deposited?"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = response.getBody();
+        assertThat(body.get("answer")).isInstanceOf(String.class);
+        assertThat((String) body.get("answer")).isNotEmpty();
+        assertThat(body.get("matchedCount")).isEqualTo(1);
+    }
+
+    @Test
+    void returns_400_when_the_question_is_empty() {
+        Map<String, Object> account = createAccount(OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + account.get("accountId") + "/transactions/ask",
+                        OWNER_ID,
+                        Map.of("question", ""));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void returns_404_when_asking_about_a_nonexistent_account() {
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/non-existent/transactions/ask",
+                        OWNER_ID,
+                        Map.of("question", "anything"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void returns_404_when_a_different_owner_asks_about_this_account() {
+        Map<String, Object> account = createAccount(OWNER_ID, "KRW");
+
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + account.get("accountId") + "/transactions/ask",
+                        OTHER_OWNER_ID,
+                        Map.of("question", "anything"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
 }

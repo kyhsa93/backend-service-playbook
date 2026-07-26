@@ -90,13 +90,17 @@ The DLQ is created first, then attached to the main queue via `RedrivePolicy` �
       # Inside the container network, connect via service name instead of localhost.
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
+      OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database: { condition: service_healthy }
       localstack: { condition: service_healthy }
+      ollama-init: { condition: service_completed_successfully }
     profiles: ['app']
 ```
 
-Since `environment:` takes precedence over `env_file:`, the same `.env.development` used for running directly on the host is reused as-is, while overriding only the values needed specifically inside the container network (`SPRING_DATASOURCE_URL`, `AWS_ENDPOINT_URL`).
+Since `environment:` takes precedence over `env_file:`, the same `.env.development` used for running directly on the host is reused as-is, while overriding only the values needed specifically inside the container network (`SPRING_DATASOURCE_URL`, `AWS_ENDPOINT_URL`, `OLLAMA_BASE_URL`).
+
+`ollama` (the open-source LLM server, for `account/infrastructure/NlTransactionQueryTranslatorImpl.java`/`NlTransactionAnswerComposerImpl.java` — see [domain-service.md](domain-service.md)) and `ollama-init` (a one-shot container that runs `ollama pull qwen2.5:1.5b` once against it, the same role LocalStack's init scripts play) are omitted from the "Actual example" snippet above for brevity — see the actual `docker-compose.yml` for their full definitions. `app` depends on `ollama-init` completing (`service_completed_successfully`), not just `ollama` being healthy, so the app never starts against a model that hasn't finished downloading yet.
 
 Both `.env.example` (committed) and `.env.development` (in `.gitignore`, created by copying `.env.example`) already exist:
 
@@ -114,6 +118,9 @@ SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret-local-dev-secret
+
+OLLAMA_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5:1.5b
 ```
 
 Since Spring Boot doesn't automatically read `.env` files (there's no standard mechanism equivalent to Node's `dotenv`), you load it into the shell yourself — e.g. `export $(cat .env.development | xargs) && ./gradlew bootRun` — or use something like direnv. Since `application.yml` embeds defaults in the form `${AWS_ACCESS_KEY_ID:test}`, local startup is possible even without `.env.development` — `.env.development` is used when you want to manage those defaults explicitly.
@@ -175,7 +182,7 @@ docker compose down -v
 - **Never connect directly to external services during local development**: use Docker Compose for the DB, LocalStack for SES/SQS.
 - **Configure a healthcheck for every infrastructure service**: `pg_isready`, `awslocal ses list-identities`.
 - **Commit the init scripts**: `localstack/init-ses.sh`, `localstack/init-sqs.sh`.
-- **Pin image versions**: `postgres:16-alpine`, `localstack/localstack:3.0`.
+- **Pin image versions**: `postgres:16-alpine`, `localstack/localstack:3.0`. `ollama/ollama:latest` is the one exception — pinned model behavior comes from the `qwen2.5:1.5b` model tag itself (see [domain-service.md](domain-service.md)), not the server image version.
 - **Separate the app service via profiles**: the `app` service is excluded from the default startup via `profiles: [app]`.
 
 ---

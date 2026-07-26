@@ -3,11 +3,14 @@ package com.example.accountservice.account.interfaces.rest;
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 import com.example.accountservice.account.application.command.*;
+import com.example.accountservice.account.application.query.AskTransactionHistoryResult;
+import com.example.accountservice.account.application.query.AskTransactionHistoryService;
 import com.example.accountservice.account.application.query.GetAccountResult;
 import com.example.accountservice.account.application.query.GetAccountService;
 import com.example.accountservice.account.application.query.GetTransactionsResult;
 import com.example.accountservice.account.application.query.GetTransactionsService;
 import com.example.accountservice.account.domain.AccountException;
+import com.example.accountservice.account.domain.TransactionType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -15,9 +18,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -46,6 +51,7 @@ public class AccountController {
     private final DeleteAccountService deleteAccountService;
     private final GetAccountService getAccountService;
     private final GetTransactionsService getTransactionsService;
+    private final AskTransactionHistoryService askTransactionHistoryService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -284,7 +290,7 @@ public class AccountController {
             summary = "List an account's transaction history",
             description =
                     "Returns the account's deposit/withdrawal/interest transactions, newest first,"
-                            + " paginated with `page`/`take`.")
+                            + " paginated with `page`/`take`, optionally narrowed by `type`/`fromDate`/`toDate`.")
     @ApiResponse(
             responseCode = "200",
             description = "The transaction history was found.",
@@ -298,9 +304,47 @@ public class AccountController {
             Authentication authentication,
             @PathVariable String accountId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int take) {
+            @RequestParam(defaultValue = "20") int take,
+            @RequestParam(required = false) TransactionType type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate toDate) {
         return getTransactionsService.getTransactions(
-                accountId, authentication.getName(), page, take);
+                accountId, authentication.getName(), page, take, type, fromDate, toDate);
+    }
+
+    @PostMapping("/{accountId}/transactions/ask")
+    @Operation(
+            summary = "Ask a natural-language question about an account's transaction history",
+            description =
+                    "Answers a free-text question (e.g. \"How much did I deposit this month?\")"
+                            + " using only the requester's own transactions — a structured-data RAG"
+                            + " pipeline: the question is translated into a filter, matching"
+                            + " transactions are retrieved, and the answer is generated grounded"
+                            + " only in those records.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "An answer was generated.",
+            content =
+                    @Content(schema = @Schema(implementation = AskTransactionHistoryResult.class)))
+    @ApiResponse(
+            responseCode = "400",
+            description =
+                    "Request validation failed (`VALIDATION_FAILED`) — e.g. an empty or overly long"
+                            + " `question`.",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public AskTransactionHistoryResult askTransactionHistory(
+            Authentication authentication,
+            @PathVariable String accountId,
+            @Valid @RequestBody AskTransactionHistoryRequest request) {
+        return askTransactionHistoryService.ask(
+                accountId, authentication.getName(), request.question());
     }
 
     @ExceptionHandler(AccountException.class)

@@ -3,7 +3,10 @@ package com.example.accountservice.account.application.query;
 import com.example.accountservice.account.domain.AccountException;
 import com.example.accountservice.account.domain.AccountFindQuery;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.account.domain.TransactionFindQuery;
+import com.example.accountservice.account.domain.TransactionType;
 import com.example.accountservice.account.domain.TransactionsWithCount;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,7 +20,13 @@ public class GetTransactionsService {
     private final AccountQuery accountQuery;
 
     public GetTransactionsResult getTransactions(
-            String accountId, String requesterId, int page, int take) {
+            String accountId,
+            String requesterId,
+            int page,
+            int take,
+            TransactionType type,
+            LocalDate fromDate,
+            LocalDate toDate) {
         accountQuery
                 .findAccounts(new AccountFindQuery(0, 1, accountId, requesterId, null))
                 .accounts()
@@ -29,7 +38,9 @@ public class GetTransactionsService {
                                         AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
                                         "Account not found."));
 
-        TransactionsWithCount result = accountQuery.findTransactions(accountId, page, take);
+        TransactionsWithCount result =
+                accountQuery.findTransactions(
+                        new TransactionFindQuery(accountId, page, take, type, fromDate, toDate));
         List<Transaction> transactions = result.transactions();
         long count = result.count();
 

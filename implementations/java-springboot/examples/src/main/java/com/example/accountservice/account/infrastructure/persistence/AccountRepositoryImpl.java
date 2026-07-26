@@ -7,6 +7,7 @@ import com.example.accountservice.account.domain.AccountRepository;
 import com.example.accountservice.account.domain.AccountStatus;
 import com.example.accountservice.account.domain.AccountsWithCount;
 import com.example.accountservice.account.domain.Transaction;
+import com.example.accountservice.account.domain.TransactionFindQuery;
 import com.example.accountservice.account.domain.TransactionType;
 import com.example.accountservice.account.domain.TransactionsWithCount;
 import com.example.accountservice.outbox.OutboxWriter;
@@ -14,7 +15,6 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,15 +107,45 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     }
 
     @Override
-    public TransactionsWithCount findTransactions(String accountId, int page, int take) {
+    public TransactionsWithCount findTransactions(TransactionFindQuery query) {
+        String listJpql = buildTransactionJpql(query, false);
+        var listQuery =
+                em.createQuery(listJpql, TransactionJpaEntity.class)
+                        .setFirstResult(query.page() * query.take())
+                        .setMaxResults(query.take());
+        applyTransactionParams(listQuery, query);
         List<Transaction> transactions =
-                transactionJpaRepository
-                        .findByAccountIdOrderByCreatedAtDesc(accountId, PageRequest.of(page, take))
-                        .stream()
-                        .map(TransactionMapper::toDomain)
-                        .toList();
-        long count = transactionJpaRepository.countByAccountId(accountId);
+                listQuery.getResultList().stream().map(TransactionMapper::toDomain).toList();
+
+        String countJpql = buildTransactionJpql(query, true);
+        var countQuery = em.createQuery(countJpql, Long.class);
+        applyTransactionParams(countQuery, query);
+        long count = countQuery.getSingleResult();
+
         return new TransactionsWithCount(transactions, count);
+    }
+
+    private String buildTransactionJpql(TransactionFindQuery query, boolean count) {
+        StringBuilder sb =
+                new StringBuilder(
+                        count
+                                ? "SELECT COUNT(t) FROM TransactionJpaEntity t WHERE t.accountId ="
+                                        + " :accountId"
+                                : "SELECT t FROM TransactionJpaEntity t WHERE t.accountId ="
+                                        + " :accountId");
+        if (query.type() != null) sb.append(" AND t.type = :type");
+        if (query.fromDate() != null) sb.append(" AND t.createdAt >= :fromDate");
+        if (query.toDate() != null) sb.append(" AND t.createdAt <= :toDate");
+        if (!count) sb.append(" ORDER BY t.createdAt DESC");
+        return sb.toString();
+    }
+
+    private void applyTransactionParams(Query q, TransactionFindQuery query) {
+        q.setParameter("accountId", query.accountId());
+        if (query.type() != null) q.setParameter("type", query.type());
+        if (query.fromDate() != null) q.setParameter("fromDate", query.fromDate().atStartOfDay());
+        if (query.toDate() != null)
+            q.setParameter("toDate", query.toDate().atTime(23, 59, 59, 999_000_000));
     }
 
     private String buildJpql(AccountFindQuery query, boolean count) {
