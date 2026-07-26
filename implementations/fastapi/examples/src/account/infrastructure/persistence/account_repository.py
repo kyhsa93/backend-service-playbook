@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +8,7 @@ from ...domain.account import Account
 from ...domain.account_status import AccountStatus
 from ...domain.money import Money
 from ...domain.repository import AccountRepository
-from ...domain.transaction import Transaction
+from ...domain.transaction import Transaction, TransactionType
 
 
 class Base(DeclarativeBase):
@@ -127,9 +127,29 @@ class SqlAlchemyAccountRepository(AccountRepository):
 
         await self._session.flush()
 
-    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]:
+    async def find_transactions(
+        self,
+        account_id: str,
+        page: int,
+        take: int,
+        type: TransactionType | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> tuple[list[Transaction], int]:
         stmt = select(TransactionModel).where(TransactionModel.account_id == account_id)
         count_stmt = select(func.count()).select_from(TransactionModel).where(TransactionModel.account_id == account_id)
+
+        if type:
+            stmt = stmt.where(TransactionModel.type == type)
+            count_stmt = count_stmt.where(TransactionModel.type == type)
+        if from_date:
+            from_dt = datetime.combine(from_date, time.min)
+            stmt = stmt.where(TransactionModel.created_at >= from_dt)
+            count_stmt = count_stmt.where(TransactionModel.created_at >= from_dt)
+        if to_date:
+            to_dt = datetime.combine(to_date, time.max)
+            stmt = stmt.where(TransactionModel.created_at <= to_dt)
+            count_stmt = count_stmt.where(TransactionModel.created_at <= to_dt)
 
         total = (await self._session.execute(count_stmt)).scalar_one()
         rows = (

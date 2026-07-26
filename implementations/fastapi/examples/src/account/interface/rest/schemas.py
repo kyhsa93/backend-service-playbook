@@ -26,6 +26,15 @@ class TransferRequest(BaseModel):
     amount: int = Field(description="The amount to transfer. Must be a positive integer.")
 
 
+class AskTransactionHistoryRequest(BaseModel):
+    question: str = Field(
+        min_length=1,
+        max_length=500,
+        description="A free-text question about this account's transaction history.",
+        examples=["How much did I deposit this month?"],
+    )
+
+
 class CreateAccountResponse(BaseModel):
     account_id: str = Field(description="The unique identifier of the newly created account.")
     owner_id: str = Field(description="The `user_id` of the authenticated requester who owns this account.")
@@ -73,3 +82,10 @@ class GetTransactionsResponse(BaseModel):
         description="The account's transactions, newest first, for the requested page."
     )
     count: int = Field(description="The total number of transactions across all pages, not just this page's size.")
+
+
+class AskTransactionHistoryResponse(BaseModel):
+    answer: str = Field(
+        description="A natural-language answer grounded only in the requester's own matching transactions."
+    )
+    matched_count: int = Field(description="How many transactions matched the question's translated filter.")

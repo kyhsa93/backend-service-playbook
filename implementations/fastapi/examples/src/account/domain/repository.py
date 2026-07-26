@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
+from datetime import date
 
 from .account import Account
-from .transaction import Transaction
+from .transaction import Transaction, TransactionType
 
 
 class AccountQuery(ABC):
@@ -22,7 +23,15 @@ class AccountQuery(ABC):
     ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
-    async def find_transactions(self, account_id: str, page: int, take: int) -> tuple[list[Transaction], int]: ...
+    async def find_transactions(
+        self,
+        account_id: str,
+        page: int,
+        take: int,
+        type: TransactionType | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> tuple[list[Transaction], int]: ...
 
 
 class AccountRepository(AccountQuery, ABC):

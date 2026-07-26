@@ -531,3 +531,65 @@ async def test_get_transactions_beyond_last_page_returns_empty(client: AsyncClie
 
     assert response.status_code == 200
     assert response.json()["count"] == 0
+
+
+# No real Ollama in this test environment, so both LLM calls (NlTransactionQueryTranslatorImpl/
+# NlTransactionAnswerComposerImpl) fall back to their non-blocking defaults — these tests assert
+# only on response shape/count, not exact wording (see docs/architecture/layer-architecture.md).
+@pytest.mark.asyncio
+async def test_ask_transaction_history_returns_200_with_an_answer_grounded_in_the_requesters_own_transactions(
+    client: AsyncClient,
+) -> None:
+    account = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+
+    response = await client.post(
+        f"/accounts/{account['account_id']}/transactions/ask",
+        json={"question": "How much have I deposited?"},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["answer"], str)
+    assert len(body["answer"]) > 0
+    assert body["matched_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ask_transaction_history_with_an_empty_question_returns_422(client: AsyncClient) -> None:
+    account = await create_account(client, OWNER_ID, "KRW")
+
+    response = await client.post(
+        f"/accounts/{account['account_id']}/transactions/ask",
+        json={"question": ""},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ask_transaction_history_account_not_found_returns_404(client: AsyncClient) -> None:
+    response = await client.post(
+        "/accounts/non-existent/transactions/ask",
+        json={"question": "anything"},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ask_transaction_history_a_different_owner_returns_404(client: AsyncClient) -> None:
+    account = await create_account(client, OWNER_ID, "KRW")
+
+    response = await client.post(
+        f"/accounts/{account['account_id']}/transactions/ask",
+        json={"question": "anything"},
+        headers=auth_headers(OTHER_OWNER_ID),
+    )
+
+    assert response.status_code == 404

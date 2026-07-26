@@ -33,3 +33,9 @@ class TransactionSummary:
 class GetTransactionsResult:
     transactions: list[TransactionSummary]
     count: int
+
+
+@dataclass
+class AskTransactionHistoryResult:
+    answer: str
+    matched_count: int

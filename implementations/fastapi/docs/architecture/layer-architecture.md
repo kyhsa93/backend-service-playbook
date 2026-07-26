@@ -107,6 +107,74 @@ When adding a second technical concern (file storage, Secrets Manager), follow t
 
 ---
 
+### A real, working example — a structured-data RAG pipeline (two LLM Technical Services + a Query Handler orchestrating them)
+
+`AskTransactionHistoryHandler` (Account BC) answers a free-text question about an account's transaction history — e.g. "How much did I deposit this month?" — using two LLM-backed Technical Services either side of an ordinary Repository read, following the Retrieve → Augment → Generate shape of RAG (here, "Retrieve" is a structured DB query, not a vector-embedding search — commonly called "structured-data RAG" or "RAG over a database" to distinguish it from the canonical vector-search form):
+
+1. **Retrieve-preparation** — `NlTransactionQueryTranslator` (a Technical Service, LLM call) turns the question into a structured filter (`type`/`from_date`/`to_date`).
+2. **Retrieve** — `AccountQuery.find_transactions` runs that filter, scoped to the account (an ordinary Query, no LLM involved).
+3. **Generate** — `NlTransactionAnswerComposer` (a second Technical Service, LLM call) answers the question, grounded only in the retrieved records.
+
+```python
+# application/service/nl_transaction_query_translator.py — the interface
+@dataclass(frozen=True)
+class TransactionFilter:
+    type: TransactionType | None = None
+    from_date: date | None = None
+    to_date: date | None = None
+
+
+class NlTransactionQueryTranslator(ABC):
+    @abstractmethod
+    async def translate(self, question: str) -> TransactionFilter: ...
+
+
+# application/service/nl_transaction_answer_composer.py — the interface
+class NlTransactionAnswerComposer(ABC):
+    @abstractmethod
+    async def compose(self, question: str, transactions: list[TransactionSummary]) -> str: ...
+```
+
+All orchestration lives in the Query Handler (the Application layer) — never in the Router, which only wraps the HTTP request into this Query and dispatches it:
+
+```python
+# application/query/ask_transaction_history_handler.py — actual code (excerpt)
+class AskTransactionHistoryHandler:
+    def __init__(self, repo: AccountQuery, translator: NlTransactionQueryTranslator, composer: NlTransactionAnswerComposer) -> None:
+        self._repo = repo
+        self._translator = translator
+        self._composer = composer
+
+    async def execute(self, query: AskTransactionHistoryQuery) -> AskTransactionHistoryResult:
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=query.account_id, owner_id=query.requester_id  # always the authenticated requester
+        )
+        account = accounts[0] if accounts else None
+        if account is None:
+            raise AccountNotFoundError(query.account_id)
+
+        filter_ = await self._translator.translate(query.question)
+
+        transactions, count = await self._repo.find_transactions(
+            query.account_id, page=0, take=50, type=filter_.type, from_date=filter_.from_date, to_date=filter_.to_date
+        )
+
+        answer = await self._composer.compose(query.question, [...])  # mapped to TransactionSummary, omitted for brevity
+        return AskTransactionHistoryResult(answer=answer, matched_count=count)
+```
+
+**The guardrail that makes this safe to let an LLM touch at all:** the translated filter may only narrow *what* is returned (a type/date range) — it must never influence *who* it belongs to. Account ownership is verified up front via `self._repo.find_accounts(account_id=..., owner_id=query.requester_id)`, using `query.requester_id` — the authenticated caller, set by the Router from `current_user` — never a value derived from the LLM's output; `TransactionFilter` doesn't even have an `owner_id` field. Worst case on a bad translation is an inaccurate answer about the requester's own data — never someone else's data or unauthorized access.
+
+This is the deliberate opposite of a design mistake this repo made and later reversed: an earlier LLM feature let a model's read of user-submitted free text influence a security-relevant approve/reject judgment (a refund's fraud-risk signal, computed from the refund's own unverified `reason` text) — trivially gameable, since the same user supplying the text controlled the input the judgment was based on. The fix generalizes: **an LLM may narrow or shape what authorized data is shown, but must never be the thing that decides who is authorized, or approves/rejects a security- or money-relevant action, when its input is free text the affected party can influence.**
+
+Both Technical Service implementations fail non-blockingly (the translator falls back to `TransactionFilter()` — no narrowing; the composer falls back to a plain templated summary) — a translation/generation outage must never prevent an answer, even a plain one, same principle as `notification_service.py` above. Both talk to a self-hosted Ollama instance (`docker-compose.yml`'s `ollama`/`ollama-init` services, the `qwen2.5:1.5b` model) over plain HTTP via `httpx` (Ollama has no official Python client) — the base URL/model name come from `config/llm_config.py`, plain `os.getenv`-backed functions rather than a `pydantic_settings.BaseSettings` (no secret involved, see [config.md](config.md)/[local-dev.md](local-dev.md)).
+
+Full code: `application/service/nl_transaction_query_translator.py`, `nl_transaction_answer_composer.py`, `infrastructure/nl_transaction_query_translator_impl.py`, `nl_transaction_answer_composer_impl.py`, `application/query/ask_transaction_history_handler.py`, `interface/rest/account_router.py` (`ask_transaction_history`).
+
+Unit tests: `tests/unit/infrastructure/test_nl_transaction_query_translator_impl.py`/`test_nl_transaction_answer_composer_impl.py` mock `httpx.AsyncClient` directly (valid response parsed, invalid/malformed values dropped, network failure falls back), and `tests/unit/application/test_ask_transaction_history_handler.py` mocks the repo/translator/composer, pinning that the retrieval is always scoped by the authenticated requester regardless of what the mocked translator returns. `tests/test_account_e2e.py`'s `test_ask_transaction_history_*` cases exercise the real `POST /accounts/{account_id}/transactions/ask` endpoint end-to-end (no real Ollama in this test environment, so both LLM calls fall back to their non-blocking defaults — these assert only on response shape/count, not exact wording).
+
+---
+
 ### Domain Service — pure domain logic coordinating multiple Aggregates
 
 Since Account/Card are each a single-Aggregate BC, they couldn't demonstrate "a rule that can't be decided by a single Aggregate alone."

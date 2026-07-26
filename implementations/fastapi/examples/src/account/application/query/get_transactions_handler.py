@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from datetime import date
 
 from ...domain.errors import AccountNotFoundError
 from ...domain.repository import AccountQuery
+from ...domain.transaction import TransactionType
 from .result import GetTransactionsResult, MoneyResult, TransactionSummary
 
 
@@ -11,6 +13,9 @@ class GetTransactionsQuery:
     requester_id: str
     page: int
     take: int
+    type: TransactionType | None = None
+    from_date: date | None = None
+    to_date: date | None = None
 
 
 class GetTransactionsHandler:
@@ -25,7 +30,14 @@ class GetTransactionsHandler:
         if account is None:
             raise AccountNotFoundError(query.account_id)
 
-        transactions, count = await self._repo.find_transactions(query.account_id, query.page, query.take)
+        transactions, count = await self._repo.find_transactions(
+            query.account_id,
+            query.page,
+            query.take,
+            type=query.type,
+            from_date=query.from_date,
+            to_date=query.to_date,
+        )
 
         return GetTransactionsResult(
             transactions=[

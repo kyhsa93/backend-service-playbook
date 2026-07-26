@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,11 +14,22 @@ from ...application.command.reactivate_account_handler import ReactivateAccountC
 from ...application.command.suspend_account_handler import SuspendAccountCommand, SuspendAccountHandler
 from ...application.command.transfer_handler import TransferCommand, TransferHandler
 from ...application.command.withdraw_handler import WithdrawCommand, WithdrawHandler
+from ...application.query.ask_transaction_history_handler import (
+    AskTransactionHistoryHandler,
+    AskTransactionHistoryQuery,
+)
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
+from ...application.service.nl_transaction_answer_composer import NlTransactionAnswerComposer
+from ...application.service.nl_transaction_query_translator import NlTransactionQueryTranslator
 from ...domain.repository import AccountQuery
+from ...domain.transaction import TransactionType
+from ...infrastructure.nl_transaction_answer_composer_impl import NlTransactionAnswerComposerImpl
+from ...infrastructure.nl_transaction_query_translator_impl import NlTransactionQueryTranslatorImpl
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from .schemas import (
+    AskTransactionHistoryRequest,
+    AskTransactionHistoryResponse,
     CreateAccountRequest,
     CreateAccountResponse,
     DepositRequest,
@@ -57,6 +70,14 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
 
 def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
     return SqlAlchemyAccountRepository(session)
+
+
+def _translator() -> NlTransactionQueryTranslator:
+    return NlTransactionQueryTranslatorImpl()
+
+
+def _composer() -> NlTransactionAnswerComposer:
+    return NlTransactionAnswerComposerImpl()
 
 
 @router.post(
@@ -373,7 +394,8 @@ async def get_account(
     response_model=GetTransactionsResponse,
     summary="List an account's transaction history",
     description=(
-        "Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with `page`/`take`."
+        "Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with "
+        "`page`/`take`, optionally narrowed by `type`/`from_date`/`to_date`."
     ),
     responses={
         404: {
@@ -382,7 +404,10 @@ async def get_account(
         },
         422: {
             "model": ErrorResponse,
-            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. a non-integer `page`/`take`.",
+            "description": (
+                "Request validation failed (`VALIDATION_FAILED`) — e.g. a non-integer `page`/`take`, an invalid "
+                "`type`, or a malformed `from_date`/`to_date`."
+            ),
         },
     },
 )
@@ -391,10 +416,21 @@ async def get_transactions(
     current_user: CurrentUser = Depends(get_current_user),
     page: int = 0,
     take: int = 20,
+    type: TransactionType | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
     repo: AccountQuery = Depends(_query_repo),
 ) -> GetTransactionsResponse:
     result = await GetTransactionsHandler(repo).execute(
-        GetTransactionsQuery(account_id=account_id, requester_id=current_user.user_id, page=page, take=take)
+        GetTransactionsQuery(
+            account_id=account_id,
+            requester_id=current_user.user_id,
+            page=page,
+            take=take,
+            type=type,
+            from_date=from_date,
+            to_date=to_date,
+        )
     )
     return GetTransactionsResponse(
         transactions=[
@@ -408,3 +444,39 @@ async def get_transactions(
         ],
         count=result.count,
     )
+
+
+@router.post(
+    "/{account_id}/transactions/ask",
+    response_model=AskTransactionHistoryResponse,
+    summary="Ask a natural-language question about an account's transaction history",
+    description=(
+        'Answers a free-text question (e.g. "How much did I deposit this month?") using only the '
+        "requester's own transactions — a structured-data RAG pipeline: the question is translated into a "
+        "filter, matching transactions are retrieved, and the answer is generated grounded only in those records."
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`).",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. an empty or overly long `question`.",
+        },
+    },
+)
+@limiter.limit(rate_limit_config.write_limit)
+async def ask_transaction_history(
+    request: Request,
+    account_id: str,
+    body: AskTransactionHistoryRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    repo: AccountQuery = Depends(_query_repo),
+    translator: NlTransactionQueryTranslator = Depends(_translator),
+    composer: NlTransactionAnswerComposer = Depends(_composer),
+) -> AskTransactionHistoryResponse:
+    result = await AskTransactionHistoryHandler(repo, translator, composer).execute(
+        AskTransactionHistoryQuery(account_id=account_id, requester_id=current_user.user_id, question=body.question)
+    )
+    return AskTransactionHistoryResponse(answer=result.answer, matched_count=result.matched_count)

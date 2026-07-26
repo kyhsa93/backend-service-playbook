@@ -47,6 +47,31 @@ services:
       timeout: 3s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    ports: ['11434:11434']
+    volumes: ['ollama-data:/root/.ollama']
+    healthcheck:
+      test: ['CMD-SHELL', 'ollama list || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A one-shot init container — pulls the model account/infrastructure's two NL
+  # transaction-history Technical Services call (see layer-architecture.md) into the shared
+  # ollama-data volume once, then exits. `app` depends on it completing
+  # (service_completed_successfully), the same role LocalStack's init/ready.d scripts play for
+  # AWS resources.
+  ollama-init:
+    image: ollama/ollama:latest
+    entrypoint: ['/bin/sh', '-c']
+    command: ['ollama pull qwen2.5:1.5b']
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   app:
     build: .
     ports: ['8000:8000']
@@ -58,16 +83,20 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
       SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/tasks.fifo
+      OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     profiles:
       - app
 
 volumes:
   db-data:
+  ollama-data:
 ```
 
 ```bash
@@ -146,6 +175,12 @@ SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 
 JWT_SECRET=local-dev-secret
 APP_ENV=development
+
+# Used by NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl
+# (account/infrastructure/) to call a self-hosted Ollama instance — no API key needed,
+# it's self-hosted, not a cloud vendor API.
+OLLAMA_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5:1.5b
 ```
 
 With `APP_ENV=development` (or unset), `main.py`'s `lifespan` doesn't call Secrets Manager and uses the `JWT_SECRET` environment variable as-is — only when `APP_ENV=production` does it look up the `app/jwt` secret created by `localstack/init-secrets.sh` (see [secret-manager.md](secret-manager.md)).
@@ -197,6 +232,14 @@ async with self._boto_session.client(
 The queue URL is read by `SqsConfig.domain_event_queue_url` (`config/sqs_config.py`) from the `SQS_DOMAIN_EVENT_QUEUE_URL` environment variable.
 
 `test_notification_e2e.py`/`test_card_e2e.py`/`test_payment_e2e.py` verify this entire flow (SES send / SQS publish-receive → confirming the message in LocalStack) using `testcontainers.localstack.LocalStackContainer` — see the E2E testing section of [testing.md](testing.md).
+
+---
+
+## Ollama — self-hosted LLM
+
+`account/infrastructure/nl_transaction_query_translator_impl.py`/`nl_transaction_answer_composer_impl.py` (the two Technical Services behind `POST /accounts/{account_id}/transactions/ask` — see [layer-architecture.md](layer-architecture.md) for the full structured-data RAG pipeline) call a self-hosted Ollama instance over plain HTTP (`httpx`), reading its base URL/model name from `config/llm_config.py` (`OLLAMA_BASE_URL`/`LLM_MODEL`). No API key is involved — Ollama is self-hosted, not a cloud vendor API, so this isn't routed through Secrets Manager.
+
+The `ollama`/`ollama-init` services above follow the same "init container pulls the model once, `app` waits for `service_completed_successfully`" shape LocalStack's `init-*.sh` scripts use for AWS resources. This test environment (and CI) has no real Ollama running — `tests/test_account_e2e.py`'s `test_ask_transaction_history_*` cases run against `OLLAMA_BASE_URL`'s default (`http://localhost:11434`, nothing listening), so both Technical Services hit their non-blocking fallback path (`translate()` falls back to an empty filter, `compose()` falls back to a plain templated summary) — these tests assert only on response shape/count, not exact LLM wording. `tests/unit/infrastructure/test_nl_transaction_query_translator_impl.py`/`test_nl_transaction_answer_composer_impl.py` instead mock `httpx.AsyncClient` directly to cover the actual parsing/fallback logic (valid response parsed, invalid/malformed values dropped, network failure falls back).
 
 ---
 
