@@ -52,3 +52,11 @@ export class GetTransactionsResult {
   @ApiProperty({ description: 'The total number of transactions across all pages.' })
   public readonly count: number
 }
+
+export class AskTransactionHistoryResult {
+  @ApiProperty({ description: 'A natural-language answer grounded only in the requester\'s own matching transactions.' })
+  public readonly answer: string
+
+  @ApiProperty({ description: 'How many transactions matched the question\'s translated filter.' })
+  public readonly matchedCount: number
+}

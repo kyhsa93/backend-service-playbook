@@ -9,6 +9,7 @@ src/
     aws.config.ts          # AWS_REGION, AWS_ENDPOINT_URL, credentials
     database.config.ts     # DATABASE_URL
     jwt.config.ts          # JWT-related config (includes the Secrets Manager branch)
+    llm.config.ts          # OLLAMA_BASE_URL, LLM_MODEL — see domain-service.md's structured-data RAG example
     notification.config.ts # SES_SENDER_EMAIL
     throttle.config.ts     # THROTTLE_{SHORT,MEDIUM,LONG}_{TTL_MS,LIMIT} — see rate-limiting.md
     validation.config.ts   # the environment variable validation function
@@ -73,7 +74,7 @@ export function getAwsCredentials() {
 }
 ```
 
-- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts` are **pure functions** that bypass `ConfigModule` — called directly instead of being accessed via dot notation on `ConfigService`. Only `jwt.config.ts` is registered in `ConfigModule.forRoot({ load: [jwtConfig] })` and accessed through `ConfigService` (see below).
+- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts`/`llm.config.ts` are **pure functions** that bypass `ConfigModule` — called directly instead of being accessed via dot notation on `ConfigService`. Only `jwt.config.ts` is registered in `ConfigModule.forRoot({ load: [jwtConfig] })` and accessed through `ConfigService` (see below).
 
 ### Environment Variable Validation — class-validator
 

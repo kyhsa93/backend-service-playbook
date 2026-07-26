@@ -667,5 +667,81 @@ describe('AccountController (e2e)', () => {
       expect(response.body.transactions).toHaveLength(0)
       expect(response.body.count).toBe(0)
     })
+
+    it('when_filtering_by_type_then_returns_only_matching_transactions', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/withdraw`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 3000 })
+
+      const response = await request(app.getHttpServer())
+        .get(`/accounts/${account.accountId}/transactions`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .query({ type: 'WITHDRAWAL' })
+
+      expect(response.status).toBe(200)
+      expect(response.body.count).toBe(1)
+      expect(response.body.transactions[0].type).toBe('WITHDRAWAL')
+    })
+  })
+
+  // The LLM behind these two Technical Services (see account/infrastructure) isn't available in
+  // this e2e environment, so both calls fall back to their non-blocking defaults: an empty
+  // filter (all of the account's transactions) and a plain templated summary. This still
+  // exercises the real retrieval + response shape end to end without depending on a live Ollama.
+  describe('POST /accounts/:accountId/transactions/ask', () => {
+    it('when_asked_a_question_then_returns_200_with_an_answer_grounded_in_the_requesters_own_transactions', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/transactions/ask`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ question: 'How much have I deposited?' })
+
+      expect(response.status).toBe(200)
+      expect(typeof response.body.answer).toBe('string')
+      expect(response.body.answer.length).toBeGreaterThan(0)
+      expect(response.body.matchedCount).toBe(1)
+    })
+
+    it('when_the_question_is_empty_then_returns_400', async () => {
+      const account = await createAccount()
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/transactions/ask`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ question: '' })
+
+      expect(response.status).toBe(400)
+    })
+
+    it('when_the_account_does_not_exist_then_returns_404', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/accounts/non-existent/transactions/ask')
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ question: 'anything' })
+
+      expect(response.status).toBe(404)
+    })
+
+    it('when_a_different_owner_asks_about_this_account_then_returns_404', async () => {
+      const account = await createAccount()
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/transactions/ask`)
+        .set('Authorization', authHeader(OTHER_OWNER_ID))
+        .send({ question: 'anything' })
+
+      expect(response.status).toBe(404)
+    })
   })
 })

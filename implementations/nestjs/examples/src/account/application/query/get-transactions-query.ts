@@ -1,10 +1,29 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsInt, IsOptional, Max, Min } from 'class-validator'
+import { IsIn, IsInt, IsISO8601, IsOptional, Max, Min } from 'class-validator'
+
+import { TransactionType } from '@/account/domain/transaction'
+
+const TRANSACTION_TYPES: TransactionType[] = ['DEPOSIT', 'WITHDRAWAL', 'INTEREST']
 
 export class GetTransactionsQuery {
   public readonly accountId: string
   public readonly requesterId: string
+
+  @ApiPropertyOptional({ description: 'Only include transactions of this type.', enum: TRANSACTION_TYPES })
+  @IsOptional()
+  @IsIn(TRANSACTION_TYPES)
+  public readonly type?: TransactionType
+
+  @ApiPropertyOptional({ description: 'Only include transactions on or after this date (ISO 8601, e.g. 2026-07-01).' })
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  public readonly fromDate?: string
+
+  @ApiPropertyOptional({ description: 'Only include transactions on or before this date (ISO 8601, e.g. 2026-07-31).' })
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  public readonly toDate?: string
 
   @ApiPropertyOptional({ description: 'The zero-based page number.', minimum: 0, default: 0 })
   @IsOptional()

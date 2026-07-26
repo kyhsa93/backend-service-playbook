@@ -4,6 +4,7 @@ import { Repository } from 'typeorm'
 
 import { AccountQuery } from '@/account/application/query/account-query'
 import { GetAccountResult, GetTransactionsResult } from '@/account/application/query/account-result'
+import { TransactionType } from '@/account/domain/transaction'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { AccountErrorMessage as ErrorMessage } from '@/account/account-error-message'
@@ -38,6 +39,9 @@ export class AccountQueryImpl extends AccountQuery {
   public async getTransactions(query: {
     accountId: string
     ownerId: string
+    type?: TransactionType
+    fromDate?: string
+    toDate?: string
     take: number
     page: number
   }): Promise<GetTransactionsResult> {
@@ -47,11 +51,12 @@ export class AccountQueryImpl extends AccountQuery {
       .getOne()
     if (!account) throw new Error(ErrorMessage['Account not found.'])
 
-    const qb = this.transactionRepo.createQueryBuilder('transaction')
+    let qb = this.transactionRepo.createQueryBuilder('transaction')
       .where('transaction.accountId = :accountId', { accountId: query.accountId })
-      .orderBy('transaction.createdAt', 'DESC')
-      .take(query.take)
-      .skip(query.page * query.take)
+    if (query.type) qb = qb.andWhere('transaction.type = :type', { type: query.type })
+    if (query.fromDate) qb = qb.andWhere('transaction.createdAt >= :fromDate', { fromDate: `${query.fromDate}T00:00:00.000Z` })
+    if (query.toDate) qb = qb.andWhere('transaction.createdAt <= :toDate', { toDate: `${query.toDate}T23:59:59.999Z` })
+    qb = qb.orderBy('transaction.createdAt', 'DESC').take(query.take).skip(query.page * query.take)
 
     const [rows, count] = await qb.getManyAndCount()
 

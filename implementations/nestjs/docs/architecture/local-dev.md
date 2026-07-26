@@ -48,6 +48,29 @@ services:
       timeout: 3s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    ports: ['11434:11434']
+    volumes: ['ollama-data:/root/.ollama']
+    healthcheck:
+      test: ['CMD-SHELL', 'ollama list || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A one-shot init container — pulls the model that account/infrastructure's two NL
+  # transaction-history Technical Services call (see domain-service.md) into the shared
+  # ollama-data volume once, then exits. `app` depends on it completing.
+  ollama-init:
+    image: ollama/ollama:latest
+    entrypoint: ['/bin/sh', '-c']
+    command: ['ollama pull qwen2.5:1.5b']
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   app:
     build: .
     ports: ['3000:3000']
@@ -59,16 +82,20 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
       SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/task-queue.fifo
+      OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     profiles:
       - app
 
 volumes:
   db-data:
+  ollama-data:
 ```
 
 Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the two values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`) — no separate `.env.docker` file is created.
@@ -79,6 +106,8 @@ Since `environment:` takes precedence over `env_file:`, keep local values in `.e
 |--------|--------|------|------|
 | `database` | `postgres:16-alpine` | The PostgreSQL DB | 5432 |
 | `localstack` | `localstack/localstack:3.0` | Replaces AWS services (SES, Secrets Manager, SQS) | 4566 |
+| `ollama` | `ollama/ollama:latest` | Self-hosted LLM (`qwen2.5:1.5b`) behind account/application/service's two NL transaction-history Technical Services — see domain-service.md | 11434 |
+| `ollama-init` | `ollama/ollama:latest` | One-shot: pulls the model, then exits | — |
 | `app` | The project build | The NestJS app (optional, `profiles: [app]`) | 3000 |
 
 ### Health Check
@@ -130,9 +159,13 @@ AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
+SQS_TASK_QUEUE_URL=http://localhost:4566/000000000000/task-queue.fifo
 
 JWT_SECRET=local-dev-secret
 JWT_EXPIRES_IN=1h
+
+OLLAMA_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5:1.5b
 
 PORT=3000
 NODE_ENV=development

@@ -12,6 +12,9 @@ export class GetTransactionsQueryHandler implements IQueryHandler<GetTransaction
     return this.accountQuery.getTransactions({
       accountId: query.accountId,
       ownerId: query.requesterId,
+      type: query.type,
+      fromDate: query.fromDate,
+      toDate: query.toDate,
       page: query.page,
       take: query.take
     })

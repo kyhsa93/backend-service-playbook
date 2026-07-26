@@ -223,6 +223,71 @@ class OrderCommandService {
 
 ---
 
+### A real, working example — a structured-data RAG pipeline (two LLM Technical Services + a Query Handler orchestrating them)
+
+`AskTransactionHistoryQuery` (Account BC) answers a free-text question about an account's transaction history — e.g. "How much did I deposit this month?" — using two LLM-backed Technical Services either side of an ordinary Repository read, following the Retrieve → Augment → Generate shape of RAG (here, "Retrieve" is a structured DB query, not a vector-embedding search — commonly called "structured-data RAG" or "RAG over a database" to distinguish it from the canonical vector-search form):
+
+1. **Retrieve-preparation** — `NlTransactionQueryTranslator` (a Technical Service, LLM call) turns the question into a structured filter (`type`/`fromDate`/`toDate`).
+2. **Retrieve** — `AccountQuery.getTransactions` runs that filter, scoped to the account (an ordinary Query, no LLM involved).
+3. **Generate** — `NlTransactionAnswerComposer` (a second Technical Service, LLM call) answers the question, grounded only in the retrieved records.
+
+```typescript
+// application/service/nl-transaction-query-translator.ts — the interface
+export interface TransactionFilter {
+  readonly type?: TransactionType
+  readonly fromDate?: string
+  readonly toDate?: string
+}
+export abstract class NlTransactionQueryTranslator {
+  abstract translate(question: string): Promise<TransactionFilter>
+}
+
+// application/service/nl-transaction-answer-composer.ts — the interface
+export abstract class NlTransactionAnswerComposer {
+  abstract compose(question: string, transactions: TransactionSummaryResult[]): Promise<string>
+}
+```
+
+All orchestration lives in the Query Handler (the Application layer) — never in the Controller, which only wraps the HTTP request into this Query and dispatches it:
+
+```typescript
+// application/query/ask-transaction-history-query-handler.ts — actual code (excerpt)
+export class AskTransactionHistoryQueryHandler implements IQueryHandler<AskTransactionHistoryQuery> {
+  constructor(
+    private readonly accountQuery: AccountQuery,
+    private readonly translator: NlTransactionQueryTranslator,
+    private readonly composer: NlTransactionAnswerComposer
+  ) {}
+
+  public async execute(query: AskTransactionHistoryQuery): Promise<AskTransactionHistoryResult> {
+    const filter = await this.translator.translate(query.question)
+
+    const { transactions, count } = await this.accountQuery.getTransactions({
+      accountId: query.accountId,
+      ownerId: query.requesterId, // always the authenticated requester — never from `filter`
+      type: filter.type,
+      fromDate: filter.fromDate,
+      toDate: filter.toDate,
+      take: 50,
+      page: 0
+    })
+
+    const answer = await this.composer.compose(query.question, transactions)
+    return { answer, matchedCount: count }
+  }
+}
+```
+
+**The guardrail that makes this safe to let an LLM touch at all:** the translated filter may only narrow *what* is returned (a type/date range) — it must never influence *who* it belongs to. `ownerId` always comes from `query.requesterId` (the authenticated caller, set by the Controller from `UserContextStore`), never from the LLM's output; `TransactionFilter` doesn't even have an `ownerId` field. Worst case on a bad translation is an inaccurate answer about the requester's own data — never someone else's data or unauthorized access.
+
+This is the deliberate opposite of a design mistake this repo made and later reversed: an earlier LLM feature let a model's read of user-submitted free text influence a security-relevant approve/reject judgment (a refund's fraud-risk signal, computed from the refund's own unverified `reason` text) — trivially gameable, since the same user supplying the text controlled the input the judgment was based on. The fix generalizes: **an LLM may narrow or shape what authorized data is shown, but must never be the thing that decides who is authorized, or approves/rejects a security- or money-relevant action, when its input is free text the affected party can influence.**
+
+Both Technical Service implementations fail non-blockingly (translator falls back to no filter; composer falls back to a plain templated summary) — a translation/generation outage must never prevent an answer, even a plain one, same principle as any other Technical Service call in this repo.
+
+Full code: `implementations/nestjs/examples/src/account/application/query/ask-transaction-history-query-handler.ts`, `application/service/nl-transaction-query-translator.ts`, `application/service/nl-transaction-answer-composer.ts`, `infrastructure/nl-transaction-query-translator-impl.ts`, `infrastructure/nl-transaction-answer-composer-impl.ts`.
+
+---
+
 ### A misuse of Domain Service
 
 **Wrong example: a DB lookup inside a Domain Service**

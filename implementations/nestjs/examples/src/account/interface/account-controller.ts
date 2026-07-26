@@ -22,8 +22,11 @@ import { TransferResult } from '@/account/application/command/transfer-result'
 import { WithdrawCommand } from '@/account/application/command/withdraw-command'
 import { Account } from '@/account/domain/account'
 import { Transaction } from '@/account/domain/transaction'
+import { AskTransactionHistoryQuery } from '@/account/application/query/ask-transaction-history-query'
 import { GetAccountQuery } from '@/account/application/query/get-account-query'
 import { GetTransactionsQuery } from '@/account/application/query/get-transactions-query'
+import { AskTransactionHistoryRequestBody } from '@/account/interface/dto/ask-transaction-history-request-body'
+import { AskTransactionHistoryResponseBody } from '@/account/interface/dto/ask-transaction-history-response-body'
 import { CreateAccountRequestBody } from '@/account/interface/dto/create-account-request-body'
 import { CreateAccountResponseBody } from '@/account/interface/dto/create-account-response-body'
 import { DepositRequestBody } from '@/account/interface/dto/deposit-request-body'
@@ -314,6 +317,33 @@ export class AccountController {
     const requesterId = UserContextStore.getRequesterId()
     return this.queryBus.execute(
       new GetTransactionsQuery({ ...querystring, accountId: param.accountId, requesterId })
+    ).catch((error) => {
+      this.logger.error(error)
+      throw generateErrorResponse(error.message, [
+        [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
+      ])
+    })
+  }
+
+  @Post('/accounts/:accountId/transactions/ask')
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: 'askTransactionHistory',
+    summary: 'Ask a natural-language question about an account\'s transaction history',
+    description: 'Answers a free-text question (e.g. "How much did I deposit this month?") using only the '
+      + 'requester\'s own transactions — a structured-data RAG pipeline: the question is translated into a '
+      + 'filter, matching transactions are retrieved, and the answer is generated grounded only in those records.'
+  })
+  @ApiOkResponse({ description: 'An answer was generated.', type: AskTransactionHistoryResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. an empty or overly long `question`.', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`).', type: ErrorResponseBody })
+  public async askTransactionHistory(
+    @Param() param: GetTransactionsRequestParam,
+    @Body() body: AskTransactionHistoryRequestBody
+  ): Promise<AskTransactionHistoryResponseBody> {
+    const requesterId = UserContextStore.getRequesterId()
+    return this.queryBus.execute(
+      new AskTransactionHistoryQuery({ ...body, accountId: param.accountId, requesterId })
     ).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [

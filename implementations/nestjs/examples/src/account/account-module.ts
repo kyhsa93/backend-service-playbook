@@ -22,8 +22,11 @@ import { InterestPaidHandler } from '@/account/application/event/interest-paid-h
 import { MoneyDepositedHandler } from '@/account/application/event/money-deposited-handler'
 import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdrawn-handler'
 import { AccountQuery } from '@/account/application/query/account-query'
+import { AskTransactionHistoryQueryHandler } from '@/account/application/query/ask-transaction-history-query-handler'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
+import { NlTransactionAnswerComposer } from '@/account/application/service/nl-transaction-answer-composer'
+import { NlTransactionQueryTranslator } from '@/account/application/service/nl-transaction-query-translator'
 import { NotificationService } from '@/account/application/service/notification-service'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
@@ -31,6 +34,8 @@ import { TransactionEntity } from '@/account/infrastructure/entity/transaction.e
 import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
 import { AccountRepositoryImpl } from '@/account/infrastructure/account-repository-impl'
+import { NlTransactionAnswerComposerImpl } from '@/account/infrastructure/nl-transaction-answer-composer-impl'
+import { NlTransactionQueryTranslatorImpl } from '@/account/infrastructure/nl-transaction-query-translator-impl'
 import { NotificationServiceImpl } from '@/account/infrastructure/notification/notification-service-impl'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { SesClientProvider } from '@/account/infrastructure/notification/ses-client-provider'
@@ -63,6 +68,7 @@ import { AuthModule } from '@/auth/auth-module'
     // Query Handlers
     GetAccountQueryHandler,
     GetTransactionsQueryHandler,
+    AskTransactionHistoryQueryHandler,
     // The Integration Event receiving end (external BC → Account)
     AccountIntegrationEventController,
     // The Task input adapter — @TaskConsumer methods
@@ -83,7 +89,11 @@ import { AuthModule } from '@/auth/auth-module'
     { provide: AccountQuery, useClass: AccountQueryImpl },
     // A Technical Service — SES email sending (Account-only; revisit whether to share it if another domain needs it)
     { provide: NotificationService, useClass: NotificationServiceImpl },
-    SesClientProvider
+    SesClientProvider,
+    // Technical Services — the two LLM calls behind AskTransactionHistoryQueryHandler's
+    // structured-data RAG pipeline (see root docs/architecture/domain-service.md)
+    { provide: NlTransactionQueryTranslator, useClass: NlTransactionQueryTranslatorImpl },
+    { provide: NlTransactionAnswerComposer, useClass: NlTransactionAnswerComposerImpl }
   ],
   // Only the read service is exposed, so another BC (Card) can synchronously look up an
   // account via an Adapter (ACL). The Repository and domain objects are never exposed.
