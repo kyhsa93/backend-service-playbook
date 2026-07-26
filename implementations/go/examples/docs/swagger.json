@@ -376,6 +376,70 @@
                 }
             }
         },
+        "/accounts/{id}/transactions/ask": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Answers a free-text question (e.g. \"How much did I deposit this month?\") using only the requester's own transactions — a structured-data RAG pipeline: the question is translated into a filter, matching transactions are retrieved, and the answer is generated grounded only in those records.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Ask a natural-language question about an account's transaction history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The account ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The free-text question",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.AskTransactionHistoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "An answer was generated.",
+                        "schema": {
+                            "$ref": "#/definitions/http.AskTransactionHistoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. an empty or overly long `question`.",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "The bearer token is missing, malformed, or invalid.",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/accounts/{id}/transfer": {
             "post": {
                 "security": [
@@ -1060,6 +1124,28 @@
         }
     },
     "definitions": {
+        "http.AskTransactionHistoryRequest": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "description": "A free-text question about this account's transaction history (e.g. \"How much did I deposit this month?\"). Must be non-empty and at most 500 characters.",
+                    "type": "string"
+                }
+            }
+        },
+        "http.AskTransactionHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "description": "A natural-language answer grounded only in the requester's own matching transactions.",
+                    "type": "string"
+                },
+                "matchedCount": {
+                    "description": "How many transactions matched the question's translated filter.",
+                    "type": "integer"
+                }
+            }
+        },
         "http.CancelPaymentRequest": {
             "type": "object",
             "properties": {

@@ -1,5 +1,23 @@
 basePath: /
 definitions:
+  http.AskTransactionHistoryRequest:
+    properties:
+      question:
+        description: A free-text question about this account's transaction history
+          (e.g. "How much did I deposit this month?"). Must be non-empty and at most
+          500 characters.
+        type: string
+    type: object
+  http.AskTransactionHistoryResponse:
+    properties:
+      answer:
+        description: A natural-language answer grounded only in the requester's own
+          matching transactions.
+        type: string
+      matchedCount:
+        description: How many transactions matched the question's translated filter.
+        type: integer
+    type: object
   http.CancelPaymentRequest:
     properties:
       reason:
@@ -576,6 +594,51 @@ paths:
       security:
       - BearerAuth: []
       summary: List an account's transaction history
+      tags:
+      - Account
+  /accounts/{id}/transactions/ask:
+    post:
+      consumes:
+      - application/json
+      description: 'Answers a free-text question (e.g. "How much did I deposit this
+        month?") using only the requester''s own transactions — a structured-data
+        RAG pipeline: the question is translated into a filter, matching transactions
+        are retrieved, and the answer is generated grounded only in those records.'
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: The free-text question
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.AskTransactionHistoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: An answer was generated.
+          schema:
+            $ref: '#/definitions/http.AskTransactionHistoryResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. an empty
+            or overly long `question`.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ask a natural-language question about an account's transaction history
       tags:
       - Account
   /accounts/{id}/transfer:
