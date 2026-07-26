@@ -48,7 +48,7 @@ type PaymentStore interface {
 // much higher threshold) — this keeps production values separate from test
 // values, per rate-limiting.md's "manage thresholds via environment
 // variables" principle.
-func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, limiter *rate.Limiter, txManager command.TransactionManager) (http.Handler, *HealthHandler) {
+func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo credential.Repository, paymentStore PaymentStore, accountAdapter command.AccountAdapter, paymentCardAdapter command.PaymentCardAdapter, paymentAccountAdapter command.PaymentAccountAdapter, jwtService tokenService, passwordHasher command.PasswordHasher, nlTranslator query.NlTransactionQueryTranslator, nlComposer query.NlTransactionAnswerComposer, limiter *rate.Limiter, txManager command.TransactionManager) (http.Handler, *HealthHandler) {
 	createAccountHandler := command.NewCreateAccountHandler(repo)
 	depositHandler := command.NewDepositHandler(repo)
 	withdrawHandler := command.NewWithdrawHandler(repo)
@@ -58,6 +58,11 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	closeAccountHandler := command.NewCloseAccountHandler(repo)
 	getAccountHandler := query.NewGetAccountHandler(repo)
 	getTransactionsHandler := query.NewGetTransactionsHandler(repo)
+	// AskTransactionHistoryHandler — a structured-data RAG pipeline
+	// (domain-service.md): nlTranslator/nlComposer are the two LLM-backed
+	// Technical Services, and repo is reused as the plain account.Query
+	// (Retrieve) port between them.
+	askTransactionHistoryHandler := query.NewAskTransactionHistoryHandler(repo, nlTranslator, nlComposer)
 
 	accountHTTP := NewAccountHandler(
 		createAccountHandler,
@@ -69,6 +74,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 		closeAccountHandler,
 		getAccountHandler,
 		getTransactionsHandler,
+		askTransactionHistoryHandler,
 	)
 	// Card BC — on issuance, synchronously checks whether the account is
 	// active via accountAdapter (ACL) (cross-domain.md).
@@ -116,6 +122,7 @@ func NewRouter(repo account.Repository, cardRepo card.Repository, credentialRepo
 	protected.HandleFunc("POST /accounts/{id}/close", accountHTTP.CloseAccount)
 	protected.HandleFunc("GET /accounts/{id}", accountHTTP.GetAccount)
 	protected.HandleFunc("GET /accounts/{id}/transactions", accountHTTP.GetTransactions)
+	protected.HandleFunc("POST /accounts/{id}/transactions/ask", accountHTTP.AskTransactionHistory)
 	protected.HandleFunc("POST /cards", cardHTTP.IssueCard)
 	protected.HandleFunc("GET /cards/{cardId}", cardHTTP.GetCard)
 	protected.HandleFunc("POST /payments", paymentHTTP.CreatePayment)

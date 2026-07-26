@@ -45,7 +45,7 @@ func (s *stubRepository) SaveAccount(ctx context.Context, a *account.Account) er
 }
 
 func (s *stubRepository) FindTransactions(
-	ctx context.Context, accountID string, page, take int,
+	ctx context.Context, q account.FindTransactionsQuery,
 ) ([]account.Transaction, int, error) {
 	return nil, 0, nil
 }

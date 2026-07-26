@@ -28,9 +28,11 @@ import (
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/event"
 	integrationevent "github.com/example/account-service/internal/application/integration-event"
+	"github.com/example/account-service/internal/config"
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
+	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
 	"github.com/example/account-service/internal/infrastructure/persistence"
@@ -270,7 +272,16 @@ func runTests(m *testing.M) int {
 	// here only.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, testLimiter, database.NewManager(db))
+	// No real Ollama runs in this e2e environment — both LLM calls fail fast
+	// (connection refused) and fall back to their non-blocking defaults (an
+	// empty filter, a plain templated answer), so TestAskTransactionHistory
+	// still exercises the real retrieval + response shape end to end
+	// without depending on a live Ollama (the same approach the nestjs
+	// reference's e2e suite takes).
+	nlTranslator := llm.NewNlTransactionQueryTranslatorImpl(config.OllamaBaseURL(), config.LLMModel())
+	nlComposer := llm.NewNlTransactionAnswerComposerImpl(config.OllamaBaseURL(), config.LLMModel())
+
+	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, nlTranslator, nlComposer, testLimiter, database.NewManager(db))
 	testServer = httptest.NewServer(mux)
 	defer testServer.Close()
 
@@ -831,5 +842,52 @@ func TestGetTransactions(t *testing.T) {
 		if transactions != nil {
 			require.Len(t, transactions.([]any), 0)
 		}
+	})
+}
+
+// TestAskTransactionHistory exercises the structured-data RAG pipeline end
+// to end (see internal/application/query/ask_transaction_history_handler.go
+// and docs/architecture/domain-service.md). No real Ollama runs here, so
+// both LLM Technical Services fail fast and fall back to their non-blocking
+// defaults — this still verifies the real retrieval + response shape
+// (status code, matchedCount, a non-empty answer) without depending on a
+// live Ollama, mirroring the nestjs reference's e2e suite.
+func TestAskTransactionHistory(t *testing.T) {
+	t.Run("when_asked_a_question_then_returns_200_with_an_answer_grounded_in_the_requesters_own_transactions", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/transactions/ask", ownerID,
+			map[string]string{"question": "How much have I deposited?"})
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		answer, ok := body["answer"].(string)
+		require.True(t, ok)
+		require.NotEmpty(t, answer)
+		require.Equal(t, float64(1), body["matchedCount"])
+	})
+
+	t.Run("when_the_question_is_empty_then_returns_400", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/transactions/ask", ownerID,
+			map[string]string{"question": ""})
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("when_the_account_does_not_exist_then_returns_404", func(t *testing.T) {
+		resp := doRequest(t, http.MethodPost, "/accounts/non-existent/transactions/ask", ownerID,
+			map[string]string{"question": "anything"})
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("when_a_different_owner_asks_about_this_account_then_returns_404", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+
+		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/transactions/ask", otherOwnerID,
+			map[string]string{"question": "anything"})
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 }

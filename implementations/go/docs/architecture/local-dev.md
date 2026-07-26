@@ -35,6 +35,28 @@ services:
       timeout: 3s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    ports: ['11434:11434']
+    volumes: ['ollama-data:/root/.ollama']
+    healthcheck:
+      test: ['CMD-SHELL', 'ollama list || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A one-shot init container — pulls the model into the shared ollama-data volume once, then
+  # exits. `app` depends on it completing.
+  ollama-init:
+    image: ollama/ollama:latest
+    entrypoint: ['/bin/sh', '-c']
+    command: ['ollama pull qwen2.5:1.5b']
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   app:
     build: .
     ports: ['8080:8080']
@@ -45,17 +67,26 @@ services:
       DATABASE_URL: postgres://dev:dev@database:5432/app?sslmode=disable
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
+      OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     profiles:
       - app
 
 volumes:
   db-data:
+  ollama-data:
 ```
+
+| Service | Image | Purpose |
+|---|---|---|
+| `ollama` | `ollama/ollama:latest` | Self-hosted LLM (`qwen2.5:1.5b`) behind `internal/infrastructure/llm`'s two NL transaction-history Technical Services — see [domain-service.md](../../../../docs/architecture/domain-service.md) |
+| `ollama-init` | `ollama/ollama:latest` | One-shot: pulls the model, then exits |
 
 Compared against the root principle:
 - **The LocalStack image version is pinned** — `localstack/localstack:3.0` (not `:latest`). This directly reflects the reason the root document states: "the `latest` tag can change behavior without notice."
@@ -147,6 +178,8 @@ SES_SENDER_EMAIL=no-reply@backend-service-playbook.example.com
 SQS_DOMAIN_EVENT_QUEUE_URL=http://localhost:4566/000000000000/domain-events
 JWT_SECRET=local-dev-secret
 APP_ENV=development
+OLLAMA_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5:1.5b
 ```
 
 There's `.env.example` (committed) and `.env.development` (included in `.gitignore`, created by copying `.env.example`). The Go standard library doesn't automatically read `.env` files, so load it into the shell — e.g. `export $(cat .env.development | xargs) && go run ./cmd/server` — or use a tool like direnv.

@@ -192,19 +192,52 @@ func (r *AccountRepository) HasTransactionWithReference(ctx context.Context, ref
 	return count > 0, nil
 }
 
-func (r *AccountRepository) FindTransactions(ctx context.Context, accountID string, page, take int) ([]account.Transaction, int, error) {
+// FindTransactions applies q's optional Type/FromDate/ToDate filters as
+// additional WHERE clauses on top of the mandatory account_id match — the
+// same dynamic-predicate-building idiom PaymentRepository.FindPayments uses
+// for its CreatedFrom/CreatedTo range. FromDate/ToDate arrive as plain ISO
+// 8601 date strings (see FindTransactionsQuery's doc comment); a value that
+// fails to parse is treated as "no bound on that side" rather than an
+// error, so a malformed filter (e.g. from an LLM Technical Service that
+// already validates this itself, but is not the only possible caller)
+// degrades to "no narrowing" instead of blocking the query.
+func (r *AccountRepository) FindTransactions(ctx context.Context, q account.FindTransactionsQuery) ([]account.Transaction, int, error) {
+	args := []any{q.AccountID}
+	where := []string{"account_id = $1"}
+	i := 2
+
+	if q.Type != "" {
+		where = append(where, fmt.Sprintf("type = $%d", i))
+		args = append(args, string(q.Type))
+		i++
+	}
+	if from, ok := parseISODate(q.FromDate); ok {
+		where = append(where, fmt.Sprintf("created_at >= $%d", i))
+		args = append(args, from)
+		i++
+	}
+	if to, ok := parseISODate(q.ToDate); ok {
+		// Exclusive next-day-start bound makes ToDate an inclusive end-of-day
+		// boundary without needing a separate "23:59:59.999" literal.
+		where = append(where, fmt.Sprintf("created_at < $%d", i))
+		args = append(args, to.AddDate(0, 0, 1))
+		i++
+	}
+	whereClause := strings.Join(where, " AND ")
+
 	var total int
 	if err := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM transactions WHERE account_id = $1`, accountID,
+		fmt.Sprintf(`SELECT COUNT(*) FROM transactions WHERE %s`, whereClause), args...,
 	).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count transactions: %w", err)
 	}
 
+	limitArgs := append(append([]any{}, args...), q.Take, q.Page*q.Take)
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, account_id, type, amount, currency, created_at
-		 FROM transactions WHERE account_id = $1
-		 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		accountID, take, page*take,
+		fmt.Sprintf(`SELECT id, account_id, type, amount, currency, created_at
+		 FROM transactions WHERE %s
+		 ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, whereClause, i, i+1),
+		limitArgs...,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("find transactions: %w", err)
@@ -224,4 +257,18 @@ func (r *AccountRepository) FindTransactions(ctx context.Context, accountID stri
 		transactions = append(transactions, t)
 	}
 	return transactions, total, rows.Err()
+}
+
+// parseISODate parses an ISO 8601 date (YYYY-MM-DD). An empty or
+// unparsable value returns ok=false so the caller can skip applying that
+// bound rather than erroring.
+func parseISODate(v string) (time.Time, bool) {
+	if v == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", v)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }

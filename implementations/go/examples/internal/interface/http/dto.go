@@ -89,6 +89,15 @@ type GetTransactionsResponse struct {
 	Count        int                          `json:"count"`        // The total number of transactions matching the filter (not just the current page's size).
 }
 
+type AskTransactionHistoryRequest struct {
+	Question string `json:"question"` // A free-text question about this account's transaction history (e.g. "How much did I deposit this month?"). Must be non-empty and at most 500 characters.
+}
+
+type AskTransactionHistoryResponse struct {
+	Answer       string `json:"answer"`       // A natural-language answer grounded only in the requester's own matching transactions.
+	MatchedCount int    `json:"matchedCount"` // How many transactions matched the question's translated filter.
+}
+
 type IssueCardRequest struct {
 	AccountID string `json:"accountId"` // The active account to link the card to. Must be owned by the authenticated requester.
 	Brand     string `json:"brand"`     // The card brand (e.g. `VISA`, `MASTER`).

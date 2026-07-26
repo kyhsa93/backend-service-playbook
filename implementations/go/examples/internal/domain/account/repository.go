@@ -10,6 +10,28 @@ type FindQuery struct {
 	Status    []Status
 }
 
+// FindTransactionsQuery narrows a FindTransactions lookup to a specific
+// account, optionally further narrowed by transaction type and/or a date
+// range. Used both by the plain transaction-history listing
+// (GetTransactionsHandler) and by AskTransactionHistoryHandler, whose
+// Type/FromDate/ToDate fields there come from a Technical Service's (LLM)
+// interpretation of a free-text question (see
+// docs/architecture/domain-service.md's structured-data RAG example).
+//
+// Deliberately has no OwnerID field: by the time either Handler builds one,
+// FindOne has already verified AccountID belongs to the authenticated
+// requester, so ownership is never re-derived from this filter — this
+// keeps the "the LLM may only narrow WHAT is returned, never WHO it
+// belongs to" guarantee structural rather than convention-based.
+type FindTransactionsQuery struct {
+	AccountID string
+	Type      TransactionType // empty = no type filter
+	FromDate  string          // ISO 8601 date (YYYY-MM-DD), inclusive lower bound; empty = unbounded
+	ToDate    string          // ISO 8601 date (YYYY-MM-DD), inclusive upper bound; empty = unbounded
+	Page      int
+	Take      int
+}
+
 // Query is a Query-only interface that exposes only read-only lookup
 // methods. Query Handlers must depend only on this interface so they have no
 // access to write methods (Save). Because Go interfaces use structural
@@ -23,7 +45,7 @@ type FindQuery struct {
 // FindAccounts with Take: 1 and pull out the first result.
 type Query interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
-	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
+	FindTransactions(ctx context.Context, q FindTransactionsQuery) ([]Transaction, int, error)
 
 	// HasTransactionWithReference is the idempotency check that ensures a
 	// Payment BC Integration Event reaction (withdraw-by-payment/

@@ -15,15 +15,16 @@ import (
 )
 
 type AccountHandler struct {
-	createAccount     *command.CreateAccountHandler
-	deposit           *command.DepositHandler
-	withdraw          *command.WithdrawHandler
-	transfer          *command.TransferHandler
-	suspendAccount    *command.SuspendAccountHandler
-	reactivateAccount *command.ReactivateAccountHandler
-	closeAccount      *command.CloseAccountHandler
-	getAccount        *query.GetAccountHandler
-	getTransactions   *query.GetTransactionsHandler
+	createAccount         *command.CreateAccountHandler
+	deposit               *command.DepositHandler
+	withdraw              *command.WithdrawHandler
+	transfer              *command.TransferHandler
+	suspendAccount        *command.SuspendAccountHandler
+	reactivateAccount     *command.ReactivateAccountHandler
+	closeAccount          *command.CloseAccountHandler
+	getAccount            *query.GetAccountHandler
+	getTransactions       *query.GetTransactionsHandler
+	askTransactionHistory *query.AskTransactionHistoryHandler
 }
 
 func NewAccountHandler(
@@ -36,17 +37,19 @@ func NewAccountHandler(
 	closeAccount *command.CloseAccountHandler,
 	getAccount *query.GetAccountHandler,
 	getTransactions *query.GetTransactionsHandler,
+	askTransactionHistory *query.AskTransactionHistoryHandler,
 ) *AccountHandler {
 	return &AccountHandler{
-		createAccount:     createAccount,
-		deposit:           deposit,
-		withdraw:          withdraw,
-		transfer:          transfer,
-		suspendAccount:    suspendAccount,
-		reactivateAccount: reactivateAccount,
-		closeAccount:      closeAccount,
-		getAccount:        getAccount,
-		getTransactions:   getTransactions,
+		createAccount:         createAccount,
+		deposit:               deposit,
+		withdraw:              withdraw,
+		transfer:              transfer,
+		suspendAccount:        suspendAccount,
+		reactivateAccount:     reactivateAccount,
+		closeAccount:          closeAccount,
+		getAccount:            getAccount,
+		getTransactions:       getTransactions,
+		askTransactionHistory: askTransactionHistory,
 	}
 }
 
@@ -402,6 +405,57 @@ func (h *AccountHandler) GetTransactions(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, r, GetTransactionsResponse{Transactions: summaries, Count: result.Count})
+}
+
+// AskTransactionHistory answers a free-text question about an account's
+// transaction history — a structured-data RAG pipeline (see root
+// docs/architecture/domain-service.md): the question is translated into a
+// filter, matching transactions are retrieved, and the answer is generated
+// grounded only in those records. All orchestration lives in
+// query.AskTransactionHistoryHandler (the Application layer) — this
+// handler only wraps the HTTP request into a Query and dispatches it.
+//
+// @Summary		Ask a natural-language question about an account's transaction history
+// @Description	Answers a free-text question (e.g. "How much did I deposit this month?") using only the requester's own transactions — a structured-data RAG pipeline: the question is translated into a filter, matching transactions are retrieved, and the answer is generated grounded only in those records.
+// @Tags			Account
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string							true	"The account ID"
+// @Param			body	body		AskTransactionHistoryRequest	true	"The free-text question"
+// @Success		200		{object}	AskTransactionHistoryResponse	"An answer was generated."
+// @Failure		400		{object}	ErrorResponse					"Request validation failed (`VALIDATION_FAILED`) — e.g. an empty or overly long `question`."
+// @Failure		401		{object}	ErrorResponse					"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse					"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`)."
+// @Router			/accounts/{id}/transactions/ask [post]
+func (h *AccountHandler) AskTransactionHistory(w http.ResponseWriter, r *http.Request) {
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
+	accountID := r.PathValue("id")
+	var body AskTransactionHistoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeValidationError(w, r, "invalid request body")
+		return
+	}
+	question := strings.TrimSpace(body.Question)
+	if question == "" {
+		writeValidationError(w, r, "question must not be empty")
+		return
+	}
+	if len(question) > 500 {
+		writeValidationError(w, r, "question must not exceed 500 characters")
+		return
+	}
+	result, err := h.askTransactionHistory.Handle(r.Context(), query.AskTransactionHistoryQuery{
+		AccountID:   accountID,
+		RequesterID: requesterID,
+		Question:    question,
+	})
+	if err != nil {
+		writeAccountError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, r, AskTransactionHistoryResponse{Answer: result.Answer, MatchedCount: result.MatchedCount})
 }
 
 func parsePagination(r *http.Request) (page, take int) {

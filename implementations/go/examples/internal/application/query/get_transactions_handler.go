@@ -27,7 +27,11 @@ func (h *GetTransactionsHandler) Handle(ctx context.Context, q GetTransactionsQu
 		return nil, fmt.Errorf("get transactions: %w", err)
 	}
 
-	transactions, count, err := h.repo.FindTransactions(ctx, q.AccountID, q.Page, q.Take)
+	transactions, count, err := h.repo.FindTransactions(ctx, account.FindTransactionsQuery{
+		AccountID: q.AccountID,
+		Page:      q.Page,
+		Take:      q.Take,
+	})
 	if err != nil {
 		return nil, err
 	}

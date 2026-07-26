@@ -28,6 +28,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
+	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/logging"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
@@ -247,7 +248,15 @@ func main() {
 	rateLimitConfig := config.LoadRateLimitConfig()
 	limiter := rate.NewLimiter(rate.Limit(rateLimitConfig.RequestsPerSecond), rateLimitConfig.Burst)
 
-	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, limiter, dbManager)
+	// The two LLM Technical Services behind AskTransactionHistoryHandler's
+	// structured-data RAG pipeline (domain-service.md) — talk to a
+	// self-hosted Ollama instance (docker-compose.yml's ollama/ollama-init
+	// services), so unlike jwtSecret above there's no Secrets Manager
+	// lookup needed, just a plain base URL.
+	nlTranslator := llm.NewNlTransactionQueryTranslatorImpl(config.OllamaBaseURL(), config.LLMModel())
+	nlComposer := llm.NewNlTransactionAnswerComposerImpl(config.OllamaBaseURL(), config.LLMModel())
+
+	mux, healthHandler := httphandler.NewRouter(accountRepo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, jwtService, passwordHasher, nlTranslator, nlComposer, limiter, dbManager)
 
 	srv := &http.Server{Addr: ":8080", Handler: mux}
 
