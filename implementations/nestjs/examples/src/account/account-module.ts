@@ -3,6 +3,7 @@ import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
 import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
+import { AnalyzeMonthlySpendingCommandHandler } from '@/account/application/command/analyze-monthly-spending-command-handler'
 import { ApplyDailyInterestCommandHandler } from '@/account/application/command/apply-daily-interest-command-handler'
 import { CloseAccountCommandHandler } from '@/account/application/command/close-account-command-handler'
 import { CreateAccountCommandHandler } from '@/account/application/command/create-account-command-handler'
@@ -24,12 +25,16 @@ import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdra
 import { AccountQuery } from '@/account/application/query/account-query'
 import { AskTransactionHistoryQueryHandler } from '@/account/application/query/ask-transaction-history-query-handler'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
+import { GetSpendingAnalysisQueryHandler } from '@/account/application/query/get-spending-analysis-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
+import { SpendingAnalysisQuery } from '@/account/application/query/spending-analysis-query'
 import { NlTransactionAnswerComposer } from '@/account/application/service/nl-transaction-answer-composer'
 import { NlTransactionQueryTranslator } from '@/account/application/service/nl-transaction-query-translator'
 import { NotificationService } from '@/account/application/service/notification-service'
 import { AccountRepository } from '@/account/domain/account-repository'
+import { SpendingAnalysisRepository } from '@/account/domain/spending-analysis-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
+import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
@@ -39,6 +44,9 @@ import { NlTransactionQueryTranslatorImpl } from '@/account/infrastructure/nl-tr
 import { NotificationServiceImpl } from '@/account/infrastructure/notification/notification-service-impl'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { SesClientProvider } from '@/account/infrastructure/notification/ses-client-provider'
+import { SpendingAnalysisQueryImpl } from '@/account/infrastructure/spending-analysis-query-impl'
+import { SpendingAnalysisRepositoryImpl } from '@/account/infrastructure/spending-analysis-repository-impl'
+import { SpendingAnalysisScheduler } from '@/account/infrastructure/spending-analysis-scheduler'
 import { AccountController } from '@/account/interface/account-controller'
 import { AccountTaskController } from '@/account/interface/account-task-controller'
 import { AuthModule } from '@/auth/auth-module'
@@ -46,7 +54,7 @@ import { AuthModule } from '@/auth/auth-module'
 @Module({
   imports: [
     CqrsModule,
-    TypeOrmModule.forFeature([AccountEntity, TransactionEntity, SentEmailEntity]),
+    TypeOrmModule.forFeature([AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity]),
     AuthModule
   ],
   controllers: [AccountController],
@@ -65,16 +73,20 @@ import { AuthModule } from '@/auth/auth-module'
     DepositByPaymentCommandHandler,
     // The Command Handler the account.apply-daily-interest Task delegates to
     ApplyDailyInterestCommandHandler,
+    // The Command Handler the account.analyze-monthly-spending Task delegates to
+    AnalyzeMonthlySpendingCommandHandler,
     // Query Handlers
     GetAccountQueryHandler,
     GetTransactionsQueryHandler,
     AskTransactionHistoryQueryHandler,
+    GetSpendingAnalysisQueryHandler,
     // The Integration Event receiving end (external BC → Account)
     AccountIntegrationEventController,
     // The Task input adapter — @TaskConsumer methods
     AccountTaskController,
     // Only Cron → TaskQueue.enqueue (Infrastructure layer)
     AccountInterestScheduler,
+    SpendingAnalysisScheduler,
     // Event Handlers
     AccountCreatedHandler,
     MoneyDepositedHandler,
@@ -85,8 +97,10 @@ import { AuthModule } from '@/auth/auth-module'
     AccountClosedHandler,
     // Repositories
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
+    { provide: SpendingAnalysisRepository, useClass: SpendingAnalysisRepositoryImpl },
     // The Query implementation
     { provide: AccountQuery, useClass: AccountQueryImpl },
+    { provide: SpendingAnalysisQuery, useClass: SpendingAnalysisQueryImpl },
     // A Technical Service — SES email sending (Account-only; revisit whether to share it if another domain needs it)
     { provide: NotificationService, useClass: NotificationServiceImpl },
     SesClientProvider,

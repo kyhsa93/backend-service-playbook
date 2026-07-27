@@ -11,4 +11,5 @@ export enum AccountErrorMessage {
   'The account is already closed.' = 'The account is already closed.',
   'An account with a non-zero balance cannot be closed.' = 'An account with a non-zero balance cannot be closed.',
   'The withdrawal account and deposit account cannot be the same.' = 'The withdrawal account and deposit account cannot be the same.',
+  'Spending analysis not found.' = 'Spending analysis not found.',
 }

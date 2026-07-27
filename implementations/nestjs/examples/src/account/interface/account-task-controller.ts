@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 
+import { AnalyzeMonthlySpendingCommand } from '@/account/application/command/analyze-monthly-spending-command'
 import { ApplyDailyInterestCommand } from '@/account/application/command/apply-daily-interest-command'
 import { TaskConsumer } from '@/task-queue/task-consumer.decorator'
 
@@ -22,6 +23,25 @@ export class AccountTaskController {
     // the HTTP Controller wrapping the request body into a Command via new Command({ ...body })).
     await this.commandBus.execute<ApplyDailyInterestCommand, number>(
       new ApplyDailyInterestCommand({ today: new Date(payload.today) })
+    )
+  }
+
+  @TaskConsumer('account.analyze-monthly-spending')
+  public async analyzeMonthlySpending(payload: {
+    analysisMonth: string
+    monthStart: string
+    monthEnd: string
+    previousMonthStart: string
+    previousMonthEnd: string
+  }): Promise<void> {
+    await this.commandBus.execute<AnalyzeMonthlySpendingCommand, number>(
+      new AnalyzeMonthlySpendingCommand({
+        analysisMonth: payload.analysisMonth,
+        monthStart: new Date(payload.monthStart),
+        monthEnd: new Date(payload.monthEnd),
+        previousMonthStart: new Date(payload.previousMonthStart),
+        previousMonthEnd: new Date(payload.previousMonthEnd)
+      })
     )
   }
 }

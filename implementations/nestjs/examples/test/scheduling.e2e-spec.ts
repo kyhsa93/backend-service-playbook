@@ -12,8 +12,11 @@ import { DataSource } from 'typeorm'
 import { AccountModule } from '@/account/account-module'
 import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
+import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
+import { computePreviousSpendingAnalysisPeriod } from '@/account/infrastructure/previous-spending-analysis-period'
+import { SpendingAnalysisScheduler } from '@/account/infrastructure/spending-analysis-scheduler'
 import { AuthModule } from '@/auth/auth-module'
 import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
 import { CardModule } from '@/card/card-module'
@@ -97,7 +100,7 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
           type: 'postgres',
           url: postgres.getConnectionUri(),
           entities: [
-            AccountEntity, TransactionEntity, SentEmailEntity, CredentialEntity,
+            AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity, CredentialEntity,
             CardEntity, PaymentEntity, RefundEntity, SentCardStatementEntity,
             OutboxEntity, TaskOutboxEntity
           ],
@@ -149,6 +152,14 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
       .post(`/accounts/${accountId}/deposit`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({ amount })
+  }
+
+  async function withdraw(accountId: string, amount: number): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .post(`/accounts/${accountId}/withdraw`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ amount })
+    return (response.body as { transactionId: string }).transactionId
   }
 
   async function getBalance(accountId: string): Promise<number> {
@@ -260,5 +271,69 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
       const allStatementsForCard = await statementRepo.findBy({ cardId, statementMonth })
       expect(allStatementsForCard).toHaveLength(1)
     }, 60000)
+  })
+
+  describe('Monthly spending analysis (account.analyze-monthly-spending)', () => {
+    it('an_account_with_last_months_withdrawal_history_gets_an_analysis_row_queryable_via_the_API_and_re-enqueueing_in_the_same_month_does_not_duplicate_it', async () => {
+      const accountId = await createAccount()
+      await deposit(accountId, 1_000_000)
+
+      // Backdates the withdrawals into "last month" the same way the card-statement test
+      // backdates payments — reusing the scheduler's own period computation so the analysis
+      // only lines up if it matches the logic the Scheduler actually runs with.
+      const { analysisMonth, monthStart } = computePreviousSpendingAnalysisPeriod(new Date())
+      const backdatedAt = new Date(monthStart.getTime() + 24 * 60 * 60 * 1000)
+      const transactionId1 = await withdraw(accountId, 30000)
+      const transactionId2 = await withdraw(accountId, 20000)
+      await dataSource.getRepository(TransactionEntity).update({ transactionId: transactionId1 }, { createdAt: backdatedAt })
+      await dataSource.getRepository(TransactionEntity).update({ transactionId: transactionId2 }, { createdAt: backdatedAt })
+
+      const scheduler = app.get(SpendingAnalysisScheduler)
+      await scheduler.enqueueMonthlySpendingAnalysis()
+
+      const analysisRepo = dataSource.getRepository(SpendingAnalysisEntity)
+      let analysis: SpendingAnalysisEntity | null = null
+      for (let i = 0; i < 150; i++) {
+        analysis = await analysisRepo.findOneBy({ accountId, analysisMonth })
+        if (analysis) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(analysis).not.toBeNull()
+      expect(analysis?.totalAmount).toBe(50000)
+      expect(analysis?.transactionCount).toBe(2)
+      expect(analysis?.averageAmount).toBe(25000)
+      // No prior-prior month withdrawal history exists, so the comparison baseline is 0 →
+      // the %-change is capped at 100 and the trend is INCREASING (see SpendingAnalysis.create).
+      expect(analysis?.changeFromPreviousMonth).toBe(100)
+      expect(analysis?.trend).toBe('INCREASING')
+
+      const response = await request(app.getHttpServer())
+        .get(`/accounts/${accountId}/spending-analysis`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .query({ month: `${analysisMonth}-01` })
+      expect(response.status).toBe(200)
+      expect(response.body.totalAmount).toBe(50000)
+      expect(response.body.trend).toBe('INCREASING')
+
+      // Since it's the same month's dedupId, even if the second enqueue is reprocessed, the
+      // (accountId, analysisMonth) unique constraint + the hasAnalysis precheck must prevent a duplicate row.
+      await scheduler.enqueueMonthlySpendingAnalysis()
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+      const allAnalysesForAccount = await analysisRepo.findBy({ accountId, analysisMonth })
+      expect(allAnalysesForAccount).toHaveLength(1)
+    }, 60000)
+
+    it('when_no_analysis_has_been_computed_for_the_requested_month_then_returns_404', async () => {
+      const accountId = await createAccount()
+
+      const response = await request(app.getHttpServer())
+        .get(`/accounts/${accountId}/spending-analysis`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .query({ month: '2020-01-01' })
+
+      expect(response.status).toBe(404)
+      expect(response.body.code).toBe('SPENDING_ANALYSIS_NOT_FOUND')
+    })
   })
 })

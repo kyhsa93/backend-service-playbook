@@ -91,4 +91,23 @@ export class AccountRepositoryImpl extends AccountRepository {
     const count = await manager.count(TransactionEntity, { where: { referenceId, type } })
     return count > 0
   }
+
+  public async summarizeTransactions(query: {
+    readonly accountId: string
+    readonly type: TransactionType[]
+    readonly createdAtFrom: Date
+    readonly createdAtTo: Date
+  }): Promise<{ count: number; totalAmount: number }> {
+    const manager = this.transactionManager.getManager()
+    const row = await manager.createQueryBuilder(TransactionEntity, 'transaction')
+      .select('COUNT(*)', 'count')
+      .addSelect('COALESCE(SUM(transaction.amount), 0)', 'totalAmount')
+      .where('transaction.accountId = :accountId', { accountId: query.accountId })
+      .andWhere('transaction.type IN (:...type)', { type: query.type })
+      .andWhere('transaction.createdAt >= :createdAtFrom', { createdAtFrom: query.createdAtFrom })
+      .andWhere('transaction.createdAt < :createdAtTo', { createdAtTo: query.createdAtTo })
+      .getRawOne<{ count: string; totalAmount: string }>()
+
+    return { count: Number(row?.count ?? 0), totalAmount: Number(row?.totalAmount ?? 0) }
+  }
 }

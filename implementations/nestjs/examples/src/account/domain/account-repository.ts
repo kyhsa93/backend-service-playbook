@@ -25,4 +25,15 @@ export abstract class AccountRepository {
   // their referenceId, so checking referenceId alone would wrongly judge the compensating
   // credit as "already processed" and skip it.
   abstract hasTransactionWithReference(referenceId: string, type: TransactionType): Promise<boolean>
+
+  // Aggregates one account's transactions in a date range — the same shape as
+  // PaymentRepository.summarizePayments, used by AnalyzeMonthlySpendingCommandHandler to total
+  // up a month's (and the prior month's, for comparison) WITHDRAWAL activity without loading
+  // every individual Transaction row into memory.
+  abstract summarizeTransactions(query: {
+    readonly accountId: string
+    readonly type: TransactionType[]
+    readonly createdAtFrom: Date
+    readonly createdAtTo: Date
+  }): Promise<{ count: number; totalAmount: number }>
 }

@@ -24,7 +24,9 @@ import { Account } from '@/account/domain/account'
 import { Transaction } from '@/account/domain/transaction'
 import { AskTransactionHistoryQuery } from '@/account/application/query/ask-transaction-history-query'
 import { GetAccountQuery } from '@/account/application/query/get-account-query'
+import { GetSpendingAnalysisQuery } from '@/account/application/query/get-spending-analysis-query'
 import { GetTransactionsQuery } from '@/account/application/query/get-transactions-query'
+import { SpendingAnalysisResult } from '@/account/application/query/spending-analysis-result'
 import { AskTransactionHistoryRequestBody } from '@/account/interface/dto/ask-transaction-history-request-body'
 import { AskTransactionHistoryResponseBody } from '@/account/interface/dto/ask-transaction-history-response-body'
 import { CreateAccountRequestBody } from '@/account/interface/dto/create-account-request-body'
@@ -33,6 +35,9 @@ import { DepositRequestBody } from '@/account/interface/dto/deposit-request-body
 import { DepositResponseBody } from '@/account/interface/dto/deposit-response-body'
 import { GetAccountRequestParam } from '@/account/interface/dto/get-account-request-param'
 import { GetAccountResponseBody } from '@/account/interface/dto/get-account-response-body'
+import { GetSpendingAnalysisRequestParam } from '@/account/interface/dto/get-spending-analysis-request-param'
+import { GetSpendingAnalysisRequestQuerystring } from '@/account/interface/dto/get-spending-analysis-request-querystring'
+import { GetSpendingAnalysisResponseBody } from '@/account/interface/dto/get-spending-analysis-response-body'
 import { GetTransactionsRequestParam } from '@/account/interface/dto/get-transactions-request-param'
 import { GetTransactionsRequestQuerystring } from '@/account/interface/dto/get-transactions-request-querystring'
 import { GetTransactionsResponseBody } from '@/account/interface/dto/get-transactions-response-body'
@@ -348,6 +353,32 @@ export class AccountController {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
         [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND]
+      ])
+    })
+  }
+
+  @Get('/accounts/:accountId/spending-analysis')
+  @ApiOperation({
+    operationId: 'getSpendingAnalysis',
+    summary: "Get an account's monthly spending analysis",
+    description: 'Returns the precomputed spending analysis (total/average withdrawal amount, %-change and trend '
+      + 'versus the previous month) for the given month — computed monthly by a batch ETL job, not on demand.'
+  })
+  @ApiOkResponse({ description: 'The analysis was found.', type: GetSpendingAnalysisResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date.', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`), or no analysis has been computed yet for the given month (`SPENDING_ANALYSIS_NOT_FOUND`).', type: ErrorResponseBody })
+  public async getSpendingAnalysis(
+    @Param() param: GetSpendingAnalysisRequestParam,
+    @Query() querystring: GetSpendingAnalysisRequestQuerystring
+  ): Promise<GetSpendingAnalysisResponseBody> {
+    const requesterId = UserContextStore.getRequesterId()
+    return this.queryBus.execute<GetSpendingAnalysisQuery, SpendingAnalysisResult>(
+      new GetSpendingAnalysisQuery({ ...querystring, accountId: param.accountId, requesterId })
+    ).catch((error) => {
+      this.logger.error(error)
+      throw generateErrorResponse(error.message, [
+        [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+        [AccountErrorMessage['Spending analysis not found.'], NotFoundException, ErrorCode.SPENDING_ANALYSIS_NOT_FOUND]
       ])
     })
   }
