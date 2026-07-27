@@ -40,6 +40,10 @@ func (s *stubAccountQuery) HasTransactionWithReference(ctx context.Context, refe
 	return false, nil
 }
 
+func (s *stubAccountQuery) SummarizeTransactions(ctx context.Context, q account.SummarizeTransactionsQuery) (account.TransactionSummary, error) {
+	return account.TransactionSummary{}, nil
+}
+
 type stubTranslator struct {
 	filter query.TransactionFilter
 }

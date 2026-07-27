@@ -159,6 +159,32 @@ definitions:
           $ref: '#/definitions/http.RefundResponse'
         type: array
     type: object
+  http.GetSpendingAnalysisResponse:
+    properties:
+      analysisMonth:
+        description: The analyzed month, in YYYY-MM form.
+        type: string
+      averageAmount:
+        description: The average withdrawal amount per transaction.
+        type: integer
+      changeFromPreviousMonth:
+        description: The percentage change in total withdrawal amount versus the previous
+          month.
+        type: integer
+      createdAt:
+        description: When this analysis was computed.
+        type: string
+      totalAmount:
+        description: The account's total withdrawal amount for the month.
+        type: integer
+      transactionCount:
+        description: The number of withdrawal transactions in the month.
+        type: integer
+      trend:
+        description: A simple classification of the change (`INCREASING`, `DECREASING`,
+          or `STABLE`).
+        type: string
+    type: object
   http.GetTransactionsResponse:
     properties:
       count:
@@ -521,6 +547,48 @@ paths:
       security:
       - BearerAuth: []
       summary: Reactivate a suspended account
+      tags:
+      - Account
+  /accounts/{id}/spending-analysis:
+    get:
+      description: Returns the precomputed spending analysis (total/average withdrawal
+        amount, %-change and trend versus the previous month) for the given month
+        — computed monthly by a batch ETL job, not on demand.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: The month to look up, as YYYY-MM-01 (the day is ignored)
+        in: query
+        name: month
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The analysis was found.
+          schema:
+            $ref: '#/definitions/http.GetSpendingAnalysisResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. `month`
+            is not a valid date.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`),
+            or no analysis has been computed yet for the given month (`SPENDING_ANALYSIS_NOT_FOUND`).
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get an account's monthly spending analysis
       tags:
       - Account
   /accounts/{id}/suspend:

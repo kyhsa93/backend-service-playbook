@@ -17,4 +17,6 @@ var (
 	ErrInterestRequiresActiveAccount      = errors.New("account must be active to receive interest")
 	ErrInvalidInterestDate                = errors.New("invalid interest posting date")
 	ErrTransferSameAccount                = errors.New("source and target account must be different")
+	ErrSpendingAnalysisNotFound           = errors.New("spending analysis not found")
+	ErrInvalidAnalysisMonth               = errors.New("invalid analysis month")
 )

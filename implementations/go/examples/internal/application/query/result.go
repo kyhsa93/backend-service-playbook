@@ -28,3 +28,13 @@ type GetTransactionsResult struct {
 	Transactions []TransactionSummary
 	Count        int
 }
+
+type SpendingAnalysisResult struct {
+	AnalysisMonth           string
+	TotalAmount             int64
+	TransactionCount        int
+	AverageAmount           int64
+	ChangeFromPreviousMonth int
+	Trend                   string
+	CreatedAt               time.Time
+}

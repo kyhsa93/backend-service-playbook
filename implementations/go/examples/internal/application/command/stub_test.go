@@ -16,6 +16,7 @@ type stubRepository struct {
 	findAllFn                     func(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error)
 	saveFn                        func(ctx context.Context, a *account.Account) error
 	hasTransactionWithReferenceFn func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error)
+	summarizeTransactionsFn       func(ctx context.Context, q account.SummarizeTransactionsQuery) (account.TransactionSummary, error)
 }
 
 // FindAccounts supports two scenarios: if findAllFn is set (e.g. a batch
@@ -57,6 +58,47 @@ func (s *stubRepository) HasTransactionWithReference(
 		return false, nil
 	}
 	return s.hasTransactionWithReferenceFn(ctx, referenceID, txType)
+}
+
+func (s *stubRepository) SummarizeTransactions(
+	ctx context.Context, q account.SummarizeTransactionsQuery,
+) (account.TransactionSummary, error) {
+	if s.summarizeTransactionsFn == nil {
+		return account.TransactionSummary{}, nil
+	}
+	return s.summarizeTransactionsFn(ctx, q)
+}
+
+// stubSpendingAnalysisRepository is a minimal mock for
+// account.SpendingAnalysisRepository, the same function-field-per-behavior
+// idiom as stubRepository above.
+type stubSpendingAnalysisRepository struct {
+	findAnalysisFn func(ctx context.Context, accountID, analysisMonth string) (*account.SpendingAnalysis, error)
+	hasAnalysisFn  func(ctx context.Context, accountID, analysisMonth string) (bool, error)
+	saveAnalysisFn func(ctx context.Context, a *account.SpendingAnalysis) error
+}
+
+func (s *stubSpendingAnalysisRepository) FindAnalysis(
+	ctx context.Context, accountID, analysisMonth string,
+) (*account.SpendingAnalysis, error) {
+	if s.findAnalysisFn == nil {
+		return nil, account.ErrSpendingAnalysisNotFound
+	}
+	return s.findAnalysisFn(ctx, accountID, analysisMonth)
+}
+
+func (s *stubSpendingAnalysisRepository) HasAnalysis(ctx context.Context, accountID, analysisMonth string) (bool, error) {
+	if s.hasAnalysisFn == nil {
+		return false, nil
+	}
+	return s.hasAnalysisFn(ctx, accountID, analysisMonth)
+}
+
+func (s *stubSpendingAnalysisRepository) SaveAnalysis(ctx context.Context, a *account.SpendingAnalysis) error {
+	if s.saveAnalysisFn == nil {
+		return nil
+	}
+	return s.saveAnalysisFn(ctx, a)
 }
 
 // stubTransactionManager runs fn as-is without a real DB transaction — it is

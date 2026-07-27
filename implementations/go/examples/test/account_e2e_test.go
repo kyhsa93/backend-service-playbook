@@ -52,8 +52,9 @@ var (
 	// Exposed so the scheduling e2e tests (scheduling_e2e_test.go) can call
 	// the Cron handlers directly instead of waiting for a real tick (the
 	// same test pattern as the scheduling.md example).
-	testInterestScheduler  *scheduling.InterestScheduler
-	testStatementScheduler *scheduling.StatementScheduler
+	testInterestScheduler         *scheduling.InterestScheduler
+	testStatementScheduler        *scheduling.StatementScheduler
+	testSpendingAnalysisScheduler *scheduling.SpendingAnalysisScheduler
 )
 
 const (
@@ -107,7 +108,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -247,16 +248,20 @@ func runTests(m *testing.M) int {
 	taskWriter := taskqueue.NewWriter(db)
 	testInterestScheduler = scheduling.NewInterestScheduler(taskWriter)
 	testStatementScheduler = scheduling.NewStatementScheduler(taskWriter)
+	testSpendingAnalysisScheduler = scheduling.NewSpendingAnalysisScheduler(taskWriter)
 
 	applyInterestHandler := command.NewApplyDailyInterestHandler(repo, 0.0001)
 	cardPaymentAdapter := acl.NewCardPaymentAdapter(paymentRepo)
 	sendStatementHandler := command.NewSendCardUsageStatementHandler(cardRepo, accountAdapter, cardPaymentAdapter, notifier)
+	analyzeMonthlySpendingHandler := command.NewAnalyzeMonthlySpendingHandler(repo, repo)
 	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
 	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
+	spendingAnalysisTaskController := taskinterface.NewSpendingAnalysisTaskController(analyzeMonthlySpendingHandler)
 
 	taskHandlers := map[string]taskqueue.Handler{
-		"account.apply-interest":    interestTaskController.HandleApplyInterest,
-		"card.send-usage-statement": statementTaskController.HandleSendStatement,
+		"account.apply-interest":           interestTaskController.HandleApplyInterest,
+		"card.send-usage-statement":        statementTaskController.HandleSendStatement,
+		"account.analyze-monthly-spending": spendingAnalysisTaskController.HandleAnalyzeMonthlySpending,
 	}
 	go taskqueue.NewPoller(db, sqsClient, taskQueueURL).Run(ctx)
 	go taskqueue.NewConsumer(sqsClient, taskQueueURL, taskHandlers).Run(ctx)

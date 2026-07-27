@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/example/account-service/internal/infrastructure/scheduling"
 )
 
 // getAccountTransactionTypes returns the list of all transaction types for
@@ -211,4 +213,143 @@ func countSentEmails(t *testing.T, accountID, eventType string) int {
 		`SELECT COUNT(*) FROM sent_emails WHERE account_id = $1 AND event_type = $2`, accountID, eventType,
 	).Scan(&count))
 	return count
+}
+
+// spendingAnalysisRow mirrors the spending_analysis table's columns that the
+// e2e test needs to assert on.
+type spendingAnalysisRow struct {
+	totalAmount             int64
+	transactionCount        int
+	averageAmount           int64
+	changeFromPreviousMonth int
+	trend                   string
+}
+
+// findSpendingAnalysis looks up the (accountId, analysisMonth) row directly
+// from the DB (ok=false if it doesn't exist yet).
+func findSpendingAnalysis(t *testing.T, accountID, analysisMonth string) (spendingAnalysisRow, bool) {
+	t.Helper()
+	var row spendingAnalysisRow
+	err := testDB.QueryRow(
+		`SELECT total_amount, transaction_count, average_amount, change_from_previous_month, trend
+		 FROM spending_analysis WHERE account_id = $1 AND analysis_month = $2`,
+		accountID, analysisMonth,
+	).Scan(&row.totalAmount, &row.transactionCount, &row.averageAmount, &row.changeFromPreviousMonth, &row.trend)
+	if err != nil {
+		return spendingAnalysisRow{}, false
+	}
+	return row, true
+}
+
+// waitForSpendingAnalysis polls the spending_analysis table while waiting
+// for the asynchronous Scheduler -> Task Outbox -> Task Queue -> Task
+// Consumer -> AnalyzeMonthlySpendingHandler path to complete, using the same
+// 30-second budget as waitForAccountBalance/waitForSentEmail.
+func waitForSpendingAnalysis(t *testing.T, accountID, analysisMonth string) spendingAnalysisRow {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if row, ok := findSpendingAnalysis(t, accountID, analysisMonth); ok {
+			return row
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("no spending_analysis row for account %s / month %s (timed out)", accountID, analysisMonth)
+	return spendingAnalysisRow{}
+}
+
+// countSpendingAnalyses counts how many spending_analysis rows exist for an
+// (accountID, analysisMonth) combination — the same "assert no duplicate"
+// idiom as countSentEmails, used to confirm re-enqueueing in the same month
+// does not produce a second row.
+func countSpendingAnalyses(t *testing.T, accountID, analysisMonth string) int {
+	t.Helper()
+	var count int
+	require.NoError(t, testDB.QueryRow(
+		`SELECT COUNT(*) FROM spending_analysis WHERE account_id = $1 AND analysis_month = $2`, accountID, analysisMonth,
+	).Scan(&count))
+	return count
+}
+
+// backdateTransaction rewrites a transaction's created_at directly — the
+// same technique the card-statement test uses to push payments into "last
+// month," reused here (via the same account.withdraw endpoint) to age
+// withdrawals into the previous calendar month without waiting for real
+// time to pass.
+func backdateTransaction(t *testing.T, transactionID string, createdAt time.Time) {
+	t.Helper()
+	_, err := testDB.Exec(`UPDATE transactions SET created_at = $1 WHERE id = $2`, createdAt, transactionID)
+	require.NoError(t, err)
+}
+
+// TestScheduledMonthlySpendingAnalysis actually drives the entire
+// Scheduler -> Task Outbox -> Task Queue -> Task Consumer ->
+// AnalyzeMonthlySpendingHandler path (scheduling.md) — rather than waiting
+// for a real Cron tick, it calls
+// testSpendingAnalysisScheduler.EnqueueMonthlySpendingAnalysis directly (the
+// same test pattern as TestScheduledInterestPayment/
+// TestScheduledCardUsageStatement above), mirroring nestjs's
+// scheduling.e2e-spec.ts "Monthly spending analysis" describe block.
+func TestScheduledMonthlySpendingAnalysis(t *testing.T) {
+	t.Run("an_account_with_last_months_withdrawal_history_gets_an_analysis_row_queryable_via_the_API_and_re-enqueueing_in_the_same_month_does_not_duplicate_it", func(t *testing.T) {
+		owner := "spending-owner-" + time.Now().Format("150405.000000")
+		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
+		accountID := acc["accountId"].(string)
+
+		depositResp := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/deposit", owner, map[string]int{"amount": 1_000_000})
+		require.Equal(t, http.StatusCreated, depositResp.StatusCode)
+
+		now := time.Now().UTC()
+		analysisMonth, monthStart, _ := scheduling.PreviousSpendingAnalysisPeriod(now)
+		// Backdates the withdrawals into "last month," the same way the card
+		// statement test backdates payments — reusing the scheduler's own
+		// period computation so the analysis only lines up if it matches the
+		// logic the Scheduler actually runs with.
+		backdatedAt := monthStart.Add(24 * time.Hour)
+
+		w1 := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/withdraw", owner, map[string]int{"amount": 30000})
+		require.Equal(t, http.StatusCreated, w1.StatusCode)
+		tx1 := decodeBody(t, w1)["transactionId"].(string)
+		w2 := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/withdraw", owner, map[string]int{"amount": 20000})
+		require.Equal(t, http.StatusCreated, w2.StatusCode)
+		tx2 := decodeBody(t, w2)["transactionId"].(string)
+		backdateTransaction(t, tx1, backdatedAt)
+		backdateTransaction(t, tx2, backdatedAt)
+
+		require.NoError(t, testSpendingAnalysisScheduler.EnqueueMonthlySpendingAnalysis(context.Background(), now))
+
+		row := waitForSpendingAnalysis(t, accountID, analysisMonth)
+		require.Equal(t, int64(50000), row.totalAmount)
+		require.Equal(t, 2, row.transactionCount)
+		require.Equal(t, int64(25000), row.averageAmount)
+		// No prior-prior month withdrawal history exists, so the comparison
+		// baseline is 0 -> the %-change is capped at 100 and the trend is
+		// INCREASING (see account.NewSpendingAnalysis).
+		require.Equal(t, 100, row.changeFromPreviousMonth)
+		require.Equal(t, "INCREASING", row.trend)
+
+		resp := doRequest(t, http.MethodGet, "/accounts/"+accountID+"/spending-analysis?month="+analysisMonth+"-01", owner, nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body := decodeBody(t, resp)
+		require.Equal(t, float64(50000), body["totalAmount"])
+		require.Equal(t, "INCREASING", body["trend"])
+
+		// Since it's the same month's dedup_id, even if the second enqueue is
+		// reprocessed, the (account_id, analysis_month) unique index + the
+		// HasAnalysis precheck must prevent a duplicate row.
+		require.NoError(t, testSpendingAnalysisScheduler.EnqueueMonthlySpendingAnalysis(context.Background(), now))
+		time.Sleep(5 * time.Second)
+		require.Equal(t, 1, countSpendingAnalyses(t, accountID, analysisMonth))
+	})
+
+	t.Run("when_no_analysis_has_been_computed_for_the_requested_month_then_returns_404", func(t *testing.T) {
+		owner := "spending-404-owner-" + time.Now().Format("150405.000000")
+		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
+		accountID := acc["accountId"].(string)
+
+		resp := doRequest(t, http.MethodGet, "/accounts/"+accountID+"/spending-analysis?month=2020-01-01", owner, nil)
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		body := decodeBody(t, resp)
+		require.Equal(t, "SPENDING_ANALYSIS_NOT_FOUND", body["code"])
+	})
 }

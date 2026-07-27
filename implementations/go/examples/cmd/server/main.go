@@ -218,20 +218,27 @@ func main() {
 	taskWriter := taskqueue.NewWriter(db)
 	interestScheduler := scheduling.NewInterestScheduler(taskWriter)
 	statementScheduler := scheduling.NewStatementScheduler(taskWriter)
+	spendingAnalysisScheduler := scheduling.NewSpendingAnalysisScheduler(taskWriter)
 
 	applyInterestHandler := command.NewApplyDailyInterestHandler(accountRepo, interestConfig.DailyRate)
 	cardPaymentAdapter := acl.NewCardPaymentAdapter(paymentRepo)
 	sendStatementHandler := command.NewSendCardUsageStatementHandler(cardRepo, accountAdapter, cardPaymentAdapter, notifier)
+	// accountRepo also satisfies account.SpendingAnalysisRepository (see
+	// internal/infrastructure/persistence/spending_analysis_repository.go),
+	// so it is reused as-is rather than requiring a separate repository.
+	analyzeMonthlySpendingHandler := command.NewAnalyzeMonthlySpendingHandler(accountRepo, accountRepo)
 
 	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
 	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
+	spendingAnalysisTaskController := taskinterface.NewSpendingAnalysisTaskController(analyzeMonthlySpendingHandler)
 
 	// taskqueue.Consumer looks up a Task Controller in this map by the
 	// taskType string and calls it (the same routing idiom as
 	// outboxHandlers).
 	taskHandlers := map[string]taskqueue.Handler{
-		"account.apply-interest":    interestTaskController.HandleApplyInterest,
-		"card.send-usage-statement": statementTaskController.HandleSendStatement,
+		"account.apply-interest":           interestTaskController.HandleApplyInterest,
+		"card.send-usage-statement":        statementTaskController.HandleSendStatement,
+		"account.analyze-monthly-spending": spendingAnalysisTaskController.HandleAnalyzeMonthlySpending,
 	}
 	taskPoller := taskqueue.NewPoller(db, sqsClient, sqsConfig.TaskQueueURL)
 	taskConsumer := taskqueue.NewConsumer(sqsClient, sqsConfig.TaskQueueURL, taskHandlers)
@@ -290,6 +297,7 @@ func main() {
 	go taskConsumer.Run(ctx)
 	go interestScheduler.Run(ctx)
 	go statementScheduler.Run(ctx)
+	go spendingAnalysisScheduler.Run(ctx)
 
 	<-ctx.Done() // blocks until SIGTERM/SIGINT is received
 	slog.Info("shutdown signal received")

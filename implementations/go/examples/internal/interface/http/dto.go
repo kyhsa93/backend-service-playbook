@@ -98,6 +98,16 @@ type AskTransactionHistoryResponse struct {
 	MatchedCount int    `json:"matchedCount"` // How many transactions matched the question's translated filter.
 }
 
+type GetSpendingAnalysisResponse struct {
+	AnalysisMonth           string    `json:"analysisMonth"`           // The analyzed month, in YYYY-MM form.
+	TotalAmount             int64     `json:"totalAmount"`             // The account's total withdrawal amount for the month.
+	TransactionCount        int       `json:"transactionCount"`        // The number of withdrawal transactions in the month.
+	AverageAmount           int64     `json:"averageAmount"`           // The average withdrawal amount per transaction.
+	ChangeFromPreviousMonth int       `json:"changeFromPreviousMonth"` // The percentage change in total withdrawal amount versus the previous month.
+	Trend                   string    `json:"trend"`                   // A simple classification of the change (`INCREASING`, `DECREASING`, or `STABLE`).
+	CreatedAt               time.Time `json:"createdAt"`               // When this analysis was computed.
+}
+
 type IssueCardRequest struct {
 	AccountID string `json:"accountId"` // The active account to link the card to. Must be owned by the authenticated requester.
 	Brand     string `json:"brand"`     // The card brand (e.g. `VISA`, `MASTER`).

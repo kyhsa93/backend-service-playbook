@@ -259,6 +259,44 @@ func (r *AccountRepository) FindTransactions(ctx context.Context, q account.Find
 	return transactions, total, rows.Err()
 }
 
+// SummarizeTransactions aggregates one account's transactions in a
+// [CreatedFrom, CreatedTo) date range, filtered by type — the same
+// dynamic-predicate-building idiom as FindTransactions, but returning only
+// the count/total (COUNT(*)/COALESCE(SUM(...), 0)) rather than the
+// individual rows, used by AnalyzeMonthlySpendingHandler to total a month's
+// (and the prior month's) WITHDRAWAL activity without loading every
+// Transaction row into memory.
+func (r *AccountRepository) SummarizeTransactions(ctx context.Context, q account.SummarizeTransactionsQuery) (account.TransactionSummary, error) {
+	args := []any{q.AccountID}
+	where := []string{"account_id = $1"}
+	i := 2
+
+	if len(q.Type) > 0 {
+		placeholders := make([]string, len(q.Type))
+		for j, t := range q.Type {
+			placeholders[j] = fmt.Sprintf("$%d", i)
+			args = append(args, string(t))
+			i++
+		}
+		where = append(where, fmt.Sprintf("type IN (%s)", strings.Join(placeholders, ",")))
+	}
+	where = append(where, fmt.Sprintf("created_at >= $%d", i))
+	args = append(args, q.CreatedFrom)
+	i++
+	where = append(where, fmt.Sprintf("created_at < $%d", i))
+	args = append(args, q.CreatedTo)
+
+	whereClause := strings.Join(where, " AND ")
+
+	var summary account.TransactionSummary
+	if err := r.db.QueryRowContext(ctx,
+		fmt.Sprintf(`SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM transactions WHERE %s`, whereClause), args...,
+	).Scan(&summary.Count, &summary.TotalAmount); err != nil {
+		return account.TransactionSummary{}, fmt.Errorf("summarize transactions: %w", err)
+	}
+	return summary, nil
+}
+
 // parseISODate parses an ISO 8601 date (YYYY-MM-DD). An empty or
 // unparsable value returns ok=false so the caller can skip applying that
 // bound rather than erroring.

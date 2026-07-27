@@ -1,6 +1,9 @@
 package account
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type FindQuery struct {
 	Page      int
@@ -62,6 +65,29 @@ type Query interface {
 	// alone would incorrectly judge the compensating credit as "already
 	// processed" and skip it.
 	HasTransactionWithReference(ctx context.Context, referenceID string, txType TransactionType) (bool, error)
+
+	// SummarizeTransactions aggregates one account's transactions in a date
+	// range — used by AnalyzeMonthlySpendingHandler to total up a month's
+	// (and the prior month's, for comparison) WITHDRAWAL activity without
+	// loading every individual Transaction row into memory.
+	SummarizeTransactions(ctx context.Context, q SummarizeTransactionsQuery) (TransactionSummary, error)
+}
+
+// SummarizeTransactionsQuery narrows a SummarizeTransactions aggregation to
+// one account, one or more transaction types, and a [CreatedFrom, CreatedTo)
+// date range.
+type SummarizeTransactionsQuery struct {
+	AccountID   string
+	Type        []TransactionType
+	CreatedFrom time.Time
+	CreatedTo   time.Time
+}
+
+// TransactionSummary is the result of SummarizeTransactions — a count and
+// total amount, not the individual rows.
+type TransactionSummary struct {
+	Count       int
+	TotalAmount int64
 }
 
 // Repository is a Command-only interface that adds a write method

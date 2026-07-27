@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/application/query"
@@ -25,6 +26,7 @@ type AccountHandler struct {
 	getAccount            *query.GetAccountHandler
 	getTransactions       *query.GetTransactionsHandler
 	askTransactionHistory *query.AskTransactionHistoryHandler
+	getSpendingAnalysis   *query.GetSpendingAnalysisHandler
 }
 
 func NewAccountHandler(
@@ -38,6 +40,7 @@ func NewAccountHandler(
 	getAccount *query.GetAccountHandler,
 	getTransactions *query.GetTransactionsHandler,
 	askTransactionHistory *query.AskTransactionHistoryHandler,
+	getSpendingAnalysis *query.GetSpendingAnalysisHandler,
 ) *AccountHandler {
 	return &AccountHandler{
 		createAccount:         createAccount,
@@ -50,6 +53,7 @@ func NewAccountHandler(
 		getAccount:            getAccount,
 		getTransactions:       getTransactions,
 		askTransactionHistory: askTransactionHistory,
+		getSpendingAnalysis:   getSpendingAnalysis,
 	}
 }
 
@@ -458,6 +462,51 @@ func (h *AccountHandler) AskTransactionHistory(w http.ResponseWriter, r *http.Re
 	writeJSON(w, r, AskTransactionHistoryResponse{Answer: result.Answer, MatchedCount: result.MatchedCount})
 }
 
+// GetSpendingAnalysis returns an account's precomputed monthly spending
+// analysis.
+//
+// @Summary		Get an account's monthly spending analysis
+// @Description	Returns the precomputed spending analysis (total/average withdrawal amount, %-change and trend versus the previous month) for the given month — computed monthly by a batch ETL job, not on demand.
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string							true	"The account ID"
+// @Param			month	query		string							true	"The month to look up, as YYYY-MM-01 (the day is ignored)"
+// @Success		200		{object}	GetSpendingAnalysisResponse		"The analysis was found."
+// @Failure		400		{object}	ErrorResponse					"Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date."
+// @Failure		401		{object}	ErrorResponse					"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse					"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`), or no analysis has been computed yet for the given month (`SPENDING_ANALYSIS_NOT_FOUND`)."
+// @Router			/accounts/{id}/spending-analysis [get]
+func (h *AccountHandler) GetSpendingAnalysis(w http.ResponseWriter, r *http.Request) {
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
+	accountID := r.PathValue("id")
+	month := r.URL.Query().Get("month")
+	parsed, err := time.Parse("2006-01-02", month)
+	if err != nil {
+		writeValidationError(w, r, "month must be a valid date in YYYY-MM-01 form")
+		return
+	}
+	result, err := h.getSpendingAnalysis.Handle(r.Context(), query.GetSpendingAnalysisQuery{
+		AccountID:     accountID,
+		RequesterID:   requesterID,
+		AnalysisMonth: parsed.Format("2006-01"),
+	})
+	if err != nil {
+		writeAccountError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, r, GetSpendingAnalysisResponse{
+		AnalysisMonth:           result.AnalysisMonth,
+		TotalAmount:             result.TotalAmount,
+		TransactionCount:        result.TransactionCount,
+		AverageAmount:           result.AverageAmount,
+		ChangeFromPreviousMonth: result.ChangeFromPreviousMonth,
+		Trend:                   result.Trend,
+		CreatedAt:               result.CreatedAt,
+	})
+}
+
 func parsePagination(r *http.Request) (page, take int) {
 	page, take = 0, 20
 	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil {
@@ -489,6 +538,7 @@ var accountErrorMapping = []struct {
 	{account.ErrBalanceNotZero, http.StatusBadRequest, "ACCOUNT_BALANCE_NOT_ZERO"},
 	{account.ErrCurrencyMismatch, http.StatusBadRequest, "ACCOUNT_CURRENCY_MISMATCH"},
 	{account.ErrTransferSameAccount, http.StatusBadRequest, "ACCOUNT_TRANSFER_SAME_ACCOUNT"},
+	{account.ErrSpendingAnalysisNotFound, http.StatusNotFound, "SPENDING_ANALYSIS_NOT_FOUND"},
 }
 
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
