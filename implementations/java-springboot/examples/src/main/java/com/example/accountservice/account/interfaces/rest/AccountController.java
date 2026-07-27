@@ -7,8 +7,10 @@ import com.example.accountservice.account.application.query.AskTransactionHistor
 import com.example.accountservice.account.application.query.AskTransactionHistoryService;
 import com.example.accountservice.account.application.query.GetAccountResult;
 import com.example.accountservice.account.application.query.GetAccountService;
+import com.example.accountservice.account.application.query.GetSpendingAnalysisService;
 import com.example.accountservice.account.application.query.GetTransactionsResult;
 import com.example.accountservice.account.application.query.GetTransactionsService;
+import com.example.accountservice.account.application.query.SpendingAnalysisResult;
 import com.example.accountservice.account.domain.AccountException;
 import com.example.accountservice.account.domain.TransactionType;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +21,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +55,7 @@ public class AccountController {
     private final GetAccountService getAccountService;
     private final GetTransactionsService getTransactionsService;
     private final AskTransactionHistoryService askTransactionHistoryService;
+    private final GetSpendingAnalysisService getSpendingAnalysisService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -347,10 +351,38 @@ public class AccountController {
                 accountId, authentication.getName(), request.question());
     }
 
+    @GetMapping("/{accountId}/spending-analysis")
+    @Operation(
+            summary = "Get an account's monthly spending analysis",
+            description =
+                    "Returns the precomputed spending analysis (total/average withdrawal amount,"
+                            + " %-change and trend versus the previous month) for the given month"
+                            + " — computed monthly by a batch ETL job, not on demand.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "The analysis was found.",
+            content = @Content(schema = @Schema(implementation = SpendingAnalysisResult.class)))
+    @ApiResponse(
+            responseCode = "404",
+            description =
+                    "No account exists with the given `accountId` for this requester"
+                            + " (`ACCOUNT_NOT_FOUND`), or no analysis has been computed yet for the"
+                            + " given month (`SPENDING_ANALYSIS_NOT_FOUND`).",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public SpendingAnalysisResult getSpendingAnalysis(
+            Authentication authentication,
+            @PathVariable String accountId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month) {
+        return getSpendingAnalysisService.getSpendingAnalysis(
+                accountId, authentication.getName(), YearMonth.from(month).toString());
+    }
+
     @ExceptionHandler(AccountException.class)
     public ResponseEntity<ErrorResponse> handleAccountException(AccountException e) {
         HttpStatus status =
                 e.code() == AccountException.ErrorCode.ACCOUNT_NOT_FOUND
+                                || e.code()
+                                        == AccountException.ErrorCode.SPENDING_ANALYSIS_NOT_FOUND
                         ? HttpStatus.NOT_FOUND
                         : HttpStatus.BAD_REQUEST;
         log.warn("Account request failed", kv("code", e.code()), kv("message", e.getMessage()));

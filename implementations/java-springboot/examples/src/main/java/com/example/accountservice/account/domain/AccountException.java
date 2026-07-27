@@ -16,7 +16,8 @@ public class AccountException extends RuntimeException {
         ACCOUNT_BALANCE_NOT_ZERO,
         ACCOUNT_NOT_CLOSABLE_FOR_DELETE,
         ACCOUNT_ALREADY_DELETED,
-        TRANSFER_SAME_ACCOUNT
+        TRANSFER_SAME_ACCOUNT,
+        SPENDING_ANALYSIS_NOT_FOUND
     }
 
     private final ErrorCode code;

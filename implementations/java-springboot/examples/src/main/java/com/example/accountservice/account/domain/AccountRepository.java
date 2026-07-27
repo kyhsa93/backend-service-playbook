@@ -32,4 +32,13 @@ public interface AccountRepository {
      * alone would incorrectly judge the compensating credit as "already processed" and skip it.
      */
     boolean hasTransactionWithReference(String referenceId, TransactionType type);
+
+    /**
+     * Aggregates transaction count/total-amount for a single accountId, narrowed by type and a
+     * half-open date range — the one real "transform" input the monthly spending-analysis ETL needs
+     * (current month's totals and the previous month's, for the %-change comparison). See {@code
+     * AnalyzeMonthlySpendingService}. Mirrors the same COUNT/COALESCE(SUM(...), 0) idiom as
+     * payment's {@code PaymentQuery#summarizeCardUsage}.
+     */
+    TransactionSummary summarizeTransactions(TransactionSummaryQuery query);
 }

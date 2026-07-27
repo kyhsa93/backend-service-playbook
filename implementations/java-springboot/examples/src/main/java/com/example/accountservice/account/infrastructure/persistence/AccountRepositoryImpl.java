@@ -8,6 +8,8 @@ import com.example.accountservice.account.domain.AccountStatus;
 import com.example.accountservice.account.domain.AccountsWithCount;
 import com.example.accountservice.account.domain.Transaction;
 import com.example.accountservice.account.domain.TransactionFindQuery;
+import com.example.accountservice.account.domain.TransactionSummary;
+import com.example.accountservice.account.domain.TransactionSummaryQuery;
 import com.example.accountservice.account.domain.TransactionType;
 import com.example.accountservice.account.domain.TransactionsWithCount;
 import com.example.accountservice.outbox.OutboxWriter;
@@ -104,6 +106,22 @@ public class AccountRepositoryImpl implements AccountRepository, AccountQuery {
     @Override
     public boolean hasTransactionWithReference(String referenceId, TransactionType type) {
         return transactionJpaRepository.existsByReferenceIdAndType(referenceId, type);
+    }
+
+    @Override
+    public TransactionSummary summarizeTransactions(TransactionSummaryQuery query) {
+        String jpql =
+                "SELECT COUNT(t), COALESCE(SUM(t.amount.amount), 0) FROM TransactionJpaEntity t "
+                        + "WHERE t.accountId = :accountId AND t.type IN :type "
+                        + "AND t.createdAt >= :createdAtFrom AND t.createdAt < :createdAtTo";
+        Object[] result =
+                em.createQuery(jpql, Object[].class)
+                        .setParameter("accountId", query.accountId())
+                        .setParameter("type", query.type())
+                        .setParameter("createdAtFrom", query.createdAtFrom())
+                        .setParameter("createdAtTo", query.createdAtTo())
+                        .getSingleResult();
+        return new TransactionSummary((Long) result[0], (Long) result[1]);
     }
 
     @Override
