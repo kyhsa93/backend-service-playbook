@@ -88,3 +88,14 @@ class TransferSameAccountError(AccountError):
 
     def __init__(self) -> None:
         super().__init__("The withdrawal account and deposit account cannot be the same.")
+
+
+class SpendingAnalysisNotFoundError(AccountError):
+    code = AccountErrorCode.SPENDING_ANALYSIS_NOT_FOUND
+
+    def __init__(self, account_id: str, analysis_month: str) -> None:
+        super().__init__(
+            f"No spending analysis has been computed yet for account {account_id}, month {analysis_month}."
+        )
+        self.account_id = account_id
+        self.analysis_month = analysis_month

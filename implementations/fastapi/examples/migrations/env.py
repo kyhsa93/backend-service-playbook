@@ -8,6 +8,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import src.account.infrastructure.notification.sent_email_model  # noqa: F401
+import src.account.infrastructure.persistence.spending_analysis_repository  # noqa: F401
 import src.auth.infrastructure.persistence.credential_repository  # noqa: F401
 import src.card.infrastructure.notification.sent_statement_email_model  # noqa: F401
 import src.card.infrastructure.persistence.card_repository  # noqa: F401
@@ -18,10 +19,10 @@ import src.task_queue.task_outbox_model  # noqa: F401
 
 # The project's Base (and every model registered on it) must be imported for autogenerate
 # to detect model changes — outbox_model/sent_email_model/card_repository/credential_repository/
-# payment_repository/refund_repository/sent_statement_email_model/task_outbox_model also
-# register onto the metadata by importing the same Base, so they are imported together
-# here too (otherwise those tables end up in a state of "present in the models but not
-# detected").
+# payment_repository/refund_repository/sent_statement_email_model/task_outbox_model/
+# spending_analysis_repository also register onto the metadata by importing the same Base,
+# so they are imported together here too (otherwise those tables end up in a state of
+# "present in the models but not detected").
 from src.account.infrastructure.persistence.account_repository import Base
 
 # this is the Alembic Config object, which provides

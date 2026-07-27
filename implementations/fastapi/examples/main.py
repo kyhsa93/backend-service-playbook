@@ -17,8 +17,15 @@ from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
 
-from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa: E402
+from src.account.domain.errors import (  # noqa: E402
+    AccountError,
+    AccountNotFoundError,
+    SpendingAnalysisNotFoundError,
+)
 from src.account.infrastructure.scheduling.interest_scheduler import start_interest_scheduler  # noqa: E402
+from src.account.infrastructure.scheduling.spending_analysis_scheduler import (  # noqa: E402
+    start_spending_analysis_scheduler,
+)
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
 from src.auth.domain.errors import (  # noqa: E402
     InvalidCredentialsError,
@@ -85,6 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ]
     interest_scheduler = start_interest_scheduler(SessionLocal)
     statement_scheduler = start_statement_scheduler(SessionLocal)
+    spending_analysis_scheduler = start_spending_analysis_scheduler(SessionLocal)
     logger.info("app_started")
 
     yield  # --- requests are handled in between ---
@@ -97,6 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # down (graceful-shutdown.md, the APScheduler shutdown convention in fastapi scheduling.md).
     interest_scheduler.shutdown(wait=True)
     statement_scheduler.shutdown(wait=True)
+    spending_analysis_scheduler.shutdown(wait=True)
 
     # Cancels the background tasks and waits for them to fully finish — no dangling task is
     # left behind. An in-progress receive_message (up to WaitTimeSeconds) that
@@ -202,6 +211,11 @@ async def security_headers_middleware(request: Request, call_next):
 
 @app.exception_handler(AccountNotFoundError)
 async def account_not_found_handler(request: Request, exc: AccountNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
+
+
+@app.exception_handler(SpendingAnalysisNotFoundError)
+async def spending_analysis_not_found_handler(request: Request, exc: SpendingAnalysisNotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
 
 

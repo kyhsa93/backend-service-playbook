@@ -2,7 +2,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import httpx
 import pytest
@@ -18,13 +18,18 @@ from conftest import (
 )
 from httpx import ASGITransport, AsyncClient
 from main import app
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.localstack import LocalStackContainer
 from testcontainers.postgres import PostgresContainer
 
 from src.account.infrastructure.notification.sent_email_model import SentEmailModel
-from src.account.infrastructure.persistence.account_repository import AccountModel, Base
+from src.account.infrastructure.persistence.account_repository import AccountModel, Base, TransactionModel
+from src.account.infrastructure.persistence.spending_analysis_repository import SpendingAnalysisModel
+from src.account.infrastructure.scheduling.spending_analysis_scheduler import (
+    compute_previous_spending_analysis_period,
+    enqueue_monthly_spending_analysis,
+)
 from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.card.application.command.send_monthly_card_statement_handler import previous_month_period
 from src.card.infrastructure.notification.sent_statement_email_model import SentStatementEmailModel
@@ -348,3 +353,112 @@ async def test_a_card_already_sent_this_month_is_not_sent_again_even_if_the_task
 
     await asyncio.sleep(5)
     assert await _sent_email_count() == first_count
+
+
+@pytest.mark.asyncio
+async def test_an_account_with_last_months_withdrawal_history_gets_an_analysis_row_via_the_api(
+    scheduling_env: dict,
+) -> None:
+    client: AsyncClient = scheduling_env["client"]
+    session_factory = scheduling_env["session_factory"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+    await client.post(f"/accounts/{account_id}/deposit", json={"amount": 1000000}, headers=auth_headers(OWNER_ID))
+
+    # Backdates the withdrawals into "last month" the same way the card-statement test
+    # backdates payments — reusing the scheduler's own period computation so the analysis
+    # only lines up if it matches the logic the Scheduler actually runs with.
+    analysis_month, month_start, _month_end = compute_previous_spending_analysis_period(datetime.utcnow())
+    backdated_at = month_start + timedelta(days=1)
+
+    withdraw_response_1 = await client.post(
+        f"/accounts/{account_id}/withdraw", json={"amount": 30000}, headers=auth_headers(OWNER_ID)
+    )
+    withdraw_response_2 = await client.post(
+        f"/accounts/{account_id}/withdraw", json={"amount": 20000}, headers=auth_headers(OWNER_ID)
+    )
+    transaction_id_1 = withdraw_response_1.json()["transaction_id"]
+    transaction_id_2 = withdraw_response_2.json()["transaction_id"]
+
+    async with session_factory() as session:
+        await session.execute(
+            update(TransactionModel).where(TransactionModel.id == transaction_id_1).values(created_at=backdated_at)
+        )
+        await session.execute(
+            update(TransactionModel).where(TransactionModel.id == transaction_id_2).values(created_at=backdated_at)
+        )
+        await session.commit()
+
+    # Triggers the Scheduler's own enqueue function directly instead of waiting for a real
+    # Cron tick (main.py's lifespan, including APScheduler, isn't started under this
+    # ASGITransport-driven client).
+    await enqueue_monthly_spending_analysis(session_factory)
+
+    async def _analysis_saved() -> bool:
+        async with session_factory() as session:
+            stmt = select(SpendingAnalysisModel).where(
+                SpendingAnalysisModel.account_id == account_id,
+                SpendingAnalysisModel.analysis_month == analysis_month,
+            )
+            return (await session.execute(stmt)).scalar_one_or_none() is not None
+
+    await wait_until(_analysis_saved, timeout=30.0)
+
+    async with session_factory() as session:
+        stmt = select(SpendingAnalysisModel).where(
+            SpendingAnalysisModel.account_id == account_id,
+            SpendingAnalysisModel.analysis_month == analysis_month,
+        )
+        row = (await session.execute(stmt)).scalar_one()
+        assert row.total_amount == 50000
+        assert row.transaction_count == 2
+        assert row.average_amount == 25000
+        # No prior-prior month withdrawal history exists, so the comparison baseline is 0 —
+        # the %-change is capped at 100 and the trend is INCREASING (see SpendingAnalysis.create).
+        assert row.change_from_previous_month == 100
+        assert row.trend == "INCREASING"
+
+    response = await client.get(
+        f"/accounts/{account_id}/spending-analysis",
+        params={"month": f"{analysis_month}-01"},
+        headers=auth_headers(OWNER_ID),
+    )
+    assert response.status_code == 200
+    assert response.json()["total_amount"] == 50000
+    assert response.json()["trend"] == "INCREASING"
+
+    # Since it's the same month's dedup_id, even if the second enqueue is reprocessed, the
+    # (account_id, analysis_month) unique constraint + the has_analysis precheck must prevent
+    # a duplicate row.
+    await enqueue_monthly_spending_analysis(session_factory)
+    await asyncio.sleep(5)
+
+    async with session_factory() as session:
+        stmt = select(SpendingAnalysisModel).where(
+            SpendingAnalysisModel.account_id == account_id,
+            SpendingAnalysisModel.analysis_month == analysis_month,
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+        assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_when_no_analysis_has_been_computed_for_the_requested_month_then_returns_404(
+    scheduling_env: dict,
+) -> None:
+    client: AsyncClient = scheduling_env["client"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+
+    response = await client.get(
+        f"/accounts/{account_id}/spending-analysis", params={"month": "2020-01-01"}, headers=auth_headers(OWNER_ID)
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "SPENDING_ANALYSIS_NOT_FOUND"

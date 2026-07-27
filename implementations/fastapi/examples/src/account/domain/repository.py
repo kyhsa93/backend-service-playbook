@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, datetime
 
 from .account import Account
 from .transaction import Transaction, TransactionType
@@ -51,5 +51,21 @@ class AccountRepository(AccountQuery, ABC):
         payment-cancellation compensating credit (DEPOSIT) are different transactions that
         share the same payment_id as their reference_id, so checking by reference_id alone
         would incorrectly judge the compensating credit as "already processed" and skip it.
+        """
+        ...
+
+    @abstractmethod
+    async def summarize_transactions(
+        self,
+        account_id: str,
+        type: list[TransactionType],
+        created_at_from: datetime,
+        created_at_to: datetime,
+    ) -> tuple[int, int]:
+        """Aggregates one account's transactions in a date range, returning (count,
+        total_amount) — the same shape as PaymentRepository's summarize_payments, used by
+        AnalyzeMonthlySpendingHandler to total up a month's (and the prior month's, for
+        comparison) WITHDRAWAL activity without loading every individual Transaction row
+        into memory.
         """
         ...

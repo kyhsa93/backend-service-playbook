@@ -4,9 +4,11 @@ from collections.abc import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..account.application.command.analyze_monthly_spending_handler import AnalyzeMonthlySpendingHandler
 from ..account.application.command.apply_daily_interest_handler import ApplyDailyInterestHandler
 from ..account.domain.repository import AccountRepository
 from ..account.infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
+from ..account.infrastructure.persistence.spending_analysis_repository import SqlAlchemySpendingAnalysisRepository
 from ..account.interface.task.account_task_controller import AccountTaskController
 from ..card.application.adapter.account_adapter import AccountAdapter
 from ..card.application.adapter.payment_adapter import PaymentAdapter
@@ -38,18 +40,23 @@ def build_task_handlers(session: AsyncSession) -> dict[str, TaskHandlerFn]:
     principle as event_handlers.py).
     """
     account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
+    spending_analysis_repo = SqlAlchemySpendingAnalysisRepository(session)
     card_repo: CardRepository = SqlAlchemyCardRepository(session)
     payment_query: PaymentQuery = SqlAlchemyPaymentRepository(session)
 
     account_adapter: AccountAdapter = AccountAdapterImpl(account_repo)
     payment_adapter: PaymentAdapter = PaymentAdapterImpl(payment_query)
 
-    account_task_controller = AccountTaskController(ApplyDailyInterestHandler(account_repo))
+    account_task_controller = AccountTaskController(
+        ApplyDailyInterestHandler(account_repo),
+        AnalyzeMonthlySpendingHandler(account_repo, spending_analysis_repo),
+    )
     card_task_controller = CardTaskController(
         SendMonthlyCardStatementHandler(card_repo, account_adapter, payment_adapter)
     )
 
     return {
         "account.interest.apply": account_task_controller.apply_daily_interest,
+        "account.analyze-monthly-spending": account_task_controller.analyze_monthly_spending,
         "card.statement.send": card_task_controller.send_monthly_statement,
     }

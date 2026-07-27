@@ -19,14 +19,17 @@ from ...application.query.ask_transaction_history_handler import (
     AskTransactionHistoryQuery,
 )
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
+from ...application.query.get_spending_analysis_handler import GetSpendingAnalysisHandler, GetSpendingAnalysisQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ...application.service.nl_transaction_answer_composer import NlTransactionAnswerComposer
 from ...application.service.nl_transaction_query_translator import NlTransactionQueryTranslator
 from ...domain.repository import AccountQuery
+from ...domain.spending_analysis_repository import SpendingAnalysisQuery
 from ...domain.transaction import TransactionType
 from ...infrastructure.nl_transaction_answer_composer_impl import NlTransactionAnswerComposerImpl
 from ...infrastructure.nl_transaction_query_translator_impl import NlTransactionQueryTranslatorImpl
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
+from ...infrastructure.persistence.spending_analysis_repository import SqlAlchemySpendingAnalysisRepository
 from .schemas import (
     AskTransactionHistoryRequest,
     AskTransactionHistoryResponse,
@@ -35,6 +38,7 @@ from .schemas import (
     DepositRequest,
     GetAccountResponse,
     GetTransactionsResponse,
+    SpendingAnalysisResponse,
     TransactionResponse,
     TransferRequest,
     TransferResponse,
@@ -70,6 +74,10 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
 
 def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
     return SqlAlchemyAccountRepository(session)
+
+
+def _spending_analysis_query(session: AsyncSession = Depends(get_session)) -> SpendingAnalysisQuery:
+    return SqlAlchemySpendingAnalysisRepository(session)
 
 
 def _translator() -> NlTransactionQueryTranslator:
@@ -480,3 +488,50 @@ async def ask_transaction_history(
         AskTransactionHistoryQuery(account_id=account_id, requester_id=current_user.user_id, question=body.question)
     )
     return AskTransactionHistoryResponse(answer=result.answer, matched_count=result.matched_count)
+
+
+@router.get(
+    "/{account_id}/spending-analysis",
+    response_model=SpendingAnalysisResponse,
+    summary="Get an account's monthly spending analysis",
+    description=(
+        "Returns the precomputed spending analysis (total/average withdrawal amount, %-change and trend "
+        "versus the previous month) for the given month — computed monthly by a batch ETL job, not on demand."
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`), or "
+                "no analysis has been computed yet for the given month (`SPENDING_ANALYSIS_NOT_FOUND`)."
+            ),
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date.",
+        },
+    },
+)
+async def get_spending_analysis(
+    account_id: str,
+    month: date,
+    current_user: CurrentUser = Depends(get_current_user),
+    account_query: AccountQuery = Depends(_query_repo),
+    analysis_query: SpendingAnalysisQuery = Depends(_spending_analysis_query),
+) -> SpendingAnalysisResponse:
+    result = await GetSpendingAnalysisHandler(account_query, analysis_query).execute(
+        GetSpendingAnalysisQuery(
+            account_id=account_id,
+            requester_id=current_user.user_id,
+            analysis_month=f"{month.year:04d}-{month.month:02d}",
+        )
+    )
+    return SpendingAnalysisResponse(
+        analysis_month=result.analysis_month,
+        total_amount=result.total_amount,
+        transaction_count=result.transaction_count,
+        average_amount=result.average_amount,
+        change_from_previous_month=result.change_from_previous_month,
+        trend=result.trend,
+        created_at=result.created_at,
+    )

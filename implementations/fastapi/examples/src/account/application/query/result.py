@@ -39,3 +39,14 @@ class GetTransactionsResult:
 class AskTransactionHistoryResult:
     answer: str
     matched_count: int
+
+
+@dataclass
+class SpendingAnalysisResult:
+    analysis_month: str
+    total_amount: int
+    transaction_count: int
+    average_amount: int
+    change_from_previous_month: int
+    trend: str
+    created_at: datetime

@@ -89,3 +89,17 @@ class AskTransactionHistoryResponse(BaseModel):
         description="A natural-language answer grounded only in the requester's own matching transactions."
     )
     matched_count: int = Field(description="How many transactions matched the question's translated filter.")
+
+
+class SpendingAnalysisResponse(BaseModel):
+    analysis_month: str = Field(description="The analyzed month, in YYYY-MM form.")
+    total_amount: int = Field(description="The account's total withdrawal amount for the month.")
+    transaction_count: int = Field(description="The number of withdrawal transactions in the month.")
+    average_amount: int = Field(description="The average withdrawal amount per transaction.")
+    change_from_previous_month: int = Field(
+        description="The percentage change in total withdrawal amount versus the previous month."
+    )
+    trend: str = Field(
+        description="A simple classification of the change.", examples=["INCREASING", "DECREASING", "STABLE"]
+    )
+    created_at: datetime = Field(description="When this analysis was computed, in UTC.")

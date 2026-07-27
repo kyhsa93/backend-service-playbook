@@ -184,6 +184,26 @@ class SqlAlchemyAccountRepository(AccountRepository):
         count = (await self._session.execute(stmt)).scalar_one()
         return count > 0
 
+    async def summarize_transactions(
+        self,
+        account_id: str,
+        type: list[TransactionType],
+        created_at_from: datetime,
+        created_at_to: datetime,
+    ) -> tuple[int, int]:
+        stmt = (
+            select(func.count(), func.coalesce(func.sum(TransactionModel.amount), 0))
+            .select_from(TransactionModel)
+            .where(
+                TransactionModel.account_id == account_id,
+                TransactionModel.type.in_(type),
+                TransactionModel.created_at >= created_at_from,
+                TransactionModel.created_at < created_at_to,
+            )
+        )
+        count, total_amount = (await self._session.execute(stmt)).one()
+        return int(count), int(total_amount)
+
     def _to_domain(self, row: AccountModel) -> Account:
         return Account(
             account_id=row.id,
