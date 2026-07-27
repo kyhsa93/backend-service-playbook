@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 interface AccountRepository {
     fun findAccounts(query: AccountFindQuery): Pair<List<Account>, Long>
@@ -39,6 +40,15 @@ interface AccountRepository {
         referenceId: String,
         type: TransactionType,
     ): Boolean
+
+    /**
+     * Aggregates count + total amount over a Transaction slice — the "Extract" step of
+     * `AnalyzeMonthlySpendingService`'s monthly ETL. Kept on the write-model port (rather than
+     * `AccountQuery`) because it's used only by that batch Command Service, the same way
+     * `hasTransactionWithReference` is a read-shaped method that still lives here for its one
+     * write-side caller.
+     */
+    fun summarizeTransactions(query: TransactionSummaryQuery): TransactionSummary
 }
 
 data class AccountFindQuery(
@@ -68,4 +78,21 @@ data class TransactionFindQuery(
     val type: TransactionType? = null,
     val fromDate: LocalDate? = null,
     val toDate: LocalDate? = null,
+)
+
+/**
+ * The query parameters for `summarizeTransactions` — [createdAtFrom] is inclusive and [createdAtTo]
+ * is exclusive (a half-open interval), matching how `AnalyzeMonthlySpendingService` computes month
+ * boundaries (this month's 1st through next month's 1st, exclusive).
+ */
+data class TransactionSummaryQuery(
+    val accountId: String,
+    val type: List<TransactionType>,
+    val createdAtFrom: LocalDateTime,
+    val createdAtTo: LocalDateTime,
+)
+
+data class TransactionSummary(
+    val count: Long,
+    val totalAmount: Long,
 )

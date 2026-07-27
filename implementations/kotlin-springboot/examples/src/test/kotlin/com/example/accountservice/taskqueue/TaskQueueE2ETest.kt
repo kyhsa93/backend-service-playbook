@@ -1,7 +1,11 @@
 package com.example.accountservice.taskqueue
 
 import com.example.accountservice.AccountServiceApplication
+import com.example.accountservice.account.infrastructure.persistence.SpendingAnalysisJpaRepository
+import com.example.accountservice.account.infrastructure.persistence.TransactionJpaRepository
 import com.example.accountservice.account.infrastructure.scheduling.InterestPaymentScheduler
+import com.example.accountservice.account.infrastructure.scheduling.SpendingAnalysisScheduler
+import com.example.accountservice.account.infrastructure.scheduling.computePreviousSpendingAnalysisPeriod
 import com.example.accountservice.card.infrastructure.scheduling.CardStatementScheduler
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
 import org.assertj.core.api.Assertions.assertThat
@@ -33,6 +37,8 @@ import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 import java.time.Duration
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 /**
  * An e2e test that actually exercises the full path prescribed by scheduling.md (Scheduler →
@@ -136,7 +142,16 @@ class TaskQueueE2ETest {
     private lateinit var cardStatementScheduler: CardStatementScheduler
 
     @Autowired
+    private lateinit var spendingAnalysisScheduler: SpendingAnalysisScheduler
+
+    @Autowired
     private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
+
+    @Autowired
+    private lateinit var transactionJpaRepository: TransactionJpaRepository
+
+    @Autowired
+    private lateinit var spendingAnalysisJpaRepository: SpendingAnalysisJpaRepository
 
     private val tokenCache = mutableMapOf<String, String>()
 
@@ -177,6 +192,29 @@ class TaskQueueE2ETest {
         val response = post("/accounts", ownerId, mapOf("currency" to "KRW", "email" to email))
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         return response.body!!["accountId"] as String
+    }
+
+    private fun withdraw(
+        accountId: String,
+        ownerId: String,
+        amount: Int,
+    ): String {
+        val response = post("/accounts/$accountId/withdraw", ownerId, mapOf("amount" to amount))
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        return response.body!!["transactionId"] as String
+    }
+
+    // Backdates a transaction's createdAt directly at the persistence layer — there is no legitimate
+    // domain use case for changing it after the fact, so the test reaches around the API the same way
+    // the card-statement test backdates payments.
+    private fun backdateTransaction(
+        transactionId: String,
+        createdAt: LocalDateTime,
+    ) {
+        val entity =
+            transactionJpaRepository.findByTransactionId(transactionId) ?: throw AssertionError("transaction not found: $transactionId")
+        entity.createdAt = createdAt
+        transactionJpaRepository.save(entity)
     }
 
     @Test
@@ -253,5 +291,60 @@ class TaskQueueE2ETest {
         Thread.sleep(3000)
         val statementEmailsAfterRetry = sentEmailJpaRepository.findByAccountId(accountId).filter { it.eventType == "CardStatement" }
         assertThat(statementEmailsAfterRetry).hasSize(1)
+    }
+
+    @Test
+    fun `an account with last months withdrawals gets an analysis row via the API, and re-enqueueing same-month does not duplicate it`() {
+        val ownerId = "spending-owner-1"
+        val email = "spending-owner-1@example.com"
+        val accountId = createAccount(ownerId, email)
+        post("/accounts/$accountId/deposit", ownerId, mapOf("amount" to 1_000_000))
+
+        // Backdates the withdrawals into "last month" the same way the card-statement test backdates
+        // payments — reusing the scheduler's own period computation so the analysis only lines up if it
+        // matches the logic the Scheduler actually runs with.
+        val period = computePreviousSpendingAnalysisPeriod(LocalDateTime.now(ZoneOffset.UTC))
+        val backdatedAt = period.monthStart.plusDays(1)
+        val transactionId1 = withdraw(accountId, ownerId, 30_000)
+        val transactionId2 = withdraw(accountId, ownerId, 20_000)
+        backdateTransaction(transactionId1, backdatedAt)
+        backdateTransaction(transactionId2, backdatedAt)
+
+        spendingAnalysisScheduler.enqueueMonthlySpendingAnalysis()
+
+        await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val analysis = spendingAnalysisJpaRepository.findByAccountIdAndAnalysisMonth(accountId, period.analysisMonth)
+            assertThat(analysis).isNotNull
+            assertThat(analysis!!.totalAmount).isEqualTo(50000L)
+            assertThat(analysis.transactionCount).isEqualTo(2L)
+            assertThat(analysis.averageAmount).isEqualTo(25000L)
+            // No prior-prior month withdrawal history exists, so the comparison baseline is 0 — the
+            // %-change is capped at 100 and the trend is INCREASING (see SpendingAnalysis.create).
+            assertThat(analysis.changeFromPreviousMonth).isEqualTo(100L)
+            assertThat(analysis.trend).isEqualTo("INCREASING")
+        }
+
+        val response = get("/accounts/$accountId/spending-analysis?month=${period.analysisMonth}-01", ownerId)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat((response.body!!["totalAmount"] as Number).toLong()).isEqualTo(50000L)
+        assertThat(response.body!!["trend"]).isEqualTo("INCREASING")
+
+        // Since it's the same month's dedupId, even if the second enqueue is reprocessed, the
+        // (accountId, analysisMonth) unique index + the hasAnalysis precheck must prevent a duplicate row.
+        spendingAnalysisScheduler.enqueueMonthlySpendingAnalysis()
+        Thread.sleep(3000)
+        assertThat(spendingAnalysisJpaRepository.countByAccountIdAndAnalysisMonth(accountId, period.analysisMonth)).isEqualTo(1L)
+    }
+
+    @Test
+    fun `when no analysis has been computed for the requested month then returns 404`() {
+        val ownerId = "spending-owner-2"
+        val email = "spending-owner-2@example.com"
+        val accountId = createAccount(ownerId, email)
+
+        val response = get("/accounts/$accountId/spending-analysis?month=2020-01-01", ownerId)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(response.body!!["code"]).isEqualTo("SPENDING_ANALYSIS_NOT_FOUND")
     }
 }

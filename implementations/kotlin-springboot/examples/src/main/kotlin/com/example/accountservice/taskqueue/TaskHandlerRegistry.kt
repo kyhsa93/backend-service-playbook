@@ -1,11 +1,13 @@
 package com.example.accountservice.taskqueue
 
+import com.example.accountservice.account.interfaces.task.AnalyzeMonthlySpendingTaskController
 import com.example.accountservice.account.interfaces.task.PayInterestTaskController
 import com.example.accountservice.card.interfaces.task.SendCardStatementTaskController
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * Maps taskType (`task_outbox.task_type` = SQS `MessageAttributes.taskType`) to a handler function.
@@ -24,6 +26,7 @@ class TaskHandlerRegistry(
     private val objectMapper: ObjectMapper,
     private val payInterestTaskController: PayInterestTaskController,
     private val sendCardStatementTaskController: SendCardStatementTaskController,
+    private val analyzeMonthlySpendingTaskController: AnalyzeMonthlySpendingTaskController,
 ) {
     private val logger = LoggerFactory.getLogger(TaskHandlerRegistry::class.java)
 
@@ -36,6 +39,16 @@ class TaskHandlerRegistry(
             "card.send-statement" to { payload ->
                 val yearMonth = objectMapper.readTree(payload).get("yearMonth").asText()
                 sendCardStatementTaskController.sendStatements(yearMonth)
+            },
+            "account.analyze-monthly-spending" to { payload ->
+                val node = objectMapper.readTree(payload)
+                analyzeMonthlySpendingTaskController.analyzeMonthlySpending(
+                    analysisMonth = node.get("analysisMonth").asText(),
+                    monthStart = LocalDateTime.parse(node.get("monthStart").asText()),
+                    monthEnd = LocalDateTime.parse(node.get("monthEnd").asText()),
+                    previousMonthStart = LocalDateTime.parse(node.get("previousMonthStart").asText()),
+                    previousMonthEnd = LocalDateTime.parse(node.get("previousMonthEnd").asText()),
+                )
             },
         )
 

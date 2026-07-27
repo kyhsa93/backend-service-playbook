@@ -39,3 +39,11 @@ class DeleteRequiresClosedAccountException :
 
 class TransferSameAccountException :
     AccountException("The withdrawal account and deposit account cannot be the same.", AccountErrorCode.TRANSFER_SAME_ACCOUNT)
+
+class SpendingAnalysisNotFoundException(
+    accountId: String,
+    analysisMonth: String,
+) : AccountException(
+        "spending analysis not found: accountId=$accountId, analysisMonth=$analysisMonth",
+        AccountErrorCode.SPENDING_ANALYSIS_NOT_FOUND,
+    )

@@ -2,6 +2,7 @@ package com.example.accountservice.common
 
 import com.example.accountservice.account.domain.AccountException
 import com.example.accountservice.account.domain.AccountNotFoundException
+import com.example.accountservice.account.domain.SpendingAnalysisNotFoundException
 import com.example.accountservice.account.interfaces.rest.ErrorResponse
 import com.example.accountservice.auth.domain.AuthException
 import com.example.accountservice.auth.domain.InvalidCredentialsException
@@ -34,6 +35,12 @@ class GlobalExceptionHandler {
     @ExceptionHandler(AccountNotFoundException::class)
     fun handleNotFound(e: AccountNotFoundException): ResponseEntity<ErrorResponse> {
         logger.warn("Account not found: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(SpendingAnalysisNotFoundException::class)
+    fun handleSpendingAnalysisNotFound(e: SpendingAnalysisNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("Spending analysis not found: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 

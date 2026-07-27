@@ -23,6 +23,8 @@ import com.example.accountservice.account.application.query.AskTransactionHistor
 import com.example.accountservice.account.application.query.AskTransactionHistoryService
 import com.example.accountservice.account.application.query.GetAccountResult
 import com.example.accountservice.account.application.query.GetAccountService
+import com.example.accountservice.account.application.query.GetSpendingAnalysisResult
+import com.example.accountservice.account.application.query.GetSpendingAnalysisService
 import com.example.accountservice.account.application.query.GetTransactionsResult
 import com.example.accountservice.account.application.query.GetTransactionsService
 import com.example.accountservice.account.domain.TransactionType
@@ -71,6 +73,7 @@ class AccountController(
     private val getAccountService: GetAccountService,
     private val getTransactionsService: GetTransactionsService,
     private val askTransactionHistoryService: AskTransactionHistoryService,
+    private val getSpendingAnalysisService: GetSpendingAnalysisService,
 ) {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -345,4 +348,32 @@ class AccountController(
         @PathVariable accountId: String,
         @Valid @RequestBody request: AskTransactionHistoryRequest,
     ): AskTransactionHistoryResult = askTransactionHistoryService.ask(accountId, authentication.name, request.question)
+
+    @GetMapping("/{accountId}/spending-analysis")
+    @Operation(
+        summary = "Get an account's monthly spending analysis",
+        description =
+            "Returns the precomputed spending analysis (total/average withdrawal amount, %-change and trend " +
+                "versus the previous month) for the given month — computed monthly by a batch ETL job, not on demand.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "The analysis was found."),
+        ApiResponse(
+            responseCode = "400",
+            description = "Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date.",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "404",
+            description =
+                "No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`), or no analysis " +
+                    "has been computed yet for the given month (`SPENDING_ANALYSIS_NOT_FOUND`).",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
+    fun getSpendingAnalysis(
+        authentication: Authentication,
+        @PathVariable accountId: String,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) month: LocalDate,
+    ): GetSpendingAnalysisResult = getSpendingAnalysisService.getSpendingAnalysis(accountId, authentication.name, month)
 }

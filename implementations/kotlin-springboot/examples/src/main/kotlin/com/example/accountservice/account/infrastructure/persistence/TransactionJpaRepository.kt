@@ -12,4 +12,8 @@ interface TransactionJpaRepository : JpaRepository<TransactionJpaEntity, Long> {
         referenceId: String,
         type: TransactionType,
     ): Boolean
+
+    // Used only by TaskQueueE2ETest to backdate a transaction's createdAt into "last month" — the
+    // domain has no legitimate use case for changing a Transaction's timestamp after the fact.
+    fun findByTransactionId(transactionId: String): TransactionJpaEntity?
 }

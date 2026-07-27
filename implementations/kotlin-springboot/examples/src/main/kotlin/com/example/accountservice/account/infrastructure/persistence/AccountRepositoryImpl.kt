@@ -7,6 +7,8 @@ import com.example.accountservice.account.domain.AccountRepository
 import com.example.accountservice.account.domain.AccountStatus
 import com.example.accountservice.account.domain.Transaction
 import com.example.accountservice.account.domain.TransactionFindQuery
+import com.example.accountservice.account.domain.TransactionSummary
+import com.example.accountservice.account.domain.TransactionSummaryQuery
 import com.example.accountservice.account.domain.TransactionType
 import com.example.accountservice.outbox.OutboxWriter
 import jakarta.persistence.EntityManager
@@ -113,6 +115,35 @@ class AccountRepositoryImpl(
         referenceId: String,
         type: TransactionType,
     ): Boolean = transactionJpaRepository.existsByReferenceIdAndType(referenceId, type)
+
+    // The "Extract" step of AnalyzeMonthlySpendingService's monthly ETL — count + COALESCE(SUM(...), 0)
+    // over a Transaction slice, mirroring nestjs's account-repository-impl.ts summarizeTransactions SQL.
+    // Kept as two separate scalar queries (rather than one multi-column SELECT) to match this file's
+    // own existing style for findAccounts/findTransactions (a list query + a separate count query),
+    // avoiding an Object[]/Tuple result-row cast.
+    override fun summarizeTransactions(query: TransactionSummaryQuery): TransactionSummary {
+        val countJpql =
+            "SELECT COUNT(t) FROM TransactionJpaEntity t WHERE t.accountId = :accountId AND t.type IN :type " +
+                "AND t.createdAt >= :createdAtFrom AND t.createdAt < :createdAtTo"
+        val sumJpql =
+            "SELECT COALESCE(SUM(t.amount.amount), 0) FROM TransactionJpaEntity t WHERE t.accountId = :accountId AND t.type IN :type " +
+                "AND t.createdAt >= :createdAtFrom AND t.createdAt < :createdAtTo"
+
+        val count = em.createQuery(countJpql, Long::class.java).apply { applySummaryParams(this, query) }.singleResult
+        val totalAmount = em.createQuery(sumJpql, Long::class.java).apply { applySummaryParams(this, query) }.singleResult
+
+        return TransactionSummary(count = count, totalAmount = totalAmount)
+    }
+
+    private fun applySummaryParams(
+        q: jakarta.persistence.Query,
+        query: TransactionSummaryQuery,
+    ) {
+        q.setParameter("accountId", query.accountId)
+        q.setParameter("type", query.type)
+        q.setParameter("createdAtFrom", query.createdAtFrom)
+        q.setParameter("createdAtTo", query.createdAtTo)
+    }
 
     private fun buildJpql(
         query: AccountFindQuery,
