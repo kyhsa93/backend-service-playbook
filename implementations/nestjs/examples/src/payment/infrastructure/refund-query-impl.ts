@@ -49,6 +49,7 @@ export class RefundQueryImpl extends RefundQuery {
         reason: row.reason,
         status: row.status,
         decisionNote: row.decisionNote ?? undefined,
+        reasonCategory: row.reasonCategory ?? undefined,
         createdAt: row.createdAt
       })),
       count

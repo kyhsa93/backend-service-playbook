@@ -1,6 +1,7 @@
 import { Refund } from '@/payment/domain/refund'
 import { RefundStatus } from '@/payment/payment-enum'
 import { RefundApproved } from '@/payment/domain/refund-approved'
+import { RefundRequested } from '@/payment/domain/refund-requested'
 
 describe('Refund', () => {
   const createRefund = (status: RefundStatus = RefundStatus.REQUESTED): Refund => new Refund({
@@ -11,13 +12,28 @@ describe('Refund', () => {
     status
   })
 
-  it('create_when_valid_input_then_created_REQUESTED_with_no_events', () => {
+  it('create_when_valid_input_then_created_REQUESTED_and_publishes_RefundRequested_unconditionally', () => {
     const refund = Refund.create({ paymentId: 'payment-1', amount: 5000, reason: 'Defective product' })
 
     expect(refund.status).toBe(RefundStatus.REQUESTED)
     expect(refund.amount).toBe(5000)
     expect(refund.reason).toBe('Defective product')
-    expect(refund.domainEvents).toHaveLength(0)
+    expect(refund.domainEvents).toHaveLength(1)
+    const event = refund.domainEvents[0] as RefundRequested
+    expect(event).toBeInstanceOf(RefundRequested)
+    expect(event.refundId).toBe(refund.refundId)
+    expect(event.reason).toBe('Defective product')
+  })
+
+  describe('categorizeReason', () => {
+    it('categorizeReason_when_called_then_sets_reasonCategory_without_publishing_any_event', () => {
+      const refund = createRefund()
+
+      refund.categorizeReason('DEFECTIVE_PRODUCT')
+
+      expect(refund.reasonCategory).toBe('DEFECTIVE_PRODUCT')
+      expect(refund.domainEvents).toHaveLength(0)
+    })
   })
 
   describe('approve', () => {

@@ -2,6 +2,12 @@ import { generateId } from '@/common/generate-id'
 import { RefundStatus } from '@/payment/payment-enum'
 import { PaymentErrorMessage } from '@/payment/payment-error-message'
 import { RefundApproved } from '@/payment/domain/refund-approved'
+import { RefundRequested } from '@/payment/domain/refund-requested'
+
+// The fixed taxonomy RefundReasonClassifier classifies a refund's free-text reason into, for
+// ops-analytics reporting only (see refund-reason-insights-query.ts) — it never feeds back into
+// RefundEligibilityService's approve/reject judgment.
+export type RefundReasonCategory = 'DEFECTIVE_PRODUCT' | 'WRONG_ITEM' | 'NOT_AS_DESCRIBED' | 'CHANGED_MIND' | 'LATE_DELIVERY' | 'DUPLICATE_CHARGE' | 'OTHER'
 
 // The Refund Aggregate. Refund itself can't judge the original payment (Payment)'s
 // status·amount — RefundEligibilityService (a Domain Service) loads both the Payment+Refund
@@ -14,7 +20,8 @@ export class Refund {
   public readonly createdAt: Date
   private _status: RefundStatus
   private _decisionNote?: string
-  private readonly _events: RefundApproved[] = []
+  private _reasonCategory?: RefundReasonCategory
+  private readonly _events: (RefundApproved | RefundRequested)[] = []
 
   constructor(params: {
     refundId?: string
@@ -23,6 +30,7 @@ export class Refund {
     reason: string
     status: RefundStatus
     decisionNote?: string
+    reasonCategory?: RefundReasonCategory
     createdAt?: Date
   }) {
     this.refundId = params.refundId ?? generateId()
@@ -31,20 +39,36 @@ export class Refund {
     this.reason = params.reason
     this._status = params.status
     this._decisionNote = params.decisionNote
+    this._reasonCategory = params.reasonCategory
     this.createdAt = params.createdAt ?? new Date()
   }
 
   get status(): RefundStatus { return this._status }
   get decisionNote(): string | undefined { return this._decisionNote }
-  get domainEvents(): RefundApproved[] { return [...this._events] }
+  get reasonCategory(): RefundReasonCategory | undefined { return this._reasonCategory }
+  get domainEvents(): (RefundApproved | RefundRequested)[] { return [...this._events] }
 
   public static create(params: { paymentId: string; amount: number; reason: string }): Refund {
-    return new Refund({
+    const refund = new Refund({
       paymentId: params.paymentId,
       amount: params.amount,
       reason: params.reason,
       status: RefundStatus.REQUESTED
     })
+    refund._events.push(new RefundRequested({
+      refundId: refund.refundId,
+      paymentId: refund.paymentId,
+      reason: refund.reason,
+      createdAt: refund.createdAt
+    }))
+    return refund
+  }
+
+  // Set asynchronously by ClassifyRefundReasonHandler reacting to RefundRequested — never
+  // called from the approve()/reject() eligibility path. No further Domain Event is published
+  // here; this is a read-model enrichment, not something any other BC needs to react to.
+  public categorizeReason(category: RefundReasonCategory): void {
+    this._reasonCategory = category
   }
 
   // paymentContext isn't RefundEligibilityService's judgment — it's just reference data the

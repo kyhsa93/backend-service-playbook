@@ -21,4 +21,8 @@ export class RefundEntity extends BaseEntity {
 
   @Column({ type: 'varchar', nullable: true })
   decisionNote: string | null
+
+  // Filled in asynchronously by ClassifyRefundReasonHandler — null until that reaction runs.
+  @Column({ type: 'varchar', nullable: true })
+  reasonCategory: string | null
 }

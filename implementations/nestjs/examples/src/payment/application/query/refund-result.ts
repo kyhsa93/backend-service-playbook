@@ -19,6 +19,9 @@ export class GetRefundResult {
   @ApiPropertyOptional({ description: 'Why the refund was approved or rejected, set once the eligibility decision is made.' })
   public readonly decisionNote?: string
 
+  @ApiPropertyOptional({ description: 'The auto-classified reason category, filled in asynchronously — absent until classification completes. Ops-analytics only; never affects the eligibility decision above.', enum: ['DEFECTIVE_PRODUCT', 'WRONG_ITEM', 'NOT_AS_DESCRIBED', 'CHANGED_MIND', 'LATE_DELIVERY', 'DUPLICATE_CHARGE', 'OTHER'] })
+  public readonly reasonCategory?: string
+
   @ApiProperty({ description: 'When the refund was requested.' })
   public readonly createdAt: Date
 }

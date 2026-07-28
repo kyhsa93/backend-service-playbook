@@ -393,6 +393,69 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
     })
   })
 
+  // The LLM behind RefundReasonClassifier isn't available in this e2e environment (same
+  // reasoning as Account BC's transaction-auto-categorization e2e test), so classification
+  // falls back to OTHER — but this still exercises the real async pipeline end to end
+  // (Domain Event → Outbox → SQS → Consumer → ClassifyRefundReasonHandler → repository write),
+  // and proves classification runs for a REJECTED refund too, independent of the eligibility
+  // outcome (RefundRequested is published before RefundEligibilityService's judgment even runs).
+  describe('Refund reason classification + GET /refunds/reason-insights (ops analytics only)', () => {
+    it('a_rejected_refund_still_gets_its_reason_classified_asynchronously', async () => {
+      const account = await createAccount()
+      await deposit(account.accountId, 50000)
+      const card = await issueCard(account.accountId)
+      const payment = (await createPayment(card.cardId, 10000)).body as { paymentId: string }
+      await waitForBalance(account.accountId, 40000)
+
+      const response = await request(app.getHttpServer())
+        .post(`/payments/${payment.paymentId}/refunds`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 20000, reason: 'The item arrived broken' })
+      expect(response.body.status).toBe('REJECTED')
+
+      let reasonCategory: string | undefined
+      for (let i = 0; i < 150; i++) {
+        const listResponse = await request(app.getHttpServer())
+          .get(`/payments/${payment.paymentId}/refunds`)
+          .set('Authorization', authHeader(OWNER_ID))
+        reasonCategory = listResponse.body.refunds[0]?.reasonCategory
+        if (reasonCategory) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(reasonCategory).toBe('OTHER')
+    }, 60000)
+
+    it('GET_refunds_reason-insights_reflects_a_classified_refund_in_its_category_counts', async () => {
+      const before = await request(app.getHttpServer())
+        .get('/refunds/reason-insights')
+        .set('Authorization', authHeader(OWNER_ID))
+      const totalBefore = before.body.totalClassified as number
+
+      const account = await createAccount()
+      await deposit(account.accountId, 50000)
+      const card = await issueCard(account.accountId)
+      const payment = (await createPayment(card.cardId, 10000)).body as { paymentId: string }
+      await waitForBalance(account.accountId, 40000)
+      await request(app.getHttpServer())
+        .post(`/payments/${payment.paymentId}/refunds`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 4000, reason: 'Changed my mind' })
+
+      let totalAfter = totalBefore
+      for (let i = 0; i < 150; i++) {
+        const after = await request(app.getHttpServer())
+          .get('/refunds/reason-insights')
+          .set('Authorization', authHeader(OWNER_ID))
+        totalAfter = after.body.totalClassified as number
+        if (totalAfter > totalBefore) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(totalAfter).toBeGreaterThan(totalBefore)
+    }, 60000)
+  })
+
   describe('GET /payments, GET /payments/:paymentId', () => {
     it('returns_my_payment_history_with_pagination', async () => {
       const account = await createAccount()

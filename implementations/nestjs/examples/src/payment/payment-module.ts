@@ -12,15 +12,19 @@ import { CancelPaymentCommandHandler } from '@/payment/application/command/cance
 import { CreatePaymentCommandHandler } from '@/payment/application/command/create-payment-command-handler'
 import { RequestRefundCommandHandler } from '@/payment/application/command/request-refund-command-handler'
 import { SendCardStatementsCommandHandler } from '@/payment/application/command/send-card-statements-command-handler'
+import { ClassifyRefundReasonHandler } from '@/payment/application/event/classify-refund-reason-handler'
 import { PaymentCancelledHandler } from '@/payment/application/event/payment-cancelled-handler'
 import { PaymentCompletedHandler } from '@/payment/application/event/payment-completed-handler'
 import { RefundApprovedHandler } from '@/payment/application/event/refund-approved-handler'
 import { GetPaymentQueryHandler } from '@/payment/application/query/get-payment-query-handler'
 import { GetPaymentsQueryHandler } from '@/payment/application/query/get-payments-query-handler'
+import { GetRefundReasonInsightsQueryHandler } from '@/payment/application/query/get-refund-reason-insights-query-handler'
 import { GetRefundsQueryHandler } from '@/payment/application/query/get-refunds-query-handler'
 import { PaymentQuery } from '@/payment/application/query/payment-query'
+import { RefundReasonInsightsQuery } from '@/payment/application/query/refund-reason-insights-query'
 import { RefundQuery } from '@/payment/application/query/refund-query'
 import { CardStatementNotificationService } from '@/payment/application/service/card-statement-notification-service'
+import { RefundReasonClassifier } from '@/payment/application/service/refund-reason-classifier'
 import { PaymentRepository } from '@/payment/domain/payment-repository'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
@@ -33,6 +37,8 @@ import { PaymentSesClientProvider } from '@/payment/infrastructure/notification/
 import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
 import { PaymentQueryImpl } from '@/payment/infrastructure/payment-query-impl'
 import { PaymentRepositoryImpl } from '@/payment/infrastructure/payment-repository-impl'
+import { RefundReasonClassifierImpl } from '@/payment/infrastructure/refund-reason-classifier-impl'
+import { RefundReasonInsightsQueryImpl } from '@/payment/infrastructure/refund-reason-insights-query-impl'
 import { RefundQueryImpl } from '@/payment/infrastructure/refund-query-impl'
 import { RefundRepositoryImpl } from '@/payment/infrastructure/refund-repository-impl'
 import { PaymentController } from '@/payment/interface/payment-controller'
@@ -63,10 +69,13 @@ import { PaymentTaskController } from '@/payment/interface/payment-task-controll
     GetPaymentQueryHandler,
     GetPaymentsQueryHandler,
     GetRefundsQueryHandler,
+    GetRefundReasonInsightsQueryHandler,
     // Domain Event Handlers (converting Payment/Refund → Integration Event)
     PaymentCompletedHandler,
     PaymentCancelledHandler,
     RefundApprovedHandler,
+    // Reacts to RefundRequested — ops-analytics only, never feeds back into eligibility
+    ClassifyRefundReasonHandler,
     // The Task input adapter — @TaskConsumer methods
     PaymentTaskController,
     // Only Cron → TaskQueue.enqueue (Infrastructure layer)
@@ -77,12 +86,16 @@ import { PaymentTaskController } from '@/payment/interface/payment-task-controll
     // The Query implementation
     { provide: PaymentQuery, useClass: PaymentQueryImpl },
     { provide: RefundQuery, useClass: RefundQueryImpl },
+    { provide: RefundReasonInsightsQuery, useClass: RefundReasonInsightsQueryImpl },
     // Cross-domain Adapters (Payment → Card, Payment → Account synchronous lookup)
     { provide: CardAdapter, useClass: CardAdapterImpl },
     { provide: AccountAdapter, useClass: AccountAdapterImpl },
     // A Technical Service — SES card-statement sending (Payment-only, separate from Account's NotificationService)
     { provide: CardStatementNotificationService, useClass: CardStatementNotificationServiceImpl },
-    PaymentSesClientProvider
+    PaymentSesClientProvider,
+    // A Technical Service — the LLM call behind ClassifyRefundReasonHandler, the same Ollama
+    // setup as Account BC's TransactionAutoCategorizer
+    { provide: RefundReasonClassifier, useClass: RefundReasonClassifierImpl }
   ]
 })
 export class PaymentModule implements OnModuleInit {
@@ -90,7 +103,8 @@ export class PaymentModule implements OnModuleInit {
     private readonly registry: EventHandlerRegistry,
     private readonly paymentCompletedHandler: PaymentCompletedHandler,
     private readonly paymentCancelledHandler: PaymentCancelledHandler,
-    private readonly refundApprovedHandler: RefundApprovedHandler
+    private readonly refundApprovedHandler: RefundApprovedHandler,
+    private readonly classifyRefundReasonHandler: ClassifyRefundReasonHandler
   ) {}
 
   // The same pattern as Account BC's account-module.ts — registers this domain's own
@@ -100,5 +114,6 @@ export class PaymentModule implements OnModuleInit {
     this.registry.register('PaymentCompleted', (payload) => this.paymentCompletedHandler.handle(payload as never))
     this.registry.register('PaymentCancelled', (payload) => this.paymentCancelledHandler.handle(payload as never))
     this.registry.register('RefundApproved', (payload) => this.refundApprovedHandler.handle(payload as never))
+    this.registry.register('RefundRequested', (payload) => this.classifyRefundReasonHandler.handle(payload as never))
   }
 }

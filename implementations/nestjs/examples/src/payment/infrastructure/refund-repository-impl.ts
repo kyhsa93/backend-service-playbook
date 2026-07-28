@@ -4,7 +4,7 @@ import { Repository } from 'typeorm'
 
 import { TransactionManager } from '@/database/transaction-manager'
 import { OutboxWriter } from '@/outbox/outbox-writer'
-import { Refund } from '@/payment/domain/refund'
+import { Refund, RefundReasonCategory } from '@/payment/domain/refund'
 import { RefundRepository } from '@/payment/domain/refund-repository'
 import { RefundStatus } from '@/payment/payment-enum'
 import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
@@ -45,6 +45,7 @@ export class RefundRepositoryImpl extends RefundRepository {
         reason: row.reason,
         status: row.status as RefundStatus,
         decisionNote: row.decisionNote ?? undefined,
+        reasonCategory: (row.reasonCategory as RefundReasonCategory) ?? undefined,
         createdAt: row.createdAt
       })),
       count
@@ -60,6 +61,7 @@ export class RefundRepositoryImpl extends RefundRepository {
       reason: refund.reason,
       status: refund.status,
       decisionNote: refund.decisionNote ?? null,
+      reasonCategory: refund.reasonCategory ?? null,
       createdAt: refund.createdAt
     })
 

@@ -19,8 +19,10 @@ import { Payment } from '@/payment/domain/payment'
 import { Refund } from '@/payment/domain/refund'
 import { GetPaymentQuery } from '@/payment/application/query/get-payment-query'
 import { GetPaymentsQuery } from '@/payment/application/query/get-payments-query'
+import { GetRefundReasonInsightsQuery } from '@/payment/application/query/get-refund-reason-insights-query'
 import { GetRefundsQuery } from '@/payment/application/query/get-refunds-query'
 import { GetPaymentResult, GetPaymentsResult } from '@/payment/application/query/payment-result'
+import { RefundReasonInsightsResult } from '@/payment/application/query/refund-reason-insights-result'
 import { GetRefundsResult } from '@/payment/application/query/refund-result'
 import { CancelPaymentRequestBody } from '@/payment/interface/dto/cancel-payment-request-body'
 import { CreatePaymentRequestBody } from '@/payment/interface/dto/create-payment-request-body'
@@ -29,6 +31,8 @@ import { GetPaymentRequestParam } from '@/payment/interface/dto/get-payment-requ
 import { GetPaymentResponseBody } from '@/payment/interface/dto/get-payment-response-body'
 import { GetPaymentsRequestQuerystring } from '@/payment/interface/dto/get-payments-request-querystring'
 import { GetPaymentsResponseBody } from '@/payment/interface/dto/get-payments-response-body'
+import { GetRefundReasonInsightsRequestQuerystring } from '@/payment/interface/dto/get-refund-reason-insights-request-querystring'
+import { GetRefundReasonInsightsResponseBody } from '@/payment/interface/dto/get-refund-reason-insights-response-body'
 import { GetRefundsRequestParam } from '@/payment/interface/dto/get-refunds-request-param'
 import { GetRefundsRequestQuerystring } from '@/payment/interface/dto/get-refunds-request-querystring'
 import { GetRefundsResponseBody } from '@/payment/interface/dto/get-refunds-response-body'
@@ -206,6 +210,25 @@ export class PaymentController {
         [PaymentErrorMessage['Payment not found.'], NotFoundException, ErrorCode.PAYMENT_NOT_FOUND]
       ])
     })
+  }
+
+  @Get('/refunds/reason-insights')
+  @ApiOperation({
+    operationId: 'getRefundReasonInsights',
+    summary: 'Get refund-reason category counts for ops analytics',
+    description: 'Returns how many refunds fall into each auto-classified reason category (e.g. DEFECTIVE_PRODUCT, '
+      + 'CHANGED_MIND), optionally narrowed to a date range. Classification runs asynchronously after a refund is '
+      + 'requested and never influences whether that refund is approved — this is a read-only reporting view '
+      + 'across every refund, not scoped to the caller\'s own payments.'
+  })
+  @ApiOkResponse({ description: 'The insights were computed.', type: GetRefundReasonInsightsResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `fromDate`/`toDate` is not a valid date.', type: ErrorResponseBody })
+  public async getRefundReasonInsights(
+    @Query() querystring: GetRefundReasonInsightsRequestQuerystring
+  ): Promise<GetRefundReasonInsightsResponseBody> {
+    return this.queryBus.execute<GetRefundReasonInsightsQuery, RefundReasonInsightsResult>(
+      new GetRefundReasonInsightsQuery({ ...querystring })
+    )
   }
 
   private toPaymentResponse(payment: Payment): GetPaymentResult {
