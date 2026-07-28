@@ -25,6 +25,8 @@ import com.example.accountservice.account.application.query.GetAccountResult
 import com.example.accountservice.account.application.query.GetAccountService
 import com.example.accountservice.account.application.query.GetSpendingAnalysisResult
 import com.example.accountservice.account.application.query.GetSpendingAnalysisService
+import com.example.accountservice.account.application.query.GetSpendingForecastResult
+import com.example.accountservice.account.application.query.GetSpendingForecastService
 import com.example.accountservice.account.application.query.GetTransactionsResult
 import com.example.accountservice.account.application.query.GetTransactionsService
 import com.example.accountservice.account.domain.TransactionType
@@ -74,6 +76,7 @@ class AccountController(
     private val getTransactionsService: GetTransactionsService,
     private val askTransactionHistoryService: AskTransactionHistoryService,
     private val getSpendingAnalysisService: GetSpendingAnalysisService,
+    private val getSpendingForecastService: GetSpendingForecastService,
 ) {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -376,4 +379,33 @@ class AccountController(
         @PathVariable accountId: String,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) month: LocalDate,
     ): GetSpendingAnalysisResult = getSpendingAnalysisService.getSpendingAnalysis(accountId, authentication.name, month)
+
+    @GetMapping("/{accountId}/spending-forecast")
+    @Operation(
+        summary = "Get an account's predicted spending for a month",
+        description =
+            "Returns the precomputed spending forecast (predicted total withdrawal amount and confidence) for the " +
+                "given month — trained monthly by a batch job on the account's own spending_analysis history, not on demand.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "The forecast was found."),
+        ApiResponse(
+            responseCode = "400",
+            description = "Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date.",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "404",
+            description =
+                "No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`), or no forecast " +
+                    "has been computed yet for the given month (`SPENDING_FORECAST_NOT_FOUND`) — e.g. the account has " +
+                    "fewer than 3 months of spending-analysis history.",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
+    fun getSpendingForecast(
+        authentication: Authentication,
+        @PathVariable accountId: String,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) month: LocalDate,
+    ): GetSpendingForecastResult = getSpendingForecastService.getSpendingForecast(accountId, authentication.name, month)
 }

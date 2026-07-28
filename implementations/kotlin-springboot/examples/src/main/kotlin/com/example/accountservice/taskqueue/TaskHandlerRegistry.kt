@@ -1,6 +1,7 @@
 package com.example.accountservice.taskqueue
 
 import com.example.accountservice.account.interfaces.task.AnalyzeMonthlySpendingTaskController
+import com.example.accountservice.account.interfaces.task.ForecastSpendingTaskController
 import com.example.accountservice.account.interfaces.task.PayInterestTaskController
 import com.example.accountservice.card.interfaces.task.SendCardStatementTaskController
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -27,6 +28,7 @@ class TaskHandlerRegistry(
     private val payInterestTaskController: PayInterestTaskController,
     private val sendCardStatementTaskController: SendCardStatementTaskController,
     private val analyzeMonthlySpendingTaskController: AnalyzeMonthlySpendingTaskController,
+    private val forecastSpendingTaskController: ForecastSpendingTaskController,
 ) {
     private val logger = LoggerFactory.getLogger(TaskHandlerRegistry::class.java)
 
@@ -49,6 +51,10 @@ class TaskHandlerRegistry(
                     previousMonthStart = LocalDateTime.parse(node.get("previousMonthStart").asText()),
                     previousMonthEnd = LocalDateTime.parse(node.get("previousMonthEnd").asText()),
                 )
+            },
+            "account.forecast-spending" to { payload ->
+                val forecastMonth = objectMapper.readTree(payload).get("forecastMonth").asText()
+                forecastSpendingTaskController.forecastSpending(forecastMonth)
             },
         )
 

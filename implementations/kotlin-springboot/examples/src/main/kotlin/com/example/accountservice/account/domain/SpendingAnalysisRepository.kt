@@ -18,4 +18,15 @@ interface SpendingAnalysisRepository {
         accountId: String,
         analysisMonth: String,
     ): Boolean
+
+    /**
+     * The training data for `ForecastSpendingService` — every analysis row strictly before
+     * [beforeMonth], capped at [limit], returned oldest-first (chronological order) since
+     * `SpendingForecastModel.predict` treats list position as the month index.
+     */
+    fun findRecentAnalyses(
+        accountId: String,
+        beforeMonth: String,
+        limit: Int,
+    ): List<SpendingAnalysis>
 }

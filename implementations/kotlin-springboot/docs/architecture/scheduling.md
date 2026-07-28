@@ -9,7 +9,7 @@ This repository uses `@Scheduled` for two different purposes — both are actual
 | Purpose | Implementation | What it carries |
 |---|---|---|
 | Publishing Domain/Integration Events | `outbox/OutboxPoller.kt` | "a fact: X happened" — an event the Aggregate produced |
-| Writing/publishing Task Queue entries | `account/infrastructure/scheduling/InterestPaymentScheduler.kt`, `card/infrastructure/scheduling/CardStatementScheduler.kt`, `taskqueue/TaskOutboxPoller.kt` | "a command: do X" — a batch-job instruction the Scheduler produced |
+| Writing/publishing Task Queue entries | `account/infrastructure/scheduling/InterestPaymentScheduler.kt`, `card/infrastructure/scheduling/CardStatementScheduler.kt`, `account/infrastructure/scheduling/SpendingAnalysisScheduler.kt`, `account/infrastructure/scheduling/SpendingForecastScheduler.kt`, `taskqueue/TaskOutboxPoller.kt` | "a command: do X" — a batch-job instruction the Scheduler produced |
 
 Both are separate paths that follow the Task Queue vs. Domain Event distinction from [domain-events.md](domain-events.md) exactly — they share the same `outbox`-style pattern (write to a table → an independent Poller publishes to SQS → an independent Consumer receives), but the queue is different (`outbox_events`/the domain-event SQS **standard** queue vs. `task_outbox`/the Task Queue SQS **FIFO** queue), and so is the routing registry (`EventHandlerRegistry`, 1:N, vs. `TaskHandlerRegistry`, 1:1).
 
@@ -43,7 +43,7 @@ In this combination, it's natural for `@Scheduled` methods to run on a **traditi
 class AccountServiceApplication
 ```
 
-By default, `@Scheduled` runs on a single thread pool (size 1). Before the Task Queue was introduced, there was only `OutboxPoller`, so this wasn't a problem, but now that 4 components — `OutboxPoller`/`TaskOutboxPoller`/`InterestPaymentScheduler`/`CardStatementScheduler` — use `@Scheduled`, the pool size was increased via a dedicated `TaskScheduler` Bean so they don't block each other.
+By default, `@Scheduled` runs on a single thread pool (size 1). Before the Task Queue was introduced, there was only `OutboxPoller`, so this wasn't a problem, but now that 6 components — `OutboxPoller`/`TaskOutboxPoller`/`InterestPaymentScheduler`/`CardStatementScheduler`/`SpendingAnalysisScheduler`/`SpendingForecastScheduler` — use `@Scheduled`, the pool size was increased via a dedicated `TaskScheduler` Bean so they don't block each other.
 
 ```kotlin
 // taskqueue/SchedulingConfig.kt — actual code
@@ -52,7 +52,7 @@ class SchedulingConfig {
     @Bean
     fun taskScheduler(): TaskScheduler =
         ThreadPoolTaskScheduler().apply {
-            poolSize = 4
+            poolSize = 6
             setThreadNamePrefix("scheduled-")
             setWaitForTasksToCompleteOnShutdown(true)   // see graceful-shutdown.md
             setAwaitTerminationSeconds(20)

@@ -47,3 +47,11 @@ class SpendingAnalysisNotFoundException(
         "spending analysis not found: accountId=$accountId, analysisMonth=$analysisMonth",
         AccountErrorCode.SPENDING_ANALYSIS_NOT_FOUND,
     )
+
+class SpendingForecastNotFoundException(
+    accountId: String,
+    forecastMonth: String,
+) : AccountException(
+        "spending forecast not found: accountId=$accountId, forecastMonth=$forecastMonth",
+        AccountErrorCode.SPENDING_FORECAST_NOT_FOUND,
+    )

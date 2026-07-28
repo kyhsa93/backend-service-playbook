@@ -1,12 +1,17 @@
 package com.example.accountservice.taskqueue
 
 import com.example.accountservice.AccountServiceApplication
+import com.example.accountservice.account.infrastructure.persistence.SpendingAnalysisJpaEntity
 import com.example.accountservice.account.infrastructure.persistence.SpendingAnalysisJpaRepository
+import com.example.accountservice.account.infrastructure.persistence.SpendingForecastJpaRepository
 import com.example.accountservice.account.infrastructure.persistence.TransactionJpaRepository
 import com.example.accountservice.account.infrastructure.scheduling.InterestPaymentScheduler
 import com.example.accountservice.account.infrastructure.scheduling.SpendingAnalysisScheduler
+import com.example.accountservice.account.infrastructure.scheduling.SpendingForecastScheduler
 import com.example.accountservice.account.infrastructure.scheduling.computePreviousSpendingAnalysisPeriod
+import com.example.accountservice.account.infrastructure.scheduling.computeSpendingForecastMonth
 import com.example.accountservice.card.infrastructure.scheduling.CardStatementScheduler
+import com.example.accountservice.common.generateId
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
@@ -145,6 +150,9 @@ class TaskQueueE2ETest {
     private lateinit var spendingAnalysisScheduler: SpendingAnalysisScheduler
 
     @Autowired
+    private lateinit var spendingForecastScheduler: SpendingForecastScheduler
+
+    @Autowired
     private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
 
     @Autowired
@@ -152,6 +160,9 @@ class TaskQueueE2ETest {
 
     @Autowired
     private lateinit var spendingAnalysisJpaRepository: SpendingAnalysisJpaRepository
+
+    @Autowired
+    private lateinit var spendingForecastJpaRepository: SpendingForecastJpaRepository
 
     private val tokenCache = mutableMapOf<String, String>()
 
@@ -346,5 +357,77 @@ class TaskQueueE2ETest {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
         assertThat(response.body!!["code"]).isEqualTo("SPENDING_ANALYSIS_NOT_FOUND")
+    }
+
+    @Test
+    fun `an account with 3 months of spending-analysis history gets a trained forecast, and re-enqueueing same-month is idempotent`() {
+        val ownerId = "forecast-owner-1"
+        val email = "forecast-owner-1@example.com"
+        val accountId = createAccount(ownerId, email)
+
+        // Seeds 3 months of spending_analysis history directly — this test's concern is
+        // ForecastSpendingService training on existing history, re-deriving that history is
+        // separately covered by the spending-analysis tests above.
+        val forecastMonth = computeSpendingForecastMonth(LocalDateTime.now(ZoneOffset.UTC))
+        val amounts = listOf(10000L, 20000L, 30000L)
+        for (monthsAgo in 3 downTo 1) {
+            val now = LocalDateTime.now(ZoneOffset.UTC)
+            val monthDate = now.toLocalDate().withDayOfMonth(1).minusMonths(monthsAgo.toLong())
+            val analysisMonth = "%04d-%02d".format(monthDate.year, monthDate.monthValue)
+            spendingAnalysisJpaRepository.save(
+                SpendingAnalysisJpaEntity(
+                    id = null,
+                    analysisId = generateId(),
+                    accountId = accountId,
+                    analysisMonth = analysisMonth,
+                    totalAmount = amounts[3 - monthsAgo],
+                    transactionCount = 1,
+                    averageAmount = amounts[3 - monthsAgo],
+                    changeFromPreviousMonth = 0,
+                    trend = "STABLE",
+                    createdAt = LocalDateTime.now(),
+                ),
+            )
+        }
+
+        spendingForecastScheduler.enqueueMonthlySpendingForecast()
+
+        await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val forecast = spendingForecastJpaRepository.findByAccountIdAndForecastMonth(accountId, forecastMonth)
+            assertThat(forecast).isNotNull
+            // A perfectly linear history (10000, 20000, 30000) extrapolates exactly to 40000 with
+            // full confidence — see SpendingForecastModelImplTest.
+            assertThat(forecast!!.predictedAmount).isEqualTo(40000L)
+            assertThat(forecast.confidence).isEqualTo("HIGH")
+            assertThat(forecast.historyMonthsUsed).isEqualTo(3)
+        }
+
+        val response = get("/accounts/$accountId/spending-forecast?month=$forecastMonth-01", ownerId)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat((response.body!!["predictedAmount"] as Number).toLong()).isEqualTo(40000L)
+        assertThat(response.body!!["confidence"]).isEqualTo("HIGH")
+
+        // Since it's the same month's dedupId, even if the second enqueue is reprocessed, the
+        // (accountId, forecastMonth) unique constraint + the hasForecast precheck must prevent a
+        // duplicate row.
+        spendingForecastScheduler.enqueueMonthlySpendingForecast()
+        Thread.sleep(3000)
+        assertThat(spendingForecastJpaRepository.countByAccountIdAndForecastMonth(accountId, forecastMonth)).isEqualTo(1L)
+    }
+
+    @Test
+    fun `an account younger than 3 months of spending analysis history gets no forecast and the API returns 404`() {
+        val ownerId = "forecast-owner-2"
+        val email = "forecast-owner-2@example.com"
+        val accountId = createAccount(ownerId, email)
+
+        spendingForecastScheduler.enqueueMonthlySpendingForecast()
+        Thread.sleep(5000)
+
+        val forecastMonth = computeSpendingForecastMonth(LocalDateTime.now(ZoneOffset.UTC))
+        val response = get("/accounts/$accountId/spending-forecast?month=$forecastMonth-01", ownerId)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(response.body!!["code"]).isEqualTo("SPENDING_FORECAST_NOT_FOUND")
     }
 }

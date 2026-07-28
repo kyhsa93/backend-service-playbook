@@ -4,6 +4,7 @@ import com.example.accountservice.account.application.query.SpendingAnalysisFind
 import com.example.accountservice.account.application.query.SpendingAnalysisQuery
 import com.example.accountservice.account.domain.SpendingAnalysis
 import com.example.accountservice.account.domain.SpendingAnalysisRepository
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
@@ -27,4 +28,16 @@ class SpendingAnalysisRepositoryImpl(
             .findByAccountIdAndAnalysisMonth(query.accountId, query.analysisMonth)
             ?.let { listOf(SpendingAnalysisMapper.toDomain(it)) }
             ?: emptyList()
+
+    override fun findRecentAnalyses(
+        accountId: String,
+        beforeMonth: String,
+        limit: Int,
+    ): List<SpendingAnalysis> =
+        jpaRepository
+            .findByAccountIdAndAnalysisMonthLessThanOrderByAnalysisMonthDesc(accountId, beforeMonth, PageRequest.of(0, limit))
+            .map(SpendingAnalysisMapper::toDomain)
+            // Reversed to chronological (oldest-first) order — SpendingForecastModel.predict treats
+            // list position as the month index.
+            .reversed()
 }

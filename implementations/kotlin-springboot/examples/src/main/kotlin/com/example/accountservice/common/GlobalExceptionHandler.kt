@@ -3,6 +3,7 @@ package com.example.accountservice.common
 import com.example.accountservice.account.domain.AccountException
 import com.example.accountservice.account.domain.AccountNotFoundException
 import com.example.accountservice.account.domain.SpendingAnalysisNotFoundException
+import com.example.accountservice.account.domain.SpendingForecastNotFoundException
 import com.example.accountservice.account.interfaces.rest.ErrorResponse
 import com.example.accountservice.auth.domain.AuthException
 import com.example.accountservice.auth.domain.InvalidCredentialsException
@@ -41,6 +42,12 @@ class GlobalExceptionHandler {
     @ExceptionHandler(SpendingAnalysisNotFoundException::class)
     fun handleSpendingAnalysisNotFound(e: SpendingAnalysisNotFoundException): ResponseEntity<ErrorResponse> {
         logger.warn("Spending analysis not found: {}", e.message)
+        return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
+    }
+
+    @ExceptionHandler(SpendingForecastNotFoundException::class)
+    fun handleSpendingForecastNotFound(e: SpendingForecastNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("Spending forecast not found: {}", e.message)
         return errorResponse(HttpStatus.NOT_FOUND, e.code.name, e.message ?: "")
     }
 
