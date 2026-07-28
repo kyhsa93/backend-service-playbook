@@ -75,6 +75,7 @@ export class AccountRepositoryImpl extends AccountRepository {
         amount: transaction.amount.amount,
         currency: transaction.amount.currency,
         referenceId: transaction.referenceId ?? null,
+        merchantName: transaction.merchantName ?? null,
         createdAt: transaction.createdAt
       })))
       account.clearTransactions()

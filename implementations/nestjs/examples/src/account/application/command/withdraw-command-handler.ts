@@ -20,7 +20,7 @@ export class WithdrawCommandHandler implements ICommandHandler<WithdrawCommand, 
       .then((r) => r.accounts.pop())
     if (!account) throw new Error(ErrorMessage['Account not found.'])
 
-    const transaction = account.withdraw(new Money({ amount: command.amount, currency: account.balance.currency }))
+    const transaction = account.withdraw(new Money({ amount: command.amount, currency: account.balance.currency }), undefined, command.merchantName)
     await this.transactionManager.run(async () => {
       await this.accountRepository.saveAccount(account)
     })

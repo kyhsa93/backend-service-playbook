@@ -71,6 +71,15 @@ describe('Account', () => {
       expect(account.domainEvents[0]).toBeInstanceOf(MoneyWithdrawn)
     })
 
+    it('withdraw_when_a_merchantName_is_given_then_carries_it_on_both_the_transaction_and_the_MoneyWithdrawn_event', () => {
+      const account = createActiveAccount(1000)
+
+      const transaction = account.withdraw(new Money({ amount: 400, currency: 'KRW' }), undefined, 'Starbucks Gangnam')
+
+      expect(transaction.merchantName).toBe('Starbucks Gangnam')
+      expect((account.domainEvents[0] as MoneyWithdrawn).merchantName).toBe('Starbucks Gangnam')
+    })
+
     it('withdraw_when_account_is_suspended_then_throws', () => {
       const account = createActiveAccount(1000)
       account.suspend()

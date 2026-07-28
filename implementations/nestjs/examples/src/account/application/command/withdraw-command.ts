@@ -12,6 +12,8 @@ export class WithdrawCommand {
   @Min(1)
   public readonly amount: number
 
+  public readonly merchantName?: string
+
   constructor(command: WithdrawCommand) {
     Object.assign(this, command)
   }

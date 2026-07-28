@@ -20,6 +20,7 @@ import { AccountClosedHandler } from '@/account/application/event/account-closed
 import { AccountCreatedHandler } from '@/account/application/event/account-created-handler'
 import { AccountReactivatedHandler } from '@/account/application/event/account-reactivated-handler'
 import { AccountSuspendedHandler } from '@/account/application/event/account-suspended-handler'
+import { CategorizeTransactionHandler } from '@/account/application/event/categorize-transaction-handler'
 import { InterestPaidHandler } from '@/account/application/event/interest-paid-handler'
 import { MoneyDepositedHandler } from '@/account/application/event/money-deposited-handler'
 import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdrawn-handler'
@@ -35,9 +36,11 @@ import { NlTransactionAnswerComposer } from '@/account/application/service/nl-tr
 import { NlTransactionQueryTranslator } from '@/account/application/service/nl-transaction-query-translator'
 import { NotificationService } from '@/account/application/service/notification-service'
 import { SpendingForecastModel } from '@/account/application/service/spending-forecast-model'
+import { TransactionAutoCategorizer } from '@/account/application/service/transaction-auto-categorizer'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { SpendingAnalysisRepository } from '@/account/domain/spending-analysis-repository'
 import { SpendingForecastRepository } from '@/account/domain/spending-forecast-repository'
+import { TransactionRepository } from '@/account/domain/transaction-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
 import { SpendingForecastEntity } from '@/account/infrastructure/entity/spending-forecast.entity'
@@ -57,6 +60,8 @@ import { SpendingForecastModelImpl } from '@/account/infrastructure/spending-for
 import { SpendingForecastQueryImpl } from '@/account/infrastructure/spending-forecast-query-impl'
 import { SpendingForecastRepositoryImpl } from '@/account/infrastructure/spending-forecast-repository-impl'
 import { SpendingForecastScheduler } from '@/account/infrastructure/spending-forecast-scheduler'
+import { TransactionAutoCategorizerImpl } from '@/account/infrastructure/transaction-auto-categorizer-impl'
+import { TransactionRepositoryImpl } from '@/account/infrastructure/transaction-repository-impl'
 import { AccountController } from '@/account/interface/account-controller'
 import { AccountTaskController } from '@/account/interface/account-task-controller'
 import { AuthModule } from '@/auth/auth-module'
@@ -105,6 +110,7 @@ import { AuthModule } from '@/auth/auth-module'
     AccountCreatedHandler,
     MoneyDepositedHandler,
     MoneyWithdrawnHandler,
+    CategorizeTransactionHandler,
     InterestPaidHandler,
     AccountSuspendedHandler,
     AccountReactivatedHandler,
@@ -113,6 +119,7 @@ import { AuthModule } from '@/auth/auth-module'
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
     { provide: SpendingAnalysisRepository, useClass: SpendingAnalysisRepositoryImpl },
     { provide: SpendingForecastRepository, useClass: SpendingForecastRepositoryImpl },
+    { provide: TransactionRepository, useClass: TransactionRepositoryImpl },
     // The Query implementation
     { provide: AccountQuery, useClass: AccountQueryImpl },
     { provide: SpendingAnalysisQuery, useClass: SpendingAnalysisQueryImpl },
@@ -126,7 +133,10 @@ import { AuthModule } from '@/auth/auth-module'
     { provide: NlTransactionAnswerComposer, useClass: NlTransactionAnswerComposerImpl },
     // A Technical Service — the in-process regression model behind account.forecast-spending
     // (see root docs/architecture/domain-service.md)
-    { provide: SpendingForecastModel, useClass: SpendingForecastModelImpl }
+    { provide: SpendingForecastModel, useClass: SpendingForecastModelImpl },
+    // A Technical Service — the LLM call behind CategorizeTransactionHandler, the same Ollama
+    // setup as the NL transaction-history RAG pipeline's two Technical Services above
+    { provide: TransactionAutoCategorizer, useClass: TransactionAutoCategorizerImpl }
   ],
   // Only the read service is exposed, so another BC (Card) can synchronously look up an
   // account via an Adapter (ACL). The Repository and domain objects are never exposed.
@@ -139,6 +149,7 @@ export class AccountModule implements OnModuleInit {
     private readonly accountCreatedHandler: AccountCreatedHandler,
     private readonly moneyDepositedHandler: MoneyDepositedHandler,
     private readonly moneyWithdrawnHandler: MoneyWithdrawnHandler,
+    private readonly categorizeTransactionHandler: CategorizeTransactionHandler,
     private readonly interestPaidHandler: InterestPaidHandler,
     private readonly accountSuspendedHandler: AccountSuspendedHandler,
     private readonly accountReactivatedHandler: AccountReactivatedHandler,
@@ -152,6 +163,7 @@ export class AccountModule implements OnModuleInit {
     this.registry.register('AccountCreated', (payload) => this.accountCreatedHandler.handle(payload as never))
     this.registry.register('MoneyDeposited', (payload) => this.moneyDepositedHandler.handle(payload as never))
     this.registry.register('MoneyWithdrawn', (payload) => this.moneyWithdrawnHandler.handle(payload as never))
+    this.registry.register('MoneyWithdrawn', (payload) => this.categorizeTransactionHandler.handle(payload as never))
     this.registry.register('InterestPaid', (payload) => this.interestPaidHandler.handle(payload as never))
     this.registry.register('AccountSuspended', (payload) => this.accountSuspendedHandler.handle(payload as never))
     this.registry.register('AccountReactivated', (payload) => this.accountReactivatedHandler.handle(payload as never))

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class MoneyResult {
   @ApiProperty({ description: 'The amount, in the currency\'s minor unit.' })
@@ -40,6 +40,12 @@ export class TransactionSummaryResult {
 
   @ApiProperty({ description: 'The transaction amount.', type: MoneyResult })
   public readonly amount: MoneyResult
+
+  @ApiPropertyOptional({ description: 'The payee/merchant attached to this withdrawal, if any.' })
+  public readonly merchantName?: string
+
+  @ApiPropertyOptional({ description: 'The auto-categorized spending category, if this is a categorized withdrawal. Filled in asynchronously — absent until categorization completes.', enum: ['FOOD', 'TRANSPORT', 'SHOPPING', 'HOUSING', 'MEDICAL', 'ENTERTAINMENT', 'UTILITIES', 'OTHER'] })
+  public readonly category?: string
 
   @ApiProperty({ description: 'When the transaction was recorded.' })
   public readonly createdAt: Date

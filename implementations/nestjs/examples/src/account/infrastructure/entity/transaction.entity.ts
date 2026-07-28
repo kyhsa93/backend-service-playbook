@@ -22,6 +22,15 @@ export class TransactionEntity {
   @Column({ type: 'varchar', nullable: true })
   referenceId: string | null
 
+  // The payee/memo optionally attached to a withdrawal at request time — see transaction.ts.
+  @Column({ type: 'varchar', nullable: true })
+  merchantName: string | null
+
+  // Filled in asynchronously by CategorizeTransactionHandler — null until that reaction runs
+  // (or forever, for a transaction with no merchantName to classify).
+  @Column({ type: 'varchar', nullable: true })
+  category: string | null
+
   @CreateDateColumn()
   createdAt: Date
 }

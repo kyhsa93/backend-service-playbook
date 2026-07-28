@@ -690,6 +690,62 @@ describe('AccountController (e2e)', () => {
     })
   })
 
+  // The LLM behind TransactionAutoCategorizer isn't available in this e2e environment either
+  // (same reasoning as the /transactions/ask block below), so the categorization call falls
+  // back to OTHER — but this still exercises the real async pipeline end to end: the Domain
+  // Event → Outbox → SQS → OutboxConsumer → CategorizeTransactionHandler → the repository write
+  // all actually run, only the LLM call itself degrades to its non-blocking default.
+  describe('Transaction auto-categorization (merchantName -> category)', () => {
+    it('withdraw_with_a_merchantName_then_the_transaction_is_asynchronously_categorized', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/withdraw`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 5500, merchantName: 'Starbucks Gangnam' })
+
+      let categorizedTransaction: { merchantName?: string; category?: string } | undefined
+      for (let i = 0; i < 150; i++) {
+        const response = await request(app.getHttpServer())
+          .get(`/accounts/${account.accountId}/transactions`)
+          .set('Authorization', authHeader(OWNER_ID))
+          .query({ type: 'WITHDRAWAL' })
+        categorizedTransaction = response.body.transactions[0]
+        if (categorizedTransaction?.category) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(categorizedTransaction?.merchantName).toBe('Starbucks Gangnam')
+      expect(categorizedTransaction?.category).toBe('OTHER')
+    }, 60000)
+
+    it('withdraw_without_a_merchantName_then_the_transaction_is_never_categorized', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/withdraw`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 5500 })
+
+      // No merchantName to react to, so there's nothing to wait out — give the (skipped)
+      // reaction the same window as the happy path would need, then assert it never ran.
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+      const response = await request(app.getHttpServer())
+        .get(`/accounts/${account.accountId}/transactions`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .query({ type: 'WITHDRAWAL' })
+
+      expect(response.body.transactions[0].merchantName).toBeUndefined()
+      expect(response.body.transactions[0].category).toBeUndefined()
+    }, 60000)
+  })
+
   // The LLM behind these two Technical Services (see account/infrastructure) isn't available in
   // this e2e environment, so both calls fall back to their non-blocking defaults: an empty
   // filter (all of the account's transactions) and a plain templated summary. This still

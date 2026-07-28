@@ -1,4 +1,4 @@
-import { Injectable, SetMetadata } from '@nestjs/common'
+import { Injectable, Logger, SetMetadata } from '@nestjs/common'
 
 export const HANDLE_EVENT_METADATA = 'HANDLE_EVENT_METADATA'
 export const HANDLE_INTEGRATION_EVENT_METADATA = 'HANDLE_INTEGRATION_EVENT_METADATA'
@@ -29,6 +29,7 @@ type EventHandlerFn = (payload: object) => Promise<void>
 //  repo — the actual routing is configured via each module's explicit register() call.)
 @Injectable()
 export class EventHandlerRegistry {
+  private readonly logger = new Logger(EventHandlerRegistry.name)
   private readonly handlers = new Map<string, EventHandlerFn[]>()
 
   public register(eventType: string, handler: EventHandlerFn): void {
@@ -41,9 +42,21 @@ export class EventHandlerRegistry {
     return this.handlers.has(eventType)
   }
 
+  // Each handler is independent — one subscriber's failure must not prevent a sibling
+  // subscriber on the same eventType from running (the "1:N" contract this class documents).
+  // Every handler still gets a chance to run on every delivery, but the message is left
+  // unacked (rethrown) if any of them failed, so OutboxConsumer redelivers it — each handler
+  // must already be idempotent for that redelivery (see docs/architecture/domain-events.md).
   public async handle(eventType: string, payload: object): Promise<void> {
+    const errors: unknown[] = []
     for (const handler of this.handlers.get(eventType) ?? []) {
-      await handler(payload)
+      try {
+        await handler(payload)
+      } catch (error) {
+        this.logger.error({ message: 'A handler failed for eventType', event_type: eventType, error })
+        errors.push(error)
+      }
     }
+    if (errors.length > 0) throw errors[0]
   }
 }

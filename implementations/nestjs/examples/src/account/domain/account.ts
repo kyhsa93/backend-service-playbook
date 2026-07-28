@@ -102,13 +102,13 @@ export class Account {
     return transaction
   }
 
-  public withdraw(amount: Money, referenceId?: string): Transaction {
+  public withdraw(amount: Money, referenceId?: string, merchantName?: string): Transaction {
     if (this._status !== AccountStatus.ACTIVE) throw new Error(AccountErrorMessage['Only an active account can make a withdrawal.'])
     if (amount.amount <= 0) throw new Error(AccountErrorMessage['The amount must be greater than 0.'])
     if (this._balance.isLessThan(amount)) throw new Error(AccountErrorMessage['Insufficient balance.'])
 
     this._balance = this._balance.subtract(amount)
-    const transaction = new Transaction({ accountId: this.accountId, type: 'WITHDRAWAL', amount, referenceId })
+    const transaction = new Transaction({ accountId: this.accountId, type: 'WITHDRAWAL', amount, referenceId, merchantName })
     this._transactions.push(transaction)
     this._events.push(new MoneyWithdrawn({
       accountId: this.accountId,
@@ -116,6 +116,7 @@ export class Account {
       transactionId: transaction.transactionId,
       amount,
       balanceAfter: this._balance,
+      merchantName,
       createdAt: transaction.createdAt
     }))
     return transaction

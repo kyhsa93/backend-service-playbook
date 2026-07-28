@@ -65,6 +65,8 @@ export class AccountQueryImpl extends AccountQuery {
         transactionId: row.transactionId,
         type: row.type,
         amount: { amount: row.amount, currency: row.currency },
+        merchantName: row.merchantName ?? undefined,
+        category: row.category ?? undefined,
         createdAt: row.createdAt
       })),
       count
