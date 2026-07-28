@@ -19,6 +19,7 @@ public class Refund {
     private String reason;
     private RefundStatus status;
     private String decisionNote;
+    private RefundReasonCategory reasonCategory;
     private LocalDateTime createdAt;
 
     private final List<Object> domainEvents = new ArrayList<>();
@@ -32,6 +33,7 @@ public class Refund {
             String reason,
             RefundStatus status,
             String decisionNote,
+            RefundReasonCategory reasonCategory,
             LocalDateTime createdAt) {
         Refund refund = new Refund();
         refund.refundId = refundId;
@@ -40,6 +42,7 @@ public class Refund {
         refund.reason = reason;
         refund.status = status;
         refund.decisionNote = decisionNote;
+        refund.reasonCategory = reasonCategory;
         refund.createdAt = createdAt;
         return refund;
     }
@@ -52,6 +55,9 @@ public class Refund {
         refund.reason = reason;
         refund.status = RefundStatus.REQUESTED;
         refund.createdAt = LocalDateTime.now();
+        refund.domainEvents.add(
+                new RefundRequestedEvent(
+                        refund.refundId, refund.paymentId, refund.reason, refund.createdAt));
         return refund;
     }
 
@@ -87,6 +93,16 @@ public class Refund {
         }
         this.status = RefundStatus.REJECTED;
         this.decisionNote = reason;
+    }
+
+    /**
+     * Set asynchronously by {@code ClassifyRefundReasonEventHandler} reacting to {@link
+     * RefundRequestedEvent} — never called from the {@link #approve}/{@link #reject} eligibility
+     * path. No further Domain Event is published here; this is a read-model enrichment, not
+     * something any other BC needs to react to.
+     */
+    public void categorizeReason(RefundReasonCategory category) {
+        this.reasonCategory = category;
     }
 
     /**
@@ -133,6 +149,10 @@ public class Refund {
 
     public String getDecisionNote() {
         return decisionNote;
+    }
+
+    public RefundReasonCategory getReasonCategory() {
+        return reasonCategory;
     }
 
     public LocalDateTime getCreatedAt() {

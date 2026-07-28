@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.infrastructure.persistence;
 
+import com.example.accountservice.payment.domain.RefundReasonCategory;
 import com.example.accountservice.payment.domain.RefundStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -42,6 +43,11 @@ public class RefundJpaEntity {
 
     @Column private String decisionNote;
 
+    // Filled in asynchronously by ClassifyRefundReasonEventHandler — null until that reaction runs.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true)
+    private RefundReasonCategory reasonCategory;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -55,6 +61,7 @@ public class RefundJpaEntity {
             String reason,
             RefundStatus status,
             String decisionNote,
+            RefundReasonCategory reasonCategory,
             LocalDateTime createdAt) {
         this.id = id;
         this.refundId = refundId;
@@ -63,16 +70,19 @@ public class RefundJpaEntity {
         this.reason = reason;
         this.status = status;
         this.decisionNote = decisionNote;
+        this.reasonCategory = reasonCategory;
         this.createdAt = createdAt;
     }
 
     /**
      * Applies the domain Refund's latest state to an existing row (preserving id) — used to save a
-     * status/decisionNote transition.
+     * status/decisionNote/reasonCategory transition.
      */
-    void applyMutableState(RefundStatus status, String decisionNote) {
+    void applyMutableState(
+            RefundStatus status, String decisionNote, RefundReasonCategory reasonCategory) {
         this.status = status;
         this.decisionNote = decisionNote;
+        this.reasonCategory = reasonCategory;
     }
 
     Long getId() {
@@ -101,6 +111,10 @@ public class RefundJpaEntity {
 
     String getDecisionNote() {
         return decisionNote;
+    }
+
+    RefundReasonCategory getReasonCategory() {
+        return reasonCategory;
     }
 
     LocalDateTime getCreatedAt() {

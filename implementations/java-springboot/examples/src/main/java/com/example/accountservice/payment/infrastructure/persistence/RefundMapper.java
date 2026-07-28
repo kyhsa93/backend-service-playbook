@@ -18,6 +18,7 @@ final class RefundMapper {
                 entity.getReason(),
                 entity.getStatus(),
                 entity.getDecisionNote(),
+                entity.getReasonCategory(),
                 entity.getCreatedAt());
     }
 
@@ -30,11 +31,13 @@ final class RefundMapper {
                 refund.getReason(),
                 refund.getStatus(),
                 refund.getDecisionNote(),
+                refund.getReasonCategory(),
                 refund.getCreatedAt());
     }
 
     static RefundJpaEntity updateEntity(RefundJpaEntity entity, Refund refund) {
-        entity.applyMutableState(refund.getStatus(), refund.getDecisionNote());
+        entity.applyMutableState(
+                refund.getStatus(), refund.getDecisionNote(), refund.getReasonCategory());
         return entity;
     }
 }

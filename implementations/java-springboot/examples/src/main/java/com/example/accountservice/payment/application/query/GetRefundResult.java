@@ -21,6 +21,13 @@ public record GetRefundResult(
                 String status,
         @Schema(description = "A human-readable note explaining the approve/reject decision.")
                 String decisionNote,
+        @Schema(
+                        description =
+                                "The auto-classified reason category, filled in asynchronously — null until"
+                                        + " classification completes. Ops-analytics only; never affects the"
+                                        + " eligibility decision above.",
+                        example = "DEFECTIVE_PRODUCT")
+                String reasonCategory,
         @Schema(description = "When the refund was requested.") LocalDateTime createdAt) {
 
     public static GetRefundResult from(Refund refund) {
@@ -31,6 +38,7 @@ public record GetRefundResult(
                 refund.getReason(),
                 refund.getStatus().name(),
                 refund.getDecisionNote(),
+                refund.getReasonCategory() != null ? refund.getReasonCategory().name() : null,
                 refund.getCreatedAt());
     }
 }

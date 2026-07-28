@@ -12,7 +12,7 @@ class RefundTest {
     }
 
     @Test
-    void creating_starts_as_REQUESTED_with_no_events() {
+    void creating_starts_as_REQUESTED_and_publishes_RefundRequestedEvent_unconditionally() {
         Refund refund = createRefund();
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.REQUESTED);
@@ -20,7 +20,11 @@ class RefundTest {
         assertThat(refund.getAmount()).isEqualTo(500);
         assertThat(refund.getReason()).isEqualTo("change of mind");
         assertThat(refund.getDecisionNote()).isNull();
-        assertThat(refund.pullDomainEvents()).isEmpty();
+        assertThat(refund.getReasonCategory()).isNull();
+        assertThat(refund.pullDomainEvents())
+                .hasSize(1)
+                .first()
+                .isInstanceOf(RefundRequestedEvent.class);
     }
 
     @Test
@@ -33,6 +37,7 @@ class RefundTest {
     @Test
     void approving_a_REQUESTED_refund_moves_to_APPROVED_and_collects_RefundApprovedEvent() {
         Refund refund = createRefund();
+        refund.pullDomainEvents(); // clear the RefundRequestedEvent published by create()
 
         refund.approve("account-1", "owner-1");
 
@@ -58,6 +63,7 @@ class RefundTest {
     @Test
     void rejecting_a_REQUESTED_refund_moves_to_REJECTED_and_records_the_reason() {
         Refund refund = createRefund();
+        refund.pullDomainEvents(); // clear the RefundRequestedEvent published by create()
 
         refund.reject("The refund amount exceeds the payment amount.");
 
@@ -96,5 +102,28 @@ class RefundTest {
                 .isInstanceOf(PaymentException.class)
                 .extracting(e -> ((PaymentException) e).code())
                 .isEqualTo(PaymentException.ErrorCode.REFUND_COMPLETE_REQUIRES_APPROVED_REFUND);
+    }
+
+    @Test
+    void categorizeReason_sets_the_category_without_publishing_any_event() {
+        Refund refund = createRefund();
+        refund.pullDomainEvents(); // clear the RefundRequestedEvent published by create()
+
+        refund.categorizeReason(RefundReasonCategory.DEFECTIVE_PRODUCT);
+
+        assertThat(refund.getReasonCategory()).isEqualTo(RefundReasonCategory.DEFECTIVE_PRODUCT);
+        assertThat(refund.pullDomainEvents()).isEmpty();
+    }
+
+    @Test
+    void categorizeReason_runs_the_same_regardless_of_the_eventual_approve_or_reject_outcome() {
+        Refund rejectedRefund = createRefund();
+        rejectedRefund.pullDomainEvents();
+        rejectedRefund.reject("The refund amount exceeds the payment amount.");
+
+        rejectedRefund.categorizeReason(RefundReasonCategory.CHANGED_MIND);
+
+        assertThat(rejectedRefund.getStatus()).isEqualTo(RefundStatus.REJECTED);
+        assertThat(rejectedRefund.getReasonCategory()).isEqualTo(RefundReasonCategory.CHANGED_MIND);
     }
 }
