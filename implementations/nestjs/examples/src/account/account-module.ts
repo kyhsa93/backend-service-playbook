@@ -9,6 +9,7 @@ import { CloseAccountCommandHandler } from '@/account/application/command/close-
 import { CreateAccountCommandHandler } from '@/account/application/command/create-account-command-handler'
 import { DepositByPaymentCommandHandler } from '@/account/application/command/deposit-by-payment-command-handler'
 import { DepositCommandHandler } from '@/account/application/command/deposit-command-handler'
+import { ForecastSpendingCommandHandler } from '@/account/application/command/forecast-spending-command-handler'
 import { ReactivateAccountCommandHandler } from '@/account/application/command/reactivate-account-command-handler'
 import { SuspendAccountCommandHandler } from '@/account/application/command/suspend-account-command-handler'
 import { TransferCommandHandler } from '@/account/application/command/transfer-command-handler'
@@ -26,15 +27,20 @@ import { AccountQuery } from '@/account/application/query/account-query'
 import { AskTransactionHistoryQueryHandler } from '@/account/application/query/ask-transaction-history-query-handler'
 import { GetAccountQueryHandler } from '@/account/application/query/get-account-query-handler'
 import { GetSpendingAnalysisQueryHandler } from '@/account/application/query/get-spending-analysis-query-handler'
+import { GetSpendingForecastQueryHandler } from '@/account/application/query/get-spending-forecast-query-handler'
 import { GetTransactionsQueryHandler } from '@/account/application/query/get-transactions-query-handler'
 import { SpendingAnalysisQuery } from '@/account/application/query/spending-analysis-query'
+import { SpendingForecastQuery } from '@/account/application/query/spending-forecast-query'
 import { NlTransactionAnswerComposer } from '@/account/application/service/nl-transaction-answer-composer'
 import { NlTransactionQueryTranslator } from '@/account/application/service/nl-transaction-query-translator'
 import { NotificationService } from '@/account/application/service/notification-service'
+import { SpendingForecastModel } from '@/account/application/service/spending-forecast-model'
 import { AccountRepository } from '@/account/domain/account-repository'
 import { SpendingAnalysisRepository } from '@/account/domain/spending-analysis-repository'
+import { SpendingForecastRepository } from '@/account/domain/spending-forecast-repository'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
+import { SpendingForecastEntity } from '@/account/infrastructure/entity/spending-forecast.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountQueryImpl } from '@/account/infrastructure/account-query-impl'
@@ -47,6 +53,10 @@ import { SesClientProvider } from '@/account/infrastructure/notification/ses-cli
 import { SpendingAnalysisQueryImpl } from '@/account/infrastructure/spending-analysis-query-impl'
 import { SpendingAnalysisRepositoryImpl } from '@/account/infrastructure/spending-analysis-repository-impl'
 import { SpendingAnalysisScheduler } from '@/account/infrastructure/spending-analysis-scheduler'
+import { SpendingForecastModelImpl } from '@/account/infrastructure/spending-forecast-model-impl'
+import { SpendingForecastQueryImpl } from '@/account/infrastructure/spending-forecast-query-impl'
+import { SpendingForecastRepositoryImpl } from '@/account/infrastructure/spending-forecast-repository-impl'
+import { SpendingForecastScheduler } from '@/account/infrastructure/spending-forecast-scheduler'
 import { AccountController } from '@/account/interface/account-controller'
 import { AccountTaskController } from '@/account/interface/account-task-controller'
 import { AuthModule } from '@/auth/auth-module'
@@ -54,7 +64,7 @@ import { AuthModule } from '@/auth/auth-module'
 @Module({
   imports: [
     CqrsModule,
-    TypeOrmModule.forFeature([AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity]),
+    TypeOrmModule.forFeature([AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity, SpendingForecastEntity]),
     AuthModule
   ],
   controllers: [AccountController],
@@ -75,11 +85,14 @@ import { AuthModule } from '@/auth/auth-module'
     ApplyDailyInterestCommandHandler,
     // The Command Handler the account.analyze-monthly-spending Task delegates to
     AnalyzeMonthlySpendingCommandHandler,
+    // The Command Handler the account.forecast-spending Task delegates to
+    ForecastSpendingCommandHandler,
     // Query Handlers
     GetAccountQueryHandler,
     GetTransactionsQueryHandler,
     AskTransactionHistoryQueryHandler,
     GetSpendingAnalysisQueryHandler,
+    GetSpendingForecastQueryHandler,
     // The Integration Event receiving end (external BC → Account)
     AccountIntegrationEventController,
     // The Task input adapter — @TaskConsumer methods
@@ -87,6 +100,7 @@ import { AuthModule } from '@/auth/auth-module'
     // Only Cron → TaskQueue.enqueue (Infrastructure layer)
     AccountInterestScheduler,
     SpendingAnalysisScheduler,
+    SpendingForecastScheduler,
     // Event Handlers
     AccountCreatedHandler,
     MoneyDepositedHandler,
@@ -98,16 +112,21 @@ import { AuthModule } from '@/auth/auth-module'
     // Repositories
     { provide: AccountRepository, useClass: AccountRepositoryImpl },
     { provide: SpendingAnalysisRepository, useClass: SpendingAnalysisRepositoryImpl },
+    { provide: SpendingForecastRepository, useClass: SpendingForecastRepositoryImpl },
     // The Query implementation
     { provide: AccountQuery, useClass: AccountQueryImpl },
     { provide: SpendingAnalysisQuery, useClass: SpendingAnalysisQueryImpl },
+    { provide: SpendingForecastQuery, useClass: SpendingForecastQueryImpl },
     // A Technical Service — SES email sending (Account-only; revisit whether to share it if another domain needs it)
     { provide: NotificationService, useClass: NotificationServiceImpl },
     SesClientProvider,
     // Technical Services — the two LLM calls behind AskTransactionHistoryQueryHandler's
     // structured-data RAG pipeline (see root docs/architecture/domain-service.md)
     { provide: NlTransactionQueryTranslator, useClass: NlTransactionQueryTranslatorImpl },
-    { provide: NlTransactionAnswerComposer, useClass: NlTransactionAnswerComposerImpl }
+    { provide: NlTransactionAnswerComposer, useClass: NlTransactionAnswerComposerImpl },
+    // A Technical Service — the in-process regression model behind account.forecast-spending
+    // (see root docs/architecture/domain-service.md)
+    { provide: SpendingForecastModel, useClass: SpendingForecastModelImpl }
   ],
   // Only the read service is exposed, so another BC (Card) can synchronously look up an
   // account via an Adapter (ACL). The Repository and domain objects are never exposed.

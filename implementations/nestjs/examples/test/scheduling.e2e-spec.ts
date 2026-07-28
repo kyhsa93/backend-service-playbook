@@ -10,13 +10,17 @@ import request from 'supertest'
 import { DataSource } from 'typeorm'
 
 import { AccountModule } from '@/account/account-module'
+import { generateId } from '@/common/generate-id'
 import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
+import { SpendingForecastEntity } from '@/account/infrastructure/entity/spending-forecast.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { computePreviousSpendingAnalysisPeriod } from '@/account/infrastructure/previous-spending-analysis-period'
+import { computeSpendingForecastMonth } from '@/account/infrastructure/spending-forecast-month'
 import { SpendingAnalysisScheduler } from '@/account/infrastructure/spending-analysis-scheduler'
+import { SpendingForecastScheduler } from '@/account/infrastructure/spending-forecast-scheduler'
 import { AuthModule } from '@/auth/auth-module'
 import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
 import { CardModule } from '@/card/card-module'
@@ -100,7 +104,7 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
           type: 'postgres',
           url: postgres.getConnectionUri(),
           entities: [
-            AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity, CredentialEntity,
+            AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity, SpendingForecastEntity, CredentialEntity,
             CardEntity, PaymentEntity, RefundEntity, SentCardStatementEntity,
             OutboxEntity, TaskOutboxEntity
           ],
@@ -334,6 +338,84 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
 
       expect(response.status).toBe(404)
       expect(response.body.code).toBe('SPENDING_ANALYSIS_NOT_FOUND')
+    })
+  })
+
+  describe('Monthly spending forecast (account.forecast-spending)', () => {
+    it('an_account_with_3_months_of_spending_analysis_history_gets_a_trained_forecast_row_queryable_via_the_API_and_re-enqueueing_in_the_same_month_does_not_duplicate_it', async () => {
+      const accountId = await createAccount()
+
+      // Seeds 3 months of spending_analysis history directly — this test's concern is
+      // ForecastSpendingCommandHandler training on existing history, not re-deriving that
+      // history is separately covered by the spending-analysis describe block above.
+      const forecastMonth = computeSpendingForecastMonth(new Date())
+      const analysisRepo = dataSource.getRepository(SpendingAnalysisEntity)
+      const amounts = [10000, 20000, 30000]
+      for (let monthsAgo = 3; monthsAgo >= 1; monthsAgo--) {
+        const now = new Date()
+        const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1))
+        const analysisMonth = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, '0')}`
+        await analysisRepo.save(analysisRepo.create({
+          analysisId: generateId(),
+          accountId,
+          analysisMonth,
+          totalAmount: amounts[3 - monthsAgo],
+          transactionCount: 1,
+          averageAmount: amounts[3 - monthsAgo],
+          changeFromPreviousMonth: 0,
+          trend: 'STABLE'
+        }))
+      }
+
+      const scheduler = app.get(SpendingForecastScheduler)
+      await scheduler.enqueueMonthlySpendingForecast()
+
+      const forecastRepo = dataSource.getRepository(SpendingForecastEntity)
+      let forecast: SpendingForecastEntity | null = null
+      for (let i = 0; i < 150; i++) {
+        forecast = await forecastRepo.findOneBy({ accountId, forecastMonth })
+        if (forecast) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(forecast).not.toBeNull()
+      // A perfectly linear history (10000, 20000, 30000) extrapolates exactly to 40000 with
+      // full confidence — see SpendingForecastModelImpl.
+      expect(forecast?.predictedAmount).toBe(40000)
+      expect(forecast?.confidence).toBe('HIGH')
+      expect(forecast?.historyMonthsUsed).toBe(3)
+
+      const response = await request(app.getHttpServer())
+        .get(`/accounts/${accountId}/spending-forecast`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .query({ month: `${forecastMonth}-01` })
+      expect(response.status).toBe(200)
+      expect(response.body.predictedAmount).toBe(40000)
+      expect(response.body.confidence).toBe('HIGH')
+
+      // Since it's the same month's dedupId, even if the second enqueue is reprocessed, the
+      // (accountId, forecastMonth) unique constraint + the hasForecast precheck must prevent a duplicate row.
+      await scheduler.enqueueMonthlySpendingForecast()
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+      const allForecastsForAccount = await forecastRepo.findBy({ accountId, forecastMonth })
+      expect(allForecastsForAccount).toHaveLength(1)
+    }, 60000)
+
+    it('an_account_younger_than_3_months_of_spending_analysis_history_gets_no_forecast_and_the_API_returns_404', async () => {
+      const accountId = await createAccount()
+
+      const scheduler = app.get(SpendingForecastScheduler)
+      await scheduler.enqueueMonthlySpendingForecast()
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+
+      const forecastMonth = computeSpendingForecastMonth(new Date())
+      const response = await request(app.getHttpServer())
+        .get(`/accounts/${accountId}/spending-forecast`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .query({ month: `${forecastMonth}-01` })
+
+      expect(response.status).toBe(404)
+      expect(response.body.code).toBe('SPENDING_FORECAST_NOT_FOUND')
     })
   })
 })

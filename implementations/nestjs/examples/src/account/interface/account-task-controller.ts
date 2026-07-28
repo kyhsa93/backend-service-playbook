@@ -3,6 +3,7 @@ import { CommandBus } from '@nestjs/cqrs'
 
 import { AnalyzeMonthlySpendingCommand } from '@/account/application/command/analyze-monthly-spending-command'
 import { ApplyDailyInterestCommand } from '@/account/application/command/apply-daily-interest-command'
+import { ForecastSpendingCommand } from '@/account/application/command/forecast-spending-command'
 import { TaskConsumer } from '@/task-queue/task-consumer.decorator'
 
 // A Task input adapter (Interface layer) — just as the HTTP Controller
@@ -42,6 +43,13 @@ export class AccountTaskController {
         previousMonthStart: new Date(payload.previousMonthStart),
         previousMonthEnd: new Date(payload.previousMonthEnd)
       })
+    )
+  }
+
+  @TaskConsumer('account.forecast-spending')
+  public async forecastSpending(payload: { forecastMonth: string }): Promise<void> {
+    await this.commandBus.execute<ForecastSpendingCommand, number>(
+      new ForecastSpendingCommand({ forecastMonth: payload.forecastMonth })
     )
   }
 }

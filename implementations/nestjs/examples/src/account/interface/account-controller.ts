@@ -25,8 +25,10 @@ import { Transaction } from '@/account/domain/transaction'
 import { AskTransactionHistoryQuery } from '@/account/application/query/ask-transaction-history-query'
 import { GetAccountQuery } from '@/account/application/query/get-account-query'
 import { GetSpendingAnalysisQuery } from '@/account/application/query/get-spending-analysis-query'
+import { GetSpendingForecastQuery } from '@/account/application/query/get-spending-forecast-query'
 import { GetTransactionsQuery } from '@/account/application/query/get-transactions-query'
 import { SpendingAnalysisResult } from '@/account/application/query/spending-analysis-result'
+import { SpendingForecastResult } from '@/account/application/query/spending-forecast-result'
 import { AskTransactionHistoryRequestBody } from '@/account/interface/dto/ask-transaction-history-request-body'
 import { AskTransactionHistoryResponseBody } from '@/account/interface/dto/ask-transaction-history-response-body'
 import { CreateAccountRequestBody } from '@/account/interface/dto/create-account-request-body'
@@ -38,6 +40,9 @@ import { GetAccountResponseBody } from '@/account/interface/dto/get-account-resp
 import { GetSpendingAnalysisRequestParam } from '@/account/interface/dto/get-spending-analysis-request-param'
 import { GetSpendingAnalysisRequestQuerystring } from '@/account/interface/dto/get-spending-analysis-request-querystring'
 import { GetSpendingAnalysisResponseBody } from '@/account/interface/dto/get-spending-analysis-response-body'
+import { GetSpendingForecastRequestParam } from '@/account/interface/dto/get-spending-forecast-request-param'
+import { GetSpendingForecastRequestQuerystring } from '@/account/interface/dto/get-spending-forecast-request-querystring'
+import { GetSpendingForecastResponseBody } from '@/account/interface/dto/get-spending-forecast-response-body'
 import { GetTransactionsRequestParam } from '@/account/interface/dto/get-transactions-request-param'
 import { GetTransactionsRequestQuerystring } from '@/account/interface/dto/get-transactions-request-querystring'
 import { GetTransactionsResponseBody } from '@/account/interface/dto/get-transactions-response-body'
@@ -379,6 +384,32 @@ export class AccountController {
       throw generateErrorResponse(error.message, [
         [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
         [AccountErrorMessage['Spending analysis not found.'], NotFoundException, ErrorCode.SPENDING_ANALYSIS_NOT_FOUND]
+      ])
+    })
+  }
+
+  @Get('/accounts/:accountId/spending-forecast')
+  @ApiOperation({
+    operationId: 'getSpendingForecast',
+    summary: "Get an account's predicted spending for a month",
+    description: 'Returns the precomputed spending forecast (predicted total withdrawal amount and confidence) for '
+      + 'the given month — trained monthly by a batch job on the account\'s own spending_analysis history, not on demand.'
+  })
+  @ApiOkResponse({ description: 'The forecast was found.', type: GetSpendingForecastResponseBody })
+  @ApiBadRequestResponse({ description: 'Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date.', type: ErrorResponseBody })
+  @ApiNotFoundResponse({ description: 'No account exists with the given `accountId` for this requester (`ACCOUNT_NOT_FOUND`), or no forecast has been computed yet for the given month (`SPENDING_FORECAST_NOT_FOUND`) — e.g. the account has fewer than 3 months of spending-analysis history.', type: ErrorResponseBody })
+  public async getSpendingForecast(
+    @Param() param: GetSpendingForecastRequestParam,
+    @Query() querystring: GetSpendingForecastRequestQuerystring
+  ): Promise<GetSpendingForecastResponseBody> {
+    const requesterId = UserContextStore.getRequesterId()
+    return this.queryBus.execute<GetSpendingForecastQuery, SpendingForecastResult>(
+      new GetSpendingForecastQuery({ ...querystring, accountId: param.accountId, requesterId })
+    ).catch((error) => {
+      this.logger.error(error)
+      throw generateErrorResponse(error.message, [
+        [AccountErrorMessage['Account not found.'], NotFoundException, ErrorCode.ACCOUNT_NOT_FOUND],
+        [AccountErrorMessage['Spending forecast not found.'], NotFoundException, ErrorCode.SPENDING_FORECAST_NOT_FOUND]
       ])
     })
   }
