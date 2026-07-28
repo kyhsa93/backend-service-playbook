@@ -18,6 +18,14 @@ class SpendingAnalysisQuery(ABC):
     @abstractmethod
     async def has_analysis(self, account_id: str, analysis_month: str) -> bool: ...
 
+    # The training signal for account.forecast-spending (ForecastSpendingHandler) — every
+    # analysis strictly before before_month, most recent first at the storage layer but
+    # returned oldest-first (chronological order), since SpendingForecastModel.predict treats
+    # array position as the month index. Capped at `limit` (see
+    # MAX_HISTORY_MONTHS_FOR_FORECAST in forecast_spending_handler.py).
+    @abstractmethod
+    async def find_recent_analyses(self, account_id: str, before_month: str, limit: int) -> list[SpendingAnalysis]: ...
+
 
 class SpendingAnalysisRepository(SpendingAnalysisQuery, ABC):
     """The write model — extends SpendingAnalysisQuery to reuse its lookup methods, adding

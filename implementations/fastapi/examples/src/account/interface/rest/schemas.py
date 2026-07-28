@@ -103,3 +103,17 @@ class SpendingAnalysisResponse(BaseModel):
         description="A simple classification of the change.", examples=["INCREASING", "DECREASING", "STABLE"]
     )
     created_at: datetime = Field(description="When this analysis was computed, in UTC.")
+
+
+class SpendingForecastResponse(BaseModel):
+    forecast_month: str = Field(description="The forecasted month, in YYYY-MM form.")
+    predicted_amount: int = Field(description="The model's predicted total withdrawal amount for the month.")
+    confidence: str = Field(
+        description="The model's confidence in the prediction, based on how well a linear trend fits the "
+        "account's history.",
+        examples=["LOW", "MEDIUM", "HIGH"],
+    )
+    history_months_used: int = Field(
+        description="How many months of history the model was trained on for this prediction."
+    )
+    created_at: datetime = Field(description="When this forecast was computed, in UTC.")

@@ -20,16 +20,19 @@ from ...application.query.ask_transaction_history_handler import (
 )
 from ...application.query.get_account_handler import GetAccountHandler, GetAccountQuery
 from ...application.query.get_spending_analysis_handler import GetSpendingAnalysisHandler, GetSpendingAnalysisQuery
+from ...application.query.get_spending_forecast_handler import GetSpendingForecastHandler, GetSpendingForecastQuery
 from ...application.query.get_transactions_handler import GetTransactionsHandler, GetTransactionsQuery
 from ...application.service.nl_transaction_answer_composer import NlTransactionAnswerComposer
 from ...application.service.nl_transaction_query_translator import NlTransactionQueryTranslator
 from ...domain.repository import AccountQuery
 from ...domain.spending_analysis_repository import SpendingAnalysisQuery
+from ...domain.spending_forecast_repository import SpendingForecastQuery
 from ...domain.transaction import TransactionType
 from ...infrastructure.nl_transaction_answer_composer_impl import NlTransactionAnswerComposerImpl
 from ...infrastructure.nl_transaction_query_translator_impl import NlTransactionQueryTranslatorImpl
 from ...infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from ...infrastructure.persistence.spending_analysis_repository import SqlAlchemySpendingAnalysisRepository
+from ...infrastructure.persistence.spending_forecast_repository import SqlAlchemySpendingForecastRepository
 from .schemas import (
     AskTransactionHistoryRequest,
     AskTransactionHistoryResponse,
@@ -39,6 +42,7 @@ from .schemas import (
     GetAccountResponse,
     GetTransactionsResponse,
     SpendingAnalysisResponse,
+    SpendingForecastResponse,
     TransactionResponse,
     TransferRequest,
     TransferResponse,
@@ -78,6 +82,10 @@ def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
 
 def _spending_analysis_query(session: AsyncSession = Depends(get_session)) -> SpendingAnalysisQuery:
     return SqlAlchemySpendingAnalysisRepository(session)
+
+
+def _spending_forecast_query(session: AsyncSession = Depends(get_session)) -> SpendingForecastQuery:
+    return SqlAlchemySpendingForecastRepository(session)
 
 
 def _translator() -> NlTransactionQueryTranslator:
@@ -533,5 +541,52 @@ async def get_spending_analysis(
         average_amount=result.average_amount,
         change_from_previous_month=result.change_from_previous_month,
         trend=result.trend,
+        created_at=result.created_at,
+    )
+
+
+@router.get(
+    "/{account_id}/spending-forecast",
+    response_model=SpendingForecastResponse,
+    summary="Get an account's monthly spending forecast",
+    description=(
+        "Returns the precomputed spending forecast (predicted total withdrawal amount and confidence, based on "
+        "a linear trend fit over the account's spending_analysis history) for the given month — computed "
+        "monthly by a batch job, not on demand."
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "No account exists with the given `account_id` for this requester (`ACCOUNT_NOT_FOUND`), or no "
+                "forecast has been computed yet for the given month (`SPENDING_FORECAST_NOT_FOUND`) — e.g. the "
+                "account has fewer than 3 months of spending-analysis history."
+            ),
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date.",
+        },
+    },
+)
+async def get_spending_forecast(
+    account_id: str,
+    month: date,
+    current_user: CurrentUser = Depends(get_current_user),
+    account_query: AccountQuery = Depends(_query_repo),
+    forecast_query: SpendingForecastQuery = Depends(_spending_forecast_query),
+) -> SpendingForecastResponse:
+    result = await GetSpendingForecastHandler(account_query, forecast_query).execute(
+        GetSpendingForecastQuery(
+            account_id=account_id,
+            requester_id=current_user.user_id,
+            forecast_month=f"{month.year:04d}-{month.month:02d}",
+        )
+    )
+    return SpendingForecastResponse(
+        forecast_month=result.forecast_month,
+        predicted_amount=result.predicted_amount,
+        confidence=result.confidence,
+        history_months_used=result.history_months_used,
         created_at=result.created_at,
     )

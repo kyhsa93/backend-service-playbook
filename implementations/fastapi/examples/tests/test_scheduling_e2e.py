@@ -26,14 +26,20 @@ from testcontainers.postgres import PostgresContainer
 from src.account.infrastructure.notification.sent_email_model import SentEmailModel
 from src.account.infrastructure.persistence.account_repository import AccountModel, Base, TransactionModel
 from src.account.infrastructure.persistence.spending_analysis_repository import SpendingAnalysisModel
+from src.account.infrastructure.persistence.spending_forecast_repository import SpendingForecastModel
 from src.account.infrastructure.scheduling.spending_analysis_scheduler import (
     compute_previous_spending_analysis_period,
     enqueue_monthly_spending_analysis,
+)
+from src.account.infrastructure.scheduling.spending_forecast_scheduler import (
+    compute_spending_forecast_month,
+    enqueue_monthly_spending_forecast,
 )
 from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.card.application.command.send_monthly_card_statement_handler import previous_month_period
 from src.card.infrastructure.notification.sent_statement_email_model import SentStatementEmailModel
 from src.card.infrastructure.persistence.card_repository import CardModel
+from src.common.generate_id import generate_id
 from src.database import get_session
 from src.payment.infrastructure.persistence.payment_repository import PaymentModel
 from src.task_queue.task_outbox_writer import TaskOutboxWriter
@@ -462,3 +468,118 @@ async def test_when_no_analysis_has_been_computed_for_the_requested_month_then_r
 
     assert response.status_code == 404
     assert response.json()["code"] == "SPENDING_ANALYSIS_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_an_account_with_3_months_of_spending_analysis_history_gets_a_trained_forecast_via_the_api(
+    scheduling_env: dict,
+) -> None:
+    client: AsyncClient = scheduling_env["client"]
+    session_factory = scheduling_env["session_factory"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+
+    # Seeds 3 months of spending_analysis history directly — this test's concern is
+    # ForecastSpendingHandler training on existing history, re-deriving that history itself is
+    # separately covered by the spending-analysis test above.
+    forecast_month = compute_spending_forecast_month(datetime.utcnow())
+    amounts = [10000, 20000, 30000]
+    async with session_factory() as session:
+        now = datetime.utcnow()
+        for months_ago in range(3, 0, -1):
+            total = now.month - months_ago
+            year = now.year + (total - 1) // 12
+            month = (total - 1) % 12 + 1
+            analysis_month = f"{year:04d}-{month:02d}"
+            session.add(
+                SpendingAnalysisModel(
+                    analysis_id=generate_id(),
+                    account_id=account_id,
+                    analysis_month=analysis_month,
+                    total_amount=amounts[3 - months_ago],
+                    transaction_count=1,
+                    average_amount=amounts[3 - months_ago],
+                    change_from_previous_month=0,
+                    trend="STABLE",
+                )
+            )
+        await session.commit()
+
+    # Triggers the Scheduler's own enqueue function directly instead of waiting for a real
+    # Cron tick (main.py's lifespan, including APScheduler, isn't started under this
+    # ASGITransport-driven client).
+    await enqueue_monthly_spending_forecast(session_factory)
+
+    async def _forecast_saved() -> bool:
+        async with session_factory() as session:
+            stmt = select(SpendingForecastModel).where(
+                SpendingForecastModel.account_id == account_id,
+                SpendingForecastModel.forecast_month == forecast_month,
+            )
+            return (await session.execute(stmt)).scalar_one_or_none() is not None
+
+    await wait_until(_forecast_saved, timeout=30.0)
+
+    async with session_factory() as session:
+        stmt = select(SpendingForecastModel).where(
+            SpendingForecastModel.account_id == account_id,
+            SpendingForecastModel.forecast_month == forecast_month,
+        )
+        row = (await session.execute(stmt)).scalar_one()
+        # A perfectly linear history (10000, 20000, 30000) extrapolates exactly to 40000 with
+        # full confidence — see SpendingForecastModelImpl.
+        assert row.predicted_amount == 40000
+        assert row.confidence == "HIGH"
+        assert row.history_months_used == 3
+
+    response = await client.get(
+        f"/accounts/{account_id}/spending-forecast",
+        params={"month": f"{forecast_month}-01"},
+        headers=auth_headers(OWNER_ID),
+    )
+    assert response.status_code == 200
+    assert response.json()["predicted_amount"] == 40000
+    assert response.json()["confidence"] == "HIGH"
+
+    # Since it's the same month's dedup_id, even if the second enqueue is reprocessed, the
+    # (account_id, forecast_month) unique constraint + the has_forecast precheck must prevent
+    # a duplicate row.
+    await enqueue_monthly_spending_forecast(session_factory)
+    await asyncio.sleep(5)
+
+    async with session_factory() as session:
+        stmt = select(SpendingForecastModel).where(
+            SpendingForecastModel.account_id == account_id,
+            SpendingForecastModel.forecast_month == forecast_month,
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+        assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_younger_than_3_months_of_history_gets_no_forecast_and_the_api_returns_404(
+    scheduling_env: dict,
+) -> None:
+    client: AsyncClient = scheduling_env["client"]
+    session_factory = scheduling_env["session_factory"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": OWNER_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+
+    await enqueue_monthly_spending_forecast(session_factory)
+    await asyncio.sleep(5)
+
+    forecast_month = compute_spending_forecast_month(datetime.utcnow())
+    response = await client.get(
+        f"/accounts/{account_id}/spending-forecast",
+        params={"month": f"{forecast_month}-01"},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "SPENDING_FORECAST_NOT_FOUND"

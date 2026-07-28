@@ -58,6 +58,21 @@ class SqlAlchemySpendingAnalysisRepository(SpendingAnalysisRepository):
         count = (await self._session.execute(stmt)).scalar_one()
         return count > 0
 
+    async def find_recent_analyses(self, account_id: str, before_month: str, limit: int) -> list[SpendingAnalysis]:
+        stmt = (
+            select(SpendingAnalysisModel)
+            .where(
+                SpendingAnalysisModel.account_id == account_id,
+                SpendingAnalysisModel.analysis_month < before_month,
+            )
+            .order_by(SpendingAnalysisModel.analysis_month.desc())
+            .limit(limit)
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        # Reversed to chronological (oldest-first) order — SpendingForecastModel.predict
+        # treats array position as the month index.
+        return [self._to_domain(row) for row in reversed(rows)]
+
     async def save_analysis(self, analysis: SpendingAnalysis) -> None:
         self._session.add(
             SpendingAnalysisModel(

@@ -50,3 +50,12 @@ class SpendingAnalysisResult:
     change_from_previous_month: int
     trend: str
     created_at: datetime
+
+
+@dataclass
+class SpendingForecastResult:
+    forecast_month: str
+    predicted_amount: int
+    confidence: str
+    history_months_used: int
+    created_at: datetime

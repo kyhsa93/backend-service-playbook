@@ -99,3 +99,14 @@ class SpendingAnalysisNotFoundError(AccountError):
         )
         self.account_id = account_id
         self.analysis_month = analysis_month
+
+
+class SpendingForecastNotFoundError(AccountError):
+    code = AccountErrorCode.SPENDING_FORECAST_NOT_FOUND
+
+    def __init__(self, account_id: str, forecast_month: str) -> None:
+        super().__init__(
+            f"No spending forecast has been computed yet for account {account_id}, month {forecast_month}."
+        )
+        self.account_id = account_id
+        self.forecast_month = forecast_month

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import src.account.infrastructure.notification.sent_email_model  # noqa: F401
 import src.account.infrastructure.persistence.spending_analysis_repository  # noqa: F401
+import src.account.infrastructure.persistence.spending_forecast_repository  # noqa: F401
 import src.auth.infrastructure.persistence.credential_repository  # noqa: F401
 import src.card.infrastructure.notification.sent_statement_email_model  # noqa: F401
 import src.card.infrastructure.persistence.card_repository  # noqa: F401

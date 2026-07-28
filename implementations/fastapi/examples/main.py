@@ -21,10 +21,14 @@ from src.account.domain.errors import (  # noqa: E402
     AccountError,
     AccountNotFoundError,
     SpendingAnalysisNotFoundError,
+    SpendingForecastNotFoundError,
 )
 from src.account.infrastructure.scheduling.interest_scheduler import start_interest_scheduler  # noqa: E402
 from src.account.infrastructure.scheduling.spending_analysis_scheduler import (  # noqa: E402
     start_spending_analysis_scheduler,
+)
+from src.account.infrastructure.scheduling.spending_forecast_scheduler import (  # noqa: E402
+    start_spending_forecast_scheduler,
 )
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
 from src.auth.domain.errors import (  # noqa: E402
@@ -93,6 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     interest_scheduler = start_interest_scheduler(SessionLocal)
     statement_scheduler = start_statement_scheduler(SessionLocal)
     spending_analysis_scheduler = start_spending_analysis_scheduler(SessionLocal)
+    spending_forecast_scheduler = start_spending_forecast_scheduler(SessionLocal)
     logger.info("app_started")
 
     yield  # --- requests are handled in between ---
@@ -106,6 +111,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     interest_scheduler.shutdown(wait=True)
     statement_scheduler.shutdown(wait=True)
     spending_analysis_scheduler.shutdown(wait=True)
+    spending_forecast_scheduler.shutdown(wait=True)
 
     # Cancels the background tasks and waits for them to fully finish — no dangling task is
     # left behind. An in-progress receive_message (up to WaitTimeSeconds) that
@@ -216,6 +222,11 @@ async def account_not_found_handler(request: Request, exc: AccountNotFoundError)
 
 @app.exception_handler(SpendingAnalysisNotFoundError)
 async def spending_analysis_not_found_handler(request: Request, exc: SpendingAnalysisNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
+
+
+@app.exception_handler(SpendingForecastNotFoundError)
+async def spending_forecast_not_found_handler(request: Request, exc: SpendingForecastNotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
 
 

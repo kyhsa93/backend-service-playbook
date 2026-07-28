@@ -6,9 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..account.application.command.analyze_monthly_spending_handler import AnalyzeMonthlySpendingHandler
 from ..account.application.command.apply_daily_interest_handler import ApplyDailyInterestHandler
+from ..account.application.command.forecast_spending_handler import ForecastSpendingHandler
 from ..account.domain.repository import AccountRepository
 from ..account.infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
 from ..account.infrastructure.persistence.spending_analysis_repository import SqlAlchemySpendingAnalysisRepository
+from ..account.infrastructure.persistence.spending_forecast_repository import SqlAlchemySpendingForecastRepository
+from ..account.infrastructure.spending_forecast_model_impl import SpendingForecastModelImpl
 from ..account.interface.task.account_task_controller import AccountTaskController
 from ..card.application.adapter.account_adapter import AccountAdapter
 from ..card.application.adapter.payment_adapter import PaymentAdapter
@@ -41,6 +44,7 @@ def build_task_handlers(session: AsyncSession) -> dict[str, TaskHandlerFn]:
     """
     account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
     spending_analysis_repo = SqlAlchemySpendingAnalysisRepository(session)
+    spending_forecast_repo = SqlAlchemySpendingForecastRepository(session)
     card_repo: CardRepository = SqlAlchemyCardRepository(session)
     payment_query: PaymentQuery = SqlAlchemyPaymentRepository(session)
 
@@ -50,6 +54,9 @@ def build_task_handlers(session: AsyncSession) -> dict[str, TaskHandlerFn]:
     account_task_controller = AccountTaskController(
         ApplyDailyInterestHandler(account_repo),
         AnalyzeMonthlySpendingHandler(account_repo, spending_analysis_repo),
+        ForecastSpendingHandler(
+            account_repo, spending_analysis_repo, spending_forecast_repo, SpendingForecastModelImpl()
+        ),
     )
     card_task_controller = CardTaskController(
         SendMonthlyCardStatementHandler(card_repo, account_adapter, payment_adapter)
@@ -58,5 +65,6 @@ def build_task_handlers(session: AsyncSession) -> dict[str, TaskHandlerFn]:
     return {
         "account.interest.apply": account_task_controller.apply_daily_interest,
         "account.analyze-monthly-spending": account_task_controller.analyze_monthly_spending,
+        "account.forecast-spending": account_task_controller.forecast_spending,
         "card.statement.send": card_task_controller.send_monthly_statement,
     }
