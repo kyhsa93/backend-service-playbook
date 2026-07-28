@@ -13,6 +13,7 @@ import com.example.accountservice.account.domain.Money
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import com.example.accountservice.account.interfaces.integrationevent.AccountIntegrationEventController
 import com.example.accountservice.card.interfaces.integrationevent.CardIntegrationEventController
+import com.example.accountservice.payment.application.event.ClassifyRefundReasonEventHandler
 import com.example.accountservice.payment.application.event.PaymentCancelledEventHandler
 import com.example.accountservice.payment.application.event.PaymentCompletedEventHandler
 import com.example.accountservice.payment.application.event.RefundApprovedEventHandler
@@ -68,6 +69,7 @@ class EventHandlerRegistryTest {
                 paymentCompletedEventHandler = mockk<PaymentCompletedEventHandler>(relaxed = true),
                 paymentCancelledEventHandler = mockk<PaymentCancelledEventHandler>(relaxed = true),
                 refundApprovedEventHandler = mockk<RefundApprovedEventHandler>(relaxed = true),
+                classifyRefundReasonEventHandler = mockk<ClassifyRefundReasonEventHandler>(relaxed = true),
                 accountIntegrationEventController = mockk<AccountIntegrationEventController>(relaxed = true),
             )
     }

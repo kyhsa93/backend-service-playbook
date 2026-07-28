@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.infrastructure.persistence
 
+import com.example.accountservice.payment.domain.RefundReasonCategory
 import com.example.accountservice.payment.domain.RefundStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -33,6 +34,10 @@ class RefundJpaEntity(
     var status: RefundStatus = RefundStatus.REQUESTED,
     @Column
     var decisionNote: String? = null,
+    // Filled in asynchronously by ClassifyRefundReasonEventHandler — null until that reaction runs.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true)
+    var reasonCategory: RefundReasonCategory? = null,
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 )

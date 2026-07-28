@@ -15,6 +15,7 @@ internal object RefundMapper {
             reason = entity.reason,
             status = entity.status,
             decisionNote = entity.decisionNote,
+            reasonCategory = entity.reasonCategory,
             createdAt = entity.createdAt,
         )
 
@@ -28,16 +29,18 @@ internal object RefundMapper {
             reason = refund.reason,
             status = refund.status,
             decisionNote = refund.decisionNote,
+            reasonCategory = refund.reasonCategory,
             createdAt = refund.createdAt,
         )
 
-    /** Reflects the domain Refund's latest state onto the existing entity (preserving the PK) — an update target (approve/reject/complete). */
+    /** Reflects the domain Refund's latest state onto the existing entity (preserving the PK) — an update target (approve/reject/complete/categorizeReason). */
     fun updateEntity(
         entity: RefundJpaEntity,
         refund: Refund,
     ): RefundJpaEntity {
         entity.status = refund.status
         entity.decisionNote = refund.decisionNote
+        entity.reasonCategory = refund.reasonCategory
         return entity
     }
 }

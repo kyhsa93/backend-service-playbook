@@ -41,6 +41,7 @@ class GetRefundsService(
                         reason = it.reason,
                         status = it.status.name,
                         decisionNote = it.decisionNote,
+                        reasonCategory = it.reasonCategory?.name,
                         createdAt = it.createdAt,
                     )
                 },

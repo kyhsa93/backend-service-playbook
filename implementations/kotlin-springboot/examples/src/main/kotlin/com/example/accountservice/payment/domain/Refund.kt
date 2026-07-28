@@ -30,6 +30,13 @@ class Refund private constructor() {
     var decisionNote: String? = null
         private set
 
+    /**
+     * Set asynchronously by `ClassifyRefundReasonEventHandler` reacting to [RefundRequestedEvent] —
+     * never read or written by the [approve]/[reject] eligibility path. `null` until that reaction runs.
+     */
+    var reasonCategory: RefundReasonCategory? = null
+        private set
+
     var createdAt: LocalDateTime = LocalDateTime.now()
         private set
 
@@ -48,6 +55,7 @@ class Refund private constructor() {
                 this.reason = reason
                 this.status = RefundStatus.REQUESTED
                 this.createdAt = LocalDateTime.now()
+                this.domainEvents += RefundRequestedEvent(this.refundId, this.paymentId, this.reason, this.createdAt)
             }
 
         /**
@@ -60,6 +68,7 @@ class Refund private constructor() {
             reason: String,
             status: RefundStatus,
             decisionNote: String?,
+            reasonCategory: RefundReasonCategory?,
             createdAt: LocalDateTime,
         ): Refund =
             Refund().apply {
@@ -69,6 +78,7 @@ class Refund private constructor() {
                 this.reason = reason
                 this.status = status
                 this.decisionNote = decisionNote
+                this.reasonCategory = reasonCategory
                 this.createdAt = createdAt
             }
     }
@@ -93,6 +103,15 @@ class Refund private constructor() {
         if (status != RefundStatus.REQUESTED) throw RefundRejectRequiresRequestedRefundException()
         status = RefundStatus.REJECTED
         decisionNote = reason
+    }
+
+    /**
+     * Set asynchronously by `ClassifyRefundReasonEventHandler` reacting to [RefundRequestedEvent] —
+     * never called from the [approve]/[reject] eligibility path. No further Domain Event is published
+     * here; this is a read-model enrichment, not something any other BC needs to react to.
+     */
+    fun categorizeReason(category: RefundReasonCategory) {
+        this.reasonCategory = category
     }
 
     /**

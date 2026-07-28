@@ -9,13 +9,17 @@ class RefundTest {
         Refund.create(paymentId = "payment-1", amount = amount, reason = "Simple change of mind")
 
     @Test
-    fun `create produces a refund in the REQUESTED state`() {
+    fun `create produces a refund in the REQUESTED state and publishes RefundRequestedEvent unconditionally`() {
         val refund = createRefund()
 
         assertThat(refund.status).isEqualTo(RefundStatus.REQUESTED)
         assertThat(refund.paymentId).isEqualTo("payment-1")
         assertThat(refund.amount).isEqualTo(500)
         assertThat(refund.decisionNote).isNull()
+        assertThat(refund.reasonCategory).isNull()
+        val events = refund.pullDomainEvents()
+        assertThat(events).hasSize(1)
+        assertThat(events.first()).isInstanceOf(RefundRequestedEvent::class.java)
     }
 
     @Test
@@ -28,6 +32,7 @@ class RefundTest {
     @Test
     fun `approve transitions to APPROVED and collects a RefundApprovedEvent`() {
         val refund = createRefund()
+        refund.pullDomainEvents() // clear the RefundRequestedEvent published by create()
 
         refund.approve("account-1", "owner-1")
 
@@ -52,6 +57,7 @@ class RefundTest {
     @Test
     fun `reject transitions to REJECTED and stores the reason in decisionNote`() {
         val refund = createRefund()
+        refund.pullDomainEvents() // clear the RefundRequestedEvent published by create()
 
         refund.reject("A refund can only be requested for a completed payment.")
 
@@ -83,5 +89,28 @@ class RefundTest {
         val refund = createRefund()
 
         assertThrows<RefundCompleteRequiresApprovedRefundException> { refund.complete() }
+    }
+
+    @Test
+    fun `categorizeReason sets the category without publishing any event`() {
+        val refund = createRefund()
+        refund.pullDomainEvents() // clear the RefundRequestedEvent published by create()
+
+        refund.categorizeReason(RefundReasonCategory.DEFECTIVE_PRODUCT)
+
+        assertThat(refund.reasonCategory).isEqualTo(RefundReasonCategory.DEFECTIVE_PRODUCT)
+        assertThat(refund.pullDomainEvents()).isEmpty()
+    }
+
+    @Test
+    fun `categorizeReason runs the same regardless of the eventual approve or reject outcome`() {
+        val rejectedRefund = createRefund()
+        rejectedRefund.pullDomainEvents()
+        rejectedRefund.reject("The refund amount exceeds the payment amount.")
+
+        rejectedRefund.categorizeReason(RefundReasonCategory.CHANGED_MIND)
+
+        assertThat(rejectedRefund.status).isEqualTo(RefundStatus.REJECTED)
+        assertThat(rejectedRefund.reasonCategory).isEqualTo(RefundReasonCategory.CHANGED_MIND)
     }
 }

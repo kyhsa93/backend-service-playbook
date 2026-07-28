@@ -20,6 +20,7 @@ import com.example.accountservice.account.domain.MoneyDepositedEvent
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import com.example.accountservice.account.interfaces.integrationevent.AccountIntegrationEventController
 import com.example.accountservice.card.interfaces.integrationevent.CardIntegrationEventController
+import com.example.accountservice.payment.application.event.ClassifyRefundReasonEventHandler
 import com.example.accountservice.payment.application.event.PaymentCancelledEventHandler
 import com.example.accountservice.payment.application.event.PaymentCompletedEventHandler
 import com.example.accountservice.payment.application.event.RefundApprovedEventHandler
@@ -29,6 +30,7 @@ import com.example.accountservice.payment.application.integrationevent.RefundApp
 import com.example.accountservice.payment.domain.PaymentCancelledEvent
 import com.example.accountservice.payment.domain.PaymentCompletedEvent
 import com.example.accountservice.payment.domain.RefundApprovedEvent
+import com.example.accountservice.payment.domain.RefundRequestedEvent
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -82,6 +84,10 @@ class EventHandlerRegistry(
     private val paymentCompletedEventHandler: PaymentCompletedEventHandler,
     private val paymentCancelledEventHandler: PaymentCancelledEventHandler,
     private val refundApprovedEventHandler: RefundApprovedEventHandler,
+    // Reacts to RefundRequestedEvent (published unconditionally by Refund.create, before
+    // RefundEligibilityService's approve/reject judgment even runs) to classify the refund's
+    // free-text reason for ops-analytics reporting only — see RefundReasonInsightsQuery.
+    private val classifyRefundReasonEventHandler: ClassifyRefundReasonEventHandler,
     // The receiving side for Payment BC's Integration Events — Account subscribes to Payment's
     // payment.completed.v1/payment.cancelled.v1/refund.approved.v1 to perform the actual
     // debit/compensating credit.
@@ -137,6 +143,9 @@ class EventHandlerRegistry(
             },
             "RefundApprovedEvent" to { _, payload ->
                 refundApprovedEventHandler.handle(objectMapper.readValue(payload, RefundApprovedEvent::class.java))
+            },
+            "RefundRequestedEvent" to { _, payload ->
+                classifyRefundReasonEventHandler.handle(objectMapper.readValue(payload, RefundRequestedEvent::class.java))
             },
             PaymentCompletedIntegrationEventV1.EVENT_NAME to { _, payload ->
                 val event = objectMapper.readValue(payload, PaymentCompletedIntegrationEventV1::class.java)

@@ -26,6 +26,14 @@ data class GetRefundsResult(
             example = "null",
         )
         val decisionNote: String?,
+        @field:Schema(
+            description =
+                "The auto-classified reason category, filled in asynchronously — null until classification " +
+                    "completes. Ops-analytics only; never affects the eligibility decision above.",
+            nullable = true,
+            example = "DEFECTIVE_PRODUCT",
+        )
+        val reasonCategory: String?,
         @field:Schema(description = "When the refund was requested.")
         val createdAt: LocalDateTime,
     )

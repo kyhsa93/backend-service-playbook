@@ -372,4 +372,66 @@ class PaymentControllerE2ETest {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
+
+    // Exercises the real async pipeline end to end: refund request -> RefundRequestedEvent -> Outbox
+    // -> SQS -> OutboxConsumer -> EventHandlerRegistry -> ClassifyRefundReasonEventHandler -> the
+    // RefundRepository write, and GET /refunds/reason-insights. The LLM behind RefundReasonClassifier
+    // isn't available in this e2e environment, so the classification call itself falls back to OTHER
+    // — but this still proves the whole plumbing runs, and (the key design point of this feature)
+    // that classification runs identically for a REJECTED refund, since RefundRequestedEvent is
+    // published by Refund.create() before RefundEligibilityService's approve/reject judgment even runs.
+
+    private fun firstRefund(
+        paymentId: String,
+        ownerId: String,
+    ): Map<*, *>? {
+        val body = get("/payments/$paymentId/refunds", ownerId).body!!
+        val refunds = body["refunds"] as List<*>
+        return refunds.firstOrNull() as Map<*, *>?
+    }
+
+    private fun totalClassified(ownerId: String): Long {
+        val body = get("/refunds/reason-insights", ownerId).body!!
+        return (body["totalClassified"] as Number).toLong()
+    }
+
+    @Test
+    fun `a rejected refund still gets its reason classified asynchronously`() {
+        val ownerId = "refund-insights-owner-1"
+        val (accountId, cardId) = setUpFundedCard(ownerId, initialBalance = 50_000)
+        val payment = post("/payments", ownerId, mapOf("cardId" to cardId, "amount" to 10_000)).body!!
+        awaitBalance(ownerId, accountId, 40_000)
+
+        // A refund amount exceeding the payment amount is REJECTED by RefundEligibilityService — but
+        // RefundRequestedEvent is still published unconditionally by Refund.create(), before that
+        // judgment even runs.
+        val refundResponse =
+            post(
+                "/payments/${payment["paymentId"]}/refunds",
+                ownerId,
+                mapOf("amount" to 20_000, "reason" to "The item arrived broken"),
+            )
+        assertThat(refundResponse.body!!["status"]).isEqualTo("REJECTED")
+
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val listed = firstRefund(payment["paymentId"] as String, ownerId)
+            assertThat(listed).isNotNull()
+            assertThat(listed!!["reasonCategory"]).isEqualTo("OTHER")
+        }
+    }
+
+    @Test
+    fun `get refunds reason-insights reflects a classified refund in its category counts`() {
+        val ownerId = "refund-insights-owner-2"
+        val totalBefore = totalClassified(ownerId)
+
+        val (accountId, cardId) = setUpFundedCard(ownerId, initialBalance = 50_000)
+        val payment = post("/payments", ownerId, mapOf("cardId" to cardId, "amount" to 10_000)).body!!
+        awaitBalance(ownerId, accountId, 40_000)
+        post("/payments/${payment["paymentId"]}/refunds", ownerId, mapOf("amount" to 4000, "reason" to "Changed my mind"))
+
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            assertThat(totalClassified(ownerId)).isGreaterThan(totalBefore)
+        }
+    }
 }
