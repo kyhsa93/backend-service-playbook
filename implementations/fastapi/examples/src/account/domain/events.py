@@ -40,6 +40,27 @@ class MoneyWithdrawn:
 
 
 @dataclass(frozen=True)
+class WithdrawalAnomalyDetected:
+    """A notification-only signal DetectWithdrawalAnomalyEventHandler synthesizes after
+    AnomalyDetectionService judges a withdrawal a statistical outlier against the account's
+    own history. Unlike every other member of AccountDomainEvent, Account itself never
+    raises this — it never appears in Account.pull_events(), and it has no Outbox row of its
+    own; the handler synthesizes it in-memory purely to reuse NotificationService's existing
+    event-shaped dispatch (see notification_service.py's _render()). It carries no judgment
+    beyond "notify a human" — the withdrawal it describes already completed before this ever
+    runs, so nothing here can block/reverse/gate it (the design constraint that keeps this
+    out of the domain-purity trap the earlier, removed fraud-risk signals fell into — see
+    docs/architecture/domain-service.md).
+    """
+
+    account_id: str
+    transaction_id: str
+    email: str
+    amount: Money
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class AccountSuspended:
     account_id: str
     email: str

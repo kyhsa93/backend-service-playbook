@@ -208,6 +208,74 @@ async def test_redelivering_the_same_event_from_outbox_does_not_send_duplicate_e
 
 
 @pytest.mark.asyncio
+async def test_a_withdrawal_far_outside_the_accounts_normal_range_then_an_alert_email_is_sent(
+    notification_env: dict,
+) -> None:
+    client: AsyncClient = notification_env["client"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+    await client.post(f"/accounts/{account_id}/deposit", json={"amount": 10_000_000}, headers=auth_headers(OWNER_ID))
+
+    # Builds a normal history of small, similar withdrawals — AnomalyDetectionService needs
+    # at least 5 to compute a meaningful baseline.
+    for amount in (10000, 12000, 9000, 11000, 10500):
+        response = await client.post(
+            f"/accounts/{account_id}/withdraw", json={"amount": amount}, headers=auth_headers(OWNER_ID)
+        )
+        assert response.status_code == 201
+
+    # Far beyond that history's spread — a genuine statistical outlier.
+    outlier_response = await client.post(
+        f"/accounts/{account_id}/withdraw", json={"amount": 5_000_000}, headers=auth_headers(OWNER_ID)
+    )
+    assert outlier_response.status_code == 201
+
+    alert_email = await _wait_for_sent_email(
+        notification_env["session_factory"], account_id, "WithdrawalAnomalyDetected"
+    )
+    assert alert_email.recipient == RECIPIENT_EMAIL
+
+    ses_messages = await _fetch_ses_messages(notification_env["ses_endpoint"])
+    matched = next((m for m in ses_messages if m["Id"] == alert_email.ses_message_id), None)
+    assert matched is not None
+
+
+@pytest.mark.asyncio
+async def test_withdrawals_that_stay_within_the_accounts_normal_range_then_no_alert_email_is_ever_sent(
+    notification_env: dict,
+) -> None:
+    client: AsyncClient = notification_env["client"]
+
+    create_response = await client.post(
+        "/accounts", json={"currency": "KRW", "email": RECIPIENT_EMAIL}, headers=auth_headers(OWNER_ID)
+    )
+    account_id = create_response.json()["account_id"]
+    await client.post(f"/accounts/{account_id}/deposit", json={"amount": 10_000_000}, headers=auth_headers(OWNER_ID))
+
+    for amount in (10000, 12000, 9000, 11000, 10500, 10800):
+        response = await client.post(
+            f"/accounts/{account_id}/withdraw", json={"amount": amount}, headers=auth_headers(OWNER_ID)
+        )
+        assert response.status_code == 201
+
+    # Waits for all 6 withdrawals' own (unrelated) MoneyWithdrawn notifications to land as
+    # proof the async pipeline has caught up — a positive signal to wait on, rather than a
+    # blind sleep, before asserting the negative (no alert was ever sent). Uses the *count*
+    # (not _find_sent_email/_wait_for_sent_email, which assume at most one row) since 6
+    # withdrawals produce 6 separate MoneyWithdrawn SentEmailModel rows for this account.
+    async def _all_withdrawal_emails_sent() -> bool:
+        return await _count_sent_emails(notification_env["session_factory"], account_id, "MoneyWithdrawn") == 6
+
+    await wait_until(_all_withdrawal_emails_sent)
+
+    alert_email = await _find_sent_email(notification_env["session_factory"], account_id, "WithdrawalAnomalyDetected")
+    assert alert_email is None
+
+
+@pytest.mark.asyncio
 async def test_deposit_sends_ses_email_and_records_it(notification_env: dict) -> None:
     client: AsyncClient = notification_env["client"]
 

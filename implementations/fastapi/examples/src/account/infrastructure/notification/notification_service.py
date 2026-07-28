@@ -19,6 +19,7 @@ from ...domain.events import (
     InterestPaid,
     MoneyDeposited,
     MoneyWithdrawn,
+    WithdrawalAnomalyDetected,
 )
 from .sent_email_model import SentEmailModel
 
@@ -57,6 +58,12 @@ def _render(event: AccountDomainEvent) -> tuple[str, str]:
         return "[Account] Your account has been reactivated", f"Account ({event.account_id}) has been reactivated."
     if isinstance(event, AccountClosed):
         return "[Account] Your account has been closed", f"Account ({event.account_id}) has been closed."
+    if isinstance(event, WithdrawalAnomalyDetected):
+        return (
+            "[Account] Unusual withdrawal detected",
+            f"A withdrawal of {event.amount.amount} {event.amount.currency} is unusually large "
+            "compared to your recent activity. If this wasn't you, please contact support immediately.",
+        )
     raise ValueError(f"Unknown event type: {type(event)!r}")
 
 
@@ -90,8 +97,19 @@ class SesNotificationService(NotificationService):
     async def _send_and_record(self, event: AccountDomainEvent, outbox_event_id: str) -> None:
         event_type = type(event).__name__
 
+        # The Ledger key is (outbox_event_id, event_type), not outbox_event_id alone — since
+        # MoneyWithdrawn now fans out to two notify() calls sharing one outbox_event_id
+        # (MoneyWithdrawnEventHandler's own "withdrawal complete" email, and
+        # DetectWithdrawalAnomalyEventHandler's WithdrawalAnomalyDetected alert), keying the
+        # dedup check on outbox_event_id alone would make the second call's send look like an
+        # already-sent duplicate of the first and skip it entirely.
         already_sent = (
-            await self._session.execute(select(SentEmailModel).where(SentEmailModel.outbox_event_id == outbox_event_id))
+            await self._session.execute(
+                select(SentEmailModel).where(
+                    SentEmailModel.outbox_event_id == outbox_event_id,
+                    SentEmailModel.event_type == event_type,
+                )
+            )
         ).scalar_one_or_none()
         if already_sent is not None:
             logger.info(

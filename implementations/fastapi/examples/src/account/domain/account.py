@@ -24,12 +24,24 @@ from .events import (
     InterestPaid,
     MoneyDeposited,
     MoneyWithdrawn,
+    WithdrawalAnomalyDetected,
 )
 from .money import Money
 from .transaction import Transaction
 
+# WithdrawalAnomalyDetected is included here (unlike every other member) even though Account
+# never raises it itself — see its docstring in events.py — purely so
+# DetectWithdrawalAnomalyEventHandler can hand it to NotificationService.notify() through the
+# same type signature every other Account notification uses.
 AccountDomainEvent = Union[
-    AccountCreated, MoneyDeposited, MoneyWithdrawn, AccountSuspended, AccountReactivated, AccountClosed, InterestPaid
+    AccountCreated,
+    MoneyDeposited,
+    MoneyWithdrawn,
+    AccountSuspended,
+    AccountReactivated,
+    AccountClosed,
+    InterestPaid,
+    WithdrawalAnomalyDetected,
 ]
 
 

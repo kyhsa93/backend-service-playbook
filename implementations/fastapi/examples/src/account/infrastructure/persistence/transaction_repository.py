@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain.money import Money
@@ -47,3 +48,19 @@ class SqlAlchemyTransactionRepository(TransactionRepository):
             row.category = transaction.category
 
         await self._session.flush()
+
+    async def find_recent_withdrawal_amounts(
+        self, account_id: str, exclude_transaction_id: str, limit: int
+    ) -> list[int]:
+        stmt = (
+            select(TransactionModel.amount)
+            .where(
+                TransactionModel.account_id == account_id,
+                TransactionModel.type == "WITHDRAWAL",
+                TransactionModel.id != exclude_transaction_id,
+            )
+            .order_by(TransactionModel.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return list(rows)

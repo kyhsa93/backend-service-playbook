@@ -9,6 +9,9 @@ from ..account.application.event.account_created_event_handler import AccountCre
 from ..account.application.event.account_reactivated_event_handler import AccountReactivatedEventHandler
 from ..account.application.event.account_suspended_event_handler import AccountSuspendedEventHandler
 from ..account.application.event.categorize_transaction_event_handler import CategorizeTransactionEventHandler
+from ..account.application.event.detect_withdrawal_anomaly_event_handler import (
+    DetectWithdrawalAnomalyEventHandler,
+)
 from ..account.application.event.interest_paid_event_handler import InterestPaidEventHandler
 from ..account.application.event.money_deposited_event_handler import MoneyDepositedEventHandler
 from ..account.application.event.money_withdrawn_event_handler import MoneyWithdrawnEventHandler
@@ -51,10 +54,12 @@ def build_event_handlers(session: AsyncSession) -> dict[str, list[EventHandlerFn
     function is the composition root for all three BCs. OutboxConsumer calls this function
     for every message and reuses the assembly result.
 
-    Each eventType maps to a *list* of handlers — MoneyWithdrawn is the first event with two
-    subscribers (MoneyWithdrawnEventHandler for the SES notification, plus
-    CategorizeTransactionEventHandler for spending categorization). OutboxConsumer runs every
-    handler in the list for a delivery, even if an earlier one fails (see outbox_consumer.py).
+    Each eventType maps to a *list* of handlers — MoneyWithdrawn is the first event with more
+    than one subscriber, now three: MoneyWithdrawnEventHandler for the SES notification,
+    CategorizeTransactionEventHandler for spending categorization, and
+    DetectWithdrawalAnomalyEventHandler for the statistical-outlier alert. OutboxConsumer runs
+    every handler in the list for a delivery, even if an earlier one fails (see
+    outbox_consumer.py).
 
     The session is opened fresh and passed in by the caller (OutboxConsumer) per message
     (a unit of work) — this function itself only assembles new Repository/Service instances
@@ -77,6 +82,7 @@ def build_event_handlers(session: AsyncSession) -> dict[str, list[EventHandlerFn
         "MoneyWithdrawn": [
             MoneyWithdrawnEventHandler(notification_service).handle,
             CategorizeTransactionEventHandler(transaction_auto_categorizer, transaction_repo).handle,
+            DetectWithdrawalAnomalyEventHandler(transaction_repo, notification_service).handle,
         ],
         "AccountSuspended": [AccountSuspendedEventHandler(notification_service, outbox_writer).handle],
         "AccountReactivated": [AccountReactivatedEventHandler(notification_service).handle],
