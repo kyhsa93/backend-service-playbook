@@ -15,7 +15,7 @@ class WithdrawService(
                 AccountFindQuery(page = 0, take = 1, accountId = command.accountId, ownerId = command.requesterId),
             )
         val account = accounts.firstOrNull() ?: throw AccountNotFoundException(command.accountId)
-        val transaction = account.withdraw(command.amount)
+        val transaction = account.withdraw(command.amount, merchantName = command.merchantName)
         accountRepository.saveAccount(account)
         return TransactionResult(
             transactionId = transaction.transactionId,

@@ -22,6 +22,12 @@ data class DepositRequest(
 data class WithdrawRequest(
     @field:Schema(description = "The amount to debit, in the account's smallest currency unit. Must be greater than 0.", example = "5000")
     val amount: Long,
+    @field:Size(min = 1)
+    @field:Schema(
+        description = "The payee/merchant this withdrawal is for, e.g. for spending categorization. Optional.",
+        example = "Starbucks Gangnam",
+    )
+    val merchantName: String? = null,
 )
 
 data class TransferRequest(

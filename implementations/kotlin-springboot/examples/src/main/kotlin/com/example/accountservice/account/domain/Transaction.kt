@@ -33,12 +33,26 @@ class Transaction private constructor() {
     var referenceId: String? = null
         private set
 
+    // The payee/memo the requester optionally attaches to a withdrawal — the only free-text signal
+    // TransactionAutoCategorizer has to classify against. Absent for deposits/interest and for a
+    // withdrawal the requester didn't attach one to.
+    var merchantName: String? = null
+        private set
+
+    // Filled in asynchronously, after the transaction is created — CategorizeTransactionEventHandler
+    // reacts to MoneyWithdrawnEvent and categorizes it later, so this is always null at the moment
+    // Account.withdraw() constructs the Transaction, and only present when this object is
+    // reconstituted from a row that a categorization run has already updated.
+    var category: TransactionCategory? = null
+        private set
+
     companion object {
         fun create(
             accountId: String,
             type: TransactionType,
             amount: Money,
             referenceId: String? = null,
+            merchantName: String? = null,
         ): Transaction =
             Transaction().apply {
                 this.transactionId = generateId()
@@ -46,6 +60,7 @@ class Transaction private constructor() {
                 this.type = type
                 this.amount = amount
                 this.referenceId = referenceId
+                this.merchantName = merchantName
                 this.createdAt = LocalDateTime.now()
             }
 
@@ -60,6 +75,8 @@ class Transaction private constructor() {
             amount: Money,
             referenceId: String?,
             createdAt: LocalDateTime,
+            merchantName: String? = null,
+            category: TransactionCategory? = null,
         ): Transaction =
             Transaction().apply {
                 this.transactionId = transactionId
@@ -67,7 +84,27 @@ class Transaction private constructor() {
                 this.type = type
                 this.amount = amount
                 this.referenceId = referenceId
+                this.merchantName = merchantName
+                this.category = category
                 this.createdAt = createdAt
             }
     }
+
+    /**
+     * The domain method CategorizeTransactionEventHandler drives TransactionRepository's
+     * find→modify→save<Noun> cycle through (see docs/architecture/repository-pattern.md) —
+     * Transaction is otherwise immutable, so this returns a new instance rather than mutating in
+     * place.
+     */
+    fun categorize(category: TransactionCategory): Transaction =
+        reconstitute(
+            transactionId = transactionId,
+            accountId = accountId,
+            type = type,
+            amount = amount,
+            referenceId = referenceId,
+            createdAt = createdAt,
+            merchantName = merchantName,
+            category = category,
+        )
 }

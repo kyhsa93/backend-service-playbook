@@ -115,9 +115,15 @@ class Account private constructor() {
         return transaction
     }
 
+    // merchantName is the payee/memo a user-initiated withdrawal (WithdrawService) may optionally
+    // attach — it is carried onto both the Transaction and the MoneyWithdrawnEvent so
+    // CategorizeTransactionEventHandler can react asynchronously and classify it into a spending
+    // category. Absent (null) for the Payment BC reaction (WithdrawByPaymentService) and for a
+    // user-initiated withdrawal that didn't attach one.
     fun withdraw(
         amount: Long,
         referenceId: String? = null,
+        merchantName: String? = null,
     ): Transaction {
         if (status != AccountStatus.ACTIVE) throw WithdrawRequiresActiveAccountException()
         if (amount <= 0) throw InvalidAmountException()
@@ -125,9 +131,10 @@ class Account private constructor() {
         if (balance.isLessThan(money)) throw InsufficientBalanceException()
         balance = balance.subtract(money)
         updatedAt = LocalDateTime.now()
-        val transaction = Transaction.create(accountId, TransactionType.WITHDRAWAL, money, referenceId)
+        val transaction = Transaction.create(accountId, TransactionType.WITHDRAWAL, money, referenceId, merchantName)
         pendingTransactions += transaction
-        domainEvents += MoneyWithdrawnEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt)
+        domainEvents +=
+            MoneyWithdrawnEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt, merchantName)
         return transaction
     }
 

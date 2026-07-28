@@ -4,6 +4,7 @@ import com.example.accountservice.account.application.event.AccountClosedEventHa
 import com.example.accountservice.account.application.event.AccountCreatedEventHandler
 import com.example.accountservice.account.application.event.AccountReactivatedEventHandler
 import com.example.accountservice.account.application.event.AccountSuspendedEventHandler
+import com.example.accountservice.account.application.event.CategorizeTransactionEventHandler
 import com.example.accountservice.account.application.event.InterestPaidEventHandler
 import com.example.accountservice.account.application.event.MoneyDepositedEventHandler
 import com.example.accountservice.account.application.event.MoneyWithdrawnEventHandler
@@ -32,23 +33,32 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
- * Maps eventType (the Outbox row's `eventType` column = SQS `MessageAttributes.eventType`) to a handler
- * function. [OutboxConsumer] routes to this registry whenever it receives a message from SQS — whether
- * it's a Domain Event Handler (`application/event/`) or an Integration Event Controller
+ * Maps eventType (the Outbox row's `eventType` column = SQS `MessageAttributes.eventType`) to its
+ * handler function(s). [OutboxConsumer] routes to this registry whenever it receives a message from
+ * SQS — whether it's a Domain Event Handler (`application/event/`) or an Integration Event Controller
  * (`interfaces/integrationevent/`), it goes through this single registry.
  *
  * Rather than evaluating the routing table with a `when` expression on every dispatch, this registry
- * builds the entire `Map<eventType, (eventId, payload) -> Unit>` once at construction time (after Spring
- * has already auto-collected and injected each Handler/Controller as a `@Component`). This differs from
- * nestjs's `EventHandlerRegistry.register()`, where each domain module populates the registry separately
- * in its own `onModuleInit()` — this repository has no per-domain module-registration step (it's a
- * single Spring context), so there's no need to split it that way; this one registry always knows about
- * every Account/Payment domain handler in a single place.
+ * builds the entire `Map<eventType, List<(eventId, payload) -> Unit>>` once at construction time
+ * (after Spring has already auto-collected and injected each Handler/Controller as a `@Component`).
+ * This differs from nestjs's `EventHandlerRegistry.register()`, where each domain module populates the
+ * registry separately in its own `onModuleInit()` — this repository has no per-domain
+ * module-registration step (it's a single Spring context), so there's no need to split it that way;
+ * this one registry always knows about every Account/Payment domain handler in a single place.
+ *
+ * More than one handler may subscribe to the same eventType — `MoneyWithdrawnEvent` is the first
+ * example (`MoneyWithdrawnEventHandler` for the notification email, `CategorizeTransactionEventHandler`
+ * for spending categorization). This is why the routing table is `Map<String, List<...>>` rather than
+ * `Map<String, ...>` — a plain `mapOf(...)` literal with a duplicate key would have silently kept only
+ * the last handler registered for that eventType with no error at all, dropping the earlier one
+ * entirely, which is exactly the bug this repository's own docs/architecture/domain-events.md warns
+ * against ("Event Handler Idempotency" / the "1:N" contract). [dispatch] runs every handler registered
+ * for an eventType on every delivery, even if an earlier one throws.
  *
  * Account's 7 Domain Event Handlers receive the Outbox row's `eventId` as-is — this value is used as
  * `NotificationService`'s Level 2 (Ledger) duplicate-send-prevention key (`sourceEventId`)
- * (domain-events.md). The Payment/Refund Domain Event Handlers and the Integration Event Controller
- * don't use `eventId`, so the lambda ignores it.
+ * (domain-events.md). The Payment/Refund Domain Event Handlers, `CategorizeTransactionEventHandler`,
+ * and the Integration Event Controller don't use `eventId`, so the lambda ignores it.
  */
 @Component
 class EventHandlerRegistry(
@@ -56,6 +66,7 @@ class EventHandlerRegistry(
     private val accountCreatedEventHandler: AccountCreatedEventHandler,
     private val moneyDepositedEventHandler: MoneyDepositedEventHandler,
     private val moneyWithdrawnEventHandler: MoneyWithdrawnEventHandler,
+    private val categorizeTransactionEventHandler: CategorizeTransactionEventHandler,
     private val accountSuspendedEventHandler: AccountSuspendedEventHandler,
     private val accountReactivatedEventHandler: AccountReactivatedEventHandler,
     private val accountClosedEventHandler: AccountClosedEventHandler,
@@ -75,8 +86,11 @@ class EventHandlerRegistry(
 ) {
     private val logger = LoggerFactory.getLogger(EventHandlerRegistry::class.java)
 
-    private val handlers: Map<String, (eventId: String, payload: String) -> Unit> =
-        mapOf(
+    // A list of (eventType, handler) pairs rather than a Map literal directly, precisely so a
+    // duplicate eventType (MoneyWithdrawnEvent below) isn't silently collapsed to just its last
+    // entry — groupBy below folds same-key pairs into a List instead.
+    private val handlerEntries: List<Pair<String, (eventId: String, payload: String) -> Unit>> =
+        listOf(
             "AccountCreatedEvent" to { eventId, payload ->
                 accountCreatedEventHandler.handle(objectMapper.readValue(payload, AccountCreatedEvent::class.java), eventId)
             },
@@ -85,6 +99,9 @@ class EventHandlerRegistry(
             },
             "MoneyWithdrawnEvent" to { eventId, payload ->
                 moneyWithdrawnEventHandler.handle(objectMapper.readValue(payload, MoneyWithdrawnEvent::class.java), eventId)
+            },
+            "MoneyWithdrawnEvent" to { _, payload ->
+                categorizeTransactionEventHandler.handle(objectMapper.readValue(payload, MoneyWithdrawnEvent::class.java))
             },
             "AccountSuspendedEvent" to { eventId, payload ->
                 accountSuspendedEventHandler.handle(objectMapper.readValue(payload, AccountSuspendedEvent::class.java), eventId)
@@ -129,6 +146,9 @@ class EventHandlerRegistry(
             },
         )
 
+    private val handlers: Map<String, List<(eventId: String, payload: String) -> Unit>> =
+        handlerEntries.groupBy({ it.first }, { it.second })
+
     /** The set of registered eventTypes — for diagnostics/testing (checking which events can be
      * routed). */
     fun registeredEventTypes(): Set<String> = handlers.keys
@@ -136,19 +156,34 @@ class EventHandlerRegistry(
     /**
      * Called every time [OutboxConsumer] receives one SQS message. If no handler is registered, it just
      * logs a warning and returns quietly (it doesn't throw — there's no reason to retry an unknown
-     * event type forever). If the handler throws, the exception propagates as-is so [OutboxConsumer]
-     * doesn't delete the message and instead leaves it to SQS's redelivery (at-least-once).
+     * event type forever).
+     *
+     * Every handler registered for [eventType] gets a chance to run — one subscriber's failure must
+     * not prevent a sibling subscriber on the same eventType from running (the "1:N" contract this
+     * class documents). Once all of them have run, the first failure encountered (if any) is rethrown
+     * so [OutboxConsumer] doesn't delete the message and instead leaves it to SQS's redelivery
+     * (at-least-once) — each handler must already be idempotent for that redelivery
+     * (domain-events.md).
      */
     fun dispatch(
         eventType: String,
         eventId: String,
         payload: String,
     ) {
-        val handler = handlers[eventType]
-        if (handler == null) {
+        val eventHandlers = handlers[eventType]
+        if (eventHandlers.isNullOrEmpty()) {
             logger.warn("Unknown event type: {}", eventType)
             return
         }
-        handler(eventId, payload)
+        var firstFailure: Exception? = null
+        for (handler in eventHandlers) {
+            try {
+                handler(eventId, payload)
+            } catch (e: Exception) {
+                logger.error("A handler failed for eventType={}", eventType, e)
+                if (firstFailure == null) firstFailure = e
+            }
+        }
+        firstFailure?.let { throw it }
     }
 }

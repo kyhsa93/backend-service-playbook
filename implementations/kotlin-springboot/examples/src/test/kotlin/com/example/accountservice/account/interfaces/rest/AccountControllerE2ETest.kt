@@ -395,6 +395,62 @@ class AccountControllerE2ETest {
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
 
+    private fun firstWithdrawalTransaction(accountId: String): Map<*, *>? {
+        val response = get("/accounts/$accountId/transactions?type=WITHDRAWAL", OWNER_ID)
+
+        @Suppress("UNCHECKED_CAST")
+        val transactions = response.body!!["transactions"] as List<Map<*, *>>
+        return transactions.firstOrNull()
+    }
+
+    // Exercises the real async pipeline end to end: withdraw (with a merchantName) ->
+    // MoneyWithdrawnEvent -> Outbox -> SQS -> OutboxConsumer -> EventHandlerRegistry ->
+    // CategorizeTransactionEventHandler -> TransactionRepository write. No live Ollama is available
+    // in this e2e environment (same reasoning as the /transactions/ask tests), so the categorization
+    // call itself falls back to OTHER -- but this still proves the whole plumbing runs, including
+    // that MoneyWithdrawnEventHandler (SES notification) and CategorizeTransactionEventHandler both
+    // run for the same delivery (the "1:N" contract EventHandlerRegistry documents).
+    @Test
+    fun `withdrawing with a merchantName eventually categorizes the transaction`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val accountId = account["accountId"] as String
+
+        val response =
+            post(
+                "/accounts/$accountId/withdraw",
+                OWNER_ID,
+                mapOf("amount" to 5500, "merchantName" to "Starbucks Gangnam"),
+            )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+
+        await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(200)).untilAsserted {
+            val transaction = firstWithdrawalTransaction(accountId)
+            assertThat(transaction).isNotNull()
+            assertThat(transaction!!["merchantName"]).isEqualTo("Starbucks Gangnam")
+            assertThat(transaction["category"]).isEqualTo("OTHER")
+        }
+    }
+
+    @Test
+    fun `withdrawing without a merchantName never categorizes the transaction`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val accountId = account["accountId"] as String
+
+        val response = post("/accounts/$accountId/withdraw", OWNER_ID, mapOf("amount" to 5500))
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+
+        // No merchantName to react to, so there's nothing to wait out -- give the (skipped)
+        // reaction the same window as the happy path would need, then assert it never ran.
+        Thread.sleep(5000)
+        val transaction = firstWithdrawalTransaction(accountId)
+
+        assertThat(transaction).isNotNull()
+        assertThat(transaction!!["merchantName"]).isNull()
+        assertThat(transaction["category"]).isNull()
+    }
+
     @Test
     fun `returns 201 and the withdrawal and deposit transaction records when the transfer request is valid`() {
         val source = createAccount(OWNER_ID, "KRW")

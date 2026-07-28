@@ -149,7 +149,7 @@ class AccountController(
         authentication: Authentication,
         @PathVariable accountId: String,
         @RequestBody request: WithdrawRequest,
-    ): TransactionResult = withdrawService.withdraw(WithdrawCommand(accountId, authentication.name, request.amount))
+    ): TransactionResult = withdrawService.withdraw(WithdrawCommand(accountId, authentication.name, request.amount, request.merchantName))
 
     @PostMapping("/{accountId}/transfer")
     @ResponseStatus(HttpStatus.CREATED)

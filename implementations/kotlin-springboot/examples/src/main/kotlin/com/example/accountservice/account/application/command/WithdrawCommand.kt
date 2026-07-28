@@ -4,4 +4,5 @@ data class WithdrawCommand(
     val accountId: String,
     val requesterId: String,
     val amount: Long,
+    val merchantName: String? = null,
 )

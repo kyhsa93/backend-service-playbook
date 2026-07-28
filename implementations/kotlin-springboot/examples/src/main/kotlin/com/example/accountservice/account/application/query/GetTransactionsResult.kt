@@ -16,6 +16,15 @@ data class GetTransactionsResult(
         val type: String,
         @field:Schema(description = "The transaction amount.")
         val amount: MoneyResult,
+        @field:Schema(description = "The payee/merchant attached to this withdrawal, if any.")
+        val merchantName: String? = null,
+        @field:Schema(
+            description =
+                "The auto-categorized spending category, if this is a categorized withdrawal. " +
+                    "Filled in asynchronously — absent until categorization completes.",
+            example = "FOOD",
+        )
+        val category: String? = null,
         @field:Schema(description = "When the transaction was recorded.")
         val createdAt: LocalDateTime,
     )

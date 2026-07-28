@@ -84,6 +84,33 @@ class AccountTest {
     }
 
     @Test
+    fun `withdrawing with a merchantName carries it onto both the Transaction and the MoneyWithdrawnEvent`() {
+        val account = createAccount()
+        account.deposit(1000)
+        account.pullDomainEvents()
+
+        val transaction = account.withdraw(400, merchantName = "Starbucks Gangnam")
+
+        assertThat(transaction.merchantName).isEqualTo("Starbucks Gangnam")
+        assertThat(transaction.category).isNull()
+        val events = account.pullDomainEvents()
+        assertThat((events.first() as MoneyWithdrawnEvent).merchantName).isEqualTo("Starbucks Gangnam")
+    }
+
+    @Test
+    fun `withdrawing without a merchantName leaves it null on both the Transaction and the MoneyWithdrawnEvent`() {
+        val account = createAccount()
+        account.deposit(1000)
+        account.pullDomainEvents()
+
+        val transaction = account.withdraw(400)
+
+        assertThat(transaction.merchantName).isNull()
+        val events = account.pullDomainEvents()
+        assertThat((events.first() as MoneyWithdrawnEvent).merchantName).isNull()
+    }
+
+    @Test
     fun `suspending transitions to SUSPENDED and collects an AccountSuspendedEvent`() {
         val account = createAccount()
         account.pullDomainEvents()

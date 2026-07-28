@@ -40,6 +40,8 @@ class GetTransactionsService(
                         transactionId = it.transactionId,
                         type = it.type.name,
                         amount = GetTransactionsResult.MoneyResult(it.amount.amount, it.amount.currency),
+                        merchantName = it.merchantName,
+                        category = it.category?.name,
                         createdAt = it.createdAt,
                     )
                 },
