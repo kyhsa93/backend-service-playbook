@@ -191,29 +191,29 @@ func (h *SuspendCardsByAccountHandler) Handle(ctx context.Context, cmd SuspendCa
 
 ### Step C — `main.go` (the composition root) connects the two BCs by event_type string
 
-Neither the Account package nor the Card package imports the other. **Only the composition root (`main.go`)** knows about both sides, and it connects the `account.suspended.v1` string to Card's reaction use case in the Outbox's flat `map[string]outbox.Handler` — only unmarshal glue lives here, and the real logic is delegated to a Card Application handler. This map is just the handler table `outbox.Consumer` references when running a message it received from SQS (asynchronous publishing is handled by a separate `outbox.Poller` — see domain-events.md).
+Neither the Account package nor the Card package imports the other. **Only the composition root (`main.go`)** knows about both sides, and it connects the `account.suspended.v1` string to Card's reaction use case in the Outbox's flat `map[string][]outbox.Handler` — only unmarshal glue lives here, and the real logic is delegated to a Card Application handler. This map is just the handler table `outbox.Consumer` references when running a message it received from SQS (asynchronous publishing is handled by a separate `outbox.Poller` — see domain-events.md). The value is a slice since an eventType may have more than one subscriber.
 
 ```go
 // cmd/server/main.go (excerpt)
-outboxHandlers := map[string]outbox.Handler{
+outboxHandlers := map[string][]outbox.Handler{
 	// ... Account's internal Domain Event handlers ...
-	"AccountSuspended": event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
-	"AccountClosed":    event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
+	"AccountSuspended": {event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle},
+	"AccountClosed":    {event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle},
 	// Card BC reacts to Account's Integration Event (asynchronously).
-	"account.suspended.v1": func(ctx context.Context, payload []byte) error {
+	"account.suspended.v1": {func(ctx context.Context, payload []byte) error {
 		var e integrationevent.AccountSuspendedV1
 		if err := json.Unmarshal(payload, &e); err != nil {
 			return err
 		}
 		return suspendCardsHandler.Handle(ctx, command.SuspendCardsByAccountCommand{AccountID: e.AccountID})
-	},
-	"account.closed.v1": func(ctx context.Context, payload []byte) error {
+	}},
+	"account.closed.v1": {func(ctx context.Context, payload []byte) error {
 		var e integrationevent.AccountClosedV1
 		if err := json.Unmarshal(payload, &e); err != nil {
 			return err
 		}
 		return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
-	},
+	}},
 }
 outboxConsumer := outbox.NewConsumer(sqsClient, queueURL, outboxHandlers)
 ```

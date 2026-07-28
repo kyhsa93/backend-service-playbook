@@ -1390,12 +1390,13 @@ func main() {
 	sqsClient := outbox.NewSQSClient()
 	orderRepo := persistence.NewOrderRepository(db, outboxWriter)
 
-	// This handlers map is used by outbox.Consumer to look up the handler by
+	// This handlers map is used by outbox.Consumer to look up the handler(s) by
 	// the eventType of a message received from SQS — the Command Handler
 	// never references this map at all (synchronous draining is prohibited, see domain-events.md).
-	outboxHandlers := map[string]outbox.Handler{
-		"OrderPlaced":    event.NewOrderPlacedHandler(notifier).Handle,
-		"OrderCancelled": event.NewOrderCancelledHandler(notifier).Handle,
+	// The value is a slice since an eventType may have more than one subscriber.
+	outboxHandlers := map[string][]outbox.Handler{
+		"OrderPlaced":    {event.NewOrderPlacedHandler(notifier).Handle},
+		"OrderCancelled": {event.NewOrderCancelledHandler(notifier).Handle},
 	}
 	outboxPoller := outbox.NewPoller(db, sqsClient, queueURL)
 	outboxConsumer := outbox.NewConsumer(sqsClient, queueURL, outboxHandlers)

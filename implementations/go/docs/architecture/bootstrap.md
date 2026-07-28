@@ -59,16 +59,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// This handlers map is used by outbox.Consumer to look up the handler by the
+	// This handlers map is used by outbox.Consumer to look up the handler(s) by the
 	// eventType of a message received from SQS — the Command Handler never
 	// references this map at all (synchronous draining is prohibited, see domain-events.md).
-	outboxHandlers := map[string]outbox.Handler{
-		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
-		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
-		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
-		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier).Handle,
-		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
-		"AccountClosed":      event.NewAccountClosedEventHandler(notifier).Handle,
+	// The value is a slice since an eventType may have more than one subscriber.
+	outboxHandlers := map[string][]outbox.Handler{
+		"AccountCreated":     {event.NewAccountCreatedEventHandler(notifier).Handle},
+		"MoneyDeposited":     {event.NewMoneyDepositedEventHandler(notifier).Handle},
+		"MoneyWithdrawn":     {event.NewMoneyWithdrawnEventHandler(notifier).Handle},
+		"AccountSuspended":   {event.NewAccountSuspendedEventHandler(notifier).Handle},
+		"AccountReactivated": {event.NewAccountReactivatedEventHandler(notifier).Handle},
+		"AccountClosed":      {event.NewAccountClosedEventHandler(notifier).Handle},
 	}
 	outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)
 	outboxConsumer := outbox.NewConsumer(sqsClient, sqsConfig.QueueURL, outboxHandlers)

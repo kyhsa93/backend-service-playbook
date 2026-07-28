@@ -233,7 +233,7 @@ func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
 }
 ```
 
-`handlers` (`map[string]outbox.Handler`, `Handler = func(ctx, payload []byte) error`) is a **single shared map** that `cmd/server/main.go` assembles exactly once — all 6 domain event handlers from `internal/application/event/` and the Integration Event handlers (glue closures) that the Card/Payment BC react to are all registered into this one map:
+`handlers` (`map[string][]outbox.Handler`, `Handler = func(ctx, payload []byte) error`) is a **single shared map** that `cmd/server/main.go` assembles exactly once — all 6 domain event handlers from `internal/application/event/` and the Integration Event handlers (glue closures) that the Card/Payment BC react to are all registered into this one map. The value is a slice because an eventType may have more than one subscriber (e.g. `MoneyWithdrawn` has three), and `outbox.Consumer` runs every handler registered for an eventType, even if an earlier one fails:
 
 ```go
 // internal/application/event/account_created_event_handler.go — satisfies the outbox.Handler signature
@@ -248,16 +248,16 @@ func (h *AccountCreatedEventHandler) Handle(ctx context.Context, payload []byte)
 
 ```go
 // cmd/server/main.go (excerpt)
-outboxHandlers := map[string]outbox.Handler{
-	"AccountCreated": event.NewAccountCreatedEventHandler(notifier).Handle,
+outboxHandlers := map[string][]outbox.Handler{
+	"AccountCreated": {event.NewAccountCreatedEventHandler(notifier).Handle},
 	// ... the remaining Domain Event Handlers ...
-	"account.suspended.v1": func(ctx context.Context, payload []byte) error {
+	"account.suspended.v1": {func(ctx context.Context, payload []byte) error {
 		var e integrationevent.AccountSuspendedV1
 		if err := json.Unmarshal(payload, &e); err != nil {
 			return err
 		}
 		return suspendCardsHandler.Handle(ctx, command.SuspendCardsByAccountCommand{AccountID: e.AccountID})
-	},
+	}},
 	// ... the remaining Integration Event reactions ...
 }
 outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)
