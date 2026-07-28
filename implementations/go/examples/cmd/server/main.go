@@ -141,6 +141,14 @@ func main() {
 	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
 	detectWithdrawalAnomalyHandler := event.NewDetectWithdrawalAnomalyEventHandler(accountRepo, notifier)
 
+	// The Technical Service behind ClassifyRefundReasonEventHandler — the
+	// same self-hosted qwen2.5:1.5b Ollama setup as
+	// transactionAutoCategorizer above, just a different prompt/schema for a
+	// different job (classifying a refund's stated reason instead of a
+	// transaction's merchant name).
+	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(config.OllamaBaseURL(), config.LLMModel())
+	classifyRefundReasonHandler := event.NewClassifyRefundReasonEventHandler(refundReasonClassifier, paymentRepo)
+
 	// This handlers map is used by outbox.Consumer to look up the
 	// handler(s) for the eventType of a message received from SQS — Command
 	// Handlers no longer reference this map at all (no synchronous
@@ -168,6 +176,10 @@ func main() {
 		"PaymentCompleted": {event.NewPaymentCompletedEventHandler(outboxPublisher).Handle},
 		"PaymentCancelled": {event.NewPaymentCancelledEventHandler(outboxPublisher).Handle},
 		"RefundApproved":   {event.NewRefundApprovedEventHandler(outboxPublisher).Handle},
+		// Reacts to RefundRequested — ops-analytics only, never feeds back
+		// into RefundEligibilityService's judgment (see
+		// application/event/classify_refund_reason_event_handler.go).
+		"RefundRequested": {classifyRefundReasonHandler.Handle},
 		// A Domain Event raised by the daily interest payment batch (Task
 		// Queue). This is a separate flow from the Task Queue
 		// (account.apply-interest, taskHandlers map below) — this event is

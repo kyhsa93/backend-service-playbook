@@ -110,7 +110,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql", "0010_add_spending_forecast.sql", "0011_add_transaction_merchant_and_category.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql", "0010_add_spending_forecast.sql", "0011_add_transaction_merchant_and_category.sql", "0012_add_refund_reason_category.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -190,6 +190,13 @@ func runTests(m *testing.M) int {
 	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
 	detectWithdrawalAnomalyHandler := event.NewDetectWithdrawalAnomalyEventHandler(repo, notifier)
 
+	// No real Ollama runs in this e2e environment (same reasoning as
+	// transactionAutoCategorizer above) — classification falls back to
+	// OTHER, but this still exercises the real async pipeline end to end
+	// (see TestRefundReasonClassification in payment_e2e_test.go).
+	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(config.OllamaBaseURL(), config.LLMModel())
+	classifyRefundReasonHandler := event.NewClassifyRefundReasonEventHandler(refundReasonClassifier, paymentRepo)
+
 	outboxHandlers := map[string][]outbox.Handler{
 		"AccountCreated": {event.NewAccountCreatedEventHandler(notifier).Handle},
 		"MoneyDeposited": {event.NewMoneyDepositedEventHandler(notifier).Handle},
@@ -204,6 +211,7 @@ func runTests(m *testing.M) int {
 		"PaymentCompleted":   {event.NewPaymentCompletedEventHandler(outboxPublisher).Handle},
 		"PaymentCancelled":   {event.NewPaymentCancelledEventHandler(outboxPublisher).Handle},
 		"RefundApproved":     {event.NewRefundApprovedEventHandler(outboxPublisher).Handle},
+		"RefundRequested":    {classifyRefundReasonHandler.Handle},
 		"InterestPaid":       {event.NewInterestPaidEventHandler(notifier).Handle},
 		"account.suspended.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountSuspendedV1

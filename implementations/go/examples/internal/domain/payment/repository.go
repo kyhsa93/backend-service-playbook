@@ -70,3 +70,53 @@ type RefundRepository interface {
 	RefundQuery
 	SaveRefund(ctx context.Context, r *Refund) error
 }
+
+// FindOneRefund is a helper that wraps the repeated single-record lookup
+// pattern (call FindRefunds with RefundID+Take:1, then pull out the first
+// result, or ErrNotFound if there is none) — the same idiom as FindOne
+// above. ClassifyRefundReasonEventHandler uses this instead of a dedicated
+// FindRefund(refundID) Repository method, since Refund's read access is
+// already fully expressed by FindRefunds' filter-narrowed find<Noun>s form
+// (repository-pattern.md).
+func FindOneRefund(ctx context.Context, q RefundQuery, refundID string) (*Refund, error) {
+	refunds, _, err := q.FindRefunds(ctx, RefundFindQuery{RefundID: refundID, Take: 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(refunds) == 0 {
+		return nil, ErrNotFound
+	}
+	return refunds[0], nil
+}
+
+// RefundReasonInsightFilter narrows GET /refunds/reason-insights to a
+// created_at date range — the same inclusive-from/exclusive-to semantics as
+// FindQuery.CreatedFrom/CreatedTo above (fromDate is treated as the
+// inclusive start of that day, toDate as the exclusive start of the day
+// after it, so the filter itself stays UTC-day-boundary agnostic — the
+// Interface layer resolves fromDate/toDate strings into these bounds).
+type RefundReasonInsightFilter struct {
+	CreatedFrom time.Time
+	CreatedTo   time.Time
+}
+
+// RefundReasonInsightCount is one row of the GET /refunds/reason-insights
+// aggregation — how many classified refunds fall into a given category, in
+// the requested range.
+type RefundReasonInsightCount struct {
+	Category RefundReasonCategory
+	Count    int
+}
+
+// RefundReasonInsightsQuery is a dedicated ops-analytics read model,
+// deliberately separate from RefundQuery — it returns aggregated counts, not
+// []*Refund, so it doesn't fit RefundQuery's find<Noun>s shape (the same
+// precedent as account.SpendingAnalysisQuery being a separate interface from
+// account.Query). It is not scoped by OwnerID/PaymentID at all — its whole
+// purpose is to surface refund-reason patterns across every refund, not one
+// payment's or one user's (this repo has no separate admin-authorization
+// boundary, so it's exposed behind the same baseline auth as every other
+// endpoint — see the Interface layer for that simplification's rationale).
+type RefundReasonInsightsQuery interface {
+	FindReasonInsights(ctx context.Context, filter RefundReasonInsightFilter) ([]RefundReasonInsightCount, error)
+}

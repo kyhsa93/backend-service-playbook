@@ -44,13 +44,14 @@ func (h *GetRefundsHandler) Handle(ctx context.Context, q GetRefundsQuery) (*Get
 	results := make([]GetRefundResult, len(refunds))
 	for i, r := range refunds {
 		results[i] = GetRefundResult{
-			RefundID:     r.RefundID,
-			PaymentID:    r.PaymentID,
-			Amount:       r.Amount,
-			Reason:       r.Reason,
-			Status:       string(r.Status),
-			DecisionNote: r.DecisionNote,
-			CreatedAt:    r.CreatedAt,
+			RefundID:       r.RefundID,
+			PaymentID:      r.PaymentID,
+			Amount:         r.Amount,
+			Reason:         r.Reason,
+			Status:         string(r.Status),
+			DecisionNote:   r.DecisionNote,
+			ReasonCategory: string(r.ReasonCategory),
+			CreatedAt:      r.CreatedAt,
 		}
 	}
 	return &GetRefundsResult{Refunds: results, Count: count}, nil

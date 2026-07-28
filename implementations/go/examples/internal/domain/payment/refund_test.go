@@ -21,6 +21,22 @@ func TestNewRefund(t *testing.T) {
 	}
 }
 
+func TestNewRefund_PublishesRefundRequestedUnconditionally(t *testing.T) {
+	r := payment.NewRefund("payment-1", 500, "wrong item")
+
+	events := r.DomainEvents()
+	if len(events) != 1 {
+		t.Fatalf("want 1 event, got %d", len(events))
+	}
+	evt, ok := events[0].(payment.RefundRequested)
+	if !ok {
+		t.Fatalf("want RefundRequested, got %T", events[0])
+	}
+	if evt.RefundID != r.RefundID || evt.PaymentID != "payment-1" || evt.Reason != "wrong item" {
+		t.Fatalf("unexpected event fields: %+v", evt)
+	}
+}
+
 func TestRefund_Approve(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -64,13 +80,18 @@ func TestRefund_Approve_CollectsDomainEvent(t *testing.T) {
 		t.Fatalf("Approve() unexpected error: %v", err)
 	}
 
+	// NewRefund already unconditionally raised RefundRequested — Approve()
+	// appends RefundApproved alongside it, it does not replace it.
 	events := r.DomainEvents()
-	if len(events) != 1 {
-		t.Fatalf("want 1 event, got %d", len(events))
+	if len(events) != 2 {
+		t.Fatalf("want 2 events, got %d", len(events))
 	}
-	evt, ok := events[0].(payment.RefundApproved)
+	if _, ok := events[0].(payment.RefundRequested); !ok {
+		t.Fatalf("want events[0] to be RefundRequested, got %T", events[0])
+	}
+	evt, ok := events[1].(payment.RefundApproved)
 	if !ok {
-		t.Fatalf("want RefundApproved, got %T", events[0])
+		t.Fatalf("want RefundApproved, got %T", events[1])
 	}
 	if evt.AccountID != "account-1" || evt.OwnerID != "owner-1" || evt.Amount != 500 {
 		t.Fatalf("unexpected event fields: %+v", evt)
@@ -114,13 +135,30 @@ func TestRefund_Reject(t *testing.T) {
 					t.Fatalf("DecisionNote = %q, want %q", r.DecisionNote, "policy violation")
 				}
 			}
-			// Reject() does not raise a domain event — only approval (via
-			// refund.approved.v1, symmetric to the payment.completed.v1 flow)
-			// has anything to notify an external BC about.
-			if len(r.DomainEvents()) != 0 {
-				t.Fatalf("want 0 events after Reject(), got %d", len(r.DomainEvents()))
+			// Reject() itself does not raise a domain event — only approval
+			// (via refund.approved.v1, symmetric to the payment.completed.v1
+			// flow) has anything to notify an external BC about. The 1 event
+			// present is NewRefund's own unconditional RefundRequested.
+			if len(r.DomainEvents()) != 1 {
+				t.Fatalf("want 1 event (RefundRequested) after Reject(), got %d", len(r.DomainEvents()))
 			}
 		})
+	}
+}
+
+func TestRefund_CategorizeReason(t *testing.T) {
+	r := payment.NewRefund("payment-1", 500, "wrong item")
+	eventsBefore := len(r.DomainEvents())
+
+	r.CategorizeReason(payment.RefundReasonCategoryWrongItem)
+
+	if r.ReasonCategory != payment.RefundReasonCategoryWrongItem {
+		t.Fatalf("ReasonCategory = %v, want RefundReasonCategoryWrongItem", r.ReasonCategory)
+	}
+	// CategorizeReason is a read-model enrichment only — it must not raise
+	// any further Domain Event.
+	if len(r.DomainEvents()) != eventsBefore {
+		t.Fatalf("want no new events after CategorizeReason(), had %d before, have %d after", eventsBefore, len(r.DomainEvents()))
 	}
 }
 

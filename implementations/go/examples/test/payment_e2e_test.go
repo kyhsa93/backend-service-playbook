@@ -270,3 +270,88 @@ func TestGetRefunds(t *testing.T) {
 	body := decodeBody(t, resp)
 	require.Equal(t, float64(2), body["count"])
 }
+
+// waitForClassifiedRefund polls GET /payments/{paymentId}/refunds — since
+// classification is performed asynchronously by
+// ClassifyRefundReasonEventHandler via the Outbox → SQS → Consumer path, it
+// may not yet be reflected by the time the refund request's HTTP response
+// returns (the same budget as waitForCategorizedTransaction in
+// account_e2e_test.go).
+func waitForClassifiedRefund(t *testing.T, owner, paymentID string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		resp := doRequest(t, http.MethodGet, "/payments/"+paymentID+"/refunds", owner, nil)
+		body := decodeBody(t, resp)
+		if refunds, ok := body["refunds"].([]any); ok && len(refunds) > 0 {
+			refund := refunds[0].(map[string]any)
+			if refund["reasonCategory"] != nil {
+				return refund
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("no classified refund found for paymentId=%s (timed out)", paymentID)
+	return nil
+}
+
+// getTotalClassifiedRefunds hits GET /refunds/reason-insights and returns
+// totalClassified.
+func getTotalClassifiedRefunds(t *testing.T, owner string) float64 {
+	t.Helper()
+	resp := doRequest(t, http.MethodGet, "/refunds/reason-insights", owner, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body := decodeBody(t, resp)
+	return body["totalClassified"].(float64)
+}
+
+// TestRefundReasonClassification exercises the real async pipeline end to
+// end: Domain Event (RefundRequested, published unconditionally by
+// payment.NewRefund before EvaluateRefundEligibility's judgment even runs)
+// → Outbox → SQS → Consumer → ClassifyRefundReasonEventHandler → the
+// RefundRepository write. No real Ollama runs in this e2e environment (same
+// reasoning as TestTransactionAutoCategorization in account_e2e_test.go), so
+// the classification call itself falls back to OTHER — but this still
+// proves the whole plumbing runs, and specifically that classification
+// happens identically whether the refund ends up REJECTED or APPROVED (the
+// design point of this feature).
+func TestRefundReasonClassification(t *testing.T) {
+	t.Run("a_REJECTED_refund_still_gets_its_reason_classified_asynchronously", func(t *testing.T) {
+		const owner = "payment-owner-reason-rejected"
+		accountID, cardID := setupFundedCardAndAccount(t, owner, 10000)
+		payment := decodeBody(t, createPayment(t, owner, cardID, 5000))
+		paymentID := payment["paymentId"].(string)
+		waitForAccountBalance(t, owner, accountID, 5000)
+
+		resp := doRequest(t, http.MethodPost, "/payments/"+paymentID+"/refunds", owner,
+			map[string]any{"amount": 9000, "reason": "The item arrived broken"})
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		require.Equal(t, "REJECTED", decodeBody(t, resp)["status"])
+
+		refund := waitForClassifiedRefund(t, owner, paymentID)
+		require.Equal(t, "OTHER", refund["reasonCategory"])
+	})
+
+	t.Run("GET_refunds_reason-insights_totalClassified_increases_after_a_new_refund_is_classified", func(t *testing.T) {
+		const owner = "payment-owner-reason-insights"
+		totalBefore := getTotalClassifiedRefunds(t, owner)
+
+		accountID, cardID := setupFundedCardAndAccount(t, owner, 10000)
+		payment := decodeBody(t, createPayment(t, owner, cardID, 5000))
+		paymentID := payment["paymentId"].(string)
+		waitForAccountBalance(t, owner, accountID, 5000)
+		doRequest(t, http.MethodPost, "/payments/"+paymentID+"/refunds", owner,
+			map[string]any{"amount": 2000, "reason": "Changed my mind"})
+
+		deadline := time.Now().Add(30 * time.Second)
+		var totalAfter float64
+		for time.Now().Before(deadline) {
+			totalAfter = getTotalClassifiedRefunds(t, owner)
+			if totalAfter > totalBefore {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		require.Greater(t, totalAfter, totalBefore)
+	})
+}

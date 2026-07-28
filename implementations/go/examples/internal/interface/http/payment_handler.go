@@ -14,12 +14,13 @@ import (
 )
 
 type PaymentHandler struct {
-	createPayment *command.CreatePaymentHandler
-	cancelPayment *command.CancelPaymentHandler
-	requestRefund *command.RequestRefundHandler
-	getPayment    *query.GetPaymentHandler
-	getPayments   *query.GetPaymentsHandler
-	getRefunds    *query.GetRefundsHandler
+	createPayment           *command.CreatePaymentHandler
+	cancelPayment           *command.CancelPaymentHandler
+	requestRefund           *command.RequestRefundHandler
+	getPayment              *query.GetPaymentHandler
+	getPayments             *query.GetPaymentsHandler
+	getRefunds              *query.GetRefundsHandler
+	getRefundReasonInsights *query.GetRefundReasonInsightsHandler
 }
 
 func NewPaymentHandler(
@@ -29,14 +30,16 @@ func NewPaymentHandler(
 	getPayment *query.GetPaymentHandler,
 	getPayments *query.GetPaymentsHandler,
 	getRefunds *query.GetRefundsHandler,
+	getRefundReasonInsights *query.GetRefundReasonInsightsHandler,
 ) *PaymentHandler {
 	return &PaymentHandler{
-		createPayment: createPayment,
-		cancelPayment: cancelPayment,
-		requestRefund: requestRefund,
-		getPayment:    getPayment,
-		getPayments:   getPayments,
-		getRefunds:    getRefunds,
+		createPayment:           createPayment,
+		cancelPayment:           cancelPayment,
+		requestRefund:           requestRefund,
+		getPayment:              getPayment,
+		getPayments:             getPayments,
+		getRefunds:              getRefunds,
+		getRefundReasonInsights: getRefundReasonInsights,
 	}
 }
 
@@ -219,7 +222,7 @@ func (h *PaymentHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, r, toRefundResponse(ref.RefundID, ref.PaymentID, ref.Amount, ref.Reason, string(ref.Status), ref.DecisionNote, ref.CreatedAt))
+	writeJSON(w, r, toRefundResponse(ref.RefundID, ref.PaymentID, ref.Amount, ref.Reason, string(ref.Status), ref.DecisionNote, string(ref.ReasonCategory), ref.CreatedAt))
 }
 
 // GetRefunds lists the refunds requested against a payment, paginated.
@@ -252,10 +255,65 @@ func (h *PaymentHandler) GetRefunds(w http.ResponseWriter, r *http.Request) {
 	}
 	refunds := make([]RefundResponse, len(result.Refunds))
 	for i, ref := range result.Refunds {
-		refunds[i] = toRefundResponse(ref.RefundID, ref.PaymentID, ref.Amount, ref.Reason, ref.Status, ref.DecisionNote, ref.CreatedAt)
+		refunds[i] = toRefundResponse(ref.RefundID, ref.PaymentID, ref.Amount, ref.Reason, ref.Status, ref.DecisionNote, ref.ReasonCategory, ref.CreatedAt)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, r, GetRefundsResponse{Refunds: refunds, Count: result.Count})
+}
+
+// GetRefundReasonInsights returns per-category classified-refund counts for
+// ops analytics — a cross-payment aggregate, so it is deliberately not
+// scoped by paymentId or the authenticated requester's ownerId (see
+// query.GetRefundReasonInsightsHandler's doc comment).
+//
+// @Summary		Get refund-reason category counts for ops analytics
+// @Description	Returns how many refunds fall into each auto-classified reason category (e.g. DEFECTIVE_PRODUCT, CHANGED_MIND), optionally narrowed to a date range. Classification runs asynchronously after a refund is requested and never influences whether that refund is approved — this is a read-only reporting view across every refund, not scoped to the caller's own payments.
+// @Tags			Payment
+// @Produce		json
+// @Security		BearerAuth
+// @Param			fromDate	query		string								false	"Only count refunds requested on/after this date (inclusive), as YYYY-MM-DD"
+// @Param			toDate		query		string								false	"Only count refunds requested on/before this date (inclusive), as YYYY-MM-DD"
+// @Success		200			{object}	GetRefundReasonInsightsResponse	"The insights were computed."
+// @Failure		400			{object}	ErrorResponse						"Request validation failed (`VALIDATION_FAILED`) — e.g. `fromDate`/`toDate` is not a valid date."
+// @Failure		401			{object}	ErrorResponse						"The bearer token is missing, malformed, or invalid."
+// @Router			/refunds/reason-insights [get]
+func (h *PaymentHandler) GetRefundReasonInsights(w http.ResponseWriter, r *http.Request) {
+	var fromDate, toDate time.Time
+	if v := r.URL.Query().Get("fromDate"); v != "" {
+		parsed, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			writeValidationError(w, r, "fromDate must be a valid date in YYYY-MM-DD form")
+			return
+		}
+		fromDate = parsed
+	}
+	if v := r.URL.Query().Get("toDate"); v != "" {
+		parsed, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			writeValidationError(w, r, "toDate must be a valid date in YYYY-MM-DD form")
+			return
+		}
+		// toDate is inclusive of the given calendar day at the REST surface,
+		// but payment.RefundReasonInsightFilter.CreatedTo is an exclusive (<)
+		// bound (the same convention as payment.FindQuery.CreatedTo) — so
+		// resolve it to the exclusive start of the following day.
+		toDate = parsed.AddDate(0, 0, 1)
+	}
+
+	result, err := h.getRefundReasonInsights.Handle(r.Context(), query.GetRefundReasonInsightsQuery{
+		FromDate: fromDate,
+		ToDate:   toDate,
+	})
+	if err != nil {
+		writePaymentError(w, r, err)
+		return
+	}
+	counts := make([]RefundReasonCategoryCount, len(result.Counts))
+	for i, c := range result.Counts {
+		counts[i] = RefundReasonCategoryCount{Category: c.Category, Count: c.Count}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, r, GetRefundReasonInsightsResponse{Counts: counts, TotalClassified: result.TotalClassified})
 }
 
 func toPaymentResponse(paymentID, cardID, accountID, ownerID string, amount int64, status string, createdAt time.Time) PaymentResponse {
@@ -270,15 +328,16 @@ func toPaymentResponse(paymentID, cardID, accountID, ownerID string, amount int6
 	}
 }
 
-func toRefundResponse(refundID, paymentID string, amount int64, reason, status, decisionNote string, createdAt time.Time) RefundResponse {
+func toRefundResponse(refundID, paymentID string, amount int64, reason, status, decisionNote, reasonCategory string, createdAt time.Time) RefundResponse {
 	return RefundResponse{
-		RefundID:     refundID,
-		PaymentID:    paymentID,
-		Amount:       amount,
-		Reason:       reason,
-		Status:       status,
-		DecisionNote: decisionNote,
-		CreatedAt:    createdAt,
+		RefundID:       refundID,
+		PaymentID:      paymentID,
+		Amount:         amount,
+		Reason:         reason,
+		Status:         status,
+		DecisionNote:   decisionNote,
+		ReasonCategory: reasonCategory,
+		CreatedAt:      createdAt,
 	}
 }
 

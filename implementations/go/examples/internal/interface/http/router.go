@@ -44,14 +44,16 @@ type AccountStore interface {
 	account.SpendingForecastRepository
 }
 
-// PaymentStore combines the four ports the Payment BC's handlers need between
-// them (Payment Repository/Query, Refund Repository/Query) — the same
-// concrete *persistence.PaymentRepository value structurally satisfies all of
-// them (the same idiom as the account/card Repository), so the composition
-// root (main) only needs to pass a value that satisfies this one interface.
+// PaymentStore combines the five ports the Payment BC's handlers need between
+// them (Payment Repository/Query, Refund Repository/Query, the
+// ops-analytics RefundReasonInsightsQuery) — the same concrete
+// *persistence.PaymentRepository value structurally satisfies all of them
+// (the same idiom as the account/card Repository), so the composition root
+// (main) only needs to pass a value that satisfies this one interface.
 type PaymentStore interface {
 	payment.Repository
 	payment.RefundRepository
+	payment.RefundReasonInsightsQuery
 }
 
 // NewRouter assembles the request handlers. The returned *HealthHandler is
@@ -119,6 +121,7 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 	getPaymentHandler := query.NewGetPaymentHandler(paymentStore)
 	getPaymentsHandler := query.NewGetPaymentsHandler(paymentStore)
 	getRefundsHandler := query.NewGetRefundsHandler(paymentStore, paymentStore)
+	getRefundReasonInsightsHandler := query.NewGetRefundReasonInsightsHandler(paymentStore)
 	paymentHTTP := NewPaymentHandler(
 		createPaymentHandler,
 		cancelPaymentHandler,
@@ -126,6 +129,7 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 		getPaymentHandler,
 		getPaymentsHandler,
 		getRefundsHandler,
+		getRefundReasonInsightsHandler,
 	)
 
 	// Auth — jwtService already structurally satisfies
@@ -157,6 +161,9 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 	protected.HandleFunc("GET /payments", paymentHTTP.GetPayments)
 	protected.HandleFunc("POST /payments/{paymentId}/refunds", paymentHTTP.RequestRefund)
 	protected.HandleFunc("GET /payments/{paymentId}/refunds", paymentHTTP.GetRefunds)
+	// Unscoped by paymentId — a cross-payment ops-analytics aggregate, not a
+	// per-payment resource (see query.GetRefundReasonInsightsHandler).
+	protected.HandleFunc("GET /refunds/reason-insights", paymentHTTP.GetRefundReasonInsights)
 
 	// Routes subject to rate limiting
 	limited := http.NewServeMux()
@@ -166,6 +173,7 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 	limited.Handle("/cards/", middleware.RequireAuth(jwtService)(protected))
 	limited.Handle("/payments", middleware.RequireAuth(jwtService)(protected))
 	limited.Handle("/payments/", middleware.RequireAuth(jwtService)(protected))
+	limited.Handle("/refunds/", middleware.RequireAuth(jwtService)(protected))
 	limited.HandleFunc("POST /auth/sign-up", authHTTP.SignUp)
 	limited.HandleFunc("POST /auth/sign-in", authHTTP.SignIn)
 

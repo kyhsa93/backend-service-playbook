@@ -173,16 +173,28 @@ type RequestRefundRequest struct {
 }
 
 type RefundResponse struct {
-	RefundID     string    `json:"refundId"`               // The refund request's ID.
-	PaymentID    string    `json:"paymentId"`              // The payment this refund was requested against.
-	Amount       int64     `json:"amount"`                 // The requested refund amount.
-	Reason       string    `json:"reason"`                 // Why the refund was requested.
-	Status       string    `json:"status"`                 // The refund status (`APPROVED`, `REJECTED`, or `COMPLETED`) — check this, not just the HTTP status, since a rejection is still a 201 response.
-	DecisionNote string    `json:"decisionNote,omitempty"` // Why the refund was rejected. Only present when `status` is `REJECTED`.
-	CreatedAt    time.Time `json:"createdAt"`              // When the refund was requested.
+	RefundID       string    `json:"refundId"`                 // The refund request's ID.
+	PaymentID      string    `json:"paymentId"`                // The payment this refund was requested against.
+	Amount         int64     `json:"amount"`                   // The requested refund amount.
+	Reason         string    `json:"reason"`                   // Why the refund was requested.
+	Status         string    `json:"status"`                   // The refund status (`APPROVED`, `REJECTED`, or `COMPLETED`) — check this, not just the HTTP status, since a rejection is still a 201 response.
+	DecisionNote   string    `json:"decisionNote,omitempty"`   // Why the refund was rejected. Only present when `status` is `REJECTED`.
+	ReasonCategory string    `json:"reasonCategory,omitempty"` // The auto-classified reason category (e.g. `DEFECTIVE_PRODUCT`, `CHANGED_MIND`), filled in asynchronously — absent until classification completes. Ops-analytics only; never affects the eligibility decision above.
+	CreatedAt      time.Time `json:"createdAt"`                // When the refund was requested.
 }
 
 type GetRefundsResponse struct {
 	Refunds []RefundResponse `json:"refunds"` // The refunds requested against the payment, newest first.
 	Count   int              `json:"count"`   // The total number of refunds matching the filter (not just the current page's size).
+}
+
+// RefundReasonCategoryCount is one row of GetRefundReasonInsightsResponse.
+type RefundReasonCategoryCount struct {
+	Category string `json:"category"` // A refund-reason category.
+	Count    int    `json:"count"`    // How many classified refunds fall into this category, in the requested range.
+}
+
+type GetRefundReasonInsightsResponse struct {
+	Counts          []RefundReasonCategoryCount `json:"counts"`          // A count per category, for refunds that have been classified so far — omits categories with 0 refunds.
+	TotalClassified int                         `json:"totalClassified"` // The total number of classified refunds across all categories in the requested range.
 }

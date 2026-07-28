@@ -63,3 +63,20 @@ type RefundApproved struct {
 }
 
 func (RefundApproved) isPaymentDomainEvent() {}
+
+// RefundRequested is published unconditionally by NewRefund — before
+// EvaluateRefundEligibility's approve/reject judgment even runs. Its only
+// subscriber, ClassifyRefundReasonEventHandler (application/event), reacts to
+// it to build ops-analytics insight from every refund's stated reason,
+// independent of whether the refund is ultimately approved or rejected (a
+// rejected refund's reason is just as useful a signal for the ops dashboard
+// as an approved one's, so classification must never be conditioned on the
+// eligibility outcome).
+type RefundRequested struct {
+	RefundID  string
+	PaymentID string
+	Reason    string
+	CreatedAt time.Time
+}
+
+func (RefundRequested) isPaymentDomainEvent() {}

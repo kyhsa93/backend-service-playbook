@@ -26,6 +26,7 @@ var _ payment.Repository = (*PaymentRepository)(nil)
 var _ payment.Query = (*PaymentRepository)(nil)
 var _ payment.RefundRepository = (*PaymentRepository)(nil)
 var _ payment.RefundQuery = (*PaymentRepository)(nil)
+var _ payment.RefundReasonInsightsQuery = (*PaymentRepository)(nil)
 
 func NewPaymentRepository(db *sql.DB) *PaymentRepository {
 	return &PaymentRepository{db: db}
@@ -190,7 +191,7 @@ func (r *PaymentRepository) FindRefunds(ctx context.Context, q payment.RefundFin
 	}
 	args = append(args, take, q.Page*take)
 	rows, err := r.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT id, payment_id, amount, reason, status, decision_note, created_at
+		fmt.Sprintf(`SELECT id, payment_id, amount, reason, status, decision_note, reason_category, created_at
 		 FROM refunds WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, whereClause, i, i+1),
 		args...,
 	)
@@ -202,13 +203,13 @@ func (r *PaymentRepository) FindRefunds(ctx context.Context, q payment.RefundFin
 	var refunds []*payment.Refund
 	for rows.Next() {
 		var id, paymentID, reason, status string
-		var decisionNote sql.NullString
+		var decisionNote, reasonCategory sql.NullString
 		var amount int64
 		var createdAt time.Time
-		if err := rows.Scan(&id, &paymentID, &amount, &reason, &status, &decisionNote, &createdAt); err != nil {
+		if err := rows.Scan(&id, &paymentID, &amount, &reason, &status, &decisionNote, &reasonCategory, &createdAt); err != nil {
 			return nil, 0, err
 		}
-		refunds = append(refunds, payment.ReconstituteRefund(id, paymentID, amount, reason, payment.RefundStatus(status), decisionNote.String, createdAt))
+		refunds = append(refunds, payment.ReconstituteRefund(id, paymentID, amount, reason, payment.RefundStatus(status), decisionNote.String, payment.RefundReasonCategory(reasonCategory.String), createdAt))
 	}
 	return refunds, total, rows.Err()
 }
@@ -225,11 +226,15 @@ func (r *PaymentRepository) SaveRefund(ctx context.Context, ref *payment.Refund)
 	if ref.DecisionNote != "" {
 		decisionNote = ref.DecisionNote
 	}
+	var reasonCategory any
+	if ref.ReasonCategory != "" {
+		reasonCategory = string(ref.ReasonCategory)
+	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO refunds (id, payment_id, amount, reason, status, decision_note, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-		 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, decision_note = EXCLUDED.decision_note, updated_at = NOW()`,
-		ref.RefundID, ref.PaymentID, ref.Amount, ref.Reason, string(ref.Status), decisionNote, ref.CreatedAt,
+		`INSERT INTO refunds (id, payment_id, amount, reason, status, decision_note, reason_category, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+		 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, decision_note = EXCLUDED.decision_note, reason_category = EXCLUDED.reason_category, updated_at = NOW()`,
+		ref.RefundID, ref.PaymentID, ref.Amount, ref.Reason, string(ref.Status), decisionNote, reasonCategory, ref.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("save refund: %w", err)
@@ -244,6 +249,49 @@ func (r *PaymentRepository) SaveRefund(ctx context.Context, ref *payment.Refund)
 	}
 	ref.ClearEvents()
 	return nil
+}
+
+// FindReasonInsights aggregates classified refunds by reason_category —
+// this repository's first GROUP BY query, and its first query with no
+// owner/payment scoping filter at all (see
+// payment.RefundReasonInsightsQuery's doc comment). Categories with 0
+// classified refunds in the requested range are simply absent from the
+// result (no zero-fill row), matching FindRefunds/FindPayments' own
+// "narrow, don't zero-fill" idiom for their filters.
+func (r *PaymentRepository) FindReasonInsights(ctx context.Context, filter payment.RefundReasonInsightFilter) ([]payment.RefundReasonInsightCount, error) {
+	args := []any{}
+	where := []string{"reason_category IS NOT NULL"}
+	i := 1
+
+	if !filter.CreatedFrom.IsZero() {
+		where = append(where, fmt.Sprintf("created_at >= $%d", i))
+		args = append(args, filter.CreatedFrom)
+		i++
+	}
+	if !filter.CreatedTo.IsZero() {
+		where = append(where, fmt.Sprintf("created_at < $%d", i))
+		args = append(args, filter.CreatedTo)
+	}
+
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf(`SELECT reason_category, COUNT(*) FROM refunds WHERE %s GROUP BY reason_category`, strings.Join(where, " AND ")),
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find refund reason insights: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var counts []payment.RefundReasonInsightCount
+	for rows.Next() {
+		var category string
+		var count int
+		if err := rows.Scan(&category, &count); err != nil {
+			return nil, err
+		}
+		counts = append(counts, payment.RefundReasonInsightCount{Category: payment.RefundReasonCategory(category), Count: count})
+	}
+	return counts, rows.Err()
 }
 
 // insertOutboxEvents is the direct Outbox-loading helper shared by the
