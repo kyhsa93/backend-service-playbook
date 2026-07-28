@@ -21,9 +21,14 @@ The prompt given to the agent contains only these three things — **it never ex
 bash implementations/<lang>/harness.sh <the project root the agent worked in>
 ```
 
-- **Score**: nestjs immediately produces a normalized 0-100 score (in the form `A (100/100, raw 630/630)`).
-  go/java-springboot/kotlin-springboot/fastapi only print a raw pass/fail count, so normalize it yourself
-  as `passed / (passed + failed)` into a ratio comparable across languages.
+- **Score**: all 5 languages produce a normalized 0-100 score directly (in the form
+  `A (100/100, raw 630/630)`), plus a category breakdown (structure/architecture/runtime/testing/api/
+  semantics). go/java-springboot/kotlin-springboot/fastapi compute it the same way nestjs does — each rule
+  contributes a fixed point budget, prorated by that rule's own pass/fail ratio, and excluded from the
+  denominator entirely when the rule doesn't apply to the submission — so scores are directly comparable
+  across languages without any manual normalization step. (Runs recorded below this section predate that
+  change and still show the older raw pass/fail counts for the 4 non-nestjs languages, normalized by hand
+  at the time as `passed / (passed + failed)`.)
 - **The scorer must be the person running the benchmark, not the agent itself.** Don't just trust the agent's
   self-report of "confirmed harness 100/100" — independently rerun the harness against the agent's worktree
   to confirm it — there have been real cases where a human had to filter out an environment difference
