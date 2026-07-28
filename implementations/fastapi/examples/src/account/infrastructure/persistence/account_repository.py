@@ -46,6 +46,11 @@ class TransactionModel(Base):
     # has_transaction_with_reference). Absent (nullable) for a deposit/withdrawal the user
     # requested directly.
     reference_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
+    # The payee/memo optionally attached to a withdrawal at request time — see transaction.py.
+    merchant_name: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    # Filled in asynchronously by CategorizeTransactionEventHandler — null until that
+    # reaction runs (or forever, for a transaction with no merchant_name to classify).
+    category: Mapped[str | None] = mapped_column(nullable=True, default=None)
 
 
 class SqlAlchemyAccountRepository(AccountRepository):
@@ -118,6 +123,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
                     currency=transaction.amount.currency,
                     created_at=transaction.created_at,
                     reference_id=transaction.reference_id,
+                    merchant_name=transaction.merchant_name,
                 )
             )
 
@@ -170,6 +176,8 @@ class SqlAlchemyAccountRepository(AccountRepository):
                 amount=Money(r.amount, r.currency),
                 created_at=r.created_at,
                 reference_id=r.reference_id,
+                merchant_name=r.merchant_name,
+                category=r.category,  # type: ignore[arg-type]
             )
             for r in rows
         ]

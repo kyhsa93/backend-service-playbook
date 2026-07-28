@@ -33,6 +33,10 @@ class MoneyWithdrawn:
     amount: Money
     balance_after: Money
     created_at: datetime
+    # Carried through so CategorizeTransactionEventHandler doesn't need a separate lookup to
+    # react — the same reasoning as every other field on this event. Absent when the requester
+    # didn't attach one; the handler skips categorization entirely in that case.
+    merchant_name: str | None = None
 
 
 @dataclass(frozen=True)

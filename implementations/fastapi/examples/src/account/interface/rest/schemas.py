@@ -19,6 +19,12 @@ class DepositRequest(BaseModel):
 
 class WithdrawRequest(BaseModel):
     amount: int = Field(description="The amount to debit. Must be a positive integer.")
+    merchant_name: str | None = Field(
+        default=None,
+        min_length=1,
+        description="The payee/merchant this withdrawal is for, e.g. for spending categorization. Optional.",
+        examples=["Starbucks Gangnam"],
+    )
 
 
 class TransferRequest(BaseModel):
@@ -75,6 +81,17 @@ class TransactionSummaryResponse(BaseModel):
     type: str = Field(description="The transaction type (`DEPOSIT`, `WITHDRAWAL`, or `INTEREST`).")
     amount: MoneySchema = Field(description="The transaction amount.")
     created_at: datetime = Field(description="When the transaction was recorded, in UTC.")
+    merchant_name: str | None = Field(
+        default=None, description="The payee/merchant attached to this withdrawal, if any."
+    )
+    category: str | None = Field(
+        default=None,
+        description=(
+            "The auto-categorized spending category, if this is a categorized withdrawal. Filled in "
+            "asynchronously — absent until categorization completes."
+        ),
+        examples=["FOOD", "TRANSPORT", "SHOPPING", "HOUSING", "MEDICAL", "ENTERTAINMENT", "UTILITIES", "OTHER"],
+    )
 
 
 class GetTransactionsResponse(BaseModel):

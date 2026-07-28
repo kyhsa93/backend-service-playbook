@@ -27,6 +27,11 @@ class TransactionSummary:
     type: str
     amount: MoneyResult
     created_at: datetime
+    # The payee/memo attached to a withdrawal, if any, and the auto-categorized spending
+    # category, if this is a categorized withdrawal — filled in asynchronously, absent until
+    # CategorizeTransactionEventHandler's reaction completes.
+    merchant_name: str | None = None
+    category: str | None = None
 
 
 @dataclass

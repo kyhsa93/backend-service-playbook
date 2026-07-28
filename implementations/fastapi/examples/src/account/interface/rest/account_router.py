@@ -202,7 +202,12 @@ async def withdraw(
     repo: SqlAlchemyAccountRepository = Depends(_repo),
 ) -> TransactionResponse:
     transaction = await WithdrawHandler(repo).execute(
-        WithdrawCommand(account_id=account_id, requester_id=current_user.user_id, amount=body.amount)
+        WithdrawCommand(
+            account_id=account_id,
+            requester_id=current_user.user_id,
+            amount=body.amount,
+            merchant_name=body.merchant_name,
+        )
     )
     return TransactionResponse(
         transaction_id=transaction.transaction_id,
@@ -455,6 +460,8 @@ async def get_transactions(
                 "type": t.type,
                 "amount": {"amount": t.amount.amount, "currency": t.amount.currency},
                 "created_at": t.created_at,
+                "merchant_name": t.merchant_name,
+                "category": t.category,
             }
             for t in result.transactions
         ],

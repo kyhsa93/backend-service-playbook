@@ -46,6 +46,8 @@ class GetTransactionsHandler:
                     type=t.type,
                     amount=MoneyResult(amount=t.amount.amount, currency=t.amount.currency),
                     created_at=t.created_at,
+                    merchant_name=t.merchant_name,
+                    category=t.category,
                 )
                 for t in transactions
             ],

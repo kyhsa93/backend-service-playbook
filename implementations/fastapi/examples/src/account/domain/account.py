@@ -106,7 +106,7 @@ class Account:
         )
         return transaction
 
-    def withdraw(self, amount: int, reference_id: str | None = None) -> Transaction:
+    def withdraw(self, amount: int, reference_id: str | None = None, merchant_name: str | None = None) -> Transaction:
         if self.status != AccountStatus.ACTIVE:
             raise WithdrawRequiresActiveAccountError()
         if amount <= 0:
@@ -116,7 +116,9 @@ class Account:
             raise InsufficientBalanceError()
         self.balance = self.balance.subtract(money)
         self.updated_at = datetime.utcnow()
-        transaction = Transaction.create(self.account_id, "WITHDRAWAL", money, reference_id=reference_id)
+        transaction = Transaction.create(
+            self.account_id, "WITHDRAWAL", money, reference_id=reference_id, merchant_name=merchant_name
+        )
         self._pending_transactions.append(transaction)
         self._events.append(
             MoneyWithdrawn(
@@ -125,6 +127,7 @@ class Account:
                 email=self.email,
                 amount=money,
                 balance_after=self.balance,
+                merchant_name=merchant_name,
                 created_at=transaction.created_at,
             )
         )

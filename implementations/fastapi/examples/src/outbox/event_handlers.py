@@ -8,12 +8,15 @@ from ..account.application.event.account_closed_event_handler import AccountClos
 from ..account.application.event.account_created_event_handler import AccountCreatedEventHandler
 from ..account.application.event.account_reactivated_event_handler import AccountReactivatedEventHandler
 from ..account.application.event.account_suspended_event_handler import AccountSuspendedEventHandler
+from ..account.application.event.categorize_transaction_event_handler import CategorizeTransactionEventHandler
 from ..account.application.event.interest_paid_event_handler import InterestPaidEventHandler
 from ..account.application.event.money_deposited_event_handler import MoneyDepositedEventHandler
 from ..account.application.event.money_withdrawn_event_handler import MoneyWithdrawnEventHandler
 from ..account.domain.repository import AccountRepository
 from ..account.infrastructure.notification.notification_service import SesNotificationService
 from ..account.infrastructure.persistence.account_repository import SqlAlchemyAccountRepository
+from ..account.infrastructure.persistence.transaction_repository import SqlAlchemyTransactionRepository
+from ..account.infrastructure.transaction_auto_categorizer_impl import TransactionAutoCategorizerImpl
 from ..account.interface.integration_event.account_integration_event_controller import (
     AccountIntegrationEventController,
 )
@@ -32,8 +35,8 @@ from .outbox_writer import OutboxWriter
 EventHandlerFn = Callable[[dict], Awaitable[None]]
 
 
-def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
-    """Assembles the eventType (SQS `MessageAttributes.eventType`) → processing-function
+def build_event_handlers(session: AsyncSession) -> dict[str, list[EventHandlerFn]]:
+    """Assembles the eventType (SQS `MessageAttributes.eventType`) → processing-functions
     dict.
 
     OutboxConsumer routes the message it receives from SQS through this dict. This single
@@ -48,6 +51,11 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
     function is the composition root for all three BCs. OutboxConsumer calls this function
     for every message and reuses the assembly result.
 
+    Each eventType maps to a *list* of handlers — MoneyWithdrawn is the first event with two
+    subscribers (MoneyWithdrawnEventHandler for the SES notification, plus
+    CategorizeTransactionEventHandler for spending categorization). OutboxConsumer runs every
+    handler in the list for a delivery, even if an earlier one fails (see outbox_consumer.py).
+
     The session is opened fresh and passed in by the caller (OutboxConsumer) per message
     (a unit of work) — this function itself only assembles new Repository/Service instances
     on every call, and doesn't manage the session's lifecycle directly (following exactly
@@ -55,33 +63,38 @@ def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
     """
     account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
     card_repo: CardRepository = SqlAlchemyCardRepository(session)
+    transaction_repo = SqlAlchemyTransactionRepository(session)
     notification_service = SesNotificationService(session)
     card_notification_service = CardSesNotificationService(session)
     outbox_writer = OutboxWriter(session)
     card_integration_event_controller = CardIntegrationEventController(card_repo)
     account_integration_event_controller = AccountIntegrationEventController(account_repo)
+    transaction_auto_categorizer = TransactionAutoCategorizerImpl()
 
     return {
-        "AccountCreated": AccountCreatedEventHandler(notification_service).handle,
-        "MoneyDeposited": MoneyDepositedEventHandler(notification_service).handle,
-        "MoneyWithdrawn": MoneyWithdrawnEventHandler(notification_service).handle,
-        "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
-        "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
-        "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
+        "AccountCreated": [AccountCreatedEventHandler(notification_service).handle],
+        "MoneyDeposited": [MoneyDepositedEventHandler(notification_service).handle],
+        "MoneyWithdrawn": [
+            MoneyWithdrawnEventHandler(notification_service).handle,
+            CategorizeTransactionEventHandler(transaction_auto_categorizer, transaction_repo).handle,
+        ],
+        "AccountSuspended": [AccountSuspendedEventHandler(notification_service, outbox_writer).handle],
+        "AccountReactivated": [AccountReactivatedEventHandler(notification_service).handle],
+        "AccountClosed": [AccountClosedEventHandler(notification_service, outbox_writer).handle],
         # The Domain Event the regular interest-payment batch (scheduling.md) publishes via
         # Account.apply_interest() — rides the exact same SES notification path as other
         # Account events.
-        "InterestPaid": InterestPaidEventHandler(notification_service).handle,
-        "account.suspended.v1": card_integration_event_controller.on_account_suspended,
-        "account.closed.v1": card_integration_event_controller.on_account_closed,
+        "InterestPaid": [InterestPaidEventHandler(notification_service).handle],
+        "account.suspended.v1": [card_integration_event_controller.on_account_suspended],
+        "account.closed.v1": [card_integration_event_controller.on_account_closed],
         # The Domain Event the monthly card-statement delivery batch publishes via
         # Card.send_statement() — the Card BC's first Domain Event (the same flow as
         # domain-events.md, with its own dedicated CardNotificationService).
-        "CardStatementSent": CardStatementSentEventHandler(card_notification_service).handle,
-        "PaymentCompleted": PaymentCompletedEventHandler(outbox_writer).handle,
-        "PaymentCancelled": PaymentCancelledEventHandler(outbox_writer).handle,
-        "RefundApproved": RefundApprovedEventHandler(outbox_writer).handle,
-        "payment.completed.v1": account_integration_event_controller.on_payment_completed,
-        "payment.cancelled.v1": account_integration_event_controller.on_payment_cancelled,
-        "refund.approved.v1": account_integration_event_controller.on_refund_approved,
+        "CardStatementSent": [CardStatementSentEventHandler(card_notification_service).handle],
+        "PaymentCompleted": [PaymentCompletedEventHandler(outbox_writer).handle],
+        "PaymentCancelled": [PaymentCancelledEventHandler(outbox_writer).handle],
+        "RefundApproved": [RefundApprovedEventHandler(outbox_writer).handle],
+        "payment.completed.v1": [account_integration_event_controller.on_payment_completed],
+        "payment.cancelled.v1": [account_integration_event_controller.on_payment_cancelled],
+        "refund.approved.v1": [account_integration_event_controller.on_refund_approved],
     }

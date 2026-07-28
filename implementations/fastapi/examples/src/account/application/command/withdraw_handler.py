@@ -10,6 +10,7 @@ class WithdrawCommand:
     account_id: str
     requester_id: str
     amount: int
+    merchant_name: str | None = None
 
 
 class WithdrawHandler:
@@ -23,6 +24,6 @@ class WithdrawHandler:
         account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
-        transaction = account.withdraw(cmd.amount)
+        transaction = account.withdraw(cmd.amount, merchant_name=cmd.merchant_name)
         await self._repo.save_account(account)
         return transaction

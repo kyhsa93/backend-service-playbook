@@ -78,11 +78,33 @@ class OutboxConsumer:
             with tracer.start_as_current_span("outbox.process_event", context=context):
                 payload = json.loads(message.get("Body", "{}"))
                 async with self._session_factory() as session:
-                    handler = build_event_handlers(session).get(event_type)
-                    if handler is None:
+                    handlers = build_event_handlers(session).get(event_type)
+                    if not handlers:
                         raise ValueError(f"No registered handler: {event_type}")
-                    await handler(payload)
+
+                    # Each handler is independent — one subscriber's failure must not prevent
+                    # a sibling subscriber on the same eventType from running (the 1:N contract
+                    # documented in domain-events.md). Every handler still gets a chance to run
+                    # on every delivery; the message is only deleted (acked) below once none of
+                    # them failed, so SQS redelivers it otherwise — each handler must already be
+                    # idempotent for that redelivery.
+                    errors: list[Exception] = []
+                    for handler in handlers:
+                        try:
+                            await handler(payload)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as error:  # noqa: BLE001 - collected, not swallowed; see below
+                            logger.exception(
+                                "A handler failed for event_type=%s handler=%s",
+                                event_type,
+                                getattr(handler, "__qualname__", handler),
+                            )
+                            errors.append(error)
+
                     await session.commit()
+                    if errors:
+                        raise errors[0]
 
             await sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
         except asyncio.CancelledError:

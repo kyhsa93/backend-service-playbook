@@ -103,6 +103,31 @@ def test_withdraw_decreases_balance_and_collects_a_MoneyWithdrawn_event_on_succe
     assert any(isinstance(e, MoneyWithdrawn) for e in events)
 
 
+def test_withdraw_with_a_merchant_name_attaches_it_to_the_transaction_and_the_MoneyWithdrawn_event() -> None:
+    account = make_active_account()
+    account.deposit(1000)
+    account.pull_events()
+
+    transaction = account.withdraw(400, merchant_name="Starbucks Gangnam")
+
+    assert transaction.merchant_name == "Starbucks Gangnam"
+    assert transaction.category is None
+    event = next(e for e in account.pull_events() if isinstance(e, MoneyWithdrawn))
+    assert event.merchant_name == "Starbucks Gangnam"
+
+
+def test_withdraw_without_a_merchant_name_leaves_it_absent_on_the_transaction_and_the_event() -> None:
+    account = make_active_account()
+    account.deposit(1000)
+    account.pull_events()
+
+    transaction = account.withdraw(400)
+
+    assert transaction.merchant_name is None
+    event = next(e for e in account.pull_events() if isinstance(e, MoneyWithdrawn))
+    assert event.merchant_name is None
+
+
 def test_suspend_an_active_account_becomes_suspended_and_collects_an_AccountSuspended_event() -> None:
     account = make_active_account()
     account.pull_events()
