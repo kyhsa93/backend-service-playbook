@@ -2,6 +2,8 @@ package com.example.accountservice.account.infrastructure.persistence
 
 import com.example.accountservice.account.domain.Transaction
 import com.example.accountservice.account.domain.TransactionRepository
+import com.example.accountservice.account.domain.TransactionType
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
@@ -26,4 +28,17 @@ class TransactionRepositoryImpl(
                 ?: TransactionMapper.toNewEntity(transaction)
         jpaRepository.save(entity)
     }
+
+    override fun findRecentWithdrawalAmounts(
+        accountId: String,
+        excludeTransactionId: String,
+        limit: Int,
+    ): List<Long> =
+        jpaRepository
+            .findByAccountIdAndTypeAndTransactionIdNotOrderByCreatedAtDesc(
+                accountId,
+                TransactionType.WITHDRAWAL,
+                excludeTransactionId,
+                PageRequest.of(0, limit),
+            ).map { it.amount.amount }
 }

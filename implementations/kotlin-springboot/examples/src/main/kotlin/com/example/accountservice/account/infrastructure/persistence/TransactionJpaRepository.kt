@@ -1,6 +1,7 @@
 package com.example.accountservice.account.infrastructure.persistence
 
 import com.example.accountservice.account.domain.TransactionType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface TransactionJpaRepository : JpaRepository<TransactionJpaEntity, Long> {
@@ -16,4 +17,14 @@ interface TransactionJpaRepository : JpaRepository<TransactionJpaEntity, Long> {
     // Used only by TaskQueueE2ETest to backdate a transaction's createdAt into "last month" — the
     // domain has no legitimate use case for changing a Transaction's timestamp after the fact.
     fun findByTransactionId(transactionId: String): TransactionJpaEntity?
+
+    // Backs TransactionRepositoryImpl.findRecentWithdrawalAmounts — the training data for
+    // AnomalyDetectionService. transactionId (not id) is excluded since that's the domain-facing
+    // identifier DetectWithdrawalAnomalyEventHandler receives on the event.
+    fun findByAccountIdAndTypeAndTransactionIdNotOrderByCreatedAtDesc(
+        accountId: String,
+        type: TransactionType,
+        transactionId: String,
+        pageable: Pageable,
+    ): List<TransactionJpaEntity>
 }

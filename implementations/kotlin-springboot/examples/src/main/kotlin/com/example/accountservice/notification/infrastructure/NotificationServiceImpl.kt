@@ -29,11 +29,15 @@ class NotificationServiceImpl(
         subject: String,
         body: String,
     ) {
-        // Level 2 (Ledger) idempotency — if this Outbox event has already resulted in an email being
-        // sent, don't resend it. If the SES call succeeds while the relay retries at-least-once, but the
-        // process dies before the processed=true commit, this check prevents a duplicate send on the
-        // next retry.
-        if (sentEmailJpaRepository.existsBySourceEventId(sourceEventId)) {
+        // Level 2 (Ledger) idempotency — if this (Outbox event, eventType) pair has already resulted
+        // in an email being sent, don't resend it. If the SES call succeeds while the relay retries
+        // at-least-once, but the process dies before the processed=true commit, this check prevents a
+        // duplicate send on the next retry. Scoped to (sourceEventId, eventType) rather than
+        // sourceEventId alone, since more than one Handler may subscribe to the same eventType and
+        // each legitimately sends its own distinct email for the same Outbox delivery (see
+        // DetectWithdrawalAnomalyEventHandler, a second MoneyWithdrawnEvent subscriber besides
+        // MoneyWithdrawnEventHandler that also sends an email).
+        if (sentEmailJpaRepository.existsBySourceEventIdAndEventType(sourceEventId, eventType)) {
             logger
                 .atInfo()
                 .addKeyValue("account_id", accountId)

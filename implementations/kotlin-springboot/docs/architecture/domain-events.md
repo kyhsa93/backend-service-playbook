@@ -419,7 +419,7 @@ override fun sendEmail(
     subject: String,
     body: String,
 ) {
-    if (sentEmailJpaRepository.existsBySourceEventId(sourceEventId)) {
+    if (sentEmailJpaRepository.existsBySourceEventIdAndEventType(sourceEventId, eventType)) {
         logger.atInfo() /* ... */ .log("Event already sent — skipping duplicate send")
         return
     }
@@ -429,8 +429,15 @@ override fun sendEmail(
 ```
 
 `sourceEventId` is the Outbox row's `eventId` that `EventHandlerRegistry.dispatch()` passes through —
-the `sent_emails` table's `source_event_id` column (a unique constraint) plays the role of the Ledger.
-All 6 EventHandlers receive `eventId` via `handle(event, eventId)` and pass it straight through.
+every EventHandler receives `eventId` via `handle(event, eventId)` and passes it straight through. The
+Ledger key is the **composite** `(source_event_id, event_type)` (a composite unique constraint on the
+`sent_emails` table), not `source_event_id` alone: since `MoneyWithdrawnEvent` now has two subscribers
+that both call `sendEmail` (`MoneyWithdrawnEventHandler` for `eventType=MoneyWithdrawn`,
+`DetectWithdrawalAnomalyEventHandler` for `eventType=WithdrawalAnomalyDetected`), both calls carry the
+*same* `sourceEventId` (the one shared Outbox delivery) but must **not** dedupe against each other — a
+single-column `source_event_id` unique constraint would have silently dropped the second handler's
+distinct, legitimate email as a "duplicate" of the first. A retried delivery of the *same* handler still
+collides on the same `(sourceEventId, eventType)` pair, so it's still deduped correctly.
 
 See [root domain-events.md — Event Handler Idempotency](../../../../docs/architecture/domain-events.md#event-handler-idempotency) for the detailed 3-tier strategy.
 

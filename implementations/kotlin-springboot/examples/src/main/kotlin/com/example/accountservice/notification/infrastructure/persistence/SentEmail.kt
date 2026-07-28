@@ -7,10 +7,28 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
 
+/**
+ * The Level 2 (Ledger) idempotency key is the composite (sourceEventId, eventType), not
+ * sourceEventId alone — one Outbox delivery (one sourceEventId) can legitimately result in more
+ * than one distinct email when more than one Handler subscribes to that eventType (see
+ * DetectWithdrawalAnomalyEventHandler, the first case of this: MoneyWithdrawnEvent's
+ * eventId is shared by both MoneyWithdrawnEventHandler's "MoneyWithdrawn" email and this
+ * handler's "WithdrawalAnomalyDetected" alert). A retried delivery of the same handler still
+ * collides on the same (sourceEventId, eventType) pair, so it's still deduped correctly.
+ */
 @Entity
-@Table(name = "sent_emails")
+@Table(
+    name = "sent_emails",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_sent_emails_source_event_id_event_type",
+            columnNames = ["source_event_id", "event_type"],
+        ),
+    ],
+)
 class SentEmail protected constructor() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -29,7 +47,7 @@ class SentEmail protected constructor() {
     var eventType: String = ""
         private set
 
-    @Column(name = "source_event_id", nullable = false, unique = true)
+    @Column(name = "source_event_id", nullable = false)
     var sourceEventId: String = ""
         private set
 

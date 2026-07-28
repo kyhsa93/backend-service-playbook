@@ -5,6 +5,7 @@ import com.example.accountservice.account.application.event.AccountCreatedEventH
 import com.example.accountservice.account.application.event.AccountReactivatedEventHandler
 import com.example.accountservice.account.application.event.AccountSuspendedEventHandler
 import com.example.accountservice.account.application.event.CategorizeTransactionEventHandler
+import com.example.accountservice.account.application.event.DetectWithdrawalAnomalyEventHandler
 import com.example.accountservice.account.application.event.InterestPaidEventHandler
 import com.example.accountservice.account.application.event.MoneyDepositedEventHandler
 import com.example.accountservice.account.application.event.MoneyWithdrawnEventHandler
@@ -29,9 +30,10 @@ import java.time.LocalDateTime
 /**
  * MoneyWithdrawnEvent is this codebase's first eventType with more than one subscriber
  * (MoneyWithdrawnEventHandler for the notification email, CategorizeTransactionEventHandler for
- * spending categorization) — see the class doc on EventHandlerRegistry for why the routing table had
- * to change shape (Map<String, ...> -> Map<String, List<...>>) to support this without silently
- * dropping one of the two handlers.
+ * spending categorization, and DetectWithdrawalAnomalyEventHandler for the anomaly alert — now 3
+ * subscribers) — see the class doc on EventHandlerRegistry for why the routing table had to change
+ * shape (Map<String, ...> -> Map<String, List<...>>) to support this without silently dropping any
+ * of them.
  */
 class EventHandlerRegistryTest {
     // findAndRegisterModules() picks up jackson-datatype-jsr310 (LocalDateTime support), and
@@ -45,6 +47,7 @@ class EventHandlerRegistryTest {
         }
     private val moneyWithdrawnEventHandler = mockk<MoneyWithdrawnEventHandler>(relaxed = true)
     private val categorizeTransactionEventHandler = mockk<CategorizeTransactionEventHandler>(relaxed = true)
+    private val detectWithdrawalAnomalyEventHandler = mockk<DetectWithdrawalAnomalyEventHandler>(relaxed = true)
     private lateinit var registry: EventHandlerRegistry
 
     @BeforeEach
@@ -56,6 +59,7 @@ class EventHandlerRegistryTest {
                 moneyDepositedEventHandler = mockk<MoneyDepositedEventHandler>(relaxed = true),
                 moneyWithdrawnEventHandler = moneyWithdrawnEventHandler,
                 categorizeTransactionEventHandler = categorizeTransactionEventHandler,
+                detectWithdrawalAnomalyEventHandler = detectWithdrawalAnomalyEventHandler,
                 accountSuspendedEventHandler = mockk<AccountSuspendedEventHandler>(relaxed = true),
                 accountReactivatedEventHandler = mockk<AccountReactivatedEventHandler>(relaxed = true),
                 accountClosedEventHandler = mockk<AccountClosedEventHandler>(relaxed = true),
@@ -87,16 +91,18 @@ class EventHandlerRegistryTest {
 
         verify(exactly = 1) { moneyWithdrawnEventHandler.handle(any(), "event-1") }
         verify(exactly = 1) { categorizeTransactionEventHandler.handle(any()) }
+        verify(exactly = 1) { detectWithdrawalAnomalyEventHandler.handle(any(), "event-1") }
     }
 
     @Test
-    fun `when one handler throws, the sibling handler for the same eventType still runs`() {
+    fun `when one handler throws, the sibling handlers for the same eventType still run`() {
         every { moneyWithdrawnEventHandler.handle(any(), any()) } throws RuntimeException("boom")
 
         assertThatThrownBy { registry.dispatch("MoneyWithdrawnEvent", "event-1", payload()) }
             .hasMessageContaining("boom")
 
         verify(exactly = 1) { categorizeTransactionEventHandler.handle(any()) }
+        verify(exactly = 1) { detectWithdrawalAnomalyEventHandler.handle(any(), "event-1") }
     }
 
     @Test

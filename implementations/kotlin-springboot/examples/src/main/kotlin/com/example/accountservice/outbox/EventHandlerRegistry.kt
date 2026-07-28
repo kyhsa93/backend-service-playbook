@@ -5,6 +5,7 @@ import com.example.accountservice.account.application.event.AccountCreatedEventH
 import com.example.accountservice.account.application.event.AccountReactivatedEventHandler
 import com.example.accountservice.account.application.event.AccountSuspendedEventHandler
 import com.example.accountservice.account.application.event.CategorizeTransactionEventHandler
+import com.example.accountservice.account.application.event.DetectWithdrawalAnomalyEventHandler
 import com.example.accountservice.account.application.event.InterestPaidEventHandler
 import com.example.accountservice.account.application.event.MoneyDepositedEventHandler
 import com.example.accountservice.account.application.event.MoneyWithdrawnEventHandler
@@ -48,7 +49,8 @@ import org.springframework.stereotype.Component
  *
  * More than one handler may subscribe to the same eventType — `MoneyWithdrawnEvent` is the first
  * example (`MoneyWithdrawnEventHandler` for the notification email, `CategorizeTransactionEventHandler`
- * for spending categorization). This is why the routing table is `Map<String, List<...>>` rather than
+ * for spending categorization, and `DetectWithdrawalAnomalyEventHandler` for the anomaly alert — the
+ * 3rd subscriber). This is why the routing table is `Map<String, List<...>>` rather than
  * `Map<String, ...>` — a plain `mapOf(...)` literal with a duplicate key would have silently kept only
  * the last handler registered for that eventType with no error at all, dropping the earlier one
  * entirely, which is exactly the bug this repository's own docs/architecture/domain-events.md warns
@@ -67,6 +69,7 @@ class EventHandlerRegistry(
     private val moneyDepositedEventHandler: MoneyDepositedEventHandler,
     private val moneyWithdrawnEventHandler: MoneyWithdrawnEventHandler,
     private val categorizeTransactionEventHandler: CategorizeTransactionEventHandler,
+    private val detectWithdrawalAnomalyEventHandler: DetectWithdrawalAnomalyEventHandler,
     private val accountSuspendedEventHandler: AccountSuspendedEventHandler,
     private val accountReactivatedEventHandler: AccountReactivatedEventHandler,
     private val accountClosedEventHandler: AccountClosedEventHandler,
@@ -102,6 +105,9 @@ class EventHandlerRegistry(
             },
             "MoneyWithdrawnEvent" to { _, payload ->
                 categorizeTransactionEventHandler.handle(objectMapper.readValue(payload, MoneyWithdrawnEvent::class.java))
+            },
+            "MoneyWithdrawnEvent" to { eventId, payload ->
+                detectWithdrawalAnomalyEventHandler.handle(objectMapper.readValue(payload, MoneyWithdrawnEvent::class.java), eventId)
             },
             "AccountSuspendedEvent" to { eventId, payload ->
                 accountSuspendedEventHandler.handle(objectMapper.readValue(payload, AccountSuspendedEvent::class.java), eventId)
