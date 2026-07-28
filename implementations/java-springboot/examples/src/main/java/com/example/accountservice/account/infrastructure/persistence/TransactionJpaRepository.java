@@ -1,7 +1,9 @@
 package com.example.accountservice.account.infrastructure.persistence;
 
 import com.example.accountservice.account.domain.TransactionType;
+import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TransactionJpaRepository extends JpaRepository<TransactionJpaEntity, Long> {
@@ -18,4 +20,10 @@ public interface TransactionJpaRepository extends JpaRepository<TransactionJpaEn
     // account/domain/TransactionRepository.java) — CategorizeTransactionEventHandler's only lookup
     // path.
     Optional<TransactionJpaEntity> findByTransactionId(String transactionId);
+
+    // Backs TransactionRepositoryImpl#findRecentWithdrawalAmounts — the training data for
+    // AnomalyDetectionService. transactionId (not id) is excluded since that's the domain-facing
+    // identifier DetectWithdrawalAnomalyEventHandler receives on the event.
+    List<TransactionJpaEntity> findByAccountIdAndTypeAndTransactionIdNotOrderByCreatedAtDesc(
+            String accountId, TransactionType type, String transactionId, Pageable pageable);
 }

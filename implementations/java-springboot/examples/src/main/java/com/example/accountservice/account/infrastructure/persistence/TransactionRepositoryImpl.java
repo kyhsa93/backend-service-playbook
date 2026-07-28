@@ -2,7 +2,10 @@ package com.example.accountservice.account.infrastructure.persistence;
 
 import com.example.accountservice.account.domain.Transaction;
 import com.example.accountservice.account.domain.TransactionRepository;
+import com.example.accountservice.account.domain.TransactionType;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,5 +37,19 @@ public class TransactionRepositoryImpl implements TransactionRepository {
                         .map(existing -> TransactionMapper.updateEntity(existing, transaction))
                         .orElseGet(() -> TransactionMapper.toNewEntity(transaction));
         jpaRepository.save(entity);
+    }
+
+    @Override
+    public List<Long> findRecentWithdrawalAmounts(
+            String accountId, String excludeTransactionId, int limit) {
+        return jpaRepository
+                .findByAccountIdAndTypeAndTransactionIdNotOrderByCreatedAtDesc(
+                        accountId,
+                        TransactionType.WITHDRAWAL,
+                        excludeTransactionId,
+                        PageRequest.of(0, limit))
+                .stream()
+                .map(entity -> entity.getAmount().amount())
+                .toList();
     }
 }
