@@ -289,6 +289,48 @@ benchmark needs to check "does it actually work," not just "does it follow the s
   Handler only uses a single Repository), it wasn't merged, to avoid it becoming dead code — only the design
   validation result was recorded on the issue.
 
+## Run — comparing models (Sonnet vs. Haiku)
+
+Every run above used the same model, varying only the language or the task's difficulty. This run held
+the language (nestjs) and the task fixed, and varied only the model, to test whether "read the
+architecture docs and follow the structure" depends on model scale — the "Comparing across models" idea
+from "How to extend this" below, actually run for the first time.
+
+Task: a level-4-style domain, **SavingsPocket** (`ownerId`/`accountId`/`label`, `ACTIVE` on creation). If
+the referenced Account is later suspended, the SavingsPocket must automatically become `FROZEN`; if closed,
+`CLOSED`. The reaction must happen automatically when the Account's status changes, never via a direct API
+call on SavingsPocket itself. Both agents got only this rule and `implementations/nestjs/CLAUDE.md` as the
+entry point — identically, run simultaneously in separate git worktrees so neither could see the other's
+work.
+
+| Model | Harness self-report | Independent re-verification | E2E self-report | Independent E2E rerun |
+|---|---|---|---|---|
+| Sonnet | A(100/100, raw 895/895) | 895/895 — matches | "6/6 passed, repeated 3x; full e2e suite 89/89, no regression" | **6/6 passed** — reproduced exactly against real Postgres+LocalStack |
+| Haiku | A(100/100, raw 875/875) | 875/875 — matches (the 2 failures are the always-present low-severity informational entries, not real defects) | "event registrations are correct and handlers are properly wired" (never actually claimed the test run passed) | **3/3 FAILED** — status stayed `ACTIVE`; the handler's own log line never printed, meaning it was never invoked |
+
+**Both models produced a perfect harness score, but only one of them actually worked.** Sonnet's
+implementation was independently reproduced end-to-end: suspending/closing a real Account via its real HTTP
+API actually flips the linked SavingsPocket to `FROZEN`/`CLOSED` through the real Outbox → SQS →
+OutboxConsumer path. Haiku's implementation wired the same architectural pattern (Integration Event
+subscription via `EventHandlerRegistry`, correctly even supporting the existing 1:N contract) — completely
+plausible on inspection, and the harness (which only checks structure, not behavior) had no way to catch
+that it doesn't work — but independently rerunning the E2E test Haiku itself wrote showed all 3 assertions
+failing.
+
+Root-caused why: Haiku's own e2e test file didn't override `NotificationService` with a no-op stub the way
+every existing e2e test in this repo does (e.g. `card.e2e-spec.ts`) — instead it tried to make real SES
+delivery work via a LocalStack email-identity verification call. Whether that specific choice was the exact
+mechanism or a symptom of a broader setup issue wasn't chased further, since the decisive finding — the
+reaction the task asked for measurably doesn't happen — was already independently confirmed. Notably, this
+is not a defect in this repo's shared harness/docs/scaffolding (unlike several earlier rounds in this
+document) — it's a mistake inside code Haiku itself wrote, so there was nothing to fix in the repo itself;
+neither worktree was merged.
+
+**This is exactly the failure mode `docs/harness.md`'s design principle warns about, caught by the
+methodology working as designed**: a 100/100 structural score coexisting with completely broken behavior,
+undetectable without the separate step of actually running the code against real infrastructure and
+independently reproducing the agent's own claimed proof rather than trusting the self-report.
+
 ## How to extend this
 
 - **Comparing across languages**: run the same task on each of the 5 languages and put the normalized scores
