@@ -3,8 +3,12 @@ package com.example.accountservice.account.infrastructure.persistence;
 import com.example.accountservice.account.application.query.SpendingAnalysisQuery;
 import com.example.accountservice.account.domain.SpendingAnalysis;
 import com.example.accountservice.account.domain.SpendingAnalysisRepository;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,5 +41,19 @@ public class SpendingAnalysisRepositoryImpl
         return jpaRepository
                 .findByAccountIdAndAnalysisMonth(accountId, analysisMonth)
                 .map(SpendingAnalysisMapper::toDomain);
+    }
+
+    @Override
+    public List<SpendingAnalysis> findRecentAnalyses(
+            String accountId, String beforeMonth, int limit) {
+        List<SpendingAnalysisJpaEntity> rows =
+                jpaRepository.findByAccountIdAndAnalysisMonthLessThanOrderByAnalysisMonthDesc(
+                        accountId, beforeMonth, PageRequest.of(0, limit));
+        // Reversed to chronological (oldest-first) order — SpendingForecastModel#predict treats
+        // list position as the month index.
+        List<SpendingAnalysis> chronological =
+                new ArrayList<>(rows.stream().map(SpendingAnalysisMapper::toDomain).toList());
+        Collections.reverse(chronological);
+        return chronological;
     }
 }
