@@ -147,6 +147,19 @@ definitions:
           $ref: '#/definitions/http.PaymentResponse'
         type: array
     type: object
+  http.GetRefundReasonInsightsResponse:
+    properties:
+      counts:
+        description: A count per category, for refunds that have been classified so
+          far — omits categories with 0 refunds.
+        items:
+          $ref: '#/definitions/http.RefundReasonCategoryCount'
+        type: array
+      totalClassified:
+        description: The total number of classified refunds across all categories
+          in the requested range.
+        type: integer
+    type: object
   http.GetRefundsResponse:
     properties:
       count:
@@ -260,6 +273,16 @@ definitions:
         description: The payment status (`COMPLETED` or `CANCELLED`).
         type: string
     type: object
+  http.RefundReasonCategoryCount:
+    properties:
+      category:
+        description: A refund-reason category.
+        type: string
+      count:
+        description: How many classified refunds fall into this category, in the requested
+          range.
+        type: integer
+    type: object
   http.RefundResponse:
     properties:
       amount:
@@ -276,6 +299,11 @@ definitions:
         type: string
       reason:
         description: Why the refund was requested.
+        type: string
+      reasonCategory:
+        description: The auto-classified reason category (e.g. `DEFECTIVE_PRODUCT`,
+          `CHANGED_MIND`), filled in asynchronously — absent until classification
+          completes. Ops-analytics only; never affects the eligibility decision above.
         type: string
       refundId:
         description: The refund request's ID.
@@ -345,8 +373,17 @@ definitions:
         allOf:
         - $ref: '#/definitions/http.MoneyResponse'
         description: The transaction amount.
+      category:
+        description: The auto-categorized spending category (`FOOD`, `TRANSPORT`,
+          `SHOPPING`, `HOUSING`, `MEDICAL`, `ENTERTAINMENT`, `UTILITIES`, or `OTHER`),
+          if this is a categorized withdrawal. Filled in asynchronously — absent until
+          categorization completes.
+        type: string
       createdAt:
         description: When the transaction was recorded.
+        type: string
+      merchantName:
+        description: The payee/merchant attached to this withdrawal, if any.
         type: string
       transactionId:
         description: The transaction record's ID.
@@ -387,6 +424,10 @@ definitions:
         description: The amount to debit. Must be a positive integer not exceeding
           the current balance.
         type: integer
+      merchantName:
+        description: The payee/merchant this withdrawal is for, e.g. for spending
+          categorization. Optional.
+        type: string
     type: object
 info:
   contact: {}
@@ -1245,6 +1286,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Request a refund
+      tags:
+      - Payment
+  /refunds/reason-insights:
+    get:
+      description: Returns how many refunds fall into each auto-classified reason
+        category (e.g. DEFECTIVE_PRODUCT, CHANGED_MIND), optionally narrowed to a
+        date range. Classification runs asynchronously after a refund is requested
+        and never influences whether that refund is approved — this is a read-only
+        reporting view across every refund, not scoped to the caller's own payments.
+      parameters:
+      - description: Only count refunds requested on/after this date (inclusive),
+          as YYYY-MM-DD
+        in: query
+        name: fromDate
+        type: string
+      - description: Only count refunds requested on/before this date (inclusive),
+          as YYYY-MM-DD
+        in: query
+        name: toDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The insights were computed.
+          schema:
+            $ref: '#/definitions/http.GetRefundReasonInsightsResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. `fromDate`/`toDate`
+            is not a valid date.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get refund-reason category counts for ops analytics
       tags:
       - Payment
 securityDefinitions:

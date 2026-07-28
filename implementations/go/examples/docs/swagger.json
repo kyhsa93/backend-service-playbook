@@ -1239,6 +1239,57 @@
                     }
                 }
             }
+        },
+        "/refunds/reason-insights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns how many refunds fall into each auto-classified reason category (e.g. DEFECTIVE_PRODUCT, CHANGED_MIND), optionally narrowed to a date range. Classification runs asynchronously after a refund is requested and never influences whether that refund is approved — this is a read-only reporting view across every refund, not scoped to the caller's own payments.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment"
+                ],
+                "summary": "Get refund-reason category counts for ops analytics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only count refunds requested on/after this date (inclusive), as YYYY-MM-DD",
+                        "name": "fromDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only count refunds requested on/before this date (inclusive), as YYYY-MM-DD",
+                        "name": "toDate",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The insights were computed.",
+                        "schema": {
+                            "$ref": "#/definitions/http.GetRefundReasonInsightsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. `fromDate`/`toDate` is not a valid date.",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "The bearer token is missing, malformed, or invalid.",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1444,6 +1495,22 @@
                 }
             }
         },
+        "http.GetRefundReasonInsightsResponse": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "description": "A count per category, for refunds that have been classified so far — omits categories with 0 refunds.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RefundReasonCategoryCount"
+                    }
+                },
+                "totalClassified": {
+                    "description": "The total number of classified refunds across all categories in the requested range.",
+                    "type": "integer"
+                }
+            }
+        },
         "http.GetRefundsResponse": {
             "type": "object",
             "properties": {
@@ -1593,6 +1660,19 @@
                 }
             }
         },
+        "http.RefundReasonCategoryCount": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "description": "A refund-reason category.",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "How many classified refunds fall into this category, in the requested range.",
+                    "type": "integer"
+                }
+            }
+        },
         "http.RefundResponse": {
             "type": "object",
             "properties": {
@@ -1614,6 +1694,10 @@
                 },
                 "reason": {
                     "description": "Why the refund was requested.",
+                    "type": "string"
+                },
+                "reasonCategory": {
+                    "description": "The auto-classified reason category (e.g. `DEFECTIVE_PRODUCT`, `CHANGED_MIND`), filled in asynchronously — absent until classification completes. Ops-analytics only; never affects the eligibility decision above.",
                     "type": "string"
                 },
                 "refundId": {
@@ -1714,8 +1798,16 @@
                         }
                     ]
                 },
+                "category": {
+                    "description": "The auto-categorized spending category (`FOOD`, `TRANSPORT`, `SHOPPING`, `HOUSING`, `MEDICAL`, `ENTERTAINMENT`, `UTILITIES`, or `OTHER`), if this is a categorized withdrawal. Filled in asynchronously — absent until categorization completes.",
+                    "type": "string"
+                },
                 "createdAt": {
                     "description": "When the transaction was recorded.",
+                    "type": "string"
+                },
+                "merchantName": {
+                    "description": "The payee/merchant attached to this withdrawal, if any.",
                     "type": "string"
                 },
                 "transactionId": {
@@ -1772,6 +1864,10 @@
                 "amount": {
                     "description": "The amount to debit. Must be a positive integer not exceeding the current balance.",
                     "type": "integer"
+                },
+                "merchantName": {
+                    "description": "The payee/merchant this withdrawal is for, e.g. for spending categorization. Optional.",
+                    "type": "string"
                 }
             }
         }
