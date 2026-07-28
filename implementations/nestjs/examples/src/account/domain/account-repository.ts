@@ -36,4 +36,12 @@ export abstract class AccountRepository {
     readonly createdAtFrom: Date
     readonly createdAtTo: Date
   }): Promise<{ count: number; totalAmount: number }>
+
+  // The training data for AnomalyDetectionService — the account's own recent WITHDRAWAL amounts
+  // (oldest-to-newest order doesn't matter here, unlike SpendingAnalysisRepository.
+  // findRecentAnalyses, since the Domain Service only computes a mean/stddev over the set).
+  // excludeTransactionId is the withdrawal being judged itself — by the time
+  // DetectWithdrawalAnomalyHandler runs (after the Outbox has delivered MoneyWithdrawn), that
+  // transaction is already persisted, so it must be excluded or it would skew its own baseline.
+  abstract findRecentWithdrawalAmounts(accountId: string, excludeTransactionId: string, limit: number): Promise<number[]>
 }

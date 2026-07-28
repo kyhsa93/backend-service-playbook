@@ -111,4 +111,18 @@ export class AccountRepositoryImpl extends AccountRepository {
 
     return { count: Number(row?.count ?? 0), totalAmount: Number(row?.totalAmount ?? 0) }
   }
+
+  public async findRecentWithdrawalAmounts(accountId: string, excludeTransactionId: string, limit: number): Promise<number[]> {
+    const manager = this.transactionManager.getManager()
+    const rows = await manager.createQueryBuilder(TransactionEntity, 'transaction')
+      .select('transaction.amount', 'amount')
+      .where('transaction.accountId = :accountId', { accountId })
+      .andWhere('transaction.type = :type', { type: 'WITHDRAWAL' satisfies TransactionType })
+      .andWhere('transaction.transactionId != :excludeTransactionId', { excludeTransactionId })
+      .orderBy('transaction.createdAt', 'DESC')
+      .limit(limit)
+      .getRawMany<{ amount: number }>()
+
+    return rows.map((row) => row.amount)
+  }
 }

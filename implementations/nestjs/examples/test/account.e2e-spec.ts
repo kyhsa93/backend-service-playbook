@@ -5,7 +5,9 @@ import { Test } from '@nestjs/testing'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { SESClient, VerifyEmailIdentityCommand } from '@aws-sdk/client-ses'
 import request from 'supertest'
+import { DataSource } from 'typeorm'
 
 import { AccountModule } from '@/account/account-module'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
@@ -28,6 +30,7 @@ describe('AccountController (e2e)', () => {
   let container: StartedPostgreSqlContainer
   let localstack: StartedLocalStackContainer
   let app: INestApplication
+  let dataSource: DataSource
 
   const OWNER_ID = 'owner-1'
   const OTHER_OWNER_ID = 'owner-2'
@@ -50,7 +53,7 @@ describe('AccountController (e2e)', () => {
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start()
     localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'sqs' })
+      .withEnvironment({ SERVICES: 'sqs,ses' })
       .start()
 
     const sqsEndpoint = localstack.getConnectionUri()
@@ -60,6 +63,10 @@ describe('AccountController (e2e)', () => {
     process.env.AWS_SECRET_ACCESS_KEY = 'test'
     process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
     process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
+    process.env.SES_SENDER_EMAIL = 'no-reply@example.com'
+
+    const verificationClient = new SESClient({ region: 'us-east-1', endpoint: sqsEndpoint, credentials: { accessKeyId: 'test', secretAccessKey: 'test' } })
+    await verificationClient.send(new VerifyEmailIdentityCommand({ EmailAddress: process.env.SES_SENDER_EMAIL }))
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -88,6 +95,7 @@ describe('AccountController (e2e)', () => {
       }
     }))
     await app.init()
+    dataSource = moduleRef.get(DataSource)
 
     await signUp(OWNER_ID)
     await signUp(OTHER_OWNER_ID)
@@ -102,6 +110,7 @@ describe('AccountController (e2e)', () => {
     delete process.env.AWS_SECRET_ACCESS_KEY
     delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
     delete process.env.SQS_TASK_QUEUE_URL
+    delete process.env.SES_SENDER_EMAIL
     await app?.close()
     await container?.stop()
     await localstack?.stop()
@@ -743,6 +752,62 @@ describe('AccountController (e2e)', () => {
 
       expect(response.body.transactions[0].merchantName).toBeUndefined()
       expect(response.body.transactions[0].category).toBeUndefined()
+    }, 60000)
+  })
+
+  describe('Withdrawal anomaly alert (DetectWithdrawalAnomalyHandler)', () => {
+    async function withdraw(accountId: string, amount: number): Promise<void> {
+      await request(app.getHttpServer())
+        .post(`/accounts/${accountId}/withdraw`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount })
+    }
+
+    it('a_withdrawal_far_outside_the_accounts_normal_range_then_an_alert_email_is_sent', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10_000_000 })
+
+      // Builds a normal history of small, similar withdrawals — AnomalyDetectionService needs
+      // at least 5 to compute a meaningful baseline.
+      for (const amount of [10000, 12000, 9000, 11000, 10500]) {
+        await withdraw(account.accountId, amount)
+      }
+      // Far beyond that history's spread — a genuine statistical outlier.
+      await withdraw(account.accountId, 5_000_000)
+
+      const sentEmailRepo = dataSource.getRepository(SentEmailEntity)
+      let alertEmail: SentEmailEntity | null = null
+      for (let i = 0; i < 150; i++) {
+        alertEmail = await sentEmailRepo.findOneBy({ accountId: account.accountId, eventType: 'WithdrawalAnomalyDetected' })
+        if (alertEmail) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(alertEmail).not.toBeNull()
+      expect(alertEmail?.recipient).toBe('owner1@example.com')
+    }, 60000)
+
+    it('withdrawals_that_stay_within_the_accounts_normal_range_then_no_alert_email_is_ever_sent', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10_000_000 })
+
+      for (const amount of [10000, 12000, 9000, 11000, 10500, 10800]) {
+        await withdraw(account.accountId, amount)
+      }
+
+      // No single "the async work finished" signal to await for a negative case — give the
+      // pipeline the same window the positive test needs, then assert nothing landed.
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+      const sentEmailRepo = dataSource.getRepository(SentEmailEntity)
+      const alertEmail = await sentEmailRepo.findOneBy({ accountId: account.accountId, eventType: 'WithdrawalAnomalyDetected' })
+
+      expect(alertEmail).toBeNull()
     }, 60000)
   })
 

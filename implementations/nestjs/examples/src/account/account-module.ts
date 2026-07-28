@@ -21,6 +21,7 @@ import { AccountCreatedHandler } from '@/account/application/event/account-creat
 import { AccountReactivatedHandler } from '@/account/application/event/account-reactivated-handler'
 import { AccountSuspendedHandler } from '@/account/application/event/account-suspended-handler'
 import { CategorizeTransactionHandler } from '@/account/application/event/categorize-transaction-handler'
+import { DetectWithdrawalAnomalyHandler } from '@/account/application/event/detect-withdrawal-anomaly-handler'
 import { InterestPaidHandler } from '@/account/application/event/interest-paid-handler'
 import { MoneyDepositedHandler } from '@/account/application/event/money-deposited-handler'
 import { MoneyWithdrawnHandler } from '@/account/application/event/money-withdrawn-handler'
@@ -111,6 +112,7 @@ import { AuthModule } from '@/auth/auth-module'
     MoneyDepositedHandler,
     MoneyWithdrawnHandler,
     CategorizeTransactionHandler,
+    DetectWithdrawalAnomalyHandler,
     InterestPaidHandler,
     AccountSuspendedHandler,
     AccountReactivatedHandler,
@@ -150,6 +152,7 @@ export class AccountModule implements OnModuleInit {
     private readonly moneyDepositedHandler: MoneyDepositedHandler,
     private readonly moneyWithdrawnHandler: MoneyWithdrawnHandler,
     private readonly categorizeTransactionHandler: CategorizeTransactionHandler,
+    private readonly detectWithdrawalAnomalyHandler: DetectWithdrawalAnomalyHandler,
     private readonly interestPaidHandler: InterestPaidHandler,
     private readonly accountSuspendedHandler: AccountSuspendedHandler,
     private readonly accountReactivatedHandler: AccountReactivatedHandler,
@@ -164,6 +167,7 @@ export class AccountModule implements OnModuleInit {
     this.registry.register('MoneyDeposited', (payload) => this.moneyDepositedHandler.handle(payload as never))
     this.registry.register('MoneyWithdrawn', (payload) => this.moneyWithdrawnHandler.handle(payload as never))
     this.registry.register('MoneyWithdrawn', (payload) => this.categorizeTransactionHandler.handle(payload as never))
+    this.registry.register('MoneyWithdrawn', (payload) => this.detectWithdrawalAnomalyHandler.handle(payload as never))
     this.registry.register('InterestPaid', (payload) => this.interestPaidHandler.handle(payload as never))
     this.registry.register('AccountSuspended', (payload) => this.accountSuspendedHandler.handle(payload as never))
     this.registry.register('AccountReactivated', (payload) => this.accountReactivatedHandler.handle(payload as never))
