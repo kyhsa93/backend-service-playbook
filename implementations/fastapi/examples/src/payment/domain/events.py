@@ -32,3 +32,18 @@ class RefundApproved:
     owner_id: str
     amount: int
     approved_at: datetime
+
+
+@dataclass(frozen=True)
+class RefundRequested:
+    """Published unconditionally by Refund.create() — before RefundEligibilityService's
+    approve/reject judgment even runs. ClassifyRefundReasonEventHandler reacts to this to
+    build ops-analytics insight from every refund's stated reason, independent of whether the
+    refund is ultimately approved or rejected (a rejected refund's reason is just as useful a
+    signal for the ops dashboard as an approved one's).
+    """
+
+    refund_id: str
+    payment_id: str
+    reason: str
+    created_at: datetime

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from ...common.generate_id import generate_id
 from .errors import (
@@ -8,8 +9,16 @@ from .errors import (
     RefundCompleteRequiresApprovedRefundError,
     RefundRejectRequiresRequestedRefundError,
 )
-from .events import RefundApproved
+from .events import RefundApproved, RefundRequested
 from .refund_status import RefundStatus
+
+# The fixed taxonomy RefundReasonClassifier classifies a refund's free-text reason into, for
+# ops-analytics reporting only (see refund_reason_insights_query.py) — it never feeds back into
+# RefundEligibilityService's approve/reject judgment. Lives here (not in the application layer),
+# the same placement as Transaction's TransactionCategory.
+RefundReasonCategory = Literal[
+    "DEFECTIVE_PRODUCT", "WRONG_ITEM", "NOT_AS_DESCRIBED", "CHANGED_MIND", "LATE_DELIVERY", "DUPLICATE_CHARGE", "OTHER"
+]
 
 
 class Refund:
@@ -28,6 +37,7 @@ class Refund:
         status: RefundStatus,
         created_at: datetime,
         decision_note: str | None = None,
+        reason_category: RefundReasonCategory | None = None,
     ) -> None:
         self.refund_id = refund_id
         self.payment_id = payment_id
@@ -36,11 +46,12 @@ class Refund:
         self.status = status
         self.created_at = created_at
         self.decision_note = decision_note
-        self._events: list[RefundApproved] = []
+        self.reason_category = reason_category
+        self._events: list[RefundApproved | RefundRequested] = []
 
     @classmethod
     def create(cls, payment_id: str, amount: int, reason: str) -> Refund:
-        return cls(
+        refund = cls(
             refund_id=generate_id(),
             payment_id=payment_id,
             amount=amount,
@@ -48,6 +59,19 @@ class Refund:
             status=RefundStatus.REQUESTED,
             created_at=datetime.utcnow(),
         )
+        # Published unconditionally — before RefundEligibilityService's approve/reject
+        # judgment even runs (see request_refund_handler.py). Classification must happen (and
+        # be reported on) identically whether the refund ends up APPROVED or REJECTED — a pure
+        # ops-analytics side channel that never feeds back into the eligibility decision.
+        refund._events.append(
+            RefundRequested(
+                refund_id=refund.refund_id,
+                payment_id=refund.payment_id,
+                reason=refund.reason,
+                created_at=refund.created_at,
+            )
+        )
+        return refund
 
     def approve(self, account_id: str, owner_id: str) -> None:
         # account_id/owner_id are not part of RefundEligibilityService's decision — they are
@@ -86,6 +110,14 @@ class Refund:
             raise RefundCompleteRequiresApprovedRefundError()
         self.status = RefundStatus.COMPLETED
 
-    def pull_events(self) -> list[RefundApproved]:
+    def categorize_reason(self, category: RefundReasonCategory) -> None:
+        """Set asynchronously by ClassifyRefundReasonEventHandler reacting to
+        RefundRequested — never called from the approve()/reject() eligibility path. No
+        further Domain Event is published here; this is a read-model enrichment, not
+        something any other BC needs to react to.
+        """
+        self.reason_category = category
+
+    def pull_events(self) -> list[RefundApproved | RefundRequested]:
         events, self._events = self._events, []
         return events

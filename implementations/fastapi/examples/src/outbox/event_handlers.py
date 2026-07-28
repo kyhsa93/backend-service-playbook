@@ -30,9 +30,12 @@ from ..card.infrastructure.notification.notification_service import (
 )
 from ..card.infrastructure.persistence.card_repository import SqlAlchemyCardRepository
 from ..card.interface.integration_event.card_integration_event_controller import CardIntegrationEventController
+from ..payment.application.event.classify_refund_reason_event_handler import ClassifyRefundReasonEventHandler
 from ..payment.application.event.payment_cancelled_event_handler import PaymentCancelledEventHandler
 from ..payment.application.event.payment_completed_event_handler import PaymentCompletedEventHandler
 from ..payment.application.event.refund_approved_event_handler import RefundApprovedEventHandler
+from ..payment.infrastructure.persistence.refund_repository import SqlAlchemyRefundRepository
+from ..payment.infrastructure.refund_reason_classifier_impl import RefundReasonClassifierImpl
 from .outbox_writer import OutboxWriter
 
 EventHandlerFn = Callable[[dict], Awaitable[None]]
@@ -75,6 +78,8 @@ def build_event_handlers(session: AsyncSession) -> dict[str, list[EventHandlerFn
     card_integration_event_controller = CardIntegrationEventController(card_repo)
     account_integration_event_controller = AccountIntegrationEventController(account_repo)
     transaction_auto_categorizer = TransactionAutoCategorizerImpl()
+    refund_repo = SqlAlchemyRefundRepository(session)
+    refund_reason_classifier = RefundReasonClassifierImpl()
 
     return {
         "AccountCreated": [AccountCreatedEventHandler(notification_service).handle],
@@ -100,6 +105,10 @@ def build_event_handlers(session: AsyncSession) -> dict[str, list[EventHandlerFn
         "PaymentCompleted": [PaymentCompletedEventHandler(outbox_writer).handle],
         "PaymentCancelled": [PaymentCancelledEventHandler(outbox_writer).handle],
         "RefundApproved": [RefundApprovedEventHandler(outbox_writer).handle],
+        # Reacts to RefundRequested — ops-analytics only, never feeds back into eligibility
+        # (published unconditionally by Refund.create(), before RefundEligibilityService's
+        # approve/reject judgment even runs).
+        "RefundRequested": [ClassifyRefundReasonEventHandler(refund_reason_classifier, refund_repo).handle],
         "payment.completed.v1": [account_integration_event_controller.on_payment_completed],
         "payment.cancelled.v1": [account_integration_event_controller.on_payment_cancelled],
         "refund.approved.v1": [account_integration_event_controller.on_refund_approved],

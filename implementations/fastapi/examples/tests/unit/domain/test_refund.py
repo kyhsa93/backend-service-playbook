@@ -5,16 +5,25 @@ from src.payment.domain.errors import (
     RefundCompleteRequiresApprovedRefundError,
     RefundRejectRequiresRequestedRefundError,
 )
+from src.payment.domain.events import RefundRequested
 from src.payment.domain.refund import Refund
 from src.payment.domain.refund_status import RefundStatus
 
 
 def make_requested_refund(amount: int = 5000) -> Refund:
-    return Refund.create(payment_id="payment-1", amount=amount, reason="personal change of mind")
+    refund = Refund.create(payment_id="payment-1", amount=amount, reason="personal change of mind")
+    # Refund.create() always publishes RefundRequested unconditionally (see
+    # test_create_a_refund_is_created_in_REQUESTED_status_and_publishes_RefundRequested_unconditionally
+    # below, which asserts that directly) — drained here so the approve/reject/complete/
+    # categorize_reason tests below can assert in isolation on the event(s) their own action
+    # publishes, without every one of them having to account for the always-present creation
+    # event too.
+    refund.pull_events()
+    return refund
 
 
-def test_create_a_refund_is_created_in_REQUESTED_status() -> None:
-    refund = make_requested_refund()
+def test_create_a_refund_is_created_in_REQUESTED_status_and_publishes_RefundRequested_unconditionally() -> None:
+    refund = Refund.create(payment_id="payment-1", amount=5000, reason="personal change of mind")
 
     assert refund.status == RefundStatus.REQUESTED
     assert refund.payment_id == "payment-1"
@@ -22,7 +31,17 @@ def test_create_a_refund_is_created_in_REQUESTED_status() -> None:
     assert refund.reason == "personal change of mind"
     assert refund.refund_id
     assert refund.decision_note is None
-    assert refund.pull_events() == []
+    assert refund.reason_category is None
+
+    # Published before RefundEligibilityService's approve/reject judgment even runs — this
+    # holds regardless of whether the refund ends up APPROVED or REJECTED.
+    events = refund.pull_events()
+    assert len(events) == 1
+    event = events[0]
+    assert isinstance(event, RefundRequested)
+    assert event.refund_id == refund.refund_id
+    assert event.payment_id == "payment-1"
+    assert event.reason == "personal change of mind"
 
 
 def test_approve_a_requested_refund_is_approved_and_publishes_a_RefundApproved_event() -> None:
@@ -82,3 +101,12 @@ def test_complete_a_requested_refund_cannot_transition_to_completed() -> None:
 
     with pytest.raises(RefundCompleteRequiresApprovedRefundError):
         refund.complete()
+
+
+def test_categorize_reason_sets_reason_category_without_publishing_any_event() -> None:
+    refund = make_requested_refund()
+
+    refund.categorize_reason("DEFECTIVE_PRODUCT")
+
+    assert refund.reason_category == "DEFECTIVE_PRODUCT"
+    assert refund.pull_events() == []

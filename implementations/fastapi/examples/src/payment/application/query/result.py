@@ -30,9 +30,25 @@ class GetRefundResult:
     status: str
     decision_note: str | None
     created_at: datetime
+    # The auto-classified reason category, filled in asynchronously by
+    # ClassifyRefundReasonEventHandler — absent until classification completes. Ops-analytics
+    # only; never affects the eligibility decision above.
+    reason_category: str | None = None
 
 
 @dataclass
 class GetRefundsResult:
     refunds: list[GetRefundResult]
     count: int
+
+
+@dataclass
+class RefundReasonCategoryCountResult:
+    category: str
+    count: int
+
+
+@dataclass
+class RefundReasonInsightsResult:
+    counts: list[RefundReasonCategoryCountResult]
+    total_classified: int

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,19 +18,27 @@ from ...application.command.create_payment_handler import CreatePaymentCommand, 
 from ...application.command.request_refund_handler import RequestRefundCommand, RequestRefundHandler
 from ...application.query.get_payment_handler import GetPaymentHandler, GetPaymentQuery
 from ...application.query.get_payments_handler import GetPaymentsHandler, GetPaymentsQuery
+from ...application.query.get_refund_reason_insights_handler import (
+    GetRefundReasonInsightsHandler,
+    GetRefundReasonInsightsQuery,
+)
 from ...application.query.get_refunds_handler import GetRefundsHandler, GetRefundsQuery
 from ...domain.payment_repository import PaymentQuery, PaymentRepository
+from ...domain.refund_reason_insights_query import RefundReasonInsightsQuery
 from ...domain.refund_repository import RefundQuery, RefundRepository
 from ...infrastructure.account_adapter_impl import AccountAdapterImpl
 from ...infrastructure.card_adapter_impl import CardAdapterImpl
 from ...infrastructure.persistence.payment_repository import SqlAlchemyPaymentRepository
+from ...infrastructure.persistence.refund_reason_insights_query_impl import SqlAlchemyRefundReasonInsightsQuery
 from ...infrastructure.persistence.refund_repository import SqlAlchemyRefundRepository
 from .schemas import (
     CancelPaymentRequest,
     CreatePaymentRequest,
     GetPaymentsResponse,
+    GetRefundReasonInsightsResponse,
     GetRefundsResponse,
     PaymentResponse,
+    RefundReasonCategoryCountResponse,
     RefundResponse,
     RequestRefundRequest,
 )
@@ -37,6 +47,22 @@ from .schemas import (
 # on this router requires `get_current_user`, so it applies uniformly here too.
 router = APIRouter(
     prefix="/payments",
+    tags=["Payment"],
+    dependencies=[Depends(get_current_user)],
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`).",
+        }
+    },
+)
+
+# A separate router (not nested under /payments/{payment_id}/) — GET /refunds/reason-insights
+# is a cross-payment ops-analytics aggregate, not scoped to any single payment, so it can't
+# live on `router` above. Still behind the same baseline auth as every other endpoint (this
+# repo has no separate admin-role concept).
+refund_insights_router = APIRouter(
+    prefix="/refunds",
     tags=["Payment"],
     dependencies=[Depends(get_current_user)],
     responses={
@@ -62,6 +88,10 @@ def _refund_repo(session: AsyncSession = Depends(get_session)) -> RefundReposito
 
 def _refund_query_repo(session: AsyncSession = Depends(get_session)) -> RefundQuery:
     return SqlAlchemyRefundRepository(session)
+
+
+def _refund_reason_insights_query(session: AsyncSession = Depends(get_session)) -> RefundReasonInsightsQuery:
+    return SqlAlchemyRefundReasonInsightsQuery(session)
 
 
 def _card_query(session: AsyncSession = Depends(get_session)) -> CardQuery:
@@ -281,6 +311,7 @@ async def request_refund(
         reason=refund.reason,
         status=refund.status.value,
         decision_note=refund.decision_note,
+        reason_category=refund.reason_category,
         created_at=refund.created_at,
     )
 
@@ -321,9 +352,43 @@ async def get_refunds(
                 reason=r.reason,
                 status=r.status,
                 decision_note=r.decision_note,
+                reason_category=r.reason_category,
                 created_at=r.created_at,
             )
             for r in result.refunds
         ],
         count=result.count,
+    )
+
+
+@refund_insights_router.get(
+    "/reason-insights",
+    response_model=GetRefundReasonInsightsResponse,
+    summary="Get refund-reason category counts for ops analytics",
+    description=(
+        "Returns how many refunds fall into each auto-classified reason category (e.g. "
+        "DEFECTIVE_PRODUCT, CHANGED_MIND), optionally narrowed to a date range. Classification "
+        "runs asynchronously after a refund is requested and never influences whether that "
+        "refund is approved — this is a read-only reporting view across every refund, not "
+        "scoped to the caller's own payments (this repo has no separate admin-role concept, so "
+        "it is exposed behind the same baseline auth as every other endpoint)."
+    ),
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. a malformed `from_date`/`to_date`.",
+        }
+    },
+)
+async def get_refund_reason_insights(
+    from_date: date | None = None,
+    to_date: date | None = None,
+    insights_query: RefundReasonInsightsQuery = Depends(_refund_reason_insights_query),
+) -> GetRefundReasonInsightsResponse:
+    result = await GetRefundReasonInsightsHandler(insights_query).execute(
+        GetRefundReasonInsightsQuery(from_date=from_date, to_date=to_date)
+    )
+    return GetRefundReasonInsightsResponse(
+        counts=[RefundReasonCategoryCountResponse(category=c.category, count=c.count) for c in result.counts],
+        total_classified=result.total_classified,
     )

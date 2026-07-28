@@ -19,6 +19,9 @@ class RefundModel(Base):
     reason: Mapped[str]
     status: Mapped[str]
     decision_note: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    # Filled in asynchronously by ClassifyRefundReasonEventHandler — null until that reaction
+    # runs.
+    reason_category: Mapped[str | None] = mapped_column(nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
@@ -66,6 +69,7 @@ class SqlAlchemyRefundRepository(RefundRepository):
         if existing:
             existing.status = refund.status.value
             existing.decision_note = refund.decision_note
+            existing.reason_category = refund.reason_category
             existing.updated_at = datetime.utcnow()
         else:
             self._session.add(
@@ -76,6 +80,7 @@ class SqlAlchemyRefundRepository(RefundRepository):
                     reason=refund.reason,
                     status=refund.status.value,
                     decision_note=refund.decision_note,
+                    reason_category=refund.reason_category,
                     created_at=refund.created_at,
                 )
             )
@@ -94,5 +99,6 @@ class SqlAlchemyRefundRepository(RefundRepository):
             reason=row.reason,
             status=RefundStatus(row.status),
             decision_note=row.decision_note,
+            reason_category=row.reason_category,
             created_at=row.created_at,
         )

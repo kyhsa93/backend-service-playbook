@@ -45,6 +45,7 @@ class GetRefundsHandler:
                     status=r.status.value,
                     decision_note=r.decision_note,
                     created_at=r.created_at,
+                    reason_category=r.reason_category,
                 )
                 for r in refunds
             ],

@@ -378,3 +378,62 @@ async def test_get_refunds_other_owners_payment_returns_404(client: AsyncClient)
     response = await client.get(f"/payments/{payment['payment_id']}/refunds", headers=auth_headers(OTHER_OWNER_ID))
 
     assert response.status_code == 404
+
+
+# --- Refund reason classification (ops analytics only, never affects eligibility) ---
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_refund_still_gets_its_reason_classified_asynchronously(client: AsyncClient) -> None:
+    # The LLM behind RefundReasonClassifier isn't available in this e2e environment (the same
+    # reasoning as test_account_e2e.py's transaction-auto-categorization e2e test), so
+    # classification falls back to OTHER — but this still exercises the real async pipeline
+    # end to end (Domain Event -> Outbox -> SQS -> OutboxConsumer ->
+    # ClassifyRefundReasonEventHandler -> repository write), and proves classification runs
+    # for a REJECTED refund too, independent of the eligibility outcome (RefundRequested is
+    # published unconditionally by Refund.create(), before RefundEligibilityService's
+    # approve/reject judgment even runs).
+    account, card = await make_funded_card(client, OWNER_ID, balance=100000)
+    payment = await create_payment(client, OWNER_ID, card["card_id"], 10000)
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 90000))
+
+    response = await client.post(
+        f"/payments/{payment['payment_id']}/refunds",
+        json={"amount": 20000, "reason": "The item arrived broken"},
+        headers=auth_headers(OWNER_ID),
+    )
+    assert response.status_code == 201
+    assert response.json()["status"] == "REJECTED"
+
+    async def _classified() -> bool:
+        list_response = await client.get(f"/payments/{payment['payment_id']}/refunds", headers=auth_headers(OWNER_ID))
+        refunds = list_response.json()["refunds"]
+        return bool(refunds) and refunds[0].get("reason_category") is not None
+
+    await wait_until(_classified)
+
+    list_response = await client.get(f"/payments/{payment['payment_id']}/refunds", headers=auth_headers(OWNER_ID))
+    assert list_response.json()["refunds"][0]["reason_category"] == "OTHER"
+
+
+@pytest.mark.asyncio
+async def test_get_refunds_reason_insights_reflects_a_classified_refund_in_its_category_counts(
+    client: AsyncClient,
+) -> None:
+    before = await client.get("/refunds/reason-insights", headers=auth_headers(OWNER_ID))
+    total_before = before.json()["total_classified"]
+
+    account, card = await make_funded_card(client, OWNER_ID, balance=100000)
+    payment = await create_payment(client, OWNER_ID, card["card_id"], 10000)
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 90000))
+    await client.post(
+        f"/payments/{payment['payment_id']}/refunds",
+        json={"amount": 4000, "reason": "Changed my mind"},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    async def _total_increased() -> bool:
+        after = await client.get("/refunds/reason-insights", headers=auth_headers(OWNER_ID))
+        return after.json()["total_classified"] > total_before
+
+    await wait_until(_total_increased)

@@ -45,6 +45,14 @@ class RefundResponse(BaseModel):
     decision_note: str | None = Field(
         default=None, description="An explanation of the approval/rejection decision, if one was recorded."
     )
+    reason_category: str | None = Field(
+        default=None,
+        description=(
+            "The auto-classified reason category, filled in asynchronously — absent until "
+            "classification completes. Ops-analytics only; never affects the eligibility "
+            "decision above."
+        ),
+    )
     created_at: datetime = Field(description="When the refund was requested, in UTC.")
 
 
@@ -53,3 +61,17 @@ class GetRefundsResponse(BaseModel):
         description="The refunds requested against the payment, newest first, for the requested page."
     )
     count: int = Field(description="The total number of refunds across all pages, not just this page's size.")
+
+
+class RefundReasonCategoryCountResponse(BaseModel):
+    category: str = Field(description="A refund-reason category.")
+    count: int = Field(description="How many classified refunds fall into this category, in the requested range.")
+
+
+class GetRefundReasonInsightsResponse(BaseModel):
+    counts: list[RefundReasonCategoryCountResponse] = Field(
+        description="A count per category, for refunds classified so far — omits categories with 0 refunds."
+    )
+    total_classified: int = Field(
+        description="The total number of classified refunds across all categories in the requested range."
+    )

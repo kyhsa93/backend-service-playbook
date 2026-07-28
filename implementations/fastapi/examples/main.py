@@ -55,6 +55,9 @@ from src.payment.domain.errors import (  # noqa: E402
     LinkedAccountNotFoundError as PaymentLinkedAccountNotFoundError,
 )
 from src.payment.domain.errors import LinkedCardNotFoundError, PaymentError, PaymentNotFoundError  # noqa: E402
+from src.payment.interface.rest.payment_router import (  # noqa: E402
+    refund_insights_router as payment_refund_insights_router,
+)
 from src.payment.interface.rest.payment_router import router as payment_router  # noqa: E402
 from src.task_queue.task_consumer import TaskConsumer  # noqa: E402
 from src.task_queue.task_outbox_poller import TaskOutboxPoller  # noqa: E402
@@ -149,6 +152,7 @@ app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(card_router)
 app.include_router(payment_router)
+app.include_router(payment_refund_insights_router)
 
 # OpenTelemetry auto-instrumentation — must run after every router is registered so
 # FastAPIInstrumentor can see the final route table (observability.md).
