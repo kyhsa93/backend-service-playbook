@@ -29,7 +29,7 @@
 //
 // Go doesn't have a dedicated Relay/Consumer per domain — outbox.Poller
 // (publishing) and outbox.Consumer (receiving/executing) share the single
-// map[string]outbox.Handler that main.go assembles, so adding a new domain
+// map[string][]outbox.Handler that main.go assembles, so adding a new domain
 // entry to that handlers map in main.go is this generator's core wiring target
 // (see wiring.go's comments for the detailed design). The Command Handler never
 // references this map at all — it returns immediately after saving (synchronous

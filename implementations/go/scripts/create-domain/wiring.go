@@ -10,7 +10,7 @@ import (
 // Go has no DI container like NestJS's @Module({ providers: [...] }) —
 // constructor chaining in main.go plays that role instead (module-pattern.md).
 // The Card BC also has no dedicated Relay/Consumer — it registers its events in
-// the single shared map[string]outbox.Handler that main.go assembles, and
+// the single shared map[string][]outbox.Handler that main.go assembles, and
 // outbox.Poller (publishing) / outbox.Consumer (receiving/executing) share that
 // map (internal/infrastructure/outbox/poller.go, consumer.go). So unlike nestjs,
 // where this generator only has to touch a single app-module.ts, it edits
@@ -184,7 +184,7 @@ func WireMainAndRouter(targetRoot string, n Names) (WireResult, error) {
 }
 
 // wireDependencyAssembly wires the new domain into a single file shaped like
-// main.go (Card repository assembly -> shared map[string]outbox.Handler ->
+// main.go (Card repository assembly -> shared map[string][]outbox.Handler ->
 // httphandler.NewRouter(...) call).
 func wireDependencyAssembly(src string, n Names) (string, error) {
 	// 1. Repository assembly — add right after the cardRepo construction line
@@ -198,9 +198,10 @@ func wireDependencyAssembly(src string, n Names) (string, error) {
 	// 2. Register the event handler in the shared handlers map (shared by
 	// outbox.Poller/outbox.Consumer) — insert right before the map literal's
 	// closing brace (always appended last, regardless of how many domains are
-	// already registered).
-	entry := fmt.Sprintf("\t\t\"%sCancelled\": event.New%sCancelledEventHandler().Handle,\n", n.Domain, n.Domain)
-	src, err = insertBeforeMatchingClose(src, "map[string]outbox.Handler{", '{', '}', entry)
+	// already registered). The value type is a slice (an eventType may have more
+	// than one subscriber — see the comment above the map literal in main.go).
+	entry := fmt.Sprintf("\t\t\"%sCancelled\": {event.New%sCancelledEventHandler().Handle},\n", n.Domain, n.Domain)
+	src, err = insertBeforeMatchingClose(src, "map[string][]outbox.Handler{", '{', '}', entry)
 	if err != nil {
 		return "", err
 	}
@@ -288,7 +289,7 @@ func PrintWiringSnippet(n Names) {
 	fmt.Println()
 	fmt.Printf("cmd/server/main.go:\n")
 	fmt.Printf("  %sRepo := persistence.New%sRepository(db)\n", n.DomainCamel, n.Domain)
-	fmt.Printf("  add to the shared outboxHandlers map (map[string]outbox.Handler): \"%sCancelled\": event.New%sCancelledEventHandler().Handle,\n", n.Domain, n.Domain)
+	fmt.Printf("  add to the shared outboxHandlers map (map[string][]outbox.Handler): \"%sCancelled\": {event.New%sCancelledEventHandler().Handle},\n", n.Domain, n.Domain)
 	fmt.Printf("  httphandler.NewRouter(... , %sRepo)\n", n.DomainCamel)
 	fmt.Println()
 	fmt.Printf("internal/interface/http/router.go:\n")
