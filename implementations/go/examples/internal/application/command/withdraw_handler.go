@@ -11,6 +11,10 @@ type WithdrawCommand struct {
 	AccountID   string
 	RequesterID string
 	Amount      int64
+	// MerchantName is optional (empty string = none) — the payee/merchant
+	// this withdrawal is for, e.g. for spending categorization (see
+	// internal/application/event/categorize_transaction_event_handler.go).
+	MerchantName string
 }
 
 type WithdrawHandler struct {
@@ -33,7 +37,7 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCommand) (*acc
 	// This is a withdrawal requested directly by the user, so there is no
 	// referenceID (""). Only the Payment BC reaction
 	// (withdraw_by_payment_handler.go) carries a correlation key.
-	tx, err := a.Withdraw(cmd.Amount, "")
+	tx, err := a.Withdraw(cmd.Amount, "", cmd.MerchantName)
 	if err != nil {
 		return nil, err
 	}

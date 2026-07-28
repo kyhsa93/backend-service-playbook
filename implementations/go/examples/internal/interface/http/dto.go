@@ -31,7 +31,8 @@ type DepositRequest struct {
 }
 
 type WithdrawRequest struct {
-	Amount int64 `json:"amount"` // The amount to debit. Must be a positive integer not exceeding the current balance.
+	Amount       int64  `json:"amount"`                 // The amount to debit. Must be a positive integer not exceeding the current balance.
+	MerchantName string `json:"merchantName,omitempty"` // The payee/merchant this withdrawal is for, e.g. for spending categorization. Optional.
 }
 
 type TransferRequest struct {
@@ -78,10 +79,12 @@ type GetAccountResponse struct {
 }
 
 type TransactionSummaryResponse struct {
-	TransactionID string        `json:"transactionId"` // The transaction record's ID.
-	Type          string        `json:"type"`          // The transaction type (`DEPOSIT`, `WITHDRAWAL`, or `INTEREST`).
-	Amount        MoneyResponse `json:"amount"`        // The transaction amount.
-	CreatedAt     time.Time     `json:"createdAt"`     // When the transaction was recorded.
+	TransactionID string        `json:"transactionId"`          // The transaction record's ID.
+	Type          string        `json:"type"`                   // The transaction type (`DEPOSIT`, `WITHDRAWAL`, or `INTEREST`).
+	Amount        MoneyResponse `json:"amount"`                 // The transaction amount.
+	MerchantName  string        `json:"merchantName,omitempty"` // The payee/merchant attached to this withdrawal, if any.
+	Category      string        `json:"category,omitempty"`     // The auto-categorized spending category (`FOOD`, `TRANSPORT`, `SHOPPING`, `HOUSING`, `MEDICAL`, `ENTERTAINMENT`, `UTILITIES`, or `OTHER`), if this is a categorized withdrawal. Filled in asynchronously — absent until categorization completes.
+	CreatedAt     time.Time     `json:"createdAt"`              // When the transaction was recorded.
 }
 
 type GetTransactionsResponse struct {

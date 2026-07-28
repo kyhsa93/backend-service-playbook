@@ -107,6 +107,7 @@ func main() {
 	// Card subscribes to that string in the handler map below
 	// (cross-domain.md).
 	accountRepo := persistence.NewAccountRepository(db, outboxWriter)
+	transactionRepo := persistence.NewTransactionRepository(db)
 	// dbManager satisfies the command.TransactionManager port — used only
 	// when a Handler like TransferHandler needs to atomically group two or
 	// more SaveAccount calls (for standalone call sites elsewhere, a local
@@ -131,53 +132,66 @@ func main() {
 	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(accountRepo)
 	depositByPaymentHandler := command.NewDepositByPaymentHandler(accountRepo)
 
-	// This handlers map is used by outbox.Consumer to look up a handler by
-	// the eventType of a message received from SQS — Command Handlers no
-	// longer reference this map at all (no synchronous draining,
-	// domain-events.md).
-	outboxHandlers := map[string]outbox.Handler{
-		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
-		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
-		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
-		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
-		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
-		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
+	// The Technical Service behind CategorizeTransactionEventHandler — the same
+	// self-hosted qwen2.5:1.5b Ollama setup as the two LLM Technical
+	// Services behind AskTransactionHistoryHandler below, just a different
+	// prompt/schema for a different job (classification instead of query
+	// translation or answer generation).
+	transactionAutoCategorizer := llm.NewTransactionAutoCategorizerImpl(config.OllamaBaseURL(), config.LLMModel())
+	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
+
+	// This handlers map is used by outbox.Consumer to look up the
+	// handler(s) for the eventType of a message received from SQS — Command
+	// Handlers no longer reference this map at all (no synchronous
+	// draining, domain-events.md). An eventType may have more than one
+	// subscriber — "MoneyWithdrawn" has both MoneyWithdrawnEventHandler
+	// (the notification email) and CategorizeTransactionEventHandler (the
+	// asynchronous spending-category classification) — outbox.Consumer runs
+	// every handler registered for an eventType, even if an earlier one
+	// fails (see internal/infrastructure/outbox/consumer.go).
+	outboxHandlers := map[string][]outbox.Handler{
+		"AccountCreated":     {event.NewAccountCreatedEventHandler(notifier).Handle},
+		"MoneyDeposited":     {event.NewMoneyDepositedEventHandler(notifier).Handle},
+		"MoneyWithdrawn":     {event.NewMoneyWithdrawnEventHandler(notifier).Handle, categorizeTransactionHandler.Handle},
+		"AccountSuspended":   {event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle},
+		"AccountReactivated": {event.NewAccountReactivatedEventHandler(notifier).Handle},
+		"AccountClosed":      {event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle},
 		// Converts a Payment BC Domain Event into an Integration Event for
 		// external BCs and writes it back to the Outbox (the same idiom as
 		// account.AccountSuspended being converted into account.suspended.v1).
-		"PaymentCompleted": event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
-		"PaymentCancelled": event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
-		"RefundApproved":   event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
+		"PaymentCompleted": {event.NewPaymentCompletedEventHandler(outboxPublisher).Handle},
+		"PaymentCancelled": {event.NewPaymentCancelledEventHandler(outboxPublisher).Handle},
+		"RefundApproved":   {event.NewRefundApprovedEventHandler(outboxPublisher).Handle},
 		// A Domain Event raised by the daily interest payment batch (Task
 		// Queue). This is a separate flow from the Task Queue
 		// (account.apply-interest, taskHandlers map below) — this event is
 		// ordinary Domain Event consumption that emails the fact that
 		// "interest was paid" (scheduling.md, "Task vs Domain Event
 		// distinction").
-		"InterestPaid": event.NewInterestPaidEventHandler(notifier).Handle,
+		"InterestPaid": {event.NewInterestPaidEventHandler(notifier).Handle},
 		// The Card BC reacts to Account's Integration Events (asynchronously).
 		// Only unmarshal glue lives here — the actual use case is delegated
 		// to the Card Application handler.
-		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
+		"account.suspended.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountSuspendedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
 			}
 			return suspendCardsHandler.Handle(ctx, command.SuspendCardsByAccountCommand{AccountID: e.AccountID})
-		},
-		"account.closed.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"account.closed.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountClosedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
 			}
 			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
-		},
+		}},
 		// The Account BC reacts to Payment's Integration Events
 		// (asynchronously). payment.cancelled.v1 and refund.approved.v1 both
 		// perform the same action — "reverse an amount that was already
 		// debited" — so they reuse a single DepositByPaymentHandler (only the
 		// referenceId differs, as paymentId vs refundId).
-		"payment.completed.v1": func(ctx context.Context, payload []byte) error {
+		"payment.completed.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.PaymentCompletedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
@@ -185,8 +199,8 @@ func main() {
 			return withdrawByPaymentHandler.Handle(ctx, command.WithdrawByPaymentCommand{
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
 			})
-		},
-		"payment.cancelled.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"payment.cancelled.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.PaymentCancelledV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
@@ -194,8 +208,8 @@ func main() {
 			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
 			})
-		},
-		"refund.approved.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"refund.approved.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.RefundApprovedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
@@ -203,7 +217,7 @@ func main() {
 			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.RefundID,
 			})
-		},
+		}},
 	}
 
 	outboxPoller := outbox.NewPoller(db, sqsClient, sqsConfig.QueueURL)

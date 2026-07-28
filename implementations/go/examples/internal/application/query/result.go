@@ -21,7 +21,11 @@ type TransactionSummary struct {
 	TransactionID string
 	Type          string
 	Amount        MoneyResult
-	CreatedAt     time.Time
+	// MerchantName/Category are optional (empty = absent) — see
+	// account.Transaction's doc comments for when each is set.
+	MerchantName string
+	Category     string
+	CreatedAt    time.Time
 }
 
 type GetTransactionsResult struct {

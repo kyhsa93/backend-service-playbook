@@ -187,9 +187,10 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tx, err := h.withdraw.Handle(r.Context(), command.WithdrawCommand{
-		AccountID:   accountID,
-		RequesterID: requesterID,
-		Amount:      body.Amount,
+		AccountID:    accountID,
+		RequesterID:  requesterID,
+		Amount:       body.Amount,
+		MerchantName: body.MerchantName,
 	})
 	if err != nil {
 		writeAccountError(w, r, err)
@@ -407,6 +408,8 @@ func (h *AccountHandler) GetTransactions(w http.ResponseWriter, r *http.Request)
 			TransactionID: t.TransactionID,
 			Type:          t.Type,
 			Amount:        MoneyResponse{Amount: t.Amount.Amount, Currency: t.Amount.Currency},
+			MerchantName:  t.MerchantName,
+			Category:      t.Category,
 			CreatedAt:     t.CreatedAt,
 		}
 	}

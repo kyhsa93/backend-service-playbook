@@ -82,7 +82,7 @@ func (a *Account) Deposit(amount int64, referenceID string) (Transaction, error)
 		return Transaction{}, err
 	}
 	a.Balance = newBalance
-	tx := newTransaction(a.AccountID, TransactionTypeDeposit, money, referenceID)
+	tx := newTransaction(a.AccountID, TransactionTypeDeposit, money, referenceID, "")
 	a.transactions = append(a.transactions, tx)
 	a.events = append(a.events, MoneyDeposited{
 		AccountID:     a.AccountID,
@@ -98,8 +98,13 @@ func (a *Account) Deposit(amount int64, referenceID string) (Transaction, error)
 // Withdraw processes a withdrawal. referenceID follows the same rule as
 // Deposit — an empty string if the withdrawal was requested directly by the
 // user, or paymentId if it's a reaction to the Payment BC's
-// payment.completed.v1 (the actual deduction).
-func (a *Account) Withdraw(amount int64, referenceID string) (Transaction, error) {
+// payment.completed.v1 (the actual deduction). merchantName is optional
+// (empty string = none) — only a withdrawal requested directly by the user
+// via WithdrawHandler ever carries one; it's stored on the Transaction and
+// carried on the MoneyWithdrawn event so CategorizeTransactionEventHandler can
+// react to it asynchronously without a separate lookup (see
+// internal/application/event/categorize_transaction_event_handler.go).
+func (a *Account) Withdraw(amount int64, referenceID, merchantName string) (Transaction, error) {
 	if a.Status != StatusActive {
 		return Transaction{}, ErrWithdrawRequiresActiveAccount
 	}
@@ -118,7 +123,7 @@ func (a *Account) Withdraw(amount int64, referenceID string) (Transaction, error
 		return Transaction{}, err
 	}
 	a.Balance = newBalance
-	tx := newTransaction(a.AccountID, TransactionTypeWithdrawal, money, referenceID)
+	tx := newTransaction(a.AccountID, TransactionTypeWithdrawal, money, referenceID, merchantName)
 	a.transactions = append(a.transactions, tx)
 	a.events = append(a.events, MoneyWithdrawn{
 		AccountID:     a.AccountID,
@@ -126,6 +131,7 @@ func (a *Account) Withdraw(amount int64, referenceID string) (Transaction, error
 		TransactionID: tx.TransactionID,
 		Amount:        money,
 		BalanceAfter:  a.Balance,
+		MerchantName:  merchantName,
 		CreatedAt:     tx.CreatedAt,
 	})
 	return tx, nil
@@ -201,7 +207,7 @@ func (a *Account) ApplyInterest(rate float64, today time.Time) (Transaction, boo
 		return Transaction{}, false, err
 	}
 	a.Balance = newBalance
-	tx := newTransaction(a.AccountID, TransactionTypeInterest, money, "")
+	tx := newTransaction(a.AccountID, TransactionTypeInterest, money, "", "")
 	a.transactions = append(a.transactions, tx)
 	a.LastInterestPaidAt = today
 	a.events = append(a.events, InterestPaid{

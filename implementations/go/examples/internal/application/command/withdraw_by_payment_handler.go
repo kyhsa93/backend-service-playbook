@@ -57,7 +57,7 @@ func (h *WithdrawByPaymentHandler) Handle(ctx context.Context, cmd WithdrawByPay
 	}
 
 	a := accounts[0]
-	if _, err := a.Withdraw(cmd.Amount, cmd.ReferenceID); err != nil {
+	if _, err := a.Withdraw(cmd.Amount, cmd.ReferenceID, ""); err != nil {
 		return err
 	}
 	return h.repo.SaveAccount(ctx, a)

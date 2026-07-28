@@ -78,6 +78,8 @@ func (h *AskTransactionHistoryHandler) Handle(ctx context.Context, q AskTransact
 			TransactionID: t.TransactionID,
 			Type:          string(t.Type),
 			Amount:        MoneyResult{Amount: t.Amount.Amount, Currency: t.Amount.Currency},
+			MerchantName:  t.MerchantName,
+			Category:      string(t.Category),
 			CreatedAt:     t.CreatedAt,
 		}
 	}

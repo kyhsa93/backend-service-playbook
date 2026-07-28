@@ -110,7 +110,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql", "0010_add_spending_forecast.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql", "0010_add_spending_forecast.sql", "0011_add_transaction_merchant_and_category.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -169,6 +169,7 @@ func runTests(m *testing.M) int {
 	outboxPublisher := outbox.NewPublisher(db)
 
 	repo := persistence.NewAccountRepository(db, outboxWriter)
+	transactionRepo := persistence.NewTransactionRepository(db)
 	cardRepo := persistence.NewCardRepository(db)
 	credentialRepo := persistence.NewCredentialRepository(db)
 	paymentRepo := persistence.NewPaymentRepository(db)
@@ -180,32 +181,40 @@ func runTests(m *testing.M) int {
 	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(repo)
 	depositByPaymentHandler := command.NewDepositByPaymentHandler(repo)
 
-	outboxHandlers := map[string]outbox.Handler{
-		"AccountCreated":     event.NewAccountCreatedEventHandler(notifier).Handle,
-		"MoneyDeposited":     event.NewMoneyDepositedEventHandler(notifier).Handle,
-		"MoneyWithdrawn":     event.NewMoneyWithdrawnEventHandler(notifier).Handle,
-		"AccountSuspended":   event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle,
-		"AccountReactivated": event.NewAccountReactivatedEventHandler(notifier).Handle,
-		"AccountClosed":      event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle,
-		"PaymentCompleted":   event.NewPaymentCompletedEventHandler(outboxPublisher).Handle,
-		"PaymentCancelled":   event.NewPaymentCancelledEventHandler(outboxPublisher).Handle,
-		"RefundApproved":     event.NewRefundApprovedEventHandler(outboxPublisher).Handle,
-		"InterestPaid":       event.NewInterestPaidEventHandler(notifier).Handle,
-		"account.suspended.v1": func(ctx context.Context, payload []byte) error {
+	// No real Ollama runs in this e2e environment (see nlTranslator/
+	// nlComposer below) — the categorization call itself fails fast and
+	// falls back to OTHER, but this still exercises the real async pipeline
+	// end to end: Domain Event → Outbox → SQS → Consumer →
+	// CategorizeTransactionEventHandler → the repository write all actually run.
+	transactionAutoCategorizer := llm.NewTransactionAutoCategorizerImpl(config.OllamaBaseURL(), config.LLMModel())
+	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
+
+	outboxHandlers := map[string][]outbox.Handler{
+		"AccountCreated":     {event.NewAccountCreatedEventHandler(notifier).Handle},
+		"MoneyDeposited":     {event.NewMoneyDepositedEventHandler(notifier).Handle},
+		"MoneyWithdrawn":     {event.NewMoneyWithdrawnEventHandler(notifier).Handle, categorizeTransactionHandler.Handle},
+		"AccountSuspended":   {event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle},
+		"AccountReactivated": {event.NewAccountReactivatedEventHandler(notifier).Handle},
+		"AccountClosed":      {event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle},
+		"PaymentCompleted":   {event.NewPaymentCompletedEventHandler(outboxPublisher).Handle},
+		"PaymentCancelled":   {event.NewPaymentCancelledEventHandler(outboxPublisher).Handle},
+		"RefundApproved":     {event.NewRefundApprovedEventHandler(outboxPublisher).Handle},
+		"InterestPaid":       {event.NewInterestPaidEventHandler(notifier).Handle},
+		"account.suspended.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountSuspendedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
 			}
 			return suspendCardsHandler.Handle(ctx, command.SuspendCardsByAccountCommand{AccountID: e.AccountID})
-		},
-		"account.closed.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"account.closed.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.AccountClosedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
 			}
 			return cancelCardsHandler.Handle(ctx, command.CancelCardsByAccountCommand{AccountID: e.AccountID})
-		},
-		"payment.completed.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"payment.completed.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.PaymentCompletedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
@@ -213,8 +222,8 @@ func runTests(m *testing.M) int {
 			return withdrawByPaymentHandler.Handle(ctx, command.WithdrawByPaymentCommand{
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
 			})
-		},
-		"payment.cancelled.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"payment.cancelled.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.PaymentCancelledV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
@@ -222,8 +231,8 @@ func runTests(m *testing.M) int {
 			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.PaymentID,
 			})
-		},
-		"refund.approved.v1": func(ctx context.Context, payload []byte) error {
+		}},
+		"refund.approved.v1": {func(ctx context.Context, payload []byte) error {
 			var e integrationevent.RefundApprovedV1
 			if err := json.Unmarshal(payload, &e); err != nil {
 				return err
@@ -231,7 +240,7 @@ func runTests(m *testing.M) int {
 			return depositByPaymentHandler.Handle(ctx, command.DepositByPaymentCommand{
 				AccountID: e.AccountID, Amount: e.Amount, ReferenceID: e.RefundID,
 			})
-		},
+		}},
 	}
 
 	// Launches the Poller (Outbox → SQS publish) and Consumer (SQS → Handler
@@ -855,6 +864,93 @@ func TestGetTransactions(t *testing.T) {
 			require.Len(t, transactions.([]any), 0)
 		}
 	})
+}
+
+// TestTransactionAutoCategorization exercises the real async pipeline end to
+// end: Domain Event (MoneyWithdrawn) → Outbox → SQS → Consumer →
+// CategorizeTransactionEventHandler → the TransactionRepository write. No real
+// Ollama runs in this e2e environment (see nlTranslator/nlComposer in
+// runTests above), so the categorization call itself falls back to OTHER —
+// but that still proves the whole plumbing runs, only the LLM call itself
+// degrades to its non-blocking default.
+func TestTransactionAutoCategorization(t *testing.T) {
+	t.Run("withdraw_with_a_merchantName_then_the_transaction_is_asynchronously_categorized", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
+			map[string]any{"amount": 5500, "merchantName": "Starbucks Gangnam"})
+
+		tx := waitForCategorizedTransaction(t, account["accountId"].(string))
+
+		require.Equal(t, "Starbucks Gangnam", tx["merchantName"])
+		require.Equal(t, "OTHER", tx["category"])
+	})
+
+	t.Run("withdraw_without_a_merchantName_then_the_transaction_is_never_categorized", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
+			map[string]int{"amount": 5500})
+
+		// No merchantName to react to, so there's nothing to wait out — give
+		// the (skipped) reaction the same window the happy path would need,
+		// then assert it never ran. GetTransactions has no server-side type
+		// filter (unlike AskTransactionHistory's LLM-derived one), so find
+		// the WITHDRAWAL row among both transactions returned.
+		time.Sleep(5 * time.Second)
+		resp := doRequest(t, http.MethodGet, "/accounts/"+account["accountId"].(string)+"/transactions", ownerID, nil)
+		body := decodeBody(t, resp)
+		transactions := body["transactions"].([]any)
+		require.Len(t, transactions, 2)
+		tx := findTransactionByType(t, transactions, "WITHDRAWAL")
+
+		require.Nil(t, tx["merchantName"])
+		require.Nil(t, tx["category"])
+	})
+}
+
+// findTransactionByType picks the first entry of the given type out of a
+// decoded GetTransactionsResponse's "transactions" array — GetTransactions
+// has no server-side type filter (unlike AskTransactionHistory's LLM-derived
+// one), so tests that need to isolate one type filter client-side instead.
+func findTransactionByType(t *testing.T, transactions []any, txType string) map[string]any {
+	t.Helper()
+	for _, raw := range transactions {
+		tx := raw.(map[string]any)
+		if tx["type"] == txType {
+			return tx
+		}
+	}
+	t.Fatalf("no transaction of type %s found among %d transactions", txType, len(transactions))
+	return nil
+}
+
+// waitForCategorizedTransaction polls GET .../transactions — since
+// categorization is performed asynchronously by
+// CategorizeTransactionEventHandler via the Outbox → SQS → Consumer path, it
+// may not yet be reflected by the time the withdraw HTTP response returns
+// (the same budget as waitForSentEmail/waitForCardStatus elsewhere in this
+// package).
+func waitForCategorizedTransaction(t *testing.T, accountID string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		resp := doRequest(t, http.MethodGet, "/accounts/"+accountID+"/transactions", ownerID, nil)
+		body := decodeBody(t, resp)
+		if transactions, ok := body["transactions"].([]any); ok {
+			for _, raw := range transactions {
+				tx := raw.(map[string]any)
+				if tx["type"] == "WITHDRAWAL" && tx["category"] != nil {
+					return tx
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("no categorized transaction found for accountId=%s (timed out)", accountID)
+	return nil
 }
 
 // TestAskTransactionHistory exercises the structured-data RAG pipeline end

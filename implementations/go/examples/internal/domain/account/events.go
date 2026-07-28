@@ -33,7 +33,13 @@ type MoneyWithdrawn struct {
 	TransactionID string
 	Amount        Money
 	BalanceAfter  Money
-	CreatedAt     time.Time
+	// MerchantName is carried through so CategorizeTransactionEventHandler
+	// doesn't need a separate lookup to react — the same reasoning as every
+	// other field on this event. Empty when the requester didn't attach one;
+	// CategorizeTransactionEventHandler skips categorization entirely in that
+	// case.
+	MerchantName string
+	CreatedAt    time.Time
 }
 
 func (MoneyWithdrawn) isAccountDomainEvent() {}

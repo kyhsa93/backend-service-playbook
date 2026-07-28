@@ -136,7 +136,7 @@ func TestAccount_Withdraw(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := tt.setup()
-			_, err := a.Withdraw(tt.amount, "")
+			_, err := a.Withdraw(tt.amount, "", "")
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Withdraw() error = %v, want %v", err, tt.wantErr)
 			}
@@ -149,7 +149,7 @@ func TestAccount_Withdraw_CollectsDomainEvent(t *testing.T) {
 	_, _ = a.Deposit(1000, "")
 	a.ClearEvents()
 
-	if _, err := a.Withdraw(400, ""); err != nil {
+	if _, err := a.Withdraw(400, "", ""); err != nil {
 		t.Fatalf("Withdraw() unexpected error: %v", err)
 	}
 
@@ -162,6 +162,32 @@ func TestAccount_Withdraw_CollectsDomainEvent(t *testing.T) {
 	}
 	if a.Balance.Amount != 600 {
 		t.Fatalf("Balance.Amount = %d, want 600", a.Balance.Amount)
+	}
+}
+
+func TestAccount_Withdraw_WithMerchantName_CarriesItOnBothTheTransactionAndTheMoneyWithdrawnEvent(t *testing.T) {
+	a := account.New("owner-1", "a@example.com", "KRW")
+	_, _ = a.Deposit(1000, "")
+	a.ClearEvents()
+
+	tx, err := a.Withdraw(400, "", "Starbucks Gangnam")
+	if err != nil {
+		t.Fatalf("Withdraw() unexpected error: %v", err)
+	}
+
+	if tx.MerchantName != "Starbucks Gangnam" {
+		t.Fatalf("Transaction.MerchantName = %q, want %q", tx.MerchantName, "Starbucks Gangnam")
+	}
+	events := a.DomainEvents()
+	if len(events) != 1 {
+		t.Fatalf("want 1 event, got %d", len(events))
+	}
+	withdrawn, ok := events[0].(account.MoneyWithdrawn)
+	if !ok {
+		t.Fatalf("want MoneyWithdrawn, got %T", events[0])
+	}
+	if withdrawn.MerchantName != "Starbucks Gangnam" {
+		t.Fatalf("MoneyWithdrawn.MerchantName = %q, want %q", withdrawn.MerchantName, "Starbucks Gangnam")
 	}
 }
 

@@ -154,14 +154,17 @@ func (r *AccountRepository) saveAccount(ctx context.Context, tx *sql.Tx, a *acco
 	}
 
 	for _, t := range a.PendingTransactions() {
-		var referenceID any
+		var referenceID, merchantName any
 		if t.ReferenceID != "" {
 			referenceID = t.ReferenceID
 		}
+		if t.MerchantName != "" {
+			merchantName = t.MerchantName
+		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO transactions (id, account_id, type, amount, currency, reference_id, created_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			t.TransactionID, t.AccountID, string(t.Type), t.Amount.Amount, t.Amount.Currency, referenceID, t.CreatedAt,
+			`INSERT INTO transactions (id, account_id, type, amount, currency, reference_id, merchant_name, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			t.TransactionID, t.AccountID, string(t.Type), t.Amount.Amount, t.Amount.Currency, referenceID, merchantName, t.CreatedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("save transaction: %w", err)
@@ -234,7 +237,7 @@ func (r *AccountRepository) FindTransactions(ctx context.Context, q account.Find
 
 	limitArgs := append(append([]any{}, args...), q.Take, q.Page*q.Take)
 	rows, err := r.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT id, account_id, type, amount, currency, created_at
+		fmt.Sprintf(`SELECT id, account_id, type, amount, currency, merchant_name, category, created_at
 		 FROM transactions WHERE %s
 		 ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, whereClause, i, i+1),
 		limitArgs...,
@@ -249,11 +252,14 @@ func (r *AccountRepository) FindTransactions(ctx context.Context, q account.Find
 		var t account.Transaction
 		var txType, currency string
 		var amount int64
-		if err := rows.Scan(&t.TransactionID, &t.AccountID, &txType, &amount, &currency, &t.CreatedAt); err != nil {
+		var merchantName, category sql.NullString
+		if err := rows.Scan(&t.TransactionID, &t.AccountID, &txType, &amount, &currency, &merchantName, &category, &t.CreatedAt); err != nil {
 			return nil, 0, err
 		}
 		t.Type = account.TransactionType(txType)
 		t.Amount = account.Money{Amount: amount, Currency: currency}
+		t.MerchantName = merchantName.String
+		t.Category = account.TransactionCategory(category.String)
 		transactions = append(transactions, t)
 	}
 	return transactions, total, rows.Err()

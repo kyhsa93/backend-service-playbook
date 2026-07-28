@@ -63,7 +63,7 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*Tra
 	// value with no suffix — since transactions.reference_id is VARCHAR(36),
 	// appending a suffix could exceed that limit.
 	transferID := common.NewID()
-	sourceTx, err := source.Withdraw(cmd.Amount, transferID)
+	sourceTx, err := source.Withdraw(cmd.Amount, transferID, "")
 	if err != nil {
 		return nil, err
 	}

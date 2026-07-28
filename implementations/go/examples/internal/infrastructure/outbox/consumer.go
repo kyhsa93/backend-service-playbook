@@ -23,21 +23,29 @@ var tracer = otel.Tracer("outbox")
 type Handler func(ctx context.Context, payload []byte) error
 
 // Consumer waits to receive from SQS via long polling (ReceiveMessage's
-// WaitTimeSeconds), and when a message arrives, looks up a handler in the
-// handlers map by eventType (MessageAttributes) and calls it.
+// WaitTimeSeconds), and when a message arrives, looks up the handlers
+// registered for that eventType (MessageAttributes) and calls every one of
+// them — an eventType may have more than one subscriber (e.g. "MoneyWithdrawn"
+// has both MoneyWithdrawnEventHandler and CategorizeTransactionEventHandler, see
+// main.go). Each handler is independent: one subscriber's failure must not
+// prevent a sibling subscriber on the same eventType from running, so every
+// handler is given a chance to run on every delivery, and a failure is only
+// decided after all of them have (see handleMessage/runHandlers below).
 //
-// Handler success → message deleted (ack). Handler failure (or no
-// registered handler) → not deleted — once SQS's visibility timeout
-// passes, it's automatically redelivered (at-least-once). This redelivery
-// is exactly what the EventHandler idempotency
-// (docs/architecture/domain-events.md) this repository requires assumes.
+// All handlers succeeding → message deleted (ack). Any handler failing (or
+// no registered handler at all) → not deleted — once SQS's visibility
+// timeout passes, it's automatically redelivered (at-least-once). This
+// redelivery is exactly what the EventHandler idempotency
+// (docs/architecture/domain-events.md) this repository requires assumes —
+// every handler on a shared eventType must already be idempotent, since a
+// retry re-runs all of them again, including any that already succeeded.
 type Consumer struct {
 	sqs      *sqs.Client
 	queueURL string
-	handlers map[string]Handler
+	handlers map[string][]Handler
 }
 
-func NewConsumer(sqsClient *sqs.Client, queueURL string, handlers map[string]Handler) *Consumer {
+func NewConsumer(sqsClient *sqs.Client, queueURL string, handlers map[string][]Handler) *Consumer {
 	return &Consumer{sqs: sqsClient, queueURL: queueURL, handlers: handlers}
 }
 
@@ -90,14 +98,13 @@ func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
 	ctx, span := tracer.Start(ctx, "outbox.consume "+eventType)
 	defer span.End()
 
-	handler, ok := c.handlers[eventType]
-	if !ok {
+	handlers, ok := c.handlers[eventType]
+	if !ok || len(handlers) == 0 {
 		slog.ErrorContext(ctx, "no registered handler found — leaving for retry", "event_type", eventType)
 		return // not deleted — will be redelivered and retried after the visibility timeout.
 	}
 
-	if err := handler(ctx, []byte(aws.ToString(message.Body))); err != nil {
-		slog.ErrorContext(ctx, "event processing failed", "event_type", eventType, "error", err)
+	if err := runHandlers(ctx, eventType, handlers, []byte(aws.ToString(message.Body))); err != nil {
 		return // not deleted — will be redelivered and retried after the visibility timeout.
 	}
 
@@ -107,4 +114,23 @@ func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
 	}); err != nil {
 		slog.ErrorContext(ctx, "message deletion failed", "event_type", eventType, "error", err)
 	}
+}
+
+// runHandlers calls every handler registered for eventType, even if an
+// earlier one fails — each is independent, so one subscriber's failure must
+// not prevent a sibling subscriber from running (see Consumer's doc
+// comment). Returns the first error encountered, if any, only after every
+// handler has had a chance to run, so the caller can decide whether to leave
+// the message unacked for redelivery.
+func runHandlers(ctx context.Context, eventType string, handlers []Handler, payload []byte) error {
+	var firstErr error
+	for _, handler := range handlers {
+		if err := handler(ctx, payload); err != nil {
+			slog.ErrorContext(ctx, "event processing failed", "event_type", eventType, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
