@@ -52,6 +52,7 @@ from rules.common import collect_py_files
 # was SKIP — mirroring the nestjs harness's "maxScore = 0 means not applicable" convention.
 RULE_MAX_SCORE = 20
 
+
 # Maps a rule's section name to one of the nestjs harness's 6 score-breakdown categories,
 # reusing the same substring-matching approach as evaluators/shared/score.ts so results stay
 # comparable across languages. Returns None for rules with no clear category (also mirrors
@@ -87,10 +88,7 @@ def bucket_for(name: str) -> str | None:
         return "architecture"
     if "dockerfile" in name or "no-orm-autosync-in-prod-config" in name:
         return "runtime"
-    if any(
-        keyword in name
-        for keyword in ("no-generic-response-keys", "api-documentation", "rate-limit-wired")
-    ):
+    if any(keyword in name for keyword in ("no-generic-response-keys", "api-documentation", "rate-limit-wired")):
         return "api"
     return None
 
@@ -105,6 +103,7 @@ def grade_for(total: int) -> str:
     if total >= 60:
         return "D"
     return "F"
+
 
 RULES = [
     file_naming,
