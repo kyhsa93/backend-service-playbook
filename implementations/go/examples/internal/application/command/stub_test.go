@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 
+	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/domain/account"
 )
 
@@ -73,9 +74,10 @@ func (s *stubRepository) SummarizeTransactions(
 // account.SpendingAnalysisRepository, the same function-field-per-behavior
 // idiom as stubRepository above.
 type stubSpendingAnalysisRepository struct {
-	findAnalysisFn func(ctx context.Context, accountID, analysisMonth string) (*account.SpendingAnalysis, error)
-	hasAnalysisFn  func(ctx context.Context, accountID, analysisMonth string) (bool, error)
-	saveAnalysisFn func(ctx context.Context, a *account.SpendingAnalysis) error
+	findAnalysisFn       func(ctx context.Context, accountID, analysisMonth string) (*account.SpendingAnalysis, error)
+	hasAnalysisFn        func(ctx context.Context, accountID, analysisMonth string) (bool, error)
+	saveAnalysisFn       func(ctx context.Context, a *account.SpendingAnalysis) error
+	findRecentAnalysesFn func(ctx context.Context, accountID, beforeMonth string, limit int) ([]account.SpendingAnalysis, error)
 }
 
 func (s *stubSpendingAnalysisRepository) FindAnalysis(
@@ -99,6 +101,60 @@ func (s *stubSpendingAnalysisRepository) SaveAnalysis(ctx context.Context, a *ac
 		return nil
 	}
 	return s.saveAnalysisFn(ctx, a)
+}
+
+func (s *stubSpendingAnalysisRepository) FindRecentAnalyses(
+	ctx context.Context, accountID, beforeMonth string, limit int,
+) ([]account.SpendingAnalysis, error) {
+	if s.findRecentAnalysesFn == nil {
+		return nil, nil
+	}
+	return s.findRecentAnalysesFn(ctx, accountID, beforeMonth, limit)
+}
+
+// stubSpendingForecastRepository is a minimal mock for
+// account.SpendingForecastRepository, the same function-field-per-behavior
+// idiom as stubSpendingAnalysisRepository above.
+type stubSpendingForecastRepository struct {
+	findForecastFn func(ctx context.Context, accountID, forecastMonth string) (*account.SpendingForecast, error)
+	hasForecastFn  func(ctx context.Context, accountID, forecastMonth string) (bool, error)
+	saveForecastFn func(ctx context.Context, f *account.SpendingForecast) error
+}
+
+func (s *stubSpendingForecastRepository) FindForecast(
+	ctx context.Context, accountID, forecastMonth string,
+) (*account.SpendingForecast, error) {
+	if s.findForecastFn == nil {
+		return nil, account.ErrSpendingForecastNotFound
+	}
+	return s.findForecastFn(ctx, accountID, forecastMonth)
+}
+
+func (s *stubSpendingForecastRepository) HasForecast(ctx context.Context, accountID, forecastMonth string) (bool, error) {
+	if s.hasForecastFn == nil {
+		return false, nil
+	}
+	return s.hasForecastFn(ctx, accountID, forecastMonth)
+}
+
+func (s *stubSpendingForecastRepository) SaveForecast(ctx context.Context, f *account.SpendingForecast) error {
+	if s.saveForecastFn == nil {
+		return nil
+	}
+	return s.saveForecastFn(ctx, f)
+}
+
+// stubSpendingForecastModel is a minimal mock for command.SpendingForecastModel
+// (the Technical Service ForecastSpendingHandler trains on each run).
+type stubSpendingForecastModel struct {
+	predictFn func(history []command.SpendingHistoryPoint) command.SpendingForecastPrediction
+}
+
+func (s *stubSpendingForecastModel) Predict(history []command.SpendingHistoryPoint) command.SpendingForecastPrediction {
+	if s.predictFn == nil {
+		return command.SpendingForecastPrediction{}
+	}
+	return s.predictFn(history)
 }
 
 // stubTransactionManager runs fn as-is without a real DB transaction — it is

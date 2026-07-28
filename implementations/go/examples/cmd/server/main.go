@@ -28,6 +28,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
+	"github.com/example/account-service/internal/infrastructure/forecasting"
 	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/logging"
 	"github.com/example/account-service/internal/infrastructure/notification"
@@ -219,6 +220,7 @@ func main() {
 	interestScheduler := scheduling.NewInterestScheduler(taskWriter)
 	statementScheduler := scheduling.NewStatementScheduler(taskWriter)
 	spendingAnalysisScheduler := scheduling.NewSpendingAnalysisScheduler(taskWriter)
+	spendingForecastScheduler := scheduling.NewSpendingForecastScheduler(taskWriter)
 
 	applyInterestHandler := command.NewApplyDailyInterestHandler(accountRepo, interestConfig.DailyRate)
 	cardPaymentAdapter := acl.NewCardPaymentAdapter(paymentRepo)
@@ -227,10 +229,17 @@ func main() {
 	// internal/infrastructure/persistence/spending_analysis_repository.go),
 	// so it is reused as-is rather than requiring a separate repository.
 	analyzeMonthlySpendingHandler := command.NewAnalyzeMonthlySpendingHandler(accountRepo, accountRepo)
+	// The Technical Service behind account.forecast-spending — an in-process
+	// linear regression (domain-service.md); accountRepo also satisfies
+	// account.SpendingAnalysisRepository/account.SpendingForecastRepository,
+	// so it is reused as both the training-data source and the write target.
+	spendingForecastModel := forecasting.NewSpendingForecastModelImpl()
+	forecastSpendingHandler := command.NewForecastSpendingHandler(accountRepo, accountRepo, accountRepo, spendingForecastModel)
 
 	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
 	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
 	spendingAnalysisTaskController := taskinterface.NewSpendingAnalysisTaskController(analyzeMonthlySpendingHandler)
+	spendingForecastTaskController := taskinterface.NewSpendingForecastTaskController(forecastSpendingHandler)
 
 	// taskqueue.Consumer looks up a Task Controller in this map by the
 	// taskType string and calls it (the same routing idiom as
@@ -239,6 +248,7 @@ func main() {
 		"account.apply-interest":           interestTaskController.HandleApplyInterest,
 		"card.send-usage-statement":        statementTaskController.HandleSendStatement,
 		"account.analyze-monthly-spending": spendingAnalysisTaskController.HandleAnalyzeMonthlySpending,
+		"account.forecast-spending":        spendingForecastTaskController.HandleForecastSpending,
 	}
 	taskPoller := taskqueue.NewPoller(db, sqsClient, sqsConfig.TaskQueueURL)
 	taskConsumer := taskqueue.NewConsumer(sqsClient, sqsConfig.TaskQueueURL, taskHandlers)
@@ -298,6 +308,7 @@ func main() {
 	go interestScheduler.Run(ctx)
 	go statementScheduler.Run(ctx)
 	go spendingAnalysisScheduler.Run(ctx)
+	go spendingForecastScheduler.Run(ctx)
 
 	<-ctx.Done() // blocks until SIGTERM/SIGINT is received
 	slog.Info("shutdown signal received")

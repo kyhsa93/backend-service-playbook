@@ -32,15 +32,16 @@ type tokenService interface {
 }
 
 // AccountStore combines account.Repository (Command) with
-// account.SpendingAnalysisRepository — the same concrete
-// *persistence.AccountRepository value structurally satisfies both (the
-// same idiom PaymentStore below uses to combine
+// account.SpendingAnalysisRepository/account.SpendingForecastRepository —
+// the same concrete *persistence.AccountRepository value structurally
+// satisfies all three (the same idiom PaymentStore below uses to combine
 // payment.Repository/payment.RefundRepository), so the composition root
-// only needs to pass one value that satisfies this one interface for both
-// the Account use cases and the spending-analysis read model.
+// only needs to pass one value that satisfies this one interface for the
+// Account use cases and both read models.
 type AccountStore interface {
 	account.Repository
 	account.SpendingAnalysisRepository
+	account.SpendingForecastRepository
 }
 
 // PaymentStore combines the four ports the Payment BC's handlers need between
@@ -78,6 +79,12 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 	// repo also satisfies account.SpendingAnalysisQuery (via AccountStore),
 	// so it is reused as-is rather than requiring a separate parameter.
 	getSpendingAnalysisHandler := query.NewGetSpendingAnalysisHandler(repo, repo)
+	// Likewise, repo also satisfies account.SpendingForecastQuery. Note that
+	// ForecastSpendingHandler (the Command side, which needs the
+	// SpendingForecastModel Technical Service) is never wired here — it has
+	// no HTTP entry point at all, only a Task Queue one, so it's assembled
+	// directly in cmd/server/main.go alongside the other Task Controllers.
+	getSpendingForecastHandler := query.NewGetSpendingForecastHandler(repo, repo)
 
 	accountHTTP := NewAccountHandler(
 		createAccountHandler,
@@ -91,6 +98,7 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 		getTransactionsHandler,
 		askTransactionHistoryHandler,
 		getSpendingAnalysisHandler,
+		getSpendingForecastHandler,
 	)
 	// Card BC — on issuance, synchronously checks whether the account is
 	// active via accountAdapter (ACL) (cross-domain.md).
@@ -140,6 +148,7 @@ func NewRouter(repo AccountStore, cardRepo card.Repository, credentialRepo crede
 	protected.HandleFunc("GET /accounts/{id}/transactions", accountHTTP.GetTransactions)
 	protected.HandleFunc("POST /accounts/{id}/transactions/ask", accountHTTP.AskTransactionHistory)
 	protected.HandleFunc("GET /accounts/{id}/spending-analysis", accountHTTP.GetSpendingAnalysis)
+	protected.HandleFunc("GET /accounts/{id}/spending-forecast", accountHTTP.GetSpendingForecast)
 	protected.HandleFunc("POST /cards", cardHTTP.IssueCard)
 	protected.HandleFunc("GET /cards/{cardId}", cardHTTP.GetCard)
 	protected.HandleFunc("POST /payments", paymentHTTP.CreatePayment)

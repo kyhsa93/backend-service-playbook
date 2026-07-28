@@ -108,6 +108,14 @@ type GetSpendingAnalysisResponse struct {
 	CreatedAt               time.Time `json:"createdAt"`               // When this analysis was computed.
 }
 
+type GetSpendingForecastResponse struct {
+	ForecastMonth     string    `json:"forecastMonth"`     // The forecasted month, in YYYY-MM form.
+	PredictedAmount   int64     `json:"predictedAmount"`   // The model's predicted total withdrawal amount for the month.
+	Confidence        string    `json:"confidence"`        // The model's confidence in the prediction, based on how well a linear trend fits the account's history (`LOW`, `MEDIUM`, or `HIGH`).
+	HistoryMonthsUsed int       `json:"historyMonthsUsed"` // How many months of history the model was trained on for this prediction.
+	CreatedAt         time.Time `json:"createdAt"`         // When this forecast was computed.
+}
+
 type IssueCardRequest struct {
 	AccountID string `json:"accountId"` // The active account to link the card to. Must be owned by the authenticated requester.
 	Brand     string `json:"brand"`     // The card brand (e.g. `VISA`, `MASTER`).

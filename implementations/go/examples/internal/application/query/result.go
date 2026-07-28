@@ -38,3 +38,11 @@ type SpendingAnalysisResult struct {
 	Trend                   string
 	CreatedAt               time.Time
 }
+
+type SpendingForecastResult struct {
+	ForecastMonth     string
+	PredictedAmount   int64
+	Confidence        string
+	HistoryMonthsUsed int
+	CreatedAt         time.Time
+}

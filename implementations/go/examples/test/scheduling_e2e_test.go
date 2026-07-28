@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/example/account-service/internal/common"
 	"github.com/example/account-service/internal/infrastructure/scheduling"
 )
 
@@ -351,5 +352,139 @@ func TestScheduledMonthlySpendingAnalysis(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 		body := decodeBody(t, resp)
 		require.Equal(t, "SPENDING_ANALYSIS_NOT_FOUND", body["code"])
+	})
+}
+
+// spendingForecastRow mirrors the spending_forecast table's columns the e2e
+// test needs to assert on.
+type spendingForecastRow struct {
+	predictedAmount   int64
+	confidence        string
+	historyMonthsUsed int
+}
+
+// findSpendingForecast looks up the (accountId, forecastMonth) row directly
+// from the DB (ok=false if it doesn't exist yet).
+func findSpendingForecast(t *testing.T, accountID, forecastMonth string) (spendingForecastRow, bool) {
+	t.Helper()
+	var row spendingForecastRow
+	err := testDB.QueryRow(
+		`SELECT predicted_amount, confidence, history_months_used
+		 FROM spending_forecast WHERE account_id = $1 AND forecast_month = $2`,
+		accountID, forecastMonth,
+	).Scan(&row.predictedAmount, &row.confidence, &row.historyMonthsUsed)
+	if err != nil {
+		return spendingForecastRow{}, false
+	}
+	return row, true
+}
+
+// waitForSpendingForecast polls the spending_forecast table while waiting
+// for the asynchronous Scheduler -> Task Outbox -> Task Queue -> Task
+// Consumer -> ForecastSpendingHandler path to complete, using the same
+// 30-second budget as waitForSpendingAnalysis.
+func waitForSpendingForecast(t *testing.T, accountID, forecastMonth string) spendingForecastRow {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if row, ok := findSpendingForecast(t, accountID, forecastMonth); ok {
+			return row
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("no spending_forecast row for account %s / month %s (timed out)", accountID, forecastMonth)
+	return spendingForecastRow{}
+}
+
+// countSpendingForecasts counts how many spending_forecast rows exist for an
+// (accountID, forecastMonth) combination — the same "assert no duplicate"
+// idiom as countSpendingAnalyses.
+func countSpendingForecasts(t *testing.T, accountID, forecastMonth string) int {
+	t.Helper()
+	var count int
+	require.NoError(t, testDB.QueryRow(
+		`SELECT COUNT(*) FROM spending_forecast WHERE account_id = $1 AND forecast_month = $2`, accountID, forecastMonth,
+	).Scan(&count))
+	return count
+}
+
+// seedSpendingAnalysis inserts a spending_analysis row directly — used by
+// TestScheduledMonthlySpendingForecast to seed training history without
+// separately re-deriving it via the analysis batch (that path is already
+// covered by TestScheduledMonthlySpendingAnalysis above), the same
+// "seed the read model directly" approach nestjs's own e2e spec takes for
+// this exact scenario.
+func seedSpendingAnalysis(t *testing.T, accountID, analysisMonth string, totalAmount int64) {
+	t.Helper()
+	_, err := testDB.Exec(
+		`INSERT INTO spending_analysis (id, account_id, analysis_month, total_amount, transaction_count, average_amount, change_from_previous_month, trend)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		common.NewID(), accountID, analysisMonth, totalAmount, 1, totalAmount, 0, "STABLE",
+	)
+	require.NoError(t, err)
+}
+
+// TestScheduledMonthlySpendingForecast actually drives the entire
+// Scheduler -> Task Outbox -> Task Queue -> Task Consumer ->
+// ForecastSpendingHandler path (scheduling.md) — rather than waiting for a
+// real Cron tick, it calls
+// testSpendingForecastScheduler.EnqueueMonthlySpendingForecast directly,
+// mirroring nestjs's scheduling.e2e-spec.ts "Monthly spending forecast"
+// describe block.
+func TestScheduledMonthlySpendingForecast(t *testing.T) {
+	t.Run("an_account_with_3_months_of_spending_analysis_history_gets_a_trained_forecast_row_queryable_via_the_API_and_re-enqueueing_in_the_same_month_does_not_duplicate_it", func(t *testing.T) {
+		owner := "forecast-owner-" + time.Now().Format("150405.000000")
+		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
+		accountID := acc["accountId"].(string)
+
+		now := time.Now().UTC()
+		forecastMonth := now.Format("2006-01")
+
+		// Seeds 3 months of spending_analysis history directly — a perfectly
+		// linear trend (10000, 20000, 30000) that extrapolates exactly to
+		// 40000 with full confidence (see SpendingForecastModelImpl).
+		amounts := []int64{10000, 20000, 30000}
+		for monthsAgo := 3; monthsAgo >= 1; monthsAgo-- {
+			monthDate := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -monthsAgo, 0)
+			analysisMonth := monthDate.Format("2006-01")
+			seedSpendingAnalysis(t, accountID, analysisMonth, amounts[3-monthsAgo])
+		}
+
+		require.NoError(t, testSpendingForecastScheduler.EnqueueMonthlySpendingForecast(context.Background(), now))
+
+		row := waitForSpendingForecast(t, accountID, forecastMonth)
+		require.Equal(t, int64(40000), row.predictedAmount)
+		require.Equal(t, "HIGH", row.confidence)
+		require.Equal(t, 3, row.historyMonthsUsed)
+
+		resp := doRequest(t, http.MethodGet, "/accounts/"+accountID+"/spending-forecast?month="+forecastMonth+"-01", owner, nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body := decodeBody(t, resp)
+		require.Equal(t, float64(40000), body["predictedAmount"])
+		require.Equal(t, "HIGH", body["confidence"])
+
+		// Since it's the same month's dedup_id, even if the second enqueue is
+		// reprocessed, the (account_id, forecast_month) unique index + the
+		// HasForecast precheck must prevent a duplicate row.
+		require.NoError(t, testSpendingForecastScheduler.EnqueueMonthlySpendingForecast(context.Background(), now))
+		time.Sleep(5 * time.Second)
+		require.Equal(t, 1, countSpendingForecasts(t, accountID, forecastMonth))
+	})
+
+	t.Run("an_account_younger_than_3_months_of_spending_analysis_history_gets_no_forecast_and_the_API_returns_404", func(t *testing.T) {
+		owner := "forecast-404-owner-" + time.Now().Format("150405.000000")
+		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
+		accountID := acc["accountId"].(string)
+
+		now := time.Now().UTC()
+		forecastMonth := now.Format("2006-01")
+
+		require.NoError(t, testSpendingForecastScheduler.EnqueueMonthlySpendingForecast(context.Background(), now))
+		time.Sleep(5 * time.Second)
+
+		resp := doRequest(t, http.MethodGet, "/accounts/"+accountID+"/spending-forecast?month="+forecastMonth+"-01", owner, nil)
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		body := decodeBody(t, resp)
+		require.Equal(t, "SPENDING_FORECAST_NOT_FOUND", body["code"])
 	})
 }

@@ -185,6 +185,26 @@ definitions:
           or `STABLE`).
         type: string
     type: object
+  http.GetSpendingForecastResponse:
+    properties:
+      confidence:
+        description: The model's confidence in the prediction, based on how well a
+          linear trend fits the account's history (`LOW`, `MEDIUM`, or `HIGH`).
+        type: string
+      createdAt:
+        description: When this forecast was computed.
+        type: string
+      forecastMonth:
+        description: The forecasted month, in YYYY-MM form.
+        type: string
+      historyMonthsUsed:
+        description: How many months of history the model was trained on for this
+          prediction.
+        type: integer
+      predictedAmount:
+        description: The model's predicted total withdrawal amount for the month.
+        type: integer
+    type: object
   http.GetTransactionsResponse:
     properties:
       count:
@@ -589,6 +609,49 @@ paths:
       security:
       - BearerAuth: []
       summary: Get an account's monthly spending analysis
+      tags:
+      - Account
+  /accounts/{id}/spending-forecast:
+    get:
+      description: Returns the precomputed spending forecast (predicted total withdrawal
+        amount and confidence) for the given month — trained monthly by a batch job
+        on the account's own spending-analysis history, not on demand.
+      parameters:
+      - description: The account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: The month to look up, as YYYY-MM-01 (the day is ignored)
+        in: query
+        name: month
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The forecast was found.
+          schema:
+            $ref: '#/definitions/http.GetSpendingForecastResponse'
+        "400":
+          description: Request validation failed (`VALIDATION_FAILED`) — e.g. `month`
+            is not a valid date.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: The bearer token is missing, malformed, or invalid.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`),
+            or no forecast has been computed yet for the given month (`SPENDING_FORECAST_NOT_FOUND`)
+            — e.g. the account has fewer than 3 months of spending-analysis history.
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get an account's predicted spending for a month
       tags:
       - Account
   /accounts/{id}/suspend:

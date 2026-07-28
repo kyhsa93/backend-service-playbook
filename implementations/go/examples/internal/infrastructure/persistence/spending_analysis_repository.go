@@ -69,3 +69,42 @@ func (r *AccountRepository) FindAnalysis(ctx context.Context, accountID, analysi
 	a.Trend = account.SpendingTrend(trend)
 	return &a, nil
 }
+
+// FindRecentAnalyses implements the training-data lookup required by
+// account.SpendingAnalysisRepository — every row strictly before
+// beforeMonth, most-recent-first internally (ORDER BY ... DESC LIMIT), then
+// reversed to oldest-first before returning, since
+// command.SpendingForecastModel.Predict treats slice position as the month
+// index.
+func (r *AccountRepository) FindRecentAnalyses(ctx context.Context, accountID, beforeMonth string, limit int) ([]account.SpendingAnalysis, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, account_id, analysis_month, total_amount, transaction_count, average_amount, change_from_previous_month, trend, created_at
+		 FROM spending_analysis WHERE account_id = $1 AND analysis_month < $2
+		 ORDER BY analysis_month DESC LIMIT $3`,
+		accountID, beforeMonth, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find recent spending analyses: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var analyses []account.SpendingAnalysis
+	for rows.Next() {
+		var a account.SpendingAnalysis
+		var trend string
+		if err := rows.Scan(&a.AnalysisID, &a.AccountID, &a.AnalysisMonth, &a.TotalAmount, &a.TransactionCount, &a.AverageAmount, &a.ChangeFromPreviousMonth, &trend, &a.CreatedAt); err != nil {
+			return nil, fmt.Errorf("find recent spending analyses: %w", err)
+		}
+		a.Trend = account.SpendingTrend(trend)
+		analyses = append(analyses, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("find recent spending analyses: %w", err)
+	}
+
+	// Reverse DESC -> chronological (oldest-first) order in place.
+	for i, j := 0, len(analyses)-1; i < j; i, j = i+1, j-1 {
+		analyses[i], analyses[j] = analyses[j], analyses[i]
+	}
+	return analyses, nil
+}

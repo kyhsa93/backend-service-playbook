@@ -32,6 +32,7 @@ import (
 	"github.com/example/account-service/internal/infrastructure/acl"
 	"github.com/example/account-service/internal/infrastructure/auth"
 	"github.com/example/account-service/internal/infrastructure/database"
+	"github.com/example/account-service/internal/infrastructure/forecasting"
 	"github.com/example/account-service/internal/infrastructure/llm"
 	"github.com/example/account-service/internal/infrastructure/notification"
 	"github.com/example/account-service/internal/infrastructure/outbox"
@@ -55,6 +56,7 @@ var (
 	testInterestScheduler         *scheduling.InterestScheduler
 	testStatementScheduler        *scheduling.StatementScheduler
 	testSpendingAnalysisScheduler *scheduling.SpendingAnalysisScheduler
+	testSpendingForecastScheduler *scheduling.SpendingForecastScheduler
 )
 
 const (
@@ -108,7 +110,7 @@ func runTests(m *testing.M) int {
 		panic(fmt.Sprintf("db did not become ready: %v", err))
 	}
 
-	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql"} {
+	for _, migration := range []string{"0001_init.sql", "0002_add_email_and_sent_emails.sql", "0003_add_outbox.sql", "0004_add_card.sql", "0005_add_credential.sql", "0006_add_payment.sql", "0007_add_scheduling.sql", "0008_add_outbox_trace_parent.sql", "0009_add_spending_analysis.sql", "0010_add_spending_forecast.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "migrations", migration))
 		if err != nil {
 			panic(err)
@@ -249,19 +251,24 @@ func runTests(m *testing.M) int {
 	testInterestScheduler = scheduling.NewInterestScheduler(taskWriter)
 	testStatementScheduler = scheduling.NewStatementScheduler(taskWriter)
 	testSpendingAnalysisScheduler = scheduling.NewSpendingAnalysisScheduler(taskWriter)
+	testSpendingForecastScheduler = scheduling.NewSpendingForecastScheduler(taskWriter)
 
 	applyInterestHandler := command.NewApplyDailyInterestHandler(repo, 0.0001)
 	cardPaymentAdapter := acl.NewCardPaymentAdapter(paymentRepo)
 	sendStatementHandler := command.NewSendCardUsageStatementHandler(cardRepo, accountAdapter, cardPaymentAdapter, notifier)
 	analyzeMonthlySpendingHandler := command.NewAnalyzeMonthlySpendingHandler(repo, repo)
+	spendingForecastModel := forecasting.NewSpendingForecastModelImpl()
+	forecastSpendingHandler := command.NewForecastSpendingHandler(repo, repo, repo, spendingForecastModel)
 	interestTaskController := taskinterface.NewInterestTaskController(applyInterestHandler)
 	statementTaskController := taskinterface.NewStatementTaskController(sendStatementHandler)
 	spendingAnalysisTaskController := taskinterface.NewSpendingAnalysisTaskController(analyzeMonthlySpendingHandler)
+	spendingForecastTaskController := taskinterface.NewSpendingForecastTaskController(forecastSpendingHandler)
 
 	taskHandlers := map[string]taskqueue.Handler{
 		"account.apply-interest":           interestTaskController.HandleApplyInterest,
 		"card.send-usage-statement":        statementTaskController.HandleSendStatement,
 		"account.analyze-monthly-spending": spendingAnalysisTaskController.HandleAnalyzeMonthlySpending,
+		"account.forecast-spending":        spendingForecastTaskController.HandleForecastSpending,
 	}
 	go taskqueue.NewPoller(db, sqsClient, taskQueueURL).Run(ctx)
 	go taskqueue.NewConsumer(sqsClient, taskQueueURL, taskHandlers).Run(ctx)

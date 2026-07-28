@@ -27,6 +27,7 @@ type AccountHandler struct {
 	getTransactions       *query.GetTransactionsHandler
 	askTransactionHistory *query.AskTransactionHistoryHandler
 	getSpendingAnalysis   *query.GetSpendingAnalysisHandler
+	getSpendingForecast   *query.GetSpendingForecastHandler
 }
 
 func NewAccountHandler(
@@ -41,6 +42,7 @@ func NewAccountHandler(
 	getTransactions *query.GetTransactionsHandler,
 	askTransactionHistory *query.AskTransactionHistoryHandler,
 	getSpendingAnalysis *query.GetSpendingAnalysisHandler,
+	getSpendingForecast *query.GetSpendingForecastHandler,
 ) *AccountHandler {
 	return &AccountHandler{
 		createAccount:         createAccount,
@@ -54,6 +56,7 @@ func NewAccountHandler(
 		getTransactions:       getTransactions,
 		askTransactionHistory: askTransactionHistory,
 		getSpendingAnalysis:   getSpendingAnalysis,
+		getSpendingForecast:   getSpendingForecast,
 	}
 }
 
@@ -507,6 +510,50 @@ func (h *AccountHandler) GetSpendingAnalysis(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// GetSpendingForecast returns an account's precomputed monthly spending
+// forecast — always the precomputed row a batch job wrote, never
+// live-computed on request (see ForecastSpendingHandler).
+//
+// @Summary		Get an account's predicted spending for a month
+// @Description	Returns the precomputed spending forecast (predicted total withdrawal amount and confidence) for the given month — trained monthly by a batch job on the account's own spending-analysis history, not on demand.
+// @Tags			Account
+// @Produce		json
+// @Security		BearerAuth
+// @Param			id		path		string							true	"The account ID"
+// @Param			month	query		string							true	"The month to look up, as YYYY-MM-01 (the day is ignored)"
+// @Success		200		{object}	GetSpendingForecastResponse		"The forecast was found."
+// @Failure		400		{object}	ErrorResponse					"Request validation failed (`VALIDATION_FAILED`) — e.g. `month` is not a valid date."
+// @Failure		401		{object}	ErrorResponse					"The bearer token is missing, malformed, or invalid."
+// @Failure		404		{object}	ErrorResponse					"No account exists with the given `id` for this requester (`ACCOUNT_NOT_FOUND`), or no forecast has been computed yet for the given month (`SPENDING_FORECAST_NOT_FOUND`) — e.g. the account has fewer than 3 months of spending-analysis history."
+// @Router			/accounts/{id}/spending-forecast [get]
+func (h *AccountHandler) GetSpendingForecast(w http.ResponseWriter, r *http.Request) {
+	requesterID, _ := middleware.UserIDFromContext(r.Context())
+	accountID := r.PathValue("id")
+	month := r.URL.Query().Get("month")
+	parsed, err := time.Parse("2006-01-02", month)
+	if err != nil {
+		writeValidationError(w, r, "month must be a valid date in YYYY-MM-01 form")
+		return
+	}
+	result, err := h.getSpendingForecast.Handle(r.Context(), query.GetSpendingForecastQuery{
+		AccountID:     accountID,
+		RequesterID:   requesterID,
+		ForecastMonth: parsed.Format("2006-01"),
+	})
+	if err != nil {
+		writeAccountError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, r, GetSpendingForecastResponse{
+		ForecastMonth:     result.ForecastMonth,
+		PredictedAmount:   result.PredictedAmount,
+		Confidence:        result.Confidence,
+		HistoryMonthsUsed: result.HistoryMonthsUsed,
+		CreatedAt:         result.CreatedAt,
+	})
+}
+
 func parsePagination(r *http.Request) (page, take int) {
 	page, take = 0, 20
 	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil {
@@ -539,6 +586,7 @@ var accountErrorMapping = []struct {
 	{account.ErrCurrencyMismatch, http.StatusBadRequest, "ACCOUNT_CURRENCY_MISMATCH"},
 	{account.ErrTransferSameAccount, http.StatusBadRequest, "ACCOUNT_TRANSFER_SAME_ACCOUNT"},
 	{account.ErrSpendingAnalysisNotFound, http.StatusNotFound, "SPENDING_ANALYSIS_NOT_FOUND"},
+	{account.ErrSpendingForecastNotFound, http.StatusNotFound, "SPENDING_FORECAST_NOT_FOUND"},
 }
 
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {

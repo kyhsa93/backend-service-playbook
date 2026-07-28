@@ -23,4 +23,18 @@ type SpendingAnalysisQuery interface {
 type SpendingAnalysisRepository interface {
 	SpendingAnalysisQuery
 	SaveAnalysis(ctx context.Context, analysis *SpendingAnalysis) error
+
+	// FindRecentAnalyses is the training data for ForecastSpendingHandler —
+	// every analysis row strictly before beforeMonth, capped at limit,
+	// returned oldest-first (chronological order), since
+	// command.SpendingForecastModel.Predict treats slice position as the
+	// month index. It lives on the write-capable Repository (not the
+	// read-only Query) even though it never mutates anything, because its
+	// only caller is ForecastSpendingHandler in application/command/ — a
+	// Query-layer file referencing it would be harmless today, but keeping
+	// every training-data lookup on the Repository side matches
+	// SaveAnalysis/HasAnalysis's existing placement and avoids growing
+	// SpendingAnalysisQuery with a method the HTTP-facing read path never
+	// calls.
+	FindRecentAnalyses(ctx context.Context, accountID, beforeMonth string, limit int) ([]SpendingAnalysis, error)
 }

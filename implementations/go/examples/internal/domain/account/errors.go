@@ -19,4 +19,5 @@ var (
 	ErrTransferSameAccount                = errors.New("source and target account must be different")
 	ErrSpendingAnalysisNotFound           = errors.New("spending analysis not found")
 	ErrInvalidAnalysisMonth               = errors.New("invalid analysis month")
+	ErrSpendingForecastNotFound           = errors.New("spending forecast not found")
 )
