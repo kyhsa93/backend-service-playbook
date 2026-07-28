@@ -142,7 +142,8 @@ public class AccountController {
             @RequestBody WithdrawRequest request) {
         String requesterId = authentication.getName();
         return withdrawService.withdraw(
-                new WithdrawCommand(accountId, requesterId, request.amount()));
+                new WithdrawCommand(
+                        accountId, requesterId, request.amount(), request.merchantName()));
     }
 
     @PostMapping("/{accountId}/transfer")

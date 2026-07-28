@@ -36,6 +36,8 @@ class NlTransactionAnswerComposerImplTest {
                             "t1",
                             "DEPOSIT",
                             new MoneyResult(1000, "KRW"),
+                            null,
+                            null,
                             LocalDateTime.of(2026, 7, 10, 0, 0)));
 
     @BeforeEach

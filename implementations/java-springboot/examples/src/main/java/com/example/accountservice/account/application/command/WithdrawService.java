@@ -28,7 +28,7 @@ public class WithdrawService {
                                         new AccountException(
                                                 AccountException.ErrorCode.ACCOUNT_NOT_FOUND,
                                                 "Account not found."));
-        Transaction transaction = account.withdraw(command.amount());
+        Transaction transaction = account.withdraw(command.amount(), null, command.merchantName());
         accountRepository.saveAccount(account);
         return new TransactionResult(
                 transaction.getTransactionId(),

@@ -104,6 +104,34 @@ class AccountTest {
     }
 
     @Test
+    void
+            withdraw_when_a_merchantName_is_given_then_carries_it_on_both_the_transaction_and_the_MoneyWithdrawnEvent() {
+        Account account = createAccount();
+        account.deposit(1000);
+        account.pullDomainEvents();
+
+        Transaction transaction = account.withdraw(400, null, "Starbucks Gangnam");
+
+        assertThat(transaction.getMerchantName()).isEqualTo("Starbucks Gangnam");
+        var events = account.pullDomainEvents();
+        assertThat(((MoneyWithdrawnEvent) events.get(0)).merchantName())
+                .isEqualTo("Starbucks Gangnam");
+    }
+
+    @Test
+    void withdraw_when_no_merchantName_is_given_then_the_transaction_and_event_have_none() {
+        Account account = createAccount();
+        account.deposit(1000);
+        account.pullDomainEvents();
+
+        Transaction transaction = account.withdraw(400);
+
+        assertThat(transaction.getMerchantName()).isNull();
+        var events = account.pullDomainEvents();
+        assertThat(((MoneyWithdrawnEvent) events.get(0)).merchantName()).isNull();
+    }
+
+    @Test
     void suspending_moves_to_SUSPENDED_status_and_collects_AccountSuspendedEvent() {
         Account account = createAccount();
         account.pullDomainEvents();

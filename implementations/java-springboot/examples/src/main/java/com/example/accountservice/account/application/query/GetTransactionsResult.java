@@ -15,6 +15,15 @@ public record GetTransactionsResult(
             @Schema(description = "The transaction ID.") String transactionId,
             @Schema(description = "The transaction type.", example = "DEPOSIT") String type,
             @Schema(description = "The transaction amount.") MoneyResult amount,
+            @Schema(description = "The payee/merchant attached to this withdrawal, if any.")
+                    String merchantName,
+            @Schema(
+                            description =
+                                    "The auto-categorized spending category, if this is a"
+                                            + " categorized withdrawal. Filled in asynchronously —"
+                                            + " absent until categorization completes.",
+                            example = "FOOD")
+                    String category,
             @Schema(description = "When the transaction was recorded.") LocalDateTime createdAt) {}
 
     public record MoneyResult(

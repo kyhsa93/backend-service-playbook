@@ -88,6 +88,10 @@ public class AskTransactionHistoryService {
                                                 new GetTransactionsResult.MoneyResult(
                                                         t.getAmount().amount(),
                                                         t.getAmount().currency()),
+                                                t.getMerchantName(),
+                                                t.getCategory() != null
+                                                        ? t.getCategory().name()
+                                                        : null,
                                                 t.getCreatedAt()))
                         .toList();
 

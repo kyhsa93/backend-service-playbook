@@ -121,6 +121,17 @@ public class Account {
      * referenceId).
      */
     public Transaction withdraw(long amount, String referenceId) {
+        return withdraw(amount, referenceId, null);
+    }
+
+    /**
+     * {@code merchantName} is the payee/memo a user-initiated withdrawal (WithdrawService) may
+     * optionally attach — it is carried onto both the Transaction and the MoneyWithdrawnEvent so
+     * CategorizeTransactionEventHandler can react asynchronously and classify it into a spending
+     * category. Absent (null) for the Payment BC reaction ({@link #withdraw(long, String)}) and for
+     * a user-initiated withdrawal that didn't attach one.
+     */
+    public Transaction withdraw(long amount, String referenceId, String merchantName) {
         if (this.status != AccountStatus.ACTIVE) {
             throw new AccountException(
                     AccountException.ErrorCode.WITHDRAW_REQUIRES_ACTIVE_ACCOUNT,
@@ -138,7 +149,12 @@ public class Account {
         this.balance = this.balance.subtract(money);
         this.updatedAt = LocalDateTime.now();
         Transaction transaction =
-                Transaction.create(this.accountId, TransactionType.WITHDRAWAL, money, referenceId);
+                Transaction.create(
+                        this.accountId,
+                        TransactionType.WITHDRAWAL,
+                        money,
+                        referenceId,
+                        merchantName);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(
                 new MoneyWithdrawnEvent(
@@ -147,6 +163,7 @@ public class Account {
                         transaction.getTransactionId(),
                         money,
                         this.balance,
+                        merchantName,
                         transaction.getCreatedAt()));
         return transaction;
     }

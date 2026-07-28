@@ -6,13 +6,10 @@ import com.example.accountservice.config.SqsProperties;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
@@ -26,15 +23,15 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageResponse;
 
 /**
  * Waits on SQS via long polling ({@link ReceiveMessageRequest.Builder#waitTimeSeconds}), and when a
- * message arrives, looks up the handler by {@code eventType} (MessageAttributes) among the injected
- * {@link OutboxEventHandler} list and invokes it — whether it's a Domain Event Handler
- * (application/event/) or an Integration Event receiver, it goes through this single Consumer.
- * Handler registration reuses the same {@code List<OutboxEventHandler>} injection that Spring
- * auto-collects from all {@code OutboxEventHandler} implementations across the classpath — exactly
- * as {@code OutboxRelay} used to do.
+ * message arrives, routes it by {@code eventType} (MessageAttributes) through {@link
+ * OutboxEventDispatcher} — whether it's a Domain Event Handler (application/event/) or an
+ * Integration Event receiver, it goes through this single Consumer. {@link OutboxEventDispatcher}
+ * owns the {@code eventType -> handler(s)} routing table (grouped from the same {@code
+ * List<OutboxEventHandler>} injection Spring auto-collects across the classpath) and supports more
+ * than one handler per eventType — see its javadoc for the "1:N" contract this depends on.
  *
- * <p>Handler succeeds → delete the message (ack). Handler fails (or no handler is registered) → do
- * not delete — once SQS's visibility timeout elapses, it's automatically redelivered
+ * <p>Handler(s) succeed → delete the message (ack). Any handler fails (or no handler is registered)
+ * → do not delete — once SQS's visibility timeout elapses, it's automatically redelivered
  * (at-least-once). The EventHandler idempotency this storage requires
  * (docs/architecture/domain-events.md) is exactly what this redelivery assumes.
  *
@@ -57,7 +54,7 @@ public class OutboxConsumer implements SmartLifecycle {
 
     private final SqsClient sqsClient;
     private final SqsProperties sqsProperties;
-    private final Map<String, OutboxEventHandler> handlers;
+    private final OutboxEventDispatcher dispatcher;
     private final Tracer tracer;
     private final Propagator propagator;
     private final ExecutorService executor =
@@ -68,16 +65,12 @@ public class OutboxConsumer implements SmartLifecycle {
     public OutboxConsumer(
             SqsClient sqsClient,
             SqsProperties sqsProperties,
-            List<OutboxEventHandler> eventHandlers,
+            OutboxEventDispatcher dispatcher,
             Tracer tracer,
             Propagator propagator) {
         this.sqsClient = sqsClient;
         this.sqsProperties = sqsProperties;
-        this.handlers =
-                eventHandlers.stream()
-                        .collect(
-                                Collectors.toMap(
-                                        OutboxEventHandler::eventType, Function.identity()));
+        this.dispatcher = dispatcher;
         this.tracer = tracer;
         this.propagator = propagator;
     }
@@ -154,11 +147,7 @@ public class OutboxConsumer implements SmartLifecycle {
             if (eventType == null) {
                 throw new IllegalStateException("Missing eventType message attribute.");
             }
-            OutboxEventHandler handler = handlers.get(eventType);
-            if (handler == null) {
-                throw new IllegalStateException("No handler registered for: " + eventType);
-            }
-            handler.handle(message.body());
+            dispatcher.dispatch(eventType, message.body());
             sqsClient.deleteMessage(
                     DeleteMessageRequest.builder()
                             .queueUrl(queueUrl)

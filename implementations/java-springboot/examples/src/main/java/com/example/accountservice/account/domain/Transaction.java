@@ -22,6 +22,16 @@ public class Transaction {
     // together with type, as the Level 2 Ledger key that prevents duplicate processing on
     // at-least-once redelivery (see "event handler idempotency" in domain-events.md).
     private String referenceId;
+    // The payee/memo the requester optionally attaches to a withdrawal — the only free-text signal
+    // TransactionAutoCategorizer has to classify against. Absent for deposits/interest and for a
+    // withdrawal the requester didn't attach one to.
+    private String merchantName;
+    // Filled in asynchronously, after the transaction is created —
+    // CategorizeTransactionEventHandler
+    // reacts to MoneyWithdrawnEvent and categorizes it later, so this is always null at the moment
+    // Account.withdraw() constructs the Transaction, and only present when this object is
+    // reconstituted from a row that a categorization run has already updated.
+    private TransactionCategory category;
     private LocalDateTime createdAt;
 
     private Transaction() {}
@@ -32,12 +42,22 @@ public class Transaction {
 
     static Transaction create(
             String accountId, TransactionType type, Money amount, String referenceId) {
+        return create(accountId, type, amount, referenceId, null);
+    }
+
+    static Transaction create(
+            String accountId,
+            TransactionType type,
+            Money amount,
+            String referenceId,
+            String merchantName) {
         Transaction transaction = new Transaction();
         transaction.transactionId = IdGenerator.generate();
         transaction.accountId = accountId;
         transaction.type = type;
         transaction.amount = amount;
         transaction.referenceId = referenceId;
+        transaction.merchantName = merchantName;
         transaction.createdAt = LocalDateTime.now();
         return transaction;
     }
@@ -52,6 +72,8 @@ public class Transaction {
             TransactionType type,
             Money amount,
             String referenceId,
+            String merchantName,
+            TransactionCategory category,
             LocalDateTime createdAt) {
         Transaction transaction = new Transaction();
         transaction.transactionId = transactionId;
@@ -59,8 +81,28 @@ public class Transaction {
         transaction.type = type;
         transaction.amount = amount;
         transaction.referenceId = referenceId;
+        transaction.merchantName = merchantName;
+        transaction.category = category;
         transaction.createdAt = createdAt;
         return transaction;
+    }
+
+    /**
+     * The domain method {@code CategorizeTransactionEventHandler} drives {@code
+     * TransactionRepository}'s find→modify→save&lt;Noun&gt; cycle through (see
+     * docs/architecture/repository-pattern.md) — Transaction is otherwise immutable, so this
+     * returns a new instance rather than mutating in place.
+     */
+    public Transaction categorize(TransactionCategory category) {
+        return reconstitute(
+                this.transactionId,
+                this.accountId,
+                this.type,
+                this.amount,
+                this.referenceId,
+                this.merchantName,
+                category,
+                this.createdAt);
     }
 
     public String getTransactionId() {
@@ -81,6 +123,14 @@ public class Transaction {
 
     public String getReferenceId() {
         return referenceId;
+    }
+
+    public String getMerchantName() {
+        return merchantName;
+    }
+
+    public TransactionCategory getCategory() {
+        return category;
     }
 
     public LocalDateTime getCreatedAt() {

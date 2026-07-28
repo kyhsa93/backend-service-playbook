@@ -94,6 +94,8 @@ class AskTransactionHistoryServiceTest {
                         TransactionType.DEPOSIT,
                         new Money(1000, "KRW"),
                         null,
+                        null,
+                        null,
                         LocalDateTime.now());
         when(translator.translate(anyString())).thenReturn(new TransactionFilter(null, null, null));
         when(accountQuery.findTransactions(any(TransactionFindQuery.class)))
