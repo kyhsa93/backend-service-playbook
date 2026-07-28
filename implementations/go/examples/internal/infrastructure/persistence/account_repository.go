@@ -303,6 +303,33 @@ func (r *AccountRepository) SummarizeTransactions(ctx context.Context, q account
 	return summary, nil
 }
 
+// FindRecentWithdrawalAmounts is the training data for
+// account.IsWithdrawalAnomalous — the account's own recent WITHDRAWAL
+// amounts, most-recent-first, capped at limit, excluding
+// excludeTransactionID (the withdrawal currently being judged).
+func (r *AccountRepository) FindRecentWithdrawalAmounts(ctx context.Context, accountID, excludeTransactionID string, limit int) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT amount FROM transactions
+		 WHERE account_id = $1 AND type = $2 AND id != $3
+		 ORDER BY created_at DESC LIMIT $4`,
+		accountID, string(account.TransactionTypeWithdrawal), excludeTransactionID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find recent withdrawal amounts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var amounts []int64
+	for rows.Next() {
+		var amount int64
+		if err := rows.Scan(&amount); err != nil {
+			return nil, err
+		}
+		amounts = append(amounts, amount)
+	}
+	return amounts, rows.Err()
+}
+
 // parseISODate parses an ISO 8601 date (YYYY-MM-DD). An empty or
 // unparsable value returns ok=false so the caller can skip applying that
 // bound rather than erroring.

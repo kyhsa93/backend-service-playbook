@@ -71,6 +71,17 @@ type Query interface {
 	// (and the prior month's, for comparison) WITHDRAWAL activity without
 	// loading every individual Transaction row into memory.
 	SummarizeTransactions(ctx context.Context, q SummarizeTransactionsQuery) (TransactionSummary, error)
+
+	// FindRecentWithdrawalAmounts is the training data for
+	// IsWithdrawalAnomalous — the account's own recent WITHDRAWAL amounts
+	// (order doesn't matter, unlike SpendingAnalysisRepository.
+	// FindRecentAnalyses, since the Domain Service only computes a
+	// mean/stddev over the set). excludeTransactionID is the withdrawal
+	// being judged itself — by the time DetectWithdrawalAnomalyEventHandler
+	// runs (after the Outbox has delivered MoneyWithdrawn), that
+	// transaction is already persisted, so it must be excluded or it would
+	// skew its own baseline.
+	FindRecentWithdrawalAmounts(ctx context.Context, accountID, excludeTransactionID string, limit int) ([]int64, error)
 }
 
 // SummarizeTransactionsQuery narrows a SummarizeTransactions aggregation to

@@ -44,6 +44,10 @@ func (s *stubAccountQuery) SummarizeTransactions(ctx context.Context, q account.
 	return account.TransactionSummary{}, nil
 }
 
+func (s *stubAccountQuery) FindRecentWithdrawalAmounts(ctx context.Context, accountID, excludeTransactionID string, limit int) ([]int64, error) {
+	return nil, nil
+}
+
 type stubTranslator struct {
 	filter query.TransactionFilter
 }

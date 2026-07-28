@@ -18,6 +18,7 @@ type stubRepository struct {
 	saveFn                        func(ctx context.Context, a *account.Account) error
 	hasTransactionWithReferenceFn func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error)
 	summarizeTransactionsFn       func(ctx context.Context, q account.SummarizeTransactionsQuery) (account.TransactionSummary, error)
+	findRecentWithdrawalAmountsFn func(ctx context.Context, accountID, excludeTransactionID string, limit int) ([]int64, error)
 }
 
 // FindAccounts supports two scenarios: if findAllFn is set (e.g. a batch
@@ -68,6 +69,15 @@ func (s *stubRepository) SummarizeTransactions(
 		return account.TransactionSummary{}, nil
 	}
 	return s.summarizeTransactionsFn(ctx, q)
+}
+
+func (s *stubRepository) FindRecentWithdrawalAmounts(
+	ctx context.Context, accountID, excludeTransactionID string, limit int,
+) ([]int64, error) {
+	if s.findRecentWithdrawalAmountsFn == nil {
+		return nil, nil
+	}
+	return s.findRecentWithdrawalAmountsFn(ctx, accountID, excludeTransactionID, limit)
 }
 
 // stubSpendingAnalysisRepository is a minimal mock for

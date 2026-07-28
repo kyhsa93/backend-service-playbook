@@ -139,20 +139,26 @@ func main() {
 	// translation or answer generation).
 	transactionAutoCategorizer := llm.NewTransactionAutoCategorizerImpl(config.OllamaBaseURL(), config.LLMModel())
 	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
+	detectWithdrawalAnomalyHandler := event.NewDetectWithdrawalAnomalyEventHandler(accountRepo, notifier)
 
 	// This handlers map is used by outbox.Consumer to look up the
 	// handler(s) for the eventType of a message received from SQS — Command
 	// Handlers no longer reference this map at all (no synchronous
 	// draining, domain-events.md). An eventType may have more than one
-	// subscriber — "MoneyWithdrawn" has both MoneyWithdrawnEventHandler
-	// (the notification email) and CategorizeTransactionEventHandler (the
-	// asynchronous spending-category classification) — outbox.Consumer runs
-	// every handler registered for an eventType, even if an earlier one
-	// fails (see internal/infrastructure/outbox/consumer.go).
+	// subscriber — "MoneyWithdrawn" has three: MoneyWithdrawnEventHandler
+	// (the notification email), CategorizeTransactionEventHandler (the
+	// asynchronous spending-category classification), and
+	// DetectWithdrawalAnomalyEventHandler (the statistical-outlier alert) —
+	// outbox.Consumer runs every handler registered for an eventType, even
+	// if an earlier one fails (see internal/infrastructure/outbox/consumer.go).
 	outboxHandlers := map[string][]outbox.Handler{
-		"AccountCreated":     {event.NewAccountCreatedEventHandler(notifier).Handle},
-		"MoneyDeposited":     {event.NewMoneyDepositedEventHandler(notifier).Handle},
-		"MoneyWithdrawn":     {event.NewMoneyWithdrawnEventHandler(notifier).Handle, categorizeTransactionHandler.Handle},
+		"AccountCreated": {event.NewAccountCreatedEventHandler(notifier).Handle},
+		"MoneyDeposited": {event.NewMoneyDepositedEventHandler(notifier).Handle},
+		"MoneyWithdrawn": {
+			event.NewMoneyWithdrawnEventHandler(notifier).Handle,
+			categorizeTransactionHandler.Handle,
+			detectWithdrawalAnomalyHandler.Handle,
+		},
 		"AccountSuspended":   {event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle},
 		"AccountReactivated": {event.NewAccountReactivatedEventHandler(notifier).Handle},
 		"AccountClosed":      {event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle},

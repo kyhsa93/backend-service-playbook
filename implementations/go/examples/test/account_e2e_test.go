@@ -188,11 +188,16 @@ func runTests(m *testing.M) int {
 	// CategorizeTransactionEventHandler → the repository write all actually run.
 	transactionAutoCategorizer := llm.NewTransactionAutoCategorizerImpl(config.OllamaBaseURL(), config.LLMModel())
 	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
+	detectWithdrawalAnomalyHandler := event.NewDetectWithdrawalAnomalyEventHandler(repo, notifier)
 
 	outboxHandlers := map[string][]outbox.Handler{
-		"AccountCreated":     {event.NewAccountCreatedEventHandler(notifier).Handle},
-		"MoneyDeposited":     {event.NewMoneyDepositedEventHandler(notifier).Handle},
-		"MoneyWithdrawn":     {event.NewMoneyWithdrawnEventHandler(notifier).Handle, categorizeTransactionHandler.Handle},
+		"AccountCreated": {event.NewAccountCreatedEventHandler(notifier).Handle},
+		"MoneyDeposited": {event.NewMoneyDepositedEventHandler(notifier).Handle},
+		"MoneyWithdrawn": {
+			event.NewMoneyWithdrawnEventHandler(notifier).Handle,
+			categorizeTransactionHandler.Handle,
+			detectWithdrawalAnomalyHandler.Handle,
+		},
 		"AccountSuspended":   {event.NewAccountSuspendedEventHandler(notifier, outboxPublisher).Handle},
 		"AccountReactivated": {event.NewAccountReactivatedEventHandler(notifier).Handle},
 		"AccountClosed":      {event.NewAccountClosedEventHandler(notifier, outboxPublisher).Handle},

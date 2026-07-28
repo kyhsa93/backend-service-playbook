@@ -85,6 +85,29 @@ func (s *Service) NotifyCardStatement(ctx context.Context, accountID, recipient,
 	return nil
 }
 
+// NotifyWithdrawalAnomaly sends the withdrawal-anomaly alert email and
+// saves the send history — it reuses the same send() path as Notify
+// (account Domain Event -> email), the same "not derived from an
+// account.DomainEvent switch-case" reasoning as NotifyCardStatement: the
+// judgment that produces this alert (account.IsWithdrawalAnomalous) is
+// made by DetectWithdrawalAnomalyEventHandler, an application-layer
+// decision, not a state change the Account Aggregate itself raised.
+func (s *Service) NotifyWithdrawalAnomaly(ctx context.Context, accountID, recipient string, amount int64, currency string) error {
+	content := emailContent{
+		accountID: accountID,
+		recipient: recipient,
+		subject:   "[Account] Unusual withdrawal detected",
+		body: fmt.Sprintf(
+			"A withdrawal of %d %s is unusually large compared to your recent activity. "+
+				"If this wasn't you, please contact support immediately.",
+			amount, currency),
+	}
+	if err := s.send(ctx, "WithdrawalAnomalyDetected", content); err != nil {
+		return fmt.Errorf("notify withdrawal anomaly: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) send(ctx context.Context, eventType string, content emailContent) error {
 	output, err := s.sesClient.SendEmail(ctx, &ses.SendEmailInput{
 		Source:      aws.String(SenderEmail()),
