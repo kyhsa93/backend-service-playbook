@@ -23,7 +23,9 @@ fi
 
 if [ "$needs_build" -eq 1 ]; then
   mkdir -p "$CLASSES"
-  "$JAVAC_BIN" -d "$CLASSES" $(find "$HARNESS_DIR/src" -name "*.java")
+  # A failed compile must not fall through to touch $STAMP — that would cache a stale/partial
+  # build/classes as "up to date" and silently run it on this and every later invocation.
+  "$JAVAC_BIN" -d "$CLASSES" $(find "$HARNESS_DIR/src" -name "*.java") || exit 1
   touch "$STAMP"
 fi
 

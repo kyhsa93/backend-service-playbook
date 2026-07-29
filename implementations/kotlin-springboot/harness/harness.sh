@@ -23,7 +23,9 @@ fi
 
 if [ "$needs_build" -eq 1 ]; then
   mkdir -p "$HARNESS_DIR/build"
-  "$KOTLINC_BIN" "$HARNESS_DIR/src" -include-runtime -d "$JAR"
+  # A failed compile must not fall through to running java -jar "$JAR" below — without this,
+  # a compile error would silently re-run the previous (now stale) jar instead of failing.
+  "$KOTLINC_BIN" "$HARNESS_DIR/src" -include-runtime -d "$JAR" || exit 1
 fi
 
 java -jar "$JAR" "$ROOT"
