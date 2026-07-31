@@ -82,7 +82,7 @@ dependencies {
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:localstack")
     testImplementation("io.mockk:mockk:1.14.11")
-    testImplementation("org.awaitility:awaitility:4.2.2")
+    testImplementation("org.awaitility:awaitility:4.3.0")
 }
 
 kotlin {
