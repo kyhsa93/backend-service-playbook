@@ -176,7 +176,7 @@ Both Technical Service implementations fail non-blockingly (the translator falls
 - `config/LlmProperties.java`, `config/LlmHttpClientConfig.java`
 - `account/infrastructure/NlTransactionQueryTranslatorImplTest.java`, `NlTransactionAnswerComposerImplTest.java` — unit tests mocking the shared `HttpClient` bean (valid response parsed, invalid/malformed values dropped, network failure falls back)
 - `account/application/query/AskTransactionHistoryServiceTest.java` — mocks `AccountQuery`/`NlTransactionQueryTranslator`/`NlTransactionAnswerComposer`, pinning that the retrieval is always scoped by the authenticated requester regardless of what the mocked translator returns
-- `account/interfaces/rest/AccountControllerE2ETest.java` — the `POST /accounts/{accountId}/transactions/ask` cases (no real Ollama in this test environment, so both LLM calls fall back to their non-blocking defaults — the tests assert only on response shape/count, not exact wording)
+- `account/interfaces/rest/AccountControllerE2ETest.java` — the `POST /accounts/{accountId}/transactions/ask` cases. Both LLM calls hit the in-process fake Ollama (`src/test/java/.../support/FakeOllamaServer.java`, wired via `@DynamicPropertySource` overriding `llm.ollama-base-url` — see [testing.md](testing.md)), so the tests assert the real translate → retrieve → compose path (the DEPOSIT-filtered grounding echoed into the answer), plus one forced-failure case covering the non-blocking fallbacks (no filter + the templated summary)
 
 ---
 

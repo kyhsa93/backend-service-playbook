@@ -6,11 +6,13 @@ import static org.awaitility.Awaitility.await;
 import com.example.accountservice.AccountServiceApplication;
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmail;
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailRepository;
+import com.example.accountservice.support.FakeOllamaServer;
 import com.example.accountservice.support.SqsTestQueue;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -75,6 +77,17 @@ class WithdrawalAnomalyAlertE2ETest {
         return domainEventQueueUrl;
     }
 
+    // In-process fake Ollama (see FakeOllamaServer) — the merchantName withdrawals in this class
+    // also trigger CategorizeTransactionEventHandler on the same delivery, so llm.ollama-base-url
+    // points at the fake to keep that background LLM call deterministic
+    // (TransactionCategorizationE2ETest asserts on the categories themselves).
+    static FakeOllamaServer fakeOllama = new FakeOllamaServer();
+
+    @AfterAll
+    static void stopFakeOllama() {
+        fakeOllama.stop();
+    }
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -92,6 +105,7 @@ class WithdrawalAnomalyAlertE2ETest {
         registry.add("ses.sender-email", () -> SENDER_EMAIL);
         registry.add(
                 "sqs.domain-event-queue-url", WithdrawalAnomalyAlertE2ETest::domainEventQueueUrl);
+        registry.add("llm.ollama-base-url", () -> fakeOllama.baseUrl());
         registry.add(
                 "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }

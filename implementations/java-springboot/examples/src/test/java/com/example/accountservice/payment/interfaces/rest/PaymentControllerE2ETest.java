@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.example.accountservice.AccountServiceApplication;
+import com.example.accountservice.support.FakeOllamaServer;
 import com.example.accountservice.support.SqsTestQueue;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -67,6 +69,17 @@ class PaymentControllerE2ETest {
         return domainEventQueueUrl;
     }
 
+    // In-process fake Ollama (see FakeOllamaServer) — the refund requests in this class trigger
+    // ClassifyRefundReasonEventHandler asynchronously, so llm.ollama-base-url points at the fake
+    // to keep that background LLM call deterministic (RefundReasonInsightsE2ETest asserts on the
+    // classified categories themselves).
+    static FakeOllamaServer fakeOllama = new FakeOllamaServer();
+
+    @AfterAll
+    static void stopFakeOllama() {
+        fakeOllama.stop();
+    }
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -86,6 +99,7 @@ class PaymentControllerE2ETest {
         registry.add("aws.access-key-id", () -> localstack.getAccessKey());
         registry.add("aws.secret-access-key", () -> localstack.getSecretKey());
         registry.add("sqs.domain-event-queue-url", PaymentControllerE2ETest::domainEventQueueUrl);
+        registry.add("llm.ollama-base-url", () -> fakeOllama.baseUrl());
     }
 
     @Autowired private TestRestTemplate restTemplate;

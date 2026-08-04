@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.example.accountservice.AccountServiceApplication;
+import com.example.accountservice.support.FakeOllamaServer;
 import com.example.accountservice.support.SqsTestQueue;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -30,12 +32,13 @@ import org.testcontainers.utility.DockerImageName;
  * Exercises the real async pipeline end to end: refund request → {@code RefundRequestedEvent} →
  * Outbox → SQS → {@code OutboxConsumer} → {@code OutboxEventDispatcher} → {@code
  * ClassifyRefundReasonEventHandler} → the {@code RefundRepository} write, and {@code GET
- * /refunds/reason-insights}. The LLM behind {@code RefundReasonClassifier} isn't available in this
- * e2e environment (same reasoning as {@code TransactionCategorizationE2ETest}), so the
- * classification call itself falls back to {@code OTHER} — but this still proves the whole plumbing
- * runs, and — the key design point of this feature — that classification runs identically for a
- * {@code REJECTED} refund, since {@code RefundRequestedEvent} is published by {@link
- * com.example.accountservice.payment.domain.Refund#create} before {@code
+ * /refunds/reason-insights}. {@code RefundReasonClassifierImpl} talks to the in-process fake Ollama
+ * (see {@link FakeOllamaServer}), which deterministically classifies an "arrived broken" reason as
+ * {@code DEFECTIVE_PRODUCT} and a "changed my mind" reason as {@code CHANGED_MIND} — so the
+ * assertions prove the classifier's real HTTP request/parse path ran (its no-LLM fallback would
+ * write {@code OTHER} instead), and — the key design point of this feature — that classification
+ * runs identically for a {@code REJECTED} refund, since {@code RefundRequestedEvent} is published
+ * by {@link com.example.accountservice.payment.domain.Refund#create} before {@code
  * RefundEligibilityService}'s approve/reject judgment even runs.
  */
 @Testcontainers
@@ -68,6 +71,16 @@ class RefundReasonInsightsE2ETest {
         return domainEventQueueUrl;
     }
 
+    // In-process fake Ollama (see FakeOllamaServer) — llm.ollama-base-url points at it below, so
+    // the classifier's real HTTP request/parse path runs in this e2e suite with deterministic
+    // content instead of degrading to its no-Ollama fallback.
+    static FakeOllamaServer fakeOllama = new FakeOllamaServer();
+
+    @AfterAll
+    static void stopFakeOllama() {
+        fakeOllama.stop();
+    }
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -88,6 +101,7 @@ class RefundReasonInsightsE2ETest {
         registry.add("aws.secret-access-key", () -> localstack.getSecretKey());
         registry.add(
                 "sqs.domain-event-queue-url", RefundReasonInsightsE2ETest::domainEventQueueUrl);
+        registry.add("llm.ollama-base-url", () -> fakeOllama.baseUrl());
     }
 
     @Autowired private TestRestTemplate restTemplate;
@@ -169,9 +183,14 @@ class RefundReasonInsightsE2ETest {
         return refunds.isEmpty() ? null : refunds.get(0);
     }
 
-    private long totalClassified(String ownerId) {
-        return ((Number) get("/refunds/reason-insights", ownerId).getBody().get("totalClassified"))
-                .longValue();
+    private long categoryCount(String ownerId, String category) {
+        Map<String, Object> body = get("/refunds/reason-insights", ownerId).getBody();
+        List<Map<String, Object>> counts = (List<Map<String, Object>>) body.get("counts");
+        return counts.stream()
+                .filter(count -> category.equals(count.get("category")))
+                .map(count -> ((Number) count.get("count")).longValue())
+                .findFirst()
+                .orElse(0L);
     }
 
     @Test
@@ -201,13 +220,47 @@ class RefundReasonInsightsE2ETest {
                             Map<String, Object> listed =
                                     firstRefund((String) payment.get("paymentId"), OWNER_ID);
                             assertThat(listed).isNotNull();
+                            // DEFECTIVE_PRODUCT (not the OTHER fallback) proves the classifier's
+                            // real request/parse path against the fake Ollama decided the
+                            // category.
+                            assertThat(listed.get("reasonCategory")).isEqualTo("DEFECTIVE_PRODUCT");
+                        });
+    }
+
+    @Test
+    void a_refund_whose_reason_forces_an_LLM_failure_falls_back_to_the_OTHER_category() {
+        Map<String, Object> account = createAccount(OWNER_ID);
+        String accountId = (String) account.get("accountId");
+        deposit(accountId, 50000, OWNER_ID);
+        Map<String, Object> card = issueCard(OWNER_ID, accountId);
+        Map<String, Object> payment = createPayment((String) card.get("cardId"), 10000, OWNER_ID);
+        waitForBalance(accountId, 40000, OWNER_ID);
+
+        // The refund's stated reason reaches the classifier's prompt verbatim, so embedding
+        // FORCE_LLM_FAILURE_MARKER makes the fake Ollama answer 500 for exactly this request —
+        // covering the classifier's non-blocking degradation to OTHER when the LLM call fails
+        // (the "arrived broken" phrasing would otherwise classify as DEFECTIVE_PRODUCT, proving
+        // the forced outage — not the content routing — decided the result).
+        requestRefund(
+                (String) payment.get("paymentId"),
+                9000,
+                "The item arrived broken " + FakeOllamaServer.FORCE_LLM_FAILURE_MARKER,
+                OWNER_ID);
+
+        await().atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(200))
+                .untilAsserted(
+                        () -> {
+                            Map<String, Object> listed =
+                                    firstRefund((String) payment.get("paymentId"), OWNER_ID);
+                            assertThat(listed).isNotNull();
                             assertThat(listed.get("reasonCategory")).isEqualTo("OTHER");
                         });
     }
 
     @Test
     void get_refunds_reason_insights_reflects_a_classified_refund_in_its_category_counts() {
-        long totalBefore = totalClassified(OWNER_ID);
+        long changedMindBefore = categoryCount(OWNER_ID, "CHANGED_MIND");
 
         Map<String, Object> account = createAccount(OWNER_ID);
         String accountId = (String) account.get("accountId");
@@ -220,6 +273,11 @@ class RefundReasonInsightsE2ETest {
         await().atMost(Duration.ofSeconds(30))
                 .pollInterval(Duration.ofMillis(200))
                 .untilAsserted(
-                        () -> assertThat(totalClassified(OWNER_ID)).isGreaterThan(totalBefore));
+                        // The fake Ollama deterministically classifies "Changed my mind" as
+                        // CHANGED_MIND, so the count for that exact category — not just
+                        // totalClassified — must grow.
+                        () ->
+                                assertThat(categoryCount(OWNER_ID, "CHANGED_MIND"))
+                                        .isGreaterThan(changedMindBefore));
     }
 }

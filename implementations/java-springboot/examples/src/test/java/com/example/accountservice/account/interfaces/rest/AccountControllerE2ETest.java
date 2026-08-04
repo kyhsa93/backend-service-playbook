@@ -3,8 +3,10 @@ package com.example.accountservice.account.interfaces.rest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.accountservice.AccountServiceApplication;
+import com.example.accountservice.support.FakeOllamaServer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -33,6 +35,16 @@ class AccountControllerE2ETest {
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
+    // In-process fake Ollama (see FakeOllamaServer) — llm.ollama-base-url points at it below, so
+    // the LLM Technical Services' real HTTP request/parse paths run in this e2e suite with
+    // deterministic content instead of degrading to their no-Ollama fallbacks.
+    static FakeOllamaServer fakeOllama = new FakeOllamaServer();
+
+    @AfterAll
+    static void stopFakeOllama() {
+        fakeOllama.stop();
+    }
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -40,6 +52,7 @@ class AccountControllerE2ETest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.flyway.enabled", () -> "false");
+        registry.add("llm.ollama-base-url", () -> fakeOllama.baseUrl());
         // This test repeatedly calls account creation from the same client (IP) — using the
         // production value (5/min, rate-limiting.md) as-is would trigger rate limiting and mix in
         // 429s. Relax the limit for test purposes.
@@ -607,11 +620,13 @@ class AccountControllerE2ETest {
         assertThat(response.getBody().get("count")).isEqualTo(0);
     }
 
-    // The LLM behind NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl (see
-    // account/infrastructure) isn't available in this e2e environment, so both calls fall back to
-    // their non-blocking defaults: an empty filter (all of the account's transactions) and a plain
-    // templated summary. This still exercises the real retrieval + response shape end to end
-    // without depending on a live Ollama.
+    // Both LLM Technical Services behind /transactions/ask (NlTransactionQueryTranslatorImpl/
+    // NlTransactionAnswerComposerImpl, see account/infrastructure) hit the in-process fake Ollama
+    // (see FakeOllamaServer): the translator answers a deterministic DEPOSIT filter for a question
+    // about deposits, and the composer echoes its grounding data back behind FAKE_ANSWER_PREFIX —
+    // so the assertions prove the real translate -> retrieve -> compose path ran (the echoed
+    // grounding includes the seeded deposit and excludes the non-matching withdrawal), not just
+    // the response shape of a fallback.
     @Test
     void
             returns_200_with_an_answer_grounded_in_the_requesters_own_transactions_when_asked_a_question() {
@@ -620,6 +635,10 @@ class AccountControllerE2ETest {
                 "/accounts/" + account.get("accountId") + "/deposit",
                 OWNER_ID,
                 Map.of("amount", 10000));
+        post(
+                "/accounts/" + account.get("accountId") + "/withdraw",
+                OWNER_ID,
+                Map.of("amount", 3000));
 
         ResponseEntity<Map> response =
                 post(
@@ -629,8 +648,43 @@ class AccountControllerE2ETest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = response.getBody();
-        assertThat(body.get("answer")).isInstanceOf(String.class);
-        assertThat((String) body.get("answer")).isNotEmpty();
+        String answer = (String) body.get("answer");
+        // FAKE_ANSWER_PREFIX proves the answer came through the composer's real request/parse
+        // path (its fallback starts with "Found ..." instead). The echoed grounding containing
+        // the deposit but not the withdrawal proves the translator's DEPOSIT filter really
+        // narrowed the retrieval that grounded the prompt.
+        assertThat(answer).startsWith(FakeOllamaServer.FAKE_ANSWER_PREFIX);
+        assertThat(answer).contains("DEPOSIT 10000 KRW");
+        assertThat(answer).doesNotContain("WITHDRAWAL");
+        assertThat(body.get("matchedCount")).isEqualTo(1);
+    }
+
+    @Test
+    void falls_back_to_no_filter_and_a_templated_answer_when_the_LLM_calls_fail() {
+        Map<String, Object> account = createAccount(OWNER_ID, "KRW");
+        post(
+                "/accounts/" + account.get("accountId") + "/deposit",
+                OWNER_ID,
+                Map.of("amount", 10000));
+
+        // The question reaches both LLM prompts verbatim, so embedding FORCE_LLM_FAILURE_MARKER
+        // makes the fake Ollama answer 500 to both calls — the endpoint must still answer 200,
+        // with the translator degrading to no filter and the composer to its plain templated
+        // summary of the same retrieved data.
+        ResponseEntity<Map> response =
+                post(
+                        "/accounts/" + account.get("accountId") + "/transactions/ask",
+                        OWNER_ID,
+                        Map.of(
+                                "question",
+                                "How much have I deposited? "
+                                        + FakeOllamaServer.FORCE_LLM_FAILURE_MARKER));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = response.getBody();
+        String answer = (String) body.get("answer");
+        assertThat(answer).startsWith("Found 1 matching transaction(s):");
+        assertThat(answer).contains("DEPOSIT 10000 KRW");
         assertThat(body.get("matchedCount")).isEqualTo(1);
     }
 

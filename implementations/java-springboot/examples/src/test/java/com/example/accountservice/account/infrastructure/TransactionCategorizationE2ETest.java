@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.example.accountservice.AccountServiceApplication;
+import com.example.accountservice.support.FakeOllamaServer;
 import com.example.accountservice.support.SqsTestQueue;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,12 +38,13 @@ import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest;
 /**
  * Exercises the real async pipeline end to end: withdraw (with a merchantName) → {@code
  * MoneyWithdrawnEvent} → Outbox → SQS → {@code OutboxConsumer} → {@code OutboxEventDispatcher} →
- * {@code CategorizeTransactionEventHandler} → the {@code TransactionRepository} write. The LLM
- * behind {@code TransactionAutoCategorizer} isn't available in this e2e environment (same reasoning
- * as the {@code /transactions/ask} tests), so the categorization call itself falls back to {@code
- * OTHER} — but this still proves the whole plumbing runs, including that {@code
- * MoneyWithdrawnEventHandler} (SES notification) and {@code CategorizeTransactionEventHandler} both
- * run for the same delivery (the "1:N" contract of {@code OutboxEventDispatcher}).
+ * {@code CategorizeTransactionEventHandler} → the {@code TransactionRepository} write. The
+ * categorizer talks to the in-process fake Ollama (see {@link FakeOllamaServer}), which
+ * deterministically answers {@code FOOD} for a Starbucks merchant — so {@code FOOD} landing on the
+ * transaction proves the categorizer's real HTTP request/parse path ran (its no-LLM fallback would
+ * write {@code OTHER} instead), and that {@code MoneyWithdrawnEventHandler} (SES notification) and
+ * {@code CategorizeTransactionEventHandler} both run for the same delivery (the "1:N" contract of
+ * {@code OutboxEventDispatcher}).
  */
 @Testcontainers
 @SuppressWarnings("unchecked")
@@ -73,6 +76,16 @@ class TransactionCategorizationE2ETest {
         return domainEventQueueUrl;
     }
 
+    // In-process fake Ollama (see FakeOllamaServer) — llm.ollama-base-url points at it below, so
+    // the categorizer's real HTTP request/parse path runs in this e2e suite with deterministic
+    // content instead of degrading to its no-Ollama fallback.
+    static FakeOllamaServer fakeOllama = new FakeOllamaServer();
+
+    @AfterAll
+    static void stopFakeOllama() {
+        fakeOllama.stop();
+    }
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -91,6 +104,7 @@ class TransactionCategorizationE2ETest {
         registry.add(
                 "sqs.domain-event-queue-url",
                 TransactionCategorizationE2ETest::domainEventQueueUrl);
+        registry.add("llm.ollama-base-url", () -> fakeOllama.baseUrl());
         registry.add(
                 "resilience4j.ratelimiter.instances.http-write.limit-for-period", () -> "1000");
     }
@@ -183,6 +197,34 @@ class TransactionCategorizationE2ETest {
                             assertThat(transaction).isNotNull();
                             assertThat(transaction.get("merchantName"))
                                     .isEqualTo("Starbucks Gangnam");
+                            // FOOD (not the OTHER fallback) proves the categorizer's real
+                            // request/parse path against the fake Ollama decided the category.
+                            assertThat(transaction.get("category")).isEqualTo("FOOD");
+                        });
+    }
+
+    @Test
+    void withdraw_with_a_merchantName_that_forces_an_LLM_failure_then_falls_back_to_OTHER() {
+        String accountId = (String) createAccountAndDeposit(10000).get("accountId");
+
+        // The merchantName reaches the categorizer's prompt verbatim, so embedding
+        // FORCE_LLM_FAILURE_MARKER makes the fake Ollama answer 500 for exactly this request —
+        // covering the categorizer's non-blocking degradation to OTHER when the LLM call fails.
+        String merchantName = "Corner Store " + FakeOllamaServer.FORCE_LLM_FAILURE_MARKER;
+        ResponseEntity<Map> withdrawResponse =
+                post(
+                        "/accounts/" + accountId + "/withdraw",
+                        OWNER_ID,
+                        Map.of("amount", 5500, "merchantName", merchantName));
+        assertThat(withdrawResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        await().atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(200))
+                .untilAsserted(
+                        () -> {
+                            Map<String, Object> transaction = firstWithdrawalTransaction(accountId);
+                            assertThat(transaction).isNotNull();
+                            assertThat(transaction.get("merchantName")).isEqualTo(merchantName);
                             assertThat(transaction.get("category")).isEqualTo("OTHER");
                         });
     }
