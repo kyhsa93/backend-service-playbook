@@ -26,7 +26,7 @@ dependencyManagement {
         // Keeps ses/secretsmanager/sqs on a single, mutually-compatible version — pinning them
         // individually let a dependabot bump land on just one module and skew the shared
         // AWS SDK core/auth modules out of alignment, breaking at runtime with AbstractMethodError.
-        mavenBom("software.amazon.awssdk:bom:2.49.2")
+        mavenBom("software.amazon.awssdk:bom:2.50.2")
     }
     dependencies {
         // Since 2.48.3, software.amazon.awssdk:ses pulls in apache5-client (based on
