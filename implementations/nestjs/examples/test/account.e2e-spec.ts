@@ -123,6 +123,31 @@ describe('AccountController (e2e)', () => {
       expect(response.body.createdAt).toBeDefined()
     })
 
+    it('when_a_row_is_persisted_then_its_createdAt_wall_clock_is_the_UTC_instant', async () => {
+      const beforeMillis = Date.now()
+      const { accountId } = await createAccount()
+      const afterMillis = Date.now()
+
+      // Read the column as text rather than as a Date. The column is `TIMESTAMP` (WITHOUT TIME
+      // ZONE), so pg would parse a Date back using the SAME local offset it wrote with — a
+      // round-trip through a Date object cancels the bug out and proves nothing. The text form
+      // is the raw wall clock Postgres actually stored, with no offset attached.
+      const rows = await dataSource.query<Array<{ createdAtText: string }>>(
+        'SELECT "createdAt"::text AS "createdAtText" FROM "account" WHERE "accountId" = $1',
+        [accountId]
+      )
+      expect(rows).toHaveLength(1)
+
+      // Interpreting that wall clock AS UTC has to land back on the instant the request was
+      // made. On a process running in Asia/Seoul the driver would have written a KST wall
+      // clock, so this parses to 9 hours in the future and the assertion fails — which is the
+      // whole point of the test. src/config/timezone.config.ts (loaded via the setupFiles entry in
+      // jest.e2e.config.ts, exactly as main.ts loads it) is what keeps it passing.
+      const storedAsUtcMillis = Date.parse(`${rows[0].createdAtText.replace(' ', 'T')}Z`)
+      expect(storedAsUtcMillis).toBeGreaterThanOrEqual(beforeMillis - 1000)
+      expect(storedAsUtcMillis).toBeLessThanOrEqual(afterMillis + 1000)
+    })
+
     it('when_currency_is_missing_then_returns_400_and_VALIDATION_FAILED', async () => {
       const response = await request(app.getHttpServer())
         .post('/accounts')

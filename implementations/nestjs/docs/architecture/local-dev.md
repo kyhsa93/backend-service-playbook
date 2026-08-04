@@ -78,6 +78,9 @@ services:
     env_file:
       - .env.development
     environment:
+      # every timestamp is persisted as the UTC instant (see src/config/timezone.config.ts, which pins the
+      # process timezone in code) — this keeps the container environment consistent with it.
+      TZ: UTC
       # inside the container network, connect via the service name instead of localhost.
       DATABASE_URL: postgres://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566
@@ -99,7 +102,7 @@ volumes:
   ollama-data:
 ```
 
-Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the five values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`, `SQS_DOMAIN_EVENT_QUEUE_URL`, `SQS_TASK_QUEUE_URL`, `OLLAMA_BASE_URL`) — no separate `.env.docker` file is created.
+Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the five values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`, `SQS_DOMAIN_EVENT_QUEUE_URL`, `SQS_TASK_QUEUE_URL`, `OLLAMA_BASE_URL`), plus `TZ` — no separate `.env.docker` file is created.
 
 ### Service Composition
 
@@ -187,10 +190,11 @@ NODE_ENV=development
 
 ### Environment Variables When the App Runs as a Container
 
-When the app runs inside Docker Compose, it must connect via the **service name** instead of `localhost`. Rather than keeping a separate `.env.docker` file, only the five values that differ are overridden via `environment:` in the `app` service of `docker-compose.yml` (which takes precedence over `env_file:`) — see "docker-compose.yml — Actual Code" above.
+When the app runs inside Docker Compose, it must connect via the **service name** instead of `localhost`. Rather than keeping a separate `.env.docker` file, only the five values that differ are overridden via `environment:` in the `app` service of `docker-compose.yml` (which takes precedence over `env_file:`) — see "docker-compose.yml — Actual Code" above. `TZ` sits alongside them: it is not an endpoint that changes inside the network, it makes the container's timezone explicitly UTC to match what the process persists.
 
 ```yaml
 environment:
+  TZ: UTC
   DATABASE_URL: postgres://dev:dev@database:5432/app
   AWS_ENDPOINT_URL: http://localstack:4566
   SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events

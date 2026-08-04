@@ -9,9 +9,24 @@ and listening, and every E2E spec applies it to the real `AppModule` (see
 production and the tests cannot drift apart. `main.ts` keeps only what makes no sense for a test
 app: the Swagger document serving and `listen()`.
 
+The first two imports are side-effect modules whose order is load-bearing, and both must stay
+ahead of everything else. `@/config/timezone.config` pins the process timezone to UTC — timestamp columns are
+`TIMESTAMP` (WITHOUT TIME ZONE) and the `pg` driver serializes a `Date` with the process's local
+offset, so the pin is what decides which wall clock is stored, and Node only applies it to date
+operations that happen after the assignment (see
+[conventions.md](../conventions.md), "Timezone rule — store UTC"). `@/tracing` starts the
+OpenTelemetry SDK, which stamps spans, so it comes second.
+
 ```typescript
 // src/main.ts — actual code
-// Must be the very first import in this file — see src/tracing.ts for why (it patches Node's
+// Must be the very first import in this file — see src/config/timezone.config.ts for why. It pins the
+// process timezone to UTC so that a JS Date always serializes to the same wall clock in the
+// `TIMESTAMP` (WITHOUT TIME ZONE) columns, and Node only applies that to date operations that
+// happen after the assignment — so nothing that can stamp a time (starting with @/tracing) may
+// be imported ahead of it.
+import '@/config/timezone.config'
+
+// Must be the first import after @/config/timezone.config — see src/tracing.ts for why (it patches Node's
 // http module in place, and only requests made after it runs get instrumented).
 import '@/tracing'
 
@@ -96,7 +111,8 @@ export function configureApp(app: INestApplication): void {
 
 | Setting | Where | Role |
 |------|------|------|
-| `import '@/tracing'` | `main.ts` | OpenTelemetry bootstrap — must be the first import (see [observability.md](observability.md)) |
+| `import '@/config/timezone.config'` | `main.ts` | pins the process timezone to UTC — must be the first import, since Node applies the change only to date operations that follow it (see [conventions.md](../conventions.md), "Timezone rule — store UTC") |
+| `import '@/tracing'` | `main.ts` | OpenTelemetry bootstrap — must be the first import after the timezone pin (see [observability.md](observability.md)) |
 | the `logger` option | `main.ts` | excludes debug/verbose logs when `isProduction()` |
 | `helmet` (two instances) | `app-setup.ts` | security headers everywhere; CSP relaxed only under `/docs` so Swagger UI keeps working (see [observability.md](observability.md)) |
 | `ValidationPipe` | `app-setup.ts` | auto-applies class-validator decorators; `exceptionFactory` constructs a response with the `VALIDATION_FAILED` code (see [error-handling.md](error-handling.md)) |

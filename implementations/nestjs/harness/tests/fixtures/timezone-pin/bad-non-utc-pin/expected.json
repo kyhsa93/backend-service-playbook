@@ -1,0 +1,7 @@
+{
+  "name": "timezone-pin",
+  "applicable": true,
+  "expectedFailureRuleIds": [
+    "timezone-pin.non-utc"
+  ]
+}

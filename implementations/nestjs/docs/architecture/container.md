@@ -26,6 +26,12 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 
+# timestamp columns are `TIMESTAMP` (WITHOUT TIME ZONE) and the pg driver serializes a JS Date
+# using the process's local offset, so the process timezone decides what wall clock is stored.
+# src/config/timezone.config.ts pins it to UTC in code regardless of the environment; declaring it here as
+# well keeps the container's own environment consistent with what the app writes.
+ENV TZ=UTC
+
 # the node:alpine image ships a non-root user (uid 1000) for exactly this purpose by default —
 # no need to create one yourself with addgroup/adduser.
 USER node

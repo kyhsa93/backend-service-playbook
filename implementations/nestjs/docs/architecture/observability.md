@@ -228,14 +228,18 @@ regardless of how many distinct IDs get requested (e.g. `/accounts/:accountId`, 
 ## Tracing
 
 `src/tracing.ts` bootstraps a `NodeSDK` with `@opentelemetry/instrumentation-http` (HTTP
-auto-instrumentation) — it must be the very first import in `main.ts`, before `@nestjs/core` or
-anything that transitively pulls in `express`/`http`, since the instrumentation patches Node's
-`http` module in place and only requests made after `NodeSDK#start()` runs get instrumented.
+auto-instrumentation) — it must come before `@nestjs/core` or anything that transitively pulls in
+`express`/`http`, since the instrumentation patches Node's `http` module in place and only
+requests made after `NodeSDK#start()` runs get instrumented. Exactly one import precedes it:
+`@/config/timezone.config`, which pins the process timezone to UTC and must run before anything
+that can stamp a time, spans included (see [bootstrap.md](bootstrap.md)).
 
 ```typescript
 // src/main.ts — actual code (excerpt)
-// Must be the very first import in this file — see src/tracing.ts for why (it patches Node's
-// http module in place, and only requests made after it runs get instrumented).
+import '@/config/timezone.config'
+
+// Must be the first import after @/config/timezone.config — see src/tracing.ts for why (it
+// patches Node's http module in place, and only requests made after it runs get instrumented).
 import '@/tracing'
 
 import { NestFactory } from '@nestjs/core'

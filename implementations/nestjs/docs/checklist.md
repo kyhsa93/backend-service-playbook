@@ -241,10 +241,14 @@ Check each item, and if a violation is found, fix it immediately before moving t
 [ ] Is a domain state value (status, etc.) defined as a literal union type? (instead of string)
 [ ] Is the Service method's return type explicit?
 [ ] Is the Controller method's return type explicit?
-[ ] When saving to the DB, is the time value converted from UTC to KST (UTC+9) before saving?
-    → Saving new Date() as-is stores it in UTC
+[ ] Is the time value saved to the DB unshifted — plain new Date(), with no fixed offset added?
+    → Timestamps are stored as the UTC instant; adding an offset encodes a display concern in stored data
 [ ] Is a time value read from the DB returned as-is, without further conversion?
-    → Converting an already-KST value again causes a double-conversion bug
+    → It is already the UTC instant; a client converts for display
+[ ] Does src/main.ts import the process-timezone pin (src/config/timezone.config.ts) as its very first import?
+    → TIMESTAMP columns are WITHOUT TIME ZONE, so the pg driver stores the process's wall clock — without the pin it differs per host
+[ ] Do jest.config.ts and jest.e2e.config.ts both pin the run to UTC via globalSetup?
+    → setupFiles cannot do this: it runs against Jest's sandboxed copy of process.env and never reaches the runtime
 [ ] Is an optional parameter declared as ? (T | undefined)?
     → Distinguish DB nullable fields (T | null) from optional parameters (?)
 [ ] Is a type alias used for complex types?

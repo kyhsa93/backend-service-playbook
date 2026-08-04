@@ -1,4 +1,11 @@
-// Must be the very first import in this file — see src/tracing.ts for why (it patches Node's
+// Must be the very first import in this file — see src/config/timezone.config.ts for why. It pins the
+// process timezone to UTC so that a JS Date always serializes to the same wall clock in the
+// `TIMESTAMP` (WITHOUT TIME ZONE) columns, and Node only applies that to date operations that
+// happen after the assignment — so nothing that can stamp a time (starting with @/tracing) may
+// be imported ahead of it.
+import '@/config/timezone.config'
+
+// Must be the first import after @/config/timezone.config — see src/tracing.ts for why (it patches Node's
 // http module in place, and only requests made after it runs get instrumented).
 import '@/tracing'
 

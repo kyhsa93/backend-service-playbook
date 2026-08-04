@@ -47,6 +47,7 @@ import { evaluateNoCrossBcDomainImport } from '../rules/no-cross-bc-domain-impor
 import { evaluateNoOrmAutosyncInProdConfig } from '../rules/no-orm-autosync-in-prod-config.evaluator'
 import { evaluateApiDocumentation } from '../rules/api-documentation.evaluator'
 import { evaluateUserContextStore } from '../rules/user-context-store.evaluator'
+import { evaluateTimezonePin } from '../rules/timezone-pin.evaluator'
 import { aggregate } from '../shared/score'
 import type { EvaluatorResult } from '../shared/types'
 
@@ -96,7 +97,8 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'no-cross-bc-domain-import': evaluateNoCrossBcDomainImport,
   'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig,
   'api-documentation': evaluateApiDocumentation,
-  'user-context-store': evaluateUserContextStore
+  'user-context-store': evaluateUserContextStore,
+  'timezone-pin': evaluateTimezonePin
 }
 
 interface CliArgs {

@@ -34,6 +34,7 @@
 - EventHandler (`@nestjs/cqrs`): `<domain-event>-handler.ts` (placed in `application/event/`)
 - Config file: `<concern>.config.ts` (placed in `config/`) — `database.config.ts`, `jwt.config.ts`, etc.
 - Config validation: `validation.config.ts` (placed in `config/`, follows the harness's `*.config.ts` naming rule)
+- Process-environment side effect: also a `<concern>.config.ts` in `config/` — `timezone.config.ts` exports no getter and exists only to set `process.env.TZ`, but it belongs here because `config/*.config.ts` is the only place allowed to touch `process.env`
 
 ---
 
@@ -127,34 +128,35 @@ public readonly result: 'success' | 'fail'
 public readonly scope: 'all' | 'payment'
 ```
 
-### Timezone rule — based on KST (UTC+9)
+### Timezone rule — store UTC
 
-- When saving a time value to the DB, convert it from UTC to KST before saving.
-- A time value read from the DB is already KST, so return it as-is without conversion.
-- Do not change the server/DB timezone (TZ) setting.
+- Every timestamp is persisted as the **UTC** instant. Never shift a time value on write, and never shift it on read — a client converts to the user's zone for display.
+- The process timezone is pinned to UTC in `src/config/timezone.config.ts`, imported as the very first line of `src/main.ts`. The pin is what makes storage deterministic; the call sites need nothing.
+- `new Date()` is the correct way to stamp a time. A JS `Date` is already an absolute instant, so there is no "convert to UTC" step to perform before saving.
+
+Why the pin is required, and why it cannot be replaced by a helper at the call site: every timestamp column in `src/database/migrations` is `TIMESTAMP` — WITHOUT TIME ZONE. The `pg` driver serializes a `Date` using the **process's** local offset (`2026-08-05T09:00:00.000+09:00` on a host in `Asia/Seoul`, `...+00:00` under `TZ=UTC`), and a WITHOUT TIME ZONE column discards that offset and keeps only the wall clock. So the instant that lands in the database is decided by the host's timezone, not by anything the calling code does. Pinning the process to UTC fixes it once, at the only boundary where the divergence happens.
 
 ```typescript
-// KST conversion utility
-function toKST(date: Date): Date {
-  return new Date(date.getTime() + 9 * 60 * 60 * 1000)
-}
-
-// When saving — convert UTC → KST before saving
+// Correct — stamp the instant and save it unchanged
 const manager = this.transactionManager.getManager()
-await manager.save(OrderEntity, { createdAt: toKST(new Date()) })
+await manager.save(OrderEntity, { createdAt: new Date() })
 
-// When reading — the DB value is already KST, so return it as-is
+// Correct — a value read from the DB is the UTC instant; return it as-is
 const order = await this.orderRepo.findOne({ where: { orderId } })
-return order.createdAt // returned as KST, unchanged
+return order.createdAt
 ```
 
 ```typescript
-// Incorrect — saving the UTC value as-is
-await manager.save(OrderEntity, { createdAt: new Date() }) // saved in UTC
+// Incorrect — shifting a timestamp by a fixed offset before saving
+await manager.save(OrderEntity, { createdAt: new Date(Date.now() + 9 * 60 * 60 * 1000) })
 
-// Incorrect — converting a KST value read from the DB again
-return toKST(order.createdAt) // double conversion causes an 18-hour offset
+// Incorrect — shifting a value read from the DB
+return new Date(order.createdAt.getTime() + 9 * 60 * 60 * 1000)
 ```
+
+Both are wrong for the same reason: they encode a display concern in stored data. A row shifted on write no longer means the same thing as a row written by another process, comparisons against `now()` in SQL break, and any consumer that later applies its own conversion double-shifts.
+
+Test runs are pinned the same way — `jest.config.ts` and `jest.e2e.config.ts` both point `globalSetup` at `test/jest-global-setup.ts`, which imports `src/config/timezone.config.ts`. It has to be `globalSetup` and not `setupFiles`: `setupFiles` runs inside Jest's test environment, where `process.env` is a sandboxed copy, so an assignment there updates the object without ever reaching the runtime's timezone. `Dockerfile` and `docker-compose.yml` also declare `TZ=UTC` so the container environment agrees with what the process writes.
 
 ### Null-handling rules
 

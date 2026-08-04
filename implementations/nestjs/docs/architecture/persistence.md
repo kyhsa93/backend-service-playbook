@@ -183,6 +183,11 @@ export abstract class BaseEntity {
 }
 ```
 
+These map to `TIMESTAMP` (WITHOUT TIME ZONE) columns, which store a bare wall clock with no
+offset. The `pg` driver derives that wall clock from the **process's** timezone, which is pinned
+to UTC in `src/config/timezone.config.ts` — so every stored timestamp is the UTC instant, and no code shifts a
+value on write or on read. See [conventions.md](../conventions.md), "Timezone rule — store UTC".
+
 Every Entity extends `BaseEntity`:
 
 ```typescript

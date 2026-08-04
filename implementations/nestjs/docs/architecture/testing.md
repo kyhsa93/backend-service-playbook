@@ -314,7 +314,8 @@ export default {
   collectCoverageFrom: ['src/**/*.(t|j)s', '!src/**/*.entity.ts', '!src/**/*.module.ts'],
   coverageDirectory: './coverage',
   testEnvironment: 'node',
-  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' }
+  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
+  globalSetup: '<rootDir>/test/jest-global-setup.ts'
 }
 ```
 
@@ -327,9 +328,21 @@ export default {
   transform: { '^.+\\.(t|j)s$': 'ts-jest' },
   testEnvironment: 'node',
   moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
-  testTimeout: 120000
+  testTimeout: 120000,
+  globalSetup: '<rootDir>/test/jest-global-setup.ts'
 }
 ```
+
+Both configs point `globalSetup` at `test/jest-global-setup.ts`, which imports `src/config/timezone.config.ts`
+— the same module `src/main.ts` loads first — so a test run is pinned to UTC and observes exactly
+the timezone the running service does. The mechanism has to be `globalSetup` rather than
+`setupFiles`, because `setupFiles` executes inside Jest's test environment where `process.env` is
+a sandboxed copy: assigning `TZ` there updates the object but never reaches the runtime, and
+`new Date().getTimezoneOffset()` keeps returning the host's offset. `globalSetup` runs on the real
+`process`, before any worker is forked, so a worker is born in UTC and an in-band run keeps the
+main process's zone. Putting it in the config rather than on the npm script also means it applies
+when a single spec is run straight from an IDE. See
+[conventions.md](../conventions.md), "Timezone rule — store UTC".
 
 ## Test Naming
 

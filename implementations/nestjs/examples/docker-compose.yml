@@ -57,6 +57,10 @@ services:
     env_file:
       - .env.development
     environment:
+      # Every timestamp is persisted as the UTC instant (see src/config/timezone.config.ts, which pins the
+      # process timezone in code). Declaring it here too keeps the container environment
+      # consistent with what the app writes, and matches the Dockerfile's ENV TZ=UTC.
+      TZ: UTC
       # Inside the container network, connect via the service name instead of localhost.
       DATABASE_URL: postgres://dev:dev@database:5432/app
       AWS_ENDPOINT_URL: http://localstack:4566

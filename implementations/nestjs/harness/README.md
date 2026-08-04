@@ -29,7 +29,7 @@ This process keeps the guide and the harness in sync.
 ```
 harness/
   evaluators/
-    rules/              44 evaluators (structure, layer-dependency, ...)
+    rules/              45 evaluators (structure, layer-dependency, ...)
     shared/             types, score, ast-utils, penalty, workspace
     cli/run.ts          CLI entry point
   tests/
@@ -129,6 +129,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 | `file-naming` | Requires kebab-case file names under `src/`, flags `*.service.ts` for naming review, and requires `*.module.ts` files to follow the `<name>-module.ts` form | 25 |
 | `auth` | When `*-controller.ts` exists: every Controller class/route must state protected/public intent explicitly (`@UseGuards`, a composite decorator like `@Authenticated()`, or `@Public`/`@SkipAuth`); fails if no Auth/Jwt/Guard-related files exist at all | 20 *(auto-gated)* |
 | `bootstrap-healthcheck` | When `src/main.ts` exists: requires `enableShutdownHooks` and a global `ValidationPipe` in the bootstrap — either directly in `main.ts` or in a shared app-setup file `main.ts` imports (e.g. `src/app-setup.ts`) | 20 *(auto-gated)* |
+| `timezone-pin` | When `src/main.ts` exists: the bootstrap must pin the process timezone to UTC (`process.env.TZ = 'UTC'`), applied by the module `main.ts` imports first. Fails if the pin is absent, set to a non-UTC zone, or reached later than the literal first import — an inline assignment in `main.ts` counts as later (imports hoist above it), and so does any pin sitting behind a package import such as `@nestjs/core` | 10 *(auto-gated)* |
 | `config-validation` | When `src/config/` or ConfigModule-using code exists: `ConfigModule.forRoot()` needs a `validationSchema`/`validate` option, `process.env` may only be referenced inside `src/config/*.config.ts`, and files under `src/config/` must follow the `*.config.ts` naming | 20 *(auto-gated)* |
 
 *auto-gated*: excluded from the aggregate score with `maxScore=0` if there's no code using that feature.

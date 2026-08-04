@@ -37,7 +37,7 @@ Tracks how thoroughly `harness/` automatically verifies `docs/`'s guide rules.
 | `observability.md` | Logger usage, no console, no empty/unhandled catch blocks, logging entirely prohibited in the Domain layer | ✅ | `logging` | Covered | Log message content/level appropriateness is handled alongside Manual review |
 | `config.md` | Environment variable validation, ConfigModule setup, restricting direct process.env references | ✅ | `config-validation` | Covered | Since `config-validation.process-env-direct-access` already blocks direct `process.env` references everywhere outside `src/config/*.config.ts` (including Domain·Application), a looser rule that only prohibits it in Domain/Application while allowing Infrastructure isn't added separately (there's currently no case in the codebase of Infrastructure directly using `process.env` — it goes through a config/ function in practice) |
 | `secret-manager.md` | Preventing direct env use of sensitive values, use of SecretService/SecretsManager | ✅ | `secret-manager` | Partial | Secret-usage-path fixtures need expansion |
-| `bootstrap.md` | ValidationPipe, bootstrap setup, Swagger, HttpExceptionFilter | ✅ | `bootstrap-healthcheck` | Partial | Business-appropriateness of config values is handled alongside Manual review |
+| `bootstrap.md` | ValidationPipe, bootstrap setup, Swagger, HttpExceptionFilter, the load-bearing order of the leading side-effect imports (`@/config/timezone.config` then `@/tracing`) | ✅ | `bootstrap-healthcheck`, `timezone-pin` | Partial | Business-appropriateness of config values is handled alongside Manual review |
 | `graceful-shutdown.md` | Shutdown hook, health/readiness/liveness | ✅ | `bootstrap-healthcheck` | Partial | Completeness of resource-cleanup logic is handled alongside Manual review |
 | `local-dev.md` | docker-compose, LocalStack, local run configuration | ✅ | `local-dev` | Partial | LocalStack init-script logic is handled alongside Manual review |
 | `container.md` | Dockerfile security/multi-stage/build rules, HEALTHCHECK existence | ✅ | `dockerfile` | Partial | Image size optimization is handled alongside Manual review |
@@ -48,7 +48,7 @@ Tracks how thoroughly `harness/` automatically verifies `docs/`'s guide rules.
 | Guide | Main rule / concern | Auto-check | Evaluator | Status | Gap / Next action |
 |---|---|---:|---|---|---|
 | `docs/checklist.md` | The mechanically-verifiable items among the post-work self-review checklist | ✅ | `checklist` | Partial | Needs evaluator sync whenever the checklist changes |
-| `docs/conventions.md` | Naming, branching, commit, and doc-writing rules | ⚠️ | `file-naming`, `controller-path` | Partial | Git/PR rules are supplemented by CI or review policy |
+| `docs/conventions.md` | Naming, branching, commit, and doc-writing rules; the timezone rule (timestamps are persisted as the UTC instant, guaranteed by pinning the process timezone in the bootstrap) | ⚠️ | `file-naming`, `controller-path`, `timezone-pin` | Partial | Git/PR rules are supplemented by CI or review policy. `timezone-pin` verifies the pin itself; whether a particular call site should stamp a time at all is handled alongside Manual review |
 | `docs/reference.md` | Template structure based on the Order example | ⚠️ | Multiple evaluators | Partial | Overall example consistency is handled alongside Manual review |
 | `../../../docs/development-process.md` (root shared) | The agent-role-based development process | ❌ | - | Manual | A process document isn't a target for automatic verification |
 
@@ -90,6 +90,7 @@ Tracks how thoroughly `harness/` automatically verifies `docs/`'s guide rules.
 | `logging` | `observability.md` | Prohibits direct console use, detects empty/unhandled catch blocks, entirely prohibits logging (Logger/winston/console) in the domain/ layer |
 | `auth` | `authentication.md` | Verifies @UseGuards/@Public intent marking, AuthGuard existence |
 | `bootstrap-healthcheck` | `bootstrap.md`, `graceful-shutdown.md` | Verifies enableShutdownHooks, ValidationPipe requirement |
+| `timezone-pin` | `conventions.md`, `bootstrap.md` | Verifies the bootstrap pins the process timezone to UTC, and that the pin is applied by main.ts's first import |
 | `dockerfile` | `container.md` | Multi-stage build, direct CMD node execution, .dockerignore, HEALTHCHECK existence (recommended, medium) |
 | `local-dev` | `local-dev.md` | docker-compose postgres service, healthcheck, env file |
 | `rate-limiting` | `rate-limiting.md` | ThrottlerModule configuration, verifies APP_GUARD/ThrottlerGuard is actually applied (not dead code) |

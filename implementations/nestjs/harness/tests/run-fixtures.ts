@@ -43,6 +43,7 @@ import { evaluateNoCrossBcDomainImport } from '../evaluators/rules/no-cross-bc-d
 import { evaluateNoOrmAutosyncInProdConfig } from '../evaluators/rules/no-orm-autosync-in-prod-config.evaluator'
 import { evaluateApiDocumentation } from '../evaluators/rules/api-documentation.evaluator'
 import { evaluateUserContextStore } from '../evaluators/rules/user-context-store.evaluator'
+import { evaluateTimezonePin } from '../evaluators/rules/timezone-pin.evaluator'
 import { evaluateAuth } from '../evaluators/rules/auth.evaluator'
 import { evaluateBootstrapHealthcheck } from '../evaluators/rules/bootstrap-healthcheck.evaluator'
 import { evaluateChecklist } from '../evaluators/rules/checklist.evaluator'
@@ -90,6 +91,7 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig,
   'api-documentation': evaluateApiDocumentation,
   'user-context-store': evaluateUserContextStore,
+  'timezone-pin': evaluateTimezonePin,
   auth: evaluateAuth,
   'bootstrap-healthcheck': evaluateBootstrapHealthcheck,
   checklist: evaluateChecklist,

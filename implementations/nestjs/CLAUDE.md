@@ -101,7 +101,7 @@ FAIL items' `ruleId` and message include links to the relevant document. Open th
 ## Scaffolding — new domain generator
 
 This script turns the "Reference Implementation Template" (Order example) in `docs/reference.md`
-into real code that passes the entire harness (44 evaluators) at grade A (100/100), then
+into real code that passes the entire harness (45 evaluators) at grade A (100/100), then
 generalizes it by parameterizing only the domain name so it can be reused. It generates, in
 one pass, the Aggregate (single state field + PENDING/ACTIVE/CANCELLED) + CQRS
 CommandHandler/QueryHandler (CommandBus/QueryBus) + one domain event + Repository +
