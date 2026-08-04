@@ -15,7 +15,7 @@ Because running Gradle itself is heavy for a Kotlin/JVM build (the daemon, the d
 ```dockerfile
 # examples/Dockerfile — actual code
 # ---- Stage 1: Build ----
-FROM gradle:8.10-jdk21-alpine AS build
+FROM gradle:8.14.5-jdk21-alpine AS build
 
 WORKDIR /app
 

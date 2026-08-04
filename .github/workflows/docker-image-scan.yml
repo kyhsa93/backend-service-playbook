@@ -9,10 +9,22 @@ on:
   push:
     paths:
       - 'implementations/*/examples/Dockerfile'
+      # The image build runs its own toolchain rather than the repository's wrapper, so a
+      # dependency or plugin bump can break it while every other workflow stays green.
+      - 'implementations/*/examples/build.gradle'
+      - 'implementations/*/examples/build.gradle.kts'
+      - 'implementations/*/examples/package.json'
+      - 'implementations/*/examples/go.mod'
+      - 'implementations/*/examples/requirements.txt'
       - '.github/workflows/docker-image-scan.yml'
   pull_request:
     paths:
       - 'implementations/*/examples/Dockerfile'
+      - 'implementations/*/examples/build.gradle'
+      - 'implementations/*/examples/build.gradle.kts'
+      - 'implementations/*/examples/package.json'
+      - 'implementations/*/examples/go.mod'
+      - 'implementations/*/examples/requirements.txt'
       - '.github/workflows/docker-image-scan.yml'
   schedule:
     - cron: '0 4 * * 1'
