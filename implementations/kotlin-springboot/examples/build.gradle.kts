@@ -35,7 +35,7 @@ dependencyManagement {
         // by the Spring Boot 3.3.5 BOM (5.3.1/5.2.5), so if the BOM downgrades them to its
         // lower versions, the AWS SDK's Apache5HttpClient throws a NoClassDefFoundError at
         // runtime. Pin the versions explicitly so they take precedence over the BOM.
-        dependency("org.apache.httpcomponents.client5:httpclient5:5.6.2")
+        dependency("org.apache.httpcomponents.client5:httpclient5:5.6.3")
         dependency("org.apache.httpcomponents.core5:httpcore5:5.4.3")
         dependency("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3")
     }
