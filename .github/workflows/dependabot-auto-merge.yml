@@ -44,7 +44,9 @@ jobs:
               exit 1
             fi
             if jq -e 'length > 0 and all(.[]; .bucket == "pass" or .bucket == "skipping")' <<< "$others" > /dev/null; then
-              gh pr review --approve "$PR_URL"
+              # No `gh pr review --approve` here: this repo has no required-review branch
+              # protection, and the repo setting forbids Actions from approving PRs anyway
+              # (the approve call is what used to abort this job right before the merge).
               gh pr merge --squash "$PR_URL"
               exit 0
             fi
