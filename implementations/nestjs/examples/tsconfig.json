@@ -4,17 +4,26 @@
     "module": "commonjs",
     "lib": ["ES2021"],
     "moduleResolution": "node",
+    // node10 resolution is deprecated in TypeScript 6 and removed in 7. Migrating to node16
+    // means every dynamic import() in CommonJS needs an explicit .js specifier plus matching
+    // Jest moduleNameMapper entries, and the e2e suite's deferred `await import('@/app-module')`
+    // (see test/support/test-app.ts) depends on that resolution — so the module-system move is
+    // a separate change from this compiler upgrade.
+    "ignoreDeprecations": "6.0",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
+    // TypeScript 6 no longer pulls every node_modules/@types package into the global scope
+    // implicitly, so the ambient ones this project relies on are declared explicitly. Packages
+    // imported by name (express, supertest) keep resolving through their own import statements.
+    "types": ["node", "jest"],
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "strictPropertyInitialization": false,
     "outDir": "./dist",
-    "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]

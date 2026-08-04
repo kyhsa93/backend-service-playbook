@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // TypeScript 6 requires rootDir to be explicit rather than inferred from the input set.
+    // It lives here, not in the base config, because that one also includes test/.
+    "rootDir": "./src"
+  },
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.e2e-spec.ts"]
 }

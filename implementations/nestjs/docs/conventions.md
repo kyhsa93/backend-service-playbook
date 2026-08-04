@@ -342,7 +342,7 @@ import { OrderRepository } from '@/order/domain/order-repository'
 
 **Approach 2: `src/`-based absolute path**
 
-Use this in projects without the `@/` alias, where `"baseUrl": "./"` is set in `tsconfig.json`.
+Use this in projects without the `@/` alias, where `"baseUrl": "./"` is set in `tsconfig.json`. TypeScript 6 deprecates `baseUrl` and TypeScript 7 removes it, so prefer Approach 1 — a `paths` alias needs no `baseUrl`.
 
 ```typescript
 // Correct
