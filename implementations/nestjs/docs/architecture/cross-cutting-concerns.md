@@ -140,7 +140,7 @@ export class LoggingInterceptor implements NestInterceptor {
 Apply it globally, or at the Controller class level.
 
 ```typescript
-// globally — main.ts
+// globally — src/app-setup.ts (applied by main.ts and the E2E suite via configureApp)
 app.useGlobalInterceptors(new LoggingInterceptor())
 
 // class level
@@ -165,7 +165,7 @@ Transforms or validates a parameter. Mainly used globally as `ValidationPipe`.
 ### Global configuration
 
 ```typescript
-// src/main.ts
+// src/app-setup.ts (applied by main.ts and the E2E suite via configureApp)
 app.useGlobalPipes(new ValidationPipe({
   whitelist: true,
   forbidNonWhitelisted: true,

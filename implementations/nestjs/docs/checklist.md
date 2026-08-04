@@ -216,7 +216,7 @@ Check each item, and if a violation is found, fix it immediately before moving t
 [ ] Does the file-owning Entity have fileKey (char 32) and extension (varchar) columns?
     → The DB stores only metadata; the file itself lives in storage
 [ ] Is StorageService split using the technical infrastructure Service pattern (abstract class in application/service/, implementation in infrastructure/)?
-[ ] Is app.enableShutdownHooks() called in main.ts?
+[ ] Is app.enableShutdownHooks() called in the bootstrap path (main.ts, or a shared app-setup it applies)?
     → Add it if missing. Without this call, the OnApplicationShutdown/BeforeApplicationShutdown hooks won't run
 [ ] Does the Infrastructure class managing external connections (DB, Redis, Queue, etc.) implement OnApplicationShutdown?
     → Required when directly managing a custom DataSource, Redis, Bull Queue, etc.

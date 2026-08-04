@@ -1,47 +1,52 @@
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { ScheduleModule } from '@nestjs/schedule'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { INestApplication } from '@nestjs/common'
+import nock from 'nock'
 import request from 'supertest'
+import { DataSource } from 'typeorm'
 
-import { AccountModule } from '@/account/account-module'
-import { NotificationService } from '@/account/application/service/notification-service'
-import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
-import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { CardModule } from '@/card/card-module'
-import { CardEntity } from '@/card/infrastructure/entity/card.entity'
-import { jwtConfig } from '@/config/jwt.config'
-import { OutboxEntity } from '@/outbox/outbox.entity'
-import { OutboxModule } from '@/outbox/outbox-module'
-import { PaymentModule } from '@/payment/payment-module'
-import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
-import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
-import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
-import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
-import { TaskQueueModule } from '@/task-queue/task-queue-module'
-import { createDomainEventQueue } from './support/sqs-test-queue'
-import { createTaskQueue } from './support/task-queue-test-queue'
+import {
+  FAKE_OLLAMA_ORIGIN,
+  OllamaChatRequestBody,
+  isRefundReasonClassifierRequest,
+  ollamaChatReply,
+  userPrompt
+} from './support/ollama-stub'
+import { StartedTestApp, fetchSesMessages, startTestApp } from './support/test-app'
 
-// Verifies, via real app bootstrap + Postgres, Payment BC's 3-way coordination
-// (Card+Account synchronous Adapters), RefundEligibilityService (a Domain Service — pure
-// judgment logic coordinating the Payment+Refund Aggregates), and the bidirectional
+// Verifies, against the REAL AppModule (see test/support/test-app.ts), Payment BC's 3-way
+// coordination (Card+Account synchronous Adapters), RefundEligibilityService (a Domain Service
+// — pure judgment logic coordinating the Payment+Refund Aggregates), and the bidirectional
 // Payment↔Account Integration Events (payment completed → debit, payment cancelled/refund
-// approved → compensating credit). Follows the same pattern as card.e2e-spec.ts.
+// approved → compensating credit). The RefundReasonClassifier's Ollama calls are intercepted
+// by nock, so the real LLM classification path runs — only the network hop is stubbed.
 describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain', () => {
-  let container: StartedPostgreSqlContainer
-  let localstack: StartedLocalStackContainer
+  let testApp: StartedTestApp
   let app: INestApplication
+  let dataSource: DataSource
 
   const OWNER_ID = 'owner-1'
   const OTHER_OWNER_ID = 'owner-2'
   const PASSWORD = 'password123!'
   const tokens: Record<string, string> = {}
+
+  // RefundReasonClassifier runs asynchronously (RefundRequested -> Outbox -> SQS -> Consumer),
+  // so its Ollama calls can land while any later test is running — a persistent interceptor
+  // keeps unrelated tests from failing on those background calls. Routes by reason text so the
+  // classification tests below can assert a REAL (non-fallback) category.
+  function stubRefundReasonClassifier(): void {
+    nock(FAKE_OLLAMA_ORIGIN)
+      .persist()
+      .post('/api/chat', (body) => isRefundReasonClassifierRequest(body as OllamaChatRequestBody))
+      .reply(200, (_uri, requestBody) => {
+        const reason = userPrompt(requestBody as unknown as OllamaChatRequestBody).toLowerCase()
+        const category = reason.includes('broken') || reason.includes('defective')
+          ? 'DEFECTIVE_PRODUCT'
+          : reason.includes('changed my mind')
+            ? 'CHANGED_MIND'
+            : 'OTHER'
+        return ollamaChatReply(JSON.stringify({ category }))
+      })
+  }
 
   async function signUp(userId: string): Promise<void> {
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId, password: PASSWORD })
@@ -114,7 +119,7 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
     return getCardStatus(cardId, ownerId)
   }
 
-  // The polling budget is raised for the same reason as card.e2e-spec.ts's waitForCardStatus.
+  // The polling budget is raised for the same reason as waitForCardStatus.
   async function waitForBalance(accountId: string, expected: number, ownerId = OWNER_ID): Promise<number> {
     for (let i = 0; i < 150; i++) {
       const balance = await getBalance(accountId, ownerId)
@@ -125,72 +130,25 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
   }
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start()
-    localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'sqs' })
-      .start()
-
-    const sqsEndpoint = localstack.getConnectionUri()
-    process.env.AWS_ENDPOINT_URL = sqsEndpoint
-    process.env.AWS_REGION = 'us-east-1'
-    process.env.AWS_ACCESS_KEY_ID = 'test'
-    process.env.AWS_SECRET_ACCESS_KEY = 'test'
-    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
-    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        ScheduleModule.forRoot(),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: container.getConnectionUri(),
-          entities: [
-            AccountEntity, TransactionEntity, CardEntity, PaymentEntity, RefundEntity, SentCardStatementEntity,
-            OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity
-          ],
-          synchronize: true
-        }),
-        OutboxModule,
-        TaskQueueModule,
-        AuthModule,
-        AccountModule,
-        CardModule,
-        PaymentModule
-      ]
-    })
-      // SES (a technical service) isn't this test's concern, so it's replaced with a no-op.
-      .overrideProvider(NotificationService)
-      .useValue({ sendEmail: async () => undefined })
-      .compile()
-
-    app = moduleRef.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      exceptionFactory: (errors) => {
-        const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
-        return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
-      }
-    }))
-    await app.init()
+    testApp = await startTestApp()
+    app = testApp.app
+    dataSource = testApp.dataSource
+    stubRefundReasonClassifier()
 
     await signUp(OWNER_ID)
     await signUp(OTHER_OWNER_ID)
     tokens[OWNER_ID] = await signIn(OWNER_ID)
     tokens[OTHER_OWNER_ID] = await signIn(OTHER_OWNER_ID)
-  }, 120000)
+  }, 180000)
 
   afterAll(async () => {
-    delete process.env.AWS_ENDPOINT_URL
-    delete process.env.AWS_REGION
-    delete process.env.AWS_ACCESS_KEY_ID
-    delete process.env.AWS_SECRET_ACCESS_KEY
-    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-    delete process.env.SQS_TASK_QUEUE_URL
-    await app?.close()
-    await container?.stop()
-    await localstack?.stop()
+    // Stop the app first so background consumers can't fire LLM calls with no stub in place,
+    // then fully unpatch nock. nock patches Node's process-global http module and fetch —
+    // without restore(), the patch outlives this file and breaks the next spec's testcontainers
+    // calls to the Docker socket (Jest sandboxes user modules per file, but not core modules).
+    await testApp?.stop()
+    nock.cleanAll()
+    nock.restore()
   })
 
   describe('POST /payments — checking Card/Account status via the synchronous Adapter (ACL)', () => {
@@ -393,12 +351,13 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
     })
   })
 
-  // The LLM behind RefundReasonClassifier isn't available in this e2e environment (same
-  // reasoning as Account BC's transaction-auto-categorization e2e test), so classification
-  // falls back to OTHER — but this still exercises the real async pipeline end to end
-  // (Domain Event → Outbox → SQS → Consumer → ClassifyRefundReasonHandler → repository write),
-  // and proves classification runs for a REJECTED refund too, independent of the eligibility
-  // outcome (RefundRequested is published before RefundEligibilityService's judgment even runs).
+  // The Ollama call behind RefundReasonClassifier is intercepted by nock (the persistent stub
+  // above replies DEFECTIVE_PRODUCT for a "broken" reason), so the REAL LLM path — request
+  // building, schema-constrained response parsing, category validation — runs end to end,
+  // along with the real async pipeline (Domain Event → Outbox → SQS → Consumer →
+  // ClassifyRefundReasonHandler → repository write). It also proves classification runs for a
+  // REJECTED refund too, independent of the eligibility outcome (RefundRequested is published
+  // before RefundEligibilityService's judgment even runs).
   describe('Refund reason classification + GET /refunds/reason-insights (ops analytics only)', () => {
     it('a_rejected_refund_still_gets_its_reason_classified_asynchronously', async () => {
       const account = await createAccount()
@@ -423,7 +382,9 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
         await new Promise((resolve) => setTimeout(resolve, 200))
       }
 
-      expect(reasonCategory).toBe('OTHER')
+      // The category the stubbed LLM returned for a "broken" reason — a real classification
+      // round trip, not the OTHER fallback.
+      expect(reasonCategory).toBe('DEFECTIVE_PRODUCT')
     }, 60000)
 
     it('GET_refunds_reason-insights_reflects_a_classified_refund_in_its_category_counts', async () => {
@@ -485,5 +446,30 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
 
       expect(response.status).toBe(404)
     })
+  })
+
+  // Money movements in Account BC trigger real SES emails (MoneyDeposited etc.) — with no
+  // NotificationService stub, those sends must actually land in LocalStack.
+  describe('SES notification — the real NotificationService runs alongside the payment flows', () => {
+    it('depositing_into_the_linked_account_sends_a_real_email_recorded_in_the_DB_and_in_LocalStack', async () => {
+      const account = await createAccount()
+      await deposit(account.accountId, 50000)
+
+      const sentEmailRepo = dataSource.getRepository(SentEmailEntity)
+      let sentEmail: SentEmailEntity | null = null
+      for (let i = 0; i < 150; i++) {
+        sentEmail = await sentEmailRepo.findOneBy({ accountId: account.accountId, eventType: 'MoneyDeposited' })
+        if (sentEmail) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(sentEmail).not.toBeNull()
+      expect(sentEmail?.recipient).toBe('owner1@example.com')
+      expect(sentEmail?.sesMessageId.length).toBeGreaterThan(0)
+
+      const sesMessages = await fetchSesMessages(testApp.awsEndpoint)
+      const matched = sesMessages.find((message) => message.Id === sentEmail?.sesMessageId)
+      expect(matched).toBeDefined()
+    }, 60000)
   })
 })

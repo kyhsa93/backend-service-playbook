@@ -1,71 +1,35 @@
 import { INestApplication } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { ScheduleModule } from '@nestjs/schedule'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
-import { SESClient, VerifyEmailIdentityCommand } from '@aws-sdk/client-ses'
 import request from 'supertest'
 import { DataSource } from 'typeorm'
 
-import { AccountModule } from '@/account/account-module'
 import { generateId } from '@/common/generate-id'
 import { AccountInterestScheduler } from '@/account/infrastructure/account-interest-scheduler'
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
 import { SpendingForecastEntity } from '@/account/infrastructure/entity/spending-forecast.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
-import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { computePreviousSpendingAnalysisPeriod } from '@/account/infrastructure/previous-spending-analysis-period'
 import { computeSpendingForecastMonth } from '@/account/infrastructure/spending-forecast-month'
 import { SpendingAnalysisScheduler } from '@/account/infrastructure/spending-analysis-scheduler'
 import { SpendingForecastScheduler } from '@/account/infrastructure/spending-forecast-scheduler'
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { CardModule } from '@/card/card-module'
-import { CardEntity } from '@/card/infrastructure/entity/card.entity'
-import { jwtConfig } from '@/config/jwt.config'
-import { OutboxEntity } from '@/outbox/outbox.entity'
-import { OutboxModule } from '@/outbox/outbox-module'
 import { computePreviousStatementMonth } from '@/payment/infrastructure/previous-statement-month'
 import { CardStatementScheduler } from '@/payment/infrastructure/card-statement-scheduler'
 import { PaymentEntity } from '@/payment/infrastructure/entity/payment.entity'
-import { RefundEntity } from '@/payment/infrastructure/entity/refund.entity'
 import { SentCardStatementEntity } from '@/payment/infrastructure/notification/sent-card-statement.entity'
-import { PaymentModule } from '@/payment/payment-module'
-import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
-import { TaskQueueModule } from '@/task-queue/task-queue-module'
-import { createDomainEventQueue } from './support/sqs-test-queue'
-import { createTaskQueue } from './support/task-queue-test-queue'
+import { StartedTestApp, fetchSesMessages, startTestApp } from './support/test-app'
 
-interface SesMessage {
-  Id: string
-  Source: string
-  Destination: { ToAddresses: string[] }
-  Subject: string
-}
-
-async function fetchSesMessages(endpoint: string): Promise<SesMessage[]> {
-  const response = await fetch(`${endpoint}/_aws/ses`)
-  const body = (await response.json()) as { messages: SesMessage[] }
-  return body.messages
-}
-
-// Verifies the Scheduling (Task Queue) infrastructure for real — that Cron never executes
-// directly and only calls TaskQueue.enqueue, that the entire path task_outbox → SQS FIFO
-// (TaskOutboxRelay) → Consumer → Task Controller → Command Handler actually works, and
-// confirms the Level 1 idempotency of each of the two batch Tasks (daily interest payment,
-// monthly card-statement sending).
+// Verifies the Scheduling (Task Queue) infrastructure for real, against the REAL AppModule
+// (see test/support/test-app.ts) — that Cron never executes directly and only calls
+// TaskQueue.enqueue, that the entire path task_outbox → SQS FIFO (TaskOutboxRelay) → Consumer
+// → Task Controller → Command Handler actually works, and confirms the Level 1 idempotency of
+// each of the two batch Tasks (daily interest payment, monthly card-statement sending).
 //
 // Instead of waiting for a real Cron tick (midnight/the 1st of the month), it calls the
 // Scheduler's enqueue method directly, the same way existing e2e tests like card.e2e-spec.ts
 // do (since scheduling.md already states "the Scheduler only enqueues," the enqueue method
 // itself is the Cron handler's entire responsibility — there's no separately hidden logic).
 describe('Scheduling (Task Queue) — daily interest payment / monthly card statement delivery (e2e)', () => {
-  let postgres: StartedPostgreSqlContainer
-  let localstack: StartedLocalStackContainer
-  let sesEndpoint: string
+  let testApp: StartedTestApp
   let app: INestApplication
   let dataSource: DataSource
 
@@ -75,53 +39,9 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
   let ownerToken: string
 
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer('postgres:16-alpine').start()
-    localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'ses,sqs' })
-      .start()
-
-    sesEndpoint = localstack.getConnectionUri()
-    process.env.AWS_ENDPOINT_URL = sesEndpoint
-    process.env.AWS_REGION = 'us-east-1'
-    process.env.AWS_ACCESS_KEY_ID = 'test'
-    process.env.AWS_SECRET_ACCESS_KEY = 'test'
-    process.env.SES_SENDER_EMAIL = 'no-reply@backend-service-playbook.example.com'
-    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sesEndpoint)
-    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sesEndpoint)
-
-    const verificationClient = new SESClient({
-      region: 'us-east-1',
-      endpoint: sesEndpoint,
-      credentials: { accessKeyId: 'test', secretAccessKey: 'test' }
-    })
-    await verificationClient.send(new VerifyEmailIdentityCommand({ EmailAddress: process.env.SES_SENDER_EMAIL }))
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        ScheduleModule.forRoot(),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: postgres.getConnectionUri(),
-          entities: [
-            AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity, SpendingForecastEntity, CredentialEntity,
-            CardEntity, PaymentEntity, RefundEntity, SentCardStatementEntity,
-            OutboxEntity, TaskOutboxEntity
-          ],
-          synchronize: true
-        }),
-        OutboxModule,
-        TaskQueueModule,
-        AuthModule,
-        AccountModule,
-        CardModule,
-        PaymentModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    await app.init()
-    dataSource = moduleRef.get(DataSource)
+    testApp = await startTestApp()
+    app = testApp.app
+    dataSource = testApp.dataSource
 
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: OWNER_ID, password: PASSWORD })
     const signInResponse = await request(app.getHttpServer())
@@ -131,16 +51,7 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
   }, 180000)
 
   afterAll(async () => {
-    delete process.env.AWS_ENDPOINT_URL
-    delete process.env.AWS_REGION
-    delete process.env.AWS_ACCESS_KEY_ID
-    delete process.env.AWS_SECRET_ACCESS_KEY
-    delete process.env.SES_SENDER_EMAIL
-    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-    delete process.env.SQS_TASK_QUEUE_URL
-    await app?.close()
-    await postgres?.stop()
-    await localstack?.stop()
+    await testApp?.stop()
   })
 
   async function createAccount(): Promise<string> {
@@ -263,7 +174,7 @@ describe('Scheduling (Task Queue) — daily interest payment / monthly card stat
       expect(sentStatement?.totalAmount).toBe(15000)
       expect(sentStatement?.recipient).toBe(RECIPIENT_EMAIL)
 
-      const sesMessages = await fetchSesMessages(sesEndpoint)
+      const sesMessages = await fetchSesMessages(testApp.awsEndpoint)
       const matched = sesMessages.find((message) => message.Id === sentStatement?.sesMessageId)
       expect(matched).toBeDefined()
       expect(matched?.Destination.ToAddresses).toContain(RECIPIENT_EMAIL)

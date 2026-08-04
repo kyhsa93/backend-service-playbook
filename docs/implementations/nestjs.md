@@ -36,7 +36,7 @@ The concrete guide and runnable examples implementing this playbook's principles
 | [file-storage.md](../architecture/file-storage.md) | `implementations/nestjs/docs/architecture/file-storage.md` — StorageService, presigned URL, S3 |
 | [tactical-ddd.md](../architecture/tactical-ddd.md) | `implementations/nestjs/docs/architecture/tactical-ddd.md` — real code for Money (Value Object), Account (Aggregate Root) |
 | [domain-service.md](../architecture/domain-service.md) | Directly cited in the root doc as a real working cross-Aggregate example — `RefundEligibilityService` (`examples/src/payment/domain/refund-eligibility-service.ts`) is responsible for a judgment that coordinates the two Aggregates `Payment` and `Refund`. There is no separate nestjs-specific doc (see footnote below). |
-| [testing.md](../architecture/testing.md) | `implementations/nestjs/docs/architecture/testing.md` — jest, testcontainers (PostgreSQL + LocalStack) E2E |
+| [testing.md](../architecture/testing.md) | `implementations/nestjs/docs/architecture/testing.md` — jest; E2E boots the real AppModule with testcontainers (PostgreSQL + LocalStack) and nock for external HTTP |
 | [conventions.md](../conventions.md) | `implementations/nestjs/docs/conventions.md` — file naming, import rules, TypeScript typing patterns |
 | — (NestJS-specific, no corresponding root doc) | `implementations/nestjs/docs/architecture/module-pattern.md` — @Module, providers, exports, circular dependencies |
 | — (NestJS-specific) | `implementations/nestjs/docs/architecture/bootstrap.md` — main.ts, NestFactory, Swagger |

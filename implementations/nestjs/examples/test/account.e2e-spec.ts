@@ -1,34 +1,26 @@
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { ScheduleModule } from '@nestjs/schedule'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { SESClient, VerifyEmailIdentityCommand } from '@aws-sdk/client-ses'
+import { INestApplication } from '@nestjs/common'
+import nock from 'nock'
 import request from 'supertest'
 import { DataSource } from 'typeorm'
 
-import { AccountModule } from '@/account/account-module'
-import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
-import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { jwtConfig } from '@/config/jwt.config'
-import { OutboxEntity } from '@/outbox/outbox.entity'
-import { OutboxModule } from '@/outbox/outbox-module'
-import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
-import { TaskQueueModule } from '@/task-queue/task-queue-module'
-import { createDomainEventQueue } from './support/sqs-test-queue'
-import { createTaskQueue } from './support/task-queue-test-queue'
+import {
+  FAKE_OLLAMA_ORIGIN,
+  OllamaChatRequestBody,
+  isAnswerComposerRequest,
+  isAutoCategorizerRequest,
+  isQueryTranslatorRequest,
+  ollamaChatReply,
+  userPrompt
+} from './support/ollama-stub'
+import { StartedTestApp, startTestApp } from './support/test-app'
 
-// Since Outbox draining is now fully asynchronous via OutboxPoller (periodic polling) +
-// OutboxConsumer (SQS receiving), every e2e spec that imports OutboxModule needs a real SQS
-// (LocalStack) — without one, the Poller/Consumer just pile up connection-failure logs every tick.
+// Boots the REAL AppModule (see test/support/test-app.ts): real migrations, the real Outbox
+// pipeline against LocalStack SQS, real SES sends, and the real LLM Technical Services with
+// only the network boundary stubbed — nock intercepts the fake Ollama origin, so the request
+// building, response parsing, and fallback code all run for real.
 describe('AccountController (e2e)', () => {
-  let container: StartedPostgreSqlContainer
-  let localstack: StartedLocalStackContainer
+  let testApp: StartedTestApp
   let app: INestApplication
   let dataSource: DataSource
 
@@ -36,6 +28,21 @@ describe('AccountController (e2e)', () => {
   const OTHER_OWNER_ID = 'owner-2'
   const PASSWORD = 'password123!'
   const tokens: Record<string, string> = {}
+
+  // TransactionAutoCategorizer runs asynchronously (Domain Event -> Outbox -> SQS -> Consumer),
+  // so its Ollama calls can land while any later test is running — a persistent interceptor
+  // keeps unrelated tests from failing on those background calls. Re-applied after every
+  // nock.cleanAll() (see afterEach).
+  function stubAutoCategorizer(): void {
+    nock(FAKE_OLLAMA_ORIGIN)
+      .persist()
+      .post('/api/chat', (body) => isAutoCategorizerRequest(body as OllamaChatRequestBody))
+      .reply(200, (_uri, requestBody) => {
+        const body = requestBody as unknown as OllamaChatRequestBody
+        const category = userPrompt(body).includes('Starbucks') ? 'FOOD' : 'OTHER'
+        return ollamaChatReply(JSON.stringify({ category }))
+      })
+  }
 
   async function signUp(userId: string): Promise<void> {
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId, password: PASSWORD })
@@ -51,69 +58,32 @@ describe('AccountController (e2e)', () => {
   }
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start()
-    localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'sqs,ses' })
-      .start()
-
-    const sqsEndpoint = localstack.getConnectionUri()
-    process.env.AWS_ENDPOINT_URL = sqsEndpoint
-    process.env.AWS_REGION = 'us-east-1'
-    process.env.AWS_ACCESS_KEY_ID = 'test'
-    process.env.AWS_SECRET_ACCESS_KEY = 'test'
-    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
-    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
-    process.env.SES_SENDER_EMAIL = 'no-reply@example.com'
-
-    const verificationClient = new SESClient({ region: 'us-east-1', endpoint: sqsEndpoint, credentials: { accessKeyId: 'test', secretAccessKey: 'test' } })
-    await verificationClient.send(new VerifyEmailIdentityCommand({ EmailAddress: process.env.SES_SENDER_EMAIL }))
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        ScheduleModule.forRoot(),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: container.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity],
-          synchronize: true
-        }),
-        OutboxModule,
-        TaskQueueModule,
-        AuthModule,
-        AccountModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      exceptionFactory: (errors) => {
-        const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
-        return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
-      }
-    }))
-    await app.init()
-    dataSource = moduleRef.get(DataSource)
+    testApp = await startTestApp()
+    app = testApp.app
+    dataSource = testApp.dataSource
+    stubAutoCategorizer()
 
     await signUp(OWNER_ID)
     await signUp(OTHER_OWNER_ID)
     tokens[OWNER_ID] = await signIn(OWNER_ID)
     tokens[OTHER_OWNER_ID] = await signIn(OTHER_OWNER_ID)
-  }, 120000)
+  }, 180000)
+
+  afterEach(() => {
+    // Drops any per-test interceptor a failed test may have left behind, then restores the
+    // always-on background-categorizer stub.
+    nock.cleanAll()
+    stubAutoCategorizer()
+  })
 
   afterAll(async () => {
-    delete process.env.AWS_ENDPOINT_URL
-    delete process.env.AWS_REGION
-    delete process.env.AWS_ACCESS_KEY_ID
-    delete process.env.AWS_SECRET_ACCESS_KEY
-    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-    delete process.env.SQS_TASK_QUEUE_URL
-    delete process.env.SES_SENDER_EMAIL
-    await app?.close()
-    await container?.stop()
-    await localstack?.stop()
+    // Stop the app first so background consumers can't fire LLM calls with no stub in place,
+    // then fully unpatch nock. nock patches Node's process-global http module and fetch —
+    // without restore(), the patch outlives this file and breaks the next spec's testcontainers
+    // calls to the Docker socket (Jest sandboxes user modules per file, but not core modules).
+    await testApp?.stop()
+    nock.cleanAll()
+    nock.restore()
   })
 
   async function createAccount(
@@ -699,11 +669,11 @@ describe('AccountController (e2e)', () => {
     })
   })
 
-  // The LLM behind TransactionAutoCategorizer isn't available in this e2e environment either
-  // (same reasoning as the /transactions/ask block below), so the categorization call falls
-  // back to OTHER — but this still exercises the real async pipeline end to end: the Domain
-  // Event → Outbox → SQS → OutboxConsumer → CategorizeTransactionHandler → the repository write
-  // all actually run, only the LLM call itself degrades to its non-blocking default.
+  // The Ollama call TransactionAutoCategorizer makes is intercepted by nock (the persistent
+  // stub above replies FOOD for a Starbucks merchant), so the REAL LLM path — request building,
+  // schema-constrained response parsing, category validation — runs end to end, along with the
+  // real async pipeline: Domain Event → Outbox → SQS → OutboxConsumer →
+  // CategorizeTransactionHandler → the repository write.
   describe('Transaction auto-categorization (merchantName -> category)', () => {
     it('withdraw_with_a_merchantName_then_the_transaction_is_asynchronously_categorized', async () => {
       const account = await createAccount()
@@ -728,7 +698,7 @@ describe('AccountController (e2e)', () => {
       }
 
       expect(categorizedTransaction?.merchantName).toBe('Starbucks Gangnam')
-      expect(categorizedTransaction?.category).toBe('OTHER')
+      expect(categorizedTransaction?.category).toBe('FOOD')
     }, 60000)
 
     it('withdraw_without_a_merchantName_then_the_transaction_is_never_categorized', async () => {
@@ -811,10 +781,10 @@ describe('AccountController (e2e)', () => {
     }, 60000)
   })
 
-  // The LLM behind these two Technical Services (see account/infrastructure) isn't available in
-  // this e2e environment, so both calls fall back to their non-blocking defaults: an empty
-  // filter (all of the account's transactions) and a plain templated summary. This still
-  // exercises the real retrieval + response shape end to end without depending on a live Ollama.
+  // The two LLM Technical Services behind this endpoint (NlTransactionQueryTranslator +
+  // NlTransactionAnswerComposer, see account/infrastructure) run for REAL here — nock stubs
+  // Ollama's /api/chat at the network boundary, so the request shape they build, the
+  // schema-constrained parse, and the grounded answer path are all exercised and asserted.
   describe('POST /accounts/:accountId/transactions/ask', () => {
     it('when_asked_a_question_then_returns_200_with_an_answer_grounded_in_the_requesters_own_transactions', async () => {
       const account = await createAccount()
@@ -823,14 +793,69 @@ describe('AccountController (e2e)', () => {
         .set('Authorization', authHeader(OWNER_ID))
         .send({ amount: 10000 })
 
+      const QUESTION = 'How much have I deposited?'
+      const ANSWER = 'You have deposited 10000 KRW in total.'
+      let translatorRequest: OllamaChatRequestBody | undefined
+      let composerRequest: OllamaChatRequestBody | undefined
+
+      nock(FAKE_OLLAMA_ORIGIN)
+        .post('/api/chat', (body) => isQueryTranslatorRequest(body as OllamaChatRequestBody))
+        .reply(200, (_uri, requestBody) => {
+          translatorRequest = requestBody as unknown as OllamaChatRequestBody
+          return ollamaChatReply(JSON.stringify({ type: 'DEPOSIT', fromDate: '', toDate: '' }))
+        })
+      nock(FAKE_OLLAMA_ORIGIN)
+        .post('/api/chat', (body) => isAnswerComposerRequest(body as OllamaChatRequestBody))
+        .reply(200, (_uri, requestBody) => {
+          composerRequest = requestBody as unknown as OllamaChatRequestBody
+          return ollamaChatReply(ANSWER)
+        })
+
+      const response = await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/transactions/ask`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ question: QUESTION })
+
+      expect(response.status).toBe(200)
+      // The stubbed LLM answer came back verbatim — the real parse path ran, not the fallback.
+      expect(response.body.answer).toBe(ANSWER)
+      expect(response.body.matchedCount).toBe(1)
+
+      // The translator got the raw question plus a JSON-schema-constrained format field.
+      expect(translatorRequest).toBeDefined()
+      expect(userPrompt(translatorRequest!)).toBe(QUESTION)
+      expect(translatorRequest!.format).toBeDefined()
+      expect(translatorRequest!.stream).toBe(false)
+      // The composer prompt was grounded in the retrieved transaction, not free-floating.
+      expect(composerRequest).toBeDefined()
+      expect(userPrompt(composerRequest!)).toContain(QUESTION)
+      expect(userPrompt(composerRequest!)).toContain('DEPOSIT 10000 KRW')
+    })
+
+    it('when_the_llm_is_unavailable_then_still_returns_200_with_a_plain_fallback_answer', async () => {
+      const account = await createAccount()
+      await request(app.getHttpServer())
+        .post(`/accounts/${account.accountId}/deposit`)
+        .set('Authorization', authHeader(OWNER_ID))
+        .send({ amount: 10000 })
+
+      // Both LLM calls fail with a 500 — the endpoint must still answer from the retrieved
+      // data (empty filter + templated summary), never surface the infrastructure failure.
+      nock(FAKE_OLLAMA_ORIGIN)
+        .post('/api/chat', (body) => {
+          const chatBody = body as OllamaChatRequestBody
+          return isQueryTranslatorRequest(chatBody) || isAnswerComposerRequest(chatBody)
+        })
+        .times(2)
+        .reply(500)
+
       const response = await request(app.getHttpServer())
         .post(`/accounts/${account.accountId}/transactions/ask`)
         .set('Authorization', authHeader(OWNER_ID))
         .send({ question: 'How much have I deposited?' })
 
       expect(response.status).toBe(200)
-      expect(typeof response.body.answer).toBe('string')
-      expect(response.body.answer.length).toBeGreaterThan(0)
+      expect(response.body.answer).toContain('Found 1 matching transaction')
       expect(response.body.matchedCount).toBe(1)
     })
 

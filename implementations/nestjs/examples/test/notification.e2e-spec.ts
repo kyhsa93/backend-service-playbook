@@ -1,45 +1,16 @@
 import { INestApplication } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { ScheduleModule } from '@nestjs/schedule'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
-import { SESClient, VerifyEmailIdentityCommand } from '@aws-sdk/client-ses'
 import request from 'supertest'
 import { DataSource } from 'typeorm'
 
-import { AccountModule } from '@/account/account-module'
-import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
-import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { jwtConfig } from '@/config/jwt.config'
-import { OutboxEntity } from '@/outbox/outbox.entity'
-import { OutboxModule } from '@/outbox/outbox-module'
-import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
-import { TaskQueueModule } from '@/task-queue/task-queue-module'
-import { createDomainEventQueue } from './support/sqs-test-queue'
-import { createTaskQueue } from './support/task-queue-test-queue'
+import { StartedTestApp, fetchSesMessages, startTestApp } from './support/test-app'
 
-interface SesMessage {
-  Id: string
-  Source: string
-  Destination: { ToAddresses: string[] }
-  Subject: string
-}
-
-async function fetchSesMessages(endpoint: string): Promise<SesMessage[]> {
-  const response = await fetch(`${endpoint}/_aws/ses`)
-  const body = (await response.json()) as { messages: SesMessage[] }
-  return body.messages
-}
-
+// Boots the REAL AppModule (see test/support/test-app.ts). The AccountCreated/MoneyDeposited
+// Domain Event Handlers (which call NotificationService) only run once OutboxPoller publishes
+// the event to SQS and OutboxConsumer receives it — LocalStack provides both SQS and SES, and
+// the sends are verified against LocalStack's real SES send log.
 describe('SES email sent on Account domain events (e2e)', () => {
-  let postgres: StartedPostgreSqlContainer
-  let localstack: StartedLocalStackContainer
-  let sesEndpoint: string
+  let testApp: StartedTestApp
   let app: INestApplication
   let dataSource: DataSource
 
@@ -49,50 +20,9 @@ describe('SES email sent on Account domain events (e2e)', () => {
   let ownerToken: string
 
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer('postgres:16-alpine').start()
-    localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'ses,sqs' })
-      .start()
-
-    sesEndpoint = localstack.getConnectionUri()
-    process.env.AWS_ENDPOINT_URL = sesEndpoint
-    process.env.AWS_REGION = 'us-east-1'
-    process.env.AWS_ACCESS_KEY_ID = 'test'
-    process.env.AWS_SECRET_ACCESS_KEY = 'test'
-    process.env.SES_SENDER_EMAIL = 'no-reply@backend-service-playbook.example.com'
-    // The AccountCreated/MoneyDeposited Domain Event Handlers (which call NotificationService)
-    // no longer run immediately in the same process — they only run once OutboxPoller
-    // publishes this event to SQS and OutboxConsumer receives it. So SQS is needed alongside SES.
-    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sesEndpoint)
-    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sesEndpoint)
-
-    const verificationClient = new SESClient({
-      region: 'us-east-1',
-      endpoint: sesEndpoint,
-      credentials: { accessKeyId: 'test', secretAccessKey: 'test' }
-    })
-    await verificationClient.send(new VerifyEmailIdentityCommand({ EmailAddress: process.env.SES_SENDER_EMAIL }))
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        ScheduleModule.forRoot(),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: postgres.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity],
-          synchronize: true
-        }),
-        OutboxModule,
-        TaskQueueModule,
-        AuthModule,
-        AccountModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    await app.init()
-    dataSource = moduleRef.get(DataSource)
+    testApp = await startTestApp()
+    app = testApp.app
+    dataSource = testApp.dataSource
 
     await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: OWNER_ID, password: PASSWORD })
     const signInResponse = await request(app.getHttpServer())
@@ -102,23 +32,12 @@ describe('SES email sent on Account domain events (e2e)', () => {
   }, 180000)
 
   afterAll(async () => {
-    delete process.env.AWS_ENDPOINT_URL
-    delete process.env.AWS_REGION
-    delete process.env.AWS_ACCESS_KEY_ID
-    delete process.env.AWS_SECRET_ACCESS_KEY
-    delete process.env.SES_SENDER_EMAIL
-    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-    delete process.env.SQS_TASK_QUEUE_URL
-    await app?.close()
-    await postgres?.stop()
-    await localstack?.stop()
+    await testApp?.stop()
   })
 
-  // AccountCreatedHandler/MoneyDepositedHandler (which send via SES) no longer finish within
-  // the same process before the command response — they only run once OutboxPoller (1-second
-  // interval) publishes the event to SQS and OutboxConsumer (long polling) receives it. So an
-  // immediate-lookup assertion is replaced with polling (the same pattern as
-  // card.e2e-spec.ts's waitForCardStatus).
+  // The handlers go through the asynchronous path OutboxPoller (1-second interval) → SQS →
+  // OutboxConsumer (long polling), so an immediate-lookup assertion is replaced with polling
+  // (the same pattern as card.e2e-spec.ts's waitForCardStatus).
   async function waitForSentEmail(accountId: string, eventType: string): Promise<SentEmailEntity | null> {
     for (let i = 0; i < 150; i++) {
       const sentEmail = await dataSource.getRepository(SentEmailEntity).findOneBy({ accountId, eventType })
@@ -143,7 +62,7 @@ describe('SES email sent on Account domain events (e2e)', () => {
     expect(sentEmail?.recipient).toBe(RECIPIENT_EMAIL)
     expect(sentEmail?.sesMessageId.length).toBeGreaterThan(0)
 
-    const sesMessages = await fetchSesMessages(sesEndpoint)
+    const sesMessages = await fetchSesMessages(testApp.awsEndpoint)
     const matched = sesMessages.find((message) => message.Id === sentEmail?.sesMessageId)
 
     expect(matched).toBeDefined()
@@ -169,7 +88,7 @@ describe('SES email sent on Account domain events (e2e)', () => {
     expect(sentEmail).not.toBeNull()
     expect(sentEmail?.recipient).toBe(RECIPIENT_EMAIL)
 
-    const sesMessages = await fetchSesMessages(sesEndpoint)
+    const sesMessages = await fetchSesMessages(testApp.awsEndpoint)
     const matched = sesMessages.find((message) => message.Id === sentEmail?.sesMessageId)
     expect(matched).toBeDefined()
   })

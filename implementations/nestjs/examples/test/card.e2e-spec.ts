@@ -1,33 +1,17 @@
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { ScheduleModule } from '@nestjs/schedule'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { INestApplication } from '@nestjs/common'
 import request from 'supertest'
+import { DataSource } from 'typeorm'
 
-import { AccountModule } from '@/account/account-module'
-import { NotificationService } from '@/account/application/service/notification-service'
-import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
-import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { CardModule } from '@/card/card-module'
-import { CardEntity } from '@/card/infrastructure/entity/card.entity'
-import { jwtConfig } from '@/config/jwt.config'
-import { OutboxEntity } from '@/outbox/outbox.entity'
-import { OutboxModule } from '@/outbox/outbox-module'
-import { TaskOutboxEntity } from '@/task-queue/task-outbox.entity'
-import { TaskQueueModule } from '@/task-queue/task-queue-module'
-import { createDomainEventQueue } from './support/sqs-test-queue'
-import { createTaskQueue } from './support/task-queue-test-queue'
+import { StartedTestApp, fetchSesMessages, startTestApp } from './support/test-app'
 
+// Boots the REAL AppModule (see test/support/test-app.ts) — including the real
+// NotificationService: SES emails actually go through LocalStack (no provider stub), so the
+// cross-domain flows here run exactly the modules production runs.
 describe('CardController (e2e) — cross-domain Account<->Card', () => {
-  let container: StartedPostgreSqlContainer
-  let localstack: StartedLocalStackContainer
+  let testApp: StartedTestApp
   let app: INestApplication
+  let dataSource: DataSource
 
   const OWNER_ID = 'owner-1'
   const OTHER_OWNER_ID = 'owner-2'
@@ -69,11 +53,10 @@ describe('CardController (e2e) — cross-domain Account<->Card', () => {
     return response.body.status
   }
 
-  // Since Outbox draining now goes through the real asynchronous path
-  // OutboxPoller (1-second interval) → SQS → OutboxConsumer (long polling), the previous
-  // polling budget (20 * 100ms = 2 seconds), sized for finishing immediately in the same
-  // process, may not be enough — it's raised to 150 * 200ms (30 seconds max) to comfortably
-  // absorb the poller tick + SQS round trip + consumer processing time.
+  // Outbox draining goes through the real asynchronous path OutboxPoller (1-second interval)
+  // → SQS → OutboxConsumer (long polling), so completion can lag — a polling budget of
+  // 150 * 200ms (30 seconds max) comfortably absorbs the poller tick + SQS round trip +
+  // consumer processing time.
   async function waitForCardStatus(cardId: string, expected: string, ownerId = OWNER_ID): Promise<string> {
     for (let i = 0; i < 150; i++) {
       const status = await getCardStatus(cardId, ownerId)
@@ -84,69 +67,18 @@ describe('CardController (e2e) — cross-domain Account<->Card', () => {
   }
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start()
-    localstack = await new LocalstackContainer('localstack/localstack:3.0')
-      .withEnvironment({ SERVICES: 'sqs' })
-      .start()
-
-    const sqsEndpoint = localstack.getConnectionUri()
-    process.env.AWS_ENDPOINT_URL = sqsEndpoint
-    process.env.AWS_REGION = 'us-east-1'
-    process.env.AWS_ACCESS_KEY_ID = 'test'
-    process.env.AWS_SECRET_ACCESS_KEY = 'test'
-    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(sqsEndpoint)
-    process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(sqsEndpoint)
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        ScheduleModule.forRoot(),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: container.getConnectionUri(),
-          entities: [AccountEntity, TransactionEntity, CardEntity, OutboxEntity, SentEmailEntity, CredentialEntity, TaskOutboxEntity],
-          synchronize: true
-        }),
-        OutboxModule,
-        TaskQueueModule,
-        AuthModule,
-        AccountModule,
-        CardModule
-      ]
-    })
-      // SES (a technical service) isn't this test's concern, so it's replaced with a no-op.
-      // This way, the account event handler doesn't throw on an email failure, and only Integration Event delivery is verified.
-      .overrideProvider(NotificationService)
-      .useValue({ sendEmail: async () => undefined })
-      .compile()
-
-    app = moduleRef.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      exceptionFactory: (errors) => {
-        const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
-        return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
-      }
-    }))
-    await app.init()
+    testApp = await startTestApp()
+    app = testApp.app
+    dataSource = testApp.dataSource
 
     await signUp(OWNER_ID)
     await signUp(OTHER_OWNER_ID)
     tokens[OWNER_ID] = await signIn(OWNER_ID)
     tokens[OTHER_OWNER_ID] = await signIn(OTHER_OWNER_ID)
-  }, 120000)
+  }, 180000)
 
   afterAll(async () => {
-    delete process.env.AWS_ENDPOINT_URL
-    delete process.env.AWS_REGION
-    delete process.env.AWS_ACCESS_KEY_ID
-    delete process.env.AWS_SECRET_ACCESS_KEY
-    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-    delete process.env.SQS_TASK_QUEUE_URL
-    await app?.close()
-    await container?.stop()
-    await localstack?.stop()
+    await testApp?.stop()
   })
 
   describe('POST /cards — checking Account status via the synchronous Adapter (ACL)', () => {
@@ -221,5 +153,30 @@ describe('CardController (e2e) — cross-domain Account<->Card', () => {
 
       expect(await waitForCardStatus(cardId, 'CANCELLED')).toBe('CANCELLED')
     })
+  })
+
+  // The Account BC's event handlers send real SES emails alongside the Integration Events the
+  // tests above consume — with no NotificationService stub, those sends must actually land.
+  describe('SES notification — the real NotificationService runs alongside the card flows', () => {
+    it('creating_the_linked_account_sends_a_real_email_recorded_in_the_DB_and_in_LocalStack', async () => {
+      const account = await createAccount()
+
+      const sentEmailRepo = dataSource.getRepository(SentEmailEntity)
+      let sentEmail: SentEmailEntity | null = null
+      for (let i = 0; i < 150; i++) {
+        sentEmail = await sentEmailRepo.findOneBy({ accountId: account.accountId, eventType: 'AccountCreated' })
+        if (sentEmail) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
+      expect(sentEmail).not.toBeNull()
+      expect(sentEmail?.recipient).toBe('owner1@example.com')
+      expect(sentEmail?.sesMessageId.length).toBeGreaterThan(0)
+
+      const sesMessages = await fetchSesMessages(testApp.awsEndpoint)
+      const matched = sesMessages.find((message) => message.Id === sentEmail?.sesMessageId)
+      expect(matched).toBeDefined()
+      expect(matched?.Destination.ToAddresses).toContain('owner1@example.com')
+    }, 60000)
   })
 })

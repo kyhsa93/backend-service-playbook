@@ -214,7 +214,7 @@ HTTP-specific metrics:
 registered globally alongside `LoggingInterceptor`:
 
 ```typescript
-// src/main.ts
+// src/app-setup.ts (applied by main.ts and the E2E suite via configureApp)
 app.useGlobalInterceptors(new LoggingInterceptor(), new MetricsInterceptor())
 ```
 
@@ -238,7 +238,6 @@ anything that transitively pulls in `express`/`http`, since the instrumentation 
 // http module in place, and only requests made after it runs get instrumented).
 import '@/tracing'
 
-import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 // ...
 ```
@@ -291,7 +290,7 @@ Top alerting items to wire up against these metrics/traces in production: DLQ de
 
 ## Security headers
 
-`helmet` (`src/main.ts`) applies standard security headers (`X-Content-Type-Options`,
+`helmet` (`src/app-setup.ts`, applied by main.ts and the E2E suite via `configureApp`) applies standard security headers (`X-Content-Type-Options`,
 `X-Frame-Options`, `Strict-Transport-Security`, etc.) as the first middleware in the pipeline.
 helmet's default Content-Security-Policy blocks Swagger UI's inline scripts/styles, so `/docs`
 (and its static assets, `/docs/*`, plus `/docs-json`) gets a second `helmet` instance with
@@ -299,7 +298,7 @@ helmet's default Content-Security-Policy blocks Swagger UI's inline scripts/styl
 only for that one path:
 
 ```typescript
-// src/main.ts
+// src/app-setup.ts
 const defaultHelmet = helmet()
 const docsHelmet = helmet({ contentSecurityPolicy: false })
 app.use((req, res, next) => {

@@ -128,7 +128,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 | `user-context-store` | Fails if a `*-controller.ts` reads `req.user`/`request.user` directly — Controllers must read the authenticated user via `UserContextStore.getRequesterId()`/`getUser()` instead | 10 |
 | `file-naming` | Requires kebab-case file names under `src/`, flags `*.service.ts` for naming review, and requires `*.module.ts` files to follow the `<name>-module.ts` form | 25 |
 | `auth` | When `*-controller.ts` exists: every Controller class/route must state protected/public intent explicitly (`@UseGuards`, a composite decorator like `@Authenticated()`, or `@Public`/`@SkipAuth`); fails if no Auth/Jwt/Guard-related files exist at all | 20 *(auto-gated)* |
-| `bootstrap-healthcheck` | When `src/main.ts` exists: requires `enableShutdownHooks` and a global `ValidationPipe` in the bootstrap | 20 *(auto-gated)* |
+| `bootstrap-healthcheck` | When `src/main.ts` exists: requires `enableShutdownHooks` and a global `ValidationPipe` in the bootstrap — either directly in `main.ts` or in a shared app-setup file `main.ts` imports (e.g. `src/app-setup.ts`) | 20 *(auto-gated)* |
 | `config-validation` | When `src/config/` or ConfigModule-using code exists: `ConfigModule.forRoot()` needs a `validationSchema`/`validate` option, `process.env` may only be referenced inside `src/config/*.config.ts`, and files under `src/config/` must follow the `*.config.ts` naming | 20 *(auto-gated)* |
 
 *auto-gated*: excluded from the aggregate score with `maxScore=0` if there's no code using that feature.

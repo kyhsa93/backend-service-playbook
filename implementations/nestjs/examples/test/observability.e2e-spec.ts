@@ -1,9 +1,8 @@
-// Every other *.e2e-spec.ts builds its Nest TestingModule directly, bypassing main.ts's
-// bootstrap() entirely — so, unlike the real app, OpenTelemetry is never initialized for those
-// runs. This spec is specifically about trace propagation, so it needs the real thing:
-// importing '@/tracing' here runs the exact same NodeSDK#start() main.ts runs, registering the
-// W3C propagator + AsyncLocalStorage-based context manager for this process before anything
-// else executes.
+// Every other *.e2e-spec.ts boots the real AppModule via test/support/test-app.ts, but never
+// initializes OpenTelemetry — that's main.ts's very first import, before Nest itself. This spec
+// is specifically about trace propagation, so it needs the real thing: importing '@/tracing'
+// here runs the exact same NodeSDK#start() main.ts runs, registering the W3C propagator +
+// AsyncLocalStorage-based context manager for this process before anything else executes.
 //
 // One thing this can't verify under Jest: @opentelemetry/instrumentation-http's automatic
 // HTTP-request span creation. It relies on monkey-patching Node's http module via
@@ -24,31 +23,21 @@
 // the process never becomes idle and Jest hangs after printing its results instead of exiting.
 import { shutdownTracing } from '@/tracing'
 
-import { INestApplication } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { ScheduleModule } from '@nestjs/schedule'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { LocalstackContainer, StartedLocalStackContainer } from '@testcontainers/localstack'
 import { trace } from '@opentelemetry/api'
 import { DataSource } from 'typeorm'
 
 import { EventHandlerRegistry } from '@/outbox/event-handler-registry'
 import { OutboxEntity } from '@/outbox/outbox.entity'
-import { OutboxModule } from '@/outbox/outbox-module'
 import { OutboxWriter } from '@/outbox/outbox-writer'
 import { TransactionManager } from '@/database/transaction-manager'
-import { createDomainEventQueue } from './support/sqs-test-queue'
+import { StartedTestApp, startTestApp } from './support/test-app'
 
 // A W3C traceparent header: "00-<32 hex trace id>-<16 hex span id>-<2 hex flags>".
 const TRACEPARENT_PATTERN = /^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/
 const EVENT_TYPE = 'ObservabilityTraceparentTest'
 
 describe('traceparent propagation across the Outbox hop (e2e)', () => {
-  let postgres: StartedPostgreSqlContainer
-  let localstack: StartedLocalStackContainer
-  let app: INestApplication
+  let testApp: StartedTestApp
   let dataSource: DataSource
   let outboxWriter: OutboxWriter
   let transactionManager: TransactionManager
@@ -58,56 +47,22 @@ describe('traceparent propagation across the Outbox hop (e2e)', () => {
   const observedTraceIds: string[] = []
 
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer('postgres:16-alpine').start()
-    localstack = await new LocalstackContainer('localstack/localstack:3.0').withEnvironment({ SERVICES: 'sqs' }).start()
+    testApp = await startTestApp()
+    dataSource = testApp.dataSource
+    outboxWriter = testApp.app.get(OutboxWriter)
+    transactionManager = testApp.app.get(TransactionManager)
 
-    const endpoint = localstack.getConnectionUri()
-    process.env.AWS_ENDPOINT_URL = endpoint
-    process.env.AWS_REGION = 'us-east-1'
-    process.env.AWS_ACCESS_KEY_ID = 'test'
-    process.env.AWS_SECRET_ACCESS_KEY = 'test'
-    process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(endpoint)
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
-        ScheduleModule.forRoot(),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: postgres.getConnectionUri(),
-          entities: [OutboxEntity],
-          synchronize: true
-        }),
-        OutboxModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    await app.init()
-    dataSource = moduleRef.get(DataSource)
-    outboxWriter = moduleRef.get(OutboxWriter)
-    transactionManager = moduleRef.get(TransactionManager)
-
-    moduleRef.get(EventHandlerRegistry).register(EVENT_TYPE, async () => {
+    testApp.app.get(EventHandlerRegistry).register(EVENT_TYPE, async () => {
       observedTraceIds.push(trace.getActiveSpan()?.spanContext().traceId ?? '')
     })
   }, 180000)
 
   afterAll(async () => {
-    delete process.env.AWS_ENDPOINT_URL
-    delete process.env.AWS_REGION
-    delete process.env.AWS_ACCESS_KEY_ID
-    delete process.env.AWS_SECRET_ACCESS_KEY
-    delete process.env.SQS_DOMAIN_EVENT_QUEUE_URL
-    // app.close() first (same order as every other *.e2e-spec.ts, e.g. account.e2e-spec.ts) —
-    // this runs OutboxModule's OnModuleDestroy hooks, which is what actually stops
-    // OutboxConsumer's background poll loop (onModuleDestroy() sets running = false). Skipping
-    // this and only stopping the containers leaves that loop retrying against a
-    // no-longer-running Postgres/LocalStack forever, which never self-resolves and hangs Jest
-    // indefinitely — this is not a cleanup nicety, it's required for the process to exit at all.
-    await app?.close()
-    await postgres?.stop()
-    await localstack?.stop()
+    // testApp.stop() closes the app first (running OutboxModule's OnModuleDestroy hooks, which
+    // is what actually stops OutboxConsumer's background poll loop) and only then stops the
+    // containers — the reverse order leaves that loop retrying against a no-longer-running
+    // Postgres/LocalStack forever and hangs Jest indefinitely.
+    await testApp?.stop()
     // Tears down the TracerProvider this spec's `import '@/tracing'` started — without this,
     // the live span processor/exporter has nothing else to stop it before the test process
     // needs to exit, and Jest hangs indefinitely after printing its results instead of

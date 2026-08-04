@@ -4,29 +4,22 @@ The pattern for safely finishing in-flight requests before terminating, upon rec
 
 ## Current Implementation
 
-The actual `src/main.ts` (see [bootstrap.md](bootstrap.md)) calls `enableShutdownHooks()` — this makes the `OnApplicationShutdown`/`BeforeApplicationShutdown` lifecycle hooks run upon receiving SIGTERM. The `ShutdownState` (`src/common/infrastructure/shutdown-state.ts`) and `HealthController` (`src/common/interface/health-controller.ts`, `GET /health/live`·`GET /health/ready`) defined in the "Health-check integration" section below are likewise reflected in `examples/` exactly as documented, registered in `src/app-module.ts`'s `providers`/`controllers`. The `RedisShutdown`/`QueueShutdown` patterns aren't applied yet since this repo has no Redis or message-queue connection of its own — they're left as extension patterns to add if ever needed.
+The actual bootstrap (`src/main.ts` calling `src/app-setup.ts`'s `configureApp`, see [bootstrap.md](bootstrap.md)) calls `enableShutdownHooks()` — this makes the `OnApplicationShutdown`/`BeforeApplicationShutdown` lifecycle hooks run upon receiving SIGTERM. The `ShutdownState` (`src/common/infrastructure/shutdown-state.ts`) and `HealthController` (`src/common/interface/health-controller.ts`, `GET /health/live`·`GET /health/ready`) defined in the "Health-check integration" section below are likewise reflected in `examples/` exactly as documented, registered in `src/app-module.ts`'s `providers`/`controllers`. The `RedisShutdown`/`QueueShutdown` patterns aren't applied yet since this repo has no Redis or message-queue connection of its own — they're left as extension patterns to add if ever needed.
 
-## main.ts Configuration (Actual Code)
+## Bootstrap Configuration (Actual Code)
+
+`enableShutdownHooks()` lives in the shared app setup (`src/app-setup.ts`), which `main.ts`
+applies via `configureApp(app)` — the E2E suite applies the same function, so shutdown hooks
+are active in tests too (see [bootstrap.md](bootstrap.md) for the full files).
 
 ```typescript
-// src/main.ts — an excerpt of the actual code; see bootstrap.md for the full file
-import { NestFactory } from '@nestjs/core'
-
-import { AppModule } from '@/app-module'
-import { getPort } from '@/config/app.config'
-
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule)
-
-  // ... see bootstrap.md for ValidationPipe, LoggingInterceptor, HttpExceptionFilter, CORS, Swagger setup
+// src/app-setup.ts — an excerpt of the actual code; see bootstrap.md for the full file
+export function configureApp(app: INestApplication): void {
+  // ... see bootstrap.md for helmet, ValidationPipe, LoggingInterceptor, HttpExceptionFilter, CORS
 
   // Graceful Shutdown — runs Nest lifecycle hooks (onModuleDestroy, etc.) on receiving SIGTERM/SIGINT
   app.enableShutdownHooks()
-
-  await app.listen(getPort())
 }
-
-bootstrap()
 ```
 
 The `OnApplicationShutdown` and `BeforeApplicationShutdown` lifecycle hooks only run if `app.enableShutdownHooks()` is called. Without this call, the hooks never run on SIGTERM and the process terminates immediately.
@@ -233,7 +226,7 @@ spec:
 
 ## Principles
 
-- **`enableShutdownHooks()` is required**: always call it in main.ts. Without this call, the lifecycle hooks never run.
+- **`enableShutdownHooks()` is required**: always call it in the bootstrap path (here: `src/app-setup.ts`'s `configureApp`, applied by main.ts). Without this call, the lifecycle hooks never run.
 - **Clean up resources in `OnApplicationShutdown`**: safe because it runs after the HTTP server has shut down.
 - **Switch readiness in `BeforeApplicationShutdown`**: stop accepting new requests before the HTTP server shuts down.
 - **Use `node` directly in CMD**: receives SIGTERM immediately, with no npm/yarn wrapper in between.

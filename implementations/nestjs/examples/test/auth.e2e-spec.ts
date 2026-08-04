@@ -1,49 +1,19 @@
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { jwtConfig } from '@/config/jwt.config'
+import { StartedTestApp, startTestApp } from './support/test-app'
 
 describe('AuthController (e2e)', () => {
-  let container: StartedPostgreSqlContainer
+  let testApp: StartedTestApp
   let app: INestApplication
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start()
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: container.getConnectionUri(),
-          entities: [CredentialEntity],
-          synchronize: true
-        }),
-        AuthModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      exceptionFactory: (errors) => {
-        const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
-        return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
-      }
-    }))
-    await app.init()
-  }, 120000)
+    testApp = await startTestApp()
+    app = testApp.app
+  }, 180000)
 
   afterAll(async () => {
-    await app?.close()
-    await container?.stop()
+    await testApp?.stop()
   })
 
   it('sign-in_after_sign-up_returns_201_and_an_access_token', async () => {

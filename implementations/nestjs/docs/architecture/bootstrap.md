@@ -1,6 +1,13 @@
 # App Bootstrap
 
-> Below is the actual `src/main.ts`.
+> Below are the actual `src/main.ts` and `src/app-setup.ts`.
+
+The app-object-level setup is extracted into `src/app-setup.ts`'s `configureApp(app)` and shared
+between the production entrypoint and the E2E suite: `main.ts` calls it before serving Swagger
+and listening, and every E2E spec applies it to the real `AppModule` (see
+[testing.md](testing.md)). This keeps a single source of truth for the request pipeline —
+production and the tests cannot drift apart. `main.ts` keeps only what makes no sense for a test
+app: the Swagger document serving and `listen()`.
 
 ```typescript
 // src/main.ts — actual code
@@ -8,17 +15,12 @@
 // http module in place, and only requests made after it runs get instrumented).
 import '@/tracing'
 
-import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
-import { NextFunction, Request, Response } from 'express'
-import helmet from 'helmet'
 
 import { AppModule } from '@/app-module'
-import { HttpExceptionFilter } from '@/common/http-exception.filter'
-import { LoggingInterceptor } from '@/common/logging.interceptor'
-import { MetricsInterceptor } from '@/common/metrics.interceptor'
-import { getCorsOrigins, getPort, isProduction } from '@/config/app.config'
+import { configureApp } from '@/app-setup'
+import { getPort, isProduction } from '@/config/app.config'
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
@@ -27,8 +29,33 @@ async function bootstrap(): Promise<void> {
       : ['error', 'warn', 'log', 'debug', 'verbose']
   })
 
-  // security headers, applied as early as possible — see observability.md for why /docs gets
-  // its own helmet instance
+  // The shared app-object setup — helmet security headers, the global ValidationPipe, the
+  // logging/metrics interceptors, the global exception filter, CORS, and enableShutdownHooks.
+  // Lives in src/app-setup.ts so E2E tests apply the identical configuration to the real
+  // AppModule instead of re-assembling their own.
+  configureApp(app)
+
+  // Swagger
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Account Service API')
+    .setDescription('API documentation for the DDD-based Account domain example service')
+    .setVersion('0.1.0')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'token')
+    .build()
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig)
+  SwaggerModule.setup('docs', app, swaggerDocument)
+
+  await app.listen(getPort())
+}
+
+bootstrap()
+```
+
+```typescript
+// src/app-setup.ts — actual code (excerpt)
+export function configureApp(app: INestApplication): void {
+  // security headers, applied as early as possible — helmet's default CSP blocks Swagger UI's
+  // inline scripts/styles, so /docs gets its own helmet instance with CSP turned off
   const defaultHelmet = helmet()
   const docsHelmet = helmet({ contentSecurityPolicy: false })
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -60,39 +87,25 @@ async function bootstrap(): Promise<void> {
     credentials: true
   })
 
-  // Swagger
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Account Service API')
-    .setDescription('API documentation for the DDD-based Account domain example service')
-    .setVersion('0.1.0')
-    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'token')
-    .build()
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig)
-  SwaggerModule.setup('docs', app, swaggerDocument)
-
   // Graceful Shutdown — runs the Nest lifecycle hooks (onModuleDestroy, etc.) on receiving SIGTERM/SIGINT
   app.enableShutdownHooks()
-
-  await app.listen(getPort())
 }
-
-bootstrap()
 ```
 
 ### Configuration Summary
 
-| Setting | Role |
-|------|------|
-| `import '@/tracing'` | OpenTelemetry bootstrap — must be the first import (see [observability.md](observability.md)) |
-| the `logger` option | excludes debug/verbose logs when `isProduction()` |
-| `helmet` (two instances) | security headers everywhere; CSP relaxed only under `/docs` so Swagger UI keeps working (see [observability.md](observability.md)) |
-| `ValidationPipe` | auto-applies class-validator decorators; `exceptionFactory` constructs a response with the `VALIDATION_FAILED` code (see [error-handling.md](error-handling.md)) |
-| `LoggingInterceptor` | logs the request method/path/processing time |
-| `MetricsInterceptor` | records `http_requests_total`/`http_request_duration_seconds` for `GET /metrics` (see [observability.md](observability.md)) |
-| `HttpExceptionFilter` | the global exception filter. Serializes an `HttpException` in the standard format, and also converts any other unhandled exception (a plain `Error`, etc.) into `{ statusCode: 500, code: 'INTERNAL_ERROR', message, error }` instead of exposing the raw stack trace (see [error-handling.md](error-handling.md)) |
-| `enableCors(...)` | `config/app.config.ts`'s `getCorsOrigins()` restricts allowed origins via the `CORS_ORIGIN` environment variable (comma-separated) in production (`isProduction()`), and returns allow-all (`true`) in every other environment |
-| `DocumentBuilder` + `SwaggerModule` | exposes the OpenAPI document at the `/docs` path. `addBearerAuth(..., 'token')` uses a name paired with the controller's `@ApiBearerAuth('token')` |
-| `enableShutdownHooks()` | activates Nest lifecycle hooks like `OnApplicationShutdown` on receiving SIGTERM/SIGINT (see [graceful-shutdown.md](graceful-shutdown.md)) |
+| Setting | Where | Role |
+|------|------|------|
+| `import '@/tracing'` | `main.ts` | OpenTelemetry bootstrap — must be the first import (see [observability.md](observability.md)) |
+| the `logger` option | `main.ts` | excludes debug/verbose logs when `isProduction()` |
+| `helmet` (two instances) | `app-setup.ts` | security headers everywhere; CSP relaxed only under `/docs` so Swagger UI keeps working (see [observability.md](observability.md)) |
+| `ValidationPipe` | `app-setup.ts` | auto-applies class-validator decorators; `exceptionFactory` constructs a response with the `VALIDATION_FAILED` code (see [error-handling.md](error-handling.md)) |
+| `LoggingInterceptor` | `app-setup.ts` | logs the request method/path/processing time |
+| `MetricsInterceptor` | `app-setup.ts` | records `http_requests_total`/`http_request_duration_seconds` for `GET /metrics` (see [observability.md](observability.md)) |
+| `HttpExceptionFilter` | `app-setup.ts` | the global exception filter. Serializes an `HttpException` in the standard format, and also converts any other unhandled exception (a plain `Error`, etc.) into `{ statusCode: 500, code: 'INTERNAL_ERROR', message, error }` instead of exposing the raw stack trace (see [error-handling.md](error-handling.md)) |
+| `enableCors(...)` | `app-setup.ts` | `config/app.config.ts`'s `getCorsOrigins()` restricts allowed origins via the `CORS_ORIGIN` environment variable (comma-separated) in production (`isProduction()`), and returns allow-all (`true`) in every other environment |
+| `DocumentBuilder` + `SwaggerModule` | `main.ts` | exposes the OpenAPI document at the `/docs` path. `addBearerAuth(..., 'token')` uses a name paired with the controller's `@ApiBearerAuth('token')` |
+| `enableShutdownHooks()` | `app-setup.ts` | activates Nest lifecycle hooks like `OnApplicationShutdown` on receiving SIGTERM/SIGINT (see [graceful-shutdown.md](graceful-shutdown.md)) |
 
 ### Extension Points
 

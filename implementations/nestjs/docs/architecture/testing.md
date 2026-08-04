@@ -8,7 +8,7 @@ Organized into 3 test layers, each with a different verification scope and depen
 |--------|----------|------------|----------|
 | Domain unit tests | Aggregate, Value Object, Domain Event | No framework (pure TypeScript) | Very fast |
 | Application unit tests | Command/Query Service | Mocks the Repository, Adapter | Fast |
-| E2E tests | The full Controller → Service → Repository path | testcontainers (`@testcontainers/postgresql`, plus `@testcontainers/localstack` for SQS/SES paths) | Slow |
+| E2E tests | The real `AppModule` end to end (Controller → Service → Repository, Outbox/SQS, SES, LLM services) | testcontainers (`@testcontainers/postgresql` + `@testcontainers/localstack`) for infrastructure, `nock` for external HTTP (Ollama) | Slow |
 
 ## Test Directory Structure
 
@@ -24,7 +24,7 @@ src/
         order-query-service.spec.ts
 test/
   order.e2e-spec.ts                          # E2E test
-  support/                                   # shared E2E helpers (e.g. LocalStack SQS queue setup)
+  support/                                   # shared E2E helpers (test-app.ts boots the real AppModule; SQS queue + Ollama-stub helpers)
 ```
 
 - **Domain / Application unit tests**: placed as `.spec.ts` in the same directory as the corresponding source file
@@ -144,60 +144,70 @@ let orderRepository: jest.Mocked<OrderRepository>
 
 ## E2E Tests
 
-Verify the full use-case flow through HTTP requests.
+Verify the full use-case flow through HTTP requests — against the REAL application, not a
+per-spec hand-assembled module. Every spec boots the actual `AppModule` and applies the same
+`configureApp(app)` production runs (see [bootstrap.md](bootstrap.md)), so the tests exercise
+the real request pipeline (helmet, ValidationPipe, interceptors, exception filter, Throttler
+guard) and the real migrations — nothing is a lookalike that can drift.
 
-### Test database — a real PostgreSQL via testcontainers
+### Booting the real app — `test/support/test-app.ts`
 
-Every E2E spec in `test/` starts its own disposable PostgreSQL container (`@testcontainers/postgresql`) in `beforeAll` and stops it in `afterAll` — no shared in-memory database, no `test-database.ts` module. Specs that exercise the SQS/SES paths (outbox, task queue, notifications) additionally start a LocalStack container (`@testcontainers/localstack`); the shared queue-setup helpers live in `test/support/`.
+Every E2E spec in `test/` calls the shared `startTestApp()` helper in `beforeAll` and
+`stop()` in `afterAll`. Each spec still owns its infrastructure: one disposable PostgreSQL
+container (`@testcontainers/postgresql`) and one LocalStack container
+(`@testcontainers/localstack`, SQS + SES) per spec file.
 
 ```typescript
-// test/auth.e2e-spec.ts — actual code (excerpt: the setup)
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-import { Test } from '@nestjs/testing'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import request from 'supertest'
+// test/support/test-app.ts — actual code (excerpt)
+export async function startTestApp(): Promise<StartedTestApp> {
+  const postgres = await new PostgreSqlContainer('postgres:16-alpine').start()
+  const localstack = await new LocalstackContainer('localstack/localstack:3.0')
+    .withEnvironment({ SERVICES: 'sqs,ses' })
+    .start()
+  const awsEndpoint = localstack.getConnectionUri()
 
-import { AuthModule } from '@/auth/auth-module'
-import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
-import { jwtConfig } from '@/config/jwt.config'
+  // Everything the real app reads from the environment, set BEFORE AppModule is imported —
+  // src/database/data-source.ts calls getDatabaseUrl() at module-evaluation time, and
+  // app-module.ts evaluates getThrottlerConfig() while its @Module decorator runs.
+  process.env.DATABASE_URL = postgres.getConnectionUri()
+  process.env.AWS_ENDPOINT_URL = awsEndpoint
+  process.env.SQS_DOMAIN_EVENT_QUEUE_URL = await createDomainEventQueue(awsEndpoint)
+  process.env.SQS_TASK_QUEUE_URL = await createTaskQueue(awsEndpoint)
+  process.env.SES_SENDER_EMAIL = SES_SENDER_EMAIL
+  process.env.OLLAMA_BASE_URL = FAKE_OLLAMA_ORIGIN
+  // ... AWS credentials/region, JWT, generous THROTTLE_* limits ...
 
+  // SES refuses to send from an unverified identity — verify the sender like production would.
+  await verificationClient.send(new VerifyEmailIdentityCommand({ EmailAddress: SES_SENDER_EMAIL }))
+
+  // Dynamic imports on purpose: each Jest test file has its own module registry, so importing
+  // here — after the environment above is fully populated — is what lets data-source.ts (and
+  // every config read that happens at import/decorator time) see the containers' real values.
+  const { AppModule } = await import('@/app-module')
+  const { configureApp } = await import('@/app-setup')
+
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile()
+  const app = moduleRef.createNestApplication({ logger: ['error', 'warn'] })
+  configureApp(app)
+  await app.init()
+
+  return { app, dataSource: app.get(DataSource), awsEndpoint, stop: /* app.close() first, then containers */ }
+}
+```
+
+```typescript
+// test/auth.e2e-spec.ts — actual code (excerpt: what a spec's setup looks like)
 describe('AuthController (e2e)', () => {
-  let container: StartedPostgreSqlContainer
+  let testApp: StartedTestApp
   let app: INestApplication
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start()
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: container.getConnectionUri(),
-          entities: [CredentialEntity],
-          synchronize: true
-        }),
-        AuthModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      exceptionFactory: (errors) => {
-        const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
-        return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
-      }
-    }))
-    await app.init()
-  }, 120000)
+    testApp = await startTestApp()
+    app = testApp.app
+  }, 180000)
 
   afterAll(async () => {
-    await app?.close()
-    await container?.stop()
+    await testApp?.stop()
   })
 
   it('sign-in_after_sign-up_returns_201_and_an_access_token', async () => {
@@ -214,42 +224,83 @@ describe('AuthController (e2e)', () => {
 ```
 
 - **`import request from 'supertest'`** — a default import (`esModuleInterop`), not `import * as request`.
-- **A per-spec container** keeps suites fully isolated from each other at the cost of startup time — pass a generous `beforeAll` timeout (120s here) to cover the image pull on a cold cache.
-- **`synchronize: true` only in tests** — the test module builds the schema from the entity metadata; production runs migrations (see [persistence.md](persistence.md)).
+- **Zero `overrideProvider` calls** — no provider stubs, not even for SES: the real
+  `NotificationService` sends through LocalStack SES, and specs assert the recorded
+  sent-email rows plus LocalStack's own send log (`/_aws/ses`).
+- **Environment before import** — `data-source.ts` reads `DATABASE_URL` when its module
+  evaluates, so `AppModule` must be imported dynamically after the containers are up. A spec
+  must never statically import `@/app-module` (statically importing entities or pure helpers
+  is fine — only `app-module.ts` pulls in the DataSource).
+- **Real migrations, no `synchronize`** — the schema comes from `migrationsRun: true` running
+  the same migration files production runs (see [persistence.md](persistence.md)); there is no
+  test-only schema path and no hand-picked entity list.
+- **A per-spec container** keeps suites fully isolated from each other at the cost of startup
+  time — pass a generous `beforeAll` timeout (180s here) to cover the image pull on a cold cache.
 - **Why not an in-memory database**: the examples use PostgreSQL-specific behavior (raw SQL with `deletedAt IS NULL` filters, `ON CONFLICT`, `char(32)` columns), so an in-memory substitute would test a different engine than production runs.
 
 ### Mocking external HTTP: nock
 
-Intercept external HTTP calls (HttpModule, axios, etc.) in E2E tests with `nock`. Don't replace the whole module with `jest.mock()`. Mocks are for unit tests only; in E2E tests, let requests pass through the real HTTP stack and intercept only at the network boundary with nock.
+The only external dependency that isn't a container is the self-hosted Ollama LLM — every LLM
+Technical Service (`NlTransactionQueryTranslatorImpl`, `NlTransactionAnswerComposerImpl`,
+`TransactionAutoCategorizerImpl`, `RefundReasonClassifierImpl`) POSTs to
+`${OLLAMA_BASE_URL}/api/chat`. E2E tests intercept exactly that boundary with `nock`: the
+service's real request building, schema-constrained response parsing, and fallback code all
+run; only the network hop is stubbed. Don't replace the provider with `overrideProvider` or
+the module with `jest.mock()` — mocks are for the unit-test layer only.
+
+Key rules, all visible in `test/account.e2e-spec.ts` / `test/payment.e2e-spec.ts` /
+`test/support/ollama-stub.ts`:
+
+- **Scope nock to a fake origin only** — `OLLAMA_BASE_URL` is set to
+  `http://ollama.test.local:11434`, and interceptors are registered against that origin.
+  Never call `nock.disableNetConnect()`: the testcontainers traffic to `localhost` (Postgres,
+  LocalStack, the Docker socket) must pass through untouched.
+- **Route by request body** — all four services hit the same `/api/chat` path, so
+  interceptors match on the system prompt in the request body (`isQueryTranslatorRequest`,
+  `isAutoCategorizerRequest`, ...).
+- **`persist()` for background callers** — categorization/classification runs asynchronously
+  (Domain Event → Outbox → SQS → Consumer), so those calls can land while an unrelated test is
+  running; a persistent interceptor keeps them from failing.
+- **Unpatch on teardown** — nock patches Node's process-global `http` module and `fetch`.
+  Jest sandboxes user modules per file but not core modules, so a spec that uses nock must end
+  with `nock.cleanAll()` + `nock.restore()` (after `testApp.stop()`), or the leaked patch
+  breaks the next spec's testcontainers calls.
 
 ```typescript
-// test/order.e2e-spec.ts
-import * as nock from 'nock'
+// test/account.e2e-spec.ts — actual code (excerpt: the real LLM path, stubbed at the network only)
+const QUESTION = 'How much have I deposited?'
+const ANSWER = 'You have deposited 10000 KRW in total.'
+let translatorRequest: OllamaChatRequestBody | undefined
+let composerRequest: OllamaChatRequestBody | undefined
 
-afterEach(() => nock.cleanAll())
+nock(FAKE_OLLAMA_ORIGIN)
+  .post('/api/chat', (body) => isQueryTranslatorRequest(body as OllamaChatRequestBody))
+  .reply(200, (_uri, requestBody) => {
+    translatorRequest = requestBody as unknown as OllamaChatRequestBody
+    return ollamaChatReply(JSON.stringify({ type: 'DEPOSIT', fromDate: '', toDate: '' }))
+  })
+nock(FAKE_OLLAMA_ORIGIN)
+  .post('/api/chat', (body) => isAnswerComposerRequest(body as OllamaChatRequestBody))
+  .reply(200, (_uri, requestBody) => {
+    composerRequest = requestBody as unknown as OllamaChatRequestBody
+    return ollamaChatReply(ANSWER)
+  })
 
-it('POST /orders — completes the order when the payment API succeeds', async () => {
-  nock('https://payment.internal')
-    .post('/pay')
-    .reply(200, { success: true })
+const response = await request(app.getHttpServer())
+  .post(`/accounts/${account.accountId}/transactions/ask`)
+  .set('Authorization', authHeader(OWNER_ID))
+  .send({ question: QUESTION })
 
-  return request(app.getHttpServer())
-    .post('/orders')
-    .send({ itemId: 'item-1', quantity: 1 })
-    .expect(201)
-})
-
-it('POST /orders — returns 400 when the payment API fails', async () => {
-  nock('https://payment.internal')
-    .post('/pay')
-    .reply(402, { error: 'insufficient_funds' })
-
-  return request(app.getHttpServer())
-    .post('/orders')
-    .send({ itemId: 'item-1', quantity: 1 })
-    .expect(400)
-})
+expect(response.status).toBe(200)
+// The stubbed LLM answer came back verbatim — the real parse path ran, not the fallback.
+expect(response.body.answer).toBe(ANSWER)
+// The composer prompt was grounded in the retrieved transaction, not free-floating.
+expect(userPrompt(composerRequest!)).toContain('DEPOSIT 10000 KRW')
 ```
+
+The graceful-degradation path is covered the same way — one test replies `500` from the fake
+origin and asserts the endpoint still answers from the retrieved data instead of surfacing the
+infrastructure failure.
 
 ## Jest Configuration
 
@@ -275,7 +326,8 @@ export default {
   testRegex: '.*\\.e2e-spec\\.ts$',
   transform: { '^.+\\.(t|j)s$': 'ts-jest' },
   testEnvironment: 'node',
-  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' }
+  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
+  testTimeout: 120000
 }
 ```
 
@@ -296,8 +348,8 @@ it('getOrder_whenOrderDoesNotExist_thenReturns404')
 
 - **Write Domain tests without the framework**: create instances directly with `new Aggregate()` to test. Don't use the NestJS Test module.
 - **Isolate Application tests with mocks**: replace the Repository and Adapter with mocks, verifying only the Service logic.
-- **E2E tests run against a real PostgreSQL via testcontainers**: guarantees an environment identical to production. Specs covering SQS/SES paths add a LocalStack container.
-- **Minimize mocks in E2E tests**: don't replace a module with `jest.mock()`. Replace real dependencies with nock for external HTTP and testcontainers for the DB. Mocks are for the unit-test layer only.
+- **E2E tests boot the real `AppModule`**: real migrations, the real request pipeline via the shared `configureApp(app)`, a real PostgreSQL and LocalStack (SQS + SES) via testcontainers — and zero `overrideProvider` calls.
+- **Minimize mocks in E2E tests**: don't replace a module with `jest.mock()` or a provider with `overrideProvider`. Replace real dependencies with nock for external HTTP and testcontainers for the DB. Mocks are for the unit-test layer only.
 - **Intercept external HTTP with nock**: in E2E tests, intercept external service calls at the network boundary with nock.
 - **Never connect directly to the production DB**: the test environment always uses an isolated DB.
 - **No data interference between tests**: each test suite runs against independent DB state.

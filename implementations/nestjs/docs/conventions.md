@@ -713,20 +713,34 @@ describe('OrderCommandService', () => {
 })
 ```
 
-### E2E tests — Controller layer
+### E2E tests — the real app end to end
+
+E2E tests boot the **real `AppModule`** through the shared `test/support/test-app.ts` helper —
+never a per-spec hand-assembled module, never an `overrideProvider` stub. The helper starts
+the spec's own containers (PostgreSQL + LocalStack), sets every environment variable the app
+reads **before** dynamically importing `AppModule` (`data-source.ts` reads `DATABASE_URL` at
+module-evaluation time), and applies the same `configureApp(app)` production runs. The schema
+comes from the real migrations via `migrationsRun: true` — no `synchronize`, no hand-picked
+entity list. See `testing.md` for the full actual code.
 
 ```typescript
-// test/order.e2e-spec.ts
+// test/<domain>.e2e-spec.ts — the setup shape every spec follows
+import { INestApplication } from '@nestjs/common'
+import request from 'supertest'
+
+import { StartedTestApp, startTestApp } from './support/test-app'
+
 describe('OrderController (e2e)', () => {
+  let testApp: StartedTestApp
   let app: INestApplication
 
   beforeAll(async () => {
-    const module = await Test.createTestingModule({
-      imports: [AppModule]
-    }).compile()
+    testApp = await startTestApp()
+    app = testApp.app
+  }, 180000)
 
-    app = module.createNestApplication()
-    await app.init()
+  afterAll(async () => {
+    await testApp?.stop()
   })
 
   it('GET /orders/:orderId — fetch an existing order', () => {
@@ -735,55 +749,14 @@ describe('OrderController (e2e)', () => {
       .set('Authorization', `Bearer ${testToken}`)
       .expect(200)
   })
-
-  afterAll(() => app.close())
-})
-```
-
-### Test DB configuration — testcontainers
-
-E2E tests run against a **real PostgreSQL started per spec via `@testcontainers/postgresql`** (plus `@testcontainers/localstack` for specs covering the SQS/SES paths) — no in-memory database substitute. Unit tests never touch a database: they mock the Repository/Adapter abstract classes.
-
-```typescript
-// test/<domain>.e2e-spec.ts — the setup shape every spec follows (see testing.md for the full actual code)
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import request from 'supertest'
-
-describe('OrderController (e2e)', () => {
-  let container: StartedPostgreSqlContainer
-  let app: INestApplication
-
-  beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start()
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          url: container.getConnectionUri(),
-          entities: [OrderEntity],
-          synchronize: true  // test-only — production runs migrations
-        }),
-        OrderModule
-      ]
-    }).compile()
-
-    app = moduleRef.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
-    await app.init()
-  }, 120000)
-
-  afterAll(async () => {
-    await app?.close()
-    await container?.stop()
-  })
 })
 ```
 
 **Principles:**
-- E2E tests use a disposable per-spec PostgreSQL container with `synchronize: true` (test-only).
-- Each spec owns its container, so there's no data interference between suites.
+- E2E tests run the real `AppModule` with a disposable per-spec PostgreSQL + LocalStack (SQS/SES) pair; the schema is built by the same migrations production runs.
+- Each spec owns its containers, so there's no data interference between suites.
 - Testing against the same engine as production means PostgreSQL-specific SQL (raw `deletedAt IS NULL` filters, `ON CONFLICT`, etc.) is exercised for real.
+- The only stubbed dependency is external HTTP (the Ollama LLM), intercepted at the network boundary with `nock` scoped to a fake origin — see `testing.md`'s nock section for the routing/`persist()`/`restore()` rules.
 
 ### Test naming pattern
 
