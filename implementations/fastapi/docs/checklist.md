@@ -338,7 +338,7 @@ Check each item, and if a violation is found, fix it immediately before moving t
 ```
 [ ] Does the SQLAlchemy model include created_at, updated_at, deleted_at (nullable) columns?
     → An immutable record (a transaction history, etc.) may omit updated_at/deleted_at
-[ ] Does deletion use setting deleted_at = datetime.utcnow() (soft delete), not session.delete()?
+[ ] Does deletion use setting deleted_at = utc_now() (soft delete), not session.delete()?
     → Hard delete is forbidden
 [ ] Do all lookup queries include the deleted_at.is_(None) condition?
 [ ] Is the transaction boundary managed as one HTTP request = one AsyncSession (via Depends(get_session)'s request-scope caching)?

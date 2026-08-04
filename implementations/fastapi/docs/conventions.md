@@ -155,20 +155,22 @@ status: str
 
 ### The timezone rule — store in UTC, use timezone-aware datetimes
 
-- This repository uses `datetime.utcnow()` (naive UTC with no timezone info) to store into the DB, and returns it as-is with no conversion on lookup either — unlike the NestJS implementation, which converts to and stores as KST (UTC+9), the FastAPI/SQLAlchemy implementation **unifies everything as UTC**, and the client converts the timezone if needed.
-- For a new project, using `datetime.now(timezone.utc)` (a timezone-aware datetime) is recommended — `datetime.utcnow()` is deprecated as of Python 3.12.
+- Every timestamp goes through `utc_now()` (`src/common/clock.py`) — never `datetime.utcnow()`, which Python 3.12 deprecates, and never `datetime.now()`, which reads local time. Values are stored as-is and returned as-is on lookup, so the FastAPI/SQLAlchemy implementation **unifies everything as UTC** and the client converts the timezone if it needs to.
+- `utc_now()` returns a **naive** datetime, taken from an aware UTC reading with the tzinfo dropped. The timestamp columns are `TIMESTAMP WITHOUT TIME ZONE` (see the migrations), matching the other language implementations in this repository, and asyncpg rejects an aware value for such a column. Keeping that conversion in one function is what stops it from being re-derived at 30-odd call sites.
 
 ```python
-# recommended — timezone-aware UTC
-from datetime import datetime, timezone
+# correct — the shared helper
+from ...common.clock import utc_now
 
-created_at = datetime.now(timezone.utc)
+created_at = utc_now()
 ```
 
 ```python
-# avoid — a naive datetime with no timezone info (deprecated in Python 3.12+)
+# avoid — deprecated in Python 3.12+, and bypasses the single conversion point
 created_at = datetime.utcnow()
 ```
+
+- A project whose columns are `TIMESTAMPTZ` should have `utc_now()` return `datetime.now(timezone.utc)` directly and skip the `replace(tzinfo=None)` — the call sites do not change.
 
 - Both storage and lookup keep UTC — the principle that applying a different conversion at storage time vs. lookup time causes a double-conversion bug holds regardless of language.
 

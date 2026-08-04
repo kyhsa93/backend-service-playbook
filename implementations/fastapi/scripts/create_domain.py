@@ -179,6 +179,7 @@ class {n.Domain}Cancelled:
 from datetime import datetime
 from typing import Union
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 {aggregate_local_imports}
 
@@ -205,7 +206,7 @@ class {n.Domain}:
             {n.domain}_id=generate_id(),
             owner_id=owner_id,
             status={n.Domain}Status.PENDING,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
 
     # An example of a simple state transition that publishes no event — a change that
@@ -219,7 +220,7 @@ class {n.Domain}:
             raise {n.Domain}AlreadyCancelledError()
         self.status = {n.Domain}Status.CANCELLED
         self._events.append(
-            {n.Domain}Cancelled({n.domain}_id=self.{n.domain}_id, reason=reason, cancelled_at=datetime.utcnow())
+            {n.Domain}Cancelled({n.domain}_id=self.{n.domain}_id, reason=reason, cancelled_at=utc_now())
         )
 
     def pull_events(self) -> list[{n.Domain}DomainEvent]:
@@ -391,6 +392,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ....account.infrastructure.persistence.account_repository import Base
+from ....common.clock import utc_now
 {persistence_local_imports}
 
 
@@ -400,8 +402,8 @@ class {n.Domain}Model(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     owner_id: Mapped[str]
     status: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 
 
@@ -449,7 +451,7 @@ class SqlAlchemy{n.Domain}Repository({n.Domain}Repository):
         existing = await self._session.get({n.Domain}Model, {n.domain}.{n.domain}_id)
         if existing:
             existing.status = {n.domain}.status.value
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
         else:
             self._session.add(
                 {n.Domain}Model(

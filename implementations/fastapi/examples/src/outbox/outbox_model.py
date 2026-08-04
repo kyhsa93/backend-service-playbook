@@ -6,6 +6,7 @@ from sqlalchemy import CHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..account.infrastructure.persistence.account_repository import Base
+from ..common.clock import utc_now
 
 
 class OutboxModel(Base):
@@ -15,7 +16,7 @@ class OutboxModel(Base):
     event_type: Mapped[str]
     payload: Mapped[str]
     processed: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
     # The W3C `traceparent` of whatever span was active when this row was written (usually
     # the HTTP request's span) — carried the same way `eventType`/`event_id` already are:
     # written here by OutboxWriter, forwarded as an SQS message attribute by OutboxPoller,

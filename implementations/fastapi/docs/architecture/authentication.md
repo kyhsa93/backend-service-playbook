@@ -169,9 +169,7 @@ class Credential:
 
     @classmethod
     def create(cls, user_id: str, password_hash: str) -> Credential:
-        return cls(
-            credential_id=generate_id(), user_id=user_id, password_hash=password_hash, created_at=datetime.utcnow()
-        )
+        return cls(credential_id=generate_id(), user_id=user_id, password_hash=password_hash, created_at=utc_now())
 ```
 
 ```python

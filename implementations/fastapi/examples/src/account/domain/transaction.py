@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Literal
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 from .money import Money
 
@@ -55,7 +56,7 @@ class Transaction:
             account_id=account_id,
             type=type,
             amount=amount,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
             reference_id=reference_id,
             merchant_name=merchant_name,
         )

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ....account.infrastructure.persistence.account_repository import Base
+from ....common.clock import utc_now
 from ...domain.refund import Refund
 from ...domain.refund_repository import RefundRepository
 from ...domain.refund_status import RefundStatus
@@ -22,8 +23,8 @@ class RefundModel(Base):
     # Filled in asynchronously by ClassifyRefundReasonEventHandler — null until that reaction
     # runs.
     reason_category: Mapped[str | None] = mapped_column(nullable=True, default=None)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 
 
@@ -70,7 +71,7 @@ class SqlAlchemyRefundRepository(RefundRepository):
             existing.status = refund.status.value
             existing.decision_note = refund.decision_note
             existing.reason_category = refund.reason_category
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
         else:
             self._session.add(
                 RefundModel(

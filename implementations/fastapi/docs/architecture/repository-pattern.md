@@ -79,7 +79,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
         if existing:
             existing.amount = account.balance.amount
             existing.status = account.status.value
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
         else:
             self._session.add(AccountModel(id=account.account_id, ...))
 

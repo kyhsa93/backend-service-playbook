@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import ROUND_FLOOR, Decimal
 from typing import Union
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 from .account_status import AccountStatus
 from .errors import (
@@ -75,7 +76,7 @@ class Account:
 
     @classmethod
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
-        now = datetime.utcnow()
+        now = utc_now()
         account = cls(
             account_id=generate_id(),
             owner_id=owner_id,
@@ -103,7 +104,7 @@ class Account:
             raise InvalidAmountError()
         money = Money(amount, self.balance.currency)
         self.balance = self.balance.add(money)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         transaction = Transaction.create(self.account_id, "DEPOSIT", money, reference_id=reference_id)
         self._pending_transactions.append(transaction)
         self._events.append(
@@ -127,7 +128,7 @@ class Account:
         if self.balance.is_less_than(money):
             raise InsufficientBalanceError()
         self.balance = self.balance.subtract(money)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         transaction = Transaction.create(
             self.account_id, "WITHDRAWAL", money, reference_id=reference_id, merchant_name=merchant_name
         )
@@ -170,7 +171,7 @@ class Account:
 
         money = Money(interest_amount, self.balance.currency)
         self.balance = self.balance.add(money)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         transaction = Transaction.create(self.account_id, "INTEREST", money)
         self._pending_transactions.append(transaction)
         self._events.append(
@@ -189,7 +190,7 @@ class Account:
         if self.status != AccountStatus.ACTIVE:
             raise SuspendRequiresActiveAccountError()
         self.status = AccountStatus.SUSPENDED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         self._events.append(
             AccountSuspended(account_id=self.account_id, email=self.email, suspended_at=self.updated_at)
         )
@@ -198,7 +199,7 @@ class Account:
         if self.status != AccountStatus.SUSPENDED:
             raise ReactivateRequiresSuspendedAccountError()
         self.status = AccountStatus.ACTIVE
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         self._events.append(
             AccountReactivated(account_id=self.account_id, email=self.email, reactivated_at=self.updated_at)
         )
@@ -209,7 +210,7 @@ class Account:
         if not self.balance.is_zero():
             raise AccountBalanceNotZeroError()
         self.status = AccountStatus.CLOSED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         self._events.append(AccountClosed(account_id=self.account_id, email=self.email, closed_at=self.updated_at))
 
     def pull_events(self) -> list[AccountDomainEvent]:

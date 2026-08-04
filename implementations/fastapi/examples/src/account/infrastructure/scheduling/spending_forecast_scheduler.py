@@ -6,6 +6,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ....common.clock import utc_now
 from ....task_queue.task_outbox_writer import TaskOutboxWriter
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ async def enqueue_monthly_spending_forecast(session_factory: async_sessionmaker[
     """Loads the account.forecast-spending Task — extracted out of the Cron job body so a test
     can trigger it directly instead of waiting for a real Cron tick (the same reason
     enqueue_monthly_spending_analysis is factored out this way)."""
-    forecast_month = compute_spending_forecast_month(datetime.utcnow())
+    forecast_month = compute_spending_forecast_month(utc_now())
     dedup_id = f"{TASK_TYPE}-{forecast_month}"
     try:
         async with session_factory() as session:

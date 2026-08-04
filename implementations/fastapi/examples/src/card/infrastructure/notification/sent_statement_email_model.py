@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ....account.infrastructure.persistence.account_repository import Base
+from ....common.clock import utc_now
 
 
 class SentStatementEmailModel(Base):
@@ -20,4 +21,4 @@ class SentStatementEmailModel(Base):
     subject: Mapped[str]
     ses_message_id: Mapped[str]
     outbox_event_id: Mapped[str] = mapped_column(index=True)
-    sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    sent_at: Mapped[datetime] = mapped_column(default=utc_now)

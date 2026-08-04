@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ....account.infrastructure.persistence.account_repository import Base
+from ....common.clock import utc_now
 from ...domain.payment import Payment
 from ...domain.payment_repository import PaymentRepository
 from ...domain.payment_status import PaymentStatus
@@ -19,8 +20,8 @@ class PaymentModel(Base):
     owner_id: Mapped[str]
     amount: Mapped[int]
     status: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 
 
@@ -85,7 +86,7 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
         existing = await self._session.get(PaymentModel, payment.payment_id)
         if existing:
             existing.status = payment.status.value
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
         else:
             self._session.add(
                 PaymentModel(

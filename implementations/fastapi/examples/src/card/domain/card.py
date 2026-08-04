@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Union
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 from .card_status import CardStatus
 from .errors import (
@@ -49,7 +50,7 @@ class Card:
             owner_id=owner_id,
             brand=brand,
             status=CardStatus.ACTIVE,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
 
     def suspend(self) -> None:
@@ -86,7 +87,7 @@ class Card:
                 period=period,
                 payment_count=payment_count,
                 total_amount=total_amount,
-                sent_at=datetime.utcnow(),
+                sent_at=utc_now(),
             )
         )
 

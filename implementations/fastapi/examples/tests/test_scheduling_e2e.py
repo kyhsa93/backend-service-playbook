@@ -2,7 +2,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -39,6 +39,7 @@ from src.auth.infrastructure.jwt_auth_service import JwtAuthService
 from src.card.application.command.send_monthly_card_statement_handler import previous_month_period
 from src.card.infrastructure.notification.sent_statement_email_model import SentStatementEmailModel
 from src.card.infrastructure.persistence.card_repository import CardModel
+from src.common.clock import utc_now
 from src.common.generate_id import generate_id
 from src.database import get_session
 from src.payment.infrastructure.persistence.payment_repository import PaymentModel
@@ -377,7 +378,7 @@ async def test_an_account_with_last_months_withdrawal_history_gets_an_analysis_r
     # Backdates the withdrawals into "last month" the same way the card-statement test
     # backdates payments — reusing the scheduler's own period computation so the analysis
     # only lines up if it matches the logic the Scheduler actually runs with.
-    analysis_month, month_start, _month_end = compute_previous_spending_analysis_period(datetime.utcnow())
+    analysis_month, month_start, _month_end = compute_previous_spending_analysis_period(utc_now())
     backdated_at = month_start + timedelta(days=1)
 
     withdraw_response_1 = await client.post(
@@ -485,10 +486,10 @@ async def test_an_account_with_3_months_of_spending_analysis_history_gets_a_trai
     # Seeds 3 months of spending_analysis history directly — this test's concern is
     # ForecastSpendingHandler training on existing history, re-deriving that history itself is
     # separately covered by the spending-analysis test above.
-    forecast_month = compute_spending_forecast_month(datetime.utcnow())
+    forecast_month = compute_spending_forecast_month(utc_now())
     amounts = [10000, 20000, 30000]
     async with session_factory() as session:
-        now = datetime.utcnow()
+        now = utc_now()
         for months_ago in range(3, 0, -1):
             total = now.month - months_ago
             year = now.year + (total - 1) // 12
@@ -574,7 +575,7 @@ async def test_an_account_younger_than_3_months_of_history_gets_no_forecast_and_
     await enqueue_monthly_spending_forecast(session_factory)
     await asyncio.sleep(5)
 
-    forecast_month = compute_spending_forecast_month(datetime.utcnow())
+    forecast_month = compute_spending_forecast_month(utc_now())
     response = await client.get(
         f"/accounts/{account_id}/spending-forecast",
         params={"month": f"{forecast_month}-01"},

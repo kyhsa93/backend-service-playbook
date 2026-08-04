@@ -6,6 +6,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ....common.clock import utc_now
 from ....task_queue.task_outbox_writer import TaskOutboxWriter
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ async def enqueue_monthly_spending_analysis(session_factory: async_sessionmaker[
     the same reasoning nestjs/go/java-springboot's ports of this exact feature already
     apply, deviating from this file's own simpler siblings for that reason.
     """
-    analysis_month, _month_start, _month_end = compute_previous_spending_analysis_period(datetime.utcnow())
+    analysis_month, _month_start, _month_end = compute_previous_spending_analysis_period(utc_now())
     dedup_id = f"{TASK_TYPE}-{analysis_month}"
     try:
         async with session_factory() as session:

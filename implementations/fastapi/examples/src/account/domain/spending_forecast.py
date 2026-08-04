@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 
 # Must live in the domain layer (not application) even though it's only ever produced/consumed
@@ -45,5 +46,5 @@ class SpendingForecast:
             predicted_amount=predicted_amount,
             confidence=confidence,
             history_months_used=history_months_used,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )

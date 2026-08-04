@@ -6,6 +6,7 @@ from sqlalchemy import CHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..account.infrastructure.persistence.account_repository import Base
+from ..common.clock import utc_now
 
 
 class TaskOutboxModel(Base):
@@ -31,4 +32,4 @@ class TaskOutboxModel(Base):
     # "Cron multi-instance safety" in scheduling.md).
     deduplication_id: Mapped[str]
     processed: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)

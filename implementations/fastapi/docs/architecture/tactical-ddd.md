@@ -44,7 +44,7 @@ class Account:
 
     @classmethod
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
-        now = datetime.utcnow()
+        now = utc_now()
         account = cls(
             account_id=str(uuid.uuid4()),
             owner_id=owner_id,
@@ -66,7 +66,7 @@ class Account:
         if self.balance.is_less_than(money):
             raise InsufficientBalanceError()
         self.balance = self.balance.subtract(money)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utc_now()
         transaction = Transaction.create(self.account_id, "WITHDRAWAL", money)
         self._pending_transactions.append(transaction)
         self._events.append(MoneyWithdrawn(...))
@@ -101,7 +101,7 @@ class Transaction:
             account_id=account_id,
             type=type,
             amount=amount,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
 ```
 

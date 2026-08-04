@@ -59,7 +59,7 @@ from .account_status import AccountStatus
 class Account:
     @classmethod
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
-        now = datetime.utcnow()
+        now = utc_now()
         account = cls(
             account_id=generate_id(),  # correct — 32-character hex, no hyphens
             owner_id=owner_id,

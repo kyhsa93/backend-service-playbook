@@ -74,7 +74,7 @@ class TaskOutboxModel(Base):
     group_id: Mapped[str]  # FIFO MessageGroupId
     deduplication_id: Mapped[str]  # FIFO MessageDeduplicationId (date/month-based)
     processed: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
 ```
 
 ```python

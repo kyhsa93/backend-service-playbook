@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 
 SpendingTrend = Literal["INCREASING", "DECREASING", "STABLE"]
@@ -78,5 +79,5 @@ class SpendingAnalysis:
             average_amount=average_amount,
             change_from_previous_month=change_from_previous_month,
             trend=trend,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )

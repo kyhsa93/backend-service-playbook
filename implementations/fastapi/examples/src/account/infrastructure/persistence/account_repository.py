@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from ....common.clock import utc_now
 from ...domain.account import Account
 from ...domain.account_status import AccountStatus
 from ...domain.money import Money
@@ -24,8 +25,8 @@ class AccountModel(Base):
     amount: Mapped[int]
     currency: Mapped[str]
     status: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
     # The Level 1 idempotency marker for the regular interest-payment batch — see Account.apply_interest().
     last_interest_paid_at: Mapped[date | None] = mapped_column(nullable=True, default=None)
@@ -39,7 +40,7 @@ class TransactionModel(Base):
     type: Mapped[str]
     amount: Mapped[int]
     currency: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
     # Correlates a transaction left by a reaction to the Payment BC's Integration Event
     # (payment_id/refund_id), and also serves as the Level 2 Ledger key that prevents
     # reprocessing the same (reference_id, type) combination (see
@@ -99,7 +100,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
             existing.amount = account.balance.amount
             existing.status = account.status.value
             existing.last_interest_paid_at = account.last_interest_paid_at
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
         else:
             self._session.add(
                 AccountModel(

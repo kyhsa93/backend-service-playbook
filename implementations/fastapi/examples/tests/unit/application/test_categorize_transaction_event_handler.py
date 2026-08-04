@@ -1,4 +1,3 @@
-from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -6,6 +5,7 @@ import pytest
 from src.account.application.event.categorize_transaction_event_handler import CategorizeTransactionEventHandler
 from src.account.domain.money import Money
 from src.account.domain.transaction import Transaction
+from src.common.clock import utc_now
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def make_transaction() -> Transaction:
         account_id="account-1",
         type="WITHDRAWAL",
         amount=Money(5500, "KRW"),
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
         merchant_name="Starbucks Gangnam",
     )
 

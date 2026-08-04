@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 
 
@@ -23,5 +24,5 @@ class Credential:
             credential_id=generate_id(),
             user_id=user_id,
             password_hash=password_hash,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )

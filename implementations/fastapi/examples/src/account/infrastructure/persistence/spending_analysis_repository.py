@@ -4,6 +4,7 @@ from sqlalchemy import UniqueConstraint, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ....common.clock import utc_now
 from ...domain.spending_analysis import SpendingAnalysis
 from ...domain.spending_analysis_repository import SpendingAnalysisRepository
 from .account_repository import Base
@@ -29,7 +30,7 @@ class SpendingAnalysisModel(Base):
     average_amount: Mapped[int]
     change_from_previous_month: Mapped[int]
     trend: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class SqlAlchemySpendingAnalysisRepository(SpendingAnalysisRepository):

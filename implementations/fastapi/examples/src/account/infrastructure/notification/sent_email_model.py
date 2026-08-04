@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ....common.clock import utc_now
 from ..persistence.account_repository import Base
 
 
@@ -18,4 +19,4 @@ class SentEmailModel(Base):
     # already been processed (see "Event Handler Idempotency" in domain-events.md).
     # Nullable for backward compatibility with rows loaded before this migration.
     outbox_event_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
-    sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    sent_at: Mapped[datetime] = mapped_column(default=utc_now)

@@ -4,6 +4,7 @@ from sqlalchemy import UniqueConstraint, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ....common.clock import utc_now
 from ...domain.spending_forecast import SpendingForecast
 from ...domain.spending_forecast_repository import SpendingForecastRepository
 from .account_repository import Base
@@ -26,7 +27,7 @@ class SpendingForecastModel(Base):
     predicted_amount: Mapped[int]
     confidence: Mapped[str]
     history_months_used: Mapped[int]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class SqlAlchemySpendingForecastRepository(SpendingForecastRepository):

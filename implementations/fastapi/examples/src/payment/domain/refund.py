@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 from .errors import (
     RefundApproveRequiresRequestedRefundError,
@@ -57,7 +58,7 @@ class Refund:
             amount=amount,
             reason=reason,
             status=RefundStatus.REQUESTED,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
         # Published unconditionally — before RefundEligibilityService's approve/reject
         # judgment even runs (see request_refund_handler.py). Classification must happen (and
@@ -89,7 +90,7 @@ class Refund:
                 account_id=account_id,
                 owner_id=owner_id,
                 amount=self.amount,
-                approved_at=datetime.utcnow(),
+                approved_at=utc_now(),
             )
         )
 

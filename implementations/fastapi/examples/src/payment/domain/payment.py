@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Union
 
+from ...common.clock import utc_now
 from ...common.generate_id import generate_id
 from .errors import (
     PaymentCancelRequiresCompletedPaymentError,
@@ -55,7 +56,7 @@ class Payment:
             owner_id=owner_id,
             amount=amount,
             status=PaymentStatus.PENDING,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
 
     def complete(self) -> None:
@@ -69,7 +70,7 @@ class Payment:
                 account_id=self.account_id,
                 owner_id=self.owner_id,
                 amount=self.amount,
-                completed_at=datetime.utcnow(),
+                completed_at=utc_now(),
             )
         )
 
@@ -97,7 +98,7 @@ class Payment:
                 owner_id=self.owner_id,
                 amount=self.amount,
                 reason=reason,
-                cancelled_at=datetime.utcnow(),
+                cancelled_at=utc_now(),
             )
         )
 

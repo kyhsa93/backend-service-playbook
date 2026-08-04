@@ -60,7 +60,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
         if existing:
             existing.amount = account.balance.amount
             existing.status = account.status.value
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
         else:
             self._session.add(AccountModel(...))
 
@@ -109,7 +109,7 @@ class OutboxModel(Base):
     event_type: Mapped[str]  # e.g. "MoneyDeposited"
     payload: Mapped[str]  # JSON-serialized
     processed: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
     trace_parent: Mapped[str | None] = mapped_column(default=None)  # W3C traceparent — see observability.md
 ```
 
@@ -324,7 +324,7 @@ class SentEmailModel(Base):
     event_type: Mapped[str]
     ...
     outbox_event_id: Mapped[str | None] = mapped_column(nullable=True, index=True, default=None)
-    sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    sent_at: Mapped[datetime] = mapped_column(default=utc_now)
 ```
 
 ```python

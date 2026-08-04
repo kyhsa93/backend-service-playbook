@@ -96,7 +96,7 @@ class StatementModel(Base):
     id: Mapped[str] = mapped_column(primary_key=True)  # file_key, following the aggregate-id.md rule
     account_id: Mapped[str]
     extension: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
 ```
 
 - **file_key**: generated with the same rule as [aggregate-id.md](aggregate-id.md) (32-character hex, hyphens removed) — used as-is as the object key in storage.

@@ -44,8 +44,8 @@ Once the route function returns successfully, the line after `get_session()`'s `
 class AccountModel(Base):
     __tablename__ = "accounts"
     ...
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 ```
 
@@ -61,8 +61,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 
 class TimestampedMixin:
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 ```
 
@@ -82,14 +82,14 @@ async def find_accounts(self, page: int, take: int, account_id=None, owner_id=No
     ...
 ```
 
-That said, `AccountRepository` (ABC) currently has no method corresponding to `delete_account` at all — an account only supports `close()` (transitioning its status to `CLOSED`), and there is no physical/logical deletion use case. If a domain that needs deletion is ever added, add a soft-delete method to the Repository that sets `deleted_at = datetime.utcnow()`, rather than a hard delete (`session.delete(row)`).
+That said, `AccountRepository` (ABC) currently has no method corresponding to `delete_account` at all — an account only supports `close()` (transitioning its status to `CLOSED`), and there is no physical/logical deletion use case. If a domain that needs deletion is ever added, add a soft-delete method to the Repository that sets `deleted_at = utc_now()`, rather than a hard delete (`session.delete(row)`).
 
 ```python
 # correct approach — soft delete (reference for when one is added)
 async def delete_account(self, account_id: str) -> None:
     row = await self._session.get(AccountModel, account_id)
     if row is not None:
-        row.deleted_at = datetime.utcnow()
+        row.deleted_at = utc_now()
 ```
 
 ---

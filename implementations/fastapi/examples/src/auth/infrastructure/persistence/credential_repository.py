@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ....account.infrastructure.persistence.account_repository import Base
+from ....common.clock import utc_now
 from ...domain.credential import Credential
 from ...domain.repository import CredentialRepository
 
@@ -15,7 +16,7 @@ class CredentialModel(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     user_id: Mapped[str] = mapped_column(unique=True, index=True)
     password_hash: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class SqlAlchemyCredentialRepository(CredentialRepository):
