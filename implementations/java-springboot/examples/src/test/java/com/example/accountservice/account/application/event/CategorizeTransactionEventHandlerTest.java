@@ -13,7 +13,6 @@ import com.example.accountservice.account.domain.Transaction;
 import com.example.accountservice.account.domain.TransactionCategory;
 import com.example.accountservice.account.domain.TransactionRepository;
 import com.example.accountservice.account.domain.TransactionType;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class CategorizeTransactionEventHandlerTest {
@@ -29,7 +29,7 @@ class CategorizeTransactionEventHandlerTest {
     @Mock private TransactionAutoCategorizer transactionAutoCategorizer;
     @Mock private TransactionRepository transactionRepository;
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private CategorizeTransactionEventHandler handler;
 

@@ -5,11 +5,11 @@ import static net.logstash.logback.argument.StructuredArguments.kv;
 import com.example.accountservice.card.application.command.SuspendCardsByAccountCommand;
 import com.example.accountservice.card.application.command.SuspendCardsByAccountService;
 import com.example.accountservice.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Receiver for the {@code account.suspended.v1} Integration Event published by an external BC

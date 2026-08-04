@@ -1,7 +1,5 @@
 package com.example.accountservice.common.config;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.util.Map;
 import org.springframework.boot.SpringApplication;
@@ -11,6 +9,8 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.Profiles;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Injects Secrets Manager values into the Environment at the earliest possible point, before the

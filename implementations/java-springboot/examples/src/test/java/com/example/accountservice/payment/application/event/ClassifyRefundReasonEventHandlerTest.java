@@ -12,7 +12,6 @@ import com.example.accountservice.payment.domain.RefundReasonCategory;
 import com.example.accountservice.payment.domain.RefundRepository;
 import com.example.accountservice.payment.domain.RefundStatus;
 import com.example.accountservice.payment.domain.RefundsWithCount;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class ClassifyRefundReasonEventHandlerTest {
@@ -29,7 +29,7 @@ class ClassifyRefundReasonEventHandlerTest {
     @Mock private RefundReasonClassifier refundReasonClassifier;
     @Mock private RefundRepository refundRepository;
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private ClassifyRefundReasonEventHandler handler;
 

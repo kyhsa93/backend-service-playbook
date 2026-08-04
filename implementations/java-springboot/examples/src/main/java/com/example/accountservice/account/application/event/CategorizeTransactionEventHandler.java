@@ -8,11 +8,11 @@ import com.example.accountservice.account.domain.Transaction;
 import com.example.accountservice.account.domain.TransactionCategory;
 import com.example.accountservice.account.domain.TransactionRepository;
 import com.example.accountservice.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Reacts to {@link MoneyWithdrawnEvent} (registered alongside {@code MoneyWithdrawnEventHandler} —

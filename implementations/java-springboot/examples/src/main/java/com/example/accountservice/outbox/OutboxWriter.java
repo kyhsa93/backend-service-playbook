@@ -1,7 +1,5 @@
 package com.example.accountservice.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
@@ -10,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Saves domain events collected by an Aggregate into the Outbox table. {@link
@@ -50,7 +50,7 @@ public class OutboxWriter {
                             eventType,
                             objectMapper.writeValueAsString(payload),
                             currentTraceparent()));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize event: " + eventType, e);
         }
     }
@@ -61,7 +61,7 @@ public class OutboxWriter {
                     event.getClass().getSimpleName(),
                     objectMapper.writeValueAsString(event),
                     traceparent);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException(
                     "Failed to serialize event: " + event.getClass().getSimpleName(), e);
         }

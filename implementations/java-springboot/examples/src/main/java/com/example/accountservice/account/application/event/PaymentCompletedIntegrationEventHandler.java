@@ -5,11 +5,11 @@ import static net.logstash.logback.argument.StructuredArguments.kv;
 import com.example.accountservice.account.application.command.WithdrawByPaymentCommand;
 import com.example.accountservice.account.application.command.WithdrawByPaymentService;
 import com.example.accountservice.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The receiver for the {@code payment.completed.v1} Integration Event published by the external BC

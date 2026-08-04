@@ -5,11 +5,11 @@ import static net.logstash.logback.argument.StructuredArguments.kv;
 import com.example.accountservice.card.application.command.CancelCardsByAccountCommand;
 import com.example.accountservice.card.application.command.CancelCardsByAccountService;
 import com.example.accountservice.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Receiver for the {@code account.closed.v1} Integration Event published by an external BC

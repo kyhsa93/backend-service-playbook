@@ -103,7 +103,7 @@ public class OutboxWriter {
     private OutboxEvent toOutboxEvent(Object event) {
         try {
             return OutboxEvent.create(event.getClass().getSimpleName(), objectMapper.writeValueAsString(event));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize event: " + event.getClass().getSimpleName(), e);
         }
     }

@@ -6,11 +6,11 @@ import com.example.accountservice.outbox.OutboxEventHandler;
 import com.example.accountservice.outbox.OutboxWriter;
 import com.example.accountservice.payment.application.integrationevent.RefundApprovedIntegrationEventV1;
 import com.example.accountservice.payment.domain.RefundApprovedEvent;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Processes the {@link RefundApprovedEvent} accumulated in the Outbox, translates it into the

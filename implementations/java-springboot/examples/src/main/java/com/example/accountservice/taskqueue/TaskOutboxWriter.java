@@ -1,9 +1,9 @@
 package com.example.accountservice.taskqueue;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * A Scheduler enqueues a Task into the task_outbox table — performing the same role for Tasks that
@@ -26,7 +26,7 @@ public class TaskOutboxWriter {
                             objectMapper.writeValueAsString(payload),
                             groupId,
                             deduplicationId));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize task payload: " + taskType, e);
         }
     }

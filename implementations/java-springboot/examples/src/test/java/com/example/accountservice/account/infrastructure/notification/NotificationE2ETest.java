@@ -7,8 +7,6 @@ import com.example.accountservice.AccountServiceApplication;
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmail;
 import com.example.accountservice.account.infrastructure.notification.persistence.SentEmailRepository;
 import com.example.accountservice.support.SqsTestQueue;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -41,6 +39,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers
 @SuppressWarnings("unchecked")

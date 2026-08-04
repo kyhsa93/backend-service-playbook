@@ -516,7 +516,7 @@ TEMPLATES["application/event/__Domain__CancelledEventHandler.java"] = """package
 
 import __basepkg__.__pkg__.domain.__Domain__CancelledEvent;
 import __basepkg__.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

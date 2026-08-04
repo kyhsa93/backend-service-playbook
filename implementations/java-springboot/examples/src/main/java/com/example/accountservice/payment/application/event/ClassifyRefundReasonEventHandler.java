@@ -9,11 +9,11 @@ import com.example.accountservice.payment.domain.RefundFindQuery;
 import com.example.accountservice.payment.domain.RefundReasonCategory;
 import com.example.accountservice.payment.domain.RefundRepository;
 import com.example.accountservice.payment.domain.RefundRequestedEvent;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Reacts to {@link RefundRequestedEvent} (published unconditionally by {@link Refund#create},

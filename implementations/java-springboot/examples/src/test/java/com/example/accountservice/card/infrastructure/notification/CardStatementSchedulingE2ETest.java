@@ -8,8 +8,6 @@ import com.example.accountservice.card.infrastructure.notification.persistence.C
 import com.example.accountservice.card.infrastructure.notification.persistence.CardSentEmailRepository;
 import com.example.accountservice.card.infrastructure.scheduling.CardStatementScheduler;
 import com.example.accountservice.support.SqsTestQueue;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -42,6 +40,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * E2E test verifying the actual infrastructure round trip for the monthly card statement send

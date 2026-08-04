@@ -3,9 +3,9 @@ package com.example.accountservice.account.application.event;
 import com.example.accountservice.account.application.service.NotificationService;
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent;
 import com.example.accountservice.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Handles the {@link MoneyWithdrawnEvent} accumulated in the Outbox to send a notification email to

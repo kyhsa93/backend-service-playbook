@@ -3,7 +3,6 @@ package com.example.accountservice.payment.infrastructure;
 import com.example.accountservice.config.LlmProperties;
 import com.example.accountservice.payment.application.service.RefundReasonClassifier;
 import com.example.accountservice.payment.domain.RefundReasonCategory;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -15,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * A Technical Service (see root docs/architecture/domain-service.md) wrapping a self-hosted LLM

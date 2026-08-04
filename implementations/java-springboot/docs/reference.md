@@ -530,7 +530,7 @@ package com.example.accountservice.account.application.event;
 import com.example.accountservice.account.domain.AccountCreatedEvent;
 import com.example.accountservice.account.application.service.NotificationService;
 import com.example.accountservice.outbox.OutboxEventHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -610,7 +610,7 @@ package com.example.accountservice.account.infrastructure.persistence;
 import com.example.accountservice.account.domain.*;
 import com.example.accountservice.account.infrastructure.outbox.OutboxEvent;
 import com.example.accountservice.account.infrastructure.outbox.OutboxEventJpaRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -700,7 +700,7 @@ public interface AccountJpaRepository extends JpaRepository<Account, Long> {
 // infrastructure/outbox/OutboxEvent.java
 package com.example.accountservice.account.infrastructure.outbox;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;

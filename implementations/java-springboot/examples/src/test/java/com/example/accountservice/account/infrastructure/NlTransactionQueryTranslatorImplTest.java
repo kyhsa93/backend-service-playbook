@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 import com.example.accountservice.account.application.service.TransactionFilter;
 import com.example.accountservice.account.domain.TransactionType;
 import com.example.accountservice.config.LlmProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
@@ -19,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class NlTransactionQueryTranslatorImplTest {

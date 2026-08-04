@@ -5,11 +5,11 @@ import com.example.accountservice.account.application.service.NotificationServic
 import com.example.accountservice.account.domain.AccountClosedEvent;
 import com.example.accountservice.outbox.OutboxEventHandler;
 import com.example.accountservice.outbox.OutboxWriter;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Handles the {@link AccountClosedEvent} (an internal Domain Event) accumulated in the Outbox. It

@@ -66,7 +66,7 @@ public class TaskOutboxWriter {
         try {
             taskOutboxJpaRepository.save(TaskOutboxEntry.create(
                     taskType, objectMapper.writeValueAsString(payload), groupId, deduplicationId));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize Task payload: " + taskType, e);
         }
     }

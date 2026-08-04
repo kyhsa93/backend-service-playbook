@@ -3,10 +3,10 @@ package com.example.accountservice.account.interfaces.task;
 import com.example.accountservice.account.application.command.AnalyzeMonthlySpendingCommand;
 import com.example.accountservice.account.application.command.AnalyzeMonthlySpendingService;
 import com.example.accountservice.taskqueue.TaskHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The Task Queue input adapter (Interface layer) — just as an HTTP Controller delegates an HTTP

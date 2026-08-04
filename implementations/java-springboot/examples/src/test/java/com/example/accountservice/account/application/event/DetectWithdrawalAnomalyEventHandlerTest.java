@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.example.accountservice.account.application.service.NotificationService;
 import com.example.accountservice.account.domain.TransactionRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -19,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class DetectWithdrawalAnomalyEventHandlerTest {
@@ -26,7 +26,7 @@ class DetectWithdrawalAnomalyEventHandlerTest {
     @Mock private TransactionRepository transactionRepository;
     @Mock private NotificationService notificationService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private DetectWithdrawalAnomalyEventHandler handler;
 

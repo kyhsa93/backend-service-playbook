@@ -26,15 +26,11 @@ dependencyManagement {
 }
 
 dependencies {
-    // Spring Boot 4's default JSON stack is Jackson 3 (tools.jackson.*). This project's existing
-    // code (OutboxWriter, each EventHandler, etc) uses Jackson 2
-    // (com.fasterxml.jackson.databind.ObjectMapper) via constructor injection, so instead of a full
-    // Jackson 3 migration, we switch to Spring's officially provided Jackson 2 compatibility module
-    // (spring-boot-jackson2) to keep the existing ObjectMapper bean type.
-    implementation('org.springframework.boot:spring-boot-starter-web') {
-        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-jackson'
-    }
-    implementation 'org.springframework.boot:spring-boot-jackson2'
+    // Jackson 3 (tools.jackson.*) — Spring Boot 4's default JSON stack, brought in by
+    // starter-web. All ObjectMapper injection sites use tools.jackson.databind.ObjectMapper
+    // (java.time support is built into Jackson 3 databind; serialization failures surface as
+    // the unchecked tools.jackson.core.JacksonException).
+    implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     // Spring Boot 4 extracted OTel-tracing autoconfiguration out of
