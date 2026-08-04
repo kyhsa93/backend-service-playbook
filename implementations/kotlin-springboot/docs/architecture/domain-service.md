@@ -174,7 +174,7 @@ Both Technical Service implementations fail non-blockingly (the translator falls
 - `config/LlmProperties.kt`, `config/LlmHttpClientConfig.kt`
 - `account/infrastructure/NlTransactionQueryTranslatorImplTest.kt`, `NlTransactionAnswerComposerImplTest.kt` — unit tests mocking the shared `HttpClient` bean (valid response parsed, invalid/malformed values dropped, network failure falls back)
 - `account/application/query/AskTransactionHistoryServiceTest.kt` — mocks `AccountQuery`/`NlTransactionQueryTranslator`/`NlTransactionAnswerComposer`, pinning that the retrieval is always scoped by the authenticated requester regardless of what the mocked translator returns
-- `account/interfaces/rest/AccountControllerE2ETest.kt` — the `POST /accounts/{accountId}/transactions/ask` cases (no real Ollama in this test environment, so both LLM calls fall back to their non-blocking defaults — the tests assert only on response shape/count, not exact wording)
+- `account/interfaces/rest/AccountControllerE2ETest.kt` — the `POST /accounts/{accountId}/transactions/ask` cases; both LLM calls hit an in-process fake Ollama (`support/FakeOllamaServer.kt` under `src/test`, see [testing.md](testing.md)) that answers deterministically, so the tests pin the DEPOSIT-filtered grounding in the answer itself, plus one forced-500 case covering both services' non-blocking fallbacks
 
 ---
 

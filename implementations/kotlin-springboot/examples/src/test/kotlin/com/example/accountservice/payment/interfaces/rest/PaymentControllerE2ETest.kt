@@ -1,8 +1,10 @@
 package com.example.accountservice.payment.interfaces.rest
 
 import com.example.accountservice.AccountServiceApplication
+import com.example.accountservice.support.FakeOllamaServer
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.resttestclient.TestRestTemplate
@@ -57,6 +59,18 @@ class PaymentControllerE2ETest {
             LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                 .withServices(LocalStackContainer.Service.SQS)
 
+        // In-process fake Ollama (see FakeOllamaServer) — llm.ollama-base-url points at it below,
+        // so RefundReasonClassifierImpl's real HTTP request/parse path runs in this e2e suite with
+        // deterministic content instead of degrading to its no-Ollama fallback.
+        @JvmStatic
+        val fakeOllama = FakeOllamaServer()
+
+        @AfterAll
+        @JvmStatic
+        fun stopFakeOllama() {
+            fakeOllama.stop()
+        }
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -71,6 +85,7 @@ class PaymentControllerE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SQS).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
+            registry.add("llm.ollama-base-url") { fakeOllama.baseUrl }
             registry.add("resilience4j.ratelimiter.instances.http-write.limit-for-period") { "1000" }
         }
 
@@ -377,11 +392,13 @@ class PaymentControllerE2ETest {
 
     // Exercises the real async pipeline end to end: refund request -> RefundRequestedEvent -> Outbox
     // -> SQS -> OutboxConsumer -> EventHandlerRegistry -> ClassifyRefundReasonEventHandler -> the
-    // RefundRepository write, and GET /refunds/reason-insights. The LLM behind RefundReasonClassifier
-    // isn't available in this e2e environment, so the classification call itself falls back to OTHER
-    // — but this still proves the whole plumbing runs, and (the key design point of this feature)
-    // that classification runs identically for a REJECTED refund, since RefundRequestedEvent is
-    // published by Refund.create() before RefundEligibilityService's approve/reject judgment even runs.
+    // RefundRepository write, and GET /refunds/reason-insights. RefundReasonClassifierImpl talks to
+    // the in-process fake Ollama (see FakeOllamaServer), which deterministically classifies an
+    // "arrived broken" reason as DEFECTIVE_PRODUCT and a "changed my mind" reason as CHANGED_MIND —
+    // so the assertions prove the classifier's real request/parse path ran (its no-LLM fallback
+    // would write OTHER instead), and (the key design point of this feature) that classification
+    // runs identically for a REJECTED refund, since RefundRequestedEvent is published by
+    // Refund.create() before RefundEligibilityService's approve/reject judgment even runs.
 
     private fun firstRefund(
         paymentId: String,
@@ -392,9 +409,13 @@ class PaymentControllerE2ETest {
         return refunds.firstOrNull() as Map<*, *>?
     }
 
-    private fun totalClassified(ownerId: String): Long {
+    private fun categoryCount(
+        ownerId: String,
+        category: String,
+    ): Long {
         val body = get("/refunds/reason-insights", ownerId).body!!
-        return (body["totalClassified"] as Number).toLong()
+        val counts = (body["counts"] as List<*>).filterIsInstance<Map<*, *>>()
+        return ((counts.firstOrNull { it["category"] == category }?.get("count") as? Number) ?: 0).toLong()
     }
 
     @Test
@@ -418,6 +439,31 @@ class PaymentControllerE2ETest {
         await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
             val listed = firstRefund(payment["paymentId"] as String, ownerId)
             assertThat(listed).isNotNull()
+            assertThat(listed!!["reasonCategory"]).isEqualTo("DEFECTIVE_PRODUCT")
+        }
+    }
+
+    @Test
+    fun `a refund whose reason forces an LLM failure falls back to the OTHER category`() {
+        val ownerId = "refund-insights-owner-3"
+        val (accountId, cardId) = setUpFundedCard(ownerId, initialBalance = 50_000)
+        val payment = post("/payments", ownerId, mapOf("cardId" to cardId, "amount" to 10_000)).body!!
+        awaitBalance(ownerId, accountId, 40_000)
+
+        // The refund's stated reason reaches the classifier's prompt verbatim, so embedding
+        // FORCE_LLM_FAILURE_MARKER makes the fake Ollama answer 500 for exactly this request —
+        // covering the classifier's non-blocking degradation to OTHER when the LLM call fails
+        // (the "arrived broken" phrasing would otherwise classify as DEFECTIVE_PRODUCT, proving
+        // the forced outage — not the content routing — decided the result).
+        post(
+            "/payments/${payment["paymentId"]}/refunds",
+            ownerId,
+            mapOf("amount" to 9000, "reason" to "The item arrived broken ${FakeOllamaServer.FORCE_LLM_FAILURE_MARKER}"),
+        )
+
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
+            val listed = firstRefund(payment["paymentId"] as String, ownerId)
+            assertThat(listed).isNotNull()
             assertThat(listed!!["reasonCategory"]).isEqualTo("OTHER")
         }
     }
@@ -425,7 +471,7 @@ class PaymentControllerE2ETest {
     @Test
     fun `get refunds reason-insights reflects a classified refund in its category counts`() {
         val ownerId = "refund-insights-owner-2"
-        val totalBefore = totalClassified(ownerId)
+        val changedMindBefore = categoryCount(ownerId, "CHANGED_MIND")
 
         val (accountId, cardId) = setUpFundedCard(ownerId, initialBalance = 50_000)
         val payment = post("/payments", ownerId, mapOf("cardId" to cardId, "amount" to 10_000)).body!!
@@ -433,7 +479,9 @@ class PaymentControllerE2ETest {
         post("/payments/${payment["paymentId"]}/refunds", ownerId, mapOf("amount" to 4000, "reason" to "Changed my mind"))
 
         await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted {
-            assertThat(totalClassified(ownerId)).isGreaterThan(totalBefore)
+            // The fake Ollama deterministically classifies "Changed my mind" as CHANGED_MIND, so
+            // the count for that exact category — not just totalClassified — must grow.
+            assertThat(categoryCount(ownerId, "CHANGED_MIND")).isGreaterThan(changedMindBefore)
         }
     }
 }

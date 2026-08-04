@@ -2,8 +2,10 @@ package com.example.accountservice.account.application.event
 
 import com.example.accountservice.AccountServiceApplication
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
+import com.example.accountservice.support.FakeOllamaServer
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -65,6 +67,18 @@ class WithdrawalAnomalyAlertE2ETest {
             LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                 .withServices(LocalStackContainer.Service.SES, LocalStackContainer.Service.SQS)
 
+        // In-process fake Ollama (see FakeOllamaServer) — llm.ollama-base-url points at it below,
+        // so CategorizeTransactionEventHandler (the 2nd MoneyWithdrawnEvent subscriber this test
+        // asserts on) categorizes through the real request/parse path deterministically.
+        @JvmStatic
+        val fakeOllama = FakeOllamaServer()
+
+        @AfterAll
+        @JvmStatic
+        fun stopFakeOllama() {
+            fakeOllama.stop()
+        }
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -79,6 +93,7 @@ class WithdrawalAnomalyAlertE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
+            registry.add("llm.ollama-base-url") { fakeOllama.baseUrl }
             // The positive-case test performs 6 withdrawals in a short span, well past the
             // default limit-for-period (10 would be fine, but the negative test adds 6 more) —
             // loosen it generously so we're verifying the anomaly-alert logic rather than rate
@@ -240,8 +255,9 @@ class WithdrawalAnomalyAlertE2ETest {
                     .any { it.eventType == "MoneyWithdrawn" }
             assertThat(completionEmailSent).isTrue()
 
-            // Handler 2: CategorizeTransactionEventHandler categorized the transaction (falls
-            // back to OTHER — no LLM available in this e2e environment).
+            // Handler 2: CategorizeTransactionEventHandler categorized the transaction — the fake
+            // Ollama deterministically answers OTHER for a merchant it doesn't recognize (only a
+            // Starbucks merchant maps to FOOD), through the real request/parse path.
             val transaction = firstWithdrawalTransaction(accountId)
             assertThat(transaction).isNotNull()
             assertThat(transaction!!["category"]).isEqualTo("OTHER")

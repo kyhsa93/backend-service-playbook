@@ -2,8 +2,10 @@ package com.example.accountservice.account.interfaces.rest
 
 import com.example.accountservice.AccountServiceApplication
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
+import com.example.accountservice.support.FakeOllamaServer
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -58,6 +60,18 @@ class AccountControllerE2ETest {
             LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
                 .withServices(LocalStackContainer.Service.SES, LocalStackContainer.Service.SQS)
 
+        // In-process fake Ollama (see FakeOllamaServer) — llm.ollama-base-url points at it below,
+        // so the LLM Technical Services' real HTTP request/parse paths run in this e2e suite with
+        // deterministic content instead of degrading to their no-Ollama fallbacks.
+        @JvmStatic
+        val fakeOllama = FakeOllamaServer()
+
+        @AfterAll
+        @JvmStatic
+        fun stopFakeOllama() {
+            fakeOllama.stop()
+        }
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -72,6 +86,7 @@ class AccountControllerE2ETest {
             registry.add("AWS_ENDPOINT_URL") { localstack.getEndpointOverride(LocalStackContainer.Service.SES).toString() }
             registry.add("SQS_DOMAIN_EVENT_QUEUE_URL") { createDomainEventQueue() }
             registry.add("SQS_TASK_QUEUE_URL") { createTaskQueue() }
+            registry.add("llm.ollama-base-url") { fakeOllama.baseUrl }
             // The test calls the write API far more times in a short span than the default
             // limit-for-period (10), so for tests only we loosen it generously so we're verifying
             // each endpoint's logic rather than rate limiting itself.
@@ -407,10 +422,11 @@ class AccountControllerE2ETest {
 
     // Exercises the real async pipeline end to end: withdraw (with a merchantName) ->
     // MoneyWithdrawnEvent -> Outbox -> SQS -> OutboxConsumer -> EventHandlerRegistry ->
-    // CategorizeTransactionEventHandler -> TransactionRepository write. No live Ollama is available
-    // in this e2e environment (same reasoning as the /transactions/ask tests), so the categorization
-    // call itself falls back to OTHER -- but this still proves the whole plumbing runs, including
-    // that MoneyWithdrawnEventHandler (SES notification) and CategorizeTransactionEventHandler both
+    // CategorizeTransactionEventHandler -> TransactionRepository write. The categorizer talks to
+    // the in-process fake Ollama (see FakeOllamaServer), which deterministically answers FOOD for
+    // a Starbucks merchant — so FOOD landing on the transaction proves the real request/parse path
+    // ran (the categorizer's no-LLM fallback would write OTHER instead), and that
+    // MoneyWithdrawnEventHandler (SES notification) and CategorizeTransactionEventHandler both
     // run for the same delivery (the "1:N" contract EventHandlerRegistry documents).
     @Test
     fun `withdrawing with a merchantName eventually categorizes the transaction`() {
@@ -430,6 +446,32 @@ class AccountControllerE2ETest {
             val transaction = firstWithdrawalTransaction(accountId)
             assertThat(transaction).isNotNull()
             assertThat(transaction!!["merchantName"]).isEqualTo("Starbucks Gangnam")
+            assertThat(transaction["category"]).isEqualTo("FOOD")
+        }
+    }
+
+    @Test
+    fun `withdrawing with a merchantName that forces an LLM failure falls back to the OTHER category`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        val accountId = account["accountId"] as String
+
+        // The merchantName reaches the categorizer's prompt verbatim, so embedding
+        // FORCE_LLM_FAILURE_MARKER makes the fake Ollama answer 500 for exactly this request —
+        // covering the categorizer's non-blocking degradation to OTHER when the LLM call fails.
+        val merchantName = "Corner Store ${FakeOllamaServer.FORCE_LLM_FAILURE_MARKER}"
+        val response =
+            post(
+                "/accounts/$accountId/withdraw",
+                OWNER_ID,
+                mapOf("amount" to 5500, "merchantName" to merchantName),
+            )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+
+        await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(200)).untilAsserted {
+            val transaction = firstWithdrawalTransaction(accountId)
+            assertThat(transaction).isNotNull()
+            assertThat(transaction!!["merchantName"]).isEqualTo(merchantName)
             assertThat(transaction["category"]).isEqualTo("OTHER")
         }
     }
@@ -798,23 +840,56 @@ class AccountControllerE2ETest {
         assertThat(response.body!!["count"]).isEqualTo(0)
     }
 
-    // The LLM behind NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl (see
-    // account/infrastructure) isn't available in this e2e environment, so both calls fall back to
-    // their non-blocking defaults: an empty filter (all of the account's transactions) and a plain
-    // templated summary. This still exercises the real retrieval + response shape end to end
-    // without depending on a live Ollama.
+    // Both LLM Technical Services behind /transactions/ask (NlTransactionQueryTranslatorImpl/
+    // NlTransactionAnswerComposerImpl, see account/infrastructure) hit the in-process fake Ollama
+    // (see FakeOllamaServer): the translator answers a deterministic DEPOSIT filter for a question
+    // about deposits, and the composer echoes its grounding data back behind FAKE_ANSWER_PREFIX —
+    // so the assertions prove the real translate -> retrieve -> compose path ran (the echoed
+    // grounding includes the seeded deposit and excludes the non-matching withdrawal), not just
+    // the response shape of a fallback.
     @Test
     fun `returns 200 with an answer grounded in the requesters own transactions when asked a question`() {
         val account = createAccount(OWNER_ID, "KRW")
         post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+        post("/accounts/${account["accountId"]}/withdraw", OWNER_ID, mapOf("amount" to 3000))
 
         val response =
             post("/accounts/${account["accountId"]}/transactions/ask", OWNER_ID, mapOf("question" to "How much have I deposited?"))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         val body = response.body!!
-        assertThat(body["answer"]).isInstanceOf(String::class.java)
-        assertThat((body["answer"] as String)).isNotEmpty()
+        val answer = body["answer"] as String
+        // FAKE_ANSWER_PREFIX proves the answer came through the composer's real request/parse path
+        // (its fallback starts with "Found ..." instead). The echoed grounding containing the
+        // deposit but not the withdrawal proves the translator's DEPOSIT filter really narrowed
+        // the retrieval that grounded the prompt.
+        assertThat(answer).startsWith(FakeOllamaServer.FAKE_ANSWER_PREFIX)
+        assertThat(answer).contains("DEPOSIT 10000 KRW")
+        assertThat(answer).doesNotContain("WITHDRAWAL")
+        assertThat(body["matchedCount"]).isEqualTo(1)
+    }
+
+    @Test
+    fun `falls back to no filter and a templated answer when the LLM calls fail`() {
+        val account = createAccount(OWNER_ID, "KRW")
+        post("/accounts/${account["accountId"]}/deposit", OWNER_ID, mapOf("amount" to 10000))
+
+        // The question reaches both LLM prompts verbatim, so embedding FORCE_LLM_FAILURE_MARKER
+        // makes the fake Ollama answer 500 to both calls — the endpoint must still answer 200,
+        // with the translator degrading to no filter and the composer to its plain templated
+        // summary of the same retrieved data.
+        val response =
+            post(
+                "/accounts/${account["accountId"]}/transactions/ask",
+                OWNER_ID,
+                mapOf("question" to "How much have I deposited? ${FakeOllamaServer.FORCE_LLM_FAILURE_MARKER}"),
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        val body = response.body!!
+        val answer = body["answer"] as String
+        assertThat(answer).startsWith("Found 1 matching transaction(s):")
+        assertThat(answer).contains("DEPOSIT 10000 KRW")
         assertThat(body["matchedCount"]).isEqualTo(1)
     }
 
