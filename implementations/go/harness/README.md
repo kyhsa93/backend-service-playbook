@@ -11,6 +11,7 @@ harness/
   file_naming.go                 Per-rule implementation files (one file per rule)
   directory_structure.go
   repository_placement.go
+  repository_naming.go
   handler_placement.go
   file_placement.go
   shared_infra.go
@@ -90,7 +91,7 @@ go run . <projectRoot>
 
 **Rules not implemented:**
 
-- `no-orm-autosync-in-prod-config` (the ORM `synchronize`/`ddl-auto: update` automatic schema sync forbidden by persistence.md) — Go handles SQL directly via `database/sql` + `lib/pq`, and this repository has no ORM at all. There is no concept corresponding to `synchronize`/`ddl-auto: update` in the first place (as already stated at line 158 of `docs/architecture/persistence.md`), so there is nothing to check — because the schema only ever changes through `migrations/*.sql` files, the principle is upheld structurally instead.
+- `no-orm-autosync-in-prod-config` (the ORM `synchronize`/`ddl-auto: update` automatic schema sync forbidden by persistence.md) — Go handles SQL directly via `database/sql` + `lib/pq`, and this repository has no ORM at all. There is no concept corresponding to `synchronize`/`ddl-auto: update` in the first place (as already stated in the "Migrations" section of `docs/architecture/persistence.md`), so there is nothing to check — because the schema only ever changes through `migrations/*.sql` files, the principle is upheld structurally instead.
 - `aggregate-no-public-setters` — every actual Aggregate in this repository (Account/Card/Payment/Refund/Credential) uses the convention of declaring **all fields exported** (Go has no field-level access control, and this repository chose "public fields + state transitions via domain methods" rather than "private fields + accessor methods"). So the premise of "there are private fields that must be hidden" does not hold in the first place. Catching "whether another package bypasses the domain method and assigns to the field directly" would require type inference to determine whether each assignment expression actually targets an Aggregate-typed variable — and given this repository's style, where field names (`Status`, `Amount`, etc.) are also commonly reused in DTOs/test code, a regex-based approach would have an excessively high false-positive rate, so this rule was not added.
 
 ## Regression tests

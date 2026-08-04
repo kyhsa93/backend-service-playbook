@@ -1,9 +1,9 @@
 # Core Design Principles Summary (Go)
 
-A TL;DR list that condenses what the other 26 documents in this repository cover. Each item is not a newly invented rule but an index into content the corresponding document already explains — follow the links in parentheses for detailed rationale, code, and known gaps.
+A TL;DR list that condenses what the other 27 documents in this repository cover. Each item is not a newly invented rule but an index into content the corresponding document already explains — follow the links in parentheses for detailed rationale, code, and known gaps.
 
 1. **Fixed layer direction**: `Interface → Application → Domain`, and `Infrastructure` inverts the dependency by implementing interfaces declared by `Domain`. The `import` graph is the dependency direction ([layer-architecture.md](layer-architecture.md)).
-2. **Domain packages are framework-agnostic**: `internal/domain/account/` imports only standard-library base packages plus a minimal dependency (`google/uuid`). It doesn't use even `log`, `net/http`, or `context` ([layer-architecture.md](layer-architecture.md), [cross-cutting-concerns.md](cross-cutting-concerns.md)).
+2. **Domain packages are framework-agnostic**: `internal/domain/<bc>/` imports only standard-library base packages plus `internal/common` (pure helpers such as `common.NewID()` — itself free of framework code). No domain file uses `log` or `net/http`; `context` appears only in the Repository interface files (as the first parameter of the method signatures the Infrastructure layer will implement), never in Aggregate/Value Object logic ([layer-architecture.md](layer-architecture.md), [cross-cutting-concerns.md](cross-cutting-concerns.md)).
 3. **Invariants are validated only inside Aggregate Root methods.** Application Handlers are responsible only for orchestration — fetch → call domain method → save ([tactical-ddd.md](tactical-ddd.md)).
 4. **Repositories keep the interface in the domain package and the implementation in the infrastructure package.** The implementation carries a compile-time satisfaction check via `var _ Repository = (*Impl)(nil)` ([repository-pattern.md](repository-pattern.md)).
 5. **Errors are typed as sentinel errors** (`var ErrXxx = errors.New(...)`). They're wrapped with `fmt.Errorf("...: %w", err)` as they cross layers, and HTTP status code conversion happens only in the Interface layer via `errors.Is` ([error-handling.md](error-handling.md)).
@@ -21,4 +21,4 @@ A TL;DR list that condenses what the other 26 documents in this repository cover
 
 ### Where this list fits
 
-This document is a "TL;DR index" for each of the other 26 documents — it doesn't invent new rules, it summarizes on a single page what the other documents already ground in code. For the actual code or known gaps behind a specific item, always follow the link in parentheses and read the source document.
+This document is a "TL;DR index" for each of the other 27 documents — it doesn't invent new rules, it summarizes on a single page what the other documents already ground in code. For the actual code or known gaps behind a specific item, always follow the link in parentheses and read the source document.

@@ -468,14 +468,19 @@ func (r *{{.Domain}}Repository) Save{{.Domain}}(ctx context.Context, {{.DomainCa
 		return fmt.Errorf("save {{.DomainLower}}: %w", err)
 	}
 
+	// traceParentFromContext is the package-level helper defined in
+	// payment_repository.go — captured once per call so every event in this
+	// batch carries the originating request's trace across SQS
+	// (observability.md).
+	traceParent := traceParentFromContext(ctx)
 	for _, evt := range {{.DomainCamel}}.DomainEvents() {
 		payload, err := json.Marshal(evt)
 		if err != nil {
 			return fmt.Errorf("marshal domain event: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			` + "`" + `INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)` + "`" + `,
-			common.NewID(), reflect.TypeOf(evt).Name(), payload,
+			` + "`" + `INSERT INTO outbox (event_id, event_type, payload, trace_parent) VALUES ($1, $2, $3, $4)` + "`" + `,
+			common.NewID(), reflect.TypeOf(evt).Name(), payload, traceParent,
 		); err != nil {
 			return fmt.Errorf("save outbox event: %w", err)
 		}
@@ -671,6 +676,10 @@ const tmplMigration = `CREATE TABLE {{.DomainsLower}} (
 CREATE INDEX idx_{{.DomainsLower}}_owner_id ON {{.DomainsLower}} (owner_id);
 `
 
+const tmplMigrationDown = `DROP INDEX IF EXISTS idx_{{.DomainsLower}}_owner_id;
+DROP TABLE IF EXISTS {{.DomainsLower}};
+`
+
 // GenerateFiles builds a map of relative path (from the target app root, e.g.
 // examples/) -> file content. migrationSeq is the next number for
 // migrations/000N_*.sql (the caller scans the existing migrations/ directory
@@ -699,6 +708,7 @@ func GenerateFiles(n Names, migrationSeq int) map[string]string {
 	files[fmt.Sprintf("internal/interface/http/%s_handler.go", n.DomainSnake)] = render("http_handler", tmplHTTPHandler, n)
 
 	files[fmt.Sprintf("migrations/%04d_add_%s.sql", migrationSeq, n.DomainSnake)] = render("migration", tmplMigration, n)
+	files[fmt.Sprintf("migrations/%04d_add_%s.down.sql", migrationSeq, n.DomainSnake)] = render("migration_down", tmplMigrationDown, n)
 
 	return files
 }

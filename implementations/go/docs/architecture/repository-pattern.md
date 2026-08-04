@@ -19,10 +19,16 @@ type FindQuery struct {
 	Status    []Status
 }
 
-type Repository interface {
+type Query interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindTransactions(ctx context.Context, q FindTransactionsQuery) ([]Transaction, int, error)
+	// ... HasTransactionWithReference, SummarizeTransactions,
+	// FindRecentWithdrawalAmounts ...
+}
+
+type Repository interface {
+	Query
 	SaveAccount(ctx context.Context, account *Account) error
-	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 ```
 
@@ -32,15 +38,16 @@ type Repository interface {
 
 ```go
 type AccountRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	outboxWriter *outbox.Writer
 }
 
 // Compile-time interface-satisfaction check — this one line gives Go, explicitly,
 // what TypeScript/Java's `implements` keyword gets automatically at the compiler level.
 var _ account.Repository = (*AccountRepository)(nil)
 
-func NewAccountRepository(db *sql.DB) *AccountRepository {
-	return &AccountRepository{db: db}
+func NewAccountRepository(db *sql.DB, outboxWriter *outbox.Writer) *AccountRepository {
+	return &AccountRepository{db: db, outboxWriter: outboxWriter}
 }
 ```
 

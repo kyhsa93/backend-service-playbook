@@ -28,6 +28,7 @@ RUN go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
+COPY docs ./docs
 
 # CGO_ENABLED=0 — produces a fully static binary that doesn't dynamically link against libc.
 # Required since scratch/distroless has no libc.

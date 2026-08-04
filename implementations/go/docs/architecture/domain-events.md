@@ -28,7 +28,7 @@ func (MoneyDeposited) isAccountDomainEvent() {}
 
 ```go
 // internal/domain/account/account.go
-func (a *Account) Deposit(amount int64) (Transaction, error) {
+func (a *Account) Deposit(amount int64, referenceID string) (Transaction, error) {
 	// ... validate invariants, change state ...
 	a.events = append(a.events, MoneyDeposited{
 		AccountID: a.AccountID, Email: a.Email, TransactionID: tx.TransactionID,
@@ -233,7 +233,7 @@ func (c *Consumer) handleMessage(ctx context.Context, message types.Message) {
 }
 ```
 
-`handlers` (`map[string][]outbox.Handler`, `Handler = func(ctx, payload []byte) error`) is a **single shared map** that `cmd/server/main.go` assembles exactly once — all 6 domain event handlers from `internal/application/event/` and the Integration Event handlers (glue closures) that the Card/Payment BC react to are all registered into this one map. The value is a slice because an eventType may have more than one subscriber (e.g. `MoneyWithdrawn` has three), and `outbox.Consumer` runs every handler registered for an eventType, even if an earlier one fails:
+`handlers` (`map[string][]outbox.Handler`, `Handler = func(ctx, payload []byte) error`) is a **single shared map** that `cmd/server/main.go` assembles exactly once — all 13 domain event handlers from `internal/application/event/` and the Integration Event handlers (glue closures) that the BCs react to are all registered into this one map. The value is a slice because an eventType may have more than one subscriber (e.g. `MoneyWithdrawn` has three), and `outbox.Consumer` runs every handler registered for an eventType, even if an earlier one fails:
 
 ```go
 // internal/application/event/account_created_event_handler.go — satisfies the outbox.Handler signature
@@ -293,7 +293,7 @@ This path eliminates the failure mode of "the DB committed, but the notification
 
 ## Integration Events / idempotency
 
-Because there are two Bounded Contexts, Account and Card, an actual Integration Event exists (a public cross-BC contract, versioned as `account.suspended.v1`/`account.closed.v1`) — see `account_suspended_integration_event.go`/`account_closed_integration_event.go` under `internal/application/integration-event/`. Card's reaction use cases (`suspend_cards_by_account_handler.go`/`cancel_cards_by_account_handler.go`) are implemented idempotently by only selecting and processing cards that are ACTIVE (or ACTIVE·SUSPENDED) — assuming SQS's at-least-once delivery, they're harmless even if the same event is received again. See [cross-domain.md](cross-domain.md) for details. Of the 3-tier idempotency strategy for event handlers (intrinsic idempotency / Ledger / strong atomicity), Card BC's reaction actually uses intrinsic idempotency (state-transition based), while Payment BC's reaction (`WithdrawByPaymentHandler`/`DepositByPaymentHandler`) actually uses a `referenceId`-based Level 2 Ledger (`HasTransactionWithReference`).
+Because there are multiple Bounded Contexts (Account, Card, and Payment — see [cross-domain.md](cross-domain.md)), actual Integration Events exist (a public cross-BC contract, versioned as `account.suspended.v1`/`account.closed.v1`) — see `account_suspended_integration_event.go`/`account_closed_integration_event.go` under `internal/application/integration-event/`. Card's reaction use cases (`suspend_cards_by_account_handler.go`/`cancel_cards_by_account_handler.go`) are implemented idempotently by only selecting and processing cards that are ACTIVE (or ACTIVE·SUSPENDED) — assuming SQS's at-least-once delivery, they're harmless even if the same event is received again. See [cross-domain.md](cross-domain.md) for details. Of the 3-tier idempotency strategy for event handlers (intrinsic idempotency / Ledger / strong atomicity), Card BC's reaction actually uses intrinsic idempotency (state-transition based), while Payment BC's reaction (`WithdrawByPaymentHandler`/`DepositByPaymentHandler`) actually uses a `referenceId`-based Level 2 Ledger (`HasTransactionWithReference`).
 
 ---
 

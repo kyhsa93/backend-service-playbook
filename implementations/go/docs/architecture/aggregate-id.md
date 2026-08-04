@@ -54,7 +54,7 @@ func New(ownerID, email, currency string) *Account {
 	}
 }
 
-func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt time.Time) *Account {
+func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt, lastInterestPaidAt time.Time) *Account {
 	return &Account{
 		AccountID: accountID, // DB restoration — reuses the existing ID as-is
 		OwnerID:   ownerID,

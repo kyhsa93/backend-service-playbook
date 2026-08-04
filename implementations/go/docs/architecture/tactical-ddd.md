@@ -8,22 +8,26 @@ The principle follows the root [tactical-ddd.md](../../../../docs/architecture/t
 
 ```go
 type Account struct {
-	AccountID    string
-	OwnerID      string
-	Email        string
-	Balance      Money
-	Status       Status
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	events       []DomainEvent   // starts lowercase — not directly accessible from outside the package
-	transactions []Transaction   // starts lowercase — same
+	AccountID          string
+	OwnerID            string
+	Email              string
+	Balance            Money
+	Status             Status
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	LastInterestPaidAt time.Time     // last date the interest batch actually paid interest (see scheduling.md)
+	events             []DomainEvent // starts lowercase — not directly accessible from outside the package
+	transactions       []Transaction // starts lowercase — same
 }
 ```
 
 - **Invariants are validated only inside domain methods.** `Deposit`, `Withdraw`, `Suspend`, `Reactivate`, `Close` are the only paths that change state.
 
 ```go
-func (a *Account) Withdraw(amount int64) (Transaction, error) {
+// referenceID is empty for a user-requested withdrawal, or the Payment BC's
+// paymentId when reacting to payment.completed.v1; merchantName is the
+// optional payee/memo used for asynchronous categorization.
+func (a *Account) Withdraw(amount int64, referenceID, merchantName string) (Transaction, error) {
 	if a.Status != StatusActive {
 		return Transaction{}, ErrWithdrawRequiresActiveAccount
 	}
@@ -42,7 +46,7 @@ func (a *Account) Withdraw(amount int64) (Transaction, error) {
 		return Transaction{}, err
 	}
 	a.Balance = newBalance
-	tx := newTransaction(a.AccountID, TransactionTypeWithdrawal, money)
+	tx := newTransaction(a.AccountID, TransactionTypeWithdrawal, money, referenceID, merchantName)
 	a.transactions = append(a.transactions, tx)
 	a.events = append(a.events, MoneyWithdrawn{ /* ... */ })
 	return tx, nil
@@ -53,7 +57,7 @@ func (a *Account) Withdraw(amount int64) (Transaction, error) {
 
 ```go
 func New(ownerID, email, currency string) *Account { /* issues a new ID + accumulates an AccountCreated event */ }
-func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt time.Time) *Account {
+func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt, lastInterestPaidAt time.Time) *Account {
 	/* restores only the state, without any events */
 }
 ```
@@ -70,15 +74,20 @@ type Transaction struct {
 	AccountID     string
 	Type          TransactionType
 	Amount        Money
+	ReferenceID   string              // another BC's Aggregate ID (paymentId/refundId) when reacting to its Integration Event; empty otherwise
+	MerchantName  string              // optional payee/memo attached to a user-requested withdrawal
+	Category      TransactionCategory // filled in asynchronously by CategorizeTransactionEventHandler
 	CreatedAt     time.Time
 }
 
-func newTransaction(accountID string, txType TransactionType, amount Money) Transaction {
+func newTransaction(accountID string, txType TransactionType, amount Money, referenceID, merchantName string) Transaction {
 	return Transaction{
-		TransactionID: uuid.NewString(), // known gap — see aggregate-id.md
+		TransactionID: common.NewID(), // 32-char hex — see aggregate-id.md
 		AccountID:     accountID,
 		Type:          txType,
 		Amount:        amount,
+		ReferenceID:   referenceID,
+		MerchantName:  merchantName,
 		CreatedAt:     time.Now(),
 	}
 }
@@ -170,7 +179,7 @@ The rule that generalizes this same principle across the entire Bounded Context 
 ### Related documents
 
 - [layer-architecture.md](layer-architecture.md) — the Domain layer's position and dependency direction
-- [aggregate-id.md](aggregate-id.md) — ID issuance rules and the current code's gap
+- [aggregate-id.md](aggregate-id.md) — ID issuance rules (`common.NewID()`, 32-character hex)
 - [domain-events.md](domain-events.md) — Outbox processing after event collection
 - [repository-pattern.md](repository-pattern.md) — Repository per Aggregate
 - [error-handling.md](error-handling.md) — the pattern of returning errors from domain methods

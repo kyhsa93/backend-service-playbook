@@ -8,7 +8,7 @@ Check each item, and if a violation is found, fix it immediately before moving t
 - When verifying each STEP, always read the relevant file with the Read tool and cross-check it against the actual code.
 - Passing an item without reading the code is forbidden.
 - If a violation is found, fix it immediately, then move to the next STEP.
-- Items `implementations/go/harness/main.go` automatically verifies (snake_case filenames, existence of the 4-layer directories, placement of Repository/Handler/Scheduler/Task Controller/Event Handler) should also be cross-checked with `./harness.sh <projectRoot>` — however, the harness only checks structure/placement, not semantic rules (method naming, error handling, transactions, etc.), so this checklist supplements it.
+- Items `implementations/go/harness/main.go` automatically verifies should also be cross-checked with `./harness.sh <projectRoot>` — beyond structure/placement (snake_case filenames, the 4-layer directories, placement of Repository/Handler/Scheduler/Task Controller/Event Handler), the harness also covers a number of semantic rules: Repository method naming (`repository-naming`), typed sentinel errors (`typed-errors-only`), the standard error-response schema (`error-response-schema`), the soft-delete filter (`soft-delete-filter`), OpenAPI annotations (`api-documentation`), rate-limit wiring, and more (see `harness/README.md` for the full rule list). What it still cannot check — actual business-rule correctness, transaction boundaries, judgment calls like "is this logic in the right layer for this domain" — is what this checklist supplements.
 
 ---
 

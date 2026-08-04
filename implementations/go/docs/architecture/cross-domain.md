@@ -2,7 +2,7 @@
 
 > The **selection criteria** for synchronous (Adapter) vs asynchronous (Integration Event) follow the root [cross-domain-communication.md](../../../../docs/architecture/cross-domain-communication.md) as-is. This document covers how to implement both patterns in Go.
 
-This repository's `examples/` has **two Bounded Contexts** — Account and Card. When a card is issued, Card checks whether the linked account is active via a **synchronous Adapter (ACL)**, and when the account is suspended/closed, Card follows suit and changes its own card status via an **asynchronous Integration Event**. Every example below is actual code.
+This repository's `examples/` has **four domain packages** under `internal/domain/` — `account`, `card`, `payment`, and `credential`. Account, Card, and Payment are the three business Bounded Contexts connected to each other via the two patterns this document covers; `credential` is the authentication/signup Aggregate (see [authentication.md](authentication.md)) and takes part in neither. The walkthrough below uses the Account↔Card pair: when a card is issued, Card checks whether the linked account is active via a **synchronous Adapter (ACL)**, and when the account is suspended/closed, Card follows suit and changes its own card status via an **asynchronous Integration Event**. The Payment BC uses the same two patterns (synchronous `paymentCardAdapter`/`paymentAccountAdapter` lookups; asynchronous `payment.completed.v1`/`payment.cancelled.v1`/`refund.approved.v1` reactions in Account). Every example below is actual code.
 
 ```
 [Card BC]                                                  [Account BC]

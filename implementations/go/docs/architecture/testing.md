@@ -45,7 +45,7 @@ func TestAccount_Withdraw(t *testing.T) {
 		},
 		{
 			name:    "withdraw_zero_or_less_errors",
-			setup:   func() *account.Account { a := account.New("owner-1", "a@example.com", "KRW"); _, _ = a.Deposit(5000); return a },
+			setup:   func() *account.Account { a := account.New("owner-1", "a@example.com", "KRW"); _, _ = a.Deposit(5000, ""); return a },
 			amount:  0,
 			wantErr: account.ErrInvalidAmount,
 		},
@@ -54,7 +54,7 @@ func TestAccount_Withdraw(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := tt.setup()
-			_, err := a.Withdraw(tt.amount)
+			_, err := a.Withdraw(tt.amount, "", "")
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Withdraw() error = %v, want %v", err, tt.wantErr)
 			}
@@ -66,7 +66,7 @@ func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 	a := account.New("owner-1", "a@example.com", "KRW")
 	a.ClearEvents() // New() has already accumulated an AccountCreated event, so this resets it, leaving only the event under test
 
-	if _, err := a.Deposit(1000); err != nil {
+	if _, err := a.Deposit(1000, ""); err != nil {
 		t.Fatalf("Deposit() unexpected error: %v", err)
 	}
 
@@ -93,6 +93,57 @@ func TestAccount_Deposit_CollectsDomainEvent(t *testing.T) {
 Replaces the Repository with a mock to verify only the Handler's orchestration logic (error propagation, whether Save was called, whether notify was called). Go doesn't require a mocking framework — writing a minimal stub struct (`stub_test.go`) that implements the `account.Repository` interface by hand is sufficient.
 
 ```go
+// internal/application/command/stub_test.go — actual code (abridged)
+package command_test
+
+// stubRepository is a minimal mock that injects only the behavior needed per
+// test via function fields. It's enough for findByIDFn to mimic only the
+// single-record lookup scenario wrapped by account.FindOne, so the
+// FindAccounts implementation wraps its result as a single-element slice
+// ([]*account.Account of length 0 or 1).
+type stubRepository struct {
+	findByIDFn                    func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
+	findAllFn                     func(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error)
+	saveFn                        func(ctx context.Context, a *account.Account) error
+	hasTransactionWithReferenceFn func(ctx context.Context, referenceID string, txType account.TransactionType) (bool, error)
+	// ... summarizeTransactionsFn, findRecentWithdrawalAmountsFn ...
+}
+
+// FindAccounts supports two scenarios: if findAllFn is set (e.g. a batch
+// like ApplyDailyInterestHandler that iterates over multiple accounts via a
+// Status filter), it delegates to it directly; otherwise it falls back to
+// the existing findByIDFn-based single-record lookup mimic.
+func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
+	if s.findAllFn != nil {
+		return s.findAllFn(ctx, q)
+	}
+	a, err := s.findByIDFn(ctx, q.AccountID, q.OwnerID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if a == nil {
+		return nil, 0, nil
+	}
+	return []*account.Account{a}, 1, nil
+}
+
+func (s *stubRepository) SaveAccount(ctx context.Context, a *account.Account) error {
+	if s.saveFn == nil {
+		return nil
+	}
+	return s.saveFn(ctx, a)
+}
+
+func (s *stubRepository) FindTransactions(
+	ctx context.Context, q account.FindTransactionsQuery,
+) ([]account.Transaction, int, error) {
+	return nil, 0, nil
+}
+
+// ... the remaining account.Repository/Query methods stubbed the same way ...
+```
+
+```go
 // internal/application/command/deposit_handler_test.go — actual code
 package command_test
 
@@ -104,30 +155,6 @@ import (
 	"github.com/example/account-service/internal/application/command"
 	"github.com/example/account-service/internal/domain/account"
 )
-
-// stubRepository is a minimal mock that's injected, per test, with only the
-// behavior it needs, as function fields. Since findByIDFn only needs to mimic
-// the single-item lookup scenario wrapped by account.FindOne, FindAccounts
-// wraps it as a single-item result ([]*account.Account of length 0 or 1) and returns that.
-type stubRepository struct {
-	findByIDFn func(ctx context.Context, accountID, ownerID string) (*account.Account, error)
-	saveFn     func(ctx context.Context, a *account.Account) error
-}
-
-func (s *stubRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) {
-	a, err := s.findByIDFn(ctx, q.AccountID, q.OwnerID)
-	if err != nil {
-		return nil, 0, err
-	}
-	if a == nil {
-		return nil, 0, nil
-	}
-	return []*account.Account{a}, 1, nil
-}
-func (s *stubRepository) SaveAccount(ctx context.Context, a *account.Account) error { return s.saveFn(ctx, a) }
-func (s *stubRepository) FindTransactions(ctx context.Context, accountID string, page, take int) ([]account.Transaction, int, error) {
-	return nil, 0, nil
-}
 
 func TestDepositHandler_Handle_AccountNotFound(t *testing.T) {
 	repo := &stubRepository{

@@ -17,8 +17,9 @@ import (
 
 	// Blank-imported so its init() registers the generated OpenAPI spec with
 	// swag's global registry (docs/architecture/api-documentation.md).
-	// Regenerate with `swag init` (see the Makefile) after changing any
-	// @-annotation below or on a handler in internal/interface/http/.
+	// Regenerate with `go tool swag init -g cmd/server/main.go --output docs
+	// --parseInternal` after changing any @-annotation below or on a handler
+	// in internal/interface/http/.
 	_ "github.com/example/account-service/docs"
 
 	"github.com/example/account-service/internal/application/command"

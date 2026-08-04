@@ -60,21 +60,27 @@ Go has no concept corresponding to NestJS's `abstract class` + DI token registra
 
 ```go
 // internal/domain/account/repository.go — interface only, no implementation
-type Repository interface {
+type Query interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindTransactions(ctx context.Context, q FindTransactionsQuery) ([]Transaction, int, error)
+	// ... the remaining read-only methods ...
+}
+
+type Repository interface {
+	Query
 	SaveAccount(ctx context.Context, account *Account) error
-	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 ```
 
 ```go
 // internal/infrastructure/persistence/account_repository.go — the implementation
 type AccountRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	outboxWriter *outbox.Writer
 }
 
-func NewAccountRepository(db *sql.DB) *AccountRepository {
-	return &AccountRepository{db: db}
+func NewAccountRepository(db *sql.DB, outboxWriter *outbox.Writer) *AccountRepository {
+	return &AccountRepository{db: db, outboxWriter: outboxWriter}
 }
 
 // Compile-time interface-satisfaction check — always write this.
@@ -95,7 +101,7 @@ var _ account.Repository = (*AccountRepository)(nil)
 
 ```go
 // correct
-func (a *Account) Withdraw(amount int64) (Transaction, error) {
+func (a *Account) Withdraw(amount int64, referenceID, merchantName string) (Transaction, error) {
 	if a.Status != StatusActive {
 		return Transaction{}, ErrWithdrawRequiresActiveAccount
 	}
@@ -112,12 +118,12 @@ func (h *DepositHandler) Handle(ctx context.Context, cmd DepositCommand) (*accou
 func (r *AccountRepository) FindAccounts(ctx context.Context, q account.FindQuery) ([]*account.Account, int, error) { ... }
 ```
 
-For every function crossing a layer boundary — Repository, Handler, Adapter, Technical Service, etc. — the first argument is `context.Context`. Cancellation, deadlines, (once implemented) correlation ID, and transactions all propagate explicitly through this argument.
+For every function crossing a layer boundary — Repository, Handler, Adapter, Technical Service, etc. — the first argument is `context.Context`. Cancellation, deadlines, the correlation ID, and transactions all propagate explicitly through this argument.
 
 ### Aggregate — change state with a pointer receiver
 
 ```go
-func (a *Account) Deposit(amount int64) (Transaction, error) { ... } // (a *Account) — a pointer receiver, since it changes state
+func (a *Account) Deposit(amount int64, referenceID string) (Transaction, error) { ... } // (a *Account) — a pointer receiver, since it changes state
 ```
 
 ### Value Object — preserve immutability with a value receiver
@@ -133,7 +139,7 @@ Using a value receiver (`(m Money)`) is deliberate. Using a pointer receiver wou
 
 ```go
 func New(ownerID, email, currency string) *Account { /* issues a new ID, raises events */ }
-func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt time.Time) *Account {
+func Reconstitute(accountID, ownerID, email string, balance Money, status Status, createdAt, updatedAt, lastInterestPaidAt time.Time) *Account {
 	/* restores only state, with no events */
 }
 ```
@@ -386,20 +392,19 @@ if err != nil {
 ### Interface layer — mapping to HTTP status codes with `errors.Is`
 
 ```go
-func writeAccountError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, account.ErrNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, account.ErrInvalidAmount),
-		errors.Is(err, account.ErrInsufficientBalance):
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
+	for _, m := range accountErrorMapping {
+		if errors.Is(err, m.err) {
+			writeJSONError(w, r, m.status, m.code, err.Error())
+			return
+		}
 	}
+	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
+	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 ```
 
-The responsibility of converting an error into an HTTP status code lives only in the Interface layer. An error not in the mapping is treated as a 500 + a generic message, preventing internal implementation details from leaking.
+The responsibility of converting an error into an HTTP status code lives only in the Interface layer. `accountErrorMapping` is the sentinel error → (HTTP status, client-facing error code) table; an error not in the mapping is treated as a 500 + a generic message, preventing internal implementation details from leaking (see [error-handling.md](architecture/error-handling.md)).
 
 ---
 

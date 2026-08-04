@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+
 	"github.com/example/account-service/internal/common"
 	"github.com/example/account-service/internal/domain/payment"
 )
@@ -298,17 +301,34 @@ func (r *PaymentRepository) FindReasonInsights(ctx context.Context, filter payme
 // Payment/Refund Aggregates (it consolidates the Save/SaveRefund workaround
 // pattern in one place to reduce duplication).
 func insertOutboxEvents(ctx context.Context, tx *sql.Tx, events []payment.DomainEvent) error {
+	// Captured once per call (not per event) — every event in this batch
+	// belongs to the same Save transaction, hence the same originating
+	// request/trace. Same idiom as outbox.Writer.SaveAll, so Payment BC
+	// events keep trace continuity across SQS (observability.md).
+	traceParent := traceParentFromContext(ctx)
 	for _, evt := range events {
 		body, err := json.Marshal(evt)
 		if err != nil {
 			return fmt.Errorf("marshal domain event: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3)`,
-			common.NewID(), reflect.TypeOf(evt).Name(), body,
+			`INSERT INTO outbox (event_id, event_type, payload, trace_parent) VALUES ($1, $2, $3, $4)`,
+			common.NewID(), reflect.TypeOf(evt).Name(), body, traceParent,
 		); err != nil {
 			return fmt.Errorf("save outbox event: %w", err)
 		}
 	}
 	return nil
+}
+
+// traceParentFromContext extracts ctx's current span as a W3C traceparent
+// header string via the process-wide propagator, mirroring the unexported
+// helper in infrastructure/outbox (trace_context.go). Returns an invalid
+// (Valid: false) sql.NullString when ctx carries no active span, so the
+// column stays NULL rather than storing an empty string.
+func traceParentFromContext(ctx context.Context) sql.NullString {
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	traceParent := carrier.Get("traceparent")
+	return sql.NullString{String: traceParent, Valid: traceParent != ""}
 }

@@ -55,8 +55,11 @@ slog.ErrorContext(ctx, "event processing failed", "event_type", eventType, "erro
 `slog.InfoContext`/`slog.ErrorContext` take a `ctx` — this connects naturally to the correlation ID propagation below. Fields are passed as key-value pairs, rendered by `slog` through either the default `TextHandler` or `JSONHandler`. Production uses `JSONHandler`:
 
 ```go
-// cmd/server/main.go — actual code, set up once early during startup
-slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+// cmd/server/main.go — actual code, set up once early during startup.
+// CorrelationHandler wraps JSONHandler so every log call automatically gains
+// a "correlation_id" field whenever the ctx carries one (see below).
+jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+slog.SetDefault(slog.New(logging.NewCorrelationHandler(jsonHandler)))
 ```
 
 Example output (JSON, snake_case fields):
@@ -88,7 +91,7 @@ In production, `HandlerOptions{Level: slog.LevelInfo}` filters out Debug and bel
 | Layer | What gets logged | This repository's current state |
 |---|---|---|
 | `internal/domain/account/` | **Nothing is logged** | Actually contains no logging code — the principle is upheld. There's no `import "log"` |
-| `internal/application/command,query/` | Business events, results of external calls | Currently no logging — there's room to add logs like `slog.InfoContext(ctx, "account created", "account_id", a.AccountID)` in a Handler |
+| `internal/application/command,query,event/` | Business events, results of external calls | Five event handlers log with `slog` (`account_suspended`/`account_closed` record the Integration Event they publish; `categorize_transaction`/`detect_withdrawal_anomaly`/`classify_refund_reason` record their classification/detection outcomes); the Command/Query Handlers themselves don't log |
 | `internal/infrastructure/` | External integration failures/retries | `notification/service.go` (a success log for sending) and `outbox/poller.go`/`outbox/consumer.go` (failure logs for publishing/processing) all use `slog` |
 | `internal/interface/http/` | Request errors | `writeAccountError` also leaves a server-side log on a 500 error (see below) |
 
@@ -101,14 +104,14 @@ An entirely empty `if err != nil { }` block that checks an error but neither log
 ```go
 // internal/interface/http/account_handler.go — actual code
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, account.ErrNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
-	// ...
-	default:
-		slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	for _, m := range accountErrorMapping {
+		if errors.Is(err, m.err) {
+			writeJSONError(w, r, m.status, m.code, err.Error())
+			return
+		}
 	}
+	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
+	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 ```
 
@@ -185,7 +188,7 @@ From then on, even without passing `correlation_id` explicitly as in `slog.InfoC
 
 ## Metrics — Prometheus
 
-`prometheus/client_golang` is the Go ecosystem's de facto standard, and is now a direct dependency (it used to be pulled in only transitively). `internal/interface/http/middleware/metrics_middleware.go` defines two package-level, `promauto`-registered collectors and a `Metrics` middleware that records both on every request:
+`prometheus/client_golang` is the Go ecosystem's de facto standard, and is a direct dependency in `go.mod`. `internal/interface/http/middleware/metrics_middleware.go` defines two package-level, `promauto`-registered collectors and a `Metrics` middleware that records both on every request:
 
 ```go
 // internal/interface/http/middleware/metrics_middleware.go — actual code (summarized)

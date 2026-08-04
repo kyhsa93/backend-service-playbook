@@ -2,7 +2,7 @@
 
 The principle follows the root [scheduling.md](../../../../docs/architecture/scheduling.md): the Scheduler only **enqueues** in the Infrastructure layer, and actual execution is delegated through the path Task Consumer → Task Controller (Interface layer) → Command Service. Task enqueueing goes through the `task_outbox` table to guarantee atomicity, and the Command Handler is implemented to be idempotent.
 
-`examples/` has two batch jobs that actually use this pattern — **daily interest payment** (pays interest daily to every ACTIVE account) and **monthly card usage statement dispatch** (emails last month's payment summary to every ACTIVE card). Below explains that actual implementation.
+`examples/` has four batch jobs that actually use this pattern — **daily interest payment** (pays interest daily to every ACTIVE account), **monthly card usage statement dispatch** (emails last month's payment summary to every ACTIVE card), **monthly spending analysis** (computes last month's spending analysis for every ACTIVE account), and **monthly spending forecast** (predicts this month's spending for every ACTIVE account). Below explains that actual implementation, using the first two as the walkthrough examples.
 
 ---
 
@@ -43,7 +43,7 @@ func (s *InterestScheduler) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := s.EnqueueDailyInterest(ctx, time.Now().UTC()); err != nil {
-				slog.ErrorContext(ctx, "failed to enqueue interest payment task", "error", err)
+				slog.ErrorContext(ctx, "interest payment task enqueue failed", "error", err)
 			}
 		}
 	}
@@ -94,7 +94,7 @@ Since the Scheduler (Cron) has no transaction context, this single-row INSERT is
 
 ## Task Consumer — a background loop in the Infrastructure layer
 
-`internal/infrastructure/task-queue/poller.go` (`task_outbox` → SQS publish) and `consumer.go` (SQS → Task Controller invocation) are shaped exactly like the Poller/Consumer in `internal/infrastructure/outbox/` — only the message attribute name differs, using `taskType` instead of `eventType`. They're started as independent goroutines from `main.go` (always running on their own tick, unrelated to HTTP requests).
+`internal/infrastructure/task-queue/poller.go` (`task_outbox` → SQS publish) and `consumer.go` (SQS → Task Controller invocation) are shaped like the Poller/Consumer in `internal/infrastructure/outbox/`, with two differences: the message attribute name is `taskType` instead of `eventType`, and the outbox pair also propagates a `traceparent` attribute (the originating request's W3C trace context, stored on the outbox row — see [observability.md](observability.md)) while the task-queue pair does not, since a Scheduler-enqueued Task has no originating request to trace. They're started as independent goroutines from `main.go` (always running on their own tick, unrelated to HTTP requests).
 
 ---
 
@@ -119,16 +119,18 @@ Since `taskqueue.Consumer` receives this error and leaves the message undeleted,
 
 ```go
 taskHandlers := map[string]taskqueue.Handler{
-	"account.apply-interest":    interestTaskController.HandleApplyInterest,
-	"card.send-usage-statement": statementTaskController.HandleSendStatement,
+	"account.apply-interest":           interestTaskController.HandleApplyInterest,
+	"card.send-usage-statement":        statementTaskController.HandleSendStatement,
+	"account.analyze-monthly-spending": spendingAnalysisTaskController.HandleAnalyzeMonthlySpending,
+	"account.forecast-spending":        spendingForecastTaskController.HandleForecastSpending,
 }
 ```
 
 ---
 
-## Idempotency — both batch jobs are Level 1 (intrinsic idempotency)
+## Idempotency — the interest/statement batch jobs are Level 1 (intrinsic idempotency)
 
-Applies the 3-tier model from domain-events.md as-is. Both batch jobs judge "has this cycle already been processed" purely from the Aggregate's own state field, with no separate Ledger table.
+Applies the 3-tier model from domain-events.md as-is. The interest and statement batch jobs judge "has this cycle already been processed" purely from the Aggregate's own state field, with no separate Ledger table. (The spending analysis/forecast jobs instead rely on a per-period unique index — `spending_analysis (account_id, analysis_month)` and its forecast counterpart — so re-running the same month is a harmless conflict-skip.)
 
 **Daily interest payment — `Account.LastInterestPaidAt`:**
 

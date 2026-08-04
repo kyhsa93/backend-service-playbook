@@ -67,6 +67,7 @@ services:
       DATABASE_URL: postgres://dev:dev@database:5432/app?sslmode=disable
       AWS_ENDPOINT_URL: http://localstack:4566
       SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
+      SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/task-queue
       OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       database:
@@ -112,12 +113,13 @@ When adding a new AWS service, follow the same pattern: add it to the `SERVICES`
 #!/bin/sh
 set -e
 
-# The shared Domain/Integration Event queue that OutboxPoller publishes to and
-# OutboxConsumer consumes from. The DLQ is created first, then wired to the main
-# queue via RedrivePolicy — a message that still fails after exceeding
-# maxReceiveCount (3) is quarantined into the DLQ (the DLQ convention from
-# scheduling.md). The same queue name and parameters as the nestjs implementation
-# are used to keep cross-language consistency.
+# The shared Domain/Integration Event queue that OutboxPoller publishes to
+# and OutboxConsumer consumes from. Create the DLQ first, then link it to the
+# main queue via RedrivePolicy — messages that still fail after retrying past
+# maxReceiveCount (3) (toxic payload/bug) are isolated into the DLQ (the DLQ
+# convention in docs/architecture/scheduling.md). Uses the same queue names
+# and parameters as the nestjs implementation to keep cross-language
+# consistency.
 awslocal sqs create-queue --queue-name domain-events-dlq
 
 DLQ_ARN=$(awslocal sqs get-queue-attributes \
@@ -127,9 +129,24 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes \
 
 awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
+
+# The Task Queue (Scheduler -> task_outbox -> this queue -> Task Consumer) is
+# a separate queue conceptually distinct from domain-events ("a fact
+# occurred" vs. "command: perform X", docs/architecture/domain-events.md) —
+# event_type and task_type are never mixed into the same queue. Its DLQ
+# parameters match domain-events' (scheduling.md).
+awslocal sqs create-queue --queue-name task-queue-dlq
+
+TASK_DLQ_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/task-queue-dlq \
+  --attribute-names QueueArn \
+  --query 'Attributes.QueueArn' --output text)
+
+awslocal sqs create-queue --queue-name task-queue \
+  --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$TASK_DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 ```
 
-The queue URL (`http://localhost:4566/000000000000/domain-events`) is passed to the app via the `SQS_DOMAIN_EVENT_QUEUE_URL` environment variable (`LoadSQSConfig()` in `internal/config/sqs.go`). The Poller/Consumer from [domain-events.md](domain-events.md) consume this queue.
+The queue URLs (`http://localhost:4566/000000000000/domain-events` and `.../task-queue`) are passed to the app via the `SQS_DOMAIN_EVENT_QUEUE_URL`/`SQS_TASK_QUEUE_URL` environment variables (`LoadSQSConfig()` in `internal/config/sqs.go`). The outbox Poller/Consumer from [domain-events.md](domain-events.md) consume the first, and the task-queue Poller/Consumer from [scheduling.md](scheduling.md) consume the second.
 
 ---
 

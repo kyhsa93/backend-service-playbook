@@ -28,6 +28,13 @@ updates:
     commit-message:
       prefix: "chore(go)"
 
+  - package-ecosystem: "gomod"
+    directory: "/implementations/go/scripts/create-domain"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(go)"
+
   - package-ecosystem: "gradle"
     directory: "/implementations/java-springboot/examples"
     schedule:

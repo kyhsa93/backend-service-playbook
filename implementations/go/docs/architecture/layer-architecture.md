@@ -28,10 +28,16 @@ Framework-agnostic pure Go code. This can be verified by looking at the imports:
 
 ```go
 // internal/domain/account/repository.go — interface only, no implementation
-type Repository interface {
+type Query interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
+	FindTransactions(ctx context.Context, q FindTransactionsQuery) ([]Transaction, int, error)
+	// ... HasTransactionWithReference, SummarizeTransactions,
+	// FindRecentWithdrawalAmounts ...
+}
+
+type Repository interface {
+	Query
 	SaveAccount(ctx context.Context, account *Account) error
-	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
 }
 ```
 
@@ -69,7 +75,8 @@ The root document requires separating the Command Service and Query Service into
 // internal/domain/account/repository.go
 type Query interface {
 	FindAccounts(ctx context.Context, q FindQuery) ([]*Account, int, error)
-	FindTransactions(ctx context.Context, accountID string, page, take int) ([]Transaction, int, error)
+	FindTransactions(ctx context.Context, q FindTransactionsQuery) ([]Transaction, int, error)
+	// ... the remaining read-only methods ...
 }
 
 type Repository interface {
@@ -83,7 +90,7 @@ type GetAccountHandler struct {
 }
 ```
 
-`AccountRepository` in `internal/infrastructure/persistence/account_repository.go` doesn't need a separate implementation for each of the two interfaces — since Go interfaces use structural typing, a single concrete struct with the three methods (`FindAccounts`/`FindTransactions`/`Save`, including `Save`) satisfies both `Repository` and `Query` at once. `router.go` still assembles a single `accountRepo` instance and passes it to the Command Handler as `account.Repository` and to the Query Handler as `account.Query` — since `Repository` embeds `Query`, it can be passed without any separate adapter. If the point comes where the read model needs to be split into a separate store (a read replica, cache, search index, etc.), this can be extended by adding a read-only implementation that implements only `Query`.
+`AccountRepository` in `internal/infrastructure/persistence/account_repository.go` doesn't need a separate implementation for each of the two interfaces — since Go interfaces use structural typing, a single concrete struct with all the methods (`FindAccounts`/`FindTransactions`/`SaveAccount`/the remaining read methods) satisfies both `Repository` and `Query` at once. `router.go` still assembles a single `accountRepo` instance and passes it to the Command Handler as `account.Repository` and to the Query Handler as `account.Query` — since `Repository` embeds `Query`, it can be passed without any separate adapter. If the point comes where the read model needs to be split into a separate store (a read replica, cache, search index, etc.), this can be extended by adding a read-only implementation that implements only `Query`.
 
 ---
 

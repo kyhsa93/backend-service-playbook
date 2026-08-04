@@ -38,7 +38,7 @@ This plays the combined role of the root's `<Domain>ErrorMessage` enum and `<Dom
 An Aggregate method returns a sentinel error immediately when an invariant is violated (`internal/domain/account/account.go`):
 
 ```go
-func (a *Account) Withdraw(amount int64) (Transaction, error) {
+func (a *Account) Withdraw(amount int64, referenceID, merchantName string) (Transaction, error) {
 	if a.Status != StatusActive {
 		return Transaction{}, ErrWithdrawRequiresActiveAccount
 	}
@@ -115,12 +115,12 @@ var accountErrorMapping = []struct {
 func writeAccountError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range accountErrorMapping {
 		if errors.Is(err, m.err) {
-			writeJSONError(w, m.status, m.code, err.Error())
+			writeJSONError(w, r, m.status, m.code, err.Error())
 			return
 		}
 	}
 	slog.ErrorContext(r.Context(), "unhandled account error", "error", err)
-	writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	writeJSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 ```
 
@@ -146,10 +146,10 @@ type ErrorResponse struct {
 }
 
 // internal/interface/http/account_handler.go
-func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+func writeJSONError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(ErrorResponse{
+	writeJSON(w, r, ErrorResponse{
 		StatusCode: status,
 		Code:       code,
 		Message:    message,
