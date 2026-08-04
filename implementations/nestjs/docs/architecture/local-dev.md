@@ -11,6 +11,7 @@ implementations/nestjs/examples/
     init-ses.sh                      ← verify the SES sender email
     init-secrets.sh                  ← create the app/jwt secret in Secrets Manager
     init-sqs.sh                      ← create the domain-events queue + DLQ for OutboxPoller/OutboxConsumer
+    init-tasks.sh                    ← create the task-queue.fifo queue + DLQ for the Task Queue
   .env.example                       ← the committed template
   .env.development                   ← local development environment variables (.gitignore, made by copying .env.example)
 ```
@@ -98,7 +99,7 @@ volumes:
   ollama-data:
 ```
 
-Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the two values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`) — no separate `.env.docker` file is created.
+Since `environment:` takes precedence over `env_file:`, keep local values in `.env.development` (env_file), and override via `environment:` only the five values that differ inside the container network (`DATABASE_URL`, `AWS_ENDPOINT_URL`, `SQS_DOMAIN_EVENT_QUEUE_URL`, `SQS_TASK_QUEUE_URL`, `OLLAMA_BASE_URL`) — no separate `.env.docker` file is created.
 
 ### Service Composition
 
@@ -116,7 +117,7 @@ Every infrastructure service has a `healthcheck` configured. The `app` service u
 
 ### profiles — Optionally Running the App Service
 
-Setting `profiles: [app]` on the `app` service means **only the infrastructure starts by default**, and the app runs locally via `npm run start:dev`. Use `--profile app` to run the app as a container too.
+Setting `profiles: [app]` on the `app` service means **only the infrastructure starts by default**, and the app runs locally via `npm start`. Use `--profile app` to run the app as a container too.
 
 ```bash
 # start only the infrastructure (default — for development)
@@ -151,6 +152,9 @@ awslocal secretsmanager create-secret \
 ### .env.example / .env.development — Actual Code
 
 ```env
+# Used when running the app directly locally via npm start.
+# Copy this file to create .env.development — .env.development is never committed.
+
 DATABASE_URL=postgres://dev:dev@localhost:5432/app
 
 AWS_REGION=us-east-1
@@ -164,23 +168,34 @@ SQS_TASK_QUEUE_URL=http://localhost:4566/000000000000/task-queue.fifo
 JWT_SECRET=local-dev-secret
 JWT_EXPIRES_IN=1h
 
+# The LLM behind account/application/service's two NL transaction-history Technical Services
+# (see docs/architecture/domain-service.md) — served locally by Ollama (docker-compose.yml). No
+# API key: it's a self-hosted open-source model.
 OLLAMA_BASE_URL=http://localhost:11434
 LLM_MODEL=qwen2.5:1.5b
 
 PORT=3000
 NODE_ENV=development
+
+# Tracing (see src/tracing.ts) — unset by default, spans print to the console, no collector
+# needed for local dev/tests. Point this at a real OTLP/HTTP collector (Jaeger, Tempo, a Datadog
+# agent, etc.) to export real traces.
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
 
 `.env.example` is committed, and `.env.development` (a copy of it) is listed in `.gitignore` and never committed.
 
 ### Environment Variables When the App Runs as a Container
 
-When the app runs inside Docker Compose, it must connect via the **service name** instead of `localhost`. Rather than keeping a separate `.env.docker` file, only the two values that differ are overridden via `environment:` in the `app` service of `docker-compose.yml` (which takes precedence over `env_file:`) — see "docker-compose.yml — Actual Code" above.
+When the app runs inside Docker Compose, it must connect via the **service name** instead of `localhost`. Rather than keeping a separate `.env.docker` file, only the five values that differ are overridden via `environment:` in the `app` service of `docker-compose.yml` (which takes precedence over `env_file:`) — see "docker-compose.yml — Actual Code" above.
 
 ```yaml
 environment:
   DATABASE_URL: postgres://dev:dev@database:5432/app
   AWS_ENDPOINT_URL: http://localstack:4566
+  SQS_DOMAIN_EVENT_QUEUE_URL: http://localstack:4566/000000000000/domain-events
+  SQS_TASK_QUEUE_URL: http://localstack:4566/000000000000/task-queue.fifo
+  OLLAMA_BASE_URL: http://ollama:11434
 ```
 
 Within the Docker Compose network, a service name resolves as a hostname (`database` → the database container's IP).
@@ -212,7 +227,7 @@ new SESClient({
 docker compose up -d
 
 # 2. run the app (locally)
-npm run start:dev
+npm start
 
 # --- or ---
 

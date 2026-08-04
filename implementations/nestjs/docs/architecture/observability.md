@@ -29,9 +29,11 @@ NestJS's Logger provides 5 levels. Use each level according to its intended purp
 ### Per-Environment Log Level Configuration
 
 ```typescript
-// src/main.ts
+// src/main.ts — actual code (excerpt)
+import { getCorsOrigins, getPort, isProduction } from '@/config/app.config'
+
 const app = await NestFactory.create(AppModule, {
-  logger: process.env.NODE_ENV === 'production'
+  logger: isProduction()
     ? ['error', 'warn', 'log']
     : ['error', 'warn', 'log', 'debug', 'verbose']
 })
@@ -231,9 +233,12 @@ anything that transitively pulls in `express`/`http`, since the instrumentation 
 `http` module in place and only requests made after `NodeSDK#start()` runs get instrumented.
 
 ```typescript
-// src/main.ts
-import '@/tracing'  // must be the first import
+// src/main.ts — actual code (excerpt)
+// Must be the very first import in this file — see src/tracing.ts for why (it patches Node's
+// http module in place, and only requests made after it runs get instrumented).
+import '@/tracing'
 
+import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 // ...
 ```

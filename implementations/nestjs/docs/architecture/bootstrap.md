@@ -4,7 +4,9 @@
 
 ```typescript
 // src/main.ts — actual code
-import '@/tracing'  // must be the first import — see observability.md
+// Must be the very first import in this file — see src/tracing.ts for why (it patches Node's
+// http module in place, and only requests made after it runs get instrumented).
+import '@/tracing'
 
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'

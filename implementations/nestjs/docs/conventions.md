@@ -740,48 +740,50 @@ describe('OrderController (e2e)', () => {
 })
 ```
 
-### Test DB configuration — SQLite in-memory
+### Test DB configuration — testcontainers
 
-E2E tests and integration tests use a **SQLite in-memory DB** to isolate the test environment.
-
-```typescript
-// test/test-database.ts
-import { TypeOrmModule } from '@nestjs/typeorm'
-
-export const TestDatabaseModule = TypeOrmModule.forRoot({
-  type: 'sqlite',
-  database: ':memory:',
-  entities: [__dirname + '/../src/**/*.entity.ts'],
-  synchronize: true  // used only in the test environment
-})
-```
+E2E tests run against a **real PostgreSQL started per spec via `@testcontainers/postgresql`** (plus `@testcontainers/localstack` for specs covering the SQS/SES paths) — no in-memory database substitute. Unit tests never touch a database: they mock the Repository/Adapter abstract classes.
 
 ```typescript
-// test/order.e2e-spec.ts
+// test/<domain>.e2e-spec.ts — the setup shape every spec follows (see testing.md for the full actual code)
+import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import request from 'supertest'
+
 describe('OrderController (e2e)', () => {
+  let container: StartedPostgreSqlContainer
   let app: INestApplication
 
   beforeAll(async () => {
-    const module = await Test.createTestingModule({
+    container = await new PostgreSqlContainer('postgres:16-alpine').start()
+
+    const moduleRef = await Test.createTestingModule({
       imports: [
-        TestDatabaseModule,  // use SQLite in-memory instead of a real DB
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: container.getConnectionUri(),
+          entities: [OrderEntity],
+          synchronize: true  // test-only — production runs migrations
+        }),
         OrderModule
       ]
     }).compile()
 
-    app = module.createNestApplication()
+    app = moduleRef.createNestApplication()
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
     await app.init()
-  })
+  }, 120000)
 
-  afterAll(() => app.close())
+  afterAll(async () => {
+    await app?.close()
+    await container?.stop()
+  })
 })
 ```
 
 **Principles:**
-- E2E/integration tests use a SQLite in-memory DB with `synchronize: true`.
-- The DB is reset for every test, so there's no data interference between tests.
-- If SQL differences between the production DB and SQLite become a problem, use **testcontainers** against a real DB.
+- E2E tests use a disposable per-spec PostgreSQL container with `synchronize: true` (test-only).
+- Each spec owns its container, so there's no data interference between suites.
+- Testing against the same engine as production means PostgreSQL-specific SQL (raw `deletedAt IS NULL` filters, `ON CONFLICT`, etc.) is exercised for real.
 
 ### Test naming pattern
 

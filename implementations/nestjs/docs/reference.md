@@ -25,17 +25,20 @@ src/
       service/
         crypto-service.ts              ← technical infrastructure interface (abstract class)
       command/
-        order-command-service.ts       ← Command Service (write)
+        cancel-order-command-handler.ts  ← @CommandHandler (write)
         cancel-order-command.ts
+        create-order-command-handler.ts
         create-order-command.ts
+        delete-order-command-handler.ts
         delete-order-command.ts
       query/
-        order-query-service.ts         ← Query Service (read)
-        order-query.ts                 ← Query interface (abstract class)
+        get-order-query-handler.ts       ← @QueryHandler (read — uses the Query interface)
         get-order-query.ts
         get-order-result.ts
+        get-orders-query-handler.ts
         get-orders-query.ts
         get-orders-result.ts
+        order-query.ts                   ← Query interface (abstract class)
     interface/
       order-controller.ts
       order-task-controller.ts       ← Task Controller (optional — when there's an async Task)
@@ -59,6 +62,7 @@ src/
       order-cleanup-scheduler.ts     ← Scheduler (optional — when a Cron is needed)
     order-module.ts
     order-error-message.ts
+    order-error-code.ts
     order-enum.ts
     order-constant.ts
 ```
@@ -205,31 +209,24 @@ export abstract class PaymentRepository {
 
 ## Application Layer
 
-### Command Service
+### Command Handlers
+
+One `@CommandHandler` class per Command (`@nestjs/cqrs`) — the Controller dispatches through the `CommandBus`, and there is no intermediate `*-command-service.ts` wrapper.
 
 ```typescript
-// application/command/order-command-service.ts
-import { Injectable } from '@nestjs/common'
+// application/command/create-order-command-handler.ts
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 
-import { TransactionManager } from '@/database/transaction-manager'
-import { CancelOrderCommand } from '@/order/application/command/cancel-order-command'
 import { CreateOrderCommand } from '@/order/application/command/create-order-command'
-import { DeleteOrderCommand } from '@/order/application/command/delete-order-command'
 import { Order } from '@/order/domain/order'
 import { OrderItem } from '@/order/domain/order-item'
 import { OrderRepository } from '@/order/domain/order-repository'
-import { PaymentRepository } from '@/order/domain/payment-repository'
-import { OrderErrorMessage as ErrorMessage } from '@/order/order-error-message'
 
-@Injectable()
-export class OrderCommandService {
-  constructor(
-    private readonly orderRepository: OrderRepository,
-    private readonly paymentRepository: PaymentRepository,
-    private readonly transactionManager: TransactionManager
-  ) {}
+@CommandHandler(CreateOrderCommand)
+export class CreateOrderCommandHandler implements ICommandHandler<CreateOrderCommand, void> {
+  constructor(private readonly orderRepository: OrderRepository) {}
 
-  public async createOrder(command: CreateOrderCommand): Promise<void> {
+  public async execute(command: CreateOrderCommand): Promise<void> {
     // create the Aggregate (invariants are validated in the constructor)
     const order = new Order({
       userId: command.userId,
@@ -238,9 +235,29 @@ export class OrderCommandService {
     })
     await this.orderRepository.saveOrder(order)
   }
+}
+```
+
+```typescript
+// application/command/cancel-order-command-handler.ts
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+
+import { TransactionManager } from '@/database/transaction-manager'
+import { CancelOrderCommand } from '@/order/application/command/cancel-order-command'
+import { OrderRepository } from '@/order/domain/order-repository'
+import { PaymentRepository } from '@/order/domain/payment-repository'
+import { OrderErrorMessage as ErrorMessage } from '@/order/order-error-message'
+
+@CommandHandler(CancelOrderCommand)
+export class CancelOrderCommandHandler implements ICommandHandler<CancelOrderCommand> {
+  constructor(
+    private readonly orderRepository: OrderRepository,
+    private readonly paymentRepository: PaymentRepository,
+    private readonly transactionManager: TransactionManager
+  ) {}
 
   // update — fetch → call the Aggregate's domain method → save via a transaction
-  public async cancelOrder(command: CancelOrderCommand): Promise<void> {
+  public async execute(command: CancelOrderCommand): Promise<void> {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
@@ -255,8 +272,22 @@ export class OrderCommandService {
       await this.orderRepository.saveOrder(order)
     })
   }
+}
+```
 
-  public async deleteOrder(command: DeleteOrderCommand): Promise<void> {
+```typescript
+// application/command/delete-order-command-handler.ts
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+
+import { DeleteOrderCommand } from '@/order/application/command/delete-order-command'
+import { OrderRepository } from '@/order/domain/order-repository'
+import { OrderErrorMessage as ErrorMessage } from '@/order/order-error-message'
+
+@CommandHandler(DeleteOrderCommand)
+export class DeleteOrderCommandHandler implements ICommandHandler<DeleteOrderCommand> {
+  constructor(private readonly orderRepository: OrderRepository) {}
+
+  public async execute(command: DeleteOrderCommand): Promise<void> {
     const order = await this.orderRepository
       .findOrders({ orderId: command.orderId, take: 1, page: 0 })
       .then((r) => r.orders.pop())
@@ -281,27 +312,42 @@ export abstract class OrderQuery {
 }
 ```
 
-### Query Service
+### Query Handlers
+
+One `@QueryHandler` class per Query — a thin delegation to the `OrderQuery` abstract class, whose implementation lives in the Infrastructure layer.
 
 ```typescript
-// application/query/order-query-service.ts
-import { Injectable } from '@nestjs/common'
+// application/query/get-orders-query-handler.ts
+import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 
-import { GetOrderResult } from '@/order/application/query/get-order-result'
 import { GetOrdersQuery } from '@/order/application/query/get-orders-query'
 import { GetOrdersResult } from '@/order/application/query/get-orders-result'
 import { OrderQuery } from '@/order/application/query/order-query'
 
-@Injectable()
-export class OrderQueryService {
+@QueryHandler(GetOrdersQuery)
+export class GetOrdersQueryHandler implements IQueryHandler<GetOrdersQuery, GetOrdersResult> {
   constructor(private readonly orderQuery: OrderQuery) {}
 
-  public async getOrders(query: GetOrdersQuery): Promise<GetOrdersResult> {
+  public async execute(query: GetOrdersQuery): Promise<GetOrdersResult> {
     return this.orderQuery.getOrders(query)
   }
+}
+```
 
-  public async getOrder(param: { orderId: string }): Promise<GetOrderResult> {
-    return this.orderQuery.getOrder(param)
+```typescript
+// application/query/get-order-query-handler.ts
+import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
+
+import { GetOrderQuery } from '@/order/application/query/get-order-query'
+import { GetOrderResult } from '@/order/application/query/get-order-result'
+import { OrderQuery } from '@/order/application/query/order-query'
+
+@QueryHandler(GetOrderQuery)
+export class GetOrderQueryHandler implements IQueryHandler<GetOrderQuery, GetOrderResult> {
+  constructor(private readonly orderQuery: OrderQuery) {}
+
+  public async execute(query: GetOrderQuery): Promise<GetOrderResult> {
+    return this.orderQuery.getOrder({ orderId: query.orderId })
   }
 }
 ```
@@ -384,6 +430,10 @@ export class GetOrdersQuery {
   @Min(1)
   @Max(100)
   public readonly take: number
+
+  constructor(query: GetOrdersQuery) {
+    Object.assign(this, query)
+  }
 }
 
 // application/query/get-orders-result.ts
@@ -578,14 +628,18 @@ import {
   ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse,
   ApiOkResponse, ApiOperation, ApiTags
 } from '@nestjs/swagger'
+import { CommandBus, QueryBus } from '@nestjs/cqrs'
 
 import { Authenticated } from '@/auth/authenticated.decorator'
 import { generateErrorResponse } from '@/common/generate-error-response'
 import { LoggingInterceptor } from '@/common/logging.interceptor'
-import { OrderCommandService } from '@/order/application/command/order-command-service'
 import { CancelOrderCommand } from '@/order/application/command/cancel-order-command'
 import { CreateOrderCommand } from '@/order/application/command/create-order-command'
-import { OrderQueryService } from '@/order/application/query/order-query-service'
+import { DeleteOrderCommand } from '@/order/application/command/delete-order-command'
+import { GetOrderQuery } from '@/order/application/query/get-order-query'
+import { GetOrderResult } from '@/order/application/query/get-order-result'
+import { GetOrdersQuery } from '@/order/application/query/get-orders-query'
+import { GetOrdersResult } from '@/order/application/query/get-orders-result'
 import { CancelOrderRequestBody } from '@/order/interface/dto/cancel-order-request-body'
 import { CreateOrderRequestBody } from '@/order/interface/dto/create-order-request-body'
 import { DeleteOrderRequestParam } from '@/order/interface/dto/delete-order-request-param'
@@ -605,8 +659,8 @@ export class OrderController {
   private readonly logger = new Logger(OrderController.name)
 
   constructor(
-    private readonly orderCommandService: OrderCommandService,
-    private readonly orderQueryService: OrderQueryService
+    private readonly commandBus: CommandBus,
+    private readonly queryBus: QueryBus
   ) {}
 
   @Get('/orders')
@@ -615,7 +669,7 @@ export class OrderController {
   public async getOrders(
     @Query() querystring: GetOrdersRequestQuerystring
   ): Promise<GetOrdersResponseBody> {
-    return this.orderQueryService.getOrders(querystring).catch((error) => {
+    return this.queryBus.execute<GetOrdersQuery, GetOrdersResult>(new GetOrdersQuery(querystring)).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [])
     })
@@ -627,7 +681,7 @@ export class OrderController {
   public async getOrder(
     @Param() param: GetOrderRequestParam
   ): Promise<GetOrderResponseBody> {
-    return this.orderQueryService.getOrder(param).catch((error) => {
+    return this.queryBus.execute<GetOrderQuery, GetOrderResult>(new GetOrderQuery(param)).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
         [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
@@ -641,7 +695,7 @@ export class OrderController {
   public async createOrder(
     @Body() body: CreateOrderRequestBody
   ): Promise<void> {
-    return this.orderCommandService.createOrder(new CreateOrderCommand(body)).catch((error) => {
+    return this.commandBus.execute<CreateOrderCommand, void>(new CreateOrderCommand(body)).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [])
     })
@@ -655,7 +709,7 @@ export class OrderController {
     @Param('orderId') orderId: string,
     @Body() body: CancelOrderRequestBody
   ): Promise<void> {
-    return this.orderCommandService.cancelOrder(new CancelOrderCommand({ ...body, orderId })).catch((error) => {
+    return this.commandBus.execute<CancelOrderCommand, void>(new CancelOrderCommand({ ...body, orderId })).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
         [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND],
@@ -672,7 +726,7 @@ export class OrderController {
   public async deleteOrder(
     @Param() param: DeleteOrderRequestParam
   ): Promise<void> {
-    return this.orderCommandService.deleteOrder(param).catch((error) => {
+    return this.commandBus.execute<DeleteOrderCommand, void>(new DeleteOrderCommand(param)).catch((error) => {
       this.logger.error(error)
       throw generateErrorResponse(error.message, [
         [OrderErrorMessage['Order not found.'], NotFoundException, ErrorCode.ORDER_NOT_FOUND]
@@ -694,6 +748,10 @@ export class GetOrderQuery {
   @IsString()
   @MinLength(1)
   public readonly orderId: string
+
+  constructor(query: GetOrderQuery) {
+    Object.assign(this, query)
+  }
 }
 
 // application/command/delete-order-command.ts
@@ -705,6 +763,10 @@ export class DeleteOrderCommand {
   @IsString()
   @MinLength(1)
   public readonly orderId: string
+
+  constructor(command: DeleteOrderCommand) {
+    Object.assign(this, command)
+  }
 }
 ```
 
@@ -765,34 +827,35 @@ Subscribes via `@TaskConsumer` to a Task enqueued by the Scheduler or another se
 ```typescript
 // interface/order-task-controller.ts
 import { Injectable, Logger } from '@nestjs/common'
+import { CommandBus } from '@nestjs/cqrs'
 
-import { OrderCommandService } from '@/order/application/command/order-command-service'
+import { ArchiveOrderCommand } from '@/order/application/command/archive-order-command'
+import { CleanupExpiredOrdersCommand } from '@/order/application/command/cleanup-expired-orders-command'
 import { TaskConsumer } from '@/task-queue/task-consumer.decorator'
 
 @Injectable()
 export class OrderTaskController {
   private readonly logger = new Logger(OrderTaskController.name)
 
-  constructor(private readonly orderCommandService: OrderCommandService) {}
+  constructor(private readonly commandBus: CommandBus) {}
 
-  // an inherently idempotent Task — no options needed
+  // an inherently idempotent Task — cleaning up already-expired orders twice is a no-op
   @TaskConsumer('order.cleanup-expired')
   public async cleanupExpired(): Promise<void> {
-    const count = await this.orderCommandService.cleanupExpiredOrders()
+    const count = await this.commandBus.execute<CleanupExpiredOrdersCommand, number>(new CleanupExpiredOrdersCommand())
     this.logger.log({ message: 'Expired orders cleaned up', cleaned_count: count })
   }
 
-  // a Task that needs protection against per-entity duplicate execution — via the
-  // idempotencyKey option, the framework leaves a ledger entry in TaskExecutionLog for auto-skip
-  // (see scheduling.md for the detailed pattern)
-  @TaskConsumer('order.archive', {
-    idempotencyKey: (payload: { orderId: string }) => `order.archive-${payload.orderId}`
-  })
+  // archiving is state-based — archiving an already-archived order is ignored inside the Aggregate,
+  // so a duplicate SQS delivery is harmless (see the Idempotency section of scheduling.md)
+  @TaskConsumer('order.archive')
   public async archive(payload: { orderId: string }): Promise<void> {
-    await this.orderCommandService.archiveOrder(payload.orderId)
+    await this.commandBus.execute<ArchiveOrderCommand, void>(new ArchiveOrderCommand({ orderId: payload.orderId }))
   }
 }
 ```
+
+Like the HTTP Controller, the Task Controller injects the `CommandBus` and only dispatches Commands — exceptions propagate upward as-is so `TaskQueueConsumer` can route the message to retry/DLQ (never wrap them in `generateErrorResponse`).
 
 ### Scheduler (optional — when a Cron is needed)
 
@@ -833,13 +896,16 @@ export class OrderCleanupScheduler {
 ```typescript
 // order-module.ts
 import { Module } from '@nestjs/common'
-
+import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
-import { AuthService } from '@/auth/auth-service'
-import { OrderCommandService } from '@/order/application/command/order-command-service'
+import { AuthModule } from '@/auth/auth-module'
+import { CancelOrderCommandHandler } from '@/order/application/command/cancel-order-command-handler'
+import { CreateOrderCommandHandler } from '@/order/application/command/create-order-command-handler'
+import { DeleteOrderCommandHandler } from '@/order/application/command/delete-order-command-handler'
+import { GetOrderQueryHandler } from '@/order/application/query/get-order-query-handler'
+import { GetOrdersQueryHandler } from '@/order/application/query/get-orders-query-handler'
 import { OrderQuery } from '@/order/application/query/order-query'
-import { OrderQueryService } from '@/order/application/query/order-query-service'
 import { CryptoService } from '@/order/application/service/crypto-service'
 import { OrderRepository } from '@/order/domain/order-repository'
 import { PaymentRepository } from '@/order/domain/payment-repository'
@@ -854,22 +920,28 @@ import { OrderController } from '@/order/interface/order-controller'
 import { OrderTaskController } from '@/order/interface/order-task-controller'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OrderEntity, OrderItemEntity])],
+  imports: [CqrsModule, TypeOrmModule.forFeature([OrderEntity, OrderItemEntity]), AuthModule],
   controllers: [OrderController],
   providers: [
-    OrderCommandService,
-    OrderQueryService,
+    // Command Handlers
+    CreateOrderCommandHandler,
+    CancelOrderCommandHandler,
+    DeleteOrderCommandHandler,
+    // Query Handlers
+    GetOrderQueryHandler,
+    GetOrdersQueryHandler,
     OrderTaskController,        // Task Controller — has @TaskConsumer methods
     OrderCleanupScheduler,      // Scheduler — enqueues a Task via Cron
     { provide: OrderQuery, useClass: OrderQueryImpl },
     { provide: OrderRepository, useClass: OrderRepositoryImpl },
     { provide: PaymentRepository, useClass: PaymentRepositoryImpl },
-    { provide: CryptoService, useClass: CryptoServiceImpl },
-    AuthService
+    { provide: CryptoService, useClass: CryptoServiceImpl }
   ]
 })
 export class OrderModule {}
 ```
+
+`CqrsModule` provides the `CommandBus`/`QueryBus`, and registering the handler classes in `providers` is what routes each Command/Query to its handler. `AuthModule` supplies the `AuthGuard` dependencies that `@Authenticated()` needs.
 
 ---
 
@@ -885,5 +957,18 @@ export enum OrderErrorMessage {
   'An order must have at least one item.' = 'An order must have at least one item.',
   'The product price must be greater than 0.' = 'The product price must be greater than 0.',
   'The quantity must be greater than 0.' = 'The quantity must be greater than 0.',
+}
+```
+
+## Error Code
+
+The machine-readable counterpart of `order-error-message.ts` — the Controller maps each error message to an HTTP exception + one of these codes via `generateErrorResponse` (see [error-handling.md](architecture/error-handling.md)).
+
+```typescript
+// order-error-code.ts
+export enum OrderErrorCode {
+  ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
+  ORDER_ALREADY_CANCELLED = 'ORDER_ALREADY_CANCELLED',
+  ORDER_PAID_NOT_CANCELLABLE = 'ORDER_PAID_NOT_CANCELLABLE',
 }
 ```

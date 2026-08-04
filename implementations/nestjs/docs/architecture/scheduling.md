@@ -13,7 +13,7 @@ Periodic jobs and batch processing are implemented using an **AWS SQS-based Task
 
 ```
 [Scheduler/CommandService] --(DB insert)--> [task_outbox table]
-                                                  ↓ (Cron polling)
+                                                  ↓ (@Interval polling)
                                           [TaskOutboxRelay] --(SendMessage)--> [SQS]
                                                                                   ↓
                                                                         [TaskQueueConsumer]
@@ -46,7 +46,7 @@ It reuses the same SDK/infrastructure as the existing Outbox → SQS structure. 
   - [`TaskQueue` — Outbox-based Implementation](#taskqueue--outbox-based-implementation)
   - [Scheduler — Cron → TaskQueue](#scheduler--cron--taskqueue)
 - [Module Registration](#module-registration) · [Ad-hoc Task Enqueuing](#ad-hoc-task-enqueuing-inside-a-transaction)
-- Operations / policy: [MessageGroupId Strategy](#messagegroupid-strategy) · [Idempotency](#idempotency) · [Payload Validation](#payload-validation) · [Long-running Tasks and VisibilityTimeout Heartbeats](#long-running-tasks-and-visibilitytimeout-heartbeats)
+- Operations / policy: [MessageGroupId Strategy](#messagegroupid-strategy) · [Idempotency](#idempotency) · [Payload Validation](#payload-validation) · [Optional Extensions](#optional-extensions-not-implemented-in-examples)
 - [Graceful Shutdown](#graceful-shutdown) · [DLQ Monitoring](#dlq-monitoring) · [Testing](#testing) · [Interval / Timeout](#interval--timeout) · [Principles](#principles)
 
 ## Task vs Domain Event
@@ -129,18 +129,12 @@ The shared Task Queue infrastructure (SQS polling/enqueuing, decorator, registry
 
 ```
 src/
-  common/
-    is-unique-violation.ts                   # helper to detect a Postgres unique violation
   task-queue/                                # shared Task Queue infrastructure
     task-queue-module.ts                     # @Global module
     task-queue.ts                            # TaskQueue interface (abstract class)
     task-queue-outbox.ts                     # Outbox-based TaskQueue implementation
     task-outbox.entity.ts                    # task_outbox table Entity
-    task-outbox-relay.ts                     # publishes task_outbox → SQS (Cron polling)
-    task-execution-log.ts                    # TaskExecutionLog interface (abstract)
-    task-execution-log-db.ts                 # DB-based implementation
-    task-execution-log.entity.ts             # task_execution_log table Entity
-    task-execution-log-cleaner.ts            # ledger cleanup (Cron)
+    task-outbox-relay.ts                     # publishes task_outbox → SQS (@Interval polling)
     task-consumer.decorator.ts               # @TaskConsumer decorator
     task-consumer-registry.ts                # taskType → handler routing
     task-queue-consumer.ts                   # SQS polling → registry.dispatch
@@ -161,46 +155,26 @@ Binds a Task type to a method. Handlers are registered in a global Map, and at r
 
 ```typescript
 // src/task-queue/task-consumer.decorator.ts
-export type HeartbeatConfig = {
-  intervalMs: number      // how often ChangeMessageVisibility is called
-  extendSeconds: number   // how long to extend on each call
-}
+const TASK_HANDLER_MAP = new Map<string, { handlerClass: new (...args: unknown[]) => unknown; method: string }>()
 
-type HandlerEntry = {
-  handlerClass: new (...args: unknown[]) => unknown
-  method: string
-  heartbeat?: HeartbeatConfig
-  idempotencyKey?: (payload: any) => string
-}
-
-const TASK_HANDLER_MAP = new Map<string, HandlerEntry>()
-
-export type TaskConsumerOptions = {
-  heartbeat?: HeartbeatConfig
-  idempotencyKey?: (payload: any) => string
-}
-
-export function TaskConsumer(taskType: string, options?: TaskConsumerOptions): MethodDecorator {
+export function TaskConsumer(taskType: string): MethodDecorator {
   return (target, propertyKey) => {
     if (TASK_HANDLER_MAP.has(taskType)) {
       throw new Error(`Duplicate @TaskConsumer for taskType: ${taskType}`)
     }
     TASK_HANDLER_MAP.set(taskType, {
       handlerClass: target.constructor as new (...args: unknown[]) => unknown,
-      method: propertyKey as string,
-      heartbeat: options?.heartbeat,
-      idempotencyKey: options?.idempotencyKey
+      method: propertyKey as string
     })
   }
 }
 
-export function getTaskHandler(taskType: string): HandlerEntry | undefined {
+export function getTaskHandler(taskType: string): { handlerClass: new (...args: unknown[]) => unknown; method: string } | undefined {
   return TASK_HANDLER_MAP.get(taskType)
 }
 ```
 
-- **`heartbeat` option (optional)**: for long-running Tasks only, specifying `{ intervalMs, extendSeconds }` makes `TaskQueueConsumer` periodically call `ChangeMessageVisibility` while processing. See [Long-running Tasks and VisibilityTimeout Heartbeats](#long-running-tasks-and-visibilitytimeout-heartbeats) below for details.
-- **`idempotencyKey` option (optional)**: specifying a function that extracts a unique key from the payload makes `TaskConsumerRegistry` **block duplicate execution at the framework level using `TaskExecutionLog`** before dispatch. The Task Controller doesn't need to write any ledger code. See [Idempotency](#idempotency) for details.
+- **The decorator takes only the `taskType`**: idempotency is designed into the Command itself (see [Idempotency](#idempotency)), and framework-level extensions such as an execution ledger or a visibility-timeout heartbeat are described as design sketches in [Optional Extensions](#optional-extensions-not-implemented-in-examples).
 - **`taskType` is globally unique**: exactly one handler must run per Task. Duplicate registration fails immediately at bootstrap.
 - **Registration happens at class evaluation time (import time)**: the decorator adds an entry to `TASK_HANDLER_MAP` when the file is imported and the class body is evaluated. So the **Task Controller must be registered in some module's `providers`** so that the file gets imported during module loading and the decorator fires. If it's not in providers, the class file itself never loads, and `TaskQueueConsumer` won't be able to find that `taskType`.
 
@@ -210,43 +184,19 @@ Finds and calls the Task Controller method mapped to a `taskType`.
 
 ```typescript
 // src/task-queue/task-consumer-registry.ts
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 
-import { HeartbeatConfig, getTaskHandler } from './task-consumer.decorator'
-import { TaskExecutionLog } from './task-execution-log'
+import { getTaskHandler } from './task-consumer.decorator'
 
 @Injectable()
 export class TaskConsumerRegistry {
-  private readonly logger = new Logger(TaskConsumerRegistry.name)
-
-  constructor(
-    private readonly moduleRef: ModuleRef,
-    private readonly executionLog: TaskExecutionLog
-  ) {}
-
-  public getHeartbeat(taskType: string): HeartbeatConfig | undefined {
-    return getTaskHandler(taskType)?.heartbeat
-  }
+  constructor(private readonly moduleRef: ModuleRef) {}
 
   public async dispatch(taskType: string, payload: object): Promise<void> {
     const entry = getTaskHandler(taskType)
     if (!entry) {
       throw new Error(`No @TaskConsumer registered for taskType: ${taskType}`)
-    }
-
-    // Framework-level idempotency (only when the idempotencyKey option is set)
-    if (entry.idempotencyKey) {
-      const key = entry.idempotencyKey(payload)
-      const result = await this.executionLog.recordOnce(key, taskType)
-      if (result === 'already-executed') {
-        this.logger.log({
-          message: 'Duplicate receipt — already recorded in the ledger, skipping',
-          task_type: taskType,
-          idempotency_key: key
-        })
-        return   // return normally → the Consumer deletes the message
-      }
     }
 
     const handler = this.moduleRef.get(entry.handlerClass, { strict: false })
@@ -255,8 +205,8 @@ export class TaskConsumerRegistry {
 }
 ```
 
-- **The ledger is recorded right before dispatch (record-before-execute)**: for a Task with `idempotencyKey` set, an insert into the ledger is attempted **before the handler is called**. Even if the handler subsequently fails, the ledger entry remains, so a retry gets skipped as `already-executed`. If you need atomicity between handler success/failure and the ledger, see [Strong Atomicity (Level 3)](#strong-atomicity-level-3--a-rare-case).
-- **Tasks that don't need the ledger**: a Task that is inherently idempotent (e.g. the `cleanup-expired` batch, which only "archives records that are already in an expired state," so running it multiple times produces the same result) doesn't need `idempotencyKey`. This saves the ledger-table cost.
+- **The registry keeps no execution ledger**: every Task in `examples/` is designed with state-based inherent idempotency (Level 1 in [Idempotency](#idempotency)), so duplicate receipt is harmless without any bookkeeping. If a Task with significant side effects is added, a ledger (Level 2) can be layered on at this dispatch point — see [Optional Extensions](#optional-extensions-not-implemented-in-examples).
+- **`ModuleRef.get(..., { strict: false })` resolves the handler instance**: the Task Controller must be registered in its own domain module's `providers` for this lookup to succeed (see [Module Registration](#module-registration)).
 
 ## `TaskQueueConsumer` — SQS Polling
 
@@ -264,110 +214,81 @@ Receives messages from SQS and delegates to `TaskConsumerRegistry`. A shared Inf
 
 ```typescript
 // src/task-queue/task-queue-consumer.ts
-import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
-import {
-  ChangeMessageVisibilityCommand,
-  DeleteMessageCommand,
-  ReceiveMessageCommand,
-  SQSClient
-} from '@aws-sdk/client-sqs'
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { DeleteMessageCommand, Message, ReceiveMessageCommand, SQSClient } from '@aws-sdk/client-sqs'
 
-import { HeartbeatConfig } from './task-consumer.decorator'
+import { getTaskQueueUrl } from '@/config/aws.config'
+import { SQS_CLIENT } from '@/outbox/sqs-client-provider'
+
 import { TaskConsumerRegistry } from './task-consumer-registry'
 
 @Injectable()
-export class TaskQueueConsumer implements OnModuleInit, OnApplicationShutdown {
+export class TaskQueueConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TaskQueueConsumer.name)
-  private readonly sqs = new SQSClient({
-    ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {})
-  })
-  private readonly queueUrl = process.env.SQS_TASK_QUEUE_URL!
-  private running = true
-  private pollPromise: Promise<void> = Promise.resolve()
+  private running = false
 
-  constructor(private readonly registry: TaskConsumerRegistry) {}
+  constructor(
+    private readonly registry: TaskConsumerRegistry,
+    @Inject(SQS_CLIENT) private readonly sqs: SQSClient
+  ) {}
 
   public onModuleInit(): void {
-    this.pollPromise = this.poll()
+    this.running = true
+    void this.pollLoop()
   }
 
-  public async onApplicationShutdown(): Promise<void> {
+  public onModuleDestroy(): void {
     this.running = false
-    await this.pollPromise  // wait for in-flight Task processing to finish
   }
 
-  private async poll(): Promise<void> {
+  private async pollLoop(): Promise<void> {
+    const queueUrl = getTaskQueueUrl()
     while (this.running) {
       try {
         const result = await this.sqs.send(new ReceiveMessageCommand({
-          QueueUrl: this.queueUrl,
-          MaxNumberOfMessages: 10,  // batch receive to improve throughput (max 10)
-          WaitTimeSeconds: 20,      // long polling — reduces SQS API call cost
-          VisibilityTimeout: 300    // set generously above the longest Task's max processing time
+          QueueUrl: queueUrl,
+          MaxNumberOfMessages: 10,
+          MessageAttributeNames: ['taskType'],
+          WaitTimeSeconds: 5
         }))
 
         for (const message of result.Messages ?? []) {
-          const messageId = message.MessageId
-          try {
-            const { taskType, payload } = JSON.parse(message.Body ?? '{}')
-            this.logger.log({ message: 'Task started', message_id: messageId, task_type: taskType })
-
-            const heartbeat = this.registry.getHeartbeat(taskType)
-            const run = (): Promise<void> => this.registry.dispatch(taskType, payload ?? {})
-
-            if (heartbeat) {
-              await this.withHeartbeat(message.ReceiptHandle!, heartbeat, run)
-            } else {
-              await run()
-            }
-
-            await this.sqs.send(new DeleteMessageCommand({
-              QueueUrl: this.queueUrl,
-              ReceiptHandle: message.ReceiptHandle!
-            }))
-            this.logger.log({ message: 'Task completed', message_id: messageId, task_type: taskType })
-          } catch (error) {
-            this.logger.error({
-              message: 'Task failed — will be re-received after the visibility timeout elapses',
-              message_id: messageId,
-              error
-            })
-            // don't delete → gets re-received; moves to DLQ once maxReceiveCount is exceeded
-          }
+          await this.handleMessage(queueUrl, message)
         }
       } catch (error) {
-        this.logger.error({ message: 'Failed to receive from SQS', error })
-        await new Promise((resolve) => setTimeout(resolve, 3000))
+        this.logger.error({ message: 'Failed to receive from Task queue', error })
+        await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     }
   }
 
-  private async withHeartbeat(
-    receiptHandle: string,
-    config: HeartbeatConfig,
-    task: () => Promise<void>
-  ): Promise<void> {
-    const timer = setInterval(() => {
-      void this.sqs.send(new ChangeMessageVisibilityCommand({
-        QueueUrl: this.queueUrl,
-        ReceiptHandle: receiptHandle,
-        VisibilityTimeout: config.extendSeconds
-      })).catch((error) => this.logger.warn({ message: 'Heartbeat failed', error }))
-    }, config.intervalMs)
-
+  private async handleMessage(queueUrl: string, message: Message): Promise<void> {
+    const taskType = message.MessageAttributes?.taskType?.StringValue
     try {
-      await task()
-    } finally {
-      clearInterval(timer)
+      if (!taskType) throw new Error('The taskType message attribute is missing.')
+      this.logger.log({ message: 'Task started', message_id: message.MessageId, task_type: taskType })
+      await this.registry.dispatch(taskType, JSON.parse(message.Body ?? '{}'))
+      await this.sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle! }))
+      this.logger.log({ message: 'Task completed', message_id: message.MessageId, task_type: taskType })
+    } catch (error) {
+      this.logger.error({
+        message: 'Task failed — will be re-received after the visibility timeout elapses',
+        message_id: message.MessageId,
+        task_type: taskType,
+        error
+      })
+      // Don't delete — it's re-received and retried after the visibility timeout.
     }
   }
 }
 ```
 
 - **Message deletion only on success**: if an exception occurs, the message isn't deleted, so it's automatically re-received after the visibility timeout elapses → moves to the DLQ once `maxReceiveCount` is exceeded.
-- **Graceful Shutdown awaits `pollPromise`**: if `onApplicationShutdown` doesn't wait for the loop to end, NestJS will terminate the app and cut off an in-flight Task midway. As in the implementation above, you must store `pollPromise` and await it during shutdown. If shutdown delay is a concern, apply the [Long-running Tasks and VisibilityTimeout Heartbeats](#long-running-tasks-and-visibilitytimeout-heartbeats) pattern below for long-running Tasks.
+- **The SQS client is the shared `SQS_CLIENT` provider**: exported by the outbox module (`src/outbox/sqs-client-provider.ts`) — the Task queue and the Domain Event queue are separate queues, but they reuse the same SDK connection. The queue URL comes from `getTaskQueueUrl()` in `src/config/aws.config.ts`, not from a direct `process.env` read.
+- **`taskType` travels as an SQS message attribute**: the Relay sets a `taskType` MessageAttribute, and the Consumer requests it via `MessageAttributeNames` and routes on it. The message body is the raw payload JSON.
+- **Shutdown stops the loop via `onModuleDestroy`**: setting `running = false` prevents any further `ReceiveMessage` round trip. A message that was in flight and not yet deleted is simply re-received by another instance after the visibility timeout — at-least-once semantics cover the shutdown path (see [Graceful Shutdown](#graceful-shutdown)).
 - **`MaxNumberOfMessages` can batch-receive up to 10**: leaving it at 1 means one round trip per message, which is low throughput. Parallelism is tuned via instance count × batch size.
-- Set `VisibilityTimeout` generously above the longest Task's max processing time.
+- Set the queue's `VisibilityTimeout` generously above the longest Task's max processing time.
 - **The Task Controller is in NestJS's default Singleton scope**: the current Consumer implementation processes messages within a batch sequentially in a `for` loop, so a single Task Controller instance handles only one message at a time. To prepare for a future switch to parallel dispatch, **don't keep shared mutable state (accumulating instance fields, static variables, etc.) in Task Controller methods**. Same statelessness principle as the HTTP Controller.
 
 ## `TaskController` — Executing Commands with `@TaskConsumer` Methods (Interface Layer)
@@ -388,17 +309,15 @@ export class OrderTaskController {
 
   constructor(private readonly orderCommandService: OrderCommandService) {}
 
-  // an inherently idempotent Task — no idempotencyKey needed
+  // an inherently idempotent Task — cleaning up already-expired orders twice is a no-op
   @TaskConsumer('order.cleanup-expired')
   public async cleanupExpired(): Promise<void> {
     const count = await this.orderCommandService.cleanupExpiredOrders()
     this.logger.log({ message: 'Expired orders cleaned up', cleaned_count: count })
   }
 
-  // a Task that needs protection against per-entity duplicate execution — idempotencyKey specified
-  @TaskConsumer('order.archive', {
-    idempotencyKey: (payload: ArchiveOrderCommand) => `order.archive-${payload.orderId}`
-  })
+  // archiving is state-based — archiving an already-archived order is ignored internally
+  @TaskConsumer('order.archive')
   public async archive(payload: ArchiveOrderCommand): Promise<void> {
     await this.orderCommandService.archiveOrder(payload)
   }
@@ -406,8 +325,8 @@ export class OrderTaskController {
 ```
 
 - **Delegates the Command with no logic**: the Task Controller only calls the CommandService's Command method. Don't put conditional branching or business rules here. Same role as the HTTP Controller.
-- **Idempotency is a decorator option**: don't write ledger code directly inside the Task Controller. Specifying `@TaskConsumer`'s `idempotencyKey` option makes `TaskConsumerRegistry` block duplicates via `TaskExecutionLog` before dispatch.
-- **No direct DB injection**: don't inject `DataSource`/`Repository<Entity>` into the Task Controller. The Interface layer depends only on the CommandService. Shared concerns (ledger, heartbeat) are handled by the task-queue framework.
+- **Idempotency lives in the Command, not the Task Controller**: design the Command so that running it twice produces the same result (see [Idempotency](#idempotency)). Don't write dedup bookkeeping inside the Task Controller.
+- **No direct DB injection**: don't inject `DataSource`/`Repository<Entity>` into the Task Controller. The Interface layer depends only on the CommandService.
 - **The payload type is stated in the method signature**: makes the calling contract clear. Add runtime validation with class-validator if needed (see [Payload Validation](#payload-validation) below).
 - **Apply the Interface DTO rule**: use the Application's Command class directly as the payload type, or `extends` it as an Interface DTO thin wrapper if needed. (Same approach as the HTTP RequestBody — see [layer-architecture.md](./layer-architecture.md#interface-dto).)
 - **Error handling differs from the HTTP Controller**: the HTTP Controller's `.catch(error => { logger.error; throw generateErrorResponse(...) })` pattern is **not** used. The Task Controller **throws the exception upward as-is** — `TaskQueueConsumer` catches it and doesn't delete the message, following the visibility-timeout re-receive/retry → DLQ path. Wrapping it in `.catch` swallows the exception, causing the message to be deleted normally and the failure to be lost.
@@ -443,9 +362,9 @@ The Scheduler (Cron) uses the same path too. Enqueuing at Cron time isn't within
 ```typescript
 // src/task-queue/task-queue.ts
 export type EnqueueOptions = {
-  groupId: string
-  deduplicationId: string
-  delaySeconds?: number  // up to 900 seconds of delay possible
+  readonly groupId: string
+  readonly deduplicationId: string
+  readonly delaySeconds?: number
 }
 
 export abstract class TaskQueue {
@@ -453,25 +372,25 @@ export abstract class TaskQueue {
 }
 ```
 
+`delaySeconds` maps to SQS `DelaySeconds` (up to 900 seconds of delay).
+
 ### `task_outbox` Entity
 
 ```typescript
 // src/task-queue/task-outbox.entity.ts
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm'
-
-import { BaseEntity } from '@/database/base.entity'
+import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm'
 
 @Entity('task_outbox')
 @Index(['processed', 'createdAt'])
-export class TaskOutboxEntity extends BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
+export class TaskOutboxEntity {
+  @PrimaryColumn({ type: 'char', length: 32 })
   taskId: string
 
   @Column()
   taskType: string
 
-  @Column('jsonb')
-  payload: object
+  @Column('text')
+  payload: string
 
   @Column()
   groupId: string
@@ -484,8 +403,15 @@ export class TaskOutboxEntity extends BaseEntity {
 
   @Column({ default: false })
   processed: boolean
+
+  @CreateDateColumn()
+  createdAt: Date
 }
 ```
+
+- **The primary key is a `char(32)` ID assigned by the producer** (`generateId()`), following the same rule as Aggregate IDs — no `@PrimaryGeneratedColumn` (see [aggregate-id.md](./aggregate-id.md)).
+- **The payload is a serialized `text` column**: `TaskQueueOutbox.enqueue` stores `JSON.stringify(payload)`, and the Relay puts the string on SQS as the message body unchanged.
+- **It doesn't extend `BaseEntity`**: an outbox row is framework bookkeeping, not a soft-deletable domain record — only `createdAt` is kept for ordering and index locality.
 
 ### Outbox-based `TaskQueue` implementation
 
@@ -495,6 +421,7 @@ Injects `TransactionManager` and participates in the current transaction context
 // src/task-queue/task-queue-outbox.ts
 import { Injectable } from '@nestjs/common'
 
+import { generateId } from '@/common/generate-id'
 import { TransactionManager } from '@/database/transaction-manager'
 
 import { EnqueueOptions, TaskQueue } from './task-queue'
@@ -508,9 +435,10 @@ export class TaskQueueOutbox extends TaskQueue {
 
   public async enqueue(taskType: string, payload: object, options: EnqueueOptions): Promise<void> {
     const manager = this.transactionManager.getManager()
-    await manager.save(TaskOutboxEntity, {
+    await manager.insert(TaskOutboxEntity, {
+      taskId: generateId(),
       taskType,
-      payload,
+      payload: JSON.stringify(payload),
       groupId: options.groupId,
       deduplicationId: options.deduplicationId,
       delaySeconds: options.delaySeconds ?? null,
@@ -526,59 +454,76 @@ Polls `task_outbox` on a short cycle and sends unpublished rows to SQS. The same
 
 ```typescript
 // src/task-queue/task-outbox-relay.ts
-import { Injectable, Logger } from '@nestjs/common'
-import { Cron } from '@nestjs/schedule'
+import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Interval } from '@nestjs/schedule'
 import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs'
-import { DataSource, LessThan } from 'typeorm'
+
+import { TransactionManager } from '@/database/transaction-manager'
+import { getTaskQueueUrl } from '@/config/aws.config'
+import { SQS_CLIENT } from '@/outbox/sqs-client-provider'
 
 import { TaskOutboxEntity } from './task-outbox.entity'
 
 @Injectable()
 export class TaskOutboxRelay {
   private readonly logger = new Logger(TaskOutboxRelay.name)
-  private readonly sqs = new SQSClient({
-    ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {})
-  })
-  private readonly queueUrl = process.env.SQS_TASK_QUEUE_URL!
+  private isPolling = false
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly transactionManager: TransactionManager,
+    @Inject(SQS_CLIENT) private readonly sqs: SQSClient
+  ) {}
 
-  @Cron('*/3 * * * * *')  // poll every 3 seconds
+  @Interval(3000)
   public async relay(): Promise<void> {
-    const repo = this.dataSource.getRepository(TaskOutboxEntity)
-    const rows = await repo.find({
+    if (this.isPolling) return
+    this.isPolling = true
+    try {
+      await this.drainOnce()
+    } catch (error) {
+      this.logger.error({ message: 'Task Outbox polling failed', error })
+    } finally {
+      this.isPolling = false
+    }
+  }
+
+  private async drainOnce(): Promise<void> {
+    const manager = this.transactionManager.getManager()
+    const rows = await manager.find(TaskOutboxEntity, {
       where: { processed: false },
       order: { createdAt: 'ASC' },
       take: 100
     })
+    if (rows.length === 0) return
 
+    const queueUrl = getTaskQueueUrl()
     for (const row of rows) {
       try {
         await this.sqs.send(new SendMessageCommand({
-          QueueUrl: this.queueUrl,
-          MessageBody: JSON.stringify({ taskType: row.taskType, payload: row.payload }),
+          QueueUrl: queueUrl,
+          MessageBody: row.payload,
+          MessageAttributes: {
+            taskType: { DataType: 'String', StringValue: row.taskType }
+          },
           MessageGroupId: row.groupId,
           MessageDeduplicationId: row.deduplicationId,
           ...(row.delaySeconds !== null ? { DelaySeconds: row.delaySeconds } : {})
         }))
-        await repo.update({ taskId: row.taskId }, { processed: true })
+        await manager.update(TaskOutboxEntity, { taskId: row.taskId }, { processed: true })
       } catch (error) {
-        this.logger.error({ message: 'Failed to publish to SQS', task_id: row.taskId, error })
+        // Leave a publish-failed row as processed=false so it retries on the next tick.
+        this.logger.error({ message: 'Failed to publish Task to SQS', task_type: row.taskType, task_id: row.taskId, error })
       }
     }
-  }
-
-  @Cron('0 3 * * *')  // every day at 03:00 — clean up rows that have been published
-  public async cleanup(): Promise<void> {
-    const repo = this.dataSource.getRepository(TaskOutboxEntity)
-    const threshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    await repo.delete({ processed: true, createdAt: LessThan(threshold) })
   }
 }
 ```
 
-- **Duplicate enqueuing across multiple instances**: even if the Cron fires simultaneously on multiple instances, as long as `deduplicationId` is the same, SQS FIFO's 5-minute dedup window ensures only one message actually enters the queue. Multiple rows may be created in `task_outbox`, but even if the Relay sends each one, they get filtered out at the SQS level.
+- **`@Interval(3000)` + a re-entrancy flag**: the tick fires every 3 seconds regardless of whether the previous drain finished, so `isPolling` guards against overlapping drains within one instance.
+- **The `taskType` goes into an SQS MessageAttribute** and the stored payload string becomes the message body as-is — the exact shape `TaskQueueConsumer` reads back.
+- **Duplicate enqueuing across multiple instances**: even if the tick fires simultaneously on multiple instances, as long as `deduplicationId` is the same, SQS FIFO's 5-minute dedup window ensures only one message actually enters the queue. Multiple rows may be created in `task_outbox`, but even if the Relay sends each one, they get filtered out at the SQS level.
 - **Publish failures are retried on the next poll**: since the `processed` flag wasn't flipped, it's naturally reprocessed.
+- **Published rows accumulate as `processed=true`**: a retention cleanup batch (e.g. deleting week-old processed rows on a daily schedule) is an operational extension worth adding before the table grows large — see [Optional Extensions](#optional-extensions-not-implemented-in-examples).
 
 ### Relay multi-instance race — limitations and mitigations
 
@@ -591,7 +536,7 @@ Mitigation strategies — choose based on your situation:
 
 | Method | Description | Trade-off |
 |------|------|--------------|
-| **Consumer-side idempotency** (default) | The last line of defense. Apply the ledger pattern from the [Idempotency](#idempotency) section above to every important Task | Always required |
+| **Consumer-side idempotency** (default) | The last line of defense. Design every important Task per the [Idempotency](#idempotency) section — inherent idempotency, or a ledger extension for side-effecting Tasks | Always required |
 | **`SELECT ... FOR UPDATE SKIP LOCKED`** | The Relay atomically claims a row — when running concurrently, only one instance processes a given row | Slightly more code complexity |
 | **Leader election** | Run the Relay on only a single instance (e.g. via a Redis distributed lock) | SPOF risk, extra infrastructure |
 
@@ -679,11 +624,9 @@ Register a single shared Task Queue module, and register the Task Controller in 
 import { Global, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
+import { OutboxModule } from '@/outbox/outbox-module'
+
 import { TaskConsumerRegistry } from './task-consumer-registry'
-import { TaskExecutionLog } from './task-execution-log'
-import { TaskExecutionLogDb } from './task-execution-log-db'
-import { TaskExecutionLogCleaner } from './task-execution-log-cleaner'
-import { TaskExecutionLogEntity } from './task-execution-log.entity'
 import { TaskOutboxEntity } from './task-outbox.entity'
 import { TaskOutboxRelay } from './task-outbox-relay'
 import { TaskQueue } from './task-queue'
@@ -692,19 +635,19 @@ import { TaskQueueOutbox } from './task-queue-outbox'
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([TaskOutboxEntity, TaskExecutionLogEntity])],
+  imports: [TypeOrmModule.forFeature([TaskOutboxEntity]), OutboxModule],
   providers: [
     TaskConsumerRegistry,
     TaskQueueConsumer,
     TaskOutboxRelay,
-    TaskExecutionLogCleaner,
-    { provide: TaskQueue, useClass: TaskQueueOutbox },
-    { provide: TaskExecutionLog, useClass: TaskExecutionLogDb }
+    { provide: TaskQueue, useClass: TaskQueueOutbox }
   ],
-  exports: [TaskQueue, TaskExecutionLog]
+  exports: [TaskQueue]
 })
 export class TaskQueueModule {}
 ```
+
+`OutboxModule` is imported to reuse its exported `SQS_CLIENT` (the same SDK connection). It's already `@Global` so injection would work even without the explicit import, but stating it makes the dependency visible in the code.
 
 ```typescript
 // src/order/order-module.ts
@@ -798,169 +741,13 @@ public async cleanupExpiredOrders(): Promise<number> {
 
 → The Task Controller is `@TaskConsumer('order.cleanup-expired')` — **no options**. The lightest tier.
 
-### Framework-level ledger (Level 2 · generally recommended)
+### Execution ledger (Levels 2–3 · a design sketch, not implemented in `examples/`)
 
-For a Task that must block per-entity duplicate execution (side-effecting work such as re-charging or calling an external API), use the **`idempotencyKey` option of `@TaskConsumer`** to leave a ledger entry in `TaskExecutionLog`. `TaskConsumerRegistry` attempts to insert into the ledger **right before** dispatch, and if an entry already exists, it returns `'already-executed'` → the method call is skipped → the Consumer deletes the message normally.
+Every Task in `examples/` is inherently idempotent, so the codebase stops at Level 1 — there is no execution-ledger table or framework hook in `src/task-queue/`. If you add a Task with significant side effects (re-charging money, calling an external API), extend the design along these lines:
 
-```typescript
-@TaskConsumer('order.archive', {
-  idempotencyKey: (payload: ArchiveOrderCommand) => `order.archive-${payload.orderId}`
-})
-public async archive(payload: ArchiveOrderCommand): Promise<void> {
-  await this.orderCommandService.archiveOrder(payload)
-}
-```
-
-- Declare the payload type as the Application's Command class (`ArchiveOrderCommand`) to make the calling contract explicit. Pass the Command object through as-is when calling the Service — the same pattern as the HTTP Controller's `new CommandClass(body)` → Service call.
-- **The payload is only a type hint — at runtime it's a plain object**: since it's the result of `JSON.parse`ing the SQS message body, **you cannot use the Command class's instance methods (getters, `equals()`, etc.)**. Only field access is possible. If you need to call methods or validate with validator decorators, apply the `plainToInstance(Command, payload)` pattern in [Payload Validation](#payload-validation).
-- The Task Controller code stays as concise as tier 1. The framework handles the ledger logic.
-- **The semantics are "record-before-execute"**: even if the handler fails, the ledger entry remains, so a retry gets skipped. In other words, **"remembered as attempted once, regardless of success"**. Sufficient for most practical cases.
-- **Exceptions in the `idempotencyKey` function itself**: if it throws while generating the key, the exception propagates from dispatch → the message isn't deleted → re-received → DLQ. Keep the key-generation logic simple, accessing only payload fields.
-
-### Strong atomicity (Level 3 · a rare case)
-
-If you need the strict atomicity guarantee that "the ledger entry only persists if the handler succeeds" (a rare case), have the Task Controller inject `TaskExecutionLog` **directly and call it inside `transactionManager.run`**. Do **not** specify the framework's `idempotencyKey` in this case (specifying it would double-check).
-
-```typescript
-@Injectable()
-export class OrderChargeTaskController {
-  constructor(
-    private readonly orderCommandService: OrderCommandService,
-    private readonly transactionManager: TransactionManager,
-    private readonly executionLog: TaskExecutionLog
-  ) {}
-
-  @TaskConsumer('order.charge')
-  public async charge(payload: ChargeOrderCommand): Promise<void> {
-    await this.transactionManager.run(async () => {
-      const result = await this.executionLog.recordOnce(`order.charge-${payload.orderId}`)
-      if (result === 'already-executed') return
-      await this.orderCommandService.chargeOrder(payload)
-    })
-  }
-}
-```
-
-- **The mechanism by which the ledger and the Command participate in the same transaction**: because `TaskExecutionLogDb.recordOnce()` internally uses `TransactionManager.getManager()`, it **automatically participates** in the transaction context opened by the outer `transactionManager.run(...)`. If the Command fails and rolls back, the ledger insert rolls back with it, so a retry is processed correctly again (true "exactly-once-on-success").
-- **Transaction safety on duplicate receipt**: because `recordOnce()` uses `INSERT ... ON CONFLICT DO NOTHING`, the transaction doesn't abort even when it returns `'already-executed'`. It early-exits via `return`, and the outer `transactionManager.run` commits as-is (a no-op commit). See the note under [`TaskExecutionLog` Interface + Implementation](#taskexecutionlog-interface--implementation) for why a try/catch-unique-violation approach is risky here.
-- **`recordOnce`'s 2nd argument (taskType) is optional**: it's just for logging, and is only passed when called via the Registry's framework path. It can be omitted when called directly from a Task Controller (see the example) — avoiding redundantly re-stating information the decorator already has.
-- Downside: the Task Controller injects `TaskExecutionLog` + `TransactionManager` directly, adding more code. Use tier 3 only in a limited way, for Tasks involving money such as payments or external transactions.
-
-### Entity / Helpers (Framework Internals)
-
-**Internal infrastructure code** of the task-queue module (Entity, Relay, Cleaner, etc.) may inject/use `DataSource` directly. The "no direct DB access from the Task Controller" principle applies only to the domain Interface layer — the task-queue framework itself is a technical component that directly handles DB, Cron, and SQS infrastructure.
-
-```typescript
-// src/task-queue/task-execution-log.entity.ts
-import { Column, Entity, Index, PrimaryColumn } from 'typeorm'
-
-// the ledger is suited only for hard delete, so it doesn't extend BaseEntity (which includes softDelete)
-@Entity('task_execution_log')
-@Index(['executedAt'])
-export class TaskExecutionLogEntity {
-  @PrimaryColumn()
-  taskId: string
-
-  @Column({ nullable: true })
-  taskType: string | null   // for logging purposes — null if absent
-
-  @Column()
-  executedAt: Date
-}
-```
-
-```typescript
-// src/common/is-unique-violation.ts
-import { QueryFailedError } from 'typeorm'
-
-// Postgres unique_violation = SQLSTATE 23505
-export function isUniqueViolation(error: unknown): boolean {
-  return (
-    error instanceof QueryFailedError
-    && (error.driverError as { code?: string } | undefined)?.code === '23505'
-  )
-}
-```
-
-### `TaskExecutionLog` Interface + Implementation
-
-Injected and used by `TaskConsumerRegistry` (tier 2), and in rare cases may also be injected directly by a Task Controller (tier 3). The `taskType` parameter is used only for logging, so it's optional.
-
-```typescript
-// src/task-queue/task-execution-log.ts
-export type RecordResult = 'recorded' | 'already-executed'
-
-export abstract class TaskExecutionLog {
-  abstract recordOnce(taskId: string, taskType?: string): Promise<RecordResult>
-}
-```
-
-```typescript
-// src/task-queue/task-execution-log-db.ts
-import { Injectable } from '@nestjs/common'
-
-import { TransactionManager } from '@/database/transaction-manager'
-
-import { RecordResult, TaskExecutionLog } from './task-execution-log'
-import { TaskExecutionLogEntity } from './task-execution-log.entity'
-
-@Injectable()
-export class TaskExecutionLogDb extends TaskExecutionLog {
-  constructor(private readonly transactionManager: TransactionManager) {
-    super()
-  }
-
-  public async recordOnce(taskId: string, taskType?: string): Promise<RecordResult> {
-    const manager = this.transactionManager.getManager()
-    // INSERT ... ON CONFLICT DO NOTHING — used instead of a try/catch unique violation.
-    // Because Postgres puts the whole transaction into an aborted state when an error
-    // occurs within it, in the tier-3 (strong atomicity) pattern where an outer
-    // transaction exists, a try/catch approach would make subsequent queries and the
-    // commit fail with SQLSTATE 25P02.
-    // `.orIgnore()` never throws an exception, so it's safe in any context.
-    const result = await manager
-      .createQueryBuilder()
-      .insert()
-      .into(TaskExecutionLogEntity)
-      .values({ taskId, taskType: taskType ?? null, executedAt: new Date() })
-      .orIgnore()
-      .execute()
-    return (result.identifiers?.length ?? 0) > 0 ? 'recorded' : 'already-executed'
-  }
-}
-```
-
-- **Why the UPSERT pattern was chosen**: the `try { INSERT } catch (isUniqueViolation) { ... }` approach isn't used — because in Postgres, a unique violation puts **the current transaction into an aborted state** (SQLSTATE 25P02). If `recordOnce()` is called inside `transactionManager.run(...)` as in the tier-3 strong-atomicity pattern, after returning `'already-executed'`, all subsequent work and the commit would fail with "current transaction is aborted." `.orIgnore()` (`ON CONFLICT DO NOTHING`) **doesn't throw an exception** and silently ignores the conflicting row, so it's safe in any transaction context.
-- The `isUniqueViolation` helper is still kept because it remains useful outside the ledger (e.g. handling a `task_outbox.deduplicationId` UNIQUE violation).
-
-### Ledger cleanup
-
-`task_execution_log` grows indefinitely if left unattended. A retention period of **`maxReceiveCount × VisibilityTimeout` plus some margin** is enough (the maximum period during which the same message could be redelivered). A 30-day retention is usually generous enough.
-
-```typescript
-// src/task-queue/task-execution-log-cleaner.ts
-import { Injectable, Logger } from '@nestjs/common'
-import { Cron } from '@nestjs/schedule'
-import { DataSource, LessThan } from 'typeorm'
-
-import { TaskExecutionLogEntity } from './task-execution-log.entity'
-
-@Injectable()
-export class TaskExecutionLogCleaner {
-  private readonly logger = new Logger(TaskExecutionLogCleaner.name)
-
-  constructor(private readonly dataSource: DataSource) {}
-
-  @Cron('0 4 * * *')  // every day at 04:00
-  public async cleanup(): Promise<void> {
-    const threshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    const result = await this.dataSource
-      .getRepository(TaskExecutionLogEntity)
-      .delete({ executedAt: LessThan(threshold) })
-    this.logger.log({ message: 'ledger cleanup', deleted: result.affected ?? 0 })
-  }
-}
-```
+- **Level 2 — framework ledger**: keep a dedup table keyed by an idempotency key derived from the payload (e.g. `order.archive-<orderId>`). `TaskConsumerRegistry.dispatch` inserts into the ledger with `INSERT ... ON CONFLICT DO NOTHING` right before calling the handler and skips the call when the key already exists ("record-before-execute" — a retry after a handler failure is also skipped, which is acceptable for most cases). Prefer `ON CONFLICT DO NOTHING` over catching a unique-violation error: a unique violation aborts the surrounding Postgres transaction (SQLSTATE 25P02), which breaks any caller that holds one open.
+- **Level 3 — strong atomicity**: when the guarantee must be "the ledger entry persists only if the handler succeeds," run the ledger insert and the Command inside the same `TransactionManager.run(...)` scope so they commit or roll back together (true exactly-once-on-success).
+- **Ledger retention**: such a table grows indefinitely — plan a cleanup batch with a retention comfortably above `maxReceiveCount × VisibilityTimeout` (30 days is usually generous).
 
 ## Payload Validation
 
@@ -990,54 +777,27 @@ A single SQS message is **256KB max**. Large payloads (large file contents, bulk
 
 - **Put only small metadata in the payload**: something like `{ orderId: 'o1', itemIds: ['i1', 'i2'] }`.
 - **Offload large data to S3** and put only the key: `{ orderId: 'o1', payloadS3Key: 'tasks/abc.json' }`. The Task Controller fetches it back from S3 to process it.
-- The `jsonb` column of `task_outbox.payload` itself can hold larger values, but the moment the Relay publishes it to SQS, the 256KB limit applies. If the limit is exceeded, SendMessage fails and the row stays `processed=false`, failing repeatedly — such rows need manual cleanup, or add a size check + DLQ-move logic to the Relay.
+- The `text` column of `task_outbox.payload` itself can hold larger values, but the moment the Relay publishes it to SQS, the 256KB limit applies. If the limit is exceeded, SendMessage fails and the row stays `processed=false`, failing repeatedly — such rows need manual cleanup, or add a size check + DLQ-move logic to the Relay.
 
-### Combining validation + idempotency
+### Combining validation + an execution ledger
 
-Something to watch out for when applying payload validation together with framework-level idempotency (`idempotencyKey`): **the framework's ledger entry is recorded before the handler is called**. That is, even if the payload is invalid and the handler throws, the ledger has already been recorded, so on retry it's skipped as `already-executed` — meaning **an invalid payload may never get processed, forever**.
+If you adopt the record-before-execute ledger from [Optional Extensions](#optional-extensions-not-implemented-in-examples), be aware of its interaction with payload validation: the ledger entry is recorded **before** the handler is called, so if the payload is invalid and the handler throws, a retry is skipped as already-executed — **an invalid payload may never get processed, forever**. That's only acceptable when the producer fully controls the payload (retrying is pointless anyway). For payloads that need reprocessing after a validation failure (e.g. an external system produces them), use the Level 3 strong-atomicity variant instead, controlling the validate → ledger → Command order inside one transaction.
 
-For Tasks where validation is essential, it's correct to operate either by **having the producer fully control the payload**, or by sending straight to the DLQ when validation fails (i.e. retrying is pointless).
+## Optional Extensions (not implemented in `examples/`)
 
-```typescript
-@TaskConsumer('order.dispatch-shipment', {
-  idempotencyKey: (payload: DispatchShipmentCommand) => `order.dispatch-shipment-${payload.orderId}`
-})
-public async dispatchShipment(payload: object): Promise<void> {
-  // validation runs after the ledger — this is only safe for a producer-controlled payload
-  const command = plainToInstance(DispatchShipmentCommand, payload)
-  await validateOrReject(command)
-  await this.orderCommandService.dispatchShipment(command)
-}
-```
+The following are operational extensions the current `src/task-queue/` module deliberately does without. They're worth adding when the workload calls for them — described here as design sketches only.
 
-For cases that **need reprocessing after a validation failure** (e.g. an external system sends the payload), don't use `idempotencyKey`; use the [Strong Atomicity pattern (Level 3)](#strong-atomicity-level-3--a-rare-case) instead — directly control the validate → ledger → Command order inside the transaction.
-
-## Long-running Tasks and VisibilityTimeout Heartbeats
-
-`VisibilityTimeout` can go up to 12 hours, but a Task whose processing runs longer than that, or whose duration is unpredictable, needs to **periodically call `ChangeMessageVisibility` while processing** to extend the timeout. Without extending it, another Consumer will receive the same message as a duplicate.
-
-`TaskQueueConsumer`'s [`withHeartbeat`](#taskqueueconsumer--sqs-polling) already implements this logic. **Just specify `heartbeat` in the `@TaskConsumer` option**, and the heartbeat automatically runs only while that taskType is being processed.
-
-```typescript
-@TaskConsumer('order.generate-large-report', {
-  heartbeat: { intervalMs: 60_000, extendSeconds: 180 }  // extend by 180s every 60s
-})
-public async generateLargeReport(payload: { reportId: string }): Promise<void> {
-  await this.orderCommandService.generateReport(payload.reportId)
-}
-```
-
-- **Option design**: `intervalMs` should be `< extendSeconds * 1000`. Extending by 180 seconds every 60 seconds always leaves margin.
-- **Default: no option specified (no heartbeat)**: most Tasks finish in seconds to tens of seconds, so the initial `VisibilityTimeout: 300` is enough.
-- **Keep the initial `VisibilityTimeout` short + extend via heartbeat**: unconditionally setting a large initial value causes a large retry delay on a real failure. Setting it short and extending only the Tasks that need it via heartbeat is better for resilience.
+- **Execution ledger (idempotency Levels 2–3)**: a dedup table consulted before dispatch. See [Execution ledger](#execution-ledger-levels-23--a-design-sketch-not-implemented-in-examples) under Idempotency for the full sketch.
+- **VisibilityTimeout heartbeat for long-running Tasks**: `VisibilityTimeout` can go up to 12 hours, but a Task that runs longer than the timeout (or whose duration is unpredictable) needs to periodically call `ChangeMessageVisibility` while processing, or another Consumer will re-receive the same message as a duplicate. The natural shape: the Consumer wraps the handler call in a `setInterval` that extends visibility (e.g. extend by 180s every 60s — keep the interval well under the extension), cleared in a `finally`. Keep the queue's initial `VisibilityTimeout` short and extend only the Tasks that need it — a large initial value delays every retry after a real failure.
+- **`task_outbox` retention cleanup**: published rows stay as `processed=true`. A daily batch deleting processed rows older than a retention window (e.g. 7 days) keeps the table small.
 
 ## Graceful Shutdown
 
-On app shutdown, `TaskQueueConsumer`'s polling loop must stop first. The `OnApplicationShutdown` in the implementation above handles this. In-progress Tasks are waited on until completion, and if they fail, another instance re-receives them after the visibility timeout. See [graceful-shutdown.md](./graceful-shutdown.md) for the detailed ordering.
+On app shutdown, `TaskQueueConsumer`'s polling loop must stop first. `onModuleDestroy` in the implementation above sets `running = false`, so no further `ReceiveMessage` round trip starts. See [graceful-shutdown.md](./graceful-shutdown.md) for the detailed ordering.
 
-**However, the `pollPromise` await is not an infinite wait.** A container orchestrator (K8s, etc.) forcibly terminates with SIGKILL if cleanup isn't finished within `terminationGracePeriodSeconds` (default 30s). If the Task Controller gets stuck (an infinite loop, a DB deadlock, etc.), shutdown blocks and gets force-killed, but since the in-flight message was never deleted, another instance re-receives it after the visibility timeout — meaning **at-least-once semantics recover from the forced shutdown**. Still, keep the following in mind.
+The loop is **not** awaited to completion during shutdown — and a container orchestrator (K8s, etc.) would forcibly SIGKILL the process anyway if cleanup exceeded `terminationGracePeriodSeconds` (default 30s). Either way the recovery story is the same: an in-flight message that was never deleted is re-received by another instance after the visibility timeout — **at-least-once semantics cover the shutdown path**. Keep the following in mind.
 
-- **Design so a Task's max processing time is smaller than the grace period**. If it runs longer, you need `@TaskConsumer heartbeat` together with a larger grace period.
+- **Design so a Task's max processing time is smaller than the grace period.** If it runs longer, you need a visibility-timeout heartbeat (see [Optional Extensions](#optional-extensions-not-implemented-in-examples)) together with a larger grace period.
 - **Duplicate execution from re-receiving is possible even on the normal shutdown path** — Consumer-side idempotency is the defense here too.
 
 ## DLQ Monitoring
@@ -1064,22 +824,25 @@ describe('OrderTaskController', () => {
 })
 ```
 
-> The idempotency ledger is handled at the `TaskConsumerRegistry` level, so it's not a concern for the Task Controller unit test. Verify ledger behavior in a `TaskConsumerRegistry` or `TaskExecutionLogDb` integration test.
+> The Task Controller is a pure delegation, so the unit test only verifies that the right Command reaches the CommandService. Routing behavior is covered by the `TaskConsumerRegistry` integration test below.
 
 ### `TaskConsumerRegistry` — integration test
 
-Verify that a Task with an `idempotencyKey` option actually records the ledger and gets skipped on duplicate calls.
+Verify that dispatch routes a `taskType` to the registered Task Controller method, and that an unknown `taskType` throws.
 
 ```typescript
-test('a Task with idempotencyKey is skipped on the second call', async () => {
+test('dispatch routes the taskType to the registered handler method', async () => {
   // assume OrderTaskController is already registered
   const controller = moduleRef.get(OrderTaskController)
   const spy = jest.spyOn(controller, 'archive')
 
   await registry.dispatch('order.archive', { orderId: 'o1' })
-  await registry.dispatch('order.archive', { orderId: 'o1' })
 
-  expect(spy).toHaveBeenCalledTimes(1)   // the second call is skipped via the ledger
+  expect(spy).toHaveBeenCalledWith({ orderId: 'o1' })
+})
+
+test('dispatch throws for an unregistered taskType', async () => {
+  await expect(registry.dispatch('order.unknown', {})).rejects.toThrow('No @TaskConsumer registered')
 })
 ```
 
@@ -1159,11 +922,9 @@ async warmupCache() { /* ... */ }
 - **A single Task queue**: Tasks from every domain share one SQS FIFO queue. Routing is done via the `taskType` string.
 - **FIFO + MessageDeduplicationId**: duplicate Cron enqueuing from multiple instances is prevented at the queue level.
 - **Never delete a message on failure**: trust the visibility-timeout → re-receive → DLQ structure. Swallowing it with try-catch and deleting loses the failure.
-- **Long Tasks use the `@TaskConsumer` heartbeat option**: keep the initial `VisibilityTimeout` short, and specify `heartbeat` only for the taskTypes that need it, extending it during processing.
-- **Commands must be idempotent**: since delivery is at-least-once, the result must be the same even if the same Task runs 2+ times. 3-tier strategy: ① inherent idempotency ② `@TaskConsumer({ idempotencyKey })` framework ledger ③ if strong atomicity is needed, inject `TaskExecutionLog` directly in the Task Controller.
-- **Don't write ledger code in the Task Controller (by default)**: the framework handles it via the `idempotencyKey` option. The Task Controller is left with only the CommandService call.
-- **The Task Controller must not access the DB directly**: don't inject `DataSource`/`Repository<Entity>`. Shared concerns (ledger, heartbeat) are handled by the task-queue framework.
-- **Both the ledger and the outbox require a cleanup Cron**: `task_outbox` / `task_execution_log` grow indefinitely if left unattended.
+- **Commands must be idempotent**: since delivery is at-least-once, the result must be the same even if the same Task runs 2+ times. Every Task in `examples/` achieves this with inherent (state-based) idempotency; an execution ledger and strong atomicity are design-sketch extensions (see [Idempotency](#idempotency) and [Optional Extensions](#optional-extensions-not-implemented-in-examples)).
+- **The Task Controller must not access the DB directly**: don't inject `DataSource`/`Repository<Entity>`. The Interface layer depends only on the CommandService.
+- **The outbox grows without a retention cleanup**: `task_outbox` accumulates `processed=true` rows indefinitely if left unattended — plan a cleanup batch (see [Optional Extensions](#optional-extensions-not-implemented-in-examples)).
 - **The Scheduler requires try-catch + logger.error**: since `@nestjs/schedule` swallows exceptions, failures become unobservable without explicit logging.
 - **Consumer idempotency is the last line of defense**: whether it's a Relay multi-instance race, a forced shutdown during Graceful Shutdown, or a re-receive after visibility timeout expiry, the system recovers in every case as long as the Consumer is idempotent.
 - **A DLQ is mandatory**: configure a DLQ for every Task queue and watch it with a CloudWatch alarm.

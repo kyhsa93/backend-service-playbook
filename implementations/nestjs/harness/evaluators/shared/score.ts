@@ -48,7 +48,7 @@ export function aggregate(results: EvaluatorResult[]): AggregateReport {
     rawMax += r.maxScore
 
     const bucket: keyof typeof breakdown | null = (() => {
-      if (r.name.includes('structure')) return 'structure'
+      if (r.name.includes('structure') || r.name === 'file-naming') return 'structure'
       if (
         r.name.includes('layer')
         || r.name.includes('repository')
@@ -70,9 +70,9 @@ export function aggregate(results: EvaluatorResult[]): AggregateReport {
         || r.name.includes('no-cross-bc-domain-import')
         || r.name === 'user-context-store'
       ) return 'architecture'
-      if (r.name === 'build' || r.name === 'test-run' || r.name === 'secret-manager' || r.name === 'dockerfile' || r.name === 'local-dev' || r.name === 'no-orm-autosync-in-prod-config') return 'runtime'
+      if (r.name === 'build' || r.name === 'test-run' || r.name === 'secret-manager' || r.name === 'dockerfile' || r.name === 'local-dev' || r.name === 'no-orm-autosync-in-prod-config' || r.name === 'bootstrap-healthcheck' || r.name === 'config-validation') return 'runtime'
       if (r.name.includes('test') || r.name === 'e2e-quality') return 'testing'
-      if (r.name.includes('controller') || r.name.includes('deprecated-api') || r.name === 'pagination' || r.name === 'rate-limiting' || r.name === 'no-generic-response-keys' || r.name === 'api-documentation') return 'api'
+      if (r.name.includes('controller') || r.name.includes('deprecated-api') || r.name === 'pagination' || r.name === 'rate-limiting' || r.name === 'no-generic-response-keys' || r.name === 'api-documentation' || r.name === 'auth') return 'api'
       if (r.name.includes('dto')) return 'semantics'
       if (r.name === 'database-queries' || r.name === 'domain-service' || r.name === 'aggregate-id' || r.name === 'logging') return 'architecture'
       return null

@@ -641,6 +641,38 @@ export class ${n.Domain}Module implements OnModuleInit {
 }
 `
 
+  // ---- Migration ----
+  // Follows the examples/src/database/migrations naming convention
+  // (<timestamp>-add-<domain>.ts). The skeleton mirrors the generated Entity's columns
+  // (char(32) PK + ownerId/status + the BaseEntity timestamp columns) — extend it together
+  // with the Entity when you add real fields.
+  const tableName = n.domainKebab.replace(/-/g, '_')
+  const migrationTimestamp = Date.now()
+  files[`database/migrations/${migrationTimestamp}-add-${n.domainKebab}.ts`] = `import { MigrationInterface, QueryRunner } from 'typeorm'
+
+export class Add${n.Domain}${migrationTimestamp} implements MigrationInterface {
+  name = 'Add${n.Domain}${migrationTimestamp}'
+
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(\`
+      CREATE TABLE "${tableName}" (
+        "${n.domain}Id" char(32) NOT NULL,
+        "ownerId" character varying NOT NULL,
+        "status" character varying NOT NULL,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+        "deletedAt" TIMESTAMP,
+        CONSTRAINT "PK_${tableName}_${n.domain}Id" PRIMARY KEY ("${n.domain}Id")
+      )
+    \`)
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(\`DROP TABLE "${tableName}"\`)
+  }
+}
+`
+
   return files
 }
 
@@ -711,6 +743,10 @@ function main() {
 
   const n = buildNames(rawDomainName)
   const files = generateFiles(n)
+  const migrationFileName = Object.keys(files)
+    .find((relPath) => relPath.startsWith('database/migrations/'))
+    .split('/')
+    .pop()
 
   for (const [relPath, content] of Object.entries(files)) {
     writeFile(path.join(targetSrcDir, relPath), content)
@@ -721,6 +757,11 @@ function main() {
   console.log('')
   console.log('Note: a naive pluralization rule (+s / +es / y->ies) was used — for domains with irregular plurals,')
   console.log(`  you may need to manually adjust names like find${n.Domains}/${n.domains}.`)
+  console.log('')
+  console.log(`Required: add ${n.Domain}Entity to the entities array in src/database/data-source.ts —`)
+  console.log('  autoLoadEntities is false, so without it the app cannot find the entity metadata at boot.')
+  console.log(`A migration skeleton was generated at database/migrations/${migrationFileName} —`)
+  console.log('  review its columns against the fields you add to the Entity before running it.')
 
   if (shouldWire) {
     wireAppModule(path.join(targetSrcDir, 'app-module.ts'), n)

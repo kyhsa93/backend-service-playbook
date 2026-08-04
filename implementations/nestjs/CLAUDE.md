@@ -101,14 +101,14 @@ FAIL items' `ruleId` and message include links to the relevant document. Open th
 ## Scaffolding — new domain generator
 
 This script turns the "Reference Implementation Template" (Order example) in `docs/reference.md`
-into real code that passes the entire harness (31 evaluators) at grade A (100/100), then
+into real code that passes the entire harness (44 evaluators) at grade A (100/100), then
 generalizes it by parameterizing only the domain name so it can be reused. It generates, in
 one pass, the Aggregate (single state field + PENDING/ACTIVE/CANCELLED) + CQRS
 CommandHandler/QueryHandler (CommandBus/QueryBus) + one domain event + Repository +
 Controller + DTO + Module. Outbox draining is handled not by a per-domain Relay but by the
 shared `outbox/` module (OutboxPoller/OutboxConsumer), so the generated Module's
 `onModuleInit()` registers its own domain's event handlers with the shared
-`EventHandlerRegistry` (see `domain-events.md`).
+`EventHandlerRegistry` (see `docs/architecture/domain-events.md`).
 
 ```bash
 # Default: generates under ../examples/src/<domain>/, leaves app-module.ts untouched and
@@ -128,7 +128,11 @@ names like Coupon, LoyaltyCategory), confirming 100/100. Because it uses a naive
 rule (+s/+es/y→ies), domains with irregular plurals may need the generated names — e.g.
 `find<Domains>`/`<domains>` — manually adjusted. What's generated is a structural skeleton
 (an empty CRUD-style starting point), so the actual business rules, error messages, and
-fields need to be filled in yourself after generation.
+fields need to be filled in yourself after generation. The generator also emits a migration
+skeleton under `database/migrations/` — review its columns whenever you add fields to the
+Entity. Because `data-source.ts` uses `autoLoadEntities: false`, you must also add the new
+Entity to the `entities` array in `src/database/data-source.ts`, or the app fails to find
+the entity metadata at boot.
 
 ## Example Code
 

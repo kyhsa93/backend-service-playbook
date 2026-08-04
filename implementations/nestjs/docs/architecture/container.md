@@ -50,6 +50,7 @@ dist
 .env*
 docker-compose.yml
 localstack
+coverage
 ```
 
 ### Design Principles

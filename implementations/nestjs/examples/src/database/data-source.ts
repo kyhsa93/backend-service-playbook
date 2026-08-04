@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm'
 
 import { AccountEntity } from '@/account/infrastructure/entity/account.entity'
 import { SpendingAnalysisEntity } from '@/account/infrastructure/entity/spending-analysis.entity'
+import { SpendingForecastEntity } from '@/account/infrastructure/entity/spending-forecast.entity'
 import { TransactionEntity } from '@/account/infrastructure/entity/transaction.entity'
 import { SentEmailEntity } from '@/account/infrastructure/notification/sent-email.entity'
 import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
@@ -23,7 +24,7 @@ export const AppDataSource = new DataSource({
   type: 'postgres',
   url: getDatabaseUrl(),
   entities: [
-    AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity,
+    AccountEntity, TransactionEntity, SentEmailEntity, SpendingAnalysisEntity, SpendingForecastEntity,
     CardEntity,
     PaymentEntity, RefundEntity, SentCardStatementEntity,
     CredentialEntity,

@@ -13,16 +13,17 @@ The actual `src/main.ts` (see [bootstrap.md](bootstrap.md)) calls `enableShutdow
 import { NestFactory } from '@nestjs/core'
 
 import { AppModule } from '@/app-module'
+import { getPort } from '@/config/app.config'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
 
   // ... see bootstrap.md for ValidationPipe, LoggingInterceptor, HttpExceptionFilter, CORS, Swagger setup
 
-  // Graceful Shutdown — activates the NestJS lifecycle hooks on receiving SIGTERM/SIGINT
+  // Graceful Shutdown — runs Nest lifecycle hooks (onModuleDestroy, etc.) on receiving SIGTERM/SIGINT
   app.enableShutdownHooks()
 
-  await app.listen(process.env.PORT ?? 3000)
+  await app.listen(getPort())
 }
 
 bootstrap()
@@ -116,26 +117,43 @@ Switch the readiness state so the load balancer/orchestrator stops sending new t
 ```typescript
 // src/common/interface/health-controller.ts — actual code
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common'
-import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger'
+import { ApiInternalServerErrorResponse, ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
 
+import { ErrorResponseBody } from '@/common/interface/dto/error-response-body'
 import { ShutdownState } from '@/common/infrastructure/shutdown-state'
+import { Public } from '@/auth/public.decorator'
 
 @Controller('health')
 @ApiTags('Health')
 @SkipThrottle()
+@Public()
+// Applies to every endpoint below: none of them has a domain-specific failure mode, but the
+// process itself can still crash/throw unexpectedly (e.g. an OOM during request handling), so
+// this is the one status every endpoint in this repo can produce regardless of business logic.
+@ApiInternalServerErrorResponse({ description: 'An unexpected error occurred while handling the request.', type: ErrorResponseBody })
 export class HealthController {
   constructor(private readonly shutdownState: ShutdownState) {}
 
   @Get('live')
-  @ApiOkResponse({ description: 'The process is alive — returns 200 even while shutting down' })
+  @ApiOperation({
+    operationId: 'getLiveness',
+    summary: 'Liveness probe',
+    description: 'Reports whether the process itself is alive. Always returns 200, even while the process is shutting down — a load balancer/orchestrator should use `ready`, not this, to decide whether to route traffic.'
+  })
+  @ApiOkResponse({ description: 'The process is alive — returns 200 even while shutting down.' })
   live() {
     return { status: 'ok' }
   }
 
   @Get('ready')
-  @ApiOkResponse({ description: 'Ready to accept new requests' })
-  @ApiServiceUnavailableResponse({ description: 'Shutdown has started and new requests are no longer accepted' })
+  @ApiOperation({
+    operationId: 'getReadiness',
+    summary: 'Readiness probe',
+    description: 'Reports whether the process is ready to accept new requests. Used by a load balancer/orchestrator to stop routing traffic during graceful shutdown.'
+  })
+  @ApiOkResponse({ description: 'Ready to accept new requests.' })
+  @ApiServiceUnavailableResponse({ description: 'Shutdown has started and new requests are no longer accepted.' })
   ready() {
     if (this.shutdownState.isShuttingDown) {
       throw new ServiceUnavailableException('shutting down')
@@ -145,7 +163,7 @@ export class HealthController {
 }
 ```
 
-It throws a `ServiceUnavailableException` (`@nestjs/common`), not an `Error` — since the global `HttpExceptionFilter` (`src/common/http-exception.filter.ts`) passes an `HttpException` through as-is but converts a plain `Error` into a 500, a readiness failure must be an `HttpException` subtype to be correctly reported as a 503. Since the global `ThrottlerGuard` defined by [rate-limiting.md](rate-limiting.md) also applies to `/health/*`, `@SkipThrottle()` excludes the health check from rate limiting.
+It throws a `ServiceUnavailableException` (`@nestjs/common`), not an `Error` — since the global `HttpExceptionFilter` (`src/common/http-exception.filter.ts`) passes an `HttpException` through as-is but converts a plain `Error` into a 500, a readiness failure must be an `HttpException` subtype to be correctly reported as a 503. Since the global `ThrottlerGuard` defined by [rate-limiting.md](rate-limiting.md) also applies to `/health/*`, `@SkipThrottle()` excludes the health check from rate limiting, and `@Public()` excludes it from the `AuthGuard` (see [authentication.md](authentication.md)). The `@ApiOperation`/`@ApiInternalServerErrorResponse` decorators satisfy the OpenAPI-completeness rule that applies to every endpoint (see [api-response.md](../../../../docs/architecture/api-response.md)).
 
 ```typescript
 // src/common/infrastructure/shutdown-state.ts — actual code

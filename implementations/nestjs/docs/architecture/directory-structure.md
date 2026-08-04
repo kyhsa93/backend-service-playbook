@@ -2,35 +2,48 @@
 
 ```
 src/
-  common/                              # shared utilities
-    is-unique-violation.ts             # detects a Postgres unique_violation (23505)
-  database/                            # shared database code (the actual code has no separate @Global module or BaseEntity)
+  common/                              # shared utilities (see shared-modules.md for the full listing)
+    common-module.ts                   # @Global module exporting SecretService
+    application/service/secret-service.ts
+    infrastructure/                    # secret-service-impl.ts, shutdown-state.ts
+    interface/                         # health-controller.ts, metrics-controller.ts, dto/error-response-body.ts
+    correlation-id-store.ts            # the AsyncLocalStorage-based Correlation ID store
+    correlation-id.middleware.ts
+    user-context-store.ts              # the authenticated-user AsyncLocalStorage store
+    user-context.interceptor.ts
+    generate-error-response.ts
+    generate-id.ts
+    http-exception.filter.ts           # the global exception filter
+    logging.interceptor.ts
+    metrics-registry.ts
+    metrics.interceptor.ts
+  database/                            # shared database code
+    base.entity.ts                     # BaseEntity — shared createdAt/updatedAt/deletedAt columns
     data-source.ts                     # the TypeORM DataSource config — shared with the CLI migrations
     transaction-manager.ts             # the transaction manager (AsyncLocalStorage-based)
+    migrations/                        # <timestamp>-<change>.ts migration files
   outbox/                              # shared Outbox code (the @Global OutboxModule) — the single path shared by every domain
     outbox-module.ts
     outbox.entity.ts                   # the Outbox table Entity
     outbox-writer.ts                   # saves an event inside a transaction (called from a Repository)
     outbox-poller.ts                   # publishes Outbox → SQS (@Interval(1000))
     outbox-consumer.ts                 # routes SQS → EventHandlerRegistry (long polling)
-    sqs-client-provider.ts             # creates the SQSClient
+    sqs-client-provider.ts             # creates the SQSClient (the shared SQS_CLIENT provider)
     event-handler-registry.ts          # eventType → Handler routing
+    trace-context.ts
     # there's no per-domain OutboxRelay — it's unified into this single
     # OutboxPoller/OutboxConsumer, and every domain's events are processed
     # asynchronously via SQS (see domain-events.md).
-  task-queue/                          # the Task Queue module (shared)
+  task-queue/                          # the Task Queue module (@Global, shared)
     task-queue-module.ts
     task-queue.ts                      # the interface (abstract class)
     task-queue-outbox.ts               # the Outbox-based implementation (writes to task_outbox)
     task-outbox.entity.ts              # the task_outbox table Entity
-    task-outbox-relay.ts               # publishes task_outbox → SQS (Cron)
-    task-execution-log.ts              # the TaskExecutionLog interface (abstract class)
-    task-execution-log-db.ts           # the DB-based implementation
-    task-execution-log.entity.ts       # the task_execution_log table Entity (the idempotency ledger)
-    task-execution-log-cleaner.ts      # ledger cleanup (Cron)
-    task-consumer.decorator.ts         # the @TaskConsumer decorator (includes the heartbeat option)
+    task-outbox-relay.ts               # publishes task_outbox → SQS (@Interval(3000))
+    task-consumer.decorator.ts         # the @TaskConsumer decorator
     task-consumer-registry.ts          # taskType → Handler routing
     task-queue-consumer.ts             # dispatches SQS → the Task Controller (polling)
+  auth/                                # the shared authentication module (see authentication.md, shared-modules.md)
   config/
     <concern>.config.ts              # a config factory per concern (database, jwt, etc.)
     validation.config.ts             # environment variable validation (follows the harness's *.config.ts naming rule)
@@ -40,6 +53,7 @@ src/
       <entity>.ts
       <value-object>.ts
       <domain-event>.ts
+      <domain>-service.ts            # a Domain Service (only when domain judgment spans Aggregates)
       <aggregate>-repository.ts      # the Repository interface (abstract class)
     application/
       adapter/
@@ -47,15 +61,15 @@ src/
       service/
         <concern>-service.ts            # the technical infrastructure interface (abstract class)
       command/
-        <domain>-command-service.ts     # the Command Service (write — uses the Repository)
+        <verb>-<noun>-command-handler.ts  # a @CommandHandler (write — uses the Repository)
         <verb>-<noun>-command.ts
       query/
-        <domain>-query-service.ts       # the Query Service (read — uses the Query interface)
+        <verb>-<noun>-query-handler.ts  # a @QueryHandler (read — uses the Query interface)
         <domain>-query.ts               # the Query interface (abstract class)
         <verb>-<noun>-query.ts
-        <verb>-<noun>-result.ts
+        <noun>-result.ts
       event/
-        <domain>-event-handler.ts       # a Domain Event handler — registered in the shared
+        <event>-handler.ts              # a Domain Event handler — registered in the shared
                                          # outbox/event-handler-registry.ts from the domain
                                          # module's onModuleInit(). There's no per-domain
                                          # outbox-relay.ts — see domain-events.md
@@ -77,6 +91,7 @@ src/
       <concern>-scheduler.ts            # the Scheduler (@Cron → TaskQueue.enqueue)
     <domain>-module.ts
     <domain>-error-message.ts
+    <domain>-error-code.ts
     <domain>-enum.ts
     <domain>-constant.ts
 ```

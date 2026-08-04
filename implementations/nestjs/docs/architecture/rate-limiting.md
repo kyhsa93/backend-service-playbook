@@ -37,9 +37,10 @@ export function getThrottlerConfig(): ThrottlerModuleOptions {
 ```
 
 ```typescript
-// src/app-module.ts — actual code
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+// src/app-module.ts — actual code (excerpt)
 import { APP_GUARD } from '@nestjs/core'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+
 import { getThrottlerConfig } from '@/config/throttle.config'
 
 @Module({

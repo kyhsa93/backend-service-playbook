@@ -8,7 +8,7 @@ Organized into 3 test layers, each with a different verification scope and depen
 |--------|----------|------------|----------|
 | Domain unit tests | Aggregate, Value Object, Domain Event | No framework (pure TypeScript) | Very fast |
 | Application unit tests | Command/Query Service | Mocks the Repository, Adapter | Fast |
-| E2E tests | The full Controller → Service → Repository path | SQLite in-memory or testcontainers | Slow |
+| E2E tests | The full Controller → Service → Repository path | testcontainers (`@testcontainers/postgresql`, plus `@testcontainers/localstack` for SQS/SES paths) | Slow |
 
 ## Test Directory Structure
 
@@ -24,7 +24,7 @@ src/
         order-query-service.spec.ts
 test/
   order.e2e-spec.ts                          # E2E test
-  test-database.ts                           # SQLite in-memory setup
+  support/                                   # shared E2E helpers (e.g. LocalStack SQS queue setup)
 ```
 
 - **Domain / Application unit tests**: placed as `.spec.ts` in the same directory as the corresponding source file
@@ -146,87 +146,77 @@ let orderRepository: jest.Mocked<OrderRepository>
 
 Verify the full use-case flow through HTTP requests.
 
-### TestDatabaseModule — SQLite In-Memory
+### Test database — a real PostgreSQL via testcontainers
+
+Every E2E spec in `test/` starts its own disposable PostgreSQL container (`@testcontainers/postgresql`) in `beforeAll` and stops it in `afterAll` — no shared in-memory database, no `test-database.ts` module. Specs that exercise the SQS/SES paths (outbox, task queue, notifications) additionally start a LocalStack container (`@testcontainers/localstack`); the shared queue-setup helpers live in `test/support/`.
 
 ```typescript
-// test/test-database.ts
-import { TypeOrmModule } from '@nestjs/typeorm'
-
-export const TestDatabaseModule = TypeOrmModule.forRoot({
-  type: 'sqlite',
-  database: ':memory:',
-  entities: [__dirname + '/../src/**/*.entity.ts'],
-  synchronize: true  // used only in the test environment
-})
-```
-
-### E2E test structure
-
-```typescript
-// test/order.e2e-spec.ts
-import { INestApplication, ValidationPipe } from '@nestjs/common'
+// test/auth.e2e-spec.ts — actual code (excerpt: the setup)
+import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
-import * as request from 'supertest'
+import { TypeOrmModule } from '@nestjs/typeorm'
+import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import request from 'supertest'
 
-import { OrderModule } from '@/order/order-module'
-import { TestDatabaseModule } from './test-database'
+import { AuthModule } from '@/auth/auth-module'
+import { CredentialEntity } from '@/auth/infrastructure/entity/credential.entity'
+import { jwtConfig } from '@/config/jwt.config'
 
-describe('OrderController (e2e)', () => {
+describe('AuthController (e2e)', () => {
+  let container: StartedPostgreSqlContainer
   let app: INestApplication
 
   beforeAll(async () => {
-    const module = await Test.createTestingModule({
-      imports: [TestDatabaseModule, OrderModule]
+    container = await new PostgreSqlContainer('postgres:16-alpine').start()
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, load: [jwtConfig] }),
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: container.getConnectionUri(),
+          entities: [CredentialEntity],
+          synchronize: true
+        }),
+        AuthModule
+      ]
     }).compile()
 
-    app = module.createNestApplication()
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
+    app = moduleRef.createNestApplication()
+    app.useGlobalPipes(new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      exceptionFactory: (errors) => {
+        const message = errors.flatMap((error) => Object.values(error.constraints ?? {}))
+        return new BadRequestException({ statusCode: 400, code: 'VALIDATION_FAILED', message, error: 'Bad Request' })
+      }
+    }))
     await app.init()
+  }, 120000)
+
+  afterAll(async () => {
+    await app?.close()
+    await container?.stop()
   })
 
-  it('GET /orders/:orderId — fetch an existing order', () => {
-    return request(app.getHttpServer())
-      .get('/orders/1')
-      .set('Authorization', `Bearer ${testToken}`)
-      .expect(200)
-  })
+  it('sign-in_after_sign-up_returns_201_and_an_access_token', async () => {
+    await request(app.getHttpServer()).post('/auth/sign-up').send({ userId: 'owner-1', password: 'password123!' }).expect(201)
 
-  afterAll(() => app.close())
+    const response = await request(app.getHttpServer())
+      .post('/auth/sign-in')
+      .send({ userId: 'owner-1', password: 'password123!' })
+      .expect(201)
+
+    expect((response.body as { accessToken: string }).accessToken).toEqual(expect.any(String))
+  })
 })
 ```
 
-### SQLite vs testcontainers selection criteria
-
-| Criteria | SQLite in-memory | testcontainers |
-|------|-----------------|----------------|
-| Speed | Fast | Slow (container startup) |
-| SQL compatibility | Can't use PostgreSQL-specific syntax | Same as production |
-| Setup complexity | Low | Requires Docker |
-| When to prefer | Verifying simple paths that use no PostgreSQL-specific syntax | **Recommended default**; guarantees an environment identical to production |
-
-Use testcontainers as the default. Only choose SQLite when there's no PostgreSQL-specific syntax at all and fast feedback is needed.
-
-```typescript
-// test/test-database.ts — the testcontainers version
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { PostgreSqlContainer } from '@testcontainers/postgresql'
-
-let container: Awaited<ReturnType<typeof new PostgreSqlContainer().start>>
-
-export async function startTestDatabase() {
-  container = await new PostgreSqlContainer().start()
-  return TypeOrmModule.forRoot({
-    type: 'postgres',
-    url: container.getConnectionUri(),
-    entities: [__dirname + '/../src/**/*.entity.ts'],
-    synchronize: true
-  })
-}
-
-export async function stopTestDatabase() {
-  await container?.stop()
-}
-```
+- **`import request from 'supertest'`** — a default import (`esModuleInterop`), not `import * as request`.
+- **A per-spec container** keeps suites fully isolated from each other at the cost of startup time — pass a generous `beforeAll` timeout (120s here) to cover the image pull on a cold cache.
+- **`synchronize: true` only in tests** — the test module builds the schema from the entity metadata; production runs migrations (see [persistence.md](persistence.md)).
+- **Why not an in-memory database**: the examples use PostgreSQL-specific behavior (raw SQL with `deletedAt IS NULL` filters, `ON CONFLICT`, `char(32)` columns), so an in-memory substitute would test a different engine than production runs.
 
 ### Mocking external HTTP: nock
 
@@ -306,7 +296,7 @@ it('getOrder_whenOrderDoesNotExist_thenReturns404')
 
 - **Write Domain tests without the framework**: create instances directly with `new Aggregate()` to test. Don't use the NestJS Test module.
 - **Isolate Application tests with mocks**: replace the Repository and Adapter with mocks, verifying only the Service logic.
-- **E2E tests default to testcontainers**: guarantees an environment identical to production. Only use SQLite in-memory when there's no PostgreSQL-specific syntax and speed matters.
+- **E2E tests run against a real PostgreSQL via testcontainers**: guarantees an environment identical to production. Specs covering SQS/SES paths add a LocalStack container.
 - **Minimize mocks in E2E tests**: don't replace a module with `jest.mock()`. Replace real dependencies with nock for external HTTP and testcontainers for the DB. Mocks are for the unit-test layer only.
 - **Intercept external HTTP with nock**: in E2E tests, intercept external service calls at the network boundary with nock.
 - **Never connect directly to the production DB**: the test environment always uses an isolated DB.

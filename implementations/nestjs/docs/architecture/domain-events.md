@@ -412,12 +412,12 @@ src/
 @Module({
   imports: [TypeOrmModule.forFeature([OutboxEntity])],
   providers: [TransactionManager, OutboxWriter, EventHandlerRegistry, SqsClientProvider, OutboxPoller, OutboxConsumer],
-  exports: [TransactionManager, OutboxWriter, EventHandlerRegistry]
+  exports: [TransactionManager, OutboxWriter, EventHandlerRegistry, SQS_CLIENT]
 })
 export class OutboxModule {}
 ```
 
-`OutboxPoller`/`OutboxConsumer` are only in `providers`, not in `exports` — other modules must not be able to inject and call them directly. Since they're providers of a `@Global()` module, they're created once as singletons at app bootstrap, and `OutboxConsumer.onModuleInit()` starts the background loop at that point — `AppModule` must import `ScheduleModule.forRoot()` for `@Interval` to work.
+`SQS_CLIENT` is exported so the `task-queue/` module can reuse the same SDK client for its own (separate) SQS queue — see [scheduling.md](scheduling.md). `OutboxPoller`/`OutboxConsumer` are only in `providers`, not in `exports` — other modules must not be able to inject and call them directly. Since they're providers of a `@Global()` module, they're created once as singletons at app bootstrap, and `OutboxConsumer.onModuleInit()` starts the background loop at that point — `AppModule` must import `ScheduleModule.forRoot()` for `@Interval` to work.
 
 ```typescript
 // app-module.ts (excerpt)

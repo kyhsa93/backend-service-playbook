@@ -12,6 +12,7 @@ src/
     llm.config.ts          # OLLAMA_BASE_URL, LLM_MODEL — see domain-service.md's structured-data RAG example
     notification.config.ts # SES_SENDER_EMAIL
     throttle.config.ts     # THROTTLE_{SHORT,MEDIUM,LONG}_{TTL_MS,LIMIT} — see rate-limiting.md
+    tracing.config.ts      # OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME — see observability.md
     validation.config.ts   # the environment variable validation function
 ```
 
@@ -74,7 +75,7 @@ export function getAwsCredentials() {
 }
 ```
 
-- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts`/`llm.config.ts` are **pure functions** that bypass `ConfigModule` — called directly instead of being accessed via dot notation on `ConfigService`. Only `jwt.config.ts` is registered in `ConfigModule.forRoot({ load: [jwtConfig] })` and accessed through `ConfigService` (see below).
+- `database.config.ts`/`aws.config.ts`/`app.config.ts`/`notification.config.ts`/`throttle.config.ts`/`llm.config.ts`/`tracing.config.ts` are **pure functions** that bypass `ConfigModule` — called directly instead of being accessed via dot notation on `ConfigService`. Only `jwt.config.ts` is registered in `ConfigModule.forRoot({ load: [jwtConfig] })` and accessed through `ConfigService` (see below).
 
 ### Environment Variable Validation — class-validator
 
@@ -118,18 +119,23 @@ Only `DATABASE_URL` is validated here — `JWT_SECRET` is replaced by Secrets Ma
 ### Using ConfigService — Limited to the JWT Configuration
 
 ```typescript
-// src/auth/auth-service.ts — actual code (excerpt)
+// src/auth/auth-service.ts — actual code (excerpt: the sign method)
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { JwtService, JwtSignOptions } from '@nestjs/jwt'
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService
+  ) {}
 
-  sign(userId: string): string {
-    return jwt.sign({ userId }, this.configService.get<string>('jwt.secret')!, {
-      expiresIn: this.configService.get<string>('jwt.expiresIn'),
-    })
+  public async sign(payload: { userId: string }): Promise<string> {
+    return this.jwtService.signAsync(payload, {
+      secret: this.configService.get<string>('jwt.secret'),
+      expiresIn: this.configService.get<string>('jwt.expiresIn')
+    } as unknown as JwtSignOptions)
   }
 }
 ```

@@ -450,7 +450,7 @@ Check each item, and if a violation is found, fix it immediately before moving t
 [ ] Does the Application Service test replace the Repository with a mock?
     → Use the jest.Mocked<AbstractClass> pattern
 [ ] Does the E2E test verify the use-case flow through real HTTP requests?
-[ ] Does the E2E/integration test use an in-memory SQLite DB (or testcontainers)?
+[ ] Does the E2E/integration test use a testcontainers PostgreSQL (plus LocalStack for SQS/SES paths)?
     → Do not connect directly to the production DB
 [ ] Is there a test for Aggregate invariant violations? (invalid input → exception raised)
 [ ] Is there a test verifying whether a Domain Event was published?

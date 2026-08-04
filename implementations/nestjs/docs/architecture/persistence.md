@@ -39,30 +39,40 @@ Bind write operations spanning multiple Repositories into a single transaction. 
 #### TransactionManager (infrastructure layer)
 
 ```typescript
-// database/transaction-manager.ts
+// database/transaction-manager.ts — actual code
 import { Injectable } from '@nestjs/common'
+import { InjectDataSource } from '@nestjs/typeorm'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { DataSource, EntityManager } from 'typeorm'
-import { AsyncLocalStorage } from 'async_hooks'
-
-const transactionStorage = new AsyncLocalStorage<EntityManager>()
 
 @Injectable()
 export class TransactionManager {
-  constructor(private readonly dataSource: DataSource) {}
+  private readonly als = new AsyncLocalStorage<EntityManager>()
 
-  // runs the callback inside a transaction
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
   public async run<T>(fn: () => Promise<T>): Promise<T> {
-    return this.dataSource.transaction((manager) =>
-      transactionStorage.run(manager, fn)
-    )
+    const existing = this.als.getStore()
+    if (existing) return fn()
+
+    return this.dataSource.transaction((manager) => (
+      new Promise<T>((resolve, reject) => {
+        this.als.run(manager, () => {
+          fn().then(resolve, reject)
+        })
+      })
+    ))
   }
 
-  // returns the tx manager if there's a transaction context, otherwise the default manager
   public getManager(): EntityManager {
-    return transactionStorage.getStore() ?? this.dataSource.manager
+    return this.als.getStore() ?? this.dataSource.manager
   }
 }
 ```
+
+- **`@InjectDataSource()`** — the DataSource registered by `TypeOrmModule.forRoot` must be injected via the `@nestjs/typeorm` token, not a bare constructor type.
+- **Re-entrancy guard** — a nested `run()` call inside an existing transaction context just runs the callback in the same transaction, rather than opening a second one.
+- **`getManager()`** returns the transaction manager if a transaction context exists, otherwise the default manager.
 
 #### Usage in the Repository implementation
 
