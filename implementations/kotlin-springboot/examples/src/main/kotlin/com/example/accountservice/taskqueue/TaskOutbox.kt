@@ -30,35 +30,35 @@ class TaskOutbox protected constructor() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
-        private set
+        protected set
 
     @Column(nullable = false, unique = true)
     var taskId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var taskType: String = ""
-        private set
+        protected set
 
     @Column(nullable = false, columnDefinition = "TEXT")
     var payload: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var groupId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false, unique = true)
     var deduplicationId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var processed: Boolean = false
-        private set
+        protected set
 
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now()
-        private set
+        protected set
 
     companion object {
         fun create(

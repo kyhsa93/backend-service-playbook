@@ -33,39 +33,39 @@ class SentEmail protected constructor() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
-        private set
+        protected set
 
     @Column(nullable = false, unique = true)
     var sentEmailId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var accountId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var eventType: String = ""
-        private set
+        protected set
 
     @Column(name = "source_event_id", nullable = false)
     var sourceEventId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var recipient: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var subject: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var sesMessageId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var sentAt: LocalDateTime = LocalDateTime.now()
-        private set
+        protected set
 
     companion object {
         fun create(

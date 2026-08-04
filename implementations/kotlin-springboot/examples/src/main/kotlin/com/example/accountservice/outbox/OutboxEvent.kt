@@ -25,27 +25,27 @@ class OutboxEvent protected constructor() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
-        private set
+        protected set
 
     @Column(nullable = false, unique = true)
     var eventId: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var eventType: String = ""
-        private set
+        protected set
 
     @Column(nullable = false, columnDefinition = "TEXT")
     var payload: String = ""
-        private set
+        protected set
 
     @Column(nullable = false)
     var processed: Boolean = false
-        private set
+        protected set
 
     @Column(nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now()
-        private set
+        protected set
 
     // The W3C traceparent of the span active at write time (observability.md), so OutboxPoller/
     // OutboxConsumer can carry the trace context across the async queue boundary the same way
@@ -53,7 +53,7 @@ class OutboxEvent protected constructor() {
     // (e.g. a background write with no request/consumer scope).
     @Column
     var traceparent: String? = null
-        private set
+        protected set
 
     companion object {
         fun from(

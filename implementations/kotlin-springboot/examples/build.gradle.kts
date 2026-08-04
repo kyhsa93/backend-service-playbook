@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "1.9.25"
-    kotlin("plugin.spring") version "1.9.25"
-    kotlin("plugin.jpa") version "1.9.25"
+    kotlin("jvm") version "2.4.10"
+    kotlin("plugin.spring") version "2.4.10"
+    kotlin("plugin.jpa") version "2.4.10"
     id("org.springframework.boot") version "3.3.5"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
@@ -99,7 +99,8 @@ tasks.withType<Test> {
 // CI only verifies via `ktlintCheck` (wired into build). Rather than maximum strictness,
 // keep a moderate configuration — the default ruleset plus standard-library import sorting.
 ktlint {
-    version.set("1.3.1")
+    // No explicit ktlint engine pin: the plugin's default engine tracks the Kotlin version the
+    // plugin was built against (1.3.1 pre-dated Kotlin 2.x and crashed its lexer under 2.4).
     verbose.set(true)
     outputToConsole.set(true)
     filter {

@@ -41,6 +41,12 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore(kotlin-springboot)"
+    # The Kotlin Gradle plugins (jvm / plugin.spring / plugin.jpa) share one version and
+    # each fails CI when bumped alone — group them into a single PR.
+    groups:
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
 
   - package-ecosystem: "pip"
     directory: "/implementations/fastapi/examples"
