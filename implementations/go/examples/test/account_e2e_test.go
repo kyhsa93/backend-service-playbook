@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,20 +182,28 @@ func runTests(m *testing.M) int {
 	withdrawByPaymentHandler := command.NewWithdrawByPaymentHandler(repo)
 	depositByPaymentHandler := command.NewDepositByPaymentHandler(repo)
 
-	// No real Ollama runs in this e2e environment (see nlTranslator/
-	// nlComposer below) — the categorization call itself fails fast and
-	// falls back to OTHER, but this still exercises the real async pipeline
-	// end to end: Domain Event → Outbox → SQS → Consumer →
-	// CategorizeTransactionEventHandler → the repository write all actually run.
-	transactionAutoCategorizer := llm.NewTransactionAutoCategorizerImpl(config.OllamaBaseURL(), config.LLMModel())
+	// A fake Ollama (an httptest.Server emulating POST /api/chat — see
+	// fake_ollama_test.go) serves deterministic responses to every LLM
+	// Technical Service in this suite, so their REAL request/parse paths run
+	// end to end without a live model. Inputs carrying forceLLMFailureMarker
+	// make the fake answer 500, keeping each service's graceful-fallback
+	// path covered too.
+	fakeOllama := newFakeOllamaServer()
+	defer fakeOllama.Close()
+
+	// The categorization call goes to the fake Ollama above (Starbucks →
+	// FOOD), on top of the real async pipeline running end to end: Domain
+	// Event → Outbox → SQS → Consumer → CategorizeTransactionEventHandler →
+	// the repository write.
+	transactionAutoCategorizer := llm.NewTransactionAutoCategorizerImpl(fakeOllama.URL, config.LLMModel())
 	categorizeTransactionHandler := event.NewCategorizeTransactionEventHandler(transactionAutoCategorizer, transactionRepo)
 	detectWithdrawalAnomalyHandler := event.NewDetectWithdrawalAnomalyEventHandler(repo, notifier)
 
-	// No real Ollama runs in this e2e environment (same reasoning as
-	// transactionAutoCategorizer above) — classification falls back to
-	// OTHER, but this still exercises the real async pipeline end to end
-	// (see TestRefundReasonClassification in payment_e2e_test.go).
-	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(config.OllamaBaseURL(), config.LLMModel())
+	// The classification call goes to the fake Ollama above ("arrived
+	// broken" → DEFECTIVE_PRODUCT), on top of the real async pipeline
+	// running end to end (see TestRefundReasonClassification in
+	// payment_e2e_test.go).
+	refundReasonClassifier := llm.NewRefundReasonClassifierImpl(fakeOllama.URL, config.LLMModel())
 	classifyRefundReasonHandler := event.NewClassifyRefundReasonEventHandler(refundReasonClassifier, paymentRepo)
 
 	outboxHandlers := map[string][]outbox.Handler{
@@ -306,14 +315,15 @@ func runTests(m *testing.M) int {
 	// here only.
 	testLimiter := rate.NewLimiter(rate.Limit(100_000), 100_000)
 
-	// No real Ollama runs in this e2e environment — both LLM calls fail fast
-	// (connection refused) and fall back to their non-blocking defaults (an
-	// empty filter, a plain templated answer), so TestAskTransactionHistory
-	// still exercises the real retrieval + response shape end to end
-	// without depending on a live Ollama (the same approach the nestjs
-	// reference's e2e suite takes).
-	nlTranslator := llm.NewNlTransactionQueryTranslatorImpl(config.OllamaBaseURL(), config.LLMModel())
-	nlComposer := llm.NewNlTransactionAnswerComposerImpl(config.OllamaBaseURL(), config.LLMModel())
+	// Both /transactions/ask LLM calls go to the fake Ollama above — the
+	// translator gets a deterministic structured filter and the composer
+	// echoes its grounding data back — so TestAskTransactionHistory
+	// exercises the real translate → retrieve → compose pipeline end to end
+	// without depending on a live model, and covers the non-blocking
+	// fallbacks (an empty filter, a plain templated answer) by forcing a
+	// 500 via forceLLMFailureMarker.
+	nlTranslator := llm.NewNlTransactionQueryTranslatorImpl(fakeOllama.URL, config.LLMModel())
+	nlComposer := llm.NewNlTransactionAnswerComposerImpl(fakeOllama.URL, config.LLMModel())
 
 	mux, _ := httphandler.NewRouter(repo, cardRepo, credentialRepo, paymentRepo, accountAdapter, paymentCardAdapter, paymentAccountAdapter, testJWTService, testPasswordHasher, nlTranslator, nlComposer, testLimiter, database.NewManager(db))
 	testServer = httptest.NewServer(mux)
@@ -881,11 +891,11 @@ func TestGetTransactions(t *testing.T) {
 
 // TestTransactionAutoCategorization exercises the real async pipeline end to
 // end: Domain Event (MoneyWithdrawn) → Outbox → SQS → Consumer →
-// CategorizeTransactionEventHandler → the TransactionRepository write. No real
-// Ollama runs in this e2e environment (see nlTranslator/nlComposer in
-// runTests above), so the categorization call itself falls back to OTHER —
-// but that still proves the whole plumbing runs, only the LLM call itself
-// degrades to its non-blocking default.
+// CategorizeTransactionEventHandler → the TransactionRepository write. The
+// categorization call itself hits the fake Ollama (see fake_ollama_test.go),
+// which deterministically maps a Starbucks merchant to FOOD — so the FOOD
+// assertion proves the real LLM request/parse path ran, not the OTHER
+// fallback. A separate subtest forces a 500 to cover that fallback.
 func TestTransactionAutoCategorization(t *testing.T) {
 	t.Run("withdraw_with_a_merchantName_then_the_transaction_is_asynchronously_categorized", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
@@ -897,6 +907,23 @@ func TestTransactionAutoCategorization(t *testing.T) {
 		tx := waitForCategorizedTransaction(t, account["accountId"].(string))
 
 		require.Equal(t, "Starbucks Gangnam", tx["merchantName"])
+		require.Equal(t, "FOOD", tx["category"])
+	})
+
+	t.Run("when_the_llm_call_fails_then_the_transaction_falls_back_to_OTHER", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+		// The merchant name reaches the categorizer's prompt verbatim, so
+		// embedding forceLLMFailureMarker makes the fake Ollama answer 500
+		// for exactly this request — the handler must still complete and
+		// degrade to OTHER instead of blocking or retrying forever.
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
+			map[string]any{"amount": 5500, "merchantName": "Corner Store " + forceLLMFailureMarker})
+
+		tx := waitForCategorizedTransaction(t, account["accountId"].(string))
+
+		require.Equal(t, "Corner Store "+forceLLMFailureMarker, tx["merchantName"])
 		require.Equal(t, "OTHER", tx["category"])
 	})
 
@@ -968,16 +995,20 @@ func waitForCategorizedTransaction(t *testing.T, accountID string) map[string]an
 
 // TestAskTransactionHistory exercises the structured-data RAG pipeline end
 // to end (see internal/application/query/ask_transaction_history_handler.go
-// and docs/architecture/domain-service.md). No real Ollama runs here, so
-// both LLM Technical Services fail fast and fall back to their non-blocking
-// defaults — this still verifies the real retrieval + response shape
-// (status code, matchedCount, a non-empty answer) without depending on a
-// live Ollama, mirroring the nestjs reference's e2e suite.
+// and docs/architecture/domain-service.md). Both LLM Technical Services hit
+// the fake Ollama (see fake_ollama_test.go): the translator answers a
+// deterministic DEPOSIT filter for a question about deposits, and the
+// composer echoes its grounding data back behind fakeAnswerPrefix — so the
+// assertions prove the real translate → retrieve → compose path ran, and a
+// separate subtest forces a 500 to cover both services' non-blocking
+// fallbacks.
 func TestAskTransactionHistory(t *testing.T) {
 	t.Run("when_asked_a_question_then_returns_200_with_an_answer_grounded_in_the_requesters_own_transactions", func(t *testing.T) {
 		account := createAccount(t, ownerID, "KRW")
 		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
 			map[string]int{"amount": 10000})
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/withdraw", ownerID,
+			map[string]int{"amount": 3000})
 
 		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/transactions/ask", ownerID,
 			map[string]string{"question": "How much have I deposited?"})
@@ -986,7 +1017,36 @@ func TestAskTransactionHistory(t *testing.T) {
 		body := decodeBody(t, resp)
 		answer, ok := body["answer"].(string)
 		require.True(t, ok)
-		require.NotEmpty(t, answer)
+		// fakeAnswerPrefix proves the answer came through the composer's
+		// real request/parse path (its fallback starts with "Found ..."
+		// instead). The echoed grounding containing the deposit but not the
+		// withdrawal proves the translator's DEPOSIT filter really narrowed
+		// the retrieval that grounded the prompt.
+		require.True(t, strings.HasPrefix(answer, fakeAnswerPrefix))
+		require.Contains(t, answer, "DEPOSIT 10000 KRW")
+		require.NotContains(t, answer, "WITHDRAWAL")
+		require.Equal(t, float64(1), body["matchedCount"])
+	})
+
+	t.Run("when_the_llm_calls_fail_then_falls_back_to_no_filter_and_a_templated_answer", func(t *testing.T) {
+		account := createAccount(t, ownerID, "KRW")
+		doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/deposit", ownerID,
+			map[string]int{"amount": 10000})
+
+		// The question reaches both LLM prompts verbatim, so embedding
+		// forceLLMFailureMarker makes the fake Ollama answer 500 to both
+		// calls — the endpoint must still answer 200, with the translator
+		// degrading to no filter and the composer to its plain templated
+		// summary of the same retrieved data.
+		resp := doRequest(t, http.MethodPost, "/accounts/"+account["accountId"].(string)+"/transactions/ask", ownerID,
+			map[string]string{"question": "How much have I deposited? " + forceLLMFailureMarker})
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body := decodeBody(t, resp)
+		answer, ok := body["answer"].(string)
+		require.True(t, ok)
+		require.True(t, strings.HasPrefix(answer, "Found 1 matching transaction(s):"))
+		require.Contains(t, answer, "DEPOSIT 10000 KRW")
 		require.Equal(t, float64(1), body["matchedCount"])
 	})
 

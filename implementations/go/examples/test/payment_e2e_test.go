@@ -309,10 +309,11 @@ func getTotalClassifiedRefunds(t *testing.T, owner string) float64 {
 // end: Domain Event (RefundRequested, published unconditionally by
 // payment.NewRefund before EvaluateRefundEligibility's judgment even runs)
 // → Outbox → SQS → Consumer → ClassifyRefundReasonEventHandler → the
-// RefundRepository write. No real Ollama runs in this e2e environment (same
-// reasoning as TestTransactionAutoCategorization in account_e2e_test.go), so
-// the classification call itself falls back to OTHER — but this still
-// proves the whole plumbing runs, and specifically that classification
+// RefundRepository write. The classification call itself hits the fake
+// Ollama (see fake_ollama_test.go), which deterministically maps an
+// "arrived broken" reason to DEFECTIVE_PRODUCT — so that assertion proves
+// the real LLM request/parse path ran, not the OTHER fallback (covered by a
+// separate forced-500 subtest), and specifically that classification
 // happens identically whether the refund ends up REJECTED or APPROVED (the
 // design point of this feature).
 func TestRefundReasonClassification(t *testing.T) {
@@ -327,6 +328,25 @@ func TestRefundReasonClassification(t *testing.T) {
 			map[string]any{"amount": 9000, "reason": "The item arrived broken"})
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 		require.Equal(t, "REJECTED", decodeBody(t, resp)["status"])
+
+		refund := waitForClassifiedRefund(t, owner, paymentID)
+		require.Equal(t, "DEFECTIVE_PRODUCT", refund["reasonCategory"])
+	})
+
+	t.Run("when_the_llm_call_fails_then_the_refund_reason_falls_back_to_OTHER", func(t *testing.T) {
+		const owner = "payment-owner-reason-fallback"
+		accountID, cardID := setupFundedCardAndAccount(t, owner, 10000)
+		payment := decodeBody(t, createPayment(t, owner, cardID, 5000))
+		paymentID := payment["paymentId"].(string)
+		waitForAccountBalance(t, owner, accountID, 5000)
+
+		// The stated reason reaches the classifier's prompt verbatim, so
+		// embedding forceLLMFailureMarker makes the fake Ollama answer 500
+		// for exactly this request — the handler must still complete and
+		// degrade to OTHER instead of blocking or retrying forever.
+		resp := doRequest(t, http.MethodPost, "/payments/"+paymentID+"/refunds", owner,
+			map[string]any{"amount": 9000, "reason": "The item arrived broken " + forceLLMFailureMarker})
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 		refund := waitForClassifiedRefund(t, owner, paymentID)
 		require.Equal(t, "OTHER", refund["reasonCategory"])
