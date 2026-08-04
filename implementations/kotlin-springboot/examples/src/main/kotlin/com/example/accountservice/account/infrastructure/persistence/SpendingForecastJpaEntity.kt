@@ -1,5 +1,6 @@
 package com.example.accountservice.account.infrastructure.persistence
 
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -37,5 +38,5 @@ class SpendingForecastJpaEntity(
     @Column(nullable = false)
     var historyMonthsUsed: Int = 0,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
 )

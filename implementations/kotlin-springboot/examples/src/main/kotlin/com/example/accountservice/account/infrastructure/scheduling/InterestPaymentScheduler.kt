@@ -1,11 +1,11 @@
 package com.example.accountservice.account.infrastructure.scheduling
 
+import com.example.accountservice.common.todayUtc
 import com.example.accountservice.taskqueue.TaskQueue
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
-import java.time.LocalDate
 
 /**
  * The recurring interest-payment Scheduler — placed in the Infrastructure layer (scheduling.md, "A
@@ -27,9 +27,12 @@ class InterestPaymentScheduler(
 ) {
     private val logger = LoggerFactory.getLogger(InterestPaymentScheduler::class.java)
 
-    @Scheduled(cron = "0 0 3 * * *") // every day at 03:00
+    // zone = "UTC" because [payDate] below is read off the UTC calendar: a tick evaluated in the
+    // host's zone would fire on a local date that UTC has not reached yet (or has already left), and
+    // the idempotency key would then name a different day than the tick it belongs to.
+    @Scheduled(cron = "0 0 3 * * *", zone = "UTC") // every day at 03:00 UTC
     fun enqueueDailyInterestPayment() {
-        val payDate = LocalDate.now()
+        val payDate = todayUtc()
         val dedupId = "$TASK_TYPE-$payDate"
         // Exceptions from the Cron handler are caught explicitly and logged so the scheduling framework
         // does not silently swallow them (scheduling.md, "Cron exceptions are logged explicitly"). If

@@ -44,6 +44,7 @@ import harness.rules.checkSharedInfra
 import harness.rules.checkSoftDeleteFilter
 import harness.rules.checkTransactionBoundary
 import harness.rules.checkTypedErrorsOnly
+import harness.rules.checkUtcTimestampSource
 import kotlin.system.exitProcess
 
 private fun assertTrue(condition: Boolean, message: String) {
@@ -191,7 +192,13 @@ val TESTS: List<TestCase> = listOf(
     TestCase("openapi-operation-documented/good-class-level-error-response") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/good-class-level-error-response").assertNoFailures() },
     TestCase("openapi-operation-documented/bad-missing-operation") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-missing-operation").assertHasFailure() },
     TestCase("openapi-operation-documented/bad-missing-summary") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-missing-summary").assertHasFailure() },
-    TestCase("openapi-operation-documented/bad-no-error-response") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-no-error-response").assertHasFailure() }
+    TestCase("openapi-operation-documented/bad-no-error-response") { checkOpenApiOperationDocumented("testdata/openapi-operation-documented/bad-no-error-response").assertHasFailure() },
+
+    TestCase("utc-timestamp-source/good") { checkUtcTimestampSource("testdata/utc-timestamp-source/good").assertNoFailures() },
+    TestCase("utc-timestamp-source/no-timestamp-layers") { checkUtcTimestampSource("testdata/utc-timestamp-source/no-timestamp-layers").assertNoFailures() },
+    TestCase("utc-timestamp-source/bad-domain") { checkUtcTimestampSource("testdata/utc-timestamp-source/bad-domain").assertHasFailure() },
+    TestCase("utc-timestamp-source/bad-persistence") { checkUtcTimestampSource("testdata/utc-timestamp-source/bad-persistence").assertHasFailure() },
+    TestCase("utc-timestamp-source/bad-local-date") { checkUtcTimestampSource("testdata/utc-timestamp-source/bad-local-date").assertHasFailure() }
 )
 
 fun main() {

@@ -13,6 +13,7 @@ import com.example.accountservice.account.domain.Money
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import com.example.accountservice.account.interfaces.integrationevent.AccountIntegrationEventController
 import com.example.accountservice.card.interfaces.integrationevent.CardIntegrationEventController
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.payment.application.event.ClassifyRefundReasonEventHandler
 import com.example.accountservice.payment.application.event.PaymentCancelledEventHandler
 import com.example.accountservice.payment.application.event.PaymentCompletedEventHandler
@@ -25,7 +26,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import tools.jackson.module.kotlin.jacksonObjectMapper
-import java.time.LocalDateTime
 
 /**
  * MoneyWithdrawnEvent is this codebase's first eventType with more than one subscriber
@@ -78,7 +78,7 @@ class EventHandlerRegistryTest {
                 transactionId = "transaction-1",
                 amount = Money(5500, "KRW"),
                 balanceAfter = Money(4500, "KRW"),
-                createdAt = LocalDateTime.now(),
+                createdAt = nowUtc(),
                 merchantName = "Starbucks Gangnam",
             ),
         )

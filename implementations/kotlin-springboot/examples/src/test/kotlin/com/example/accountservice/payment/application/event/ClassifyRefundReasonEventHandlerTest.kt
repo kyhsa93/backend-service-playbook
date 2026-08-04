@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.application.event
 
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.payment.application.service.RefundReasonClassifier
 import com.example.accountservice.payment.domain.Refund
 import com.example.accountservice.payment.domain.RefundReasonCategory
@@ -10,7 +11,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Test
-import java.time.LocalDateTime
 
 class ClassifyRefundReasonEventHandlerTest {
     private val refundReasonClassifier = mockk<RefundReasonClassifier>()
@@ -26,7 +26,7 @@ class ClassifyRefundReasonEventHandlerTest {
             status = RefundStatus.APPROVED,
             decisionNote = null,
             reasonCategory = null,
-            createdAt = LocalDateTime.now(),
+            createdAt = nowUtc(),
         )
 
     @Test
@@ -34,7 +34,7 @@ class ClassifyRefundReasonEventHandlerTest {
         every { refundRepository.findRefunds(any()) } returns (listOf(refund) to 1L)
         every { refundReasonClassifier.classify("The item arrived broken") } returns RefundReasonCategory.DEFECTIVE_PRODUCT
 
-        handler.handle(RefundRequestedEvent("refund-1", "payment-1", "The item arrived broken", LocalDateTime.now()))
+        handler.handle(RefundRequestedEvent("refund-1", "payment-1", "The item arrived broken", nowUtc()))
 
         verify(exactly = 1) { refundReasonClassifier.classify("The item arrived broken") }
         verify(exactly = 1) {
@@ -48,7 +48,7 @@ class ClassifyRefundReasonEventHandlerTest {
     fun `handle skips classification without throwing when the refund no longer exists`() {
         every { refundRepository.findRefunds(any()) } returns (emptyList<Refund>() to 0L)
 
-        handler.handle(RefundRequestedEvent("refund-1", "payment-1", "The item arrived broken", LocalDateTime.now()))
+        handler.handle(RefundRequestedEvent("refund-1", "payment-1", "The item arrived broken", nowUtc()))
 
         verify(exactly = 0) { refundReasonClassifier.classify(any()) }
         verify(exactly = 0) { refundRepository.saveRefund(any()) }

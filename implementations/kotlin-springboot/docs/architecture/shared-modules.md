@@ -32,6 +32,7 @@ com.example.accountservice/
     RequestLoggingInterceptor.kt     ← HandlerInterceptor (cross-cutting-concerns.md)
     WebConfig.kt                     ← @Configuration, registers the Interceptor
     GenerateId.kt                    ← Aggregate ID generation util (aggregate-id.md)
+    Clock.kt                         ← nowUtc()/todayUtc(), the UTC clock source for persisted timestamps (conventions.md)
 
   config/                          ← the collection of @ConfigurationProperties data classes — actual code
     AwsProperties.kt                  ← prefix="aws", @Validated (config.md)

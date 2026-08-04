@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -34,7 +35,7 @@ class SpendingForecast private constructor() {
     var historyMonthsUsed: Int = 0
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     companion object {
@@ -52,7 +53,7 @@ class SpendingForecast private constructor() {
                 this.predictedAmount = predictedAmount
                 this.confidence = confidence
                 this.historyMonthsUsed = historyMonthsUsed
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
 
         /**

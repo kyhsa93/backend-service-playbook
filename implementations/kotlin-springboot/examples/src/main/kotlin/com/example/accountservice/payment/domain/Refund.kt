@@ -1,6 +1,7 @@
 package com.example.accountservice.payment.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -37,7 +38,7 @@ class Refund private constructor() {
     var reasonCategory: RefundReasonCategory? = null
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     private val domainEvents: MutableList<RefundDomainEvent> = mutableListOf()
@@ -54,7 +55,7 @@ class Refund private constructor() {
                 this.amount = amount
                 this.reason = reason
                 this.status = RefundStatus.REQUESTED
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
                 this.domainEvents += RefundRequestedEvent(this.refundId, this.paymentId, this.reason, this.createdAt)
             }
 
@@ -96,7 +97,7 @@ class Refund private constructor() {
         if (status != RefundStatus.REQUESTED) throw RefundApproveRequiresRequestedRefundException()
         status = RefundStatus.APPROVED
         decisionNote = "The refund was approved."
-        domainEvents += RefundApprovedEvent(refundId, paymentId, accountId, ownerId, amount, LocalDateTime.now())
+        domainEvents += RefundApprovedEvent(refundId, paymentId, accountId, ownerId, amount, nowUtc())
     }
 
     fun reject(reason: String) {

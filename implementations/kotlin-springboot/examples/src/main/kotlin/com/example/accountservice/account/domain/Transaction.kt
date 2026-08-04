@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -21,7 +22,7 @@ class Transaction private constructor() {
     var amount: Money = Money(0, "")
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     // An optional field that lets a transaction created in reaction to an external BC's (Payment)
@@ -61,7 +62,7 @@ class Transaction private constructor() {
                 this.amount = amount
                 this.referenceId = referenceId
                 this.merchantName = merchantName
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
 
         /**

@@ -1,6 +1,7 @@
 package com.example.accountservice.payment.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -33,7 +34,7 @@ class Payment private constructor() {
     var status: PaymentStatus = PaymentStatus.PENDING
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     private val domainEvents: MutableList<PaymentDomainEvent> = mutableListOf()
@@ -57,7 +58,7 @@ class Payment private constructor() {
                 this.ownerId = ownerId
                 this.amount = amount
                 this.status = PaymentStatus.PENDING
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
 
         /**
@@ -87,7 +88,7 @@ class Payment private constructor() {
     fun complete() {
         if (status != PaymentStatus.PENDING) throw PaymentCompleteRequiresPendingPaymentException()
         status = PaymentStatus.COMPLETED
-        domainEvents += PaymentCompletedEvent(paymentId, cardId, accountId, ownerId, amount, LocalDateTime.now())
+        domainEvents += PaymentCompletedEvent(paymentId, cardId, accountId, ownerId, amount, nowUtc())
     }
 
     /**
@@ -109,7 +110,7 @@ class Payment private constructor() {
     fun cancel(reason: String) {
         if (status != PaymentStatus.COMPLETED) throw PaymentCancelRequiresCompletedPaymentException()
         status = PaymentStatus.CANCELLED
-        domainEvents += PaymentCancelledEvent(paymentId, accountId, ownerId, amount, reason, LocalDateTime.now())
+        domainEvents += PaymentCancelledEvent(paymentId, accountId, ownerId, amount, reason, nowUtc())
     }
 
     fun pullDomainEvents(): List<PaymentDomainEvent> = domainEvents.toList().also { domainEvents.clear() }

@@ -3,6 +3,7 @@ package com.example.accountservice.account.infrastructure
 import com.example.accountservice.account.application.service.NlTransactionQueryTranslator
 import com.example.accountservice.account.application.service.TransactionFilter
 import com.example.accountservice.account.domain.TransactionType
+import com.example.accountservice.common.todayUtc
 import com.example.accountservice.config.LlmProperties
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -135,7 +136,7 @@ class NlTransactionQueryTranslatorImpl(
     }
 
     private fun buildSystemPrompt(): String {
-        val today = LocalDate.now().toString()
+        val today = todayUtc().toString()
         return "You translate a user's natural-language question about their own bank account transaction history into " +
             "a structured JSON filter. Today's date is $today. Resolve any relative date expression (\"this month\", " +
             "\"last week\") against that date.\n" +

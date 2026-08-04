@@ -1,6 +1,7 @@
 package com.example.accountservice.account.interfaces.rest
 
 import com.example.accountservice.AccountServiceApplication
+import com.example.accountservice.account.infrastructure.persistence.AccountJpaRepository
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
 import com.example.accountservice.support.FakeOllamaServer
 import org.assertj.core.api.Assertions.assertThat
@@ -39,6 +40,8 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @Testcontainers
 @AutoConfigureTestRestTemplate
@@ -162,6 +165,9 @@ class AccountControllerE2ETest {
     @Autowired
     private lateinit var sentEmailJpaRepository: SentEmailJpaRepository
 
+    @Autowired
+    private lateinit var accountJpaRepository: AccountJpaRepository
+
     private val tokenCache = mutableMapOf<String, String>()
 
     private fun tokenFor(userId: String): String =
@@ -237,6 +243,23 @@ class AccountControllerE2ETest {
         val balance = body["balance"] as Map<String, Any>
         assertThat(balance["amount"]).isEqualTo(0)
         assertThat(balance["currency"]).isEqualTo("KRW")
+    }
+
+    // The domain-level counterpart of this lives in AccountTest — this one covers the rest of the
+    // write path (JPA entity -> JDBC driver -> the TIMESTAMP WITHOUT TIME ZONE column), which is
+    // where a host-zone wall clock would actually get frozen into a row that no longer says which
+    // zone it meant. Reads the clock explicitly rather than through common.nowUtc() so it keeps
+    // failing if the helper itself stops returning UTC; under TZ=Asia/Seoul an unconverted write
+    // lands 9 hours outside these bounds.
+    @Test
+    fun `the persisted account row carries a UTC created_at regardless of the host timezone`() {
+        val before = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(2)
+        val account = createAccount("utc-owner", "KRW")
+        val after = LocalDateTime.now(ZoneOffset.UTC).plusMinutes(2)
+
+        val row = accountJpaRepository.findByAccountId(account["accountId"] as String)!!
+        assertThat(row.createdAt).isBetween(before, after)
+        assertThat(row.updatedAt).isBetween(before, after)
     }
 
     @Test

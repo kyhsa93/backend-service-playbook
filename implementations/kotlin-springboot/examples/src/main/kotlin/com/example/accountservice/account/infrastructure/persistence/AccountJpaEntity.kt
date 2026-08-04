@@ -1,6 +1,7 @@
 package com.example.accountservice.account.infrastructure.persistence
 
 import com.example.accountservice.account.domain.AccountStatus
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Embedded
 import jakarta.persistence.Entity
@@ -40,9 +41,9 @@ class AccountJpaEntity(
     @Column(nullable = false)
     var status: AccountStatus = AccountStatus.ACTIVE,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
     @Column(nullable = false)
-    var updatedAt: LocalDateTime = LocalDateTime.now(),
+    var updatedAt: LocalDateTime = nowUtc(),
     @Column
     var deletedAt: LocalDateTime? = null,
     @Column

@@ -3,12 +3,12 @@ package com.example.accountservice.account.application.event
 import com.example.accountservice.account.domain.Money
 import com.example.accountservice.account.domain.MoneyWithdrawnEvent
 import com.example.accountservice.account.domain.TransactionRepository
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.notification.application.service.NotificationService
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Test
-import java.time.LocalDateTime
 
 class DetectWithdrawalAnomalyEventHandlerTest {
     private val transactionRepository = mockk<TransactionRepository>()
@@ -22,7 +22,7 @@ class DetectWithdrawalAnomalyEventHandlerTest {
             transactionId = "transaction-1",
             amount = Money(amount, "KRW"),
             balanceAfter = Money(0, "KRW"),
-            createdAt = LocalDateTime.now(),
+            createdAt = nowUtc(),
         )
 
     @Test

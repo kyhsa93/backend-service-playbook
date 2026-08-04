@@ -1,6 +1,7 @@
 package com.example.accountservice.card.infrastructure.persistence
 
 import com.example.accountservice.card.domain.CardStatus
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -38,7 +39,7 @@ class CardJpaEntity(
     @Column(nullable = false)
     var status: CardStatus = CardStatus.ACTIVE,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
     @Column
     var lastStatementSentMonth: String? = null,
 )

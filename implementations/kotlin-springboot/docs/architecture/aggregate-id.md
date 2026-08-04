@@ -44,6 +44,7 @@ In Kotlin this can be declared as a top-level function, so no separate utility c
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -70,7 +71,7 @@ class Account protected constructor() {
                 this.email = email
                 this.balance = Money(0, currency)
                 this.status = AccountStatus.ACTIVE
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
                 this.updatedAt = this.createdAt
                 this.domainEvents += AccountCreatedEvent(this.accountId, ownerId, email, currency, this.createdAt)
             }
@@ -113,7 +114,7 @@ companion object {
             this.accountId = accountId
             this.type = type
             this.amount = amount
-            this.createdAt = LocalDateTime.now()
+            this.createdAt = nowUtc()
         }
 }
 ```

@@ -1,6 +1,7 @@
 package com.example.accountservice.auth.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -19,7 +20,7 @@ class Credential private constructor() {
     var passwordHash: String = ""
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     companion object {
@@ -32,7 +33,7 @@ class Credential private constructor() {
                 this.credentialId = generateId()
                 this.userId = userId
                 this.passwordHash = passwordHash
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
 
         /** Used by the Repository implementation to reconstitute a Credential from persisted data. */

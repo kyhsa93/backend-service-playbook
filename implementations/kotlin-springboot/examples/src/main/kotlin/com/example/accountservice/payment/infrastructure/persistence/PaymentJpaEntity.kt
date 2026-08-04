@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.infrastructure.persistence
 
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.payment.domain.PaymentStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -36,5 +37,5 @@ class PaymentJpaEntity(
     @Column(nullable = false)
     var status: PaymentStatus = PaymentStatus.PENDING,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
 )

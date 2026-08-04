@@ -182,6 +182,9 @@ Check each item, and if a violation is found, fix it immediately before moving t
     → If so, replace it with individual imports
 [ ] Is suspend fun used anywhere?
     → If so, remove it. This repository has decided not to adopt coroutines (see scheduling.md)
+[ ] Is every timestamp that is persisted / put in a domain event / compared against a stored value / used for period arithmetic read through nowUtc() or todayUtc() (common/Clock.kt)? (the harness's utc-timestamp-source check)
+    → A bare LocalDateTime.now()/LocalDate.now() resolves against the JVM's default zone, so a TIMESTAMP (without time zone) column would hold the host's wall clock. Elapsed-time measurement (latency, TTL/backoff) is exempt — see conventions.md, "The timezone rule"
+[ ] Does a @Scheduled cron whose payload key comes off the UTC calendar declare zone = "UTC"?
 ```
 
 ---

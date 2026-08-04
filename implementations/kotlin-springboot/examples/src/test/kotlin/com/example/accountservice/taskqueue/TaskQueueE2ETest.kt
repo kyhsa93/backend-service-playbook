@@ -12,6 +12,7 @@ import com.example.accountservice.account.infrastructure.scheduling.computePrevi
 import com.example.accountservice.account.infrastructure.scheduling.computeSpendingForecastMonth
 import com.example.accountservice.card.infrastructure.scheduling.CardStatementScheduler
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
@@ -44,7 +45,6 @@ import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName
 import java.time.Duration
 import java.time.LocalDateTime
-import java.time.ZoneOffset
 
 /**
  * An e2e test that actually exercises the full path prescribed by scheduling.md (Scheduler →
@@ -316,7 +316,7 @@ class TaskQueueE2ETest {
         // Backdates the withdrawals into "last month" the same way the card-statement test backdates
         // payments — reusing the scheduler's own period computation so the analysis only lines up if it
         // matches the logic the Scheduler actually runs with.
-        val period = computePreviousSpendingAnalysisPeriod(LocalDateTime.now(ZoneOffset.UTC))
+        val period = computePreviousSpendingAnalysisPeriod(nowUtc())
         val backdatedAt = period.monthStart.plusDays(1)
         val transactionId1 = withdraw(accountId, ownerId, 30_000)
         val transactionId2 = withdraw(accountId, ownerId, 20_000)
@@ -370,10 +370,10 @@ class TaskQueueE2ETest {
         // Seeds 3 months of spending_analysis history directly — this test's concern is
         // ForecastSpendingService training on existing history, re-deriving that history is
         // separately covered by the spending-analysis tests above.
-        val forecastMonth = computeSpendingForecastMonth(LocalDateTime.now(ZoneOffset.UTC))
+        val forecastMonth = computeSpendingForecastMonth(nowUtc())
         val amounts = listOf(10000L, 20000L, 30000L)
         for (monthsAgo in 3 downTo 1) {
-            val now = LocalDateTime.now(ZoneOffset.UTC)
+            val now = nowUtc()
             val monthDate = now.toLocalDate().withDayOfMonth(1).minusMonths(monthsAgo.toLong())
             val analysisMonth = "%04d-%02d".format(monthDate.year, monthDate.monthValue)
             spendingAnalysisJpaRepository.save(
@@ -387,7 +387,7 @@ class TaskQueueE2ETest {
                     averageAmount = amounts[3 - monthsAgo],
                     changeFromPreviousMonth = 0,
                     trend = "STABLE",
-                    createdAt = LocalDateTime.now(),
+                    createdAt = nowUtc(),
                 ),
             )
         }
@@ -426,7 +426,7 @@ class TaskQueueE2ETest {
         spendingForecastScheduler.enqueueMonthlySpendingForecast()
         Thread.sleep(5000)
 
-        val forecastMonth = computeSpendingForecastMonth(LocalDateTime.now(ZoneOffset.UTC))
+        val forecastMonth = computeSpendingForecastMonth(nowUtc())
         val response = get("/accounts/$accountId/spending-forecast?month=$forecastMonth-01", ownerId)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)

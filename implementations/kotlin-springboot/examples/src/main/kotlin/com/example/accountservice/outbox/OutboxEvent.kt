@@ -1,5 +1,6 @@
 package com.example.accountservice.outbox
 
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -44,7 +45,7 @@ class OutboxEvent protected constructor() {
         protected set
 
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         protected set
 
     // The W3C traceparent of the span active at write time (observability.md), so OutboxPoller/
@@ -68,7 +69,7 @@ class OutboxEvent protected constructor() {
                 // its class name as-is.
                 this.eventType = (event as? IntegrationEventContract)?.eventName ?: (event::class.simpleName ?: "Unknown")
                 this.payload = objectMapper.writeValueAsString(event)
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
                 this.traceparent = traceparent
             }
     }

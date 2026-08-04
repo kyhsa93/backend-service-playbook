@@ -73,9 +73,9 @@ class InterestPaymentScheduler(
     private val taskQueue: TaskQueue,
     private val objectMapper: ObjectMapper,
 ) {
-    @Scheduled(cron = "0 0 3 * * *") // every day at 03:00
+    @Scheduled(cron = "0 0 3 * * *", zone = "UTC") // every day at 03:00 UTC
     fun enqueueDailyInterestPayment() {
-        val payDate = LocalDate.now()
+        val payDate = todayUtc()
         val dedupId = "$TASK_TYPE-$payDate"
         runCatching {
             taskQueue.enqueue(
@@ -91,7 +91,9 @@ class InterestPaymentScheduler(
 }
 ```
 
-`card/infrastructure/scheduling/CardStatementScheduler.kt` (1st of the month at 04:00, `card.send-statement`) looks the same — it passes `YearMonth.now()` as the payload instead of `payDate`.
+`card/infrastructure/scheduling/CardStatementScheduler.kt` (1st of the month at 04:00 UTC, `card.send-statement`) looks the same — it passes `YearMonth.from(nowUtc())` as the payload instead of `payDate`.
+
+**The cron declares `zone = "UTC"` whenever the payload key comes off the UTC calendar** — `todayUtc()`/`YearMonth.from(nowUtc())` read the UTC date, so a tick evaluated in the host's zone would fire on a local date UTC has not reached yet (or has already left) and the key would name a day/month the tick does not belong to. `SpendingAnalysisScheduler` and `SpendingForecastScheduler` declare the same zone for the same reason. See [conventions.md](../conventions.md), "The timezone rule — store UTC".
 
 **The date/month is fixed at enqueue time and passed as the payload** — even if Task processing (the Consumer) is delayed, "which day/month this work is for" is never recomputed. This value is used as-is as each Task's idempotency key (`Account.lastInterestPaidAt`, `Card.lastStatementSentMonth`).
 

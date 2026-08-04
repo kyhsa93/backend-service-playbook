@@ -3,6 +3,8 @@ package com.example.accountservice.account.domain
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 class AccountTest {
     private fun createAccount(currency: String = "KRW"): Account =
@@ -81,6 +83,24 @@ class AccountTest {
         assertThat(events).hasSize(1)
         assertThat((events.first() as MoneyWithdrawnEvent).amount.amount).isEqualTo(400)
         assertThat(account.balance.amount).isEqualTo(600)
+    }
+
+    // Deliberately reads the clock as LocalDateTime.now(ZoneOffset.UTC) rather than through the
+    // common.nowUtc() helper: this test's whole job is to pin the Aggregate's stamp to UTC
+    // independently of the helper, so that it still fails if the helper itself stops returning UTC.
+    // Under TZ=Asia/Seoul a bare LocalDateTime.now() lands 9 hours ahead of these bounds.
+    @Test
+    fun `timestamps are stamped in UTC regardless of the host timezone`() {
+        val before = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1)
+
+        val account = createAccount()
+        account.deposit(1000)
+        val transaction = account.pullPendingTransactions().first()
+
+        val after = LocalDateTime.now(ZoneOffset.UTC).plusMinutes(1)
+        assertThat(account.createdAt).isBetween(before, after)
+        assertThat(account.updatedAt).isBetween(before, after)
+        assertThat(transaction.createdAt).isBetween(before, after)
     }
 
     @Test

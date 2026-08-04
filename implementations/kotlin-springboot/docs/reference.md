@@ -14,6 +14,7 @@ com.example.orderservice/
 
   common/                             ← project-common infrastructure (shared-modules.md)
     GenerateId.kt                       ← a top-level function, Aggregate ID generation (aggregate-id.md)
+    Clock.kt                            ← top-level nowUtc()/todayUtc(), the UTC clock source for persisted timestamps (conventions.md)
     GlobalExceptionHandler.kt           ← @RestControllerAdvice (error-handling.md)
     CorrelationIdFilter.kt              ← Filter, MDC (cross-cutting-concerns.md)
     RequestLoggingInterceptor.kt        ← HandlerInterceptor
@@ -98,6 +99,7 @@ This tree combines the actual Account package structure from [directory-structur
 package com.example.orderservice.order.domain
 
 import com.example.orderservice.common.generateId
+import com.example.orderservice.common.nowUtc
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -129,7 +131,7 @@ class Order protected constructor() {
         private set
 
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     @Transient
@@ -143,7 +145,7 @@ class Order protected constructor() {
                 this.userId = userId
                 this.items = items
                 this.status = OrderStatus.PENDING
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
                 this.domainEvents += OrderCreatedEvent(this.orderId, this.userId, this.totalAmount(), this.createdAt)
             }
         }
@@ -153,7 +155,7 @@ class Order protected constructor() {
         if (status == OrderStatus.CANCELLED) throw OrderAlreadyCancelledException(orderId)
         if (status == OrderStatus.PAID) throw OrderPaidNotCancellableException(orderId)
         status = OrderStatus.CANCELLED
-        domainEvents += OrderCancelledEvent(orderId, reason, LocalDateTime.now())
+        domainEvents += OrderCancelledEvent(orderId, reason, nowUtc())
     }
 
     fun totalAmount(): Long = items.sumOf { it.price * it.quantity }

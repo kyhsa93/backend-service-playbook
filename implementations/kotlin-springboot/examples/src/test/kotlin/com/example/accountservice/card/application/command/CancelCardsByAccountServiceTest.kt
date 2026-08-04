@@ -4,12 +4,12 @@ import com.example.accountservice.card.domain.Card
 import com.example.accountservice.card.domain.CardFindQuery
 import com.example.accountservice.card.domain.CardRepository
 import com.example.accountservice.card.domain.CardStatus
+import com.example.accountservice.common.nowUtc
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.time.LocalDateTime
 
 class CancelCardsByAccountServiceTest {
     private val cardRepository = mockk<CardRepository>(relaxed = true)
@@ -25,7 +25,7 @@ class CancelCardsByAccountServiceTest {
             ownerId = "owner-1",
             brand = "VISA",
             status = status,
-            createdAt = LocalDateTime.now(),
+            createdAt = nowUtc(),
         )
 
     private val findQuery =

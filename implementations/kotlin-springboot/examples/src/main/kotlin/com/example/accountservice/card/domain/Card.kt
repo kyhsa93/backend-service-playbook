@@ -1,6 +1,7 @@
 package com.example.accountservice.card.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -24,7 +25,7 @@ class Card private constructor() {
     var status: CardStatus = CardStatus.ACTIVE
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     // This is the Level 1 (intrinsic idempotency) key for the monthly card-statement delivery
@@ -55,7 +56,7 @@ class Card private constructor() {
                 this.ownerId = ownerId
                 this.brand = brand
                 this.status = CardStatus.ACTIVE
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
 
         /**

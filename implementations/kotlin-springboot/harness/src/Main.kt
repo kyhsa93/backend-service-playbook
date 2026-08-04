@@ -42,6 +42,7 @@ import harness.rules.checkSharedInfra
 import harness.rules.checkSoftDeleteFilter
 import harness.rules.checkTransactionBoundary
 import harness.rules.checkTypedErrorsOnly
+import harness.rules.checkUtcTimestampSource
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 
@@ -70,6 +71,7 @@ private fun bucketFor(name: String): Category? = when {
         name.contains("no-cross-aggregate-reference") ||
         name.contains("no-cross-bc-domain-import") ||
         name.contains("soft-delete-filter") ||
+        name.contains("utc-timestamp-source") ||
         name.contains("query-handler-no-raw-aggregate") ||
         name.contains("outbox") ||
         name.contains("shared-infra") ||
@@ -136,7 +138,8 @@ val RULES: List<Rule> = listOf(
     ::checkQueryHandlerNoRawAggregate,
     ::checkNoCrossBcDomainImport,
     ::checkNoOrmAutosyncInProdConfig,
-    ::checkOpenApiOperationDocumented
+    ::checkOpenApiOperationDocumented,
+    ::checkUtcTimestampSource
 )
 
 fun main(args: Array<String>) {

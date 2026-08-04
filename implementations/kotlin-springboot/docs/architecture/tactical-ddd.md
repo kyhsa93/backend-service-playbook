@@ -27,7 +27,7 @@ class Account private constructor() {
                 this.email = email
                 this.balance = Money(0, currency)
                 this.status = AccountStatus.ACTIVE
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
                 this.updatedAt = this.createdAt
                 this.domainEvents += AccountCreatedEvent(this.accountId, ownerId, email, currency, this.createdAt)
             }
@@ -76,7 +76,7 @@ class Transaction private constructor() {
                 this.accountId = accountId
                 this.type = type
                 this.amount = amount
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
 
         // Restoration only — called by TransactionMapper when reconstructing from the JPA entity (TransactionJpaEntity).

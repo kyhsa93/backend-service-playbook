@@ -10,6 +10,7 @@ import com.example.accountservice.account.domain.Money
 import com.example.accountservice.account.domain.Transaction
 import com.example.accountservice.account.domain.TransactionFindQuery
 import com.example.accountservice.account.domain.TransactionType
+import com.example.accountservice.common.nowUtc
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -17,7 +18,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 class AskTransactionHistoryServiceTest {
     private val accountQuery = mockk<AccountQuery>()
@@ -71,7 +71,7 @@ class AskTransactionHistoryServiceTest {
                 type = TransactionType.DEPOSIT,
                 amount = Money(1000, "KRW"),
                 referenceId = null,
-                createdAt = LocalDateTime.now(),
+                createdAt = nowUtc(),
             )
         every { translator.translate(any()) } returns TransactionFilter()
         every { accountQuery.findTransactions(any()) } returns (listOf(transaction) to 1L)

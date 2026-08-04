@@ -5,9 +5,9 @@ import com.example.accountservice.card.application.adapter.PaymentAdapter
 import com.example.accountservice.card.domain.CardFindQuery
 import com.example.accountservice.card.domain.CardRepository
 import com.example.accountservice.card.domain.CardStatus
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.notification.application.service.NotificationService
 import org.springframework.stereotype.Service
-import java.time.LocalDateTime
 
 /**
  * The monthly card-usage-statement delivery use case — called by
@@ -54,7 +54,7 @@ class SendMonthlyCardStatementsService(
                     excludeStatementMonth = yearMonth,
                 ),
             )
-        val windowEnd = LocalDateTime.now()
+        val windowEnd = nowUtc()
         val windowStart = windowEnd.minusDays(STATEMENT_WINDOW_DAYS)
 
         for (card in cards) {

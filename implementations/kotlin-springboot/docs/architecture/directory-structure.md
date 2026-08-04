@@ -15,6 +15,7 @@ com.example.accountservice/
     RequestLoggingInterceptor.kt      ← HandlerInterceptor, request/response logging (cross-cutting-concerns.md)
     WebConfig.kt                      ← @Configuration, registers the Interceptor
     GenerateId.kt                     ← Aggregate ID generation util (a top-level function) (aggregate-id.md)
+    Clock.kt                          ← nowUtc()/todayUtc(), the UTC clock source for persisted timestamps (conventions.md)
 
   config/                           ← the collection of @ConfigurationProperties data classes (config.md)
     AwsProperties.kt                  ← prefix="aws", @Validated
@@ -207,7 +208,7 @@ Most of the shared packages the root specifies sit at the project root (`com.exa
 
 | Package | Purpose | Current state |
 |---|---|---|
-| `common/` | Correlation ID Filter, request-logging Interceptor, ID generation util (`GenerateId.kt`), etc | **present** — see [cross-cutting-concerns.md](cross-cutting-concerns.md), [aggregate-id.md](aggregate-id.md) |
+| `common/` | Correlation ID Filter, request-logging Interceptor, ID generation util (`GenerateId.kt`), UTC clock source (`Clock.kt`), etc | **present** — see [cross-cutting-concerns.md](cross-cutting-concerns.md), [aggregate-id.md](aggregate-id.md), [conventions.md](../conventions.md) |
 | `config/` | the collection of `@ConfigurationProperties` data classes (`AwsProperties`, `SesProperties`) | **present** — see [config.md](config.md) |
 | `auth/` | JWT issuance/verification, Spring Security configuration | **present** — see [authentication.md](authentication.md) |
 | `secret/` | AWS Secrets Manager integration, TTL cache | **present** — see [secret-manager.md](secret-manager.md) |

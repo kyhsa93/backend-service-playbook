@@ -4,12 +4,12 @@ import com.example.accountservice.card.domain.Card
 import com.example.accountservice.card.domain.CardFindQuery
 import com.example.accountservice.card.domain.CardNotFoundException
 import com.example.accountservice.card.domain.CardStatus
+import com.example.accountservice.common.nowUtc
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.time.LocalDateTime
 
 class GetCardServiceTest {
     private val cardQuery = mockk<CardQuery>()
@@ -24,7 +24,7 @@ class GetCardServiceTest {
                 ownerId = "owner-1",
                 brand = "VISA",
                 status = CardStatus.ACTIVE,
-                createdAt = LocalDateTime.now(),
+                createdAt = nowUtc(),
             )
         val findQuery = CardFindQuery(page = 0, take = 1, cardId = "card-1", ownerId = "owner-1")
         every { cardQuery.findCards(findQuery) } returns (listOf(card) to 1L)

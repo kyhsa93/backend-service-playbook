@@ -1,12 +1,12 @@
 package com.example.accountservice.account.infrastructure.scheduling
 
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.taskqueue.TaskQueue
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDateTime
-import java.time.ZoneOffset
 
 /**
  * The recurring monthly spending-forecast Scheduler — placed in the Infrastructure layer
@@ -30,7 +30,7 @@ class SpendingForecastScheduler(
 
     @Scheduled(cron = "0 0 6 1 * *", zone = "UTC")
     fun enqueueMonthlySpendingForecast() {
-        val forecastMonth = computeSpendingForecastMonth(LocalDateTime.now(ZoneOffset.UTC))
+        val forecastMonth = computeSpendingForecastMonth(nowUtc())
         val dedupId = "$TASK_TYPE-$forecastMonth"
 
         // Exceptions from the Cron handler are caught explicitly and logged so the scheduling

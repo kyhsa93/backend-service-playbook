@@ -232,6 +232,7 @@ data class {D}Cancelled(
     files[f"{p}/domain/{D}.kt"] = f"""package com.example.accountservice.{p}.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 
 /**
@@ -249,7 +250,7 @@ class {D} private constructor() {{
     var status: {D}Status = {D}Status.PENDING
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     private val domainEvents: MutableList<Any> = mutableListOf()
@@ -261,7 +262,7 @@ class {D} private constructor() {{
                 this.{d}Id = generateId()
                 this.ownerId = ownerId
                 this.status = {D}Status.PENDING
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }}
 
         /**
@@ -294,7 +295,7 @@ class {D} private constructor() {{
     fun cancel(reason: String) {{
         if (status == {D}Status.CANCELLED) throw {D}AlreadyCancelledException()
         status = {D}Status.CANCELLED
-        domainEvents += {D}Cancelled({d}Id, reason, LocalDateTime.now())
+        domainEvents += {D}Cancelled({d}Id, reason, nowUtc())
     }}
 
     fun pullDomainEvents(): List<Any> = domainEvents.toList().also {{ domainEvents.clear() }}
@@ -506,9 +507,20 @@ class {D}CancelledEventHandler {{
 """
 
     # ---- infrastructure/persistence/ ----
+    # ktlint's standard:import-ordering wants the com.example.* imports lexicographically sorted, and
+    # whether the domain package sorts before or after `common` depends on the domain name (card <
+    # common < coupon), so the two are ordered here at generation time rather than hardcoded.
+    entity_common_imports = "\n".join(
+        sorted(
+            [
+                f"import com.example.accountservice.{p}.domain.{D}Status",
+                "import com.example.accountservice.common.nowUtc",
+            ]
+        )
+    )
     files[f"{p}/infrastructure/persistence/{D}JpaEntity.kt"] = f"""package com.example.accountservice.{p}.infrastructure.persistence
 
-import com.example.accountservice.{p}.domain.{D}Status
+{entity_common_imports}
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -542,7 +554,7 @@ class {D}JpaEntity(
     @Column(nullable = false)
     var status: {D}Status = {D}Status.PENDING,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
 )
 """
 

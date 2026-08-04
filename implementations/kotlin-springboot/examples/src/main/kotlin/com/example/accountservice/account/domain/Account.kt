@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -26,10 +27,10 @@ class Account private constructor() {
     var status: AccountStatus = AccountStatus.ACTIVE
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
-    var updatedAt: LocalDateTime = LocalDateTime.now()
+    var updatedAt: LocalDateTime = nowUtc()
         private set
 
     var deletedAt: LocalDateTime? = null
@@ -66,7 +67,7 @@ class Account private constructor() {
                 this.email = email
                 this.balance = Money(0, currency)
                 this.status = AccountStatus.ACTIVE
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
                 this.updatedAt = this.createdAt
                 this.domainEvents += AccountCreatedEvent(this.accountId, ownerId, email, currency, this.createdAt)
             }
@@ -108,7 +109,7 @@ class Account private constructor() {
         if (amount <= 0) throw InvalidAmountException()
         val money = Money(amount, balance.currency)
         balance = balance.add(money)
-        updatedAt = LocalDateTime.now()
+        updatedAt = nowUtc()
         val transaction = Transaction.create(accountId, TransactionType.DEPOSIT, money, referenceId)
         pendingTransactions += transaction
         domainEvents += MoneyDepositedEvent(accountId, email, transaction.transactionId, money, balance, transaction.createdAt)
@@ -130,7 +131,7 @@ class Account private constructor() {
         val money = Money(amount, balance.currency)
         if (balance.isLessThan(money)) throw InsufficientBalanceException()
         balance = balance.subtract(money)
-        updatedAt = LocalDateTime.now()
+        updatedAt = nowUtc()
         val transaction = Transaction.create(accountId, TransactionType.WITHDRAWAL, money, referenceId, merchantName)
         pendingTransactions += transaction
         domainEvents +=
@@ -165,7 +166,7 @@ class Account private constructor() {
 
         val money = Money(interestAmount, balance.currency)
         balance = balance.add(money)
-        updatedAt = LocalDateTime.now()
+        updatedAt = nowUtc()
         lastInterestPaidAt = payDate
         val transaction = Transaction.create(accountId, TransactionType.INTEREST, money)
         pendingTransactions += transaction
@@ -176,14 +177,14 @@ class Account private constructor() {
     fun suspend() {
         if (status != AccountStatus.ACTIVE) throw SuspendRequiresActiveAccountException()
         status = AccountStatus.SUSPENDED
-        updatedAt = LocalDateTime.now()
+        updatedAt = nowUtc()
         domainEvents += AccountSuspendedEvent(accountId, email, updatedAt)
     }
 
     fun reactivate() {
         if (status != AccountStatus.SUSPENDED) throw ReactivateRequiresSuspendedAccountException()
         status = AccountStatus.ACTIVE
-        updatedAt = LocalDateTime.now()
+        updatedAt = nowUtc()
         domainEvents += AccountReactivatedEvent(accountId, email, updatedAt)
     }
 
@@ -191,13 +192,13 @@ class Account private constructor() {
         if (status == AccountStatus.CLOSED) throw AccountAlreadyClosedException()
         if (!balance.isZero()) throw AccountBalanceNotZeroException()
         status = AccountStatus.CLOSED
-        updatedAt = LocalDateTime.now()
+        updatedAt = nowUtc()
         domainEvents += AccountClosedEvent(accountId, email, updatedAt)
     }
 
     fun markDeleted() {
         if (status != AccountStatus.CLOSED) throw DeleteRequiresClosedAccountException()
-        deletedAt = LocalDateTime.now()
+        deletedAt = nowUtc()
         updatedAt = deletedAt!!
     }
 

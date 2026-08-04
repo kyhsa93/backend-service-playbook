@@ -2,6 +2,7 @@ package com.example.accountservice.account.infrastructure.persistence
 
 import com.example.accountservice.account.domain.TransactionCategory
 import com.example.accountservice.account.domain.TransactionType
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Embedded
 import jakarta.persistence.Entity
@@ -46,5 +47,5 @@ class TransactionJpaEntity(
     @Column
     var category: TransactionCategory? = null,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
 )

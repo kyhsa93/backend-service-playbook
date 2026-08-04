@@ -86,7 +86,7 @@ class Credential private constructor() {
     var credentialId: String = ""; private set
     var userId: String = ""; private set
     var passwordHash: String = ""; private set   // the plaintext password is never stored anywhere in domain/application
-    var createdAt: LocalDateTime = LocalDateTime.now(); private set
+    var createdAt: LocalDateTime = nowUtc(); private set
 
     companion object {
         fun create(userId: String, passwordHash: String): Credential = /* ... */

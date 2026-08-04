@@ -76,11 +76,11 @@ class GetAccountService(private val accountQuery: AccountQuery) { /* ... */ }
 ```kotlin
 // domain/Account.kt, domain/Transaction.kt — actual code (each Entity declares this repeatedly)
 @Column(nullable = false)
-var createdAt: LocalDateTime = LocalDateTime.now()
+var createdAt: LocalDateTime = nowUtc()
     private set
 
 @Column(nullable = false)
-var updatedAt: LocalDateTime = LocalDateTime.now()
+var updatedAt: LocalDateTime = nowUtc()
     private set
 
 @Column
@@ -95,19 +95,19 @@ Both `Account` and `Transaction` declare these three columns independently — t
 @MappedSuperclass
 abstract class BaseEntity {
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         protected set
 
     @Column(nullable = false)
-    var updatedAt: LocalDateTime = LocalDateTime.now()
+    var updatedAt: LocalDateTime = nowUtc()
         protected set
 
     @Column
     var deletedAt: LocalDateTime? = null
         protected set
 
-    fun markUpdated() { updatedAt = LocalDateTime.now() }
-    fun markDeleted() { deletedAt = LocalDateTime.now() }
+    fun markUpdated() { updatedAt = nowUtc() }
+    fun markDeleted() { deletedAt = nowUtc() }
 }
 ```
 
@@ -140,7 +140,7 @@ interface AccountRepository {
 // domain/Account.kt — actual code. soft delete is only allowed from the CLOSED state
 fun markDeleted() {
     if (status != AccountStatus.CLOSED) throw DeleteRequiresClosedAccountException()
-    deletedAt = LocalDateTime.now()
+    deletedAt = nowUtc()
     updatedAt = deletedAt!!
 }
 ```

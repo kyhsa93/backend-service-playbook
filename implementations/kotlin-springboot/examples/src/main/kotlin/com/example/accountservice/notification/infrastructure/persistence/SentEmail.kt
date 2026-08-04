@@ -1,6 +1,7 @@
 package com.example.accountservice.notification.infrastructure.persistence
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -64,7 +65,7 @@ class SentEmail protected constructor() {
         protected set
 
     @Column(nullable = false)
-    var sentAt: LocalDateTime = LocalDateTime.now()
+    var sentAt: LocalDateTime = nowUtc()
         protected set
 
     companion object {
@@ -84,7 +85,7 @@ class SentEmail protected constructor() {
                 this.recipient = recipient
                 this.subject = subject
                 this.sesMessageId = sesMessageId
-                this.sentAt = LocalDateTime.now()
+                this.sentAt = nowUtc()
             }
     }
 }

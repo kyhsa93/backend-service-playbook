@@ -1,5 +1,6 @@
 package com.example.accountservice.payment.infrastructure.persistence
 
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.payment.domain.RefundReasonCategory
 import com.example.accountservice.payment.domain.RefundStatus
 import jakarta.persistence.Column
@@ -39,5 +40,5 @@ class RefundJpaEntity(
     @Column(nullable = true)
     var reasonCategory: RefundReasonCategory? = null,
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
 )

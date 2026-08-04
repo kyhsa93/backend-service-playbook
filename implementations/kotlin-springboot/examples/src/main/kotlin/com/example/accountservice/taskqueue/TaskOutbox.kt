@@ -1,5 +1,6 @@
 package com.example.accountservice.taskqueue
 
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -57,7 +58,7 @@ class TaskOutbox protected constructor() {
         protected set
 
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         protected set
 
     companion object {
@@ -73,7 +74,7 @@ class TaskOutbox protected constructor() {
                 this.payload = payload
                 this.groupId = groupId
                 this.deduplicationId = deduplicationId
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
     }
 

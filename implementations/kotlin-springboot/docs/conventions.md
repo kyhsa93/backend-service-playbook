@@ -178,9 +178,38 @@ class OrderNotFoundException(orderId: String) :
 
 Since only subclassing within the same file is allowed, the compiler knows every subtype, and catches a missed-handling case at compile time when a new exception is added to a `when (exception) { ... }` branch. See [error-handling.md](architecture/error-handling.md) for details.
 
-### Time values — `LocalDateTime`, no timezone conversion needed
+### The timezone rule — store UTC through `nowUtc()`
 
-The root (TypeScript) specifies a manual UTC ↔ KST conversion rule, but Spring Boot solves this at the framework level via `spring.jackson.time-zone` / the DB connection's timezone setting — application code never calls a separate conversion function after `LocalDateTime.now()`. The principle of never changing the server/DB timezone setting itself is kept the same as the root.
+Every timestamp that is **persisted, embedded in a domain event, compared against a stored value, or used as the base for period arithmetic** is read with `nowUtc()` (`common/Clock.kt`), which returns `LocalDateTime.now(ZoneOffset.UTC)`. Its date-only counterpart is `todayUtc()`.
+
+```kotlin
+// correct — the shared helper
+import com.example.accountservice.common.nowUtc
+
+var createdAt: LocalDateTime = nowUtc()
+```
+
+```kotlin
+// avoid — resolves against the JVM's default zone, so the column ends up holding the host's wall clock
+var createdAt: LocalDateTime = LocalDateTime.now()
+```
+
+`LocalDateTime.now()` with no argument resolves the clock against the JVM's *default* zone, and a `LocalDateTime` carries no offset of its own, so the wall-clock digits it produces are the host's. Every timestamp column here is `TIMESTAMP` — WITHOUT TIME ZONE (see `src/main/resources/db/migration/`) — which stores exactly the digits it is handed and records no offset, so the same code writes UTC on a UTC CI runner and KST on a developer machine in `Asia/Seoul`, and a single column ends up holding values that cannot be compared with each other. Month/day arithmetic built on such a value (card statement periods, spending-analysis and spending-forecast windows, daily interest) shifts by the same offset. `LocalDate.now()` is sharper still: within the host offset of midnight it names a different **day**, which silently changes a period key like `"2026-08"` or a daily idempotency key. Keeping the conversion in one function is what stops it from being re-derived at 40-odd call sites, and it makes the intent visible at the call site: `nowUtc()` means "a timestamp that leaves this process," a default-zone reading means "a stopwatch."
+
+A `@Scheduled` job whose payload key is derived from the UTC calendar also declares `zone = "UTC"` (`InterestPaymentScheduler`, `CardStatementScheduler`, `SpendingAnalysisScheduler`, `SpendingForecastScheduler`) — otherwise the tick fires on a local date that UTC has not reached yet, and the key names a day or month the tick does not belong to.
+
+**What is deliberately not converted** — a reading used only to measure elapsed time is location-independent (the difference between two readings is identical in every zone), so it stays on the default clock:
+
+- request-latency measurement in `common/RequestLoggingInterceptor.kt` (`System.currentTimeMillis()` at `preHandle`, subtracted at `afterCompletion`)
+- the TTL-cache expiry check in `secret/infrastructure/SecretServiceImpl.kt` and any other deadline/backoff computation — `Instant` is already an absolute instant and has nothing to convert
+- JWT `iat`/`exp` in `auth/application/AuthService.kt`, which JJWT serializes as a Unix epoch number — a format that carries no zone in the first place
+- the `@Scheduled(fixedDelay = ...)` pollers (`OutboxPoller`, `TaskOutboxPoller`), which are tick bookkeeping rather than a calendar
+
+Both storage and lookup keep UTC. Converting on the way in but not on the way out (or vice versa) is a double-conversion bug in any language. Nothing in the codebase shifts a timestamp for display either — the server/DB timezone settings are never changed to compensate.
+
+The `utc-timestamp-source` harness rule enforces this on `domain/` and `infrastructure/persistence/`, the two places where a clock reading is by construction a value that gets stored or shipped (see [harness/README.md](../harness/README.md)).
+
+A project whose columns are `TIMESTAMPTZ` instead has no ambiguity to resolve at write time, but keeping `nowUtc()` is still worthwhile — it is what keeps `create`/`reconstitute` round-trips and event payloads on one clock.
 
 ### Complex types — nested `data class`
 

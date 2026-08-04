@@ -1,9 +1,9 @@
 package com.example.accountservice.card.domain
 
+import com.example.accountservice.common.nowUtc
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.time.LocalDateTime
 
 class CardTest {
     private fun createCard(status: CardStatus = CardStatus.ACTIVE): Card =
@@ -13,7 +13,7 @@ class CardTest {
             ownerId = "owner-1",
             brand = "VISA",
             status = status,
-            createdAt = LocalDateTime.now(),
+            createdAt = nowUtc(),
         )
 
     @Test

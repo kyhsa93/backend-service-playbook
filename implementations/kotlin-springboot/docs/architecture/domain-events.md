@@ -102,7 +102,7 @@ class OutboxEvent protected constructor() {
         private set
 
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     companion object {
@@ -111,7 +111,7 @@ class OutboxEvent protected constructor() {
                 this.eventId = UUID.randomUUID().toString().replace("-", "")
                 this.eventType = (event as? IntegrationEventContract)?.eventName ?: (event::class.simpleName ?: "Unknown")
                 this.payload = objectMapper.writeValueAsString(event)
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
     }
 

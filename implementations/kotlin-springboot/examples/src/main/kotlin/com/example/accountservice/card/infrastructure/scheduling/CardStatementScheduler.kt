@@ -1,5 +1,6 @@
 package com.example.accountservice.card.infrastructure.scheduling
 
+import com.example.accountservice.common.nowUtc
 import com.example.accountservice.taskqueue.TaskQueue
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
@@ -26,9 +27,12 @@ class CardStatementScheduler(
 ) {
     private val logger = LoggerFactory.getLogger(CardStatementScheduler::class.java)
 
-    @Scheduled(cron = "0 0 4 1 * *") // 04:00 on the 1st of every month
+    // zone = "UTC" because [yearMonth] below is read off the UTC calendar: a tick evaluated in the
+    // host's zone would fire on the 1st local time while UTC is still in the previous month (or the
+    // next), and the dedup key would then name a month the tick does not belong to.
+    @Scheduled(cron = "0 0 4 1 * *", zone = "UTC") // 04:00 UTC on the 1st of every month
     fun enqueueMonthlyCardStatement() {
-        val yearMonth = YearMonth.now().toString()
+        val yearMonth = YearMonth.from(nowUtc()).toString()
         val dedupId = "$TASK_TYPE-$yearMonth"
         runCatching {
             taskQueue.enqueue(

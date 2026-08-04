@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain
 
 import com.example.accountservice.common.generateId
+import com.example.accountservice.common.nowUtc
 import java.time.LocalDateTime
 import kotlin.math.roundToLong
 
@@ -41,7 +42,7 @@ class SpendingAnalysis private constructor() {
     var trend: SpendingTrend = SpendingTrend.STABLE
         private set
 
-    var createdAt: LocalDateTime = LocalDateTime.now()
+    var createdAt: LocalDateTime = nowUtc()
         private set
 
     companion object {
@@ -84,7 +85,7 @@ class SpendingAnalysis private constructor() {
                 this.averageAmount = averageAmount
                 this.changeFromPreviousMonth = changeFromPreviousMonth
                 this.trend = trend
-                this.createdAt = LocalDateTime.now()
+                this.createdAt = nowUtc()
             }
         }
 

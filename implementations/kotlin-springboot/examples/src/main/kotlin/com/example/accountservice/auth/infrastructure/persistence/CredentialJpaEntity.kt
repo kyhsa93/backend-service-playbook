@@ -1,5 +1,6 @@
 package com.example.accountservice.auth.infrastructure.persistence
 
+import com.example.accountservice.common.nowUtc
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -26,5 +27,5 @@ class CredentialJpaEntity(
     @Column(nullable = false)
     var passwordHash: String = "",
     @Column(nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
+    var createdAt: LocalDateTime = nowUtc(),
 )

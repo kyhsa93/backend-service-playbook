@@ -7,13 +7,13 @@ import com.example.accountservice.account.domain.Transaction
 import com.example.accountservice.account.domain.TransactionCategory
 import com.example.accountservice.account.domain.TransactionRepository
 import com.example.accountservice.account.domain.TransactionType
+import com.example.accountservice.common.nowUtc
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.time.LocalDateTime
 
 class CategorizeTransactionEventHandlerTest {
     private val transactionAutoCategorizer = mockk<TransactionAutoCategorizer>()
@@ -27,7 +27,7 @@ class CategorizeTransactionEventHandlerTest {
             type = TransactionType.WITHDRAWAL,
             amount = Money(5500, "KRW"),
             referenceId = null,
-            createdAt = LocalDateTime.now(),
+            createdAt = nowUtc(),
             merchantName = "Starbucks Gangnam",
             category = null,
         )
@@ -39,7 +39,7 @@ class CategorizeTransactionEventHandlerTest {
             transactionId = "transaction-1",
             amount = Money(5500, "KRW"),
             balanceAfter = Money(4500, "KRW"),
-            createdAt = LocalDateTime.now(),
+            createdAt = nowUtc(),
             merchantName = merchantName,
         )
 
