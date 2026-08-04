@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from conftest import create_domain_event_queue, start_outbox_background_tasks, stop_outbox_background_tasks, wait_until
+from fake_ollama import FAKE_ANSWER_PREFIX, FORCE_LLM_FAILURE_MARKER
 from httpx import ASGITransport, AsyncClient
 from main import app
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -537,9 +538,12 @@ async def test_get_transactions_beyond_last_page_returns_empty(client: AsyncClie
     assert response.json()["count"] == 0
 
 
-# No real Ollama in this test environment, so both LLM calls (NlTransactionQueryTranslatorImpl/
-# NlTransactionAnswerComposerImpl) fall back to their non-blocking defaults — these tests assert
-# only on response shape/count, not exact wording (see docs/architecture/layer-architecture.md).
+# Both LLM calls (NlTransactionQueryTranslatorImpl/NlTransactionAnswerComposerImpl) run
+# against the deterministic fake Ollama in tests/fake_ollama.py (mounted session-wide by
+# conftest.py's respx fixture), so these tests exercise the real POST /api/chat request/
+# response-parse path — a "deposit" question yields a DEPOSIT filter, and the fake composer
+# echoes the grounding transactions block behind FAKE_ANSWER_PREFIX, which lets the test
+# assert exactly which transactions reached (and did not reach) the prompt.
 @pytest.mark.asyncio
 async def test_ask_transaction_history_returns_200_with_an_answer_grounded_in_the_requesters_own_transactions(
     client: AsyncClient,
@@ -547,6 +551,9 @@ async def test_ask_transaction_history_returns_200_with_an_answer_grounded_in_th
     account = await create_account(client, OWNER_ID, "KRW")
     await client.post(
         f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    await client.post(
+        f"/accounts/{account['account_id']}/withdraw", json={"amount": 3000}, headers=auth_headers(OWNER_ID)
     )
 
     response = await client.post(
@@ -557,9 +564,39 @@ async def test_ask_transaction_history_returns_200_with_an_answer_grounded_in_th
 
     assert response.status_code == 200
     body = response.json()
-    assert isinstance(body["answer"], str)
-    assert len(body["answer"]) > 0
+    # The translated DEPOSIT filter narrowed 2 transactions down to 1...
     assert body["matched_count"] == 1
+    # ...and the answer came through the composer's real parse path (the prefix), grounded in
+    # exactly the matching deposit — the filtered-out withdrawal never reached the prompt.
+    assert body["answer"].startswith(FAKE_ANSWER_PREFIX)
+    assert "DEPOSIT 10000 KRW" in body["answer"]
+    assert "WITHDRAWAL" not in body["answer"]
+
+
+@pytest.mark.asyncio
+async def test_ask_transaction_history_when_ollama_is_down_still_answers_via_the_fallbacks(
+    client: AsyncClient,
+) -> None:
+    # The failure marker rides inside the question itself, so both LLM calls for exactly this
+    # request (the translator, and the composer whose prompt embeds the question) get a 500
+    # from the fake — proving the graceful degradation: no filter (all the requester's
+    # transactions match) and the plain templated fallback answer instead of LLM prose.
+    account = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+
+    response = await client.post(
+        f"/accounts/{account['account_id']}/transactions/ask",
+        json={"question": f"How much have I deposited? {FORCE_LLM_FAILURE_MARKER}"},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched_count"] == 1
+    assert body["answer"].startswith("Found 1 matching transaction(s)")
+    assert not body["answer"].startswith(FAKE_ANSWER_PREFIX)
 
 
 @pytest.mark.asyncio
@@ -601,13 +638,14 @@ async def test_ask_transaction_history_a_different_owner_returns_404(client: Asy
 
 # Transaction auto-categorization (merchant_name -> category)
 #
-# The LLM behind TransactionAutoCategorizer isn't available in this e2e environment either
-# (same reasoning as the /transactions/ask tests above), so the categorization call falls back
-# to OTHER — but this still exercises the real async pipeline end to end: the Domain Event ->
-# Outbox -> SQS -> OutboxConsumer -> both MoneyWithdrawn subscribers (notification +
-# CategorizeTransactionEventHandler) -> the repository write all actually run, only the LLM
-# call itself degrades to its non-blocking default. Uses its own fixture (unlike `client`
-# above) since it needs the outbox/SQS pipeline actually running.
+# The LLM behind TransactionAutoCategorizer answers through the deterministic fake Ollama in
+# tests/fake_ollama.py (a "Starbucks" merchant classifies as FOOD), so the whole pipeline is
+# exercised for real end to end: the Domain Event -> Outbox -> SQS -> OutboxConsumer -> both
+# MoneyWithdrawn subscribers (notification + CategorizeTransactionEventHandler) -> the LLM
+# HTTP request/response-parse path -> the repository write. Uses its own fixture (unlike
+# `client` above) since it needs the outbox/SQS pipeline actually running — the LLM call
+# happens asynchronously inside the background consumer, which is why the fake is mounted
+# session-wide rather than per test.
 @pytest_asyncio.fixture(scope="module")
 async def categorization_env() -> AsyncGenerator[dict, None]:
     with (
@@ -694,6 +732,47 @@ async def test_withdraw_with_a_merchant_name_then_the_transaction_is_asynchronou
     await wait_until(_categorized)
 
     assert categorized["transaction"]["merchant_name"] == "Starbucks Gangnam"
+    # FOOD (not the OTHER fallback) proves the category came out of the real LLM
+    # request/parse path — the fake classifies a "Starbucks" merchant as FOOD.
+    assert categorized["transaction"]["category"] == "FOOD"
+
+
+@pytest.mark.asyncio
+async def test_withdraw_when_ollama_is_down_the_categorization_falls_back_to_other(
+    categorization_env: dict,
+) -> None:
+    # The failure marker rides inside merchant_name — the exact free text the categorizer's
+    # prompt embeds — so only this withdrawal's LLM call gets a 500 from the fake. "Starbucks"
+    # is kept in the name to prove the forced failure wins over a merchant the fake would
+    # otherwise classify as FOOD: the OTHER fallback still lands on the row, and the async
+    # pipeline never breaks.
+    client: AsyncClient = categorization_env["client"]
+    account = await create_account(client, OWNER_ID, "KRW")
+    await client.post(
+        f"/accounts/{account['account_id']}/deposit", json={"amount": 10000}, headers=auth_headers(OWNER_ID)
+    )
+    await client.post(
+        f"/accounts/{account['account_id']}/withdraw",
+        json={"amount": 5500, "merchant_name": f"Starbucks {FORCE_LLM_FAILURE_MARKER}"},
+        headers=auth_headers(OWNER_ID),
+    )
+
+    categorized: dict = {}
+
+    async def _categorized() -> bool:
+        response = await client.get(
+            f"/accounts/{account['account_id']}/transactions",
+            params={"type": "WITHDRAWAL"},
+            headers=auth_headers(OWNER_ID),
+        )
+        transactions = response.json()["transactions"]
+        if transactions and transactions[0].get("category"):
+            categorized["transaction"] = transactions[0]
+            return True
+        return False
+
+    await wait_until(_categorized)
+
     assert categorized["transaction"]["category"] == "OTHER"
 
 

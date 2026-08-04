@@ -1,13 +1,22 @@
 import asyncio
 import json
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+
+import pytest
+import respx
+from fake_ollama import FAKE_OLLAMA_BASE_URL, build_fake_ollama_router
 
 # A test must pass validate_env() at main.py's import time — the actual connection target
 # is swapped in by each e2e test's fixture via dependency_overrides, after it's started
 # with testcontainers.
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/account")
 os.environ.setdefault("JWT_SECRET", "test-secret")
+# Every LLM Technical Service builds its request URL from OLLAMA_BASE_URL at call time — pin
+# it (a hard set, not setdefault: a developer machine may export a real Ollama URL, and the
+# suite must stay deterministic) to the fixed fake origin the session-wide `fake_ollama`
+# respx router below intercepts.
+os.environ["OLLAMA_BASE_URL"] = FAKE_OLLAMA_BASE_URL
 # SqsConfig() is also validated by validate_env() via fail-fast — the actual queue URL is
 # swapped in by overwriting os.environ, after the fixture in an e2e test file that uses SQS
 # (test_card_e2e.py/test_payment_e2e.py/test_notification_e2e.py/test_scheduling_e2e.py)
@@ -25,6 +34,20 @@ os.environ.setdefault("SQS_TASK_QUEUE_URL", "http://localhost:4566/000000000000/
 # generously only here (see "Adjusting operational values" in rate-limiting.md).
 os.environ.setdefault("RATE_LIMIT_DEFAULT", "100000/minute")
 os.environ.setdefault("RATE_LIMIT_WRITE", "100000/minute")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def fake_ollama() -> Iterator[respx.MockRouter]:
+    """Keeps the deterministic fake Ollama (tests/fake_ollama.py) mounted for the whole
+    session — autouse and session-scoped because the LLM calls don't only happen inside a
+    single test's request/response cycle: the background OutboxConsumer each e2e fixture
+    starts calls Ollama asynchronously (categorization/refund-reason classification), so the
+    respx router must outlive any individual test. respx only patches httpx's real
+    transports, so the `ASGITransport` test clients and the (aiohttp-based) LocalStack/
+    testcontainers traffic are untouched, and the router's catch-all pass_through route lets
+    any non-Ollama httpx request through as a second guard."""
+    with build_fake_ollama_router() as router:
+        yield router
 
 
 async def wait_until(condition: Callable[[], Awaitable[bool]], timeout: float = 15.0, interval: float = 0.2) -> None:

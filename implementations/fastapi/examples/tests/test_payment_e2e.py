@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from conftest import create_domain_event_queue, start_outbox_background_tasks, stop_outbox_background_tasks, wait_until
+from fake_ollama import FORCE_LLM_FAILURE_MARKER
 from httpx import ASGITransport, AsyncClient
 from main import app
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -385,14 +386,14 @@ async def test_get_refunds_other_owners_payment_returns_404(client: AsyncClient)
 
 @pytest.mark.asyncio
 async def test_a_rejected_refund_still_gets_its_reason_classified_asynchronously(client: AsyncClient) -> None:
-    # The LLM behind RefundReasonClassifier isn't available in this e2e environment (the same
-    # reasoning as test_account_e2e.py's transaction-auto-categorization e2e test), so
-    # classification falls back to OTHER — but this still exercises the real async pipeline
-    # end to end (Domain Event -> Outbox -> SQS -> OutboxConsumer ->
-    # ClassifyRefundReasonEventHandler -> repository write), and proves classification runs
-    # for a REJECTED refund too, independent of the eligibility outcome (RefundRequested is
-    # published unconditionally by Refund.create(), before RefundEligibilityService's
-    # approve/reject judgment even runs).
+    # The LLM behind RefundReasonClassifier answers through the deterministic fake Ollama in
+    # tests/fake_ollama.py (an "arrived broken" reason classifies as DEFECTIVE_PRODUCT — the
+    # same setup as test_account_e2e.py's transaction-auto-categorization e2e test), so this
+    # exercises the real async pipeline end to end (Domain Event -> Outbox -> SQS ->
+    # OutboxConsumer -> ClassifyRefundReasonEventHandler -> the LLM HTTP request/parse path ->
+    # repository write), and proves classification runs for a REJECTED refund too, independent
+    # of the eligibility outcome (RefundRequested is published unconditionally by
+    # Refund.create(), before RefundEligibilityService's approve/reject judgment even runs).
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 10000)
     await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 90000))
@@ -413,15 +414,54 @@ async def test_a_rejected_refund_still_gets_its_reason_classified_asynchronously
     await wait_until(_classified)
 
     list_response = await client.get(f"/payments/{payment['payment_id']}/refunds", headers=auth_headers(OWNER_ID))
+    # DEFECTIVE_PRODUCT (not the OTHER fallback) proves the category came out of the real LLM
+    # request/parse path — the fake classifies an "arrived broken" reason as DEFECTIVE_PRODUCT.
+    assert list_response.json()["refunds"][0]["reason_category"] == "DEFECTIVE_PRODUCT"
+
+
+@pytest.mark.asyncio
+async def test_a_refund_reason_when_ollama_is_down_falls_back_to_other(client: AsyncClient) -> None:
+    # The failure marker rides inside the refund's stated reason — the exact free text the
+    # classifier's prompt embeds — so only this refund's LLM call gets a 500 from the fake.
+    # "arrived broken" is kept in the reason to prove the forced failure wins over text the
+    # fake would otherwise classify as DEFECTIVE_PRODUCT: the OTHER fallback still lands, and
+    # the async pipeline never breaks.
+    account, card = await make_funded_card(client, OWNER_ID, balance=100000)
+    payment = await create_payment(client, OWNER_ID, card["card_id"], 10000)
+    await wait_until(lambda: _balance_is(client, OWNER_ID, account["account_id"], 90000))
+
+    response = await client.post(
+        f"/payments/{payment['payment_id']}/refunds",
+        json={"amount": 20000, "reason": f"The item arrived broken {FORCE_LLM_FAILURE_MARKER}"},
+        headers=auth_headers(OWNER_ID),
+    )
+    assert response.status_code == 201
+
+    async def _classified() -> bool:
+        list_response = await client.get(f"/payments/{payment['payment_id']}/refunds", headers=auth_headers(OWNER_ID))
+        refunds = list_response.json()["refunds"]
+        return bool(refunds) and refunds[0].get("reason_category") is not None
+
+    await wait_until(_classified)
+
+    list_response = await client.get(f"/payments/{payment['payment_id']}/refunds", headers=auth_headers(OWNER_ID))
     assert list_response.json()["refunds"][0]["reason_category"] == "OTHER"
+
+
+def _category_count(insights_body: dict, category: str) -> int:
+    return next((c["count"] for c in insights_body["counts"] if c["category"] == category), 0)
 
 
 @pytest.mark.asyncio
 async def test_get_refunds_reason_insights_reflects_a_classified_refund_in_its_category_counts(
     client: AsyncClient,
 ) -> None:
+    # The fake Ollama classifies a "Changed my mind" reason as CHANGED_MIND, so the insights
+    # delta can be asserted on that specific bucket (not just the total) — proving the
+    # category the real LLM request/parse path produced is what the aggregation counts.
     before = await client.get("/refunds/reason-insights", headers=auth_headers(OWNER_ID))
     total_before = before.json()["total_classified"]
+    changed_mind_before = _category_count(before.json(), "CHANGED_MIND")
 
     account, card = await make_funded_card(client, OWNER_ID, balance=100000)
     payment = await create_payment(client, OWNER_ID, card["card_id"], 10000)
@@ -432,8 +472,11 @@ async def test_get_refunds_reason_insights_reflects_a_classified_refund_in_its_c
         headers=auth_headers(OWNER_ID),
     )
 
-    async def _total_increased() -> bool:
+    async def _changed_mind_counted() -> bool:
         after = await client.get("/refunds/reason-insights", headers=auth_headers(OWNER_ID))
-        return after.json()["total_classified"] > total_before
+        return _category_count(after.json(), "CHANGED_MIND") > changed_mind_before
 
-    await wait_until(_total_increased)
+    await wait_until(_changed_mind_counted)
+
+    after = await client.get("/refunds/reason-insights", headers=auth_headers(OWNER_ID))
+    assert after.json()["total_classified"] > total_before
