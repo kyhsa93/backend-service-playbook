@@ -148,15 +148,20 @@ func TestScheduledCardUsageStatement(t *testing.T) {
 		// EnqueueMonthlyStatement(now) targets "the month immediately before
 		// the month now falls in" as the period — since the payments just
 		// created belong to this month (today), push now one month ahead so
-		// that "the previous month = the month today falls in".
-		triggerTime := time.Now().UTC().AddDate(0, 1, 0)
+		// that "the previous month = the month today falls in". Month
+		// arithmetic starts from the first of the month: AddDate on a
+		// month-end day overflows into the month after next (Jul 31 + 1
+		// month = Aug 31, but Aug 31 + 1 month = Oct 1), which made this
+		// test fail when CI happened to run on the 31st.
+		monthStart := firstOfCurrentMonthUTC()
+		triggerTime := monthStart.AddDate(0, 1, 0)
 		require.NoError(t, testStatementScheduler.EnqueueMonthlyStatement(context.Background(), triggerTime))
 
 		sentEmail := waitForSentEmail(t, accountID, "CardUsageStatement")
 		require.Equal(t, owner+"@example.com", sentEmail.Recipient)
 		require.Contains(t, sentEmail.Subject, cardID)
 
-		period := time.Now().UTC().Format("2006-01")
+		period := monthStart.Format("2006-01")
 		require.Equal(t, period, cardLastStatementSentMonth(t, cardID))
 	})
 
@@ -174,8 +179,10 @@ func TestScheduledCardUsageStatement(t *testing.T) {
 		// target a different period ("next month") — this keeps the
 		// scenarios between subtests separate, and the idempotency
 		// verification itself remains valid by enqueuing this one period
-		// twice.
-		triggerTime := time.Now().UTC().AddDate(0, 2, 0)
+		// twice. As above, month arithmetic starts from the first of the
+		// month so a month-end run date can't overflow the AddDate result.
+		monthStart := firstOfCurrentMonthUTC()
+		triggerTime := monthStart.AddDate(0, 2, 0)
 		require.NoError(t, testStatementScheduler.EnqueueMonthlyStatement(context.Background(), triggerTime))
 		waitForSentEmail(t, accountID, "CardUsageStatement")
 
@@ -186,9 +193,16 @@ func TestScheduledCardUsageStatement(t *testing.T) {
 		time.Sleep(5 * time.Second)
 
 		require.Equal(t, 1, countSentEmails(t, accountID, "CardUsageStatement"))
-		period := time.Now().UTC().AddDate(0, 1, 0).Format("2006-01")
+		period := monthStart.AddDate(0, 1, 0).Format("2006-01")
 		require.Equal(t, period, cardLastStatementSentMonth(t, cardID))
 	})
+}
+
+// firstOfCurrentMonthUTC returns midnight UTC on the first day of the
+// current month — the safe base for month arithmetic in these tests.
+func firstOfCurrentMonthUTC() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 }
 
 // cardLastStatementSentMonth queries the last_statement_sent_month column
