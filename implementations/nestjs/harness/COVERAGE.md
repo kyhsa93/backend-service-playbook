@@ -99,7 +99,7 @@ Tracks how thoroughly `harness/` automatically verifies `docs/`'s guide rules.
 | `aggregate-id` | `aggregate-id.md` | Prohibits @PrimaryGeneratedColumn, requires a char(32) PrimaryColumn, verifies generateId() existence and hyphen stripping |
 | `api-documentation` | `../../docs/architecture/api-response.md` (root shared) | Verifies per-endpoint @ApiOperation summary/description and that a non-2xx error response is documented alongside the success response |
 | `user-context-store` | `authentication.md` | Prohibits Controllers reading req.user/request.user directly — requires UserContextStore.getRequesterId()/getUser() |
-| `file-naming` | `conventions.md`, `checklist.md` | Verifies kebab-case file names, flags *.service.ts naming, requires *-module.ts form for module files |
+| `file-naming` | `conventions.md`, `checklist.md` | Verifies kebab-case file names, flags `*.service.ts` naming, requires `*-module.ts` form for module files |
 
 ## Guide-Harness sync policy
 
