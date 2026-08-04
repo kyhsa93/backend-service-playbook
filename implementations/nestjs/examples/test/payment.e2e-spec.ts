@@ -130,7 +130,12 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
   }
 
   beforeAll(async () => {
+    // Importing nock patches Node's process-global http module immediately, and testcontainers
+    // drives the Docker daemon over that same module — keep nock inactive until the containers
+    // and the app are up, then activate it for the LLM stubs.
+    if (nock.isActive()) nock.restore()
     testApp = await startTestApp()
+    nock.activate()
     app = testApp.app
     dataSource = testApp.dataSource
     stubRefundReasonClassifier()
@@ -142,13 +147,13 @@ describe('PaymentController (e2e) — Payment/Refund + Card/Account cross-domain
   }, 180000)
 
   afterAll(async () => {
-    // Stop the app first so background consumers can't fire LLM calls with no stub in place,
-    // then fully unpatch nock. nock patches Node's process-global http module and fetch —
-    // without restore(), the patch outlives this file and breaks the next spec's testcontainers
-    // calls to the Docker socket (Jest sandboxes user modules per file, but not core modules).
-    await testApp?.stop()
+    // Unpatch nock BEFORE shutdown: app.close()/container stops talk to the Docker socket over
+    // the process-global http module nock patches, and the patch also must not outlive this
+    // file. Any LLM call a background consumer fires during the shutdown window just DNS-fails
+    // against the fake origin and takes the service's graceful fallback.
     nock.cleanAll()
     nock.restore()
+    await testApp?.stop()
   })
 
   describe('POST /payments — checking Card/Account status via the synchronous Adapter (ACL)', () => {
