@@ -47,6 +47,7 @@ See `implementations/<lang>/` for the implementation detail of each language/fra
 | API response structure, pagination, list/single-record response format | `docs/architecture/api-response.md` |
 | Testing strategy, Domain unit tests, Application mock tests, E2E | `docs/architecture/testing.md` |
 | Commit messages, branch naming, REST API design, rate limiting, method-naming principles | `docs/conventions.md` |
+| Timezone handling, storing UTC, timestamp columns, scheduled-job zones | `docs/conventions.md` |
 
 ### Authentication / cross-cutting concerns
 

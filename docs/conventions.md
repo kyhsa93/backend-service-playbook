@@ -175,3 +175,32 @@ Return `429 Too Many Requests` when the limit is exceeded.
 - Save: `save<Noun>`
 - Delete: `delete<Noun>`
 - No update method — look it up, modify it via a domain method, then save it via `save<Noun>`
+
+---
+
+## 6. Timezone principles
+
+### Store UTC, convert only for display
+
+- Every timestamp is stored as the **UTC** instant. Nothing shifts a time value on write, and nothing shifts it on read — a client converts to the user's zone for display.
+- A timestamp column is `TIMESTAMP` **without** time zone in every implementation, which records the wall-clock digits it is handed and no offset. The value that lands there is therefore decided by whatever clock the writer reads, so reading the host's clock makes the same code store UTC on a CI runner and a local wall clock on a developer machine — one column holding values that cannot be compared.
+- Period arithmetic inherits the defect and sharpens it: a date-only or month-only reading taken near midnight or a month boundary picks the wrong day or month, which changes period keys such as `"2026-08"` and any deduplication ID built from them.
+
+### Where the fix belongs
+
+The clock reading is what must be UTC, not the value in transit — with one exception, which the language decides:
+
+| | Fix | Why |
+|---|---|---|
+| Go, Java, Kotlin, Python | A shared helper the call sites use instead of the bare clock reading | The language's "now" resolves against the host's zone, so the reading itself is wrong |
+| TypeScript (Node) | Pin the process timezone at startup | A `Date` is already an absolute instant; the divergence appears only when the driver serializes it, so there is nothing to fix at the call site |
+
+Each implementation's `docs/conventions.md` names its helper (or its pin) and carries the language-specific detail.
+
+### What is deliberately not converted
+
+Readings that only measure **elapsed** time are location-independent — the offset cancels out in the subtraction — and stay on the plain clock: request-latency stopwatches, TTL and backoff deadlines, poller tick bookkeeping, and JWT `iat`/`exp` claims, which serialize as a numeric epoch that carries no zone at all. Converting them adds noise without changing behaviour, so each implementation's harness rule is scoped to the layers where a reading is by construction persisted (domain and persistence) rather than banning the bare call outright.
+
+### Scheduled jobs
+
+A cron trigger whose payload names a calendar period must declare the UTC zone explicitly. Otherwise the job fires on the host's calendar while the period key is computed on the UTC one, and near a boundary the two disagree — the job stamps a key for a day or month that UTC has not reached yet.
