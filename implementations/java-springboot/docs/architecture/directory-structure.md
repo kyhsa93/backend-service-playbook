@@ -182,6 +182,7 @@ com.example.accountservice/
 
   common/                                # domain-agnostic shared infrastructure (see shared-modules.md)
     IdGenerator.java                     # 32-character hex ID-generation utility (see aggregate-id.md)
+    UtcClock.java                        # UTC clock for persisted timestamps (see conventions.md, the timezone rule)
     web/
       CorrelationIdFilter.java           # Correlation ID — MDC propagation
       RequestLoggingInterceptor.java
@@ -281,7 +282,7 @@ Both `common/` (ID-generation utilities, etc.) and `config/` (per-concern config
 
 | Directory | Contents | Related documents |
 |---------|----------|----------|
-| `common/` | `IdGenerator`, `CorrelationIdFilter`/`RequestLoggingInterceptor`/`RateLimitFilter`/`GlobalExceptionHandler` (`web/`), `SecretService` (`service/`+`infrastructure/`) | [aggregate-id.md](aggregate-id.md), [cross-cutting-concerns.md](cross-cutting-concerns.md), [secret-manager.md](secret-manager.md) |
+| `common/` | `IdGenerator`, `UtcClock`, `CorrelationIdFilter`/`RequestLoggingInterceptor`/`RateLimitFilter`/`GlobalExceptionHandler` (`web/`), `SecretService` (`service/`+`infrastructure/`) | [aggregate-id.md](aggregate-id.md), [conventions.md](../conventions.md), [cross-cutting-concerns.md](cross-cutting-concerns.md), [secret-manager.md](secret-manager.md) |
 | `config/` | `@ConfigurationProperties` classes such as `AwsProperties`, `SesProperties`, `JwtProperties`, plus `SecurityConfig`, `WebConfig`, `OpenApiConfig` | [config.md](config.md), [bootstrap.md](bootstrap.md) |
 | `outbox/` | `OutboxEvent`, `OutboxWriter`, `OutboxPoller`, `OutboxConsumer`, `OutboxEventHandler` | [domain-events.md](domain-events.md) |
 | `taskqueue/` | `TaskOutboxEntry`, `TaskOutboxWriter`, `TaskOutboxPoller`, `TaskConsumer`, `TaskHandler` | [scheduling.md](scheduling.md) |

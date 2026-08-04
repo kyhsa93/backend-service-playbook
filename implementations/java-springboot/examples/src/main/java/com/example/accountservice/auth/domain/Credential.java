@@ -1,6 +1,7 @@
 package com.example.accountservice.auth.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 
 /**
@@ -43,7 +44,7 @@ public class Credential {
         credential.credentialId = IdGenerator.generate();
         credential.userId = userId;
         credential.passwordHash = passwordHash;
-        credential.createdAt = LocalDateTime.now();
+        credential.createdAt = UtcClock.now();
         return credential;
     }
 

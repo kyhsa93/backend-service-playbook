@@ -21,8 +21,8 @@ import com.example.accountservice.account.domain.Transaction;
 import com.example.accountservice.account.domain.TransactionFindQuery;
 import com.example.accountservice.account.domain.TransactionType;
 import com.example.accountservice.account.domain.TransactionsWithCount;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,7 +96,7 @@ class AskTransactionHistoryServiceTest {
                         null,
                         null,
                         null,
-                        LocalDateTime.now());
+                        UtcClock.now());
         when(translator.translate(anyString())).thenReturn(new TransactionFilter(null, null, null));
         when(accountQuery.findTransactions(any(TransactionFindQuery.class)))
                 .thenReturn(new TransactionsWithCount(List.of(transaction), 1));

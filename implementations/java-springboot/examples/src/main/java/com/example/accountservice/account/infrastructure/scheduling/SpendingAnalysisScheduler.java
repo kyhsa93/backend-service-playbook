@@ -1,9 +1,9 @@
 package com.example.accountservice.account.infrastructure.scheduling;
 
 import com.example.accountservice.account.infrastructure.PreviousSpendingAnalysisPeriod;
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.taskqueue.TaskOutboxWriter;
 import java.time.LocalDateTime;
-import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +36,7 @@ public class SpendingAnalysisScheduler {
     @Scheduled(cron = "0 0 2 1 * *")
     public void enqueueMonthlySpendingAnalysis() {
         PreviousSpendingAnalysisPeriod period =
-                PreviousSpendingAnalysisPeriod.compute(YearMonth.now());
+                PreviousSpendingAnalysisPeriod.compute(UtcClock.currentMonth());
         String dedupId = TASK_TYPE + "-" + period.analysisMonth();
         try {
             taskOutboxWriter.enqueue(

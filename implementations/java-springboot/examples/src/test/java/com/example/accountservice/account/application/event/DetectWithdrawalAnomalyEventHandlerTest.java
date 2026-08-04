@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.accountservice.account.application.service.NotificationService;
 import com.example.accountservice.account.domain.TransactionRepository;
-import java.time.LocalDateTime;
+import com.example.accountservice.common.UtcClock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +45,7 @@ class DetectWithdrawalAnomalyEventHandlerTest {
         event.put("amount", Map.of("amount", amount, "currency", "KRW"));
         event.put("balanceAfter", Map.of("amount", 4500, "currency", "KRW"));
         event.put("merchantName", null);
-        event.put("createdAt", LocalDateTime.now().toString());
+        event.put("createdAt", UtcClock.now().toString());
         return objectMapper.writeValueAsString(event);
     }
 

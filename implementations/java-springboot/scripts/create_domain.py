@@ -229,6 +229,7 @@ public interface __Domain__Repository {
 TEMPLATES["domain/__Domain__.java"] = """package __basepkg__.__pkg__.domain;
 
 import __basepkg__.common.IdGenerator;
+import __basepkg__.common.UtcClock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -270,7 +271,7 @@ public class __Domain__ {
         __domain__.__domain__Id = IdGenerator.generate();
         __domain__.ownerId = ownerId;
         __domain__.status = __Domain__Status.PENDING;
-        __domain__.createdAt = LocalDateTime.now();
+        __domain__.createdAt = UtcClock.now();
         return __domain__;
     }
 
@@ -292,7 +293,7 @@ public class __Domain__ {
                     __Domain__Exception.ErrorCode.__ERR_ALREADY_CANCELLED__, "The __Domain__ is already cancelled.");
         }
         this.status = __Domain__Status.CANCELLED;
-        this.domainEvents.add(new __Domain__CancelledEvent(this.__domain__Id, reason, LocalDateTime.now()));
+        this.domainEvents.add(new __Domain__CancelledEvent(this.__domain__Id, reason, UtcClock.now()));
     }
 
     /** Called by the Repository implementation right after saving to pull and clear unpublished events (see domain-events.md). */

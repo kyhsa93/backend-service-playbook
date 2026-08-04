@@ -13,7 +13,7 @@ import com.example.accountservice.account.domain.Transaction;
 import com.example.accountservice.account.domain.TransactionCategory;
 import com.example.accountservice.account.domain.TransactionRepository;
 import com.example.accountservice.account.domain.TransactionType;
-import java.time.LocalDateTime;
+import com.example.accountservice.common.UtcClock;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +42,7 @@ class CategorizeTransactionEventHandlerTest {
                     null,
                     "Starbucks Gangnam",
                     null,
-                    LocalDateTime.now());
+                    UtcClock.now());
 
     @BeforeEach
     void setUp() {
@@ -59,7 +59,7 @@ class CategorizeTransactionEventHandlerTest {
         event.put("amount", Map.of("amount", 5500, "currency", "KRW"));
         event.put("balanceAfter", Map.of("amount", 4500, "currency", "KRW"));
         event.put("merchantName", merchantName);
-        event.put("createdAt", LocalDateTime.now().toString());
+        event.put("createdAt", UtcClock.now().toString());
         return objectMapper.writeValueAsString(event);
     }
 

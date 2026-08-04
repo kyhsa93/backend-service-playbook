@@ -39,6 +39,7 @@ import harness.rules.SharedInfra;
 import harness.rules.SoftDeleteFilter;
 import harness.rules.TransactionBoundary;
 import harness.rules.TypedErrorsOnly;
+import harness.rules.UtcTimestampSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -197,7 +198,14 @@ public final class RuleTest {
         new TestCase("api-documentation/good-class-level-error-response", () -> assertNoFailures(ApiDocumentation.check("testdata/api-documentation/good-class-level-error-response"))),
         new TestCase("api-documentation/bad-missing-operation", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-missing-operation"))),
         new TestCase("api-documentation/bad-missing-description", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-missing-description"))),
-        new TestCase("api-documentation/bad-only-success-response", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-only-success-response")))
+        new TestCase("api-documentation/bad-only-success-response", () -> assertHasFailure(ApiDocumentation.check("testdata/api-documentation/bad-only-success-response"))),
+
+        new TestCase("utc-timestamp-source/good", () -> assertNoFailures(UtcTimestampSource.check("testdata/utc-timestamp-source/good"))),
+        new TestCase("utc-timestamp-source/good-explicit-zone", () -> assertNoFailures(UtcTimestampSource.check("testdata/utc-timestamp-source/good-explicit-zone"))),
+        new TestCase("utc-timestamp-source/good-elapsed-time-outside-scope", () -> assertNoFailures(UtcTimestampSource.check("testdata/utc-timestamp-source/good-elapsed-time-outside-scope"))),
+        new TestCase("utc-timestamp-source/bad-bare-localdatetime-now", () -> assertHasFailure(UtcTimestampSource.check("testdata/utc-timestamp-source/bad-bare-localdatetime-now"))),
+        new TestCase("utc-timestamp-source/bad-bare-localdate-now-in-persistence", () -> assertHasFailure(UtcTimestampSource.check("testdata/utc-timestamp-source/bad-bare-localdate-now-in-persistence"))),
+        new TestCase("utc-timestamp-source/bad-bare-yearmonth-now", () -> assertHasFailure(UtcTimestampSource.check("testdata/utc-timestamp-source/bad-bare-yearmonth-now")))
     );
 
     public static void main(String[] args) {

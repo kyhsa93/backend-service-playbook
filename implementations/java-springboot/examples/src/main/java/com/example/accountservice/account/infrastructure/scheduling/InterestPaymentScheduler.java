@@ -1,5 +1,6 @@
 package com.example.accountservice.account.infrastructure.scheduling;
 
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.taskqueue.TaskOutboxWriter;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,7 @@ public class InterestPaymentScheduler {
     @Scheduled(cron = "0 0 3 * * *") // Every day at 3 AM
     public void enqueueDailyInterestPayment() {
         try {
-            LocalDate today = LocalDate.now();
+            LocalDate today = UtcClock.today();
             String dedupId = TASK_TYPE + "-" + today;
             taskOutboxWriter.enqueue(TASK_TYPE, new Payload(today), GROUP_ID, dedupId);
         } catch (Exception e) {

@@ -1,6 +1,7 @@
 package com.example.accountservice.payment.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,7 +55,7 @@ public class Refund {
         refund.amount = amount;
         refund.reason = reason;
         refund.status = RefundStatus.REQUESTED;
-        refund.createdAt = LocalDateTime.now();
+        refund.createdAt = UtcClock.now();
         refund.domainEvents.add(
                 new RefundRequestedEvent(
                         refund.refundId, refund.paymentId, refund.reason, refund.createdAt));
@@ -82,7 +83,7 @@ public class Refund {
                         accountId,
                         ownerId,
                         this.amount,
-                        LocalDateTime.now()));
+                        UtcClock.now()));
     }
 
     public void reject(String reason) {

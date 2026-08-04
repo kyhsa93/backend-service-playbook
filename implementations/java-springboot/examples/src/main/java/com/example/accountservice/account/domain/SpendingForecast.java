@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 
 /**
@@ -36,7 +37,7 @@ public class SpendingForecast {
         forecast.predictedAmount = predictedAmount;
         forecast.confidence = confidence;
         forecast.historyMonthsUsed = historyMonthsUsed;
-        forecast.createdAt = LocalDateTime.now();
+        forecast.createdAt = UtcClock.now();
         return forecast;
     }
 

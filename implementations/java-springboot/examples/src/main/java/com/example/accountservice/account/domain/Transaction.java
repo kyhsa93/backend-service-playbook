@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 
 /**
@@ -58,7 +59,7 @@ public class Transaction {
         transaction.amount = amount;
         transaction.referenceId = referenceId;
         transaction.merchantName = merchantName;
-        transaction.createdAt = LocalDateTime.now();
+        transaction.createdAt = UtcClock.now();
         return transaction;
     }
 

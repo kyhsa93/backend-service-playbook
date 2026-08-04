@@ -1,7 +1,7 @@
 package com.example.accountservice.account.infrastructure.scheduling;
 
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.taskqueue.TaskOutboxWriter;
-import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +32,7 @@ public class SpendingForecastScheduler {
     // rethrown — it is retried on the next tick (3 AM on the 1st of the following month).
     @Scheduled(cron = "0 0 3 1 * *")
     public void enqueueMonthlySpendingForecast() {
-        String forecastMonth = YearMonth.now().toString();
+        String forecastMonth = UtcClock.currentMonth().toString();
         String dedupId = TASK_TYPE + "-" + forecastMonth;
         try {
             taskOutboxWriter.enqueue(TASK_TYPE, new Payload(forecastMonth), GROUP_ID, dedupId);

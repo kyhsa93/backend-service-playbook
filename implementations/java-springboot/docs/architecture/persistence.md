@@ -111,7 +111,7 @@ private LocalDateTime updatedAt;
 private LocalDateTime deletedAt;
 ```
 
-`createdAt`/`updatedAt` are set manually by domain methods (`create()`, `deposit()`, etc.) via `LocalDateTime.now()`. For automating this with `@CreatedDate`/`@LastModifiedDate` (Spring Data JPA Auditing), see the common-columns section of [repository-pattern.md](repository-pattern.md).
+`createdAt`/`updatedAt` are set manually by domain methods (`create()`, `deposit()`, etc.) via `UtcClock.now()`. The columns are `TIMESTAMP(6)` — without time zone — so the reading has to be UTC rather than the host's wall clock; see the timezone rule in [conventions.md](../conventions.md). For automating this with `@CreatedDate`/`@LastModifiedDate` (Spring Data JPA Auditing), see the common-columns section of [repository-pattern.md](repository-pattern.md).
 
 ---
 
@@ -141,7 +141,7 @@ public void delete() {
     if (this.deletedAt != null) {
         throw new AccountException(AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED, "This account has already been deleted.");
     }
-    this.deletedAt = LocalDateTime.now();
+    this.deletedAt = UtcClock.now();
 }
 ```
 

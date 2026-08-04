@@ -1,6 +1,7 @@
 package com.example.accountservice.card.infrastructure.notification.persistence;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -60,7 +61,7 @@ public class CardSentEmail {
         sentEmail.recipient = recipient;
         sentEmail.subject = subject;
         sentEmail.sesMessageId = sesMessageId;
-        sentEmail.sentAt = LocalDateTime.now();
+        sentEmail.sentAt = UtcClock.now();
         return sentEmail;
     }
 

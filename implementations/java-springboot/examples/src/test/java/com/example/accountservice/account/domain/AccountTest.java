@@ -2,8 +2,13 @@ package com.example.accountservice.account.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.Test;
 
 class AccountTest {
@@ -22,6 +27,21 @@ class AccountTest {
                 .hasSize(1)
                 .first()
                 .isInstanceOf(AccountCreatedEvent.class);
+    }
+
+    // Guards the timezone rule (docs/conventions.md): createdAt is written to a TIMESTAMP column
+    // that records no offset, so the wall clock it holds must be UTC and not the host's. Pinned
+    // against Instant, an absolute instant that no zone setting can move — the assertion therefore
+    // fails on a host running in Asia/Seoul the moment the aggregate goes back to a bare
+    // LocalDateTime.now().
+    @Test
+    void created_at_is_read_in_utc_regardless_of_the_host_timezone() {
+        Account account = createAccount();
+
+        assertThat(account.getCreatedAt())
+                .isCloseTo(
+                        LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC),
+                        within(1, ChronoUnit.MINUTES));
     }
 
     @Test

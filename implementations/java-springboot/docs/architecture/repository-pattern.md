@@ -155,7 +155,7 @@ public abstract class BaseAuditable {
 }
 ```
 
-Adding `@EnableJpaAuditing` to the `@SpringBootApplication` class would auto-set `createdAt`/`updatedAt`. This repository currently sets `LocalDateTime.now()` manually inside `Account.create()`/domain methods — switching to Auditing would let the JPA entities (`AccountJpaEntity`/`TransactionJpaEntity`, infrastructure) take over timestamp management. Since `Account`/`Transaction` (domain) are already pure domain, placing `@MappedSuperclass` in infrastructure doesn't conflict with the principle in [layer-architecture.md](layer-architecture.md) — however, to avoid double-managing `updatedAt` alongside the current approach where a domain method sets it directly, one approach or the other should be chosen consistently.
+Adding `@EnableJpaAuditing` to the `@SpringBootApplication` class would auto-set `createdAt`/`updatedAt`. This repository currently sets `UtcClock.now()` manually inside `Account.create()`/domain methods (UTC, see the timezone rule in [conventions.md](../conventions.md)) — switching to Auditing would let the JPA entities (`AccountJpaEntity`/`TransactionJpaEntity`, infrastructure) take over timestamp management. Since `Account`/`Transaction` (domain) are already pure domain, placing `@MappedSuperclass` in infrastructure doesn't conflict with the principle in [layer-architecture.md](layer-architecture.md) — however, to avoid double-managing `updatedAt` alongside the current approach where a domain method sets it directly, one approach or the other should be chosen consistently.
 
 ---
 

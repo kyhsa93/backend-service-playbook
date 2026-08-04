@@ -1,6 +1,7 @@
 package com.example.accountservice.payment.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,7 +68,7 @@ public class Payment {
         payment.ownerId = ownerId;
         payment.amount = amount;
         payment.status = PaymentStatus.PENDING;
-        payment.createdAt = LocalDateTime.now();
+        payment.createdAt = UtcClock.now();
         return payment;
     }
 
@@ -85,7 +86,7 @@ public class Payment {
                         this.accountId,
                         this.ownerId,
                         this.amount,
-                        LocalDateTime.now()));
+                        UtcClock.now()));
     }
 
     /**
@@ -122,7 +123,7 @@ public class Payment {
                         this.ownerId,
                         this.amount,
                         reason,
-                        LocalDateTime.now()));
+                        UtcClock.now()));
     }
 
     public List<Object> pullDomainEvents() {

@@ -3,6 +3,7 @@ package com.example.accountservice.account.infrastructure;
 import com.example.accountservice.account.application.service.NlTransactionQueryTranslator;
 import com.example.accountservice.account.application.service.TransactionFilter;
 import com.example.accountservice.account.domain.TransactionType;
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.config.LlmProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -137,7 +138,7 @@ public class NlTransactionQueryTranslatorImpl implements NlTransactionQueryTrans
     }
 
     private static String buildSystemPrompt() {
-        String today = LocalDate.now().toString();
+        String today = UtcClock.today().toString();
         return "You translate a user's natural-language question about their own bank account"
                 + " transaction history into a structured JSON filter. Today's date is "
                 + today

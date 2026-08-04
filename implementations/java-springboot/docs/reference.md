@@ -99,6 +99,7 @@ Tests mirror the same package under `src/test/java/com/example/accountservice/` 
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -153,7 +154,7 @@ public class Account {
         account.email = email;
         account.balance = new Money(0, currency);
         account.status = AccountStatus.ACTIVE;
-        account.createdAt = LocalDateTime.now();
+        account.createdAt = UtcClock.now();
         account.updatedAt = account.createdAt;
         account.domainEvents.add(new AccountCreatedEvent(account.accountId, ownerId, email, currency, account.createdAt));
         return account;
@@ -168,7 +169,7 @@ public class Account {
         }
         Money money = new Money(amount, this.balance.currency());
         this.balance = this.balance.add(money);
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         Transaction transaction = Transaction.create(this.accountId, TransactionType.DEPOSIT, money);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(new MoneyDepositedEvent(
@@ -185,7 +186,7 @@ public class Account {
             throw new AccountException(AccountException.ErrorCode.INSUFFICIENT_BALANCE, "Insufficient balance.");
         }
         this.balance = this.balance.subtract(money);
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         Transaction transaction = Transaction.create(this.accountId, TransactionType.WITHDRAWAL, money);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(new MoneyWithdrawnEvent(
@@ -202,7 +203,7 @@ public class Account {
             throw new AccountException(AccountException.ErrorCode.ACCOUNT_BALANCE_NOT_ZERO, "An account with a non-zero balance cannot be closed.");
         }
         this.status = AccountStatus.CLOSED;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         this.domainEvents.add(new AccountClosedEvent(this.accountId, this.email, this.updatedAt));
     }
 
@@ -211,7 +212,7 @@ public class Account {
         if (this.status != AccountStatus.CLOSED) {
             throw new AccountException(AccountException.ErrorCode.ACCOUNT_NOT_CLOSABLE_FOR_DELETE, "Only a closed account can be deleted.");
         }
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = UtcClock.now();
     }
 
     public List<Object> pullDomainEvents() {
@@ -244,6 +245,7 @@ public class Account {
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -281,7 +283,7 @@ public class Transaction {
         transaction.accountId = accountId;
         transaction.type = type;
         transaction.amount = amount;
-        transaction.createdAt = LocalDateTime.now();
+        transaction.createdAt = UtcClock.now();
         return transaction;
     }
 
@@ -737,7 +739,7 @@ public class OutboxEvent {
             event.eventId = UUID.randomUUID().toString().replace("-", "");
             event.eventType = domainEvent.getClass().getSimpleName();
             event.payload = objectMapper.writeValueAsString(domainEvent);
-            event.createdAt = LocalDateTime.now();
+            event.createdAt = UtcClock.now();
             return event;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialize event", e);

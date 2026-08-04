@@ -41,7 +41,7 @@ public class InterestPaymentScheduler {
     @Scheduled(cron = "0 0 3 * * *") // every day at 3 AM
     public void enqueueDailyInterestPayment() {
         try {
-            LocalDate today = LocalDate.now();
+            LocalDate today = UtcClock.today();   // UTC — see conventions.md, "the timezone rule"
             String dedupId = TASK_TYPE + "-" + today;
             taskOutboxWriter.enqueue(TASK_TYPE, new Payload(today), GROUP_ID, dedupId);
         } catch (Exception e) {

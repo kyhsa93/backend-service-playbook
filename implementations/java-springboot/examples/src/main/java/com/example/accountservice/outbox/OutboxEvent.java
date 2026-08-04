@@ -1,5 +1,6 @@
 package com.example.accountservice.outbox;
 
+import com.example.accountservice.common.UtcClock;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -50,7 +51,7 @@ public class OutboxEvent {
         outboxEvent.eventType = eventType;
         outboxEvent.payload = payload;
         outboxEvent.processed = false;
-        outboxEvent.createdAt = LocalDateTime.now();
+        outboxEvent.createdAt = UtcClock.now();
         outboxEvent.traceparent = traceparent;
         return outboxEvent;
     }

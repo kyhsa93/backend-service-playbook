@@ -1,6 +1,7 @@
 package com.example.accountservice.account.infrastructure.notification.persistence;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -48,7 +49,7 @@ public class SentEmail {
         sentEmail.recipient = recipient;
         sentEmail.subject = subject;
         sentEmail.sesMessageId = sesMessageId;
-        sentEmail.sentAt = LocalDateTime.now();
+        sentEmail.sentAt = UtcClock.now();
         return sentEmail;
     }
 

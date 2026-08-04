@@ -42,6 +42,7 @@ import harness.rules.SharedInfra;
 import harness.rules.SoftDeleteFilter;
 import harness.rules.TransactionBoundary;
 import harness.rules.TypedErrorsOnly;
+import harness.rules.UtcTimestampSource;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -88,7 +89,8 @@ public final class Main {
             || name.contains("no-silent-catch")
             || name.contains("no-event-publisher-in-command")
             || name.contains("service-annotation")
-            || name.contains("transaction-boundary")) return Category.ARCHITECTURE;
+            || name.contains("transaction-boundary")
+            || name.contains("utc-timestamp-source")) return Category.ARCHITECTURE;
         if (name.contains("dockerfile") || name.contains("no-orm-autosync-in-prod-config")) return Category.RUNTIME;
         if (name.contains("no-generic-response-keys")
             || name.contains("api-documentation")
@@ -138,7 +140,8 @@ public final class Main {
         QueryHandlerNoRawAggregate::check,
         NoCrossBcDomainImport::check,
         NoOrmAutoSyncInProdConfig::check,
-        ApiDocumentation::check
+        ApiDocumentation::check,
+        UtcTimestampSource::check
     );
 
     public static void main(String[] args) {

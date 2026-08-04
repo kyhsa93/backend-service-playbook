@@ -50,7 +50,7 @@ public class Account {
         }
         Money money = new Money(amount, this.balance.currency());
         this.balance = this.balance.add(money);
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         Transaction transaction = Transaction.create(this.accountId, TransactionType.DEPOSIT, money);
         this.pendingTransactions.add(transaction);
         this.domainEvents.add(new MoneyDepositedEvent(/* ... */));
@@ -100,7 +100,7 @@ public class Transaction {
         transaction.accountId = accountId;
         transaction.type = type;
         transaction.amount = amount;
-        transaction.createdAt = LocalDateTime.now();
+        transaction.createdAt = UtcClock.now();
         return transaction;
     }
 }

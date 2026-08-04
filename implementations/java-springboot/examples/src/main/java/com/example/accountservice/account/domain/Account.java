@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -66,7 +67,7 @@ public class Account {
         account.email = email;
         account.balance = new Money(0, currency);
         account.status = AccountStatus.ACTIVE;
-        account.createdAt = LocalDateTime.now();
+        account.createdAt = UtcClock.now();
         account.updatedAt = account.createdAt;
         account.domainEvents.add(
                 new AccountCreatedEvent(
@@ -96,7 +97,7 @@ public class Account {
         }
         Money money = new Money(amount, this.balance.currency());
         this.balance = this.balance.add(money);
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         Transaction transaction =
                 Transaction.create(this.accountId, TransactionType.DEPOSIT, money, referenceId);
         this.pendingTransactions.add(transaction);
@@ -147,7 +148,7 @@ public class Account {
                     AccountException.ErrorCode.INSUFFICIENT_BALANCE, "Insufficient balance.");
         }
         this.balance = this.balance.subtract(money);
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         Transaction transaction =
                 Transaction.create(
                         this.accountId,
@@ -204,7 +205,7 @@ public class Account {
         Money interest = new Money(interestAmount, this.balance.currency());
         this.balance = this.balance.add(interest);
         this.lastInterestPaidAt = today;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         Transaction transaction =
                 Transaction.create(this.accountId, TransactionType.INTEREST, interest, null);
         this.pendingTransactions.add(transaction);
@@ -218,7 +219,7 @@ public class Account {
                     "Only an active account can be suspended.");
         }
         this.status = AccountStatus.SUSPENDED;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         this.domainEvents.add(
                 new AccountSuspendedEvent(this.accountId, this.email, this.updatedAt));
     }
@@ -230,7 +231,7 @@ public class Account {
                     "Only a suspended account can be reactivated.");
         }
         this.status = AccountStatus.ACTIVE;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         this.domainEvents.add(
                 new AccountReactivatedEvent(this.accountId, this.email, this.updatedAt));
     }
@@ -247,7 +248,7 @@ public class Account {
                     "An account with a non-zero balance cannot be closed.");
         }
         this.status = AccountStatus.CLOSED;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = UtcClock.now();
         this.domainEvents.add(new AccountClosedEvent(this.accountId, this.email, this.updatedAt));
     }
 
@@ -267,7 +268,7 @@ public class Account {
                     AccountException.ErrorCode.ACCOUNT_ALREADY_DELETED,
                     "The account is already deleted.");
         }
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = UtcClock.now();
     }
 
     public List<Object> pullDomainEvents() {

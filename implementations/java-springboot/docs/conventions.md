@@ -150,6 +150,41 @@ public static Account create(String ownerId, String email, String currency) {
 public Account(String accountId, Money balance, AccountStatus status) { ... }
 ```
 
+### The timezone rule — store in UTC through `UtcClock`
+
+Every timestamp that is **persisted, embedded in a domain event, compared against a stored value, or used as the base for period arithmetic** is read through `UtcClock` (`common/UtcClock.java`), never through a bare no-arg `now()`:
+
+| Helper | Returns | Replaces |
+|---|---|---|
+| `UtcClock.now()` | `LocalDateTime` in UTC | `LocalDateTime.now()` |
+| `UtcClock.today()` | `LocalDate` in UTC | `LocalDate.now()` |
+| `UtcClock.currentMonth()` | `YearMonth` in UTC | `YearMonth.now()` |
+
+```java
+// Correct — the shared helper
+import com.example.accountservice.common.UtcClock;
+
+account.createdAt = UtcClock.now();
+```
+
+```java
+// Incorrect — resolves the wall clock through the host's default zone
+account.createdAt = LocalDateTime.now();
+```
+
+The no-arg `now()` factories on `LocalDateTime`/`LocalDate`/`YearMonth` resolve the wall clock through `ZoneId.systemDefault()`, and the values they return carry no offset of their own. Every timestamp column here is `TIMESTAMP(6)` — without time zone, see `src/main/resources/db/migration/` — which stores the wall-clock digits it is handed and records no offset either. So the same code writes UTC on a UTC CI runner and KST on a developer machine in `Asia/Seoul`, and one column ends up holding values that cannot be compared with each other. Month/day arithmetic built on such a value (card statement periods, spending analysis and forecast windows, daily interest accrual) shifts by the same offset, and a day-granularity reading taken near midnight lands on the wrong day entirely — which is exactly what a period key such as `"2026-08"` is derived from. Keeping the conversion in one class is what stops it from being re-derived at 30-odd call sites, and it makes the intent visible where it is read: `UtcClock.now()` means "a timestamp that leaves this process," a bare `now()` means "a stopwatch."
+
+**What is deliberately not converted** — a reading used only to measure elapsed time is location-independent (the difference of two readings is identical in every zone), so it stays as it is:
+
+- `Instant.now()` anywhere. An `Instant` is an absolute point on the timeline with no zone to get wrong — the TTL-cache expiry check in `common/infrastructure/SecretServiceImpl` and the JWT `issuedAt`/`expiresAt` pair in `auth/application/command/SignInService` (serialized as a numeric epoch claim) are both already unambiguous. Turning an `Instant` into a `LocalDateTime` through the system zone would reintroduce the defect, so that conversion is never written.
+- `System.currentTimeMillis()` used as a stopwatch — the request-latency measurement in `common/web/RequestLoggingInterceptor`.
+
+Both the write path and the lookup path stay on UTC. Converting on the way in but not on the way out (or the reverse) is a double-conversion bug in any language.
+
+The `utc-timestamp-source` harness rule enforces this on the `domain` and `infrastructure/persistence` packages, the two places where a clock reading is by construction a value that gets stored or shipped (see [harness/README.md](../harness/README.md)). `AccountTest.created_at_is_read_in_utc_regardless_of_the_host_timezone` pins the same invariant at runtime by comparing the aggregate's `createdAt` against `Instant.now()`, so it fails on a host running in `Asia/Seoul` if a bare reading ever comes back.
+
+A project whose columns are `TIMESTAMP WITH TIME ZONE` instead has no ambiguity to resolve at write time, but keeping `UtcClock` is still worthwhile — it is what keeps `create()`/`reconstitute()` round-trips and event payloads on one clock.
+
 ### `Optional<T>` — expressing the absence of a single-record lookup
 
 The Repository does not have a separate single-record-only method (see repository-pattern.md) — call `findAccounts` with `take: 1`, then get an `Optional` via `Stream.findFirst()`:

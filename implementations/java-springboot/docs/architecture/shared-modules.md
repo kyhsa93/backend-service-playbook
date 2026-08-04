@@ -6,7 +6,7 @@
 
 Looking at the full tree of `examples/src/main/java/com/example/accountservice/`, the top-level packages are `account/` (1st domain), `card/` (2nd domain), `payment/` (3rd domain — Payment/Refund, `RefundEligibilityService`), `auth/` (authentication/sign-up), `common/`, `config/`, `outbox/`, `taskqueue/`. `notification` (a Technical Service) sits inside each of `account`/`card` separately — rather than being top-level, each domain has its own separate interface+implementation inside it (`account/application/service/`+`account/infrastructure/notification/`, `card/application/service/`+`card/infrastructure/notification/`) — a real example of the principle that code isn't preemptively promoted to a shared package before it's actually shared (both domains use the same concept of "sending email," but since the implementations each have their own separate send-history table, no shared instance is used).
 
-The packages actually shared by multiple domains and living at the top level are `common/` (`IdGenerator`, the Filter/Interceptor in `web/`, `SecretService`), `config/` (`@ConfigurationProperties` records), `outbox/` (`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), and `taskqueue/` (`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — see scheduling.md; a sibling structure to `outbox/`, but with its own dedicated table/queue for Tasks). There is no `database/` — while the scenario of bundling multiple Repository saves into one transaction does exist (a transfer between accounts, `AccountRepository.saveAccounts()`), Spring's `@Transactional` (based on an AOP proxy) already plays that role, so no separate shared package is needed — a Repository method that needs a transaction boundary just needs `@Transactional` attached (see [persistence.md](persistence.md)).
+The packages actually shared by multiple domains and living at the top level are `common/` (`IdGenerator`, `UtcClock`, the Filter/Interceptor in `web/`, `SecretService`), `config/` (`@ConfigurationProperties` records), `outbox/` (`OutboxEvent`/`OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler`), and `taskqueue/` (`TaskOutboxEntry`/`TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` — see scheduling.md; a sibling structure to `outbox/`, but with its own dedicated table/queue for Tasks). There is no `database/` — while the scenario of bundling multiple Repository saves into one transaction does exist (a transfer between accounts, `AccountRepository.saveAccounts()`), Spring's `@Transactional` (based on an AOP proxy) already plays that role, so no separate shared package is needed — a Repository method that needs a transaction boundary just needs `@Transactional` attached (see [persistence.md](persistence.md)).
 
 For details, see the actual tree in [directory-structure.md](directory-structure.md) — this document maps that placement against NestJS's shared-module structure.
 
@@ -18,6 +18,7 @@ For details, see the actual tree in [directory-structure.md](directory-structure
 com.example.accountservice/
   common/                  # framework-independent pure utilities + shared Interface-layer components
     IdGenerator.java        # see aggregate-id.md — pure Java, imports no framework
+    UtcClock.java           # see conventions.md "the timezone rule" — pure Java, imports no framework
     web/
       GlobalExceptionHandler.java   # @RestControllerAdvice, see error-handling.md
       CorrelationIdFilter.java      # see cross-cutting-concerns.md
@@ -90,7 +91,7 @@ Only items used broadly across multiple domains/Technical Services live at the t
 
 | NestJS (`@Module`, `@Global`) | Spring Boot equivalent | State in this repository |
 |---|---|---|
-| `src/common/` (filters, interceptors, utilities) | The `common/` package — a mix of `@Component`/pure utilities | Present — `IdGenerator`, the Filter/Interceptor in `web/`, `SecretService` (see secret-manager.md) |
+| `src/common/` (filters, interceptors, utilities) | The `common/` package — a mix of `@Component`/pure utilities | Present — `IdGenerator`, `UtcClock`, the Filter/Interceptor in `web/`, `SecretService` (see secret-manager.md) |
 | `src/database/` (`@Global` — DataSource, TransactionManager) | A `database/` package — except Spring has no need for the `@Global` concept at all | Absent (JPA's `DataSource` is already globally provided by auto-configuration. The scenario of bundling multiple Repositories together — a transfer between accounts, `AccountRepository.saveAccounts()` — is also handled by `@Transactional` instead, so no separate shared utility is needed — see persistence.md) |
 | `src/outbox/` (`@Global` — OutboxWriter/Poller/Consumer) | The `outbox/` package | Present — `OutboxWriter`/`OutboxPoller`/`OutboxConsumer`/`OutboxEventHandler` (see domain-events.md) |
 | (No corresponding package in NestJS — the Task Queue is a new concept separate from domain-events.md's Outbox) | The `taskqueue/` package | Present — `TaskOutboxWriter`/`TaskOutboxPoller`/`TaskConsumer`/`TaskHandler` (see scheduling.md) |
@@ -103,7 +104,7 @@ Only items used broadly across multiple domains/Technical Services live at the t
 ## The criteria for separating shared code from domain code
 
 - **If two or more domains/Technical Services reference it, it's shared code.** `IdGenerator` is a utility used by `account`/`card`/`auth` all alike, so it belongs in `common/`. Conversely, `NotificationServiceImpl` is used only by the `account` domain, so it stays in `account/infrastructure/notification/` rather than a top-level shared package.
-- **Shared code still follows layer discipline exactly.** `common/IdGenerator` is a pure utility importing no framework, so it can be called directly from the Domain layer (`Account.create()`). By contrast, `common/web/GlobalExceptionHandler` depends on Spring MVC types (`ResponseEntity`, `@RestControllerAdvice`), so it's Interface-layer-flavored shared code and must never be referenced from Domain/Application.
+- **Shared code still follows layer discipline exactly.** `common/IdGenerator` and `common/UtcClock` are pure utilities importing no framework, so they can be called directly from the Domain layer (`Account.create()`). By contrast, `common/web/GlobalExceptionHandler` depends on Spring MVC types (`ResponseEntity`, `@RestControllerAdvice`), so it's Interface-layer-flavored shared code and must never be referenced from Domain/Application.
 - **Something is promoted to the top level only once multiple domains genuinely share it.** The absence of `database/` is a good contrasting example — even though the scenario of bundling multiple Repositories into one transaction exists (a transfer between accounts), Spring's `@Transactional` already plays that role, so there's no need to create a separate shared package at all.
 
 ---

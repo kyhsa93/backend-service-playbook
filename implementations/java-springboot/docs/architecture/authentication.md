@@ -233,7 +233,7 @@ public class SignInService {
                     AuthException.ErrorCode.INVALID_CREDENTIALS, "Invalid user ID or password.");
         }
 
-        Instant now = Instant.now();
+        Instant now = Instant.now();   // an absolute instant, serialized as a numeric epoch claim — no zone to get wrong (conventions.md, "the timezone rule")
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("account-service")

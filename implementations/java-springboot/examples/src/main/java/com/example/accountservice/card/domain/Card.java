@@ -1,6 +1,7 @@
 package com.example.accountservice.card.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 
@@ -59,7 +60,7 @@ public class Card {
         card.ownerId = ownerId;
         card.brand = brand;
         card.status = CardStatus.ACTIVE;
-        card.createdAt = LocalDateTime.now();
+        card.createdAt = UtcClock.now();
         return card;
     }
 

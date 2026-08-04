@@ -1,5 +1,6 @@
 package com.example.accountservice.taskqueue;
 
+import com.example.accountservice.common.UtcClock;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -59,7 +60,7 @@ public class TaskOutboxEntry {
         entry.groupId = groupId;
         entry.deduplicationId = deduplicationId;
         entry.processed = false;
-        entry.createdAt = LocalDateTime.now();
+        entry.createdAt = UtcClock.now();
         return entry;
     }
 

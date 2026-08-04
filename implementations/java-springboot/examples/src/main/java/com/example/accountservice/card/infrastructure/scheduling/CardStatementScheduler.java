@@ -1,5 +1,6 @@
 package com.example.accountservice.card.infrastructure.scheduling;
 
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.taskqueue.TaskOutboxWriter;
 import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,7 @@ public class CardStatementScheduler {
     @Scheduled(cron = "0 0 4 1 * *") // 4 AM on the 1st of every month
     public void enqueueMonthlyStatement() {
         try {
-            YearMonth month = YearMonth.now();
+            YearMonth month = UtcClock.currentMonth();
             String dedupId = TASK_TYPE + "-" + month;
             taskOutboxWriter.enqueue(TASK_TYPE, new Payload(month), GROUP_ID, dedupId);
         } catch (Exception e) {

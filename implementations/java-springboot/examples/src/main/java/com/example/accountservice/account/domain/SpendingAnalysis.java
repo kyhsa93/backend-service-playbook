@@ -1,6 +1,7 @@
 package com.example.accountservice.account.domain;
 
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import java.time.LocalDateTime;
 
 /**
@@ -70,7 +71,7 @@ public class SpendingAnalysis {
         analysis.averageAmount = averageAmount;
         analysis.changeFromPreviousMonth = changeFromPreviousMonth;
         analysis.trend = trend;
-        analysis.createdAt = LocalDateTime.now();
+        analysis.createdAt = UtcClock.now();
         return analysis;
     }
 

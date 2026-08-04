@@ -5,10 +5,10 @@ import static org.awaitility.Awaitility.await;
 
 import com.example.accountservice.AccountServiceApplication;
 import com.example.accountservice.account.infrastructure.PreviousSpendingAnalysisPeriod;
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.support.SqsTestQueue;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -196,7 +196,7 @@ class SpendingAnalysisSchedulingE2ETest {
         // reusing the scheduler's own period computation so the analysis only lines up if it
         // matches the logic the Scheduler actually runs with.
         PreviousSpendingAnalysisPeriod period =
-                PreviousSpendingAnalysisPeriod.compute(YearMonth.now());
+                PreviousSpendingAnalysisPeriod.compute(UtcClock.currentMonth());
         LocalDateTime backdatedAt = period.monthStart().plusDays(1);
         String transactionId1 = withdraw(accountId, OWNER_ID, 30000);
         String transactionId2 = withdraw(accountId, OWNER_ID, 20000);

@@ -6,13 +6,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.payment.application.service.RefundReasonClassifier;
 import com.example.accountservice.payment.domain.Refund;
 import com.example.accountservice.payment.domain.RefundReasonCategory;
 import com.example.accountservice.payment.domain.RefundRepository;
 import com.example.accountservice.payment.domain.RefundStatus;
 import com.example.accountservice.payment.domain.RefundsWithCount;
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +42,7 @@ class ClassifyRefundReasonEventHandlerTest {
                     RefundStatus.APPROVED,
                     null,
                     null,
-                    LocalDateTime.now());
+                    UtcClock.now());
 
     @BeforeEach
     void setUp() {
@@ -56,7 +56,7 @@ class ClassifyRefundReasonEventHandlerTest {
         event.put("refundId", refundId);
         event.put("paymentId", "payment-1");
         event.put("reason", reason);
-        event.put("createdAt", LocalDateTime.now().toString());
+        event.put("createdAt", UtcClock.now().toString());
         return objectMapper.writeValueAsString(event);
     }
 

@@ -5,9 +5,9 @@ import static org.awaitility.Awaitility.await;
 
 import com.example.accountservice.AccountServiceApplication;
 import com.example.accountservice.common.IdGenerator;
+import com.example.accountservice.common.UtcClock;
 import com.example.accountservice.support.SqsTestQueue;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
@@ -151,7 +151,7 @@ class SpendingForecastSchedulingE2ETest {
                 totalAmount,
                 0,
                 "STABLE",
-                LocalDateTime.now());
+                UtcClock.now());
     }
 
     private Map<String, Object> findForecastRow(String accountId, String forecastMonth) {
@@ -179,10 +179,10 @@ class SpendingForecastSchedulingE2ETest {
             an_account_with_3_months_of_spending_analysis_history_gets_a_trained_forecast_row_queryable_via_the_api_and_re_enqueueing_in_the_same_month_does_not_duplicate_it() {
         String accountId = createAccount(OWNER_ID);
 
-        String forecastMonth = YearMonth.now().toString();
+        String forecastMonth = UtcClock.currentMonth().toString();
         long[] amounts = {10000, 20000, 30000};
         for (int monthsAgo = 3; monthsAgo >= 1; monthsAgo--) {
-            YearMonth analysisMonth = YearMonth.now().minusMonths(monthsAgo);
+            YearMonth analysisMonth = UtcClock.currentMonth().minusMonths(monthsAgo);
             seedAnalysis(accountId, analysisMonth.toString(), amounts[3 - monthsAgo]);
         }
 
@@ -243,7 +243,7 @@ class SpendingForecastSchedulingE2ETest {
                         "/accounts/"
                                 + accountId
                                 + "/spending-forecast?month="
-                                + YearMonth.now()
+                                + UtcClock.currentMonth()
                                 + "-01",
                         HttpMethod.GET,
                         new HttpEntity<>(headersFor(OWNER_ID + "-2")),
