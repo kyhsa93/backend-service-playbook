@@ -53,10 +53,9 @@ dependencies {
     implementation("software.amazon.awssdk:secretsmanager")
     implementation("software.amazon.awssdk:sqs")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
-    // Core module only — the resilience4j-spring-boot3 starter hard-fails on Spring Boot 4
-    // (SpringBoot3Verifier) and no Boot 4 starter exists; config/RateLimiterConfig.kt wires
-    // the RateLimiterRegistry from the same resilience4j.ratelimiter.instances.* properties.
-    implementation("io.github.resilience4j:resilience4j-ratelimiter:2.4.0")
+    // The Boot-4-specific starter (same artifact line java-springboot uses) — the boot3 starter
+    // hard-fails on Spring Boot 4 via its SpringBoot3Verifier.
+    implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")

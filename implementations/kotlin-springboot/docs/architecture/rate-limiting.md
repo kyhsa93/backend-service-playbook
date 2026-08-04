@@ -2,13 +2,13 @@
 
 ## Current implementation
 
-The `resilience4j-ratelimiter` core dependency has been added to `examples/build.gradle.kts`, and `common/RateLimitingFilter.kt` actually rate-limits every HTTP request. (The `resilience4j-spring-boot3` starter refuses to start on Spring Boot 4 and no Boot 4 starter exists, so `config/RateLimiterConfig.kt` + `config/RateLimiterProperties.kt` hand-wire the `RateLimiterRegistry` bean from the same `resilience4j.ratelimiter.instances.*` properties the starter used to bind.) Two `RateLimiter` instances are defined in `application.yml` — `http-write` (10 requests/60s) and `http-read` (100 requests/60s) — and the filter picks one based on the request method (`GET`/`HEAD` are read, everything else is write). When the limit is exceeded, the 429 response follows the root's 4-field (`statusCode`/`code`/`message`/`error`) error format as-is. Below is the actual implementation and its design rationale.
+The `resilience4j-spring-boot4` dependency has been added to `examples/build.gradle.kts` (the Boot-4-specific starter — `resilience4j-spring-boot3` refuses to start on Spring Boot 4), and `common/RateLimitingFilter.kt` actually rate-limits every HTTP request. Two `RateLimiter` instances are defined in `application.yml` — `http-write` (10 requests/60s) and `http-read` (100 requests/60s) — and the filter picks one based on the request method (`GET`/`HEAD` are read, everything else is write). When the limit is exceeded, the 429 response follows the root's 4-field (`statusCode`/`code`/`message`/`error`) error format as-is. Below is the actual implementation and its design rationale.
 
 ## Options — Resilience4j vs. Bucket4j
 
 | Library | Algorithm | Characteristics |
 |---|---|---|
-| **Resilience4j `RateLimiter`** | fixed window (refills on a fixed cycle) | same ecosystem as Circuit Breaker/Retry; the core module works standalone (the Boot starter is Boot-3-only, see below) |
+| **Resilience4j `RateLimiter`** | fixed window (refills on a fixed cycle) | provided by Spring Boot's official starter (`resilience4j-spring-boot4`), same ecosystem as Circuit Breaker/Retry, annotation-based |
 | **Bucket4j** | token bucket | flexible with allowing bursts, mature support for distributed environments (Redis backend) |
 
 This repository already takes the approach of minimizing extra infrastructure elsewhere too (see [scheduling.md](scheduling.md), [secret-manager.md](secret-manager.md)), so **Resilience4j is sufficient for a single-instance setup**. If horizontally scaling to multiple instances requires a limit shared across instances, consider the Bucket4j + Redis combination.
@@ -18,15 +18,13 @@ This repository already takes the approach of minimizing extra infrastructure el
 ```kotlin
 // build.gradle.kts — actual code
 dependencies {
-    implementation("io.github.resilience4j:resilience4j-ratelimiter:2.4.0")
+    implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
 }
 ```
 
-The registry bean the filter injects is assembled by `config/RateLimiterConfig.kt` from `config/RateLimiterProperties.kt` (`@ConfigurationProperties(prefix = "resilience4j.ratelimiter")`), so the property keys below stay identical to what the Boot 3 starter bound.
-
 ## Annotation-based application — `@RateLimiter`
 
-Resilience4j supports attaching an AOP-based annotation directly to an Application Service method. (This path requires the Boot starter's AOP auto-configuration, which is currently Boot-3-only — another reason this repository uses the Filter approach below.)
+Resilience4j supports attaching an AOP-based annotation directly to an Application Service method.
 
 ```yaml
 # application.yml — would need to be added (not currently present)
@@ -159,7 +157,7 @@ The tests overriding `resilience4j.ratelimiter.instances.http-write.limit-for-pe
 
 ## Principles
 
-- **`examples/`'s `RateLimitingFilter`** — `common/RateLimitingFilter.kt` + the `resilience4j-ratelimiter` core dependency (registry wired in `config/RateLimiterConfig.kt`).
+- **`examples/`'s `RateLimitingFilter`** — `common/RateLimitingFilter.kt` + the `resilience4j-spring-boot4` dependency.
 - **Its pipeline position is before authentication/validation** — placed via `@Order(Int.MIN_VALUE + 1)` right after `CorrelationIdFilter` and before the Spring Security filter chain, blocking unnecessary downstream processing (DB queries, starting a transaction).
 - **Implemented as a Filter to stay consistent with cross-cutting-concerns.md's pipeline model** — clearer layer separation than scattering `@RateLimiter` annotations across Application Services.
 - **The 429 response also follows the root's 4-field error format** ([error-handling.md](error-handling.md)).

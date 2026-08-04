@@ -7,7 +7,7 @@ The guide and runnable examples implementing this playbook's principles with Spr
 
 **→ [implementations/java-springboot/CLAUDE.md](../../implementations/java-springboot/CLAUDE.md)** — entry point for the detailed Spring Boot implementation guide (keyword → doc index)
 **→ [implementations/java-springboot/docs/architecture/](../../implementations/java-springboot/docs/architecture/)** — a Java-specific detailed doc for each of the root's 21 architecture topics (21 files)
-**→ [implementations/java-springboot/examples/](../../implementations/java-springboot/examples/)** — full implementation example of the Account domain (open/deposit/withdraw/suspend/reactivate/close + SES notifications, Spring Boot 3.3 / Java 21)
+**→ [implementations/java-springboot/examples/](../../implementations/java-springboot/examples/)** — full implementation example of the Account domain (open/deposit/withdraw/suspend/reactivate/close + SES notifications, Spring Boot 4.1 / Java 21)
 **→ [implementations/java-springboot/harness/](../../implementations/java-springboot/harness/)** — automated evaluator that checks guide compliance
 
 This doc is a coverage mapping between the root principle docs and the Java Spring Boot implementation docs. There's a Java-specific doc under `docs/architecture/` corresponding to each of the 21 files in the root's `docs/architecture/`. **The level of documentation and whether the actual code in `examples/` follows that principle are two separate things** — each doc explicitly states any remaining code gap as a "known gap," and the Notes column below repeats that emphasis.
