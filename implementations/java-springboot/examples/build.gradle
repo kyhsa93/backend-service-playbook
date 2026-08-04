@@ -70,7 +70,7 @@ dependencies {
     // org.apache.httpcomponents.client5:httpclient5 to a lower version, causing a class the AWS
     // SDK requires (e.g. TlsSocketStrategy, 5.4+) to be missing at runtime and throwing
     // NoClassDefFoundError, so we explicitly pin it to the version the AWS SDK requires.
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.6.2'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.6.3'
     implementation 'org.apache.httpcomponents.core5:httpcore5:5.4.3'
     implementation 'net.logstash.logback:logstash-logback-encoder:9.0'
     implementation 'io.github.resilience4j:resilience4j-spring-boot4:2.4.0'
