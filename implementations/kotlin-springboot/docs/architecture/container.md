@@ -4,7 +4,7 @@
 
 ## Dockerfile + Actuator health check
 
-`implementations/kotlin-springboot/examples/Dockerfile` implements the multi-stage build below as the actual code (Gradle Kotlin DSL build, Kotlin 1.9.25 + Spring Boot 3.3.5 + Java 21 toolchain). `.dockerignore` also exists with exactly the content shown below. The Actuator-based liveness/readiness probes are configured via the `spring-boot-starter-actuator` dependency in `build.gradle.kts` and the `management.*` settings in `application.yml` (see the "Health check endpoint" section below).
+`implementations/kotlin-springboot/examples/Dockerfile` implements the multi-stage build below as the actual code (Gradle Kotlin DSL build, Kotlin 2.4 + Spring Boot 4.1 + Java 21 toolchain). `.dockerignore` also exists with exactly the content shown below. The Actuator-based liveness/readiness probes are configured via the `spring-boot-starter-actuator` dependency in `build.gradle.kts` and the `management.*` settings in `application.yml` (see the "Health check endpoint" section below).
 
 ---
 

@@ -17,8 +17,6 @@ import com.example.accountservice.payment.application.event.ClassifyRefundReason
 import com.example.accountservice.payment.application.event.PaymentCancelledEventHandler
 import com.example.accountservice.payment.application.event.PaymentCompletedEventHandler
 import com.example.accountservice.payment.application.event.RefundApprovedEventHandler
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -26,6 +24,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.LocalDateTime
 
 /**
@@ -37,15 +36,12 @@ import java.time.LocalDateTime
  * of them.
  */
 class EventHandlerRegistryTest {
-    // findAndRegisterModules() picks up jackson-datatype-jsr310 (LocalDateTime support), and
-    // FAIL_ON_UNKNOWN_PROPERTIES is disabled — both match Spring's auto-configured ObjectMapper
-    // bean the production EventHandlerRegistry actually uses (Jackson2ObjectMapperBuilder disables
-    // that feature by default, which is why a Value Object like Money's isZero() computed property
-    // getter being picked up by Jackson's bean introspection doesn't break real event round-trips).
-    private val objectMapper =
-        jacksonObjectMapper().findAndRegisterModules().apply {
-            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-        }
+    // Jackson 3 ships java.time (LocalDateTime) support in databind itself and disables
+    // FAIL_ON_UNKNOWN_PROPERTIES by default — both match Spring's auto-configured ObjectMapper
+    // bean the production EventHandlerRegistry actually uses (which is why a Value Object like
+    // Money's isZero() computed property getter being picked up by Jackson's bean introspection
+    // doesn't break real event round-trips). jacksonObjectMapper() adds the Kotlin module on top.
+    private val objectMapper = jacksonObjectMapper()
     private val moneyWithdrawnEventHandler = mockk<MoneyWithdrawnEventHandler>(relaxed = true)
     private val categorizeTransactionEventHandler = mockk<CategorizeTransactionEventHandler>(relaxed = true)
     private val detectWithdrawalAnomalyEventHandler = mockk<DetectWithdrawalAnomalyEventHandler>(relaxed = true)

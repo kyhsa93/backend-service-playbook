@@ -567,7 +567,7 @@ package com.example.orderservice.order.infrastructure.persistence
 import com.example.orderservice.order.domain.*
 import com.example.orderservice.outbox.OutboxEvent
 import com.example.orderservice.outbox.OutboxEventJpaRepository
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional

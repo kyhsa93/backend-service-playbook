@@ -1,9 +1,9 @@
 package com.example.accountservice.outbox
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.micrometer.tracing.Tracer
 import io.micrometer.tracing.propagation.Propagator
 import org.springframework.stereotype.Component
+import tools.jackson.databind.ObjectMapper
 
 /**
  * Converts the list of Domain Events collected by an Aggregate into Outbox rows and saves them.

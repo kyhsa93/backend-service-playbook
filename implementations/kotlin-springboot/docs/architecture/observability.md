@@ -124,14 +124,13 @@ The role Node's `AsyncLocalStorage` plays is handled in the JVM thread model by 
 
 ## Metrics and tracing — Actuator + Micrometer + OpenTelemetry
 
-`build.gradle.kts` has `spring-boot-starter-actuator` (health probes — see [graceful-shutdown.md](graceful-shutdown.md)), a Micrometer registry for Prometheus scraping, and Micrometer Tracing's OpenTelemetry bridge:
+`build.gradle.kts` has `spring-boot-starter-actuator` (health probes — see [graceful-shutdown.md](graceful-shutdown.md)), a Micrometer registry for Prometheus scraping, and Spring Boot's OpenTelemetry starter (the OTel API, Micrometer Tracing's OTel bridge, and the OTLP exporters in a single dependency):
 
 ```kotlin
 // build.gradle.kts — actual code
 implementation("org.springframework.boot:spring-boot-starter-actuator")
 implementation("io.micrometer:micrometer-registry-prometheus")
-implementation("io.micrometer:micrometer-tracing-bridge-otel")
-implementation("io.opentelemetry:opentelemetry-exporter-otlp")
+implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
 ```
 
 ```yaml
@@ -149,14 +148,16 @@ management:
       probability: 1.0
     propagation:
       type: W3C
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 ```
 
 `GET /actuator/prometheus` exposes the Prometheus scrape endpoint (`SecurityConfig` permits it the same way as `/actuator/health/**`, since a scraper never carries an app-issued JWT). HTTP request count/latency, JVM memory, and HikariCP connection-pool metrics are all collected automatically, no separate instrumentation code needed.
 
-For tracing, `management.otlp.tracing.endpoint` follows this repository's usual "env var override, sane local-dev default" pattern (the same shape as `jwt.secret`/the `aws.*` properties) — the default points at an OTLP collector on `localhost:4318`, but nothing needs to actually be listening there for the app (or its tests) to run: the OTel SDK exports spans on a background batch-processor thread, so an unreachable endpoint only logs an export warning, it never fails a request. `management.tracing.propagation.type: W3C` pins the propagation format to the W3C `traceparent` header this doc's Outbox section relies on.
+For tracing, `management.opentelemetry.tracing.export.otlp.endpoint` follows this repository's usual "env var override, sane local-dev default" pattern (the same shape as `jwt.secret`/the `aws.*` properties) — the default points at an OTLP collector on `localhost:4318`, but nothing needs to actually be listening there for the app (or its tests) to run: the OTel SDK exports spans on a background batch-processor thread, so an unreachable endpoint only logs an export warning, it never fails a request. `management.tracing.propagation.type: W3C` pins the propagation format to the W3C `traceparent` header this doc's Outbox section relies on.
 
 Once the bridge is on the classpath, Spring Boot auto-registers a `Slf4JEventListener` that populates `traceId`/`spanId` into MDC for the lifetime of the current span — **no application code sets these**. `logback-spring.xml` only needed one addition to pick them up:
 

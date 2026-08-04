@@ -2,14 +2,14 @@ package com.example.accountservice.notification
 
 import com.example.accountservice.AccountServiceApplication
 import com.example.accountservice.notification.infrastructure.persistence.SentEmailJpaRepository
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.resttestclient.TestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.ses.model.VerifyEmailIdentityRequest
 import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model.CreateQueueRequest
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -50,6 +51,7 @@ import java.time.Duration
  * to a few seconds after the HTTP response comes back, we poll with [awaitEmailSent].
  */
 @Testcontainers
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
     classes = [AccountServiceApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,

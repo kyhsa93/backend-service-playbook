@@ -1,6 +1,5 @@
 package com.example.accountservice.secret.infrastructure
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.springframework.boot.SpringApplication
 import org.springframework.boot.env.EnvironmentPostProcessor
 import org.springframework.core.env.ConfigurableEnvironment
@@ -10,6 +9,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.net.URI
 
 /**

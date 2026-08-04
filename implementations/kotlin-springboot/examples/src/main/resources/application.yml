@@ -36,12 +36,14 @@ management:
       probability: 1.0
     propagation:
       type: W3C
-  otlp:
+  opentelemetry:
     tracing:
-      # No collector needs to be running locally/in tests — spans are exported on a background
-      # thread by the OTel SDK's batch span processor, so an unreachable endpoint only logs an
-      # export warning, it never fails a request or a test.
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+      export:
+        otlp:
+          # No collector needs to be running locally/in tests — spans are exported on a background
+          # thread by the OTel SDK's batch span processor, so an unreachable endpoint only logs an
+          # export warning, it never fails a request or a test.
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-dev-secret-dev-secret}

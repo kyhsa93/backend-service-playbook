@@ -1,10 +1,10 @@
 package com.example.accountservice.account.infrastructure.scheduling
 
 import com.example.accountservice.taskqueue.TaskQueue
-import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import tools.jackson.databind.ObjectMapper
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 

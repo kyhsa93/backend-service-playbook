@@ -2,8 +2,7 @@ plugins {
     kotlin("jvm") version "2.4.10"
     kotlin("plugin.spring") version "2.4.10"
     kotlin("plugin.jpa") version "2.4.10"
-    id("org.springframework.boot") version "3.3.5"
-    id("io.spring.dependency-management") version "1.1.7"
+    id("org.springframework.boot") version "4.1.0"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 }
 
@@ -20,55 +19,57 @@ repositories {
     mavenCentral()
 }
 
-dependencyManagement {
-    imports {
-        mavenBom("org.testcontainers:testcontainers-bom:2.0.5")
-        // Keeps ses/secretsmanager/sqs on a single, mutually-compatible version — pinning them
-        // individually let a dependabot bump land on just one module and skew the shared
-        // AWS SDK core/auth modules out of alignment, breaking at runtime with AbstractMethodError.
-        mavenBom("software.amazon.awssdk:bom:2.50.2")
-    }
-    dependencies {
-        // Since 2.48.3, software.amazon.awssdk:ses pulls in apache5-client (based on
-        // httpclient5) as its default synchronous HTTP client. The httpclient5/httpcore5
-        // versions apache5-client requires (5.6.2/5.4.3) are newer than the versions managed
-        // by the Spring Boot 3.3.5 BOM (5.3.1/5.2.5), so if the BOM downgrades them to its
-        // lower versions, the AWS SDK's Apache5HttpClient throws a NoClassDefFoundError at
-        // runtime. Pin the versions explicitly so they take precedence over the BOM.
-        dependency("org.apache.httpcomponents.client5:httpclient5:5.6.3")
-        dependency("org.apache.httpcomponents.core5:httpcore5:5.4.3")
-        dependency("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3")
-    }
-}
-
 dependencies {
+    // BOMs via Gradle's native platform() support — Spring Boot 4's Gradle plugin no longer
+    // integrates with the io.spring.dependency-management plugin, whose Maven-style
+    // "nearest wins" semantics were also why httpclient5/httpcore5 had to be hand-pinned
+    // (the AWS SDK's apache5-client needs newer versions than the Boot BOM manages; Gradle's
+    // native highest-version-wins resolution picks the newer ones on its own).
+    implementation(platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES))
+    // Keeps ses/secretsmanager/sqs on a single, mutually-compatible version — pinning them
+    // individually let a dependabot bump land on just one module and skew the shared
+    // AWS SDK core/auth modules out of alignment, breaking at runtime with AbstractMethodError.
+    implementation(platform("software.amazon.awssdk:bom:2.50.2"))
+    testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
+
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("io.micrometer:micrometer-registry-prometheus")
-    // Spring Boot 3's standard OpenTelemetry bridge — populates traceId/spanId into MDC
-    // automatically (picked up by logback-spring.xml's LogstashEncoder), and OtlpAutoConfiguration
-    // exports spans via management.otlp.tracing.endpoint (application.yml).
-    implementation("io.micrometer:micrometer-tracing-bridge-otel")
-    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
+    // Spring Boot 4's OpenTelemetry starter (OTel API + Micrometer tracing bridge + OTLP
+    // exporters in one) — populates traceId/spanId into MDC automatically (picked up by
+    // logback-spring.xml's LogstashEncoder) and exports spans via
+    // management.opentelemetry.tracing.export.otlp.endpoint (application.yml).
+    implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    // Jackson 3 (tools.jackson) — Spring Boot 4 auto-configures only the Jackson 3
+    // ObjectMapper; the Kotlin module is auto-registered from the classpath as before.
+    implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("software.amazon.awssdk:ses")
     implementation("software.amazon.awssdk:secretsmanager")
     implementation("software.amazon.awssdk:sqs")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
-    implementation("io.github.resilience4j:resilience4j-spring-boot3:2.4.0")
+    // Core module only — the resilience4j-spring-boot3 starter hard-fails on Spring Boot 4
+    // (SpringBoot3Verifier) and no Boot 4 starter exists; config/RateLimiterConfig.kt wires
+    // the RateLimiterRegistry from the same resilience4j.ratelimiter.instances.* properties.
+    implementation("io.github.resilience4j:resilience4j-ratelimiter:2.4.0")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // TestRestTemplate lives in its own module as of Spring Boot 4 (package
+    // org.springframework.boot.resttestclient) and is only auto-configured for tests that
+    // declare @AutoConfigureTestRestTemplate. Its auto-configuration builds on
+    // RestTemplateBuilder, which Boot 4 also split out of core into spring-boot-restclient.
+    testImplementation("org.springframework.boot:spring-boot-resttestclient")
+    testImplementation("org.springframework.boot:spring-boot-restclient")
     // Gradle 9 stopped auto-adding this to the test runtime classpath — without it, `test`
     // fails immediately with "Failed to load JUnit Platform" before any test class runs.
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -78,9 +79,9 @@ dependencies {
     // tests need to verify an actual 401 (INVALID_CREDENTIALS), replace TestRestTemplate's
     // request factory with Apache HttpClient5, which doesn't have this limitation.
     testImplementation("org.apache.httpcomponents.client5:httpclient5")
-    testImplementation("org.testcontainers:junit-jupiter")
-    testImplementation("org.testcontainers:postgresql")
-    testImplementation("org.testcontainers:localstack")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("org.testcontainers:testcontainers-localstack")
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.awaitility:awaitility:4.3.0")
 }

@@ -31,9 +31,9 @@ import com.example.accountservice.payment.domain.PaymentCancelledEvent
 import com.example.accountservice.payment.domain.PaymentCompletedEvent
 import com.example.accountservice.payment.domain.RefundApprovedEvent
 import com.example.accountservice.payment.domain.RefundRequestedEvent
-import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import tools.jackson.databind.ObjectMapper
 
 /**
  * Maps eventType (the Outbox row's `eventType` column = SQS `MessageAttributes.eventType`) to its

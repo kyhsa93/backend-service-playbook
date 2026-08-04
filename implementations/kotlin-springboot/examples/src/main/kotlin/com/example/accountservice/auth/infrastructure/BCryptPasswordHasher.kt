@@ -10,7 +10,10 @@ private const val STRENGTH = 12
 class BCryptPasswordHasher : PasswordHasher {
     private val encoder = BCryptPasswordEncoder(STRENGTH)
 
-    override fun hash(plainPassword: String): String = encoder.encode(plainPassword)
+    // Spring Security 7 declares PasswordEncoder.encode's return as @Nullable (JSpecify), but
+    // BCryptPasswordEncoder never returns null for a non-null input — assert instead of widening
+    // the domain-facing PasswordHasher contract to String?.
+    override fun hash(plainPassword: String): String = checkNotNull(encoder.encode(plainPassword))
 
     override fun verify(
         plainPassword: String,

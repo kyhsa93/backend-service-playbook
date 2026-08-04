@@ -3,12 +3,12 @@ package com.example.accountservice.account.infrastructure
 import com.example.accountservice.account.application.service.TransactionFilter
 import com.example.accountservice.account.domain.TransactionType
 import com.example.accountservice.config.LlmProperties
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.io.IOException
 import java.net.http.HttpClient
 import java.net.http.HttpResponse
