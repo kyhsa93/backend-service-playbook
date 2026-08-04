@@ -828,7 +828,7 @@ def wire_event_handlers(event_handlers_path: str, n: Names) -> bool:
     content = content[:last_end] + "\n" + handler_import + content[last_end:]
 
     # Registers the new domain event as the first entry of the return { dictionary.
-    entry = f'        "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,\n'
+    entry = f'        "{n.Domain}Cancelled": [{n.Domain}CancelledEventHandler().handle],\n'
     content, count = re.subn(r"(    return \{\n)", r"\1" + entry, content, count=1)
     if count == 0:
         print("Cannot find the return { dictionary in event_handlers.py, skipping registration.")
@@ -893,7 +893,7 @@ def print_event_handlers_snippet(n: Names) -> None:
     )
     print("")
     print("  # Add to the return {...} dictionary:")
-    print(f'    "{n.Domain}Cancelled": {n.Domain}CancelledEventHandler().handle,')
+    print(f'    "{n.Domain}Cancelled": [{n.Domain}CancelledEventHandler().handle],')
     print("")
 
 

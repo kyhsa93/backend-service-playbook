@@ -144,7 +144,7 @@ async def test_execute_raises_AccountNotFoundError_when_account_is_missing(repo)
     with pytest.raises(AccountNotFoundError):
         await handler.execute(DepositCommand(account_id="non-existent", requester_id="owner-1", amount=1000))
 
-    repo.save.assert_not_called()
+    repo.save_account.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -159,9 +159,9 @@ async def test_execute_calls_save_on_successful_deposit(repo) -> None:
     )
 
     assert transaction.type == "DEPOSIT"
-    repo.save.assert_awaited_once_with(
+    repo.save_account.assert_awaited_once_with(
         account
-    )  # the Aggregate save + Outbox load are handled as one transaction inside save()
+    )  # the Aggregate save + Outbox load are handled as one transaction inside save_account()
 ```
 
 This test doesn't go so far as to verify that the `MoneyDeposited` event actually results in a notification (a Command Handler's unit test only looks at the orchestration flow up through lookup → domain method call → save) — the notification-sending logic itself, per event type, is either separately unit-tested against `application/event/money_deposited_event_handler.py`, or verified end-to-end by `test_notification_e2e.py` through `OutboxPoller`/`OutboxConsumer` all the way to real LocalStack SES.

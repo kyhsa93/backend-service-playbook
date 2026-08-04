@@ -14,7 +14,7 @@ implementations/fastapi/examples/
   localstack/
     init-ses.sh               ← script that verifies the SES sender email
     init-secrets.sh            ← creates the app/jwt secret in Secrets Manager
-    init-sqs.sh                ← creates the domain-events queue + DLQ used by OutboxPoller/OutboxConsumer
+    init-sqs.sh                ← creates the domain-events queue + DLQ (OutboxPoller/OutboxConsumer) and the tasks.fifo queue + DLQ (TaskOutboxPoller/TaskConsumer)
 ```
 
 ```yaml
@@ -131,6 +131,18 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes \
 
 awslocal sqs create-queue --queue-name domain-events \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
+
+# The dedicated Task queue (TaskOutboxPoller/TaskConsumer) — a FIFO queue physically
+# separate from the Domain Event queue, likewise with its DLQ created first.
+awslocal sqs create-queue --queue-name tasks-dlq.fifo --attributes '{"FifoQueue":"true"}'
+
+TASK_DLQ_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/tasks-dlq.fifo \
+  --attribute-names QueueArn \
+  --query 'Attributes.QueueArn' --output text)
+
+awslocal sqs create-queue --queue-name tasks.fifo \
+  --attributes '{"FifoQueue":"true","RedrivePolicy":"{\"deadLetterTargetArn\":\"'"$TASK_DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"}'
 ```
 
 The DLQ + `maxReceiveCount=3` follow exactly the convention required by [scheduling.md — DLQ monitoring](../../../../docs/architecture/scheduling.md#monitoring-the-dlq) — the queue names and RedrivePolicy match the nestjs implementation's `localstack/init-sqs.sh` (cross-language consistency).

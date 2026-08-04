@@ -4,7 +4,7 @@
 >
 > **This repository's actual path**: implements as-is the path the root specifies, `[Scheduler] --(enqueue)--> [task_outbox] --(Poller)--> [SQS FIFO] --(Consumer)--> [TaskController] --(calls)--> [CommandService]`. The Scheduler (APScheduler's `@scheduled_job`) does nothing but insert a `task_outbox` row — the actual business logic, such as interest calculation or statistics aggregation, is the responsibility of the `TaskController` (→ Command Handler) that `TaskConsumer` receives from SQS and calls. `src/task_queue/` is the actual code, made up of `task_outbox_writer.py`/`task_outbox_poller.py`/`task_consumer.py`/`task_handlers.py`. The overall structure described here is **one implementation example** this repository actually adopted — a simpler batch job might be well served by just `BackgroundTasks` or a single `@scheduled_job` + a direct Handler call (see "Options" below).
 
-Two periodic jobs (regular account interest payment, monthly card statement delivery) are implemented with this pattern — `src/account/infrastructure/scheduling/interest_scheduler.py` and `src/card/infrastructure/scheduling/statement_scheduler.py`.
+Four periodic jobs (regular account interest payment, monthly card statement delivery, monthly spending analysis, monthly spending forecast) are implemented with this pattern — `src/account/infrastructure/scheduling/interest_scheduler.py`, `src/card/infrastructure/scheduling/statement_scheduler.py`, `src/account/infrastructure/scheduling/spending_analysis_scheduler.py`, and `src/account/infrastructure/scheduling/spending_forecast_scheduler.py`.
 
 ---
 
@@ -55,7 +55,7 @@ def start_interest_scheduler(session_factory: async_sessionmaker[AsyncSession]) 
     return scheduler
 ```
 
-`main.py`'s `lifespan` calls `start_interest_scheduler(SessionLocal)`/`start_statement_scheduler(SessionLocal)` at app startup to start each scheduler, and on shutdown calls `scheduler.shutdown(wait=True)` to wait for in-progress jobs to finish before shutting down (see graceful-shutdown.md). If such a scheduling decorator ever appears directly in `domain/`/`application/`, the harness's `scheduler-in-infrastructure-only` rule catches it — `src/outbox/`/`src/task_queue/` (like the `asyncio.create_task()` loop in `src/outbox/outbox_poller.py`) are already shared-infrastructure locations ([shared-modules.md](shared-modules.md)), so they fall outside the scope of this rule.
+`main.py`'s `lifespan` calls `start_interest_scheduler(SessionLocal)`, `start_statement_scheduler(SessionLocal)`, `start_spending_analysis_scheduler(SessionLocal)`, and `start_spending_forecast_scheduler(SessionLocal)` at app startup to start all four schedulers, and on shutdown calls each scheduler's `shutdown(wait=True)` to wait for in-progress jobs to finish before shutting down (see graceful-shutdown.md). If such a scheduling decorator ever appears directly in `domain/`/`application/`, the harness's `scheduler-in-infrastructure-only` rule catches it — `src/outbox/`/`src/task_queue/` (like the `asyncio.create_task()` loop in `src/outbox/outbox_poller.py`) are already shared-infrastructure locations ([shared-modules.md](shared-modules.md)), so they fall outside the scope of this rule.
 
 ---
 

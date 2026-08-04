@@ -35,7 +35,7 @@ src/
       events.py                    ← a collection of Domain Events
       errors.py                    ← the domain exception hierarchy
       error_codes.py                ← the error-code enum (1:1 with the exceptions)
-      repository.py                ← OrderRepository(ABC), PaymentRepository(ABC)
+      repository.py                ← OrderQuery(ABC), OrderRepository(ABC), PaymentRepository(ABC)
     application/
       adapter/
         payment_adapter.py          ← the interface for calling an external domain (ABC)
@@ -289,9 +289,16 @@ class PaymentMethodNotFoundError(OrderError):
 from abc import ABC, abstractmethod
 
 from .order import Order
+from .order_status import OrderStatus
 
 
-class OrderRepository(ABC):
+class OrderQuery(ABC):
+    """A read-only interface — for the Query Handler only. Never exposes a write method
+    such as `save_order()` (see cqrs-pattern.md). Shares its method signatures with
+    `OrderRepository` (the write model) but is a separate contract — a Query Handler
+    must always depend only on this type.
+    """
+
     @abstractmethod
     async def find_orders(
         self,
@@ -302,6 +309,8 @@ class OrderRepository(ABC):
         status: list[OrderStatus] | None = None,
     ) -> tuple[list[Order], int]: ...
 
+
+class OrderRepository(OrderQuery, ABC):
     @abstractmethod
     async def save_order(self, order: Order) -> None: ...
 
@@ -317,7 +326,7 @@ class PaymentRepository(ABC):
     async def delete_payment_methods(self, order_id: str) -> None: ...
 ```
 
-The lookup method is unified into a single `find_orders`, with a single-item lookup obtained via `take=1` followed by indexing — see "the form matching the root convention" in [repository-pattern.md](architecture/repository-pattern.md).
+The lookup method is unified into a single `find_orders`, with a single-item lookup obtained via `take=1` followed by indexing — see "the form matching the root convention" in [repository-pattern.md](architecture/repository-pattern.md). The read-only `OrderQuery` ABC carries the lookup method, and `OrderRepository` extends it with the write methods — a Command Handler depends on `OrderRepository`, a Query Handler only on `OrderQuery` (the same split as `AccountQuery`/`AccountRepository` in `examples/src/account/domain/repository.py`).
 
 ---
 
@@ -455,7 +464,7 @@ class GetOrdersResult:
 from dataclasses import dataclass
 
 from ...domain.errors import OrderNotFoundError
-from ...domain.repository import OrderRepository
+from ...domain.repository import OrderQuery
 from .result import GetOrderResult, OrderItemResult
 
 
@@ -465,7 +474,7 @@ class GetOrderQuery:
 
 
 class GetOrderHandler:
-    def __init__(self, repo: OrderRepository) -> None:
+    def __init__(self, repo: OrderQuery) -> None:
         self._repo = repo
 
     async def execute(self, query: GetOrderQuery) -> GetOrderResult:
@@ -489,7 +498,7 @@ class GetOrderHandler:
 from dataclasses import dataclass
 
 from ...domain.order_status import OrderStatus
-from ...domain.repository import OrderRepository
+from ...domain.repository import OrderQuery
 from .result import GetOrdersResult, OrderSummaryResult
 
 
@@ -501,7 +510,7 @@ class GetOrdersQuery:
 
 
 class GetOrdersHandler:
-    def __init__(self, repo: OrderRepository) -> None:
+    def __init__(self, repo: OrderQuery) -> None:
         self._repo = repo
 
     async def execute(self, query: GetOrdersQuery) -> GetOrdersResult:
@@ -512,7 +521,7 @@ class GetOrdersHandler:
         )
 ```
 
-A QueryHandler never returns the domain Aggregate directly — it converts it into a Result dataclass — see [api-response.md](architecture/api-response.md).
+A QueryHandler never returns the domain Aggregate directly — it converts it into a Result dataclass — see [api-response.md](architecture/api-response.md). It also depends only on the read-only `OrderQuery` type, never on the write-capable `OrderRepository` — see [cqrs-pattern.md](architecture/cqrs-pattern.md).
 
 ### An Adapter interface (cross-domain)
 
@@ -826,10 +835,12 @@ class GetOrdersResponse(BaseModel):
 
 ```python
 # interface/rest/order_router.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.interface.rest.dependencies import CurrentUser, get_current_user
+from src.common.error_response import ErrorResponse
+from src.common.rate_limit import limiter, rate_limit_config
 from src.database import get_session
 from ...application.command.cancel_order_handler import CancelOrderCommand, CancelOrderHandler
 from ...application.command.create_order_handler import CreateOrderCommand, CreateOrderHandler
@@ -837,6 +848,7 @@ from ...application.command.delete_order_handler import DeleteOrderCommand, Dele
 from ...application.query.get_order_handler import GetOrderHandler, GetOrderQuery
 from ...application.query.get_orders_handler import GetOrdersHandler, GetOrdersQuery
 from ...domain.order_status import OrderStatus
+from ...domain.repository import OrderQuery
 from ...infrastructure.persistence.order_repository import SqlAlchemyOrderRepository
 from .schemas import (
     CancelOrderRequest,
@@ -846,15 +858,46 @@ from .schemas import (
     GetOrdersResponse,
 )
 
-router = APIRouter(prefix="/orders", tags=["Order"], dependencies=[Depends(get_current_user)])
+# A router-level `responses=` is merged into every route on this router by FastAPI — every
+# route below requires get_current_user, so 401 applies uniformly without repeating it
+# per-route (api-response.md "Machine-readable API documentation (OpenAPI)").
+router = APIRouter(
+    prefix="/orders",
+    tags=["Order"],
+    dependencies=[Depends(get_current_user)],
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "The bearer token is missing, malformed, or invalid (`INVALID_TOKEN`).",
+        }
+    },
+)
 
 
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyOrderRepository:
     return SqlAlchemyOrderRepository(session)
 
 
-@router.post("", status_code=201, response_model=CreateOrderResponse)
+def _query_repo(session: AsyncSession = Depends(get_session)) -> OrderQuery:
+    return SqlAlchemyOrderRepository(session)
+
+
+@router.post(
+    "",
+    status_code=201,
+    response_model=CreateOrderResponse,
+    summary="Create a new order",
+    description="Creates a new order for the authenticated requester with at least one order item.",
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed (`VALIDATION_FAILED`) — e.g. an empty item list.",
+        }
+    },
+)
+@limiter.limit(rate_limit_config.write_limit)
 async def create_order(
+    request: Request,
     body: CreateOrderRequest,
     current_user: CurrentUser = Depends(get_current_user),
     repo: SqlAlchemyOrderRepository = Depends(_repo),
@@ -872,8 +915,28 @@ async def create_order(
     )
 
 
-@router.post("/{order_id}/cancel", status_code=204)
+@router.post(
+    "/{order_id}/cancel",
+    status_code=204,
+    summary="Cancel an order",
+    description="Cancels an order that isn't already cancelled or paid.",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "The order is already cancelled (`ORDER_ALREADY_CANCELLED`) or already paid "
+                "(`ORDER_PAID_CANNOT_BE_CANCELLED`)."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "No order exists with the given `order_id` (`ORDER_NOT_FOUND`).",
+        },
+    },
+)
+@limiter.limit(rate_limit_config.write_limit)
 async def cancel_order(
+    request: Request,
     order_id: str,
     body: CancelOrderRequest,
     repo: SqlAlchemyOrderRepository = Depends(_repo),
@@ -883,18 +946,42 @@ async def cancel_order(
     )
 
 
-@router.delete("/{order_id}", status_code=204)
+@router.delete(
+    "/{order_id}",
+    status_code=204,
+    summary="Delete an order",
+    description="Soft-deletes the order — the row is kept with `deleted_at` set.",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No order exists with the given `order_id` (`ORDER_NOT_FOUND`).",
+        }
+    },
+)
+@limiter.limit(rate_limit_config.write_limit)
 async def delete_order(
+    request: Request,
     order_id: str,
     repo: SqlAlchemyOrderRepository = Depends(_repo),
 ) -> None:
     await DeleteOrderHandler(repo).execute(DeleteOrderCommand(order_id=order_id))
 
 
-@router.get("/{order_id}", response_model=GetOrderResponse)
+@router.get(
+    "/{order_id}",
+    response_model=GetOrderResponse,
+    summary="Look up an order",
+    description="Returns one order with its items and total amount.",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No order exists with the given `order_id` (`ORDER_NOT_FOUND`).",
+        }
+    },
+)
 async def get_order(
     order_id: str,
-    repo: SqlAlchemyOrderRepository = Depends(_repo),
+    repo: OrderQuery = Depends(_query_repo),
 ) -> GetOrderResponse:
     result = await GetOrderHandler(repo).execute(GetOrderQuery(order_id=order_id))
     return GetOrderResponse(
@@ -907,12 +994,17 @@ async def get_order(
     )
 
 
-@router.get("", response_model=GetOrdersResponse)
+@router.get(
+    "",
+    response_model=GetOrdersResponse,
+    summary="List orders",
+    description="Returns a page of order summaries, optionally filtered by status.",
+)
 async def get_orders(
     page: int = 0,
     take: int = 20,
     status: list[OrderStatus] | None = None,
-    repo: SqlAlchemyOrderRepository = Depends(_repo),
+    repo: OrderQuery = Depends(_query_repo),
 ) -> GetOrdersResponse:
     result = await GetOrdersHandler(repo).execute(GetOrdersQuery(page=page, take=take, status=status))
     return GetOrdersResponse(
@@ -922,6 +1014,8 @@ async def get_orders(
 ```
 
 The router-level `dependencies=[Depends(get_current_user)]` applies authentication to every route in one shot — never redeclared on each individual route. Details: [authentication.md](architecture/authentication.md).
+
+Every route carries `summary=`/`description=` and declares its domain-error responses via `responses=` with the shared `ErrorResponse` model, so the generated OpenAPI document is complete — see [api-response.md](architecture/api-response.md). Write routes take `request: Request` as their first parameter and are decorated with `@limiter.limit(rate_limit_config.write_limit)` — see [rate-limiting.md](architecture/rate-limiting.md). Read routes get the read-only `OrderQuery` through the `_query_repo` factory, while write routes get the full repository through `_repo`.
 
 ---
 
@@ -947,16 +1041,18 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-
-from src.common.error_response import build_error_response
 from src.config.validator import validate_env
-from src.order.domain.errors import OrderError, OrderNotFoundError
-from src.order.infrastructure.persistence.order_repository import Base
-from src.order.interface.rest.order_router import router as order_router
-from src.database import engine
+
+validate_env()  # fail-fast at module import — on failure the process exits right here, no code after this runs
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from src.common.error_response import build_error_response  # noqa: E402
+from src.order.domain.errors import OrderError, OrderNotFoundError  # noqa: E402
+from src.order.interface.rest.order_router import router as order_router  # noqa: E402
+from src.database import engine  # noqa: E402
 
 logger = logging.getLogger(__name__)
 app_state = {"is_shutting_down": False}
@@ -964,9 +1060,7 @@ app_state = {"is_shutting_down": False}
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    validate_env()  # fail-fast — the process exits right here if a required environment variable is missing
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)  # local/test only — production uses Alembic
+    # validate_env() has already run above, at module-import time.
     logger.info("app_started")
 
     yield
@@ -977,6 +1071,9 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("app_stopped")
 
 
+# The schema is applied via `alembic upgrade head` in the deployment pipeline — main.py
+# never calls Base.metadata.create_all; only test fixtures create the schema that way
+# (see architecture/persistence.md).
 app = FastAPI(title="Order Service", lifespan=lifespan)
 
 app.include_router(order_router)

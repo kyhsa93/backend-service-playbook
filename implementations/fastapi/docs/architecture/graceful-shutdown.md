@@ -4,16 +4,17 @@
 
 ## Current implementation
 
-The shutdown block of `main.py`'s `lifespan` is filled in: upon receiving SIGTERM, `app_state["is_shutting_down"]` is flipped to `True` before any resource cleanup, so `/health/ready` immediately returns 503, and only then is the SQLAlchemy connection pool cleaned up via `engine.dispose()`. The `/health/live` and `/health/ready` endpoints have also been added — the content below is exactly the actual code.
+The shutdown block of `main.py`'s `lifespan` is filled in: upon receiving SIGTERM, `app_state["is_shutting_down"]` is flipped to `True` before any resource cleanup, so `/health/ready` immediately returns 503; then the APScheduler-based schedulers are stopped with `shutdown(wait=True)`, the Outbox/Task-queue background tasks are cancelled and awaited, the SQLAlchemy connection pool is cleaned up via `engine.dispose()`, and finally buffered tracing spans are flushed via `shutdown_tracing()`. The `/health/live` and `/health/ready` endpoints exist as shown below.
 
 ---
 
 ## `lifespan` — startup and shutdown
 
-`lifespan` does not create the schema — the schema is managed via Alembic migrations (see persistence.md). The startup block only fetches and injects the JWT secret from Secrets Manager in production (see secret-manager.md). `validate_env()` is invoked earlier than `lifespan`, at the module-import point at the very top of `main.py` (before the `FastAPI(...)` instance is even created) — see [config.md](config.md).
+`lifespan` does not create the schema — the schema is managed via Alembic migrations (see persistence.md). The startup block fetches and injects the JWT secret from Secrets Manager in production (see secret-manager.md), starts the Outbox/Task-queue pollers and consumers as background tasks, and starts the APScheduler-based schedulers (see [domain-events.md](domain-events.md), [scheduling.md](scheduling.md)). `validate_env()` is invoked earlier than `lifespan`, at the module-import point at the very top of `main.py` (before the `FastAPI(...)` instance is even created) — see [config.md](config.md).
 
 ```python
-# main.py — actual code. validate_env() is called at module-import time, well before lifespan
+# main.py — actual code (shortened: only one of the four schedulers is shown).
+# validate_env() is called at module-import time, well before lifespan
 from src.config.validator import validate_env
 
 validate_env()  # on failure, the process exits right here — no code after this runs
@@ -21,7 +22,7 @@ validate_env()  # on failure, the process exits right here — no code after thi
 from fastapi import FastAPI, Request  # noqa: E402
 
 ...
-from src.database import engine  # noqa: E402
+from src.database import SessionLocal, engine  # noqa: E402
 
 app_state = {"is_shutting_down": False}
 
@@ -32,6 +33,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
+
+    background_tasks = [
+        asyncio.create_task(OutboxPoller(SessionLocal).run_forever()),
+        asyncio.create_task(OutboxConsumer(SessionLocal).run_forever()),
+        asyncio.create_task(TaskOutboxPoller(SessionLocal).run_forever()),
+        asyncio.create_task(TaskConsumer(SessionLocal).run_forever()),
+    ]
+    interest_scheduler = start_interest_scheduler(SessionLocal)
     logger.info("app_started")
 
     yield  # --- requests are handled in between ---
@@ -40,10 +49,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app_state["is_shutting_down"] = True  # flips readiness to 503 immediately
     logger.info("shutdown_initiated")
 
+    # scheduler.shutdown(wait=True) — waits for in-progress jobs to finish before shutting down
+    interest_scheduler.shutdown(wait=True)
+
+    # Cancels the background tasks and waits for them to fully finish — no dangling task is
+    # left behind. An in-progress receive_message (up to WaitTimeSeconds) that
+    # OutboxConsumer/TaskConsumer was waiting on is stopped immediately.
+    for task in background_tasks:
+        task.cancel()
+    for task in background_tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
     try:
         await engine.dispose()  # clean up the DB connection pool
     except Exception:
         logger.exception("shutdown_cleanup_failed")  # don't re-raise even if cleanup fails
+
+    shutdown_tracing()  # flushes any buffered spans (a no-op when no OTLP endpoint is set)
 
     logger.info("app_stopped")
 
@@ -53,7 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(title="Account Service", lifespan=lifespan)
 ```
 
-**Why the order matters:** setting `is_shutting_down = True` before resource cleanup lets the readiness probe block new requests that come in during that window. Resource cleanup (`engine.dispose()`) is called last by uvicorn, after in-flight requests have safely finished.
+**Why the order matters:** setting `is_shutting_down = True` before resource cleanup lets the readiness probe block new requests that come in during that window. The schedulers are stopped first (`shutdown(wait=True)` lets an in-progress Cron job finish), then the background tasks are cancelled and awaited, and only then is shared infrastructure torn down — the DB pool (`engine.dispose()`) last among the consumers' dependencies, followed by the tracing flush (`shutdown_tracing()`). uvicorn runs this whole block after in-flight requests have safely finished.
 
 ---
 

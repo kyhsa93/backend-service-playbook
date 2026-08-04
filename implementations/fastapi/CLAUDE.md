@@ -135,7 +135,8 @@ python3 scripts/create_domain.py Coupon --out /path/to/other-project/src --wire
 
 Verify immediately after generation with `ruff check . && ruff format --check . && bash harness.sh <projectRoot>` —
 it has actually been tested against new domains unrelated to Account/Card (including multi-word/irregular-plural
-names such as Coupon, LoyaltyCategory), confirming the harness reports `236 passed  PASS` (0 FAIL). When `--wire`
+names such as Coupon, LoyaltyCategory), confirming the harness reports 0 FAIL on the generated result — note the
+harness checks are static (placement/naming/import structure), so runtime behavior still needs tests. When `--wire`
 runs, it automatically runs `ruff check --fix`/`ruff format` on the wired files, rather than trying to perfectly
 reproduce via text insertion alone the alphabetical-order differences of where an import gets inserted depending
 on the domain name (e.g. after "card" and before "common" vs. after "database" and before "outbox") — that is
@@ -147,5 +148,5 @@ after generation.
 
 ## Example code
 
-`examples/` contains a full example implementation of the Account domain.
+`examples/` contains a full example implementation of the Account/Card/Payment/Auth domains.
 Use it as a template when working on a new domain (just change the domain name).

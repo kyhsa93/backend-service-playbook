@@ -70,7 +70,7 @@ class AwsConfig(BaseSettings):
 
 `client_kwargs()` is shaped so it can be spread as-is with `**` into `aioboto3.Session().client(...)` — both `src/common/aws_secret_service.py` and `src/account/infrastructure/notification/notification_service.py` build their boto3 client via this method.
 
-Currently, `src/config/` has `database_config.py`, `jwt_config.py`, `aws_config.py`, and `validator.py`.
+Currently, `src/config/` has `database_config.py`, `jwt_config.py`, `aws_config.py`, `sqs_config.py`, `rate_limit_config.py`, `interest_config.py`, `llm_config.py`, `tracing_config.py`, and `validator.py`.
 
 **Default-value principles:**
 - A value that works as-is in local development (`region`) gets a default.
@@ -92,12 +92,14 @@ from pydantic import ValidationError
 
 from .database_config import DatabaseConfig
 from .jwt_config import JwtConfig
+from .sqs_config import SqsConfig
 
 
 def validate_env() -> None:
     try:
         DatabaseConfig()  # type: ignore[call-arg]  — the value is filled from an environment variable
         jwt_config = JwtConfig()  # type: ignore[call-arg]
+        SqsConfig()  # type: ignore[call-arg]  — the queue URLs shared by OutboxPoller/OutboxConsumer
     except ValidationError as exc:
         print(f"Environment variable validation failed:\n{exc}", file=sys.stderr)
         sys.exit(1)  # terminate immediately

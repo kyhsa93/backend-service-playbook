@@ -29,8 +29,8 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
     return SqlAlchemyAccountRepository(session)
 
 
-def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
-    return SesNotificationService(session)
+def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
+    return SqlAlchemyAccountRepository(session)
 ```
 
 | NestJS | FastAPI |
@@ -40,12 +40,14 @@ def _notification_service(session: AsyncSession = Depends(get_session)) -> Notif
 | Bindings are scattered across **module declaration files** | The binding **is** the factory function definition itself — to find "where is this bound", just grep for the factory function |
 | Scope (`REQUEST`, `SINGLETON`) is specified via decorator | `Depends` is **request-scoped** by default (cached within the same request for the same parameter combination). A singleton is created via a module-level global variable (`engine`, `SessionLocal` already follow this pattern) |
 
-The route function parameter's type hint is declared as the ABC (`NotificationService`), but the actual injected value is the implementation the factory returns (`SesNotificationService`) — see the "Infrastructure layer" section of [layer-architecture.md](layer-architecture.md).
+The route function parameter's type hint is declared as the ABC (`AccountQuery`), but the actual injected value is the implementation the factory returns (`SqlAlchemyAccountRepository`) — see the "Infrastructure layer" section of [layer-architecture.md](layer-architecture.md).
 
 ## ③ `APIRouter` composition = NestJS's `controllers` registration
 
 ```python
-# src/account/interface/rest/account_router.py
+# src/account/interface/rest/account_router.py — shortened (the real router also passes
+# dependencies=[Depends(get_current_user)] and a router-level responses= dict, and each
+# route declares summary=/description=/responses= plus @limiter.limit on writes)
 router = APIRouter(prefix="/accounts", tags=["Account"])
 
 @router.post("", status_code=201, ...)

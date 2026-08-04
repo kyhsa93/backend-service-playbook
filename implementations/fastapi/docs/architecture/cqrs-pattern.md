@@ -144,7 +144,8 @@ class GetAccountHandler:
 The Depends factories in `interface/rest/account_router.py` are also split per Command/Query path, so a Query endpoint is injected only with the `AccountQuery` type.
 
 ```python
-# src/account/interface/rest/account_router.py — actual code
+# src/account/interface/rest/account_router.py — actual code (shortened excerpt: the real
+# route also declares summary=/description=/responses= OpenAPI metadata — see api-response.md)
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
     return SqlAlchemyAccountRepository(session)
 
@@ -165,14 +166,16 @@ async def get_account(
     ...
 ```
 
-The object actually injected at runtime is still a `SqlAlchemyAccountRepository` (which also has `save()`), but since the static type declared by `get_account`'s `repo` parameter and `GetAccountHandler.__init__` is only `AccountQuery`, the Query-path code can't access `save()` even from the type checker's point of view — this is the point where CQRS separation is actually enforced.
+The object actually injected at runtime is still a `SqlAlchemyAccountRepository` (which also has `save_account()`), but since the static type declared by `get_account`'s `repo` parameter and `GetAccountHandler.__init__` is only `AccountQuery`, the Query-path code can't access `save_account()` even from the type checker's point of view — this is the point where CQRS separation is actually enforced.
 
 ### The Interface layer — direct assembly, no Bus
 
 There is currently no Command/Query Bus. The Depends factories in `interface/rest/account_router.py` instantiate the Handler directly. As shown below, the Command path uses `_repo` (the write type `SqlAlchemyAccountRepository`), and the Query path uses the `_query_repo` seen earlier (the read type `AccountQuery`) — even though the same `SqlAlchemyAccountRepository` instance gets constructed, the static type exposed in the route function's signature differs.
 
 ```python
-# src/account/interface/rest/account_router.py — actual code
+# src/account/interface/rest/account_router.py — actual code (shortened excerpt: the real
+# route also declares summary=/description=/responses= OpenAPI metadata and the
+# @limiter.limit decorator with request: Request — see api-response.md, rate-limiting.md)
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
     return SqlAlchemyAccountRepository(session)
 

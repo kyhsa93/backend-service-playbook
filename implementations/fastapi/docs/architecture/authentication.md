@@ -339,7 +339,9 @@ def get_current_user(
 ### Applied to the router
 
 ```python
-# src/account/interface/rest/account_router.py — actual code
+# src/account/interface/rest/account_router.py — actual code (shortened excerpt: the real
+# route also declares summary=/description=/responses= OpenAPI metadata and the
+# @limiter.limit decorator with request: Request — see api-response.md, rate-limiting.md)
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user
 
 

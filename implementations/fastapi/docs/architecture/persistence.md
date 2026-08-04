@@ -18,7 +18,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 ```
 
-Every route in `interface/rest/account_router.py` receives its session through the same `Depends(get_session)`, and assembles both the Repository (`_repo`) and the Technical Service (`_notification_service`) with that session — meaning that within a single HTTP request, the Repository save and the notification-send record (`SentEmailModel`) belong to **the same session, the same transaction**.
+Every route in `interface/rest/account_router.py` receives its session through the same `Depends(get_session)`, and assembles its Repository factories (`_repo`, `_query_repo`) with that session — meaning that within a single HTTP request, every Repository write belongs to **the same session, the same transaction**. The notification-send record (`SentEmailModel`) is *not* part of the request transaction: `SesNotificationService` is assembled by `build_event_handlers()` in `src/outbox/event_handlers.py` with the per-message session `OutboxConsumer` opens, so the notification record is written in that unit of work instead (see [domain-events.md](domain-events.md)).
 
 ```python
 # interface/rest/account_router.py
@@ -26,8 +26,8 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
     return SqlAlchemyAccountRepository(session)
 
 
-def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
-    return SesNotificationService(session)  # reuses the same session
+def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
+    return SqlAlchemyAccountRepository(session)
 ```
 
 Because FastAPI caches `Depends(get_session)` within the same request, both factories actually receive the identical `AsyncSession` instance. The "Unit of Work" concept the root docs require, for bundling writes across multiple Repositories/Services into a single transaction, is satisfied by this caching behavior — instead of using `AsyncLocalStorage`/`contextvars` as in other languages, FastAPI's request-scoped dependency caching plays the same role.
@@ -135,7 +135,7 @@ app = FastAPI(title="Account Service")
 # no Base.metadata.create_all call — the schema is applied at deploy time via `alembic upgrade head`
 ```
 
-`create_all` continues to be used in the local development/test environment (a fresh DB every time, where schema validation isn't the goal) — `tests/test_account_e2e.py`/`tests/test_notification_e2e.py` each independently call `create_all` inside their own testcontainers fixtures, without depending on `main.py`'s lifespan. Against an empty DB, `alembic revision --autogenerate` accurately detects all 4 tables, and after applying `alembic upgrade head`, `alembic check` confirms "no additional changes detected."
+`create_all` continues to be used in the local development/test environment (a fresh DB every time, where schema validation isn't the goal) — `tests/test_account_e2e.py`/`tests/test_notification_e2e.py` each independently call `create_all` inside their own testcontainers fixtures, without depending on `main.py`'s lifespan. Against an empty DB, `alembic revision --autogenerate` accurately detects all 12 tables, and after applying `alembic upgrade head`, `alembic check` confirms "no additional changes detected."
 
 ---
 

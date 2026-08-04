@@ -49,7 +49,7 @@ This doc is a coverage mapping between the root principle docs and the Java Spri
 
 ## Java Spring Boot-specific, no corresponding root doc (6 bonus docs, matching NestJS)
 
-`implementations/nestjs/docs/architecture/` has 6 bonus docs (`bootstrap.md`/`cross-domain.md`/`design-principles.md`/`module-pattern.md`/`rate-limiting.md`/`shared-modules.md`) that don't correspond to any of the root's 21 topics but have practical value. There are docs rewritten in Java Spring Boot idiom for the same 6 topics — not a direct port of the NestJS docs, but written around Spring's own mechanisms (constructor injection, `@ConfigurationProperties`, `@Bean`/`@Configuration`, Resilience4j, etc.).
+`implementations/nestjs/docs/architecture/` has 6 bonus docs (`bootstrap.md`/`cross-domain.md`/`design-principles.md`/`module-pattern.md`/`rate-limiting.md`/`shared-modules.md`) that don't correspond to any of the root's 24 topics but have practical value. There are docs rewritten in Java Spring Boot idiom for the same 6 topics — not a direct port of the NestJS docs, but written around Spring's own mechanisms (constructor injection, `@ConfigurationProperties`, `@Bean`/`@Configuration`, Resilience4j, etc.).
 
 | Doc | Content |
 |---|---|

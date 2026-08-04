@@ -197,7 +197,7 @@ The actual code also forwards a `traceparent` MessageAttribute the same way, whe
 
 ### Step 3: `OutboxConsumer` — receiving SQS → EventHandler (actual code)
 
-`src/outbox/outbox_consumer.py` — likewise started exactly once at app startup by `main.py`'s `lifespan`. It long-polls via `receive_message`'s `WaitTimeSeconds`, and once it receives a message, looks up the handler in the dict `build_event_handlers()` assembled by `eventType` (MessageAttributes) and calls it.
+`src/outbox/outbox_consumer.py` — likewise started exactly once at app startup by `main.py`'s `lifespan`. It long-polls via `receive_message`'s `WaitTimeSeconds`, and once it receives a message, looks up the handler *list* in the dict `build_event_handlers()` assembled by `eventType` (MessageAttributes) and calls every handler in the list.
 
 ```python
 # src/outbox/outbox_consumer.py — actual code (excerpt)
@@ -226,18 +226,36 @@ class OutboxConsumer:
                 raise ValueError("The eventType message attribute is missing.")
             payload = json.loads(message.get("Body", "{}"))
             async with self._session_factory() as session:
-                handler = build_event_handlers(session).get(event_type)
-                if handler is None:
+                handlers = build_event_handlers(session).get(event_type)
+                if not handlers:
                     raise ValueError(f"No registered handler: {event_type}")
-                await handler(payload)
+
+                # Each handler is independent — one subscriber's failure must not
+                # prevent a sibling subscriber on the same eventType from running.
+                errors: list[Exception] = []
+                for handler in handlers:
+                    try:
+                        await handler(payload)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as error:
+                        logger.exception(
+                            "A handler failed for event_type=%s handler=%s",
+                            event_type,
+                            getattr(handler, "__qualname__", handler),
+                        )
+                        errors.append(error)
+
                 await session.commit()
+                if errors:
+                    raise errors[0]
             await sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
         except Exception:
             logger.exception("Failed to process event: event_type=%s", event_type)
             # Not deleted — it will be re-received and retried after the visibility timeout.
 ```
 
-Handler success → deleted (ack) via `delete_message`. Handler failure (or no registered handler) → not deleted → SQS automatically redelivers it after the visibility timeout (at-least-once) — the EventHandler idempotency this repository requires is premised exactly on this redelivery.
+All handlers succeed → deleted (ack) via `delete_message`. Any handler failure (or no registered handler) → not deleted → SQS automatically redelivers it after the visibility timeout (at-least-once) — the EventHandler idempotency this repository requires is premised exactly on this redelivery. Every handler in the list still gets a chance to run on every delivery even when an earlier sibling fails; the first collected error is re-raised only after the loop, so the message is redelivered to all of them.
 
 The actual code also requests the `traceparent` attribute alongside `eventType` and, when present, processes the handler call inside a child span re-hydrated from it (`outbox.process_event`) — again omitted here for focus; see [observability.md](observability.md) for the full detail and the e2e test that verifies it.
 
@@ -245,33 +263,42 @@ The actual code also requests the `traceparent` attribute alongside `eventType` 
 
 ### `build_event_handlers()` — assembling handler routing (actual code)
 
-`build_event_handlers(session) -> dict[str, Callable]` in `src/outbox/event_handlers.py` assembles the entire wiring from an `eventType` string → its processing function. Since FastAPI has no loose inter-module registration mechanism like NestJS's `EventHandlerRegistry`, this single function is the composition root for all three BCs — Account/Card/Payment — (`OutboxConsumer` calls this function with a new session every time it processes a message; "assembled once" means the *definition* of this assembly logic is fixed, not that a single session is held for the entire life of the process).
+`build_event_handlers(session) -> dict[str, list[EventHandlerFn]]` in `src/outbox/event_handlers.py` assembles the entire wiring from an `eventType` string → its list of processing functions. Each eventType maps to a *list* of handlers, so one event can have multiple independent subscribers — `MoneyWithdrawn` has three (SES notification, spending categorization, withdrawal-anomaly alert). Since FastAPI has no loose inter-module registration mechanism like NestJS's `EventHandlerRegistry`, this single function is the composition root for all three BCs — Account/Card/Payment — (`OutboxConsumer` calls this function with a new session every time it processes a message; "assembled once" means the *definition* of this assembly logic is fixed, not that a single session is held for the entire life of the process).
 
 ```python
 # src/outbox/event_handlers.py — actual code (excerpt)
-def build_event_handlers(session: AsyncSession) -> dict[str, EventHandlerFn]:
-    account_repo = SqlAlchemyAccountRepository(session)
-    card_repo = SqlAlchemyCardRepository(session)
+EventHandlerFn = Callable[[dict], Awaitable[None]]
+
+
+def build_event_handlers(session: AsyncSession) -> dict[str, list[EventHandlerFn]]:
+    account_repo: AccountRepository = SqlAlchemyAccountRepository(session)
+    card_repo: CardRepository = SqlAlchemyCardRepository(session)
+    transaction_repo = SqlAlchemyTransactionRepository(session)
     notification_service = SesNotificationService(session)
     outbox_writer = OutboxWriter(session)
     card_integration_event_controller = CardIntegrationEventController(card_repo)
     account_integration_event_controller = AccountIntegrationEventController(account_repo)
+    transaction_auto_categorizer = TransactionAutoCategorizerImpl()
 
     return {
-        "AccountCreated": AccountCreatedEventHandler(notification_service).handle,
-        "MoneyDeposited": MoneyDepositedEventHandler(notification_service).handle,
-        "MoneyWithdrawn": MoneyWithdrawnEventHandler(notification_service).handle,
-        "AccountSuspended": AccountSuspendedEventHandler(notification_service, outbox_writer).handle,
-        "AccountReactivated": AccountReactivatedEventHandler(notification_service).handle,
-        "AccountClosed": AccountClosedEventHandler(notification_service, outbox_writer).handle,
-        "account.suspended.v1": card_integration_event_controller.on_account_suspended,
-        "account.closed.v1": card_integration_event_controller.on_account_closed,
-        "PaymentCompleted": PaymentCompletedEventHandler(outbox_writer).handle,
-        "PaymentCancelled": PaymentCancelledEventHandler(outbox_writer).handle,
-        "RefundApproved": RefundApprovedEventHandler(outbox_writer).handle,
-        "payment.completed.v1": account_integration_event_controller.on_payment_completed,
-        "payment.cancelled.v1": account_integration_event_controller.on_payment_cancelled,
-        "refund.approved.v1": account_integration_event_controller.on_refund_approved,
+        "AccountCreated": [AccountCreatedEventHandler(notification_service).handle],
+        "MoneyDeposited": [MoneyDepositedEventHandler(notification_service).handle],
+        "MoneyWithdrawn": [
+            MoneyWithdrawnEventHandler(notification_service).handle,
+            CategorizeTransactionEventHandler(transaction_auto_categorizer, transaction_repo).handle,
+            DetectWithdrawalAnomalyEventHandler(transaction_repo, notification_service).handle,
+        ],
+        "AccountSuspended": [AccountSuspendedEventHandler(notification_service, outbox_writer).handle],
+        "AccountReactivated": [AccountReactivatedEventHandler(notification_service).handle],
+        "AccountClosed": [AccountClosedEventHandler(notification_service, outbox_writer).handle],
+        "account.suspended.v1": [card_integration_event_controller.on_account_suspended],
+        "account.closed.v1": [card_integration_event_controller.on_account_closed],
+        "PaymentCompleted": [PaymentCompletedEventHandler(outbox_writer).handle],
+        "PaymentCancelled": [PaymentCancelledEventHandler(outbox_writer).handle],
+        "RefundApproved": [RefundApprovedEventHandler(outbox_writer).handle],
+        "payment.completed.v1": [account_integration_event_controller.on_payment_completed],
+        "payment.cancelled.v1": [account_integration_event_controller.on_payment_cancelled],
+        "refund.approved.v1": [account_integration_event_controller.on_refund_approved],
     }
 ```
 

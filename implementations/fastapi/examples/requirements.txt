@@ -19,5 +19,5 @@ opentelemetry-exporter-otlp-proto-http
 
 pytest
 pytest-asyncio
-testcontainers[localstack]
+testcontainers[localstack,postgres]
 ruff==0.16.1

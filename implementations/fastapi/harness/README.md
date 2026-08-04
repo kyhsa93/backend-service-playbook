@@ -10,19 +10,14 @@ harness/
   rules/
     __init__.py
     common.py                    shared types (Finding, RuleResult) and helpers (collect_py_files, read, rel, norm, ...)
-    file_naming.py                a module per rule (one file per rule)
+    file_naming.py                a module per rule (one file per rule) — 31 rule modules in total
     repository_abc.py
-    repository_impl.py
     repository_naming.py
-    handler_placement.py
     domain_purity.py
-    directory_structure.py
-    shared_infra.py
-    event_placement.py
     layer_dependency.py
-    no_notification_dependency_in_command.py
-    outbox_no_sync_drain.py
     cqrs_pattern.py
+    api_documentation.py
+    ...                           (see the full rule table below for all 31)
   tests/
     test_rules.py                pytest — parameterizes and iterates over the fixtures/ below
     fixtures/<rule>/good/         the minimal fixture that must pass that rule

@@ -1,9 +1,10 @@
 # App Bootstrap
 
-This repository's FastAPI implementation has no dedicated bootstrap function like NestJS's `main.ts` + `NestFactory.create()` — it's just constructing the `FastAPI(...)` instance at the module's top level and registering routers/exception handlers underneath it. This is the entirety of the actual `examples/main.py`.
+This repository's FastAPI implementation has no dedicated bootstrap function like NestJS's `main.ts` + `NestFactory.create()` — it's just constructing the `FastAPI(...)` instance at the module's top level and registering routers/exception handlers underneath it. The following is a minimal excerpt showing the structure of the actual `examples/main.py` (the real file also registers the Card/Payment routers, more exception handlers, rate-limiting/security-headers middleware, Prometheus metrics, tracing, and the health-check endpoints — around 300 lines in total).
 
 ```python
-# main.py — actual code
+# main.py — actual code (shortened excerpt)
+import asyncio
 import logging
 import os
 import time
@@ -17,12 +18,17 @@ from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
 from src.account.domain.errors import AccountError, AccountNotFoundError  # noqa: E402
+from src.account.infrastructure.scheduling.interest_scheduler import start_interest_scheduler  # noqa: E402
 from src.account.interface.rest.account_router import router as account_router  # noqa: E402
 from src.auth.infrastructure.jwt_auth_service import set_jwt_secret  # noqa: E402
 from src.auth.interface.rest.auth_router import router as auth_router  # noqa: E402
 from src.common.aws_secret_service import AwsSecretService  # noqa: E402
 from src.common.correlation import generate_correlation_id, set_correlation_id  # noqa: E402
+from src.common.error_response import build_error_response  # noqa: E402
 from src.common.logging_config import configure_logging  # noqa: E402
+from src.database import SessionLocal, engine  # noqa: E402
+from src.outbox.outbox_consumer import OutboxConsumer  # noqa: E402
+from src.outbox.outbox_poller import OutboxPoller  # noqa: E402
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -30,12 +36,35 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # --- startup (validate_env() has already run above, at module-import time) ---
     # Secrets Manager is only called in production — elsewhere (local/test defaults),
     # only the environment variable (JWT_SECRET) is used, with no network call.
     if os.getenv("APP_ENV") == "production":
         secret = await AwsSecretService().get_secret("app/jwt")
         set_jwt_secret(secret["secret"])
+
+    # OutboxPoller/OutboxConsumer (plus TaskOutboxPoller/TaskConsumer in the real file) are
+    # started as background tasks exactly once at app startup, and the APScheduler-based
+    # schedulers via start_*_scheduler() — see domain-events.md and scheduling.md.
+    background_tasks = [
+        asyncio.create_task(OutboxPoller(SessionLocal).run_forever()),
+        asyncio.create_task(OutboxConsumer(SessionLocal).run_forever()),
+    ]
+    interest_scheduler = start_interest_scheduler(SessionLocal)
+
     yield
+
+    # --- shutdown (SIGTERM received) — schedulers first, then the background tasks,
+    # then the DB pool; the full ordering is in graceful-shutdown.md ---
+    interest_scheduler.shutdown(wait=True)
+    for task in background_tasks:
+        task.cancel()
+    for task in background_tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    await engine.dispose()
 
 
 # The schema is applied via `alembic upgrade head` in the deployment pipeline — this code
@@ -76,12 +105,12 @@ async def correlation_id_middleware(request: Request, call_next):
 
 @app.exception_handler(AccountNotFoundError)
 async def account_not_found_handler(request: Request, exc: AccountNotFoundError) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"message": str(exc)})
+    return JSONResponse(status_code=404, content=build_error_response(404, exc.code.value, str(exc)))
 
 
 @app.exception_handler(AccountError)
 async def account_error_handler(request: Request, exc: AccountError) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"message": str(exc)})
+    return JSONResponse(status_code=400, content=build_error_response(400, exc.code.value, str(exc)))
 ```
 
 The key difference from NestJS is that this code ends with just module-top-level code, with no short, dedicated bootstrap function — there is no step that initializes a DI container at all (no code corresponding to `NestFactory.create(AppModule)`). Calling the `FastAPI()` constructor produces the app instance itself, and everything after that is just calling methods/decorators on that instance. Another notable point is that `validate_env()` is called even before the `FastAPI` import — because fail-fast must run before the app framework itself (see [config.md](config.md), [graceful-shutdown.md](graceful-shutdown.md)).
@@ -93,7 +122,7 @@ The key difference from NestJS is that this code ends with just module-top-level
 | `validate_env()` (top of the module) | fail-fast: validates required environment variables (`DatabaseConfig`), calls `sys.exit(1)` on failure. Details: [config.md](config.md) |
 | `configure_logging()` | Configures structured JSON logging. Details: [observability.md](observability.md) |
 | `FastAPI(title=..., description=..., version=..., lifespan=lifespan)` | Creates the app instance. `title`/`description`/`version` become the corresponding fields of the auto-generated OpenAPI docs (`/docs`, `/openapi.json`) |
-| `lifespan` (`@asynccontextmanager`) | Startup/shutdown hook — before `yield` is startup, after it is shutdown. Currently it only fetches the JWT secret from Secrets Manager in production, and the shutdown block is empty. Details: [graceful-shutdown.md](graceful-shutdown.md) |
+| `lifespan` (`@asynccontextmanager`) | Startup/shutdown hook — before `yield` is startup, after it is shutdown. Startup fetches the JWT secret from Secrets Manager (production only), starts the Outbox/Task-queue pollers and consumers as background tasks, and starts the APScheduler-based schedulers; shutdown stops the schedulers (`shutdown(wait=True)`), cancels and awaits the background tasks, disposes the DB pool, and flushes tracing. Details: [graceful-shutdown.md](graceful-shutdown.md) |
 | `app.include_router(auth_router)`, `app.include_router(account_router)` | Registers an `APIRouter` — one router per Bounded Context/shared module. Details: [module-pattern.md](module-pattern.md) |
 | `correlation_id_middleware` (`@app.middleware("http")`) | Injects a Correlation ID into every request + request logging. Details: [cross-cutting-concerns.md](cross-cutting-concerns.md) |
 | `@app.exception_handler(ExcType)` | Converts a domain exception → HTTP response. `AccountNotFoundError` (the concrete type) is registered before `AccountError` (its supertype) so 404 matches before 400. Details: [error-handling.md](error-handling.md) |

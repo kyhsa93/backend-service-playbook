@@ -294,11 +294,11 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
     return SqlAlchemyAccountRepository(session)  # AccountRepository(ABC) ← SqlAlchemyAccountRepository(implementation)
 
 
-def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
-    return SesNotificationService(session)  # NotificationService(ABC) ← SesNotificationService(implementation)
+def _query_repo(session: AsyncSession = Depends(get_session)) -> AccountQuery:
+    return SqlAlchemyAccountRepository(session)  # AccountQuery(ABC) ← SqlAlchemyAccountRepository(implementation)
 ```
 
-A route function's parameter type is declared as the ABC (`AccountRepository`), but what's actually injected is the implementation the factory returns. `NotificationService` is never received by any route at all — it's only assembled inside `build_event_handlers()` in `src/outbox/event_handlers.py`, and passed to an event handler when `OutboxConsumer` processes an SQS message (see [domain-events.md](domain-events.md)).
+A query route function's parameter type is declared as the ABC (`AccountQuery`), but what's actually injected is the implementation the factory returns. `NotificationService` is never received by any route at all — it's only assembled inside `build_event_handlers()` in `src/outbox/event_handlers.py`, and passed to an event handler when `OutboxConsumer` processes an SQS message (see [domain-events.md](domain-events.md)).
 
 ---
 
@@ -311,7 +311,9 @@ The entry point for external requests (HTTP).
 3. Errors are caught by `main.py`'s `@app.exception_handler` and converted into an HTTP response (the Router itself never catches them)
 
 ```python
-# interface/rest/account_router.py — actual code
+# interface/rest/account_router.py — actual code (shortened excerpt: the real route also
+# declares summary=/description=/responses= OpenAPI metadata and the @limiter.limit
+# decorator with request: Request — see api-response.md, rate-limiting.md)
 @router.post("/{account_id}/deposit", status_code=201, response_model=TransactionResponse)
 async def deposit(
     account_id: str,

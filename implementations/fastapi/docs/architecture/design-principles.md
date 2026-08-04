@@ -12,7 +12,7 @@ Among the principles already covered across the other 21 documents in this repos
 
 5. **Repository is scoped per Aggregate — the ABC lives in `domain/`, the implementation in `infrastructure/`** — a child Entity (`Transaction`) does not get its own Repository; it is looked up and saved only through the Aggregate Root's Repository. ([repository-pattern.md](repository-pattern.md))
 
-6. **DI is via `Depends` factory functions — no dedicated container** — the binding between an ABC and its implementation for Repositories/Technical Services/Adapters is handled by factory functions (`_repo`, `_notification_service`) in `interface/rest/*_router.py`. This is the sole point corresponding to NestJS's `{ provide, useClass }`. ([module-pattern.md](module-pattern.md))
+6. **DI is via `Depends` factory functions — no dedicated container** — the binding between an ABC and its implementation for Repositories/Technical Services/Adapters is handled by factory functions (`_repo`, `_query_repo`) in `interface/rest/*_router.py` (event-handler dependencies are bound in `build_event_handlers()` instead — see [domain-events.md](domain-events.md)). This is the sole point corresponding to NestJS's `{ provide, useClass }`. ([module-pattern.md](module-pattern.md))
 
 7. **Command/Query Handlers are `XxxHandler` + `async def execute()`** — Commands and Queries are physically separated into `application/command/` and `application/query/`. Introducing a CommandBus/QueryBus is optional, and this repository has not adopted one yet. ([cqrs-pattern.md](cqrs-pattern.md))
 
