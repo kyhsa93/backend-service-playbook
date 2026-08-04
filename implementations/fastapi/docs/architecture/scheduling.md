@@ -31,6 +31,7 @@ Both interest payment and statement delivery are batch jobs that need "exactly o
 TASK_TYPE = "account.interest.apply"
 GROUP_ID = "account.interest"
 
+
 def start_interest_scheduler(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
 
@@ -70,8 +71,8 @@ class TaskOutboxModel(Base):
     task_id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)
     task_type: Mapped[str]
     payload: Mapped[str]
-    group_id: Mapped[str]            # FIFO MessageGroupId
-    deduplication_id: Mapped[str]    # FIFO MessageDeduplicationId (date/month-based)
+    group_id: Mapped[str]  # FIFO MessageGroupId
+    deduplication_id: Mapped[str]  # FIFO MessageDeduplicationId (date/month-based)
     processed: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 ```
@@ -83,14 +84,16 @@ class TaskOutboxWriter:
         self._session = session
 
     async def enqueue(self, task_type: str, payload: dict, group_id: str, deduplication_id: str) -> None:
-        self._session.add(TaskOutboxModel(
-            task_id=uuid.uuid4().hex,
-            task_type=task_type,
-            payload=json.dumps(payload, default=str),
-            group_id=group_id,
-            deduplication_id=deduplication_id,
-            processed=False,
-        ))
+        self._session.add(
+            TaskOutboxModel(
+                task_id=uuid.uuid4().hex,
+                task_type=task_type,
+                payload=json.dumps(payload, default=str),
+                group_id=group_id,
+                deduplication_id=deduplication_id,
+                processed=False,
+            )
+        )
 ```
 
 `TaskOutboxPoller` (`src/task_queue/task_outbox_poller.py`) operates with exactly the same separation of responsibilities as `OutboxPoller` — every 1 second it reads up to 100 rows with `processed=False`, publishes them to `SqsConfig().task_queue_url` (a FIFO queue), and sends `MessageGroupId`/`MessageDeduplicationId` along with them. Only a row that was published successfully is marked `processed=True`. `main.py`'s `lifespan` starts `TaskOutboxPoller(SessionLocal)` once at app startup via `asyncio.create_task()` — the Scheduler (the Cron handler) never references this class.

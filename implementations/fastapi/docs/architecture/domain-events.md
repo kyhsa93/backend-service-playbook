@@ -47,7 +47,6 @@ Right after `SqlAlchemyAccountRepository.save()` (`src/account/infrastructure/pe
 ```python
 # infrastructure/persistence/account_repository.py — actual code
 class SqlAlchemyAccountRepository(AccountRepository):
-
     def __init__(self, session: AsyncSession) -> None:
         # deferred import — since outbox_model.py imports this module's Base, importing
         # OutboxWriter at the module's top level would create a circular import (see module-pattern.md).
@@ -70,7 +69,7 @@ class SqlAlchemyAccountRepository(AccountRepository):
 
         events = account.pull_events()
         if events:
-            await self._outbox_writer.save_all(events)   # Outbox load — same session, same transaction
+            await self._outbox_writer.save_all(events)  # Outbox load — same session, same transaction
 
         await self._session.flush()
 ```
@@ -89,12 +88,14 @@ class OutboxWriter:
             # e.g. 'account.suspended.v1') as event_type. A Domain Event has no event_name,
             # so its class name is used as-is.
             event_type = getattr(event, "event_name", None) or type(event).__name__
-            self._session.add(OutboxModel(
-                event_id=uuid.uuid4().hex,
-                event_type=event_type,
-                payload=json.dumps(dataclasses.asdict(event), default=str),
-                processed=False,
-            ))
+            self._session.add(
+                OutboxModel(
+                    event_id=uuid.uuid4().hex,
+                    event_type=event_type,
+                    payload=json.dumps(dataclasses.asdict(event), default=str),
+                    processed=False,
+                )
+            )
 ```
 
 ### Outbox table schema
@@ -105,8 +106,8 @@ class OutboxModel(Base):
     __tablename__ = "outbox"
 
     event_id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)
-    event_type: Mapped[str]                 # e.g. "MoneyDeposited"
-    payload: Mapped[str]                    # JSON-serialized
+    event_type: Mapped[str]  # e.g. "MoneyDeposited"
+    payload: Mapped[str]  # JSON-serialized
     processed: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     trace_parent: Mapped[str | None] = mapped_column(default=None)  # W3C traceparent — see observability.md
@@ -125,7 +126,9 @@ class DepositHandler:
         self._repo = repo
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id
+        )
         account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
@@ -157,8 +160,10 @@ class OutboxPoller:
         queue_url = SqsConfig().domain_event_queue_url
         async with self._session_factory() as session:
             stmt = (
-                select(OutboxModel).where(OutboxModel.processed.is_(False))
-                .order_by(OutboxModel.created_at).limit(BATCH_SIZE)
+                select(OutboxModel)
+                .where(OutboxModel.processed.is_(False))
+                .order_by(OutboxModel.created_at)
+                .limit(BATCH_SIZE)
             )
             rows = (await session.execute(stmt)).scalars().all()
             if not rows:
@@ -179,7 +184,9 @@ class OutboxPoller:
                         )
                         row.processed = True
                     except Exception:
-                        logger.exception("Failed to publish to SQS: event_type=%s event_id=%s", row.event_type, row.event_id)
+                        logger.exception(
+                            "Failed to publish to SQS: event_type=%s event_id=%s", row.event_type, row.event_id
+                        )
 
             await session.commit()
 ```
@@ -204,8 +211,10 @@ class OutboxConsumer:
         async with self._boto_session.client("sqs", **AwsConfig().client_kwargs()) as sqs_client:
             while True:
                 result = await sqs_client.receive_message(
-                    QueueUrl=queue_url, MaxNumberOfMessages=10,
-                    MessageAttributeNames=["eventType"], WaitTimeSeconds=5,
+                    QueueUrl=queue_url,
+                    MaxNumberOfMessages=10,
+                    MessageAttributeNames=["eventType"],
+                    WaitTimeSeconds=5,
                 )
                 for message in result.get("Messages", []):
                     await self._handle_message(sqs_client, queue_url, message)
@@ -297,9 +306,7 @@ async def _send_and_record(self, event: AccountDomainEvent, outbox_event_id: str
     event_type = type(event).__name__
 
     already_sent = (
-        await self._session.execute(
-            select(SentEmailModel).where(SentEmailModel.outbox_event_id == outbox_event_id)
-        )
+        await self._session.execute(select(SentEmailModel).where(SentEmailModel.outbox_event_id == outbox_event_id))
     ).scalar_one_or_none()
     if already_sent is not None:
         logger.info("Event already sent — skipping duplicate send", extra={...})
@@ -341,9 +348,13 @@ class AccountSuspendedEventHandler:
 
     async def handle(self, payload: dict) -> None:
         event = AccountSuspended(...)
-        await self._outbox_writer.save_all([
-            AccountSuspendedIntegrationEventV1(account_id=event.account_id, suspended_at=event.suspended_at.isoformat())
-        ])
+        await self._outbox_writer.save_all(
+            [
+                AccountSuspendedIntegrationEventV1(
+                    account_id=event.account_id, suspended_at=event.suspended_at.isoformat()
+                )
+            ]
+        )
         await self._notification_service.notify(event, payload["outbox_event_id"])
 ```
 

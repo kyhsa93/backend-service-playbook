@@ -41,8 +41,12 @@ from .transaction import Transaction
 class AccountRepository(ABC):
     @abstractmethod
     async def find_accounts(
-        self, page: int, take: int,
-        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+        self,
+        page: int,
+        take: int,
+        account_id: str | None = None,
+        owner_id: str | None = None,
+        status: list[str] | None = None,
     ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
@@ -64,13 +68,15 @@ class DepositHandler:
         self._repo = repo
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id
+        )
         account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
-        transaction = account.deposit(cmd.amount)   # business logic is delegated to the Aggregate
-        await self._repo.save(account)               # Aggregate save + Outbox load, one transaction
-        return transaction   # returns immediately after saving — publishing/receiving Outbox → SQS is OutboxPoller/OutboxConsumer's job (domain-events.md)
+        transaction = account.deposit(cmd.amount)  # business logic is delegated to the Aggregate
+        await self._repo.save(account)  # Aggregate save + Outbox load, one transaction
+        return transaction  # returns immediately after saving — publishing/receiving Outbox → SQS is OutboxPoller/OutboxConsumer's job (domain-events.md)
 ```
 
 The Handler's constructor takes the ABC (`AccountRepository`) as its type, not a concrete class — `OutboxPoller`/`OutboxConsumer`, which handle publishing/receiving from Outbox → SQS, run independently and periodically with no relation to the Command Handler at all, so they never appear in its constructor. Thanks to this, the Application unit tests covered in [testing.md](testing.md) are possible with mocks alone, with no real DB/SES. `NotificationService` isn't depended on by the Command Handler — it's depended on by `application/event/<event>_event_handler.py`, which `OutboxConsumer` calls upon receiving from SQS (see [domain-events.md](domain-events.md)).
@@ -140,14 +146,19 @@ All orchestration lives in the Query Handler (the Application layer) — never i
 ```python
 # application/query/ask_transaction_history_handler.py — actual code (excerpt)
 class AskTransactionHistoryHandler:
-    def __init__(self, repo: AccountQuery, translator: NlTransactionQueryTranslator, composer: NlTransactionAnswerComposer) -> None:
+    def __init__(
+        self, repo: AccountQuery, translator: NlTransactionQueryTranslator, composer: NlTransactionAnswerComposer
+    ) -> None:
         self._repo = repo
         self._translator = translator
         self._composer = composer
 
     async def execute(self, query: AskTransactionHistoryQuery) -> AskTransactionHistoryResult:
         accounts, _ = await self._repo.find_accounts(
-            page=0, take=1, account_id=query.account_id, owner_id=query.requester_id  # always the authenticated requester
+            page=0,
+            take=1,
+            account_id=query.account_id,
+            owner_id=query.requester_id,  # always the authenticated requester
         )
         account = accounts[0] if accounts else None
         if account is None:
@@ -159,7 +170,9 @@ class AskTransactionHistoryHandler:
             query.account_id, page=0, take=50, type=filter_.type, from_date=filter_.from_date, to_date=filter_.to_date
         )
 
-        answer = await self._composer.compose(query.question, [...])  # mapped to TransactionSummary, omitted for brevity
+        answer = await self._composer.compose(
+            query.question, [...]
+        )  # mapped to TransactionSummary, omitted for brevity
         return AskTransactionHistoryResult(answer=answer, matched_count=count)
 ```
 
@@ -215,7 +228,9 @@ class RequestRefundHandler:
         self._refund_eligibility_service = RefundEligibilityService()
 
     async def execute(self, cmd: RequestRefundCommand) -> Refund:
-        payments, _ = await self._payment_repo.find_payments(page=0, take=1, payment_id=cmd.payment_id, owner_id=cmd.requester_id)
+        payments, _ = await self._payment_repo.find_payments(
+            page=0, take=1, payment_id=cmd.payment_id, owner_id=cmd.requester_id
+        )
         payment = payments[0] if payments else None
         if payment is None:
             raise PaymentNotFoundError(cmd.payment_id)
@@ -276,11 +291,11 @@ The ABC implementations of Domain/Application (`SqlAlchemyAccountRepository`, `S
 ```python
 # interface/rest/account_router.py
 def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepository:
-    return SqlAlchemyAccountRepository(session)   # AccountRepository(ABC) ← SqlAlchemyAccountRepository(implementation)
+    return SqlAlchemyAccountRepository(session)  # AccountRepository(ABC) ← SqlAlchemyAccountRepository(implementation)
 
 
 def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
-    return SesNotificationService(session)        # NotificationService(ABC) ← SesNotificationService(implementation)
+    return SesNotificationService(session)  # NotificationService(ABC) ← SesNotificationService(implementation)
 ```
 
 A route function's parameter type is declared as the ABC (`AccountRepository`), but what's actually injected is the implementation the factory returns. `NotificationService` is never received by any route at all — it's only assembled inside `build_event_handlers()` in `src/outbox/event_handlers.py`, and passed to an event handler when `OutboxConsumer` processes an SQS message (see [domain-events.md](domain-events.md)).

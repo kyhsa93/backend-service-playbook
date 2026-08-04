@@ -49,13 +49,17 @@ class DepositHandler:
         self._repo = repo
 
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id)
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=cmd.account_id, owner_id=cmd.requester_id
+        )
         account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(cmd.account_id)
         transaction = account.deposit(cmd.amount)
-        await self._repo.save(account)          # commits the Aggregate save + Outbox load in the same transaction
-        return transaction   # returns immediately after saving — draining the Outbox is OutboxPoller/OutboxConsumer's job
+        await self._repo.save(account)  # commits the Aggregate save + Outbox load in the same transaction
+        return (
+            transaction  # returns immediately after saving — draining the Outbox is OutboxPoller/OutboxConsumer's job
+        )
 ```
 
 **Flow:** look up the Aggregate from the Repository → call the Aggregate's domain method (`account.deposit()`) → save via the Repository (commits the Aggregate state + the Outbox row in one transaction) → return immediately. Publishing/receiving from Outbox → SQS is handled by the independently, periodically running `OutboxPoller`/`OutboxConsumer` (the Command Handler never calls these — the harness's `outbox-no-sync-drain` rule catches a violation). The Handler itself has no business rules and delegates to the Aggregate — see [layer-architecture.md](layer-architecture.md), [domain-events.md](domain-events.md).
@@ -77,8 +81,12 @@ class AccountQuery(ABC):
 
     @abstractmethod
     async def find_accounts(
-        self, page: int, take: int,
-        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+        self,
+        page: int,
+        take: int,
+        account_id: str | None = None,
+        owner_id: str | None = None,
+        status: list[str] | None = None,
     ) -> tuple[list[Account], int]: ...
 
     @abstractmethod
@@ -114,7 +122,9 @@ class GetAccountHandler:
         self._repo = repo
 
     async def execute(self, query: GetAccountQuery) -> GetAccountResult:
-        accounts, _ = await self._repo.find_accounts(page=0, take=1, account_id=query.account_id, owner_id=query.requester_id)
+        accounts, _ = await self._repo.find_accounts(
+            page=0, take=1, account_id=query.account_id, owner_id=query.requester_id
+        )
         account = accounts[0] if accounts else None
         if account is None:
             raise AccountNotFoundError(query.account_id)

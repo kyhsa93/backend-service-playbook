@@ -54,7 +54,6 @@ Since this is a monolith with the Account BC in the same process (this repositor
 ```python
 # src/card/infrastructure/account_adapter_impl.py — actual code
 class AccountAdapterImpl(AccountAdapter):
-
     def __init__(self, account_query: AccountQuery) -> None:
         self._account_query = account_query
 
@@ -74,7 +73,6 @@ Once the Account BC is split into a separate service, this can be swapped for an
 ```python
 # src/card/application/command/issue_card_handler.py — actual code
 class IssueCardHandler:
-
     def __init__(self, repo: CardRepository, account_adapter: AccountAdapter) -> None:
         self._repo = repo
         self._account_adapter = account_adapter

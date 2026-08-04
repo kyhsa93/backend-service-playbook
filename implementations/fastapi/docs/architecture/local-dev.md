@@ -222,7 +222,7 @@ docker compose --profile app down -v
 async with self._boto_session.client(
     "sqs",  # or "ses"/"secretsmanager" — only the service name differs, everything else is the same
     region_name=os.getenv("AWS_REGION", "us-east-1"),
-    endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,   # LocalStack if set, real AWS otherwise
+    endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,  # LocalStack if set, real AWS otherwise
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
 ) as sqs_client:

@@ -30,7 +30,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class DatabaseConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DATABASE_")
 
-    url: str   # required — no default. Instantiating without it immediately fails with a ValidationError
+    url: str  # required — no default. Instantiating without it immediately fails with a ValidationError
 ```
 
 ```python
@@ -96,11 +96,11 @@ from .jwt_config import JwtConfig
 
 def validate_env() -> None:
     try:
-        DatabaseConfig()   # type: ignore[call-arg]  — the value is filled from an environment variable
-        jwt_config = JwtConfig()   # type: ignore[call-arg]
+        DatabaseConfig()  # type: ignore[call-arg]  — the value is filled from an environment variable
+        jwt_config = JwtConfig()  # type: ignore[call-arg]
     except ValidationError as exc:
         print(f"Environment variable validation failed:\n{exc}", file=sys.stderr)
-        sys.exit(1)   # terminate immediately
+        sys.exit(1)  # terminate immediately
 
     # In production, Secrets Manager (app/jwt) fills the secret at lifespan startup,
     # so the JWT_SECRET environment variable can be absent — in every other environment it's explicitly required.
@@ -117,7 +117,7 @@ It's called at module-import time, before `main.py` enters `lifespan`, so the ap
 # main.py
 from src.config.validator import validate_env
 
-validate_env()   # on failure, the process exits right here — no code after this runs
+validate_env()  # on failure, the process exits right here — no code after this runs
 
 app = FastAPI(title="Account Service", lifespan=lifespan)
 ```
@@ -149,12 +149,13 @@ Configuration values are referenced directly only in the Infrastructure layer (`
 # correct approach — accessing configuration in the Infrastructure layer
 class SqlAlchemyAccountRepository(AccountRepository):
     def __init__(self, session: AsyncSession) -> None:
-        self._session = session   # session is assembled from configuration by Infrastructure (database.py)
+        self._session = session  # session is assembled from configuration by Infrastructure (database.py)
+
 
 # incorrect approach — an Application Handler references an environment variable directly
 class DepositHandler:
     async def execute(self, cmd: DepositCommand) -> Transaction:
-        url = os.environ["DATABASE_URL"]   # forbidden — a Handler must not know about configuration
+        url = os.environ["DATABASE_URL"]  # forbidden — a Handler must not know about configuration
 ```
 
 `src/account/infrastructure/notification/notification_service.py` and `src/common/aws_secret_service.py` each instantiate `AwsConfig()` and build their boto3 client via `client_kwargs()` — correctly placed (Infrastructure), and assembled through `AwsConfig` rather than calling `os.getenv` scattered around.

@@ -23,8 +23,14 @@ Not having a writable property that can be directly assigned from outside via a 
 # src/account/domain/account.py
 class Account:
     def __init__(
-        self, account_id: str, owner_id: str, email: str, balance: Money,
-        status: AccountStatus, created_at: datetime, updated_at: datetime,
+        self,
+        account_id: str,
+        owner_id: str,
+        email: str,
+        balance: Money,
+        status: AccountStatus,
+        created_at: datetime,
+        updated_at: datetime,
     ) -> None:
         self.account_id = account_id
         self.owner_id = owner_id
@@ -39,8 +45,15 @@ class Account:
     @classmethod
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
         now = datetime.utcnow()
-        account = cls(account_id=str(uuid.uuid4()), owner_id=owner_id, email=email,
-                       balance=Money(0, currency), status=AccountStatus.ACTIVE, created_at=now, updated_at=now)
+        account = cls(
+            account_id=str(uuid.uuid4()),
+            owner_id=owner_id,
+            email=email,
+            balance=Money(0, currency),
+            status=AccountStatus.ACTIVE,
+            created_at=now,
+            updated_at=now,
+        )
         account._events.append(AccountCreated(...))
         return account
 
@@ -83,8 +96,13 @@ class Transaction:
 
     @classmethod
     def create(cls, account_id: str, type: TransactionType, amount: Money) -> Transaction:
-        return cls(transaction_id=str(uuid.uuid4()), account_id=account_id, type=type,
-                    amount=amount, created_at=datetime.utcnow())
+        return cls(
+            transaction_id=str(uuid.uuid4()),
+            account_id=account_id,
+            type=type,
+            amount=amount,
+            created_at=datetime.utcnow(),
+        )
 ```
 
 `Account` pulls out newly created `Transaction`s via `pull_pending_transactions()` and hands them to the Repository — upholding the principle that an Entity is saved/looked up only through its Aggregate Root.

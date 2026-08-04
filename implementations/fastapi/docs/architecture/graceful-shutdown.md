@@ -19,6 +19,7 @@ from src.config.validator import validate_env
 validate_env()  # on failure, the process exits right here — no code after this runs
 
 from fastapi import FastAPI, Request  # noqa: E402
+
 ...
 from src.database import engine  # noqa: E402
 

@@ -28,8 +28,12 @@ class AccountQuery(ABC):
 
     @abstractmethod
     async def find_accounts(
-        self, page: int, take: int,
-        account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+        self,
+        page: int,
+        take: int,
+        account_id: str | None = None,
+        owner_id: str | None = None,
+        status: list[str] | None = None,
     ) -> tuple[list[Account], int]: ...
 
     @abstractmethod

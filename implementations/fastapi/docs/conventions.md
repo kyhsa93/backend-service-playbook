@@ -105,7 +105,7 @@ class Order:
 class Order:
     order_id: str
     items: list[OrderItem]
-    status: OrderStatus   # can be arbitrarily overwritten from outside, e.g. order.status = "cancelled"
+    status: OrderStatus  # can be arbitrarily overwritten from outside, e.g. order.status = "cancelled"
 ```
 
 ### Entity / Value Object / Domain Event — `@dataclass(frozen=True)`
@@ -308,8 +308,7 @@ class CancelOrderHandler:
     def __init__(self, repo: OrderRepository) -> None:
         self._repo = repo
 
-    async def execute(self, cmd: CancelOrderCommand) -> None:
-        ...
+    async def execute(self, cmd: CancelOrderCommand) -> None: ...
 ```
 
 ### The Handler method's return type — always explicit
@@ -318,6 +317,7 @@ class CancelOrderHandler:
 # correct approach
 async def execute(self, query: GetOrderQuery) -> GetOrderResult: ...
 async def execute(self, cmd: CancelOrderCommand) -> None: ...
+
 
 # incorrect approach — missing return type
 async def execute(self, query: GetOrderQuery): ...
@@ -345,9 +345,9 @@ This repository's actual code (`examples/src/account/`) mixes relative imports (
 
 ```python
 # src/account/interface/rest/account_router.py — the actual code pattern
-from ...application.command.deposit_handler import DepositCommand, DepositHandler   # inside the same domain — relative
-from ....database import get_session                                                  # another top-level package — relative (4 levels) is allowed too, but
-from src.database import get_session                                                  # this form is also allowed if an absolute import reads more clearly
+from ...application.command.deposit_handler import DepositCommand, DepositHandler  # inside the same domain — relative
+from ....database import get_session  # another top-level package — relative (4 levels) is allowed too, but
+from src.database import get_session  # this form is also allowed if an absolute import reads more clearly
 ```
 
 ### Group order — standard library/third-party → internal modules
@@ -419,13 +419,13 @@ In FastAPI, a querystring parameter can be declared directly as a route-function
 
 ```python
 class GetOrdersResult:
-    orders: list[OrderSummaryResult]   # corresponds to NestJS's @ApiProperty({ type: [ItemClass] })
+    orders: list[OrderSummaryResult]  # corresponds to NestJS's @ApiProperty({ type: [ItemClass] })
     total_count: int
 ```
 
 ```python
 class GetOrderResponse(BaseModel):
-    description: str | None   # corresponds to NestJS's @ApiProperty({ nullable: true, type: String })
+    description: str | None  # corresponds to NestJS's @ApiProperty({ nullable: true, type: String })
 ```
 
 With no separate decorator, the type hint itself is converted into the OpenAPI `nullable`/`items` schema.

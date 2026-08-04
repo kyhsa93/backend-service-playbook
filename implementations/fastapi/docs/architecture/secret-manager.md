@@ -61,7 +61,8 @@ class AwsSecretService(SecretService):
                 return value
 
         async with self._boto_session.client(
-            "secretsmanager", **AwsConfig().client_kwargs()   # local uses LocalStack
+            "secretsmanager",
+            **AwsConfig().client_kwargs(),  # local uses LocalStack
         ) as client:
             response = await client.get_secret_value(SecretId=secret_id)
 
@@ -98,7 +99,7 @@ async def lifespan(app: FastAPI):
 # src/config/database_config.py — actual code
 class DatabaseConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DATABASE_")
-    url: str   # required — no Secrets Manager path, filled only from the environment variable (DATABASE_URL)
+    url: str  # required — no Secrets Manager path, filled only from the environment variable (DATABASE_URL)
 ```
 
 Below is a proposed extension for looking up DB connection info from Secrets Manager to build `DatabaseConfig` — **it has not been implemented yet.** If actually implemented, `url` should stay a required `str`, composed via a separate factory function like below (rather than contradicting the actual `DatabaseConfig.url: str` definition above by making `url` itself optional, the factory fills it in and passes it along).
@@ -112,7 +113,7 @@ async def load_database_config(secret_service: SecretService) -> DatabaseConfig:
         return DatabaseConfig(
             url=f"postgresql+asyncpg://{secret['username']}:{secret['password']}@{secret['host']}:{secret['port']}/{secret['dbname']}"
         )
-    return DatabaseConfig()   # local — loaded as-is from the environment variable (DATABASE_URL)
+    return DatabaseConfig()  # local — loaded as-is from the environment variable (DATABASE_URL)
 ```
 
 Performing this loading at the same point as `main.py`'s `validate_env()` (module-import time — see [graceful-shutdown.md](graceful-shutdown.md)) would surface a secret-lookup failure as a fail-fast at startup too.

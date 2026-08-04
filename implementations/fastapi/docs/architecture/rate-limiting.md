@@ -48,8 +48,7 @@ app.include_router(account_router)
 
 
 @app.middleware("http")
-async def correlation_id_middleware(request: Request, call_next):
-    ...
+async def correlation_id_middleware(request: Request, call_next): ...
 
 
 # Must be added "after" the Correlation ID middleware is registered — since Starlette makes
@@ -118,7 +117,7 @@ async def get_account(account_id: str, ...) -> GetAccountResponse:
 # main.py — return early for /health/* before the global middleware, or exclude via an exempt callback
 @app.get("/health/live")
 async def health_live() -> dict:
-    return {"status": "ok"}   # note: without @limiter.limit() on this route, only default_limits applies
+    return {"status": "ok"}  # note: without @limiter.limit() on this route, only default_limits applies
 ```
 
 `default_limits` also applies via the global middleware to routes without `@limiter.limit()`, so fully excluding a route requires custom logic that manipulates `request.state.view_rate_limit` — at this repository's scale, since the health-check response time is very short, it's also a practical choice to just absorb it under a generous `default_limits` rather than bothering with an exception.

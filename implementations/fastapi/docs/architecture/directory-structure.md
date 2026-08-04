@@ -145,8 +145,7 @@ class SesNotificationService(NotificationService):
         self._session = session
         self._boto_session = aioboto3.Session()
 
-    async def notify(self, event: AccountDomainEvent) -> None:
-        ...
+    async def notify(self, event: AccountDomainEvent) -> None: ...
 ```
 
 `application/command/deposit_handler.py` receives the interface (`NotificationService`) in its constructor, not the concrete class (`SesNotificationService`). The `_notification_service()` factory in `interface/rest/account_router.py` binds the actual implementation via `Depends` — in FastAPI, which has no DI container, this factory function itself serves as the "binding point."

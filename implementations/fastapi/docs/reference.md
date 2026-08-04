@@ -115,7 +115,7 @@ class Order:
     def create(cls, user_id: str, items: list[OrderItem]) -> Order:
         now = datetime.now(timezone.utc)
         order = cls(
-            order_id=generate_id(),   # 32-character hex, hyphens removed — aggregate-id.md
+            order_id=generate_id(),  # 32-character hex, hyphens removed — aggregate-id.md
             user_id=user_id,
             items=items,
             status=OrderStatus.PENDING,
@@ -346,7 +346,7 @@ class CreateOrderHandler:
 
     async def execute(self, cmd: CreateOrderCommand) -> Order:
         order = Order.create(user_id=cmd.user_id, items=[OrderItem(**item) for item in cmd.items])
-        await self._repo.save_order(order)   # even loading into the Outbox is handled inside save_order()
+        await self._repo.save_order(order)  # even loading into the Outbox is handled inside save_order()
         return order
 ```
 
@@ -382,7 +382,7 @@ class CancelOrderHandler:
 
         # Writes spanning multiple Repositories — bundled into the same AsyncSession (the same Depends(get_session))
         await self._payment_repo.delete_payment_methods(order.order_id)
-        await self._repo.save_order(order)   # saves the Aggregate state + pull_events() into the Outbox together
+        await self._repo.save_order(order)  # saves the Aggregate state + pull_events() into the Outbox together
 ```
 
 ```python
@@ -579,7 +579,7 @@ class Base(DeclarativeBase):
 class OrderModel(Base):
     __tablename__ = "orders"
 
-    id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)   # 32-character hex, hyphens removed — aggregate-id.md
+    id: Mapped[str] = mapped_column(CHAR(32), primary_key=True)  # 32-character hex, hyphens removed — aggregate-id.md
     user_id: Mapped[str]
     status: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -748,7 +748,7 @@ def start_order_cleanup_scheduler(session_factory) -> AsyncIOScheduler:
                 # Clean up expired orders — delegate the business logic to a Handler, or do only the bare minimum here directly
                 ...
         except Exception:
-            logger.exception("order_cleanup_scheduler_failed")   # log explicitly rather than swallowing the exception
+            logger.exception("order_cleanup_scheduler_failed")  # log explicitly rather than swallowing the exception
 
     scheduler.start()
     return scheduler
@@ -818,7 +818,7 @@ class OrderSummaryResponse(BaseModel):
 
 
 class GetOrdersResponse(BaseModel):
-    orders: list[OrderSummaryResponse]   # the plural of the domain object name — result/data is forbidden
+    orders: list[OrderSummaryResponse]  # the plural of the domain object name — result/data is forbidden
     count: int
 ```
 
@@ -865,9 +865,7 @@ async def create_order(
     return CreateOrderResponse(
         order_id=order.order_id,
         user_id=order.user_id,
-        items=[
-            {"item_id": i.item_id, "name": i.name, "price": i.price, "quantity": i.quantity} for i in order.items
-        ],
+        items=[{"item_id": i.item_id, "name": i.name, "price": i.price, "quantity": i.quantity} for i in order.items],
         status=order.status.value,
         total_amount=order.total_amount,
         created_at=order.created_at,
@@ -902,9 +900,7 @@ async def get_order(
     return GetOrderResponse(
         order_id=result.order_id,
         user_id=result.user_id,
-        items=[
-            {"item_id": i.item_id, "name": i.name, "price": i.price, "quantity": i.quantity} for i in result.items
-        ],
+        items=[{"item_id": i.item_id, "name": i.name, "price": i.price, "quantity": i.quantity} for i in result.items],
         status=result.status,
         total_amount=result.total_amount,
         created_at=result.created_at,
@@ -968,9 +964,9 @@ app_state = {"is_shutting_down": False}
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    validate_env()   # fail-fast — the process exits right here if a required environment variable is missing
+    validate_env()  # fail-fast — the process exits right here if a required environment variable is missing
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)   # local/test only — production uses Alembic
+        await conn.run_sync(Base.metadata.create_all)  # local/test only — production uses Alembic
     logger.info("app_started")
 
     yield
@@ -1012,9 +1008,7 @@ async def order_error_handler(request: Request, exc: OrderError) -> JSONResponse
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     messages = [str(e["msg"]) for e in exc.errors()]
-    return JSONResponse(
-        status_code=422, content=build_error_response(422, "VALIDATION_FAILED", "; ".join(messages))
-    )
+    return JSONResponse(status_code=422, content=build_error_response(422, "VALIDATION_FAILED", "; ".join(messages)))
 ```
 
 Once a second domain is added, it's as simple as adding one more line, `app.include_router(user_router)` — the point corresponding to NestJS's `AppModule.imports`, except there's no dedicated class. Details: [bootstrap.md](architecture/bootstrap.md).
@@ -1029,7 +1023,7 @@ import uuid
 
 
 def generate_id() -> str:
-    return uuid.uuid4().hex   # 32-character hex, hyphens removed — aggregate-id.md
+    return uuid.uuid4().hex  # 32-character hex, hyphens removed — aggregate-id.md
 ```
 
 ```python
@@ -1067,5 +1061,5 @@ class OrderErrorCode(str, Enum):
     INVALID_PRICE = "INVALID_PRICE"
     INVALID_QUANTITY = "INVALID_QUANTITY"
     PAYMENT_METHOD_NOT_FOUND = "PAYMENT_METHOD_NOT_FOUND"
-    VALIDATION_FAILED = "VALIDATION_FAILED"   # reserved exclusively for Pydantic validation failures, a fixed value
+    VALIDATION_FAILED = "VALIDATION_FAILED"  # reserved exclusively for Pydantic validation failures, a fixed value
 ```

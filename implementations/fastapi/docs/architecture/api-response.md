@@ -30,8 +30,7 @@ async def get_transactions(
     page: int = 0,
     take: int = 20,
     repo: SqlAlchemyAccountRepository = Depends(_repo),
-) -> GetTransactionsResponse:
-    ...
+) -> GetTransactionsResponse: ...
 ```
 
 **Why `page` starts at 0:** the computation `offset = page * take` reads naturally. With `page=0`, `offset=0` fetches the first page. `SqlAlchemyAccountRepository.find_transactions` implements it the same way, with `stmt.offset(page * take).limit(take)`.
@@ -51,8 +50,8 @@ class TransactionSummaryResponse(BaseModel):
 
 
 class GetTransactionsResponse(BaseModel):
-    transactions: list[TransactionSummaryResponse]   # plural of the domain object name
-    count: int                                        # total count after filters are applied
+    transactions: list[TransactionSummaryResponse]  # plural of the domain object name
+    count: int  # total count after filters are applied
 ```
 
 ```json
@@ -119,7 +118,9 @@ class GetAccountResult:
 The router (`account_router.py`) wraps this `GetAccountResult` again into the Pydantic response model (`GetAccountResponse`).
 
 ```python
-result = await GetAccountHandler(repo).execute(GetAccountQuery(account_id=account_id, requester_id=current_user.user_id))
+result = await GetAccountHandler(repo).execute(
+    GetAccountQuery(account_id=account_id, requester_id=current_user.user_id)
+)
 return GetAccountResponse(
     account_id=result.account_id,
     owner_id=result.owner_id,
@@ -157,8 +158,12 @@ In a list-query query, a condition is applied only when a value is present. `Sql
 
 ```python
 async def find_accounts(
-    self, page: int, take: int,
-    account_id: str | None = None, owner_id: str | None = None, status: list[str] | None = None,
+    self,
+    page: int,
+    take: int,
+    account_id: str | None = None,
+    owner_id: str | None = None,
+    status: list[str] | None = None,
 ) -> tuple[list[Account], int]:
     stmt = select(AccountModel).where(AccountModel.deleted_at.is_(None))
 

@@ -59,7 +59,7 @@ class S3StorageService(StorageService):
         async with self._boto_session.client(
             "s3",
             region_name=os.getenv("AWS_REGION", "us-east-1"),
-            endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,   # local uses LocalStack
+            endpoint_url=os.getenv("AWS_ENDPOINT_URL") or None,  # local uses LocalStack
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
         ) as s3:
@@ -93,7 +93,7 @@ The Entity that owns the file (e.g. `AccountStatement`) only has `file_key` and 
 class StatementModel(Base):
     __tablename__ = "account_statements"
 
-    id: Mapped[str] = mapped_column(primary_key=True)     # file_key, following the aggregate-id.md rule
+    id: Mapped[str] = mapped_column(primary_key=True)  # file_key, following the aggregate-id.md rule
     account_id: Mapped[str]
     extension: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

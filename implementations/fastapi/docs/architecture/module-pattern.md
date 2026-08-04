@@ -83,6 +83,7 @@ from src.account.domain.account import Account  # ← imports the account packag
    if TYPE_CHECKING:
        from src.user.domain.user import User  # only the type checker sees this import
 
+
    class UserAdapter(ABC):
        @abstractmethod
        async def find_by_id(self, user_id: str) -> "User | None": ...
@@ -93,6 +94,7 @@ from src.account.domain.account import Account  # ← imports the account packag
    ```python
    def build_user_adapter() -> UserAdapter:
        from src.user.application.query.get_user_handler import GetUserHandler  # deferred import
+
        return InProcessUserAdapter(GetUserHandler(...))
    ```
 

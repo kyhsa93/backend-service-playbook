@@ -22,9 +22,7 @@ import os
 
 # Tests must pass validate_env() at main.py import time — the actual connection target
 # is started by each e2e test via testcontainers, then swapped in via dependency_overrides in the fixture.
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/account"
-)
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/account")
 ```
 
 This `setdefault` doesn't bypass fail-fast itself — it's a test-only device to satisfy the condition that "as long as the test process is running, some value must be present for `validate_env()` to pass" — the actual DB connection is swapped by each E2E test to a testcontainers session via `app.dependency_overrides[get_session]`.
@@ -65,7 +63,7 @@ def test_create_collects_an_AccountCreated_event_on_account_creation() -> None:
 
 def test_deposit_raises_InvalidAmountError_for_a_non_positive_amount() -> None:
     account = make_active_account()
-    account.pull_events()   # drain the creation event
+    account.pull_events()  # drain the creation event
 
     with pytest.raises(InvalidAmountError):
         account.deposit(0)
@@ -94,7 +92,7 @@ def test_withdraw_raises_InsufficientBalanceError_when_balance_is_insufficient()
     account = make_active_account()
 
     with pytest.raises(InsufficientBalanceError):
-        account.withdraw(1000)   # withdrawing from an account with zero balance
+        account.withdraw(1000)  # withdrawing from an account with zero balance
 
 
 def test_close_cannot_close_when_balance_is_not_zero() -> None:
@@ -135,7 +133,7 @@ from src.account.domain.errors import AccountNotFoundError
 
 @pytest.fixture
 def repo() -> AsyncMock:
-    return AsyncMock()   # automatically mocks every async method of AccountRepository
+    return AsyncMock()  # automatically mocks every async method of AccountRepository
 
 
 @pytest.mark.asyncio
@@ -152,7 +150,7 @@ async def test_execute_raises_AccountNotFoundError_when_account_is_missing(repo)
 @pytest.mark.asyncio
 async def test_execute_calls_save_on_successful_deposit(repo) -> None:
     account = Account.create(owner_id="owner-1", currency="KRW", email="owner1@example.com")
-    account.pull_events()   # drain the creation event — leaves only the deposit event
+    account.pull_events()  # drain the creation event — leaves only the deposit event
     repo.find_accounts.return_value = ([account], 1)
     handler = DepositHandler(repo)
 
@@ -161,7 +159,9 @@ async def test_execute_calls_save_on_successful_deposit(repo) -> None:
     )
 
     assert transaction.type == "DEPOSIT"
-    repo.save.assert_awaited_once_with(account)   # the Aggregate save + Outbox load are handled as one transaction inside save()
+    repo.save.assert_awaited_once_with(
+        account
+    )  # the Aggregate save + Outbox load are handled as one transaction inside save()
 ```
 
 This test doesn't go so far as to verify that the `MoneyDeposited` event actually results in a notification (a Command Handler's unit test only looks at the orchestration flow up through lookup → domain method call → save) — the notification-sending logic itself, per event type, is either separately unit-tested against `application/event/money_deposited_event_handler.py`, or verified end-to-end by `test_notification_e2e.py` through `OutboxPoller`/`OutboxConsumer` all the way to real LocalStack SES.
@@ -185,11 +185,11 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
         PostgresContainer("postgres:16-alpine") as postgres,
         LocalStackContainer("localstack/localstack:3.0", region_name="us-east-1").with_services("sqs") as localstack,
     ):
-        queue_url = create_domain_event_queue(localstack)   # conftest.py — creates the domain-events queue + DLQ
+        queue_url = create_domain_event_queue(localstack)  # conftest.py — creates the domain-events queue + DLQ
         os.environ["SQS_DOMAIN_EVENT_QUEUE_URL"] = queue_url
         ...
         app.dependency_overrides[get_session] = override_get_session
-        outbox_tasks = start_outbox_background_tasks(session_factory)   # conftest.py
+        outbox_tasks = start_outbox_background_tasks(session_factory)  # conftest.py
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

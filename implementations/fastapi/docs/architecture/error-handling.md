@@ -16,7 +16,7 @@ class AccountErrorCode(str, Enum):
     INVALID_AMOUNT = "INVALID_AMOUNT"
     DEPOSIT_REQUIRES_ACTIVE_ACCOUNT = "DEPOSIT_REQUIRES_ACTIVE_ACCOUNT"
     # ... a code exists 1:1 for every exception class in errors.py
-    VALIDATION_FAILED = "VALIDATION_FAILED"   # reserved exclusively for Pydantic validation failures, a fixed value
+    VALIDATION_FAILED = "VALIDATION_FAILED"  # reserved exclusively for Pydantic validation failures, a fixed value
 ```
 
 ```python

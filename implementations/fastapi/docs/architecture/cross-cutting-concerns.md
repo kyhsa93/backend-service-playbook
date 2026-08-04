@@ -148,7 +148,7 @@ When FastAPI's request body/query parameters are declared as Pydantic models (`i
 # src/account/interface/rest/schemas.py — follows this pattern
 class CreateAccountRequest(BaseModel):
     currency: str
-    email: EmailStr   # Pydantic also automatically validates the email format
+    email: EmailStr  # Pydantic also automatically validates the email format
 ```
 
 **Format validation is never conflated with business rules.** An invalid `email` format is 422 (Pydantic); depositing into an already-suspended account is 400 (`DepositRequiresActiveAccountError` in `domain/errors.py`) — the latter is the responsibility of the Application/Domain layer.
@@ -166,6 +166,7 @@ Logging is never done individually inside the route function (`account_router.py
 ```python
 # forbidden — using a logger/contextvars directly in the Domain layer (account.py)
 from src.common.correlation import get_correlation_id  # ← forbidden
+
 
 class Account:
     def deposit(self, amount: int) -> Transaction:

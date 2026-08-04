@@ -10,9 +10,10 @@
 - **Format**: a 32-character hex string, a UUID v4 with the hyphens removed
 
 ```python
-"550e8400e29b41d4a716446655440000"    # correct — 32 characters, no hyphens
+"550e8400e29b41d4a716446655440000"  # correct — 32 characters, no hyphens
+
 "550e8400-e29b-41d4-a716-446655440000"  # incorrect — contains hyphens
-1, 2, 3                                  # incorrect — auto-increment numbers
+1, 2, 3  # incorrect — auto-increment numbers
 ```
 
 **Why auto-increment numeric IDs are not used:**
@@ -60,7 +61,7 @@ class Account:
     def create(cls, owner_id: str, currency: str, email: str) -> Account:
         now = datetime.utcnow()
         account = cls(
-            account_id=generate_id(),          # correct — 32-character hex, no hyphens
+            account_id=generate_id(),  # correct — 32-character hex, no hyphens
             owner_id=owner_id,
             email=email,
             balance=Money(0, currency),

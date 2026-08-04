@@ -106,7 +106,7 @@ NestJS declares `database/`, `outbox/`, `auth/` as `@Global()` modules so other 
 ```python
 # src/account/interface/rest/account_router.py — actual code. Directly imports and composes shared code
 from ....auth.interface.rest.dependencies import CurrentUser, get_current_user  # shared module in src/auth/
-from ....database import get_session                                            # shared infrastructure
+from ....database import get_session  # shared infrastructure
 ```
 
 ---

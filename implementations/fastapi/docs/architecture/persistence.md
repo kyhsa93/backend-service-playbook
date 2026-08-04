@@ -12,7 +12,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
         try:
             yield session
-            await session.commit()   # commits once the request finishes successfully
+            await session.commit()  # commits once the request finishes successfully
         except Exception:
             await session.rollback()
             raise
@@ -27,7 +27,7 @@ def _repo(session: AsyncSession = Depends(get_session)) -> SqlAlchemyAccountRepo
 
 
 def _notification_service(session: AsyncSession = Depends(get_session)) -> NotificationService:
-    return SesNotificationService(session)   # reuses the same session
+    return SesNotificationService(session)  # reuses the same session
 ```
 
 Because FastAPI caches `Depends(get_session)` within the same request, both factories actually receive the identical `AsyncSession` instance. The "Unit of Work" concept the root docs require, for bundling writes across multiple Repositories/Services into a single transaction, is satisfied by this caching behavior — instead of using `AsyncLocalStorage`/`contextvars` as in other languages, FastAPI's request-scoped dependency caching plays the same role.
