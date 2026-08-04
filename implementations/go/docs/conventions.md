@@ -26,7 +26,7 @@ This document takes the framework-agnostic rules from the root [conventions.md](
 - Task Consumer: `<domain>_task_consumer.go` (interface layer)
 - Middleware: `<concern>_middleware.go` (placed under `interface/http/middleware/`) — `auth_middleware.go`, `correlation_middleware.go`
 - Config: `<concern>_config.go` (placed under `infrastructure/config/`) — `database_config.go`, `jwt_config.go`
-- Shared pure utility: `internal/common/<concern>.go` — `id.go`
+- Shared pure utility: `internal/common/<concern>.go` — `id.go`, `clock.go`
 - Entry point: `cmd/server/main.go`
 
 ---
@@ -145,6 +145,36 @@ func Reconstitute(accountID, ownerID, email string, balance Money, status Status
 ```
 
 The fact that `New(...)`'s parameter list has no ID is itself what enforces the rule "a client-supplied ID is never accepted" in code.
+
+### The timezone rule — store in UTC through `common.Now()`
+
+Every timestamp that is **persisted, embedded in a domain event, compared against a stored value, or used as the base for period arithmetic** is read with `common.Now()` (`internal/common/clock.go`), which returns `time.Now().UTC()`.
+
+```go
+// correct — the shared helper
+import "github.com/example/account-service/internal/common"
+
+createdAt := common.Now()
+```
+
+```go
+// avoid — carries the host's local location into the column
+createdAt := time.Now()
+```
+
+`time.Now()` returns a `time.Time` carrying the host's local location, and `lib/pq` formats that value using its own location before sending it. Every timestamp column here is `TIMESTAMP` (without time zone, see `migrations/`), which stores the wall-clock digits it is handed and records no offset — so the same code writes UTC on a UTC CI runner and KST on a developer machine in `Asia/Seoul`, and a single column ends up holding values that cannot be compared with each other. Month/day arithmetic built on such a value (statement periods, spending-analysis windows, daily interest) shifts by the same offset. Keeping the conversion in one function is what stops it from being re-derived at 30-odd call sites, and it makes the intent visible at the call site: `common.Now()` means "a timestamp that leaves this process," `time.Now()` means "a stopwatch."
+
+**What is deliberately not converted** — a reading used only to measure elapsed time is location-independent (`t2.Sub(t1)` is identical in every zone), so it stays on `time.Now()`:
+
+- request-latency measurement in `interface/http/middleware/` (`start := time.Now()` … `time.Since(start)`)
+- the TTL-cache expiry check in `infrastructure/secret/` and any other deadline/backoff computation
+- JWT `iat`/`exp`, which `jwt.NewNumericDate` serializes as a Unix epoch number — a format that carries no location in the first place
+
+Both storage and lookup keep UTC. Converting on the way in but not on the way out (or vice versa) is a double-conversion bug in any language.
+
+The `utc-timestamp-source` harness rule enforces this on `internal/domain/**` and `internal/infrastructure/persistence/**`, the two places where a clock reading is by construction a value that gets stored or shipped (see [harness/README.md](../harness/README.md)).
+
+A project whose columns are `TIMESTAMPTZ` instead has no ambiguity to resolve at write time, but keeping `common.Now()` is still worthwhile — it is what keeps `New`/`Reconstitute` round-trips and event payloads on one clock.
 
 ### Nullable — prefer zero value, use a pointer only when needed
 

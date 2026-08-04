@@ -27,7 +27,7 @@ type Account struct {
 }
 
 func New(ownerID, email, currency string) *Account {
-	now := time.Now()
+	now := common.Now()
 	a := &Account{
 		AccountID: common.NewID(),
 		OwnerID:   ownerID,
@@ -142,7 +142,7 @@ func (a *Account) Suspend() error {
 		return ErrSuspendRequiresActiveAccount
 	}
 	a.Status = StatusSuspended
-	a.events = append(a.events, AccountSuspended{AccountID: a.AccountID, Email: a.Email, SuspendedAt: time.Now()})
+	a.events = append(a.events, AccountSuspended{AccountID: a.AccountID, Email: a.Email, SuspendedAt: common.Now()})
 	return nil
 }
 
@@ -151,7 +151,7 @@ func (a *Account) Reactivate() error {
 		return ErrReactivateRequiresSuspendedAccount
 	}
 	a.Status = StatusActive
-	a.events = append(a.events, AccountReactivated{AccountID: a.AccountID, Email: a.Email, ReactivatedAt: time.Now()})
+	a.events = append(a.events, AccountReactivated{AccountID: a.AccountID, Email: a.Email, ReactivatedAt: common.Now()})
 	return nil
 }
 
@@ -163,7 +163,7 @@ func (a *Account) Close() error {
 		return ErrBalanceNotZero
 	}
 	a.Status = StatusClosed
-	a.events = append(a.events, AccountClosed{AccountID: a.AccountID, Email: a.Email, ClosedAt: time.Now()})
+	a.events = append(a.events, AccountClosed{AccountID: a.AccountID, Email: a.Email, ClosedAt: common.Now()})
 	return nil
 }
 

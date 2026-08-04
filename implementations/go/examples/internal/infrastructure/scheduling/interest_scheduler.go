@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/example/account-service/internal/common"
 )
 
 // InterestScheduler loads a "pay interest on every ACTIVE account" Task
@@ -34,7 +36,7 @@ func (s *InterestScheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.EnqueueDailyInterest(ctx, time.Now().UTC()); err != nil {
+			if err := s.EnqueueDailyInterest(ctx, common.Now()); err != nil {
 				// Many scheduling libraries silently swallow Cron exceptions —
 				// this one always logs it explicitly (scheduling.md). It is
 				// retried on the next tick (24 hours later), so it's not

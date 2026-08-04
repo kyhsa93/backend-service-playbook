@@ -36,7 +36,7 @@ func IssueCard(accountID, ownerID, brand string) *Card {
 		OwnerID:   ownerID,
 		Brand:     brand,
 		Status:    StatusActive,
-		CreatedAt: time.Now(),
+		CreatedAt: common.Now(),
 	}
 }
 

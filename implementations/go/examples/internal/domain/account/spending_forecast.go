@@ -53,6 +53,6 @@ func NewSpendingForecast(accountID, forecastMonth string, predictedAmount int64,
 		PredictedAmount:   predictedAmount,
 		Confidence:        confidence,
 		HistoryMonthsUsed: historyMonthsUsed,
-		CreatedAt:         time.Now(),
+		CreatedAt:         common.Now(),
 	}
 }

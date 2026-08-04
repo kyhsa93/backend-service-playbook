@@ -88,7 +88,7 @@ func newTransaction(accountID string, txType TransactionType, amount Money, refe
 		Amount:        amount,
 		ReferenceID:   referenceID,
 		MerchantName:  merchantName,
-		CreatedAt:     time.Now(),
+		CreatedAt:     common.Now(),
 	}
 }
 ```

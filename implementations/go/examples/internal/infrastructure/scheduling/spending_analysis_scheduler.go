@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/example/account-service/internal/common"
 )
 
 // SpendingAnalysisScheduler loads a "compute last month's spending analysis
@@ -32,7 +34,7 @@ func (s *SpendingAnalysisScheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			now := time.Now().UTC()
+			now := common.Now()
 			if now.Day() != 1 {
 				continue // enqueue only on the 1st of each month — otherwise it's a cheap no-op.
 			}

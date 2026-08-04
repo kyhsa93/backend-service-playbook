@@ -37,7 +37,7 @@ func New(cardID, accountID, ownerID string, amount int64) *Payment {
 		OwnerID:   ownerID,
 		Amount:    amount,
 		Status:    StatusPending,
-		CreatedAt: time.Now(),
+		CreatedAt: common.Now(),
 	}
 }
 
@@ -72,7 +72,7 @@ func (p *Payment) Complete() error {
 		AccountID:   p.AccountID,
 		OwnerID:     p.OwnerID,
 		Amount:      p.Amount,
-		CompletedAt: time.Now(),
+		CompletedAt: common.Now(),
 	})
 	return nil
 }
@@ -103,7 +103,7 @@ func (p *Payment) Cancel(reason string) error {
 		OwnerID:     p.OwnerID,
 		Amount:      p.Amount,
 		Reason:      reason,
-		CancelledAt: time.Now(),
+		CancelledAt: common.Now(),
 	})
 	return nil
 }

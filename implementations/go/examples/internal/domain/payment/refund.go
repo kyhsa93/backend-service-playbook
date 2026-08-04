@@ -54,7 +54,7 @@ func NewRefund(paymentID string, amount int64, reason string) *Refund {
 		Amount:    amount,
 		Reason:    reason,
 		Status:    RefundStatusRequested,
-		CreatedAt: time.Now(),
+		CreatedAt: common.Now(),
 	}
 	r.events = append(r.events, RefundRequested{
 		RefundID:  r.RefundID,
@@ -97,7 +97,7 @@ func (r *Refund) Approve(accountID, ownerID string) error {
 		AccountID:  accountID,
 		OwnerID:    ownerID,
 		Amount:     r.Amount,
-		ApprovedAt: time.Now(),
+		ApprovedAt: common.Now(),
 	})
 	return nil
 }

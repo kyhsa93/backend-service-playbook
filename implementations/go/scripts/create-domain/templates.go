@@ -49,7 +49,7 @@ func New(ownerID string) *{{.Domain}} {
 		{{.Domain}}ID: common.NewID(),
 		OwnerID:   ownerID,
 		Status:    StatusPending,
-		CreatedAt: time.Now(),
+		CreatedAt: common.Now(),
 	}
 }
 
@@ -79,7 +79,7 @@ func ({{.Recv}} *{{.Domain}}) Cancel(reason string) error {
 	{{.Recv}}.events = append({{.Recv}}.events, {{.Domain}}Cancelled{
 		{{.Domain}}ID:   {{.Recv}}.{{.Domain}}ID,
 		Reason:      reason,
-		CancelledAt: time.Now(),
+		CancelledAt: common.Now(),
 	})
 	return nil
 }

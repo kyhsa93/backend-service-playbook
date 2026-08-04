@@ -146,7 +146,7 @@ func (h *CreateAttachmentHandler) Handle(ctx context.Context, cmd CreateAttachme
 	}
 
 	if err := h.repo.SaveAttachment(ctx, account.Attachment{
-		FileKey: fileKey, AccountID: cmd.AccountID, Extension: cmd.Extension, CreatedAt: time.Now(),
+		FileKey: fileKey, AccountID: cmd.AccountID, Extension: cmd.Extension, CreatedAt: common.Now(),
 	}); err != nil {
 		return nil, fmt.Errorf("save attachment metadata: %w", err)
 	}

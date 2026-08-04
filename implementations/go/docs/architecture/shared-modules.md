@@ -8,7 +8,7 @@ Go-specific document — there's no corresponding document at the root. NestJS d
 
 Looking at the `internal/` tree (see directory-structure.md), there are already several shared packages used together by the Account/Card/Payment/Credential domains:
 
-- **`internal/common/`** (`id.go`) — the `common.NewID()` (UUID v4 with hyphens removed) utility (see [aggregate-id.md](aggregate-id.md)).
+- **`internal/common/`** (`id.go`/`clock.go`/`correlation.go`) — the `common.NewID()` (UUID v4 with hyphens removed) utility (see [aggregate-id.md](aggregate-id.md)), the `common.Now()` UTC clock every persisted timestamp is read through (see the timezone rule in [../conventions.md](../conventions.md)), and the correlation-ID context helpers (see [cross-cutting-concerns.md](cross-cutting-concerns.md)).
 - **`internal/config/`** (`database.go`/`jwt.go`/`rate_limit.go`/`secret_service.go`) — config loading/validation split by concern (see [config.md](config.md)).
 - **`internal/infrastructure/outbox/`** (`Writer`/`Poller`/`Consumer`) — the Outbox pattern is needed instead of dual-write because sending a notification is a side effect that must not be lost (see [domain-events.md](domain-events.md)).
 - **`internal/infrastructure/auth/`** (`bcrypt_password_hasher.go`/`jwt_service.go`), **`internal/infrastructure/secret/`** (`service.go`) — authentication / Secrets Manager Technical Service implementations (see [authentication.md](authentication.md), [secret-manager.md](secret-manager.md)).
@@ -23,6 +23,8 @@ This document lays out where this placement gets subdivided as more domains are 
 internal/
   common/                          # framework-agnostic pure utilities — owned by no domain
     id.go                          # common.NewID() — aggregate-id.md
+    clock.go                       # common.Now() — the UTC clock for every persisted timestamp, conventions.md
+    correlation.go                 # correlation-ID context helpers — cross-cutting-concerns.md
 
   config/                          # config loading/validation split by concern — config.md
     database.go

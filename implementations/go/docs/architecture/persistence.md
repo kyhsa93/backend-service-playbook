@@ -158,6 +158,12 @@ CREATE TABLE accounts (
 
 Since Go has no ORM base class/mixin (this could be mimicked with a shared struct embedding, but this repository doesn't do that), the `Account` struct directly holds `CreatedAt`/`UpdatedAt time.Time` fields, and `DeletedAt` exists as a DB column but isn't yet mapped onto the Go-side `Account` struct (because there's no use case that actually triggers a soft delete — see below).
 
+### The column type is `TIMESTAMP`, so the value must arrive in UTC
+
+These columns are `TIMESTAMP` **without time zone** — Postgres stores the wall-clock digits it is handed and records no offset. `lib/pq` formats a `time.Time` using the location that value carries, so a `time.Now()` reading writes UTC on a UTC CI runner and local time on a developer machine, and the column ends up mixing both. Every Go-side timestamp therefore goes through `common.Now()` (`internal/common/clock.go`), which returns `time.Now().UTC()` — see the timezone rule in [conventions.md](../conventions.md) for what is and is not converted, and the `utc-timestamp-source` harness rule that enforces it on `internal/domain/**` and `internal/infrastructure/persistence/**`.
+
+The columns that default to `CURRENT_TIMESTAMP`, and the `updated_at = NOW()` assignments in the repositories' `ON CONFLICT DO UPDATE` clauses, are evaluated by Postgres rather than by Go, so they follow the **database session's** `TimeZone` setting instead. `postgres:16-alpine` — the image used by both docker-compose and the testcontainers e2e setup — reports `TimeZone = UTC`, so the two sources of a timestamp agree. Setting a `TZ`/`PGTZ` on that container, or pointing the service at a server configured for a local zone, would reintroduce the same mixed-column problem from the database side; leave it on UTC.
+
 ---
 
 ## Soft delete

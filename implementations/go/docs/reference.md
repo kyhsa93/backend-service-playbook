@@ -97,7 +97,7 @@ func New(customerID string, items []OrderItem) (*Order, error) {
 	if len(items) == 0 {
 		return nil, ErrEmptyItems
 	}
-	now := time.Now()
+	now := common.Now()
 	o := &Order{
 		OrderID:    common.NewID(),
 		CustomerID: customerID,
@@ -137,7 +137,7 @@ func (o *Order) Cancel(reason string) error {
 		return ErrPaidOrderNotCancellable
 	}
 	o.Status = StatusCancelled
-	o.UpdatedAt = time.Now()
+	o.UpdatedAt = common.Now()
 	o.events = append(o.events, OrderCancelled{
 		OrderID:     o.OrderID,
 		Reason:      reason,

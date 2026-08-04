@@ -44,6 +44,7 @@ var rules = []func(string) RuleResult{
 	checkQueryHandlerNoRawAggregate,
 	checkNoCrossBCDomainImport,
 	checkAPIDocumentation,
+	checkUTCTimestampSource,
 }
 
 // ruleMaxScore is the fixed per-rule point budget. A rule contributes
@@ -73,6 +74,7 @@ func bucket(name string) string {
 		c(name, "no-cross-bc-repository-in-application"),
 		c(name, "no-cross-bc-domain-import"),
 		c(name, "soft-delete-filter"),
+		c(name, "utc-timestamp-source"),
 		c(name, "query-handler-no-raw-aggregate"),
 		c(name, "outbox"),
 		c(name, "shared-infra"),

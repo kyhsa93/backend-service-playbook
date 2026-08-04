@@ -42,7 +42,7 @@ func (s *InterestScheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.EnqueueDailyInterest(ctx, time.Now().UTC()); err != nil {
+			if err := s.EnqueueDailyInterest(ctx, common.Now()); err != nil {
 				slog.ErrorContext(ctx, "interest payment task enqueue failed", "error", err)
 			}
 		}
@@ -60,6 +60,19 @@ func (s *InterestScheduler) EnqueueDailyInterest(ctx context.Context, today time
 ```
 
 Since `StatementScheduler` (`internal/infrastructure/scheduling/statement_scheduler.go`) can't express a "month" period with a fixed-length `time.Ticker`, it approximates this with a gate on every 24-hour tick — "is today the 1st?" The responsibility for the exact execution time isn't here, but on the `task_outbox.dedup_id` UNIQUE constraint and the idempotency of `Card.MarkStatementSent`.
+
+Every Scheduler reads the clock with `common.Now()` (UTC), never `time.Now()`, and each one derives its period from that reading rather than from the raw date:
+
+```go
+// internal/infrastructure/scheduling/statement_scheduler.go
+func previousMonth(now time.Time) string {
+	firstOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	lastMonth := firstOfThisMonth.AddDate(0, -1, 0)
+	return lastMonth.Format("2006-01")
+}
+```
+
+Two things are load-bearing here. The base is UTC, so `now.Day() != 1` and the resulting `dedupID` mean the same thing on every machine (a local-time reading rolls the day over at a different instant, which shifts the whole period by one month at the boundary). And the arithmetic starts from the **1st** of the month rather than from `now` itself, because `AddDate` normalizes overflow — `AddDate(0, -1, 0)` on March 31st yields March 3rd, not February 28th. See the timezone rule in [conventions.md](../conventions.md).
 
 Whether references to `time.Ticker`/`time.NewTicker` only appear in `internal/infrastructure/` is automatically checked by `implementations/go/harness/scheduler_in_infrastructure_only.go`.
 

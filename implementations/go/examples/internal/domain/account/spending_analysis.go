@@ -78,6 +78,6 @@ func NewSpendingAnalysis(accountID, analysisMonth string, totalAmount int64, tra
 		AverageAmount:           averageAmount,
 		ChangeFromPreviousMonth: changeFromPreviousMonth,
 		Trend:                   trend,
-		CreatedAt:               time.Now(),
+		CreatedAt:               common.Now(),
 	}
 }

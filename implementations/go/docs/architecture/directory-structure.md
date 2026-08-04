@@ -21,6 +21,7 @@ docs/                                        ← swag-generated OpenAPI output �
 internal/
   common/                                    ← domain-agnostic shared pure utilities (see shared-modules.md)
     id.go                                    ← common.NewID() — aggregate-id.md
+    clock.go                                 ← common.Now() — the UTC clock for every persisted timestamp, ../conventions.md
     correlation.go                           ← correlation-ID context helpers
 
   config/                                    ← config loading/validation split by concern (see config.md)
@@ -186,7 +187,7 @@ go.mod
 | `<domain>/application/query/` | `internal/application/query/` |
 | `<domain>/infrastructure/` | `internal/infrastructure/<concern>/` (sub-packages by concern such as persistence, notification, etc.) |
 | `<domain>/interface/` | `internal/interface/http/` |
-| `common/` | `internal/common/` (`id.go` — framework-agnostic pure functions such as ID generation) (see [aggregate-id.md](aggregate-id.md)) |
+| `common/` | `internal/common/` (`id.go`/`clock.go`/`correlation.go` — framework-agnostic pure functions such as ID generation and the UTC clock) (see [aggregate-id.md](aggregate-id.md)) |
 | `database/` (TransactionManager) | `internal/infrastructure/database/` (`WithTx`/`TxFromContext`/`QuerierFrom`/`Manager`) — cross-account Transfer, which bundles multiple Repository saves into one transaction, is the real use case (see [persistence.md](persistence.md)) |
 | `outbox/` | `internal/infrastructure/outbox/` — `Writer`/`Poller`/`Consumer` implemented (see [domain-events.md](domain-events.md)) |
 | `task-queue/` | `internal/infrastructure/task-queue/` (`Writer`/`Poller`/`Consumer`) — the recurring interest payment / card statement dispatch batch job is the real use case (see [scheduling.md](scheduling.md)) |

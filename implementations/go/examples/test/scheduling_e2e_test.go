@@ -55,14 +55,14 @@ func containsString(items []string, want string) bool {
 // directly (the same test pattern as the scheduling.md example).
 func TestScheduledInterestPayment(t *testing.T) {
 	t.Run("interest_is_paid_and_an_INTEREST_entry_remains_in_the_transaction_history", func(t *testing.T) {
-		owner := "interest-owner-" + time.Now().Format("150405.000000")
+		owner := "interest-owner-" + common.Now().Format("150405.000000")
 		account := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := account["accountId"].(string)
 
 		depositResp := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/deposit", owner, map[string]int{"amount": 1_000_000})
 		require.Equal(t, http.StatusCreated, depositResp.StatusCode)
 
-		today := time.Now().UTC()
+		today := common.Now()
 		require.NoError(t, testInterestScheduler.EnqueueDailyInterest(context.Background(), today))
 
 		// floor(1_000_000 * 0.0001) = 100 -> poll until the balance becomes
@@ -87,7 +87,7 @@ func TestScheduledInterestPayment(t *testing.T) {
 	})
 
 	t.Run("re_enqueueing_on_the_same_date_does_not_duplicate_the_interest_payment", func(t *testing.T) {
-		owner := "interest-idem-owner-" + time.Now().Format("150405.000000")
+		owner := "interest-idem-owner-" + common.Now().Format("150405.000000")
 		account := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := account["accountId"].(string)
 
@@ -100,7 +100,7 @@ func TestScheduledInterestPayment(t *testing.T) {
 		// processed — use tomorrow's date to keep the scenarios between
 		// subtests separate (the idempotency verification itself remains
 		// valid by enqueuing this one date twice).
-		tomorrow := time.Now().UTC().AddDate(0, 0, 1)
+		tomorrow := common.Now().AddDate(0, 0, 1)
 		require.NoError(t, testInterestScheduler.EnqueueDailyInterest(context.Background(), tomorrow))
 		waitForAccountBalance(t, owner, accountID, 1_000_100)
 
@@ -124,7 +124,7 @@ func TestScheduledInterestPayment(t *testing.T) {
 // usage statement batch.
 func TestScheduledCardUsageStatement(t *testing.T) {
 	t.Run("the_monthly_statement_is_sent_and_recorded_in_the_email", func(t *testing.T) {
-		owner := "statement-owner-" + time.Now().Format("150405.000000")
+		owner := "statement-owner-" + common.Now().Format("150405.000000")
 		account := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := account["accountId"].(string)
 
@@ -166,7 +166,7 @@ func TestScheduledCardUsageStatement(t *testing.T) {
 	})
 
 	t.Run("re_enqueueing_in_the_same_period_does_not_duplicate_the_statement_send", func(t *testing.T) {
-		owner := "statement-idem-owner-" + time.Now().Format("150405.000000")
+		owner := "statement-idem-owner-" + common.Now().Format("150405.000000")
 		account := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := account["accountId"].(string)
 
@@ -201,7 +201,7 @@ func TestScheduledCardUsageStatement(t *testing.T) {
 // firstOfCurrentMonthUTC returns midnight UTC on the first day of the
 // current month — the safe base for month arithmetic in these tests.
 func firstOfCurrentMonthUTC() time.Time {
-	now := time.Now().UTC()
+	now := common.Now()
 	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 }
 
@@ -307,14 +307,14 @@ func backdateTransaction(t *testing.T, transactionID string, createdAt time.Time
 // scheduling.e2e-spec.ts "Monthly spending analysis" describe block.
 func TestScheduledMonthlySpendingAnalysis(t *testing.T) {
 	t.Run("an_account_with_last_months_withdrawal_history_gets_an_analysis_row_queryable_via_the_API_and_re-enqueueing_in_the_same_month_does_not_duplicate_it", func(t *testing.T) {
-		owner := "spending-owner-" + time.Now().Format("150405.000000")
+		owner := "spending-owner-" + common.Now().Format("150405.000000")
 		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := acc["accountId"].(string)
 
 		depositResp := doRequest(t, http.MethodPost, "/accounts/"+accountID+"/deposit", owner, map[string]int{"amount": 1_000_000})
 		require.Equal(t, http.StatusCreated, depositResp.StatusCode)
 
-		now := time.Now().UTC()
+		now := common.Now()
 		analysisMonth, monthStart, _ := scheduling.PreviousSpendingAnalysisPeriod(now)
 		// Backdates the withdrawals into "last month," the same way the card
 		// statement test backdates payments — reusing the scheduler's own
@@ -358,7 +358,7 @@ func TestScheduledMonthlySpendingAnalysis(t *testing.T) {
 	})
 
 	t.Run("when_no_analysis_has_been_computed_for_the_requested_month_then_returns_404", func(t *testing.T) {
-		owner := "spending-404-owner-" + time.Now().Format("150405.000000")
+		owner := "spending-404-owner-" + common.Now().Format("150405.000000")
 		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := acc["accountId"].(string)
 
@@ -447,11 +447,11 @@ func seedSpendingAnalysis(t *testing.T, accountID, analysisMonth string, totalAm
 // describe block.
 func TestScheduledMonthlySpendingForecast(t *testing.T) {
 	t.Run("an_account_with_3_months_of_spending_analysis_history_gets_a_trained_forecast_row_queryable_via_the_API_and_re-enqueueing_in_the_same_month_does_not_duplicate_it", func(t *testing.T) {
-		owner := "forecast-owner-" + time.Now().Format("150405.000000")
+		owner := "forecast-owner-" + common.Now().Format("150405.000000")
 		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := acc["accountId"].(string)
 
-		now := time.Now().UTC()
+		now := common.Now()
 		forecastMonth := now.Format("2006-01")
 
 		// Seeds 3 months of spending_analysis history directly — a perfectly
@@ -486,11 +486,11 @@ func TestScheduledMonthlySpendingForecast(t *testing.T) {
 	})
 
 	t.Run("an_account_younger_than_3_months_of_spending_analysis_history_gets_no_forecast_and_the_API_returns_404", func(t *testing.T) {
-		owner := "forecast-404-owner-" + time.Now().Format("150405.000000")
+		owner := "forecast-404-owner-" + common.Now().Format("150405.000000")
 		acc := createAccountWithEmail(t, owner, owner+"@example.com", "KRW")
 		accountID := acc["accountId"].(string)
 
-		now := time.Now().UTC()
+		now := common.Now()
 		forecastMonth := now.Format("2006-01")
 
 		require.NoError(t, testSpendingForecastScheduler.EnqueueMonthlySpendingForecast(context.Background(), now))

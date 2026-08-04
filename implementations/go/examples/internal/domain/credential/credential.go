@@ -31,7 +31,7 @@ func New(userID, passwordHash string) *Credential {
 		CredentialID: common.NewID(),
 		UserID:       userID,
 		PasswordHash: passwordHash,
-		CreatedAt:    time.Now(),
+		CreatedAt:    common.Now(),
 	}
 }
 

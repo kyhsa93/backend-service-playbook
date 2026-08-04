@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/example/account-service/internal/common"
 )
 
 // StatementScheduler loads a "send last month's usage statement for every
@@ -31,7 +33,7 @@ func (s *StatementScheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			now := time.Now().UTC()
+			now := common.Now()
 			if now.Day() != 1 {
 				continue // enqueue only on the 1st of each month — otherwise it's a cheap no-op.
 			}

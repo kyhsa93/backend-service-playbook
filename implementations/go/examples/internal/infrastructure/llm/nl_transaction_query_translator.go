@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/example/account-service/internal/application/query"
+	"github.com/example/account-service/internal/common"
 	"github.com/example/account-service/internal/domain/account"
 )
 
@@ -51,7 +52,7 @@ func NewNlTransactionQueryTranslatorImpl(baseURL, model string) *NlTransactionQu
 }
 
 func buildTranslateSystemPrompt() string {
-	today := time.Now().Format("2006-01-02")
+	today := common.Now().Format("2006-01-02")
 	return "You translate a user's natural-language question about their own bank account transaction history " +
 		"into a structured JSON filter. Today's date is " + today + ". Resolve any relative date expression " +
 		"(\"this month\", \"last week\") against that date.\n" +
