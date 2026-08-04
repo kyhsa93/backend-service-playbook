@@ -11,6 +11,7 @@ jobs:
   auto-merge:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
@@ -23,12 +24,34 @@ jobs:
       # protection/required checks on main, so instead of relying solely on
       # `gh pr merge --auto`, this waits for the actual check-run results and merges only
       # once they succeed.
+      #
+      # `gh pr checks --watch` cannot be used here: this job is itself one of the PR's
+      # check runs, so watching all checks waits on itself and deadlocks until the 6h
+      # job limit. Poll the check list with this job filtered out instead.
       - name: Wait for checks, then approve and merge
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: |
-          gh pr checks "$PR_URL" --watch --fail-fast
-          gh pr review --approve "$PR_URL"
-          gh pr merge --squash "$PR_URL"
+          # Give the other workflows time to register their check runs, so an early
+          # poll doesn't see only a fast-finishing subset and merge prematurely.
+          sleep 90
+          for _ in $(seq 1 120); do
+            checks=$(gh pr checks "$PR_URL" --json name,bucket || true)
+            [ -n "$checks" ] || checks='[]'
+            others=$(jq '[.[] | select(.name != "auto-merge")]' <<< "$checks")
+            if jq -e 'any(.[]; .bucket == "fail" or .bucket == "cancel")' <<< "$others" > /dev/null; then
+              echo "A check failed; not merging."
+              jq -r '.[] | select(.bucket == "fail" or .bucket == "cancel") | .name' <<< "$others"
+              exit 1
+            fi
+            if jq -e 'length > 0 and all(.[]; .bucket == "pass" or .bucket == "skipping")' <<< "$others" > /dev/null; then
+              gh pr review --approve "$PR_URL"
+              gh pr merge --squash "$PR_URL"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for checks."
+          exit 1
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
