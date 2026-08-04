@@ -1,0 +1,5 @@
+{
+  "name": "checklist",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.meta.coverage"]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "cqrs-pattern",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step3.query.no-repository-direct-use"]
+}

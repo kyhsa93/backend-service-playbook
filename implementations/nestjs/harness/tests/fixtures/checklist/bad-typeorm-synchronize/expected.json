@@ -1,0 +1,5 @@
+{
+  "name": "checklist",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step12.typeorm-synchronize-unconditional", "checklist.meta.coverage"]
+}

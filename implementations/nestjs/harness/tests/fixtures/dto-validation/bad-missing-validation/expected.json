@@ -1,0 +1,5 @@
+{
+  "name": "dto-validation",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step6.dto.validation-missing"]
+}

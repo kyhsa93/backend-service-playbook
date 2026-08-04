@@ -1,0 +1,5 @@
+{
+  "name": "checklist",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step12.no-hardcoded-secret", "checklist.meta.coverage"]
+}

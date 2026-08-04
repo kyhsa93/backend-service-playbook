@@ -43,6 +43,19 @@ import { evaluateNoCrossBcDomainImport } from '../evaluators/rules/no-cross-bc-d
 import { evaluateNoOrmAutosyncInProdConfig } from '../evaluators/rules/no-orm-autosync-in-prod-config.evaluator'
 import { evaluateApiDocumentation } from '../evaluators/rules/api-documentation.evaluator'
 import { evaluateUserContextStore } from '../evaluators/rules/user-context-store.evaluator'
+import { evaluateAuth } from '../evaluators/rules/auth.evaluator'
+import { evaluateBootstrapHealthcheck } from '../evaluators/rules/bootstrap-healthcheck.evaluator'
+import { evaluateChecklist } from '../evaluators/rules/checklist.evaluator'
+import { evaluateConfigValidation } from '../evaluators/rules/config-validation.evaluator'
+import { evaluateControllerPath } from '../evaluators/rules/controller-path.evaluator'
+import { evaluateCqrsPattern } from '../evaluators/rules/cqrs-pattern.evaluator'
+import { evaluateDtoValidation } from '../evaluators/rules/dto-validation.evaluator'
+import { evaluateFileNaming } from '../evaluators/rules/file-naming.evaluator'
+import { evaluateImportGraph } from '../evaluators/rules/import-graph.evaluator'
+import { evaluateLayerDependency } from '../evaluators/rules/layer-dependency.evaluator'
+import { evaluateModuleDI } from '../evaluators/rules/module-di.ast.evaluator'
+import { evaluateStructure } from '../evaluators/rules/structure.evaluator'
+import { evaluateTestPresence } from '../evaluators/rules/test-presence.evaluator'
 import type { EvaluatorResult } from '../evaluators/shared/types'
 
 type EvaluatorFn = (root: string) => EvaluatorResult
@@ -76,7 +89,22 @@ const EVALUATORS: Record<string, EvaluatorFn> = {
   'no-cross-bc-domain-import': evaluateNoCrossBcDomainImport,
   'no-orm-autosync-in-prod-config': evaluateNoOrmAutosyncInProdConfig,
   'api-documentation': evaluateApiDocumentation,
-  'user-context-store': evaluateUserContextStore
+  'user-context-store': evaluateUserContextStore,
+  auth: evaluateAuth,
+  'bootstrap-healthcheck': evaluateBootstrapHealthcheck,
+  checklist: evaluateChecklist,
+  'config-validation': evaluateConfigValidation,
+  'controller-path': evaluateControllerPath,
+  'cqrs-pattern': evaluateCqrsPattern,
+  'dto-validation': evaluateDtoValidation,
+  'file-naming': evaluateFileNaming,
+  'import-graph': evaluateImportGraph,
+  'layer-dependency': evaluateLayerDependency,
+  // The fixture directory is tests/fixtures/module-di (run-meta strips the .ast suffix),
+  // while the evaluator itself reports its name as module-di-ast.
+  'module-di': evaluateModuleDI,
+  structure: evaluateStructure,
+  'test-presence': evaluateTestPresence
 }
 
 interface Expected {

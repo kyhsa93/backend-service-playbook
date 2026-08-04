@@ -1,0 +1,5 @@
+{
+  "name": "test-presence",
+  "applicable": true,
+  "expectedFailureRuleIds": []
+}

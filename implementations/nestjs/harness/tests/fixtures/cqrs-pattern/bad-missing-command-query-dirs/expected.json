@@ -1,0 +1,8 @@
+{
+  "name": "cqrs-pattern",
+  "applicable": true,
+  "expectedFailureRuleIds": [
+    "checklist.step3.application.command-directory-missing",
+    "checklist.step3.application.query-directory-missing"
+  ]
+}

@@ -139,6 +139,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 ```bash
 npm run typecheck          # TypeScript verification of the evaluators
 npm run test:evaluators    # regression based on tests/fixtures/
+npm run test:meta          # meta gate: fixture coverage + docRef validity
 ```
 
 Regression fixture structure:
@@ -148,6 +149,15 @@ tests/fixtures/<evaluator>/<case>/
   src/                   (minimal NestJS source — doesn't need to compile)
   expected.json          { name, applicable, expectedFailureRuleIds }
 ```
+
+The meta gate (`tests/run-meta.ts`) requires every evaluator to have a fixture
+directory with a `good` case, at least one `bad-*` case, and an `expected.json`
+per case, and verifies that every `docRef` in the rules points to an existing
+document. Only `build` and `test-run` are exempt — they shell out to real
+toolchains (`tsc`, `npm test`) and cannot be exercised by a static fixture tree.
+The `module-di.ast.evaluator.ts` fixtures live under `tests/fixtures/module-di/`
+(the meta gate strips the `.ast` suffix). All four commands above run in CI
+(`.github/workflows/nestjs.yml`) on every push/PR touching `implementations/nestjs/`.
 
 ## Scoring
 
@@ -190,8 +200,8 @@ Add to the project's `.github/workflows/`:
    - Use `shared/ast-utils.ts` (`listMethodDecorators`, `listConstructorParams`, `findClassDecorator`, etc.) if AST access is needed
 2. Register it in the `EVALUATORS` map in `evaluators/cli/run.ts`
 3. Add a category to the breakdown routing in `evaluators/shared/score.ts` (`architecture` / `api` / `testing` / `runtime`)
-4. Write a fixture at `tests/fixtures/<name>/<case>/` (a `good` case + at least one `bad-*` case)
-5. `npm run typecheck && npm run test:evaluators`
+4. Write a fixture at `tests/fixtures/<name>/<case>/` (a `good` case + at least one `bad-*` case) and register the evaluator in the `EVALUATORS` map in `tests/run-fixtures.ts`
+5. `npm run typecheck && npm run test:evaluators && npm run test:meta`
 
 ### `docRef` convention
 

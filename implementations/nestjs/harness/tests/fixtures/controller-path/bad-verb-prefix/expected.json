@@ -1,0 +1,5 @@
+{
+  "name": "controller-path",
+  "applicable": true,
+  "expectedFailureRuleIds": ["controller.path.no-verb-prefix"]
+}

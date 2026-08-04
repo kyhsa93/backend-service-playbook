@@ -1,0 +1,5 @@
+{
+  "name": "checklist",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step2.domain.no-nest-decorator", "checklist.meta.coverage"]
+}

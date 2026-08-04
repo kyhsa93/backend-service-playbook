@@ -32,7 +32,7 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run test:e2e
-      - run: cd ../harness && npm ci && npm run lint && npm run test:evaluators
+      - run: cd ../harness && npm ci && npm run lint && npm run typecheck && npm run test:evaluators && npm run test:meta
       - name: Harness
         run: cd ../harness && npm run evaluate -- ../examples | tee /tmp/harness-output.txt
 

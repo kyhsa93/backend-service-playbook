@@ -1,0 +1,5 @@
+{
+  "name": "config-validation",
+  "applicable": true,
+  "expectedFailureRuleIds": ["config.validation-required"]
+}

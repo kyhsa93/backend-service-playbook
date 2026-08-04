@@ -1,0 +1,5 @@
+{
+  "name": "auth",
+  "applicable": true,
+  "expectedFailureRuleIds": ["auth.route-intent-required", "auth.controller-intent-required"]
+}

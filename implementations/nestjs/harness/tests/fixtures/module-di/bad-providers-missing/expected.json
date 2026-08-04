@@ -1,0 +1,5 @@
+{
+  "name": "module-di-ast",
+  "applicable": true,
+  "expectedFailureRuleIds": ["ast.module.providers-missing"]
+}

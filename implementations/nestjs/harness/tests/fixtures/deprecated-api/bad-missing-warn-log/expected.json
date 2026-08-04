@@ -1,0 +1,5 @@
+{
+  "name": "deprecated-api",
+  "applicable": true,
+  "expectedFailureRuleIds": ["deprecated-api.missing-warn-log"]
+}

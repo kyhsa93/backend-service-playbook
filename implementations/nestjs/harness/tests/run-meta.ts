@@ -6,6 +6,9 @@ const REPO_ROOT = path.resolve(HARNESS_ROOT, '..')
 const RULES_ROOT = path.join(HARNESS_ROOT, 'evaluators', 'rules')
 const FIXTURES_ROOT = path.join(HARNESS_ROOT, 'tests', 'fixtures')
 
+// Evaluators exempt from the fixture requirement. Both shell out to real
+// toolchains (build runs `tsc --noEmit`, test-run runs `npm test`) against a
+// fully installed project, so a small static fixture tree cannot exercise them.
 const FIXTURE_OPTIONAL = new Set(['build', 'test-run'])
 
 function listEvaluatorNames(): string[] {

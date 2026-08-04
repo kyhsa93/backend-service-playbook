@@ -1,0 +1,5 @@
+{
+  "name": "file-naming",
+  "applicable": true,
+  "expectedFailureRuleIds": ["checklist.step1.module-file-name"]
+}
