@@ -73,7 +73,7 @@ dependencies {
     // Generates the OpenAPI/Swagger document from the existing @RestController/@Valid annotations
     // (docs/architecture/api-response.md "Machine-readable API documentation (OpenAPI)") — exposes
     // /v3/api-docs and /swagger-ui.html with no separate hand-written document to keep in sync.
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
     runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
