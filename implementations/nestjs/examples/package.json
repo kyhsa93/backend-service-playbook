@@ -15,7 +15,7 @@
     "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.1102.0",
+    "@aws-sdk/client-secrets-manager": "^3.1107.0",
     "@aws-sdk/client-ses": "^3.1102.0",
     "@aws-sdk/client-sqs": "^3.1102.0",
     "@nestjs/common": "^11.1.28",
