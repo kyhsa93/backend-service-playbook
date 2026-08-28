@@ -62,7 +62,7 @@ jobs:
           exit-code: '0'
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4.37.7
+        uses: github/codeql-action/upload-sarif@v4.37.8
         with:
           sarif_file: trivy-${{ matrix.lang }}.sarif
           category: trivy-${{ matrix.lang }}
