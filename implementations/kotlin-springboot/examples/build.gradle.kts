@@ -29,7 +29,7 @@ dependencies {
     // Keeps ses/secretsmanager/sqs on a single, mutually-compatible version — pinning them
     // individually let a dependabot bump land on just one module and skew the shared
     // AWS SDK core/auth modules out of alignment, breaking at runtime with AbstractMethodError.
-    implementation(platform("software.amazon.awssdk:bom:2.51.4"))
+    implementation(platform("software.amazon.awssdk:bom:2.54.3"))
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
