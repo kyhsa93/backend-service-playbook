@@ -21,4 +21,4 @@ pytest
 pytest-asyncio
 respx
 testcontainers[localstack,postgres]
-ruff==0.16.4
+ruff==0.16.5
