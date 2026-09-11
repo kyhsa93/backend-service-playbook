@@ -57,7 +57,7 @@ dependencies {
     // hard-fails on Spring Boot 4 via its SpringBoot3Verifier.
     implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
     runtimeOnly("org.postgresql:postgresql")
