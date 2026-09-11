@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.4.10"
-    kotlin("plugin.spring") version "2.4.10"
+    kotlin("plugin.spring") version "2.4.20"
     kotlin("plugin.jpa") version "2.4.10"
     id("org.springframework.boot") version "4.1.1"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
