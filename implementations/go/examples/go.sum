@@ -21,8 +21,8 @@ github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.0 h1:xpgbxBPYQeVHrJni4
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.0/go.mod h1:HMOw7but3OQg86ARfV8Hvoc8h/kNiB3OQm1q6AwO27I=
 github.com/aws/aws-sdk-go-v2/service/ses v1.42.1 h1:iYp8k/RHROMak70szhT1IR02WL78dDjCtNOXcRsRWVg=
 github.com/aws/aws-sdk-go-v2/service/ses v1.42.1/go.mod h1:6yxhDdUZ2pwgKLc3VAOwwp1uelsC8yGqzZO+UkVz7hw=
-github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0 h1:39EpbrAPFSOPYc9FVr2ki84cLB/9C5nC03aL7ope2rU=
-github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0/go.mod h1:yErwLsJkArgQLSGWtLjjwlpvlLK4+c9h0jDZZVN02hw=
+github.com/aws/aws-sdk-go-v2/service/sqs v1.52.1 h1:jBQM8NL0q3h0ZpHqo4TxOD9Ope96SlEF1Y6VLsF20nQ=
+github.com/aws/aws-sdk-go-v2/service/sqs v1.52.1/go.mod h1:+TDqZ1h8CLkW9ewfQkSPWHYRjm7/wDThKeDlR46qyvE=
 github.com/aws/smithy-go v1.28.1 h1:R/nXH00c8qcfCzQVELtRw+eLQWtzv+VAIEFJ1/xxXlQ=
 github.com/aws/smithy-go v1.28.1/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
