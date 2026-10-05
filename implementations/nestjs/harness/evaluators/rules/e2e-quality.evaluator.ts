@@ -46,7 +46,7 @@ export function evaluateE2eQuality(root: string): EvaluatorResult {
           devDependencies?: Record<string, string>
         }
         const deps = { ...pkg.dependencies, ...pkg.devDependencies }
-        if ('nock' in deps || 'testcontainers' in deps || '@testcontainers/postgresql' in deps) {
+        if ('nock' in deps || 'testcontainers' in deps || Object.keys(deps).some((name) => name.startsWith('@testcontainers/'))) {
           return true
         }
       } catch {

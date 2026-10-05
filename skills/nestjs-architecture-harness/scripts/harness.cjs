@@ -2126,7 +2126,7 @@ function evaluateE2eQuality(root) {
       try {
         const pkg = JSON.parse(fs23.readFileSync(pkgPath, "utf-8"));
         const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-        if ("nock" in deps || "testcontainers" in deps || "@testcontainers/postgresql" in deps) {
+        if ("nock" in deps || "testcontainers" in deps || Object.keys(deps).some((name) => name.startsWith("@testcontainers/"))) {
           return true;
         }
       } catch {
@@ -2235,6 +2235,57 @@ function evaluateDockerfile(root) {
 var fs25 = __toESM(require("node:fs"));
 var path26 = __toESM(require("node:path"));
 var DOC4 = "docs/architecture/local-dev.md";
+var COMPOSE_PATTERN = {
+  postgres: /postgres/i,
+  mysql: /mysql|mariadb/i
+};
+var DRIVER_PACKAGES = {
+  pg: "postgres",
+  postgres: "postgres",
+  "pg-promise": "postgres",
+  mysql: "mysql",
+  mysql2: "mysql",
+  mariadb: "mysql"
+};
+var ORM_TYPE_PATTERN = /\btype\s*:\s*['"](postgres|mysql|mariadb)['"]/g;
+var PRISMA_PROVIDER_PATTERN = /provider\s*=\s*"(postgresql|mysql)"/g;
+function toEngine(name) {
+  return name.startsWith("postgres") ? "postgres" : "mysql";
+}
+function enginesFromPackageJson(root) {
+  const engines = /* @__PURE__ */ new Set();
+  const pkgPath = path26.join(root, "package.json");
+  if (!fs25.existsSync(pkgPath)) return engines;
+  try {
+    const pkg = JSON.parse(fs25.readFileSync(pkgPath, "utf-8"));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    for (const [name, engine] of Object.entries(DRIVER_PACKAGES)) {
+      if (name in deps) engines.add(engine);
+    }
+  } catch {
+  }
+  return engines;
+}
+function enginesFromOrmConfig(root) {
+  const engines = /* @__PURE__ */ new Set();
+  const files = [...walkTsFiles(path26.join(root, "src")), ...walkTsFiles(path26.join(root, "libs"))];
+  for (const file of files) {
+    for (const match of fs25.readFileSync(file, "utf-8").matchAll(ORM_TYPE_PATTERN)) {
+      engines.add(toEngine(match[1]));
+    }
+  }
+  const prismaSchema = path26.join(root, "prisma", "schema.prisma");
+  if (fs25.existsSync(prismaSchema)) {
+    for (const match of fs25.readFileSync(prismaSchema, "utf-8").matchAll(PRISMA_PROVIDER_PATTERN)) {
+      engines.add(toEngine(match[1]));
+    }
+  }
+  return engines;
+}
+function detectDatabaseEngines(root) {
+  const fromPackages = enginesFromPackageJson(root);
+  return fromPackages.size > 0 ? fromPackages : enginesFromOrmConfig(root);
+}
 function evaluateLocalDev(root) {
   const composePath = path26.join(root, "docker-compose.yml");
   const composeYmlPath = path26.join(root, "docker-compose.yaml");
@@ -2245,11 +2296,12 @@ function evaluateLocalDev(root) {
   const failures = [];
   let score = 15;
   const content = fs25.readFileSync(composefile, "utf-8");
-  if (!/postgres/i.test(content)) {
+  const engines = [...detectDatabaseEngines(root)];
+  if (engines.length > 0 && !engines.some((engine) => COMPOSE_PATTERN[engine].test(content))) {
     failures.push({
-      ruleId: "local-dev.postgres-service-missing",
+      ruleId: "local-dev.database-service-missing",
       severity: "high",
-      message: "docker-compose.yml has no postgres service.",
+      message: `docker-compose.yml has no ${engines.join(" or ")} service, but the project's database driver is ${engines.join(" / ")}.`,
       docRef: DOC4
     });
     score -= penaltyFor("high");

@@ -1,0 +1,11 @@
+services:
+  database:
+    image: mariadb:11
+    environment:
+      MARIADB_DATABASE: appdb
+      MARIADB_ROOT_PASSWORD: password
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect']
+      interval: 5s
+      timeout: 5s
+      retries: 5

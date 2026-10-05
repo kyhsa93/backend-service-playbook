@@ -92,7 +92,7 @@ Tracks how thoroughly `harness/` automatically verifies `docs/`'s guide rules.
 | `bootstrap-healthcheck` | `bootstrap.md`, `graceful-shutdown.md` | Verifies enableShutdownHooks, ValidationPipe requirement |
 | `timezone-pin` | `conventions.md`, `bootstrap.md` | Verifies the bootstrap pins the process timezone to UTC, and that the pin is applied by main.ts's first import |
 | `dockerfile` | `container.md` | Multi-stage build, direct CMD node execution, .dockerignore, HEALTHCHECK existence (recommended, medium) |
-| `local-dev` | `local-dev.md` | docker-compose postgres service, healthcheck, env file |
+| `local-dev` | `local-dev.md` | docker-compose service for the project's own database (Postgres or MySQL/MariaDB, from the driver package or ORM config; skipped when undetermined), healthcheck, env file |
 | `rate-limiting` | `rate-limiting.md` | ThrottlerModule configuration, verifies APP_GUARD/ThrottlerGuard is actually applied (not dead code) |
 | `pagination` | `api-response.md` | page/take DTO decorators, prohibits generic response keys |
 | `database-queries` | `persistence.md` | Prohibits @PrimaryGeneratedColumn, requires extending BaseEntity, requires TransactionManager to exist |

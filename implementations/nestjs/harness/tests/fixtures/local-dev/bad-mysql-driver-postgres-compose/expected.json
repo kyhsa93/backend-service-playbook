@@ -1,0 +1,7 @@
+{
+  "name": "local-dev",
+  "applicable": true,
+  "expectedFailureRuleIds": [
+    "local-dev.database-service-missing"
+  ]
+}

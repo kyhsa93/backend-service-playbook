@@ -9,6 +9,9 @@ import * as path from 'node:path'
 //   built on this playbook. Rules that only encode the playbook's own layout or
 //   house naming would fail on every such project and drown the architectural
 //   findings, so they are reported as not applicable instead of failing.
+//
+// Not-applicable evaluators leave both the score and the maximum whether they
+// would have passed or failed, so adopt and benchmark totals are not comparable.
 export type Profile = 'benchmark' | 'adopt'
 
 export const PROFILES: Profile[] = ['benchmark', 'adopt']

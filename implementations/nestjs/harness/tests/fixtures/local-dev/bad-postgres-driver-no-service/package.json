@@ -1,0 +1,8 @@
+{
+  "name": "local-dev-bad-postgres-driver-no-service",
+  "private": true,
+  "dependencies": {
+    "pg": "^8.0.0",
+    "typeorm": "^1.0.0"
+  }
+}

@@ -38,7 +38,9 @@ The JSON has `totalScore` (0–100), `grade`, `failures[]`, and `notApplicable[]
 - `notApplicable[]`: evaluators that encode the playbook's own folder layout or file naming
   (`src/<context>/{domain,application,interface,infrastructure}`, `<name>-module.ts`). They are
   skipped on projects that do not use that layout, so a plain NestJS project is not penalized
-  for it. `build` is skipped until `node_modules/.bin/tsc` exists.
+  for it. `build` is skipped until `node_modules/.bin/tsc` exists. Skipped evaluators leave both
+  the score and the maximum, so `totalScore` under this profile is not comparable with a
+  `--profile=benchmark` run of the same project; compare runs under one profile only.
 
 ## Fix loop
 

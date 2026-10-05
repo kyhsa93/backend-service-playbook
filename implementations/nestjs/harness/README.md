@@ -17,6 +17,8 @@ The design principles for the harness overall (shared across all 5 languages) fo
 - `structure`, `cqrs-pattern` — when no `src/<context>/{domain,application,interface,infrastructure}` directory exists
 - `build` — when `node_modules/.bin/tsc` is missing, since tsc then only reports unresolved modules
 
+Not-applicable evaluators are left out of both the score and the maximum, the same way an evaluator that reports `maxScore: 0` is. They are dropped whether they would have passed or failed: keeping only the ones that score full marks would make adopt a one-sided bonus for rules the profile has just declared irrelevant. A consequence is that **adopt and benchmark totals for the same project are not comparable** — adopt can come out a point lower than benchmark with identical failures, because a full-mark evaluator (usually `file-naming`) left the denominator. Compare a project against itself under one profile, and gate CI on one profile.
+
 `--doc-base=<url>` rewrites each `docRef` into an absolute URL for use outside this repository.
 
 ## Agent skill
@@ -126,7 +128,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 | `secret-manager` | Fails if a sensitive key (`*_PASSWORD` · `*_SECRET` · `*_API_KEY` · `*_TOKEN`) in `src/config/*.config.ts` is sourced only from `process.env`. Requires one of `NODE_ENV` branching · `SecretsManagerClient` · `SecretService` | 10 *(auto-gated)* |
 | `e2e-quality` | When `test/*.e2e-spec.ts` exists: prohibits using `jest.mock()` (high, -4/occurrence), warns if the nock/testcontainers package is missing (medium, -2) | 20 *(auto-gated)* |
 | `dockerfile` | When a `Dockerfile` exists: requires a multi-stage build (AS build), direct `CMD ["node", ...]` execution, `npm ci --omit=dev`, a `.dockerignore` file, a `HEALTHCHECK` (recommended) | 15 *(auto-gated)* |
-| `local-dev` | When `docker-compose.yml` exists: a postgres service, healthcheck, env file existence | 15 *(auto-gated)* |
+| `local-dev` | When `docker-compose.yml` exists: a service for the database the project uses (Postgres or MySQL/MariaDB, detected from the driver in `package.json`, else the TypeORM `type` / Prisma `provider`; not checked when undetermined), healthcheck, env file existence | 15 *(auto-gated)* |
 | `rate-limiting` | When `@nestjs/throttler` is used: `ThrottlerModule.forRoot/Async`, `APP_GUARD + ThrottlerGuard` actually applied via `@Module` providers or a controller's `@UseGuards()` (not dead code) | 10 *(auto-gated)* |
 | `pagination` | When a pagination DTO (page+take fields) exists: `@Type(() => Number)` + `@IsInt()` decorators, prohibits generic response keys (data/items/result) | 15 *(auto-gated)* |
 | `database-queries` | When `*.entity.ts` exists: prohibits `@PrimaryGeneratedColumn()`, requires extending `BaseEntity`, requires a `TransactionManager` file to exist | 20 *(auto-gated)* |
