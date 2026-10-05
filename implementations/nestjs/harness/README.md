@@ -1,4 +1,4 @@
-# Harness — nestjs-playbook guide-rule linter
+# Harness — backend-service-playbook NestJS guide-rule linter
 
 A static analysis tool that applies the **mechanically verifiable items** among `docs/`'s guide rules to an external NestJS project.
 Each evaluator combines the TypeScript AST, file paths, and regular expressions to detect rule violations.
@@ -48,7 +48,7 @@ This process keeps the guide and the harness in sync.
 harness/
   evaluators/
     rules/              45 evaluators (structure, layer-dependency, ...)
-    shared/             types, score, ast-utils, penalty, workspace
+    shared/             types, score, ast-utils, penalty, profile, workspace
     cli/run.ts          CLI entry point
   tests/
     fixtures/<name>/<case>/   regression fixtures (expected.json-based)
@@ -94,7 +94,7 @@ Output (JSON):
     {
       "ruleId": "repository.abstract-class",
       "severity": "high",
-      "message": "The repository must be an abstract class: src/order/domain/order-repository.ts",
+      "message": "The repository must be an abstract class: src/account/domain/account-repository.ts",
       "docRef": "docs/architecture/repository-pattern.md"
     }
   ]
@@ -122,7 +122,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 | `deprecated-api` | `@ApiOperation({ deprecated: true })` on deprecated/legacy paths | 10 *(auto-gated)* |
 | `module-di-ast` | A providers array exists in `@Module` | 25 |
 | `import-graph` | Prohibits domain → infrastructure imports | 25 |
-| `domain-event-outbox` | When an Aggregate publishes an event, compliance with the Outbox module/Repository saveAll/clearEvents; prohibits creating events directly or referencing OutboxWriter in Application (except `application/event/`); `@HandleEvent` must be in `application/event/<event>-handler.ts`, `@HandleIntegrationEvent` in `interface/integration-event/<domain>-integration-event-controller.ts`; prohibits calling `EventBus.publish()` directly | 15 *(auto-gated)* |
+| `domain-event-outbox` | When an Aggregate publishes an event, compliance with the Outbox module/Repository saveAll/clearEvents; prohibits creating events directly or referencing OutboxWriter in Application (except `application/event/`); `@HandleEvent` must be in `application/event/<event>-handler.ts`, `@HandleIntegrationEvent` in `interface/integration-event/<domain>-integration-event-controller.ts`; prohibits calling `EventBus.publish()` directly | 25 *(auto-gated)* |
 | `build` | Runs `tsc --noEmit` (if tsconfig exists) | 25 *(auto-gated)* |
 | `test-run` | Runs `npm test` (`HARNESS_ENABLE_TEST_RUN=1`) | 20 *(opt-in)* |
 | `secret-manager` | Fails if a sensitive key (`*_PASSWORD` · `*_SECRET` · `*_API_KEY` · `*_TOKEN`) in `src/config/*.config.ts` is sourced only from `process.env`. Requires one of `NODE_ENV` branching · `SecretsManagerClient` · `SecretService` | 10 *(auto-gated)* |
@@ -146,7 +146,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 | `no-cross-bc-domain-import` | Fails if `src/<bc>/domain/*.ts` directly imports another BC's `domain/*` — other Aggregates may only be referenced by ID (no object references); extends to crossing BC boundaries too | 15 *(auto-gated)* |
 | `no-orm-autosync-in-prod-config` | Fails if `synchronize` in `new DataSource({...})`/`TypeOrmModule.forRoot(Async)?({...})` is the literal `true`, or evaluates to true when `NODE_ENV === 'production'` | 10 *(auto-gated)* |
 | `api-documentation` | Fails per-endpoint if `@ApiOperation` is missing a `summary`/`description`, or if no non-2xx response (`@ApiNotFoundResponse` etc., class-level ones included) is documented alongside the success response | 30 |
-| `user-context-store` | Fails if a `*-controller.ts` reads `req.user`/`request.user` directly — Controllers must read the authenticated user via `UserContextStore.getRequesterId()`/`getUser()` instead | 10 |
+| `user-context-store` | Fails if a `*-controller.ts` reads `req.user`/`request.user` directly — Controllers must read the authenticated user via `UserContextStore.getRequesterId()`/`getUser()` instead | 10 *(auto-gated)* |
 | `file-naming` | Requires kebab-case file names under `src/`, flags `*.service.ts` for naming review, and requires `*.module.ts` files to follow the `<name>-module.ts` form | 25 |
 | `auth` | When `*-controller.ts` exists: every Controller class/route must state protected/public intent explicitly (`@UseGuards`, a composite decorator like `@Authenticated()`, or `@Public`/`@SkipAuth`); fails if no Auth/Jwt/Guard-related files exist at all | 20 *(auto-gated)* |
 | `bootstrap-healthcheck` | When `src/main.ts` exists: requires `enableShutdownHooks` and a global `ValidationPipe` in the bootstrap — either directly in `main.ts` or in a shared app-setup file `main.ts` imports (e.g. `src/app-setup.ts`) | 20 *(auto-gated)* |
@@ -162,6 +162,7 @@ Each failure's `docRef` is the relative path to the guide document explaining th
 npm run typecheck          # TypeScript verification of the evaluators
 npm run test:evaluators    # regression based on tests/fixtures/
 npm run test:meta          # meta gate: fixture coverage + docRef validity
+npm run test:profile       # --profile=adopt not-applicable detection
 ```
 
 Regression fixture structure:
@@ -221,7 +222,7 @@ Add to the project's `.github/workflows/`:
    - Use `penaltyFor(severity)` from `shared/penalty.ts` for the penalty amount when possible
    - Use `shared/ast-utils.ts` (`listMethodDecorators`, `listConstructorParams`, `findClassDecorator`, etc.) if AST access is needed
 2. Register it in the `EVALUATORS` map in `evaluators/cli/run.ts`
-3. Add a category to the breakdown routing in `evaluators/shared/score.ts` (`architecture` / `api` / `testing` / `runtime`)
+3. Add a category to the breakdown routing in `evaluators/shared/score.ts` (`structure` / `architecture` / `api` / `testing` / `runtime` / `semantics`)
 4. Write a fixture at `tests/fixtures/<name>/<case>/` (a `good` case + at least one `bad-*` case) and register the evaluator in the `EVALUATORS` map in `tests/run-fixtures.ts`
 5. `npm run typecheck && npm run test:evaluators && npm run test:meta`
 

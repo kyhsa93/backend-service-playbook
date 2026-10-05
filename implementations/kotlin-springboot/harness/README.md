@@ -2,7 +2,7 @@
 
 A static analysis tool that applies the **mechanically verifiable items** among the guide rules in `docs/`(shared) + `docs/architecture/*.md`(Kotlin implementation) to an external Kotlin Spring Boot project. It follows the design principles in the root [`../../../docs/harness.md`](../../../docs/harness.md) — it only evaluates compliance with architectural rules and does not assume specific business-domain knowledge like the Account domain in `examples/`.
 
-Originally this was a pure bash+grep script (the design value at the time being "no installation needed"), but like the other harnesses in this repo (nestjs=TypeScript, go=Go), it was rewritten as a pure Kotlin program since **writing it in the same language as what it inspects** was judged to be the more idiomatic choice — it doesn't use a heavyweight build tool like Gradle, only direct compilation via `kotlinc`.
+Like the other harnesses in this repo (nestjs=TypeScript, go=Go, java-springboot=Java), it's a pure Kotlin program, since **writing it in the same language as what it inspects** is the more idiomatic choice — it doesn't use a heavyweight build tool like Gradle, only direct compilation via `kotlinc`.
 
 ## Structure
 
@@ -44,6 +44,10 @@ harness/
       SoftDeleteFilter.kt
       TypedErrorsOnly.kt
       RateLimitWired.kt
+      NoGenericResponseKeys.kt
+      QueryHandlerNoRawAggregate.kt
+      NoCrossBcDomainImport.kt
+      NoOrmAutosyncInProdConfig.kt
       OpenApiOperationDocumented.kt
       UtcTimestampSource.kt
   test/

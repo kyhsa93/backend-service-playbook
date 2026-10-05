@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spring Boot Harness execution wrapper
 #
-# Usage: ./implementations/springboot/harness.sh [projectRoot]
+# Usage: ./implementations/java-springboot/harness.sh [projectRoot]
 
 set -uo pipefail
 

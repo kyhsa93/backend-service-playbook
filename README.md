@@ -53,10 +53,10 @@ Each implementation directory includes a harness. It checks structure, placement
 
 | Implementation | How to run | Prerequisite |
 |--------|-----------|-----------|
-| NestJS | `bash implementations/nestjs/harness.sh <root>` | node |
+| NestJS | `bash implementations/nestjs/harness.sh <root>` | node, npm |
 | Go | `bash implementations/go/harness.sh <root>` | Go 1.22+ |
-| Spring Boot (Java) | `bash implementations/java-springboot/harness.sh <root>` | none |
-| Kotlin Spring Boot | `bash implementations/kotlin-springboot/harness.sh <root>` | none |
+| Spring Boot (Java) | `bash implementations/java-springboot/harness.sh <root>` | JDK 17+ |
+| Kotlin Spring Boot | `bash implementations/kotlin-springboot/harness.sh <root>` | JDK 17+, kotlinc |
 | FastAPI | `bash implementations/fastapi/harness.sh <root>` | python3 |
 
 ## Scaffolding a new domain
