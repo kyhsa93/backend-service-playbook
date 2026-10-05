@@ -17,11 +17,6 @@ const docTemplate = `{
     "paths": {
         "/accounts": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Opens a new account for the authenticated requester with a 0 balance in the given currency.",
                 "consumes": [
                     "application/json"
@@ -63,16 +58,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}": {
+            "get": {
                 "description": "Returns the account only if it belongs to the authenticated requester.",
                 "produces": [
                     "application/json"
@@ -109,16 +104,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/close": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/close": {
+            "post": {
                 "description": "Permanently closes an account. The balance must be exactly 0 first (withdraw or transfer out any remaining funds).",
                 "produces": [
                     "application/json"
@@ -158,16 +153,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/deposit": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/deposit": {
+            "post": {
                 "description": "Credits the given amount to the account and records a ` + "`" + `DEPOSIT` + "`" + ` transaction.",
                 "consumes": [
                     "application/json"
@@ -222,16 +217,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/reactivate": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/reactivate": {
+            "post": {
                 "description": "Moves a suspended account back to active, restoring its ability to accept deposits/withdrawals/transfers.",
                 "produces": [
                     "application/json"
@@ -271,16 +266,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/spending-analysis": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/spending-analysis": {
+            "get": {
                 "description": "Returns the precomputed spending analysis (total/average withdrawal amount, %-change and trend versus the previous month) for the given month — computed monthly by a batch ETL job, not on demand.",
                 "produces": [
                     "application/json"
@@ -330,16 +325,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/spending-forecast": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/spending-forecast": {
+            "get": {
                 "description": "Returns the precomputed spending forecast (predicted total withdrawal amount and confidence) for the given month — trained monthly by a batch job on the account's own spending-analysis history, not on demand.",
                 "produces": [
                     "application/json"
@@ -389,16 +384,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/suspend": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/suspend": {
+            "post": {
                 "description": "Suspends an active account, blocking further deposits/withdrawals/transfers until it is reactivated.",
                 "produces": [
                     "application/json"
@@ -438,16 +433,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/transactions": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/transactions": {
+            "get": {
                 "description": "Returns the account's deposit/withdrawal/interest transactions, newest first, paginated with ` + "`" + `page` + "`" + `/` + "`" + `take` + "`" + `. Out-of-range ` + "`" + `page` + "`" + `/` + "`" + `take` + "`" + ` values fall back to their defaults rather than failing.",
                 "produces": [
                     "application/json"
@@ -498,16 +493,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/transactions/ask": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/transactions/ask": {
+            "post": {
                 "description": "Answers a free-text question (e.g. \"How much did I deposit this month?\") using only the requester's own transactions — a structured-data RAG pipeline: the question is translated into a filter, matching transactions are retrieved, and the answer is generated grounded only in those records.",
                 "consumes": [
                     "application/json"
@@ -562,16 +557,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/transfer": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/transfer": {
+            "post": {
                 "description": "Atomically debits the source account and credits the target account with the given amount, recording one ` + "`" + `WITHDRAWAL` + "`" + ` and one ` + "`" + `DEPOSIT` + "`" + ` transaction.",
                 "consumes": [
                     "application/json"
@@ -626,16 +621,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/accounts/{id}/withdraw": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/accounts/{id}/withdraw": {
+            "post": {
                 "description": "Debits the given amount from the account and records a ` + "`" + `WITHDRAWAL` + "`" + ` transaction.",
                 "consumes": [
                     "application/json"
@@ -690,7 +685,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/auth/sign-in": {
@@ -778,11 +778,6 @@ const docTemplate = `{
         },
         "/cards": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Issues a new card linked to an active account owned by the authenticated requester.",
                 "consumes": [
                     "application/json"
@@ -830,16 +825,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/cards/{cardId}": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/cards/{cardId}": {
+            "get": {
                 "description": "Returns the card only if it belongs to the authenticated requester.",
                 "produces": [
                     "application/json"
@@ -876,7 +871,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/health/live": {
@@ -918,11 +918,6 @@ const docTemplate = `{
         },
         "/payments": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Returns the authenticated requester's payments, newest first, paginated with ` + "`" + `page` + "`" + `/` + "`" + `take` + "`" + `. Out-of-range ` + "`" + `page` + "`" + `/` + "`" + `take` + "`" + ` values fall back to their defaults rather than failing.",
                 "produces": [
                     "application/json"
@@ -960,14 +955,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "description": "Charges an active card linked to an active account with sufficient balance. The account balance is debited asynchronously once the payment completes.",
                 "consumes": [
                     "application/json"
@@ -1015,16 +1010,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/payments/{paymentId}": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/payments/{paymentId}": {
+            "get": {
                 "description": "Returns the payment only if it belongs to the authenticated requester.",
                 "produces": [
                     "application/json"
@@ -1061,16 +1056,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/payments/{paymentId}/cancel": {
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/payments/{paymentId}/cancel": {
+            "post": {
                 "description": "Cancels a completed payment before it is refunded.",
                 "consumes": [
                     "application/json"
@@ -1122,16 +1117,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/payments/{paymentId}/refunds": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/payments/{paymentId}/refunds": {
+            "get": {
                 "description": "Returns the refunds requested against a payment, newest first, paginated with ` + "`" + `page` + "`" + `/` + "`" + `take` + "`" + `. Out-of-range ` + "`" + `page` + "`" + `/` + "`" + `take` + "`" + ` values fall back to their defaults rather than failing.",
                 "produces": [
                     "application/json"
@@ -1182,14 +1177,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "description": "Requests a refund for a payment. Eligibility is judged synchronously (` + "`" + `APPROVED` + "`" + `/` + "`" + `REJECTED` + "`" + `); an approved refund is credited back to the account asynchronously.",
                 "consumes": [
                     "application/json"
@@ -1244,16 +1239,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/refunds/reason-insights": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/refunds/reason-insights": {
+            "get": {
                 "description": "Returns how many refunds fall into each auto-classified reason category (e.g. DEFECTIVE_PRODUCT, CHANGED_MIND), optionally narrowed to a date range. Classification runs asynchronously after a refund is requested and never influences whether that refund is approved — this is a read-only reporting view across every refund, not scoped to the caller's own payments.",
                 "produces": [
                     "application/json"
@@ -1295,7 +1290,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         }
     },
