@@ -49,6 +49,7 @@ import { evaluateApiDocumentation } from '../rules/api-documentation.evaluator'
 import { evaluateUserContextStore } from '../rules/user-context-store.evaluator'
 import { evaluateTimezonePin } from '../rules/timezone-pin.evaluator'
 import { aggregate } from '../shared/score'
+import { notApplicableFor, PROFILES, type Profile } from '../shared/profile'
 import type { EvaluatorResult } from '../shared/types'
 
 type EvaluatorFn = (root: string) => EvaluatorResult
@@ -105,29 +106,42 @@ interface CliArgs {
   projectRoot: string
   only: string[] | null
   out: string | null
+  profile: Profile
+  docBase: string | null
 }
 
 function parseArgs(argv: string[]): CliArgs {
   let projectRoot: string | null = null
   let only: string[] | null = null
   let out: string | null = null
+  let profile: Profile = 'benchmark'
+  let docBase: string | null = null
 
   for (const arg of argv) {
     if (arg.startsWith('--only=')) {
       only = arg.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean)
     } else if (arg.startsWith('--out=')) {
       out = arg.slice('--out='.length)
+    } else if (arg.startsWith('--doc-base=')) {
+      docBase = arg.slice('--doc-base='.length)
+    } else if (arg.startsWith('--profile=')) {
+      const value = arg.slice('--profile='.length)
+      if (!PROFILES.includes(value as Profile)) {
+        console.error(`Unknown profile: ${value} (available: ${PROFILES.join(', ')})`)
+        process.exit(1)
+      }
+      profile = value as Profile
     } else if (!arg.startsWith('--')) {
       projectRoot = arg
     }
   }
 
   if (!projectRoot) {
-    console.error('Usage: npm run evaluate -- <projectRoot> [--only=a,b,c] [--out=report.json]')
+    console.error('Usage: npm run evaluate -- <projectRoot> [--only=a,b,c] [--out=report.json] [--profile=benchmark|adopt] [--doc-base=<url>]')
     process.exit(1)
   }
 
-  return { projectRoot, only, out }
+  return { projectRoot, only, out, profile, docBase }
 }
 
 function gradeFor(total: number): string {
@@ -139,7 +153,7 @@ function gradeFor(total: number): string {
 }
 
 function main(): void {
-  const { projectRoot, only, out } = parseArgs(process.argv.slice(2))
+  const { projectRoot, only, out, profile, docBase } = parseArgs(process.argv.slice(2))
   const absRoot = path.resolve(projectRoot)
 
   if (!fs.existsSync(absRoot)) {
@@ -155,18 +169,27 @@ function main(): void {
     process.exit(1)
   }
 
-  const results: EvaluatorResult[] = names.map((name) => EVALUATORS[name](absRoot))
+  const notApplicable = notApplicableFor(profile, absRoot).filter((entry) => names.includes(entry.evaluator))
+  const skipped = new Set(notApplicable.map((entry) => entry.evaluator))
+  const results: EvaluatorResult[] = names.map((name) =>
+    skipped.has(name) ? { name, score: 0, maxScore: 0, failures: [] } : EVALUATORS[name](absRoot)
+  )
   const report = aggregate(results)
 
   const output = {
     projectRoot: absRoot,
+    profile,
     totalScore: report.total,
     grade: gradeFor(report.total),
     rawScore: report.rawScore,
     rawMax: report.rawMax,
     runEvaluators: names,
     skippedEvaluators: report.skippedEvaluators,
-    failures: report.failures
+    notApplicable,
+    // docRef is relative to implementations/nestjs/; outside this repo it only resolves as a URL
+    failures: docBase
+      ? report.failures.map((f) => (f.docRef ? { ...f, docRef: new URL(f.docRef, docBase).href } : f))
+      : report.failures
   }
 
   const json = JSON.stringify(output, null, 2)

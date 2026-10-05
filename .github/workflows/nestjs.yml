@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'implementations/nestjs/**'
+      - 'skills/nestjs-architecture-harness/**'
       - '.github/workflows/nestjs.yml'
   pull_request:
     paths:
       - 'implementations/nestjs/**'
+      - 'skills/nestjs-architecture-harness/**'
       - '.github/workflows/nestjs.yml'
   workflow_dispatch:
 
@@ -32,9 +34,15 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run test:e2e
-      - run: cd ../harness && npm ci && npm run lint && npm run typecheck && npm run test:evaluators && npm run test:meta
+      - run: cd ../harness && npm ci && npm run lint && npm run typecheck && npm run test:evaluators && npm run test:meta && npm run test:profile
       - name: Harness
         run: cd ../harness && npm run evaluate -- ../examples | tee /tmp/harness-output.txt
+      - name: Agent skill bundle matches the harness source
+        run: cd ../harness && npm run build:skill && git diff --exit-code -- ../../../skills/nestjs-architecture-harness
+      - name: Agent skill scores the examples
+        run: |
+          bash ../../../skills/nestjs-architecture-harness/scripts/run.sh . --profile=benchmark --out=/tmp/skill-report.json
+          node -e "const r = require('/tmp/skill-report.json'); if (r.grade !== 'A') { console.error(r); process.exit(1) }"
 
       - name: Format harness score comment
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository

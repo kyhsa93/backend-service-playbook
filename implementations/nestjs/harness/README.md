@@ -7,6 +7,22 @@ Each evaluator combines the TypeScript AST, file paths, and regular expressions 
 
 The design principles for the harness overall (shared across all 5 languages) follow the root [`../../../docs/harness.md`](../../../docs/harness.md) — in short: **the harness evaluates the ability to follow architectural rules, not whether the business logic is "correct."** The Account domain in `examples/` is just an illustrative sample, and no evaluator may treat knowledge of a specific business domain (e.g. account suspend/resume rules) as a hard prerequisite. Always read that document before adding a new evaluator.
 
+## Profiles
+
+`--profile=benchmark` (default) applies every evaluator — a submission that ignores the playbook's layout is supposed to lose points for it.
+
+`--profile=adopt` is for an existing NestJS project that was not built on this playbook. Evaluators that only encode the playbook's own conventions are reported in `notApplicable` instead of failing (see `evaluators/shared/profile.ts`):
+
+- `file-naming` — house naming (`<name>-module.ts`, no `*.service.ts`), always
+- `structure`, `cqrs-pattern` — when no `src/<context>/{domain,application,interface,infrastructure}` directory exists
+- `build` — when `node_modules/.bin/tsc` is missing, since tsc then only reports unresolved modules
+
+`--doc-base=<url>` rewrites each `docRef` into an absolute URL for use outside this repository.
+
+## Agent skill
+
+[`skills/nestjs-architecture-harness/`](../../../skills/nestjs-architecture-harness/SKILL.md) ships this harness as an agent skill: `npm run build:skill` bundles `evaluators/` into `scripts/harness.cjs` (typescript stays external and is resolved from the target project), and `scripts/run.sh` runs it with `--profile=adopt`. CI fails if the committed bundle differs from a fresh build.
+
 ## Coverage
 
 See [`COVERAGE.md`](./COVERAGE.md) for which guide rules the harness automatically verifies.
@@ -56,6 +72,9 @@ npm run evaluate -- /path/to/project --only=structure,layer-dependency,task-queu
 
 # Output to a file
 npm run evaluate -- /path/to/project --out=report.json
+
+# An existing project that does not use the playbook layout
+npm run evaluate -- /path/to/project --profile=adopt
 ```
 
 Output (JSON):
