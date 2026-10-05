@@ -1,6 +1,6 @@
 ---
 name: nestjs-architecture-harness
-description: Static architecture check for a NestJS + TypeScript backend — layer dependencies, repository and aggregate rules, CQRS handlers, module DI, auth intent on routes, config validation, Dockerfile and bootstrap hygiene. Use after generating or refactoring NestJS code, before opening a PR, or when asked to review a NestJS project's architecture. Deterministic, local only — no LLM calls, no network.
+description: Static architecture linter for NestJS + TypeScript backends (DDD, CQRS) — layer dependencies, repository and aggregate rules, CQRS handlers, module DI, auth intent on routes, config validation, Dockerfile and bootstrap hygiene. Use after generating or refactoring NestJS code, before opening a PR, or when asked to review a NestJS project's architecture. Deterministic, local only — no LLM calls, no network.
 ---
 
 # NestJS architecture harness

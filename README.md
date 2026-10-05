@@ -9,7 +9,7 @@
 
 A **framework- and language-agnostic** guide to DDD-based backend service design and implementation principles — with the same architecture implemented, verified, and kept in sync across **5 languages**: NestJS (TypeScript), Go, Spring Boot (Java), Spring Boot (Kotlin), and FastAPI (Python).
 
-**Check a NestJS project with your coding agent:** `npx skills add kyhsa93/backend-service-playbook --skill nestjs-architecture-harness` — then ask it to run the architecture harness ([`skills/nestjs-architecture-harness`](skills/nestjs-architecture-harness/SKILL.md)).
+**Check a NestJS project with your coding agent:** `npx skills add kyhsa93/backend-service-playbook --skill nestjs-architecture-harness` — then ask it to run the architecture harness; each layer/CQRS/DI violation comes with a rule link and fix ([`skills/nestjs-architecture-harness`](skills/nestjs-architecture-harness/SKILL.md)).
 
 The core design docs use TypeScript for code examples, but the patterns themselves apply the same way in any language.
 See `implementations/<lang>/` for the actual per-language/framework implementation guides, runnable examples, and tests. `docs/implementations/` is a coverage-audit report cross-checking the root principles against each language's docs.
