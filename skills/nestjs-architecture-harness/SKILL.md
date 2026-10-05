@@ -7,12 +7,13 @@ description: Static architecture linter for NestJS + TypeScript backends (DDD, C
 
 A rule-based linter for NestJS backend architecture, from
 [backend-service-playbook](https://github.com/kyhsa93/backend-service-playbook). Every finding
-has a `ruleId`, a severity, a file, and a `docRef` URL that explains the rule and the fix.
+has a `ruleId`, a severity, and a message naming the file; most also carry a `docRef` URL that
+explains the rule and the fix.
 
 ## Run
 
-From the NestJS project root (dependencies installed — the harness uses the project's own
-`typescript`):
+From the NestJS project root, with Node 20+ and the project's dependencies installed (the
+harness uses the project's own `typescript`):
 
 ```bash
 bash <this-skill-dir>/scripts/run.sh .
@@ -33,7 +34,7 @@ The JSON has `totalScore` (0–100), `grade`, `failures[]`, and `notApplicable[]
 
 - `failures[].severity`: fix `critical` and `high` first. `low` entries are informational
   (for example `checklist.meta.coverage`, `test-run.skipped`) and never fail the run.
-- `failures[].docRef`: open it before changing code. The rule's intent is there, and the fix
+- `failures[].docRef` (when present): open it before changing code. The rule's intent is there, and the fix
   is usually a move or a boundary change, not a rename.
 - `notApplicable[]`: evaluators that encode the playbook's own folder layout or file naming
   (`src/<context>/{domain,application,interface,infrastructure}`, `<name>-module.ts`). They are
