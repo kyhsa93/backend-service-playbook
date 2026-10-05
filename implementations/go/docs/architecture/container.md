@@ -19,7 +19,7 @@ Go production image       : scratch (~0MB) + a single binary (~10-20MB)
 
 ```dockerfile
 # ---- Stage 1: Build ----
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /app
 
